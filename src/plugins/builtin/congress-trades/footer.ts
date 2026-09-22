@@ -19,6 +19,7 @@ export function useCongressTradesFooter({
   loadPreviousYear,
   loadMore,
   loadingMore,
+  registrationId = CONGRESS_TRADES_PANE_ID,
   openSelectedTicker,
   openSelectedTradeMember,
   openSelectedTradeSource,
@@ -34,6 +35,7 @@ export function useCongressTradesFooter({
   loadPreviousYear: (() => void) | null;
   loadMore: (() => void) | null;
   loadingMore: boolean;
+  registrationId?: string;
   openSelectedTicker: () => void;
   openSelectedTradeMember: () => void;
   openSelectedTradeSource: () => void;
@@ -42,7 +44,7 @@ export function useCongressTradesFooter({
   selectedTrade: CloudCongressTradePayload | null;
   status: LoadStatus;
 }) {
-  usePaneFooter(CONGRESS_TRADES_PANE_ID, () => ({
+  usePaneFooter(registrationId, () => detailMode?.kind === "member" || detailMode?.kind === "ticker" ? {} : ({
     info: [
       ...(payload ? [
         { id: "asof", parts: [{ text: `updated ${formatTimeAgo(payload.asOf)}`, tone: "muted" as const }] },
@@ -53,13 +55,14 @@ export function useCongressTradesFooter({
     ],
     hints: [
       ...(!detailMode && loadMore ? [{ id: "next-filings", key: "n", label: "ext filings", onPress: loadMore, disabled: loadingMore }] : []),
-      ...(detailMode?.kind !== "member" && activeTab === "trades" && (detailTrade ?? selectedTrade)
+      ...(activeTab === "trades" && (detailTrade ?? selectedTrade)
         ? [
             { id: "member", key: "m", label: "ember", onPress: openSelectedTradeMember },
             { id: "ticker", key: "t", label: "icker", onPress: openSelectedTicker, disabled: !(detailTrade?.ticker ?? selectedTrade?.ticker) },
             { id: "open", key: "o", label: "pen", onPress: openSelectedTradeSource, disabled: !(detailTrade ?? selectedTrade)?.sourceUrl },
           ]
         : []),
+      ...(activeTab === "tickers" ? [{ id: "ticker", key: "t", label: "icker", onPress: openSelectedTicker }] : []),
       ...(!detailMode && loadPreviousYear && previousYear
         ? [{ id: "prev-year", key: "p", label: `rev year ${previousYear}`, onPress: loadPreviousYear }]
         : []),

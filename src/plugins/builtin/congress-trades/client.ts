@@ -6,6 +6,7 @@ import type { HeadlessPaneApiClient } from "../../../types/plugin";
 export function loadCongressHouse(
   params: CloudCongressHouseParams = {},
   client: Pick<HeadlessPaneApiClient, "getCloudCongressHouse"> = apiClient,
+  signal?: AbortSignal,
 ): Promise<CloudCongressHousePayload> {
-  return client.getCloudCongressHouse(params);
+  return client.getCloudCongressHouse(params, { signal });
 }

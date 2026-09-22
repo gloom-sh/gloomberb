@@ -4,6 +4,7 @@ import { colors } from "../../../theme/colors";
 import type {
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
+  CloudCongressTickerPayload,
 } from "../../../api-client";
 import {
   formatAmountRange,
@@ -11,6 +12,7 @@ import {
   formatShortDate,
   type MemberColumn,
   type TradeColumn,
+  type TickerColumn,
 } from "./model";
 
 export function sideColor(side: CloudCongressTradePayload["side"], selected: boolean): string {
@@ -34,7 +36,7 @@ export function renderCongressTradeCell(
     case "tx":
       return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate), color: selectedColor ?? colors.textDim };
     case "lag":
-      return { text: formatLag(trade.lagDays), color: selectedColor ?? colors.textDim };
+      return { text: `${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? "!" : ""}`, color: selectedColor ?? ((trade.lagDays ?? 0) > 45 ? colors.warning : colors.textDim) };
     case "member":
       return { text: trade.memberName, color: selectedColor ?? colors.text };
     case "side":
@@ -62,6 +64,14 @@ export function renderCongressTradeCell(
     case "owner":
       return { text: trade.owner, color: selectedColor ?? colors.textDim };
   }
+}
+
+export function renderCongressTickerCell(ticker: CloudCongressTickerPayload, column: TickerColumn, _index: number, row: { selected: boolean }): DataTableCell {
+  const selectedColor = row.selected ? colors.selectedText : undefined;
+  if (column.id === "ticker") return { text: ticker.ticker, color: selectedColor ?? colors.textBright };
+  if (column.id === "range") return { text: formatAmountRange(ticker.estimatedLow, ticker.estimatedHigh), color: selectedColor ?? colors.text };
+  if (column.id === "lastFilingDate") return { text: ticker.lastFilingDate ?? "--", color: selectedColor ?? colors.textDim };
+  return { text: String(ticker[column.id]), color: selectedColor ?? (column.id === "buyCount" ? colors.positive : column.id === "sellCount" ? colors.negative : colors.text) };
 }
 
 export function renderCongressMemberCell(

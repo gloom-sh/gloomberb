@@ -359,9 +359,11 @@ export class CloudDataApi {
 
   async getCloudCongressHouse(
     params: CloudCongressHouseParams = {},
+    options?: { signal?: AbortSignal },
   ): Promise<CloudCongressHousePayload> {
     return this.request<CloudCongressHousePayload>(
       cloudCongressHousePath(params),
+      options,
     );
   }
 

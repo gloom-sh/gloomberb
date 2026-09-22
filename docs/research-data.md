@@ -431,3 +431,16 @@ The backend discovers published file links from FINRA monthly indexes, including
 Percentiles use midrank ties and at least 20 finite daily ratios within the latest discovered source date's one-year window. Actual sample count and first/last dates are shown. Incomplete discovery or short symbol history is labelled sample rather than a full one-year rank. Opening the pane reads Cloud aggregation tables and does not fan out to FINRA. Migration 088 and catchup ingestion must be available; otherwise the pane shows a recoverable unavailable state. Refresh failures retain dated observations with a warning.
 
 Source symbols preserve case and punctuation. BRK/B and BF/B class aliases are mapped explicitly. Preferred shares such as ABRpD require their exact FINRA symbol in settings or `gloomberb fn SIV AAPL --finra-symbol ABRpD`. No heuristic collapses preferred or class shares into common shares. `--scope otc` selects ORF. The report includes exact quantities, coverage, gaps, source URLs and dated percentile statistics.
+
+## Congress summaries and filters
+
+Congress pane summaries count distinct loaded transactions, across each filing
+window and year the reader appends. The API, CLI, and chat aggregates cover all
+parsed trades in the requested filtered filing window, before its trade-row
+pagination. Counts and dollar ranges describe disclosures, not current holdings
+or trade execution sizes. An open-ended or unknown upper bound stays unknown.
+The amount filter uses the disclosed lower bound, so a range is included only
+when its minimum meets the threshold. A lag above 45 days is flagged from the
+transaction and filing dates; it is not a determination of a legal violation.
+Stock, option, and other categories use the disclosed asset code and description.
+**Mine** reads existing portfolio/watchlist membership; it does not add a holding.

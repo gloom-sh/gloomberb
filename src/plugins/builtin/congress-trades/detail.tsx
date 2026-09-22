@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableView,
+  KeyValueRow,
   usePaneFooter,
   usePaneNoticeFooter,
   useTableLoadMore,
@@ -9,7 +10,6 @@ import {
 } from "../../../components";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
-import { padTo } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import type {
   CloudCongressHousePayload,
@@ -60,12 +60,7 @@ function DetailLine({
           : tone === "muted"
             ? colors.textDim
             : colors.text;
-  return (
-    <Box height={1} flexDirection="row">
-      <Text fg={colors.textDim}>{padTo(label, 16)}</Text>
-      <Text fg={color} attributes={bold ? TextAttributes.BOLD : 0}>{value}</Text>
-    </Box>
-  );
+  return <KeyValueRow label={label} value={value} labelWidth={16} color={color} emphasis={bold} />;
 }
 
 export function TradeDetail({
@@ -88,7 +83,7 @@ export function TradeDetail({
         <DetailLine label="tx date" value={trade.transactionDate ?? "--"} />
         <DetailLine label="notification" value={trade.notificationDate ?? "--"} />
         <DetailLine label="filed" value={trade.filingDate} />
-        <DetailLine label="lag" value={formatLag(trade.lagDays)} />
+        <DetailLine label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <DetailLine label="status" value={trade.filingStatus} /> : null}
         {trade.subholdingOf ? <DetailLine label="subholding" value={truncate(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
         {trade.description ? (

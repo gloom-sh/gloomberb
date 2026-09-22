@@ -491,6 +491,20 @@ export interface CloudCongressMemberPayload {
   avgLagDays: number | null;
 }
 
+export interface CloudCongressTickerPayload {
+  ticker: string;
+  tradeCount: number;
+  buyCount: number;
+  sellCount: number;
+  exchangeCount: number;
+  otherCount: number;
+  memberCount: number;
+  memberIds: string[];
+  estimatedLow: number | null;
+  estimatedHigh: number | null;
+  lastFilingDate: string | null;
+}
+
 export interface CloudCongressHousePayload {
   asOf: string;
   chamber: "house";
@@ -512,6 +526,7 @@ export interface CloudCongressHousePayload {
   nextFilingOffset?: number;
   trades: CloudCongressTradePayload[];
   members: CloudCongressMemberPayload[];
+  tickers?: CloudCongressTickerPayload[];
 }
 
 export interface CloudEarningsCallPayload {

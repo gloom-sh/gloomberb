@@ -152,7 +152,6 @@ Correlation uses matching observation times when inputs have different frequenci
 | `TWIT <query>` | Ticker-related market posts |
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
-
 | `WEI` | Global equity indices |
 | `MAP` | Live world venue map with local market status and clocks |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
@@ -176,6 +175,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
+
 Ticker Research includes a **Congress** tab for House transactions in the selected
 ticker. Scroll to append filing windows; `n` or its footer action continues a
 window with no matching transactions. After the year's filings, `p` appends the
@@ -355,3 +355,12 @@ Install [TV](https://github.com/gloom-sh/gloom-tv) with `gloomberb install gloom
 The ticker research `13F` tab shows fund positions for the ticker, reported value, shares, weight and quarter action; open a row for its fund detail and scroll to page more funds. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. CLI equivalents: `gloomberb fn 13F AAPL --view=ticker-holdings --offset=0 --json` and `gloomberb fn 13F --view=crowding --json`.
 
 In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --view=overlap --compare=0001037389 --json`.
+
+The CG **Tickers** tab groups the loaded trades, including appended years, by
+symbol. Enter opens that ticker's disclosures. The filter bar narrows side,
+owner, asset category, and the minimum disclosed dollar amount; `f` opens those
+filters by keyboard. `i` or **Mine** limits the view to portfolio and watchlist
+symbols, which are highlighted in the tables. A `!` beside lag marks disclosures
+filed more than 45 days after the transaction. CLI examples:
+`gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json` and
+`gloomberb fn CG AAPL --owner spouse --assetType option --json`.

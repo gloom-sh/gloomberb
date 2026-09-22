@@ -29,7 +29,7 @@ export function useCongressTradesKeyboard({
   selectTab: (tab: string) => void;
 }) {
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (detailMode?.kind === "member") {
+    if (detailMode?.kind === "member" || detailMode?.kind === "ticker") {
       return false;
     }
     if (isPlainKey(event, "o")) {
@@ -72,7 +72,7 @@ export function useCongressTradesKeyboard({
       loadPreviousYear();
       return true;
     }
-    if (activeTab === "trades" && isPlainKey(event, "t")) {
+    if ((activeTab === "trades" || activeTab === "tickers") && isPlainKey(event, "t")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       openSelectedTicker();
@@ -103,6 +103,10 @@ export function useCongressTradesKeyboard({
       event.preventDefault?.();
       event.stopPropagation?.();
       selectTab("members");
+    } else if (event.name === "3") {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      selectTab("tickers");
     }
   });
 

@@ -6,6 +6,7 @@ import type {
   CloudCongressHousePayload,
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
+  CloudCongressTickerPayload,
 } from "../../../api-client";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 
@@ -16,12 +17,13 @@ export const CONGRESS_MEMBER_TRADE_LIMIT = 2000;
 export const CONGRESS_MEMBER_FILING_LIMIT = 500;
 export const CONGRESS_EARLIEST_YEAR = 2008;
 
-export type CongressTab = "trades" | "members";
+export type CongressTab = "trades" | "members" | "tickers";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";
 export type SortDirection = "asc" | "desc";
 export type DetailMode =
   | { kind: "trade"; tradeId: string }
   | { kind: "member"; memberId: string }
+  | { kind: "ticker"; ticker: string }
   | null;
 
 export type TradeColumnId =
@@ -45,6 +47,30 @@ export type MemberColumnId =
   | "last"
   | "lag";
 export type MemberColumn = DataTableColumn & { id: MemberColumnId };
+
+export type TickerColumnId = "ticker" | "buyCount" | "sellCount" | "memberCount" | "range" | "lastFilingDate";
+export type TickerColumn = DataTableColumn & { id: TickerColumnId };
+
+export function buildTickerColumns(width: number): TickerColumn[] {
+  return [
+    { id: "ticker", label: "TICKER", width: Math.max(12, width - 68), align: "left" },
+    { id: "buyCount", label: "BUY", width: 6, align: "right" },
+    { id: "sellCount", label: "SELL", width: 6, align: "right" },
+    { id: "memberCount", label: "MEMBERS", width: 8, align: "right" },
+    { id: "range", label: "EST RANGE", width: 25, align: "right" },
+    { id: "lastFilingDate", label: "LAST FILED", width: 10, align: "left" },
+  ];
+}
+
+export function sortedTickers(tickers: CloudCongressTickerPayload[], sort: { columnId: TickerColumnId; direction: SortDirection }) {
+  return [...tickers].sort((a, b) => {
+    const key = sort.columnId;
+    const comparison = key === "ticker" || key === "lastFilingDate"
+      ? (a[key] ?? "").localeCompare(b[key] ?? "")
+      : key === "range" ? (a.estimatedLow ?? -1) - (b.estimatedLow ?? -1) : a[key] - b[key];
+    return (sort.direction === "asc" ? comparison : -comparison) || a.ticker.localeCompare(b.ticker);
+  });
+}
 
 export function formatShortDate(value: string | null): string {
   if (!value) return "--";
@@ -313,12 +339,9 @@ export function mergeCongressPages(
   current: CloudCongressHousePayload,
   next: CloudCongressHousePayload,
 ): CloudCongressHousePayload {
-  const trades = [...current.trades];
-  const seenTrades = new Set(current.trades.map((trade) => trade.id));
+  const byTradeId = new Map(current.trades.map((trade) => [trade.id, trade]));
   for (const trade of next.trades) {
-    if (seenTrades.has(trade.id)) continue;
-    seenTrades.add(trade.id);
-    trades.push(trade);
+    byTradeId.set(trade.id, trade);
   }
   const members = [...current.members];
   const seenMembers = new Set(current.members.map((member) => member.id));
@@ -327,5 +350,5 @@ export function mergeCongressPages(
     seenMembers.add(member.id);
     members.push(member);
   }
-  return { ...next, trades, members };
+  return { ...next, trades: [...byTradeId.values()], members };
 }
