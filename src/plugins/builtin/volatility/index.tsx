@@ -1,168 +1,27 @@
-import { useMemo, useState } from "react";
-import {
-  EmptyState, PaneStatusBody, StaticChartSurface,
-  usePaneFooter,
-  type PaneFooterSegment
-} from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
-import { ListView } from "../../../components/ui/list-view";
-import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
-import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { getCachedVolatilityData, loadVolatilityData } from "./client";
 import { volatilityHeadless } from "./headless";
-import type { TermState, VolatilityData } from "./model";
+import { VolatilityPane } from "./pane";
 
 export { volatilityHeadless } from "./headless";
-
-function formatValue(value: number | null, suffix = ""): string {
-  return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(2)}${suffix}`;
-}
-
-function termColor(state: TermState): string {
-  if (state === "normal") return colors.positive;
-  if (state === "inverted") return colors.warning;
-  return colors.textMuted;
-}
-
-function slopeLabel(slope: number | null): string {
-  if (slope == null || !Number.isFinite(slope)) return "3M spread --";
-  if (slope > 0) return `3M premium +${slope.toFixed(2)} pts`;
-  if (slope < 0) return `3M discount ${slope.toFixed(2)} pts`;
-  return "3M spread 0.00 pts";
-}
-
-function TermChart({ data, width, height }: { data: VolatilityData; width: number; height: number }) {
-  const points: ProjectedChartPoint[] = data.termPoints.flatMap((point, index) => point.value == null ? [] : [{
-    date: new Date(index * 86_400_000),
-    open: point.value,
-    high: point.value,
-    low: point.value,
-    close: point.value,
-    volume: 0,
-  }]);
-  if (points.length < 2) {
-    return <Box paddingX={1}><EmptyState title="VIX curve unavailable." message="Not enough aligned closes to draw the term structure." /></Box>;
-  }
-  const colWidth = Math.max(10, Math.floor((width - 2) / data.termPoints.length));
-  return (
-    <Box flexDirection="column" paddingX={1} marginTop={1}>
-      <StaticChartSurface
-        points={points}
-        width={Math.max(12, width - 2)}
-        height={Math.max(5, Math.min(10, height))}
-        mode="line"
-        colors={resolveChartPalette(colors, "positive")}
-        yAxisLabel="Vol"
-        yAxisColor={colors.textDim}
-        formatYAxisValue={(value) => value.toFixed(1)}
-      />
-      <Text fg={colors.textDim}>{data.termPoints.map((point) => point.tenor.padEnd(colWidth)).join("").trimEnd()}</Text>
-      <Text fg={colors.text}>{data.termPoints.map((point) => formatValue(point.value).padEnd(colWidth)).join("").trimEnd()}</Text>
-    </Box>
-  );
-}
-
-export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
-  const resource = useAsyncResource(loadVolatilityData, { initialData: getCachedVolatilityData });
-  const { loading, load: refresh, reload } = resource;
-  const stale = resource.data?.stale ?? false;
-  const error = resource.error ?? resource.data?.errors[0] ?? null;
-  const lastUpdated = stale ? null : resource.updatedAt;
-  const data = resource.data?.data ?? null;
-  const [selected, setSelected] = useState(0);
-  // The shared FRED cache decides whether a tick reaches the network, so daily
-  // closes follow the global cadence without refetching unchanged data.
-  useAutoRefresh(lastUpdated, refresh);
-  useShortcut((event) => {
-    if (!focused) return;
-    if (event.name === "r") {
-      if (loading) return;
-      reload();
-    } else if (["left", "up", "k"].includes(event.name ?? "")) setSelected((value) => Math.max(0, value - 1));
-    else if (["right", "down", "j"].includes(event.name ?? "")) setSelected((value) => Math.min(1, value + 1));
-    else return;
-    event.preventDefault();
-    event.stopPropagation();
-  });
-
-  const footerInfo = useMemo<PaneFooterSegment[]>(() => [
-    ...(data?.termState && data.termState !== "partial" ? [{
-      id: "term-state",
-      parts: [{ text: data.termState.toUpperCase(), tone: data.termState === "inverted" ? "warning" as const : "value" as const, bold: true }],
-    }] : []),
-    ...(data?.termState === "partial" ? [{ id: "partial", parts: [{ text: "PARTIAL", tone: "warning" as const, bold: true }] }] : []),
-    ...(data ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
-    ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-    ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-  ], [data, error, loading, stale]);
-  usePaneFooter(paneId, () => ({ info: footerInfo }), [footerInfo, paneId]);
-
-  if (!data && loading) {
-    return (
-      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading volatility data..." />
-    );
-  }
-  if (!data) {
-    return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState status={error ? "error" : "empty"} title="Volatility data unavailable." message={error ?? undefined} />
-      </Box>
-    );
-  }
-
-  const selectedMetric = data.metrics[selected] ?? data.metrics[0]!;
-  return (
-    <Box flexDirection="column" width={width} height={height} paddingBottom={1}>
-          <Box paddingX={1}><Text fg={colors.textMuted}>FRED · daily close</Text></Box>
-          <Box flexDirection="row" paddingX={1} marginTop={1}>
-            <Text fg={colors.textDim}>3M/30D </Text>
-            <Text fg={termColor(data.termState)} attributes={TextAttributes.BOLD}>{formatValue(data.ratio)}</Text>
-            <Text fg={colors.textDim}>{`  ${slopeLabel(data.slope)}  as of ${data.termDate ?? "--"}`}</Text>
-          </Box>
-          <Box marginTop={1} paddingX={1}><Text fg={colors.textDim}>{selectedMetric.title}</Text></Box>
-          <Box height={2}>
-            <ListView
-              items={data.metrics.map((metric) => ({
-                id: metric.seriesId,
-                label: metric.label,
-                detail: `${formatValue(metric.value)}   ${metric.tenor} · ${metric.date ?? "--"}`,
-              }))}
-              selectedIndex={selected}
-              onSelect={setSelected}
-              height={2}
-              surface="plain"
-              remoteLabel="Volatility tenors"
-            />
-          </Box>
-          <TermChart data={data} width={width} height={Math.floor(height * 0.35)} />
-    </Box>
-  );
-}
+export { VolatilityPane } from "./pane";
 
 export const volatilityModule: PluginModule = {
   panes: [{
-    id: "volatility-term-structure",
-    name: "VIX 30D/3M Curve",
-    icon: "V",
-    component: VolatilityPane,
-    defaultPosition: "right",
-    defaultMode: "floating",
-    defaultFloatingSize: { width: 76, height: 23 },
+    id: "volatility-term-structure", name: "Volatility", icon: "V", component: VolatilityPane,
+    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 110, height: 34 },
+    tableExport: true, headless: volatilityHeadless,
   }],
   paneTemplates: [{
-    id: "volatility-term-structure-pane",
-    paneId: "volatility-term-structure",
-    label: "VIX 30D/3M Curve",
-    description: "Aligned daily 30-day and three-month VIX implied-volatility closes from FRED.",
-    keywords: ["vix", "volatility", "implied volatility", "curve", "slope", "normal", "inverted", "macro"],
-    shortcut: { prefix: "VIX" },
-    headless: volatilityHeadless,
+    id: "volatility-term-structure-pane", paneId: "volatility-term-structure",
+    label: "VIX Curve", description: "Dated VIX tenor closes, FRED history and the cross-asset volatility board.",
+    keywords: ["vix", "volatility", "curve", "contango", "backwardation", "vvix", "skew", "move"],
+    shortcut: { prefix: "VIX" }, headless: volatilityHeadless,
+    createInstance: () => ({ instanceId: "volatility:curve", title: "VIX", placement: "floating", settings: { initialTab: "curve" } }),
+  }, {
+    id: "volatility-board-pane", paneId: "volatility-term-structure",
+    label: "Cross-asset Volatility", description: "Volatility index closes, daily changes and one-year percentiles.",
+    keywords: ["volatility", "cross asset", "vols", "vxn", "ovx", "gvz"],
+    shortcut: { prefix: "VOLS" }, headless: volatilityHeadless,
+    createInstance: () => ({ instanceId: "volatility:board", title: "VOLS", placement: "floating", settings: { initialTab: "board" } }),
   }],
 };

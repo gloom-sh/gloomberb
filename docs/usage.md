@@ -160,7 +160,8 @@ Correlation uses matching observation times when inputs have different frequenci
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
-| `VIX` | VIX 30-day/3-month implied-volatility curve |
+| `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |
+| `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
 | `CRD` | Credit spreads |
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's trades |
