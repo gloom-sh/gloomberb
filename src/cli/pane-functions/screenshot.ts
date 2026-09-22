@@ -69,6 +69,9 @@ import { readVolSurfaceEvidence, type VolSurfaceEvidence } from "../../plugins/b
 import { readVolatilityEvidence, type VolatilityEvidence } from "../../plugins/builtin/volatility/evidence";
 import { readScenarioEvidence, type ScenarioEvidence } from "../../plugins/builtin/options-scenario/evidence";
 import type { buildScenario, ScenarioPosition, ScenarioControls } from "../../plugins/builtin/options-scenario/model";
+import { readCalculatorEvidence, normalizeCalculatorEvidenceDraft, type CalculatorEvidence, type CalculatorScreenshotSnapshot } from "../../plugins/builtin/options-calculator/evidence";
+import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calculator/inputs";
+import { createCalculatorSurfaceDependencies, loadCalculatorSurfaceVol } from "../../plugins/builtin/options-calculator/surface";
 import {
   collectShotSymbols,
   clipPriceHistoryToRange,
@@ -360,7 +363,8 @@ export type PaneScreenshotDataEvidence =
   | VolSurfaceEvidence
   | RealizedVolEvidence
   | VolatilityEvidence
-  | ScenarioEvidence;
+  | ScenarioEvidence
+  | CalculatorEvidence;
 
 export interface PaneScreenshotReadinessSignals {
   rowCount: number;
@@ -494,7 +498,23 @@ export async function buildDesktopShotPayload(
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
   let chartModel: ChartPaneModel | undefined;
-  if (isScenarioScreenshot(resolved)) {
+  if (isCalculatorScreenshot(resolved)) {
+    // The screenshot and verifier consume the same inputs and market fit.
+    // Explicit input-IV pricing does not need unrelated quote/history requests.
+    const draft = draftFromCalculatorInputs({ ...shotInstance.settings, ...resolved.options });
+    let surface: CalculatorScreenshotSnapshot["surface"] = null;
+    if (draft.volSource === "surface") {
+      if (!draft.symbol) throw new Error("Surface volatility requires --symbol.");
+      const parsed = parsePublicTickerKey(draft.symbol);
+      const ticker = await context.store.loadTicker(draft.symbol)
+        ?? (draft.symbol !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
+      surface = await loadCalculatorSurfaceVol({ symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange,
+        spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry,
+      }, createCalculatorSurfaceDependencies(context.dataProvider, apiClient));
+    }
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings,
+      calculatorSnapshot: { draft, surface } satisfies CalculatorScreenshotSnapshot } };
+  } else if (isScenarioScreenshot(resolved)) {
     // Freeze the same user inputs and market observations used by the report.
     // A typed strategy with an explicit spot needs no unrelated financials fetch.
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
@@ -714,10 +734,12 @@ export async function renderDesktopShot({
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
-  const symbols = payload.financials.map(([symbol]) => symbol);
+  const calculatorSnapshot = renderedInstance?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
+  const symbols = isCalculatorScreenshot(resolved) && calculatorSnapshot?.draft.symbol
+    ? [calculatorSnapshot.draft.symbol] : payload.financials.map(([symbol]) => symbol);
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom"
     && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved)
-    && !isScenarioScreenshot(resolved);
+    && !isScenarioScreenshot(resolved) && !isCalculatorScreenshot(resolved);
   const rowCount = usesLiveDomEvidence
     ? render.rows.length
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
@@ -742,6 +764,8 @@ export async function renderDesktopShot({
     ...realizedVolEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...volatilityEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...scenarioEvidenceMismatchesFor(resolved, payload, render.semanticUi),
+    ...calculatorEvidenceMismatchesFor(resolved, payload, render.semanticUi),
+    ...calculatorVisibilityMismatchesFor(resolved, render),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -798,7 +822,7 @@ export async function renderDesktopShot({
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {
-  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || isVolatilityScreenshot(resolved) || isScenarioScreenshot(resolved) || [
+  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || isVolatilityScreenshot(resolved) || isScenarioScreenshot(resolved) || isCalculatorScreenshot(resolved) || [
     "price-chart",
     "intraday-price-chart",
     "price-comparison",
@@ -813,6 +837,53 @@ function isRealizedVolScreenshot(resolved: ResolvedPaneFunction): boolean {
 
 function isScenarioScreenshot(resolved: ResolvedPaneFunction): boolean {
   return resolved.pane?.id === "options-scenario";
+}
+
+function isCalculatorScreenshot(resolved: ResolvedPaneFunction): boolean {
+  return resolved.pane?.id === "options-calculator";
+}
+
+function renderedCalculatorEvidence(semanticUi: RemoteUiNodeSnapshot[]): CalculatorEvidence | null {
+  return readCalculatorEvidence(semanticUi.find((node) => node.role === "chart-data"
+    && node.metadata?.kind === "options-calculator")?.metadata);
+}
+
+/** A self-consistent calculator must also represent the requested assumptions. */
+export function calculatorEvidenceMismatchesFor(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[]): string[] {
+  if (!isCalculatorScreenshot(resolved)) return [];
+  const evidence = renderedCalculatorEvidence(semanticUi);
+  if (!evidence) return ["rendered option calculator data evidence is missing or invalid"];
+  const snapshot = payload.config?.layout?.instances.find((entry) => entry.instanceId === payload.paneId)
+    ?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
+  if (!snapshot?.draft) return ["option calculator screenshot inputs are missing"];
+  const mismatches: string[] = [];
+  try {
+    const requested = normalizeCalculatorEvidenceDraft(draftFromCalculatorInputs({ ...resolved.instance?.settings, ...resolved.options }));
+    if (JSON.stringify(normalizeCalculatorEvidenceDraft(snapshot.draft)) !== JSON.stringify(requested)) {
+      mismatches.push("option calculator snapshot does not match requested inputs");
+    }
+  } catch {
+    mismatches.push("requested option calculator inputs are invalid");
+  }
+  const expectedDraft = normalizeCalculatorEvidenceDraft({ ...snapshot.draft,
+    ...(snapshot.draft.volSource === "surface" && snapshot.surface?.volatility != null
+      ? { volatility: snapshot.surface.volatility } : {}) });
+  if (JSON.stringify(evidence.draft) !== JSON.stringify(expectedDraft)) {
+    mismatches.push("rendered option calculator inputs do not match");
+  }
+  if (JSON.stringify(evidence.surface) !== JSON.stringify(snapshot.surface)) {
+    mismatches.push("rendered option calculator surface does not match");
+  }
+  return mismatches;
+}
+
+export function calculatorVisibilityMismatchesFor(resolved: ResolvedPaneFunction,
+  render: Pick<DesktopPaneShotRenderResult, "visibleKeyValues">): string[] {
+  if (!isCalculatorScreenshot(resolved)) return [];
+  const visible = new Set((render.visibleKeyValues ?? []).map((row) => row.label));
+  const missing = ["Model", "Implied IV", "Delta", "Gamma", "Theta", "Vega", "Rho"].filter((label) => !visible.has(label));
+  return missing.length ? [`option calculator metrics are clipped or missing: ${missing.join(", ")}`] : [];
 }
 
 function renderedScenarioEvidence(semanticUi: RemoteUiNodeSnapshot[]): ScenarioEvidence | null {
@@ -972,6 +1043,7 @@ export function shotDataEvidenceFor(
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi);
   if (isVolatilityScreenshot(resolved)) return renderedVolatilityEvidence(semanticUi);
   if (isScenarioScreenshot(resolved)) return renderedScenarioEvidence(semanticUi);
+  if (isCalculatorScreenshot(resolved)) return renderedCalculatorEvidence(semanticUi);
   const spec = payload.chartModel ? parseChartSpec(payload.config.layout.instances.find((instance) => instance.instanceId === payload.paneId)?.settings?.chartSpec) : null;
   const visibleSeries = payload.chartModel && spec ? spec.series.flatMap((entry) => {
     if (entry.source.kind !== "security" || entry.visible === false) return [];
@@ -1497,6 +1569,10 @@ export function shotUnavailableSymbols(
   payload: DesktopPaneShotPayload,
   semanticUi: RemoteUiNodeSnapshot[] = [],
 ): string[] {
+  if (isCalculatorScreenshot(resolved)) {
+    const evidence = renderedCalculatorEvidence(semanticUi);
+    return evidence?.complete && !evidence.loading ? [] : [evidence?.symbol || String(resolved.options.symbol ?? "option calculator")];
+  }
   if (isScenarioScreenshot(resolved)) {
     const evidence = renderedScenarioEvidence(semanticUi);
     return evidence?.complete && !evidence.loading ? [] : [evidence?.symbol ?? resolved.createOptions?.symbol ?? "option scenario"];
@@ -1582,6 +1658,7 @@ export function shotSemanticRowCount(
   payload: DesktopPaneShotPayload,
   semanticUi: RemoteUiNodeSnapshot[] = [],
 ): number {
+  if (isCalculatorScreenshot(resolved)) return renderedCalculatorEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isScenarioScreenshot(resolved)) return renderedScenarioEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isRealizedVolScreenshot(resolved)) return renderedRealizedVolEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi)?.plottedValueCount ?? 0;
@@ -1637,6 +1714,10 @@ export function shotExpectedText(
   payload: DesktopPaneShotPayload,
 ): string[] {
   const expected = [...symbols];
+  if (isCalculatorScreenshot(resolved)) {
+    const symbol = resolved.options.symbol;
+    return [...expected, ...(typeof symbol === "string" && symbol ? [symbol] : [])];
+  }
   const graphKind = shotGraphKind(resolved);
   if (graphKind) {
     const metric = resolved.options.metric as GraphMetricKey;

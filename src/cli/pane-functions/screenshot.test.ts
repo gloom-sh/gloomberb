@@ -17,6 +17,8 @@ import {
   realizedVolEvidenceMismatchesFor,
   volatilityEvidenceMismatchesFor,
   scenarioEvidenceMismatchesFor,
+  calculatorEvidenceMismatchesFor,
+  calculatorVisibilityMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
@@ -34,6 +36,53 @@ import { buildVolatilityData } from "../../plugins/builtin/volatility/model";
 import { scenarioSemanticEvidence } from "../../plugins/builtin/options-scenario/evidence";
 import { buildScenario, parseLegs } from "../../plugins/builtin/options-scenario/model";
 import { optionsScenarioHeadless } from "../../plugins/builtin/options-scenario/headless";
+import { calculatorSemanticEvidence } from "../../plugins/builtin/options-calculator/evidence";
+import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calculator/inputs";
+import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
+import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/options-calculator/model";
+
+test("calculator screenshots freeze percent inputs without market requests, including an inactive cash schedule", async () => {
+  const request = { pane: { id: "options-calculator" }, capability: { id: "options-calculator-pane", options: optionsCalculatorHeadless.options },
+    instance: { instanceId: "ovme:test", paneId: "options-calculator", binding: { kind: "none" }, settings: {} },
+    options: { model: "european", symbol: "AAPL", spot: "120", strike: "100", volatility: "20", rate: "5", dividends: "10:1" },
+  } as unknown as ResolvedPaneFunction;
+  const shot = await buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/calculator-shot-test"), store: { loadTicker: async () => { throw new Error("Unexpected ticker request"); } },
+    dataProvider: { id: "offline", getTickerFinancials: async () => { throw new Error("Unexpected financials request"); } },
+  } as unknown as MarketContext, "", {}, 800, 600, null, 1, null);
+  expect(shot.config.layout.instances[0]!.settings.calculatorSnapshot).toMatchObject({
+    draft: { symbol: "AAPL", spot: 120, volatility: .2, rate: .05, pricingModel: "european", dividends: [{ days: 10, amount: 1 }] }, surface: null,
+  });
+  expect(shot.financials).toEqual([]);
+  expect(shot.optionsChains).toEqual([]);
+});
+
+test("calculator screenshot evidence must match the requested inputs, not just a self-consistent default price", () => {
+  const options = { model: "european", symbol: "AAPL", spot: "120", volatility: "30", days: "365", marketPrice: "28" };
+  const draft = draftFromCalculatorInputs(options);
+  const request = { ...resolved("options-calculator-pane", options), pane: { id: "options-calculator" } } as ResolvedPaneFunction;
+  const source = payload([]);
+  source.config = { layout: { instances: [{ instanceId: source.paneId, settings: { calculatorSnapshot: { draft, surface: null } } }] } } as unknown as typeof source.config;
+  const project = (inputs = draft) => calculatorSemanticEvidence({ draft: inputs, valuation: valueOption(inputs),
+    implied: solveImpliedVolatility(inputs, inputs.marketPrice), loading: false, surface: null });
+  const evidence = project();
+  const nodes = (metadata: unknown = evidence) => [{ id: "calculator-data", role: "chart-data", actions: [], metadata }] as RemoteUiNodeSnapshot[];
+  expect(shotDataEvidenceFor(request, source, nodes())).toEqual(evidence);
+  expect(shotSemanticRowCount(request, source, nodes())).toBe(7);
+  expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
+  expect(calculatorEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+  expect(calculatorEvidenceMismatchesFor({ ...request, options: { ...options, model: "american", volSource: "surface" } }, source, nodes()))
+    .toEqual(["option calculator snapshot does not match requested inputs"]);
+  expect(calculatorEvidenceMismatchesFor(request, source, nodes(project({ ...draft, spot: 100 })))).toEqual(["rendered option calculator inputs do not match"]);
+  expect(calculatorEvidenceMismatchesFor(request, { ...source, config: {} as typeof source.config }, nodes())).toHaveLength(1);
+  expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, complete: true, loading: true }))).toBeNull();
+  expect(shotSemanticRowCount(request, source, [])).toBe(0);
+  expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
+  const visibleKeyValues = ["Model", "Implied IV", "Delta", "Gamma", "Theta", "Vega", "Rho"].map((label) => ({ label, text: `${label} 1` }));
+  expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues })).toEqual([]);
+  expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues: visibleKeyValues.slice(0, 5) }))
+    .toEqual(["option calculator metrics are clipped or missing: Vega, Rho"]);
+});
 
 test("typed option scenario screenshot freezes report inputs without an unrelated market request", async () => {
   const request = { pane: { id: "options-scenario" }, headless: optionsScenarioHeadless,

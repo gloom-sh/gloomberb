@@ -31,7 +31,7 @@ function GlobalTabHandler() {
   return null;
 }
 
-function Harness({ params, width = 90, height = 18 }: { params?: Record<string, string>; width?: number; height?: number }) {
+function Harness({ params, settings, width = 90, height = 18 }: { params?: Record<string, string>; settings?: Record<string, unknown>; width?: number; height?: number }) {
   const config = createDefaultConfig("/tmp/gloomberb-options-calculator-test");
   config.layout = {
     dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
@@ -40,6 +40,7 @@ function Harness({ params, width = 90, height = 18 }: { params?: Record<string, 
       paneId: OPTIONS_CALCULATOR_PANE_ID,
       binding: { kind: "none" },
       params,
+      settings,
     }],
     floating: [],
     detached: [],
@@ -69,9 +70,9 @@ function Harness({ params, width = 90, height = 18 }: { params?: Record<string, 
   );
 }
 
-async function render(params?: Record<string, string>, width = 90, height = 18) {
+async function render(params?: Record<string, string>, width = 90, height = 18, settings?: Record<string, unknown>) {
   await act(async () => {
-    testSetup = await testRender(<Harness params={params} width={width} height={height} />, { width, height });
+    testSetup = await testRender(<Harness params={params} settings={settings} width={width} height={height} />, { width, height });
     await Promise.resolve();
     await testSetup.renderOnce();
   });
@@ -215,4 +216,16 @@ test("an invalid seeded cash schedule stays editable and only blocks its active 
   await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
   expect(testSetup!.captureCharFrame()).toContain("30:1;bad");
   expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);
+});
+
+test("a screenshot prices the frozen surface volatility instead of input IV or a new market request", async () => {
+  const draft = { ...draftFromParams({ symbol: "AAPL", spot: "120", strike: "110", days: "365", volatility: "0.2" }), volSource: "surface" as const };
+  const surface = { volatility: .35, rate: .04, dividendYield: .01, sourceSpot: 115, spotAsOf: Date.UTC(2026, 8, 22),
+    asOf: "2026-09-22", rateAsOf: ["2026-09-21"], source: "OVDV midpoint", warnings: [], error: null };
+  await render(undefined, 100, 20, { calculatorSnapshot: { draft, surface } });
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Fit IV\s+35\.0/);
+  expect(frame).toMatch(/Spot\s+120/);
+  const expected = valueOption({ ...draft, volatility: surface.volatility }).price.toFixed(4);
+  expect(frame.match(/Model\s+(\d+\.\d+)/)?.[1]).toBe(expected);
 });

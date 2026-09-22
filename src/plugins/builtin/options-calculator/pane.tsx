@@ -15,6 +15,7 @@ import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialS
 import { draftFromCalculatorInputs, parseCashDividends } from "./inputs";
 import { loadCalculatorSurfaceVol } from "./surface";
 import { OptionQuoteContext, optionQuoteContextHeight } from "../options/quote-context";
+import { useCalculatorEvidence, CALCULATOR_IGNORED_DIVIDENDS_NOTICE, type CalculatorScreenshotSnapshot } from "./evidence";
 
 const SIDE_OPTIONS = [
   { label: "Call", value: "call" },
@@ -29,7 +30,10 @@ function formatSigned(value: number | undefined, decimals: number): string {
 export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const ui = useUiHost();
   const paneInstance = usePaneInstance();
+  const screenshotSnapshot = paneInstance?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
   const seedResult = useMemo(() => {
+    if (screenshotSnapshot?.draft) return { draft: screenshotSnapshot.draft,
+      dividendText: (screenshotSnapshot.draft.dividends ?? []).map(({ days, amount }) => `${days}:${amount}`).join(";"), error: null };
     const params = paneInstance?.params ?? {};
     const { dividends, ...inputs } = { model: params.model, steps: params.steps,
       volSource: params.volSource, dividends: params.dividends, ...paneInstance?.settings };
@@ -38,7 +42,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     const dividendText = dividends == null ? "" : String(dividends);
     try { return { draft: draftFromCalculatorInputs(inputs, draftFromParams(params)), dividendText, error: null }; }
     catch (error) { return { draft: draftFromParams(params), dividendText, error: error instanceof Error ? error.message : String(error) }; }
-  }, [paneInstance?.params, paneInstance?.settings]);
+  }, [paneInstance?.params, paneInstance?.settings, screenshotSnapshot]);
   const seed = seedResult.draft;
   const [seedError, setSeedError] = useState(seedResult.error);
   const [storedDraft, setDraft] = usePaneStateValue<OptionCalcDraft>("draft", seed);
@@ -62,9 +66,10 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     return { key: surfaceKey, result: await loadCalculatorSurfaceVol({ symbol: draft.symbol, spot: draft.spot,
       strike: draft.strike, daysToExpiry: draft.daysToExpiry, signal: abort.signal, forceRefresh: force }) };
   }, [surfaceKey]);
-  const surfaceResource = useAsyncResource(surfaceSource && !!draft.symbol ? loadSurface : null);
+  const surfaceResource = useAsyncResource(surfaceSource && !!draft.symbol && !screenshotSnapshot ? loadSurface : null);
   useEffect(() => () => controller.current?.abort(), [loadSurface, surfaceSource]);
-  const surface = surfaceResource.data?.key === surfaceKey ? surfaceResource.data.result : null;
+  const surface = screenshotSnapshot ? screenshotSnapshot.surface
+    : surfaceResource.data?.key === surfaceKey ? surfaceResource.data.result : null;
   const effectiveDraft = useMemo(() => ({ ...draft, dividends: dividendInput.dividends,
     volatility: surfaceSource && surface?.volatility != null ? surface.volatility : draft.volatility }), [draft, dividendInput.dividends, surfaceSource, surface?.volatility]);
 
@@ -125,6 +130,11 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   }, [effectiveDraft, american, draft.steps, draft.marketPrice, dividendInput, surfaceSource, surface,
     surfaceResource.loading, surfaceResource.error, seedError]);
   const { valuation, implied, problem, effectiveSteps } = calculation;
+  const notices = useMemo(() => [...(surfaceSource ? surface?.warnings ?? [] : []),
+    ...(!american && dividendInput.dividends.length ? [CALCULATOR_IGNORED_DIVIDENDS_NOTICE] : [])],
+  [surfaceSource, surface?.warnings, american, dividendInput.dividends]);
+  useCalculatorEvidence({ draft: effectiveDraft, valuation, implied, surface: surfaceSource ? surface : null,
+    effectiveSteps, loading: surfaceSource && surfaceResource.loading, error: problem, notices });
   const setModel = (model: string) => { updateDraft({ pricingModel: model as "european" | "american" }); setActiveFieldId(null); };
   const setVolSource = (source: string) => {
     updateDraft({ volSource: source as "input" | "surface" });
@@ -220,9 +230,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <SurfaceNotices notices={[...(surfaceSource ? surface?.warnings ?? [] : []),
-        // A schedule entered under the tree model stays in the pane state; the closed form cannot use it.
-        ...(!american && dividendInput.dividends.length ? ["Cash dividend schedule is ignored by the European model; continuous yield applies."] : [])]} focused={focused} />
+      <SurfaceNotices notices={notices} focused={focused} />
       <Box height={1} paddingX={1} flexDirection="row" gap={1}>
         <SegmentedControl
           options={SIDE_OPTIONS}

@@ -13,6 +13,7 @@ import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
+import { readVisibleKeyValues } from "./visible-key-values";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
@@ -111,6 +112,7 @@ export interface DesktopPaneShotRenderedRow {
 
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  visibleKeyValues?: Array<{ label: string; text: string }>;
   rows: DesktopPaneShotRenderedRow[];
   truncated: boolean;
   truncationReasons: string[];
@@ -615,6 +617,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       }
       return {
         visibleText: root.innerText || root.textContent || "",
+        visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
         loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
         errorStateDetected: root.querySelector('[data-gloom-status="error"]') !== null,
@@ -630,6 +633,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     result?: {
       value?: {
         visibleText?: string;
+        visibleKeyValues?: Array<{ label: string; text: string }>;
         error?: string;
         loadingStateDetected?: boolean;
         errorStateDetected?: boolean;
@@ -657,6 +661,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   }
   return {
     visibleText,
+    visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],
     rows,
     truncated: value?.truncated === true || textShowsEllipsis,
     truncationReasons,
