@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, type PaneFooterSegment } from "../../../components";
+import { Button, DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -107,10 +107,19 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y−2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
       ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
       ...(requestedDate && requestedDate !== asOf ? [{ id: "requested", parts: [{ text: `requested ${requestedDate}`, tone: "muted" as const }] }] : []),
-      ...(!asOf && points.length ? [{ id: "mixed-dates", parts: [{ text: "Mixed or unknown observation dates", tone: "warning" as const }] }] : []),
-      ...(points.some((point) => point.yield == null) ? [{ id: "missing", parts: [{ text: "Some tenors unavailable", tone: "warning" as const }] }] : []),
-      ...(points.some((point) => point.stale) ? [{ id: "stale", parts: [{ text: "Cached source · refresh failed", tone: "warning" as const }] }] : []),
-  ], [asOf, bp, points, requestedDate]);
+  ], [asOf, bp, requestedDate]);
+  // Limitations of a curve that is still drawn sit behind one warning indicator.
+  const missingTenors = points.filter((point) => point.yield == null).map((point) => point.tenor);
+  usePaneNoticeFooter({
+    registrationId: "yield-curve:notices",
+    notices: [
+      !asOf && points.length ? "The tenors carry mixed or unknown observation dates, so the curve is not one session." : null,
+      missingTenors.length ? `Unavailable tenors: ${missingTenors.join(", ")}.` : null,
+      points.some((point) => point.stale) ? "Some tenors are cached values because their refresh failed." : null,
+    ].filter((notice): notice is string => notice !== null),
+    focused,
+    enabled: !error && !sourceError,
+  });
   usePaneStatusFooter({
     registrationId: "yield-curve",
     loading,

@@ -9,7 +9,7 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { Button, Tabs, usePaneFooter, type PaneHint } from "../../../../components";
+import { Button, Tabs, loadingText, usePaneFooter, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
@@ -574,7 +574,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
           </Box>
         ) : (
           <Box height={1}>
-            <Muted>{snapshot.loading ? "Loading teams…" : snapshot.error ?? ""}</Muted>
+            <Muted>{snapshot.loading ? loadingText("teams") : snapshot.error ?? ""}</Muted>
           </Box>
         )}
 
@@ -698,7 +698,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
               />
             ) : null}
             {!showCreate && team && details.loading && details.members.length === 0 ? (
-              <Muted>Loading…</Muted>
+              <Muted>{loadingText()}</Muted>
             ) : null}
             {!showCreate && !team && !snapshot.loading && snapshot.loaded ? (
               <Muted>You are not in a team yet.</Muted>

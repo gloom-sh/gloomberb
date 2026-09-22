@@ -1,33 +1,22 @@
-import { Box, Text } from "../../../../ui";
-import { Button, Tabs } from "../../../../components";
-import { colors } from "../../../../theme/colors";
-import type {
-  BuildoutList,
-  BuildoutTabId,
-} from "../model/types";
-import { truncate } from "../format";
+import { Box } from "../../../../ui";
+import { Tabs } from "../../../../components";
+import type { BuildoutTabId } from "../model/types";
 import { tabs } from "../table-model";
 
 interface BuildoutPaneHeaderProps {
   activeTab: BuildoutTabId;
   focused: boolean;
-  selectedList: BuildoutList | null;
-  width: number;
-  onCloseCompanyList: () => void;
   onSelectTab: (tab: BuildoutTabId) => void;
 }
 
+/** The tab strip. A list opened from Companies is a stack level, not a crumb. */
 export function BuildoutPaneHeader({
   activeTab,
   focused,
-  selectedList,
-  width,
-  onCloseCompanyList,
   onSelectTab,
 }: BuildoutPaneHeaderProps) {
-  const showCompanyListCrumb = selectedList && activeTab === "companies";
   return (
-    <Box flexDirection="column" height={showCompanyListCrumb ? 2 : 1}>
+    <Box height={1}>
       <Tabs
         tabs={tabs}
         activeValue={activeTab}
@@ -36,13 +25,6 @@ export function BuildoutPaneHeader({
         variant="bare"
         focused={focused}
       />
-      {showCompanyListCrumb ? (
-        <Box height={1} flexDirection="row" paddingX={1}>
-          <Button stopPropagation label="Lists" displayLabel="‹ Lists" variant="ghost" compact onPress={onCloseCompanyList} />
-          <Text fg={colors.textMuted}>  /  </Text>
-          <Text fg={colors.text}>{truncate(selectedList.name, Math.max(0, width - 14))}</Text>
-        </Box>
-      ) : null}
     </Box>
   );
 }

@@ -16,39 +16,56 @@ export function activeBuildoutPage(
   return state.intel;
 }
 
+/**
+ * Only what changes: the free tier's delay on intel, a list the free tier
+ * cannot see the end of, loading and failures. "pro access" was fixed text,
+ * and the upgrade pitch is the `u` hint.
+ */
 export function updateBuildoutFooterInfo(
   state: BuildoutLoadState,
   activeTab: BuildoutTabId,
   selectedList: BuildoutList | null,
-  favoriteMessage: string | null,
+  messages: {
+    favoriteMessage: string | null;
+    upgradeMessage: string | null;
+    partialList: boolean;
+    onUpgrade: () => void;
+  },
 ): PaneFooterSegment[] {
   if (state.status === "loading") {
-    return [{ id: "loading", parts: [{ text: "loading", tone: "value" }] }];
+    return [{ id: "loading", parts: [{ text: "loading", tone: "muted" }] }];
   }
 
   if (state.status === "error") {
     return [{ id: "error", parts: [{ text: "load failed", tone: "negative" }] }];
   }
 
-  const info: PaneFooterSegment[] = [{
-    id: "access",
-    parts: [{
-      text: state.access === "pro"
-        ? "pro access"
-        : activeTab === "intel" ? "delayed 72h" : "upgrade for full data",
-      tone: state.access === "pro" ? "positive" : "warning",
-    }],
-  }];
+  const info: PaneFooterSegment[] = [];
+  if (state.access !== "pro" && activeTab === "intel") {
+    info.push({ id: "access", onPress: messages.onUpgrade, parts: [{ text: "72h delayed", tone: "warning" }] });
+  }
+  if (messages.partialList) {
+    info.push({ id: "partial", onPress: messages.onUpgrade, parts: [{ text: "partial list", tone: "warning" }] });
+  }
+  if (state.refreshing) {
+    info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
+  }
+  if (state.refreshError) {
+    info.push({ id: "refresh-error", parts: [{ text: state.refreshError, tone: "warning" }] });
+  }
 
   const page = activeBuildoutPage(state, activeTab, selectedList);
   if (page?.loadingMore) {
-    info.push({ id: "loading-more", parts: [{ text: "loading more", tone: "value" }] });
+    info.push({ id: "loading-more", parts: [{ text: "loading more", tone: "muted" }] });
   }
   if (page?.error) {
     info.push({ id: "page-error", parts: [{ text: page.error, tone: "negative" }] });
   }
-  if (favoriteMessage) {
-    info.push({ id: "favorite-error", parts: [{ text: favoriteMessage, tone: "negative" }] });
+  if (messages.favoriteMessage) {
+    info.push({ id: "favorite-error", parts: [{ text: messages.favoriteMessage, tone: "negative" }] });
+  }
+  if (messages.upgradeMessage) {
+    info.push({ id: "upgrade-error", parts: [{ text: messages.upgradeMessage, tone: "negative" }] });
   }
 
   return info;

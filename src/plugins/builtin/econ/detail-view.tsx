@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
-import { Divider, Notice, PaneStatusBody, SectionHeading, StaticChartSurface } from "../../../components";
+import { Divider, PaneStatusBody, SectionHeading, StaticChartSurface, TickerBadgeList, usePaneNoticeFooter } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
-import { Button } from "../../../components/ui/button";
 import {
   getCachedFredSeries,
   loadCachedFredSeries,
@@ -14,7 +13,6 @@ import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { usePluginTickerActions } from "../../runtime";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import type { EconEvent } from "./types";
 
@@ -38,7 +36,6 @@ function formatCompactAxisValue(value: number, units: string): string {
 }
 
 export function EconDetailView({ event, width, height, focused }: EconDetailViewProps) {
-  const { navigateTicker } = usePluginTickerActions();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [freshnessWarning, setFreshnessWarning] = useState<string | null>(null);
@@ -105,6 +102,14 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       });
   }, [request]);
 
+  // A stale cache and a failed refresh are limitations of data still on
+  // screen, so they sit behind the footer's warning indicator.
+  usePaneNoticeFooter({
+    registrationId: "econ-detail",
+    notices: [freshnessWarning, data && error ? error : null].filter((notice): notice is string => !!notice),
+    focused,
+  });
+
   const scrollDetailBy = useCallback((delta: number) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox?.viewport) return;
@@ -125,7 +130,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     }
   });
 
-  if (!mapping || loading || error) {
+  // A stale cache stays on screen while its refresh runs or fails.
+  if (!mapping || ((loading || error) && !data)) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <Box height={1} paddingX={1} flexDirection="row">
@@ -134,8 +140,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           {mapping && <Text fg={colors.textDim}>{mapping.seriesId}</Text>}
         </Box>
         <PaneStatusBody
-          loading={!!mapping && loading}
-          error={mapping && !loading ? error : null}
+          loading={!!mapping && loading && !data}
+          error={mapping && !loading && !data ? error : null}
           empty={!mapping}
           emptyTitle="No historical data available for this indicator"
           align="center"
@@ -190,12 +196,6 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
         <Text fg={colors.textMuted}>
           {[units, info?.frequency, info?.seasonalAdjustment].filter(Boolean).join(" · ")}
         </Text>
-        {freshnessWarning ? (
-          <>
-            <Box flexGrow={1} />
-            <Notice>{freshnessWarning}</Notice>
-          </>
-        ) : null}
       </Box>
 
       <Box paddingX={1} flexDirection="row" height={1}>
@@ -243,7 +243,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           </Box>
 
           <Box paddingX={1} height={1}>
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>REVISED HISTORY · REFERENCE PERIODS</Text>
+            <SectionHeading title="Revised history · reference periods" />
           </Box>
           <Box paddingX={1} flexDirection="row" height={1}>
             <Box width={dateColWidth}>
@@ -273,9 +273,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           {mapping.relatedTickers.length > 0 ? (
             <Box paddingX={1} height={1} flexDirection="row">
               <Text fg={colors.textDim}>Related: </Text>
-              {mapping.relatedTickers.map((ticker, i) => (
-                <Button stopPropagation key={ticker} label={ticker} variant="ghost" compact onPress={() => navigateTicker(ticker)} />
-              ))}
+              <TickerBadgeList symbols={mapping.relatedTickers} width={Math.max(8, width - 12)} liveQuote={false} />
             </Box>
           ) : null}
         </Box>

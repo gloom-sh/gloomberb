@@ -89,8 +89,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       setSelectedId(null);
     } catch (err) {
       if (fetchGenRef.current !== gen) return;
+      // A failed refresh keeps the last holders; the failure goes to the footer.
       setError(err instanceof Error ? err.message : String(err));
-      setData(null);
     } finally {
       if (fetchGenRef.current === gen) setLoading(false);
     }
@@ -266,6 +266,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       info: [
         ...(data?.asOf ? [{ id: "as-of", parts: [{ text: data.asOf, tone: "value" as const }] }] : []),
         ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+        ...(error && data ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
       hints: [
@@ -274,15 +275,15 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data?.asOf, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, toggleView]);
+  }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, toggleView]);
 
   // Both views share one status; the treemap must not claim "no chartable
   // values" while the request is still in flight or the pane has no ticker.
   const statusTitle = !symbol
     ? "No ticker selected."
-    : loading
+    : loading && !data
       ? "Loading holders..."
-      : error ?? (sortedRows.length === 0 ? "No holders available" : null);
+      : !data && error ? error : sortedRows.length === 0 ? "No holders available" : null;
   const chartHeight = Math.max(1, height - 1 - (nativePaneChrome ? 1 : 0));
 
   return (

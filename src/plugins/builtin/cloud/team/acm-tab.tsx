@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { EmptyState, Notice, Spinner, loadingText } from "../../../../components";
 import { ListView, type ListViewItem } from "../../../../components/ui/list-view";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
@@ -90,15 +91,15 @@ export function TeamsAccountTab({ focused, width }: { focused: boolean; width: n
 
   return (
     <Box flexDirection="column" width={width} gap={1}>
-      <Text fg={colors.textDim}>
-        {snapshot.loading && !snapshot.loaded
-          ? "Loading teams..."
-          : snapshot.error
-            ? snapshot.error
-            : snapshot.teams.length === 0
-              ? "You are not in a team yet. Create one or open an invite link a teammate sent you."
-              : `Focus: ${focusLabel}. FOCUS changes it.`}
-      </Text>
+      {snapshot.loading && !snapshot.loaded ? (
+        <Spinner label={loadingText("teams")} />
+      ) : snapshot.error ? (
+        <Notice tone="negative">{snapshot.error}</Notice>
+      ) : snapshot.teams.length === 0 ? (
+        <EmptyState title="You are not in a team yet." hint="Create one or open an invite link a teammate sent you." />
+      ) : (
+        <Text fg={colors.textDim}>{`Focus: ${focusLabel}`}</Text>
+      )}
       <ListView
         items={items}
         selectedIndex={Math.min(selectedIndex, Math.max(0, items.length - 1))}
@@ -114,8 +115,7 @@ export function TeamsAccountTab({ focused, width }: { focused: boolean; width: n
           const fg = state.selected ? colors.selectedText : colors.text;
           return (
             <Box flexDirection="row" width="100%">
-              <Text fg={state.selected ? fg : accent}>{team ? "● " : "  "}</Text>
-              <Text fg={fg}>{item.label}</Text>
+              <Text fg={team && !state.selected ? accent : fg}>{item.label}</Text>
               <Box flexGrow={1} />
               <Text fg={state.selected ? fg : colors.textMuted}>{item.right ?? ""}</Text>
             </Box>

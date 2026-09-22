@@ -1,4 +1,4 @@
-import { SectionHeading, TickerBadgeList } from "../../../../components";
+import { TickerBadgeList } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { Button } from "../../../../components/ui/button";
 import { ExternalLinkText } from "../../../../components/ui/external-link";
@@ -199,55 +199,6 @@ export function MarkdownBlock({
         catalog={catalog}
         openTicker={openTicker}
       />
-    </Box>
-  );
-}
-
-export function CompaniesUpgradeCta({
-  hiddenCount,
-  width,
-  busy,
-  message,
-  onUpgrade,
-}: {
-  hiddenCount: number;
-  width: number;
-  busy: boolean;
-  message: string | null;
-  onUpgrade: () => void;
-}) {
-  if (hiddenCount <= 0) return null;
-  const noun = hiddenCount === 1 ? "company" : "companies";
-  const contentWidth = Math.max(20, width - 2);
-  const subtitle = truncate("Upgrade to unlock the full list and company profiles under $10B market cap.", contentWidth).padEnd(contentWidth);
-  const note = (message ? truncate(message, contentWidth) : "").padEnd(contentWidth);
-  return (
-    <Box
-      flexDirection="column"
-      height={message ? 6 : 5}
-      width="100%"
-      paddingX={1}
-      backgroundColor={colors.panel}
-      overflow="hidden"
-    >
-      <SectionHeading title={`${hiddenCount} more ${noun} available`} width={contentWidth} />
-      <Box height={1} width="100%" backgroundColor={colors.panel}>
-        <Text fg={colors.textDim}>{subtitle}</Text>
-      </Box>
-      <Box height={1} width="100%" backgroundColor={colors.panel} />
-      <Box flexDirection="row" height={1} width="100%" backgroundColor={colors.panel}>
-        <Button
-          label={busy ? "Opening..." : "Upgrade to Pro"}
-          variant="primary"
-          disabled={busy}
-          onPress={onUpgrade}
-        />
-      </Box>
-      {message ? (
-        <Box height={1} width="100%" backgroundColor={colors.panel}>
-          <Text fg={colors.warning}>{note}</Text>
-        </Box>
-      ) : null}
     </Box>
   );
 }

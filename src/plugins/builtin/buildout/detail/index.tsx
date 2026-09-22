@@ -14,7 +14,6 @@ import { SiteDetail } from "./site";
 import { IntelDetail } from "./intel";
 
 export {
-  CompaniesUpgradeCta,
   CompanyCell,
   FavoriteCell,
   tickerBadges,

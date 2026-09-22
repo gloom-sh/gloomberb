@@ -27,6 +27,8 @@ export interface DataTableSectionHeader {
   attributes?: number;
   /** Makes the header itself clickable, e.g. to collapse its group. */
   onMouseDown?: (event: any) => void;
+  /** Set on a collapsible group: the renderer draws the disclosure marker. */
+  expanded?: boolean;
 }
 
 export type DataTableScrollAlign = "nearest" | "center";

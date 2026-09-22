@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { TeamAccentColor, TeamSummary } from "../../../../api-client";
-import { Button, Checkbox, TextField, type ButtonVariant } from "../../../../components";
+import { Badge, Button, Checkbox, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes } from "../../../../ui";
 import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "./model";
@@ -196,20 +196,20 @@ export function AccentPicker({
             const selected = candidate === value;
             const hex = teamAccentHex(candidate);
             return (
-              <Box
+              <Button
                 key={candidate}
-                height={1}
-                cursor="pointer"
-                onMouseDown={(event: { stopPropagation?: () => void }) => {
-                  event.stopPropagation?.();
+                label={candidate}
+                variant="plain"
+                compact
+                flush
+                stopPropagation
+                onPress={() => {
                   focus.setActiveField(id);
                   onChange(candidate);
                 }}
               >
-                <Text fg={hex} attributes={selected ? TextAttributes.BOLD : 0}>
-                  {selected ? "▣" : "▢"}
-                </Text>
-              </Box>
+                <Badge label=" " color={hex} variant={selected ? "solid" : "subtle"} />
+              </Button>
             );
           })}
         </Box>
@@ -279,10 +279,11 @@ export function ConfirmAction({
   );
 }
 
+/** The kit heading, with room for a quota beside it ("3 of 25"). */
 export function SectionTitle({ children, detail }: { children: string; detail?: string }) {
   return (
     <Box height={1} flexDirection="row" gap={1}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{children}</Text>
+      <SectionHeading title={children} />
       {detail ? <Text fg={colors.textMuted}>{detail}</Text> : null}
     </Box>
   );

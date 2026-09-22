@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import { usePaneStateValue, usePaneTicker } from "../../../../state/app/context";
 import {
   DataTableView,
+  DisclosureMarker,
   PaneStatusBody,
   Tabs,
   usePaneFooter,
@@ -300,11 +301,21 @@ export function ResolvedFinancialsTab({
     if (column.kind === "metric") {
       if (row.kind === "group") {
         const indent = " ".repeat(row.depth * 2);
-        const marker = row.toggleable ? (row.expanded ? "▾" : "▸") : " ";
+        const marker = row.toggleable ? (row.expanded ? "\u25be" : "\u25b8") : " ";
+        const labelColor = row.depth === 0 ? colors.textBright : colors.textDim;
+        const labelAttributes = row.depth === 0 ? TextAttributes.BOLD : TextAttributes.NONE;
         return {
           text: `${indent}${marker} ${row.unitLabel}`,
-          color: row.depth === 0 ? colors.textBright : colors.textDim,
-          attributes: row.depth === 0 ? TextAttributes.BOLD : TextAttributes.NONE,
+          color: labelColor,
+          attributes: labelAttributes,
+          // The desktop draws the disclosure as a path, not a glyph.
+          content: (
+            <Box flexDirection="row" alignItems="center" gap={1}>
+              <Text fg={labelColor}>{indent}</Text>
+              {row.toggleable ? <DisclosureMarker expanded={!!row.expanded} color={labelColor} /> : <Text> </Text>}
+              <Text fg={labelColor} attributes={labelAttributes}>{row.unitLabel}</Text>
+            </Box>
+          ),
           onMouseDown: row.toggleable
             ? (event) => {
               event.preventDefault?.();

@@ -7,7 +7,7 @@ import {
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
 import type { ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
+import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { truncateWithEllipsis as truncateText } from "../../../utils/text-wrap";
@@ -198,11 +198,17 @@ function InsiderView({ width, height, focused }: { width: number; height: number
 
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
-    ...(amendments.length ? [{ id: "amendment", parts: [{ text: "4/A unreconciled", tone: "warning" as const }] }] : []),
     ...(!amendments.length && summary ? [{ id: "summary", parts: [{ text: truncateText(summary, Math.max(24, width - 20)), tone: "muted" as const }] }] : []),
     ...(nameFilter ? [{ id: "filter", parts: [{ text: `filter: ${truncateText(nameFilter, 24)}`, tone: "warning" as const }] }] : []),
     ...(pendingLabel ? [{ id: "pending", parts: [{ text: pendingLabel, tone: "muted" as const }] }] : []),
-  ], [amendments.length, nameFilter, pendingLabel, summary, width]);
+    ...(error && allFilings.length > 0 ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+  ], [allFilings.length, amendments.length, error, nameFilter, pendingLabel, summary, width]);
+  // An unreconciled 4/A is a limitation of the totals on screen, not a status.
+  usePaneNoticeFooter({
+    registrationId: "insider:amendments",
+    notices: amendments.length ? ["A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable."] : [],
+    focused,
+  });
   const footerHints = useMemo(() => (
     selectedFilterName || nameFilter
       ? [{
@@ -229,7 +235,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   if (!eligibleTicker) return renderFilingNotice("Insider transactions are only shown for US equities.", width);
   if (authWall) return <SignInWall action="view insider transactions" needsVerification={cloudSession.needsVerification} />;
   if (loading && allFilings.length === 0) return <Spinner label="Loading insider filings..." />;
-  if (error) return <EmptyState title="Insider filings unavailable." message={error} />;
+  if (error && allFilings.length === 0) return <EmptyState title="Insider filings unavailable." message={error} />;
   if (!loading && form4Filings.length === 0) {
     return renderFilingNotice(`No Form 4 filings found for ${ticker.metadata.ticker}.`, width);
   }

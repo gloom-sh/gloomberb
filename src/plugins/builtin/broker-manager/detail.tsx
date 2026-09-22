@@ -1,11 +1,11 @@
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
-import { Button, NumberField, SegmentedControl, TextField } from "../../../components";
+import { Button, NumberField, SectionHeading, SegmentedControl, TextField } from "../../../components";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
 import { colors } from "../../../theme/colors";
-import type { BrokerAdapter, BrokerConfigField, BrokerProfileAction } from "../../../types/broker";
+import type { BrokerAdapter, BrokerConfigField } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
@@ -96,18 +96,12 @@ export function BrokerDetailContent({
   busy,
   message,
   width,
-  actions,
   onActiveEditKeyChange,
   onDraftLabelChange,
   onDraftEnabledChange,
   onDraftValueChange,
   onSaveEdit,
   onCancelEdit,
-  onStartEdit,
-  onConnect,
-  onSync,
-  onOpenAction,
-  onRemove,
 }: {
   row: BrokerProfileRow | null;
   accounts: BrokerAccount[];
@@ -117,18 +111,12 @@ export function BrokerDetailContent({
   busy: string | null;
   message: string | null;
   width: number;
-  actions: BrokerProfileAction[];
   onActiveEditKeyChange: (key: BrokerEditKey) => void;
   onDraftLabelChange: (label: string) => void;
   onDraftEnabledChange: (enabled: boolean) => void;
   onDraftValueChange: (key: string, value: string) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
-  onStartEdit: () => void;
-  onConnect: () => void;
-  onSync: () => void;
-  onOpenAction: (action: BrokerProfileAction) => void;
-  onRemove: () => void;
 }) {
   if (!row) return <Box flexGrow={1} />;
 
@@ -140,8 +128,9 @@ export function BrokerDetailContent({
   return (
     <ScrollBox flexGrow={1} scrollY>
       <Box flexDirection="column">
+        {/* The stack title already names the profile; the body starts with its state. */}
         <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
-          {truncate(`${row.label} · ${row.stateLabel}`, width)}
+          {truncate(row.stateLabel, width)}
         </Text>
         <Text fg={colors.textDim}>
           {truncate(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
@@ -159,7 +148,7 @@ export function BrokerDetailContent({
 
         {editDraft && editAdapter ? (
           <Box flexDirection="column" gap={1}>
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Edit Profile")}</Text>
+            <SectionHeading title="Edit Profile" />
             <Box onMouseDown={() => onActiveEditKeyChange("label")}>
               <TextField
                 label={activeEditKey === "label" ? `> ${t("Profile Label")}` : `  ${t("Profile Label")}`}
@@ -203,8 +192,9 @@ export function BrokerDetailContent({
             </Box>
           </Box>
         ) : (
+          // Edit, test, sync, open and disconnect are the footer's e, c, s, o and d.
           <Box flexDirection="column">
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Accounts")}</Text>
+            <SectionHeading title="Accounts" />
             {accounts.length === 0 ? (
               <Text fg={colors.textDim}>{t("No accounts loaded. Test/connect or sync this profile.")}</Text>
             ) : accounts.map((account) => (
@@ -212,25 +202,6 @@ export function BrokerDetailContent({
                 {truncate(accountDetail(account), width)}
               </Text>
             ))}
-            <Box height={1} />
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Actions")}</Text>
-            <Box flexDirection="row" gap={1}>
-              <Button label={t("Edit")} onPress={onStartEdit} disabled={!row.adapter || !!busy} />
-              <Button label={t("Test")} onPress={onConnect} disabled={!row.adapter || !!busy} />
-              <Button label={t("Sync")} onPress={onSync} disabled={!row.adapter || !!busy} />
-            </Box>
-            <Box height={1} />
-            <Box flexDirection="row" gap={1}>
-              {actions.map((action) => (
-                <Button
-                  key={action.id}
-                  label={t(action.label)}
-                  onPress={() => onOpenAction(action)}
-                  disabled={!!busy || !!action.disabled}
-                />
-              ))}
-              <Button label={t("Disconnect")} variant="danger" onPress={onRemove} disabled={!!busy} />
-            </Box>
           </Box>
         )}
       </Box>

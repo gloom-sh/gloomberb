@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
+import { DataTableView, Tabs, usePaneFooter, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -207,17 +207,18 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
 
   const updatedAgo = useUpdatedAgo(lastRefreshMs);
   const returnAsOfDate = rows.map((row) => row.returnAsOfDate).filter((date): date is string => !!date).sort().at(-1);
-  const incompleteRows = rows.filter((row) => !row.loading && sectorRowIssues(row).length > 0).length;
-  const selectedRow = rows.find((row) => row.etf === selectedEtf);
-  const selectedIssues = selectedRow && !selectedRow.loading ? sectorRowIssues(selectedRow) : [];
-  const selectedIssue = selectedIssues.length > 0 ? `${selectedEtf}: ${selectedIssues.join(" · ")}` : null;
+  // Rows with a value the source could not supply are a limitation of the
+  // table on screen; they sit behind the footer's warning indicator, one line
+  // per ETF, rather than as a count beside the status.
+  const rowIssueNotices = rows
+    .filter((row) => !row.loading && sectorRowIssues(row).length > 0)
+    .map((row) => `${row.etf}: ${sectorRowIssues(row).join(" · ")}`);
+  usePaneNoticeFooter({ registrationId: "sectors:row-issues", notices: rowIssueNotices, focused });
 
   usePaneFooter("sectors", () => {
     const info: PaneFooterSegment[] = [];
     if (loading) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (loadError) info.push({ id: "error", parts: [{ text: loadError, tone: "warning" }] });
-    if (selectedIssue) info.push({ id: "selected-issue", parts: [{ text: selectedIssue, tone: "warning" }] });
-    if (incompleteRows) info.push({ id: "incomplete", parts: [{ text: `${incompleteRows} ETFs have unavailable values`, tone: "warning" }] });
     if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
     if (updatedAgo) info.push({ id: "updated", parts: [{ text: `checked ${updatedAgo}`, tone: "muted" }] });
     // Keep the leading current failure readable when the pane is narrow; separate
@@ -225,7 +226,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     return { info: info.length > 0 ? [{ id: "status", parts: info.flatMap((segment, index) => [
       ...(index > 0 ? [{ text: "·", tone: "muted" as const }] : []), ...segment.parts,
     ]) }] : [] };
-  }, [loadError, loading, selectedIssue, incompleteRows, returnAsOfDate, updatedAgo]);
+  }, [loadError, loading, returnAsOfDate, updatedAgo]);
 
   const rootBefore = (
     <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">

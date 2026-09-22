@@ -49,7 +49,10 @@ export function useBuildoutDataRuntime({
     async function load() {
       loadingPageKeysRef.current.clear();
       onBeforeLoad();
-      setState({ status: "loading" });
+      // A refresh keeps what is loaded; only the first load replaces the body.
+      setState((current) => current.status === "ready"
+        ? { ...current, refreshing: true, refreshError: null }
+        : { status: "loading" });
 
       const token = await getBuildoutProToken();
       const data = await loadBuildoutData(token);
@@ -63,9 +66,11 @@ export function useBuildoutDataRuntime({
     }
 
     load().catch((error) => {
-      if (!cancelled) {
-        setState({ status: "error", message: error instanceof Error ? error.message : String(error) });
-      }
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setState((current) => current.status === "ready"
+        ? { ...current, refreshing: false, refreshError: message }
+        : { status: "error", message });
     });
 
     return () => {

@@ -54,7 +54,8 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [selectedIdx, setSelectedIdx] = usePluginPaneState<number>("selectedIdx", 0);
+  // Keyed like the open event, so a reload or a shared layout keeps the row.
+  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
   const requestIdRef = useRef(0);
 
   const tickers = useAppSelector((state) => state.tickers);
@@ -81,7 +82,9 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
     [rows],
   );
   const eventCount = eventRows.length;
-  const activeEventIdx = eventCount > 0 ? Math.min(Math.max(selectedIdx, 0), eventCount - 1) : -1;
+  const activeEventIdx = eventCount > 0
+    ? Math.max(0, eventRows.findIndex((row) => eventKey(row.event) === selectedKey))
+    : -1;
   const selectedRowIndex = rows.findIndex((row) => row.kind === "event" && row.eventIdx === activeEventIdx);
   const columns = useMemo(() => buildEarningsColumns(width), [width]);
 
@@ -126,12 +129,6 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   useEffect(() => () => {
     requestIdRef.current += 1;
   }, []);
-
-  useEffect(() => {
-    if (eventCount > 0 && selectedIdx >= eventCount) {
-      setSelectedIdx(eventCount - 1);
-    }
-  }, [eventCount, selectedIdx, setSelectedIdx]);
 
   const selectedEvent = eventRows[activeEventIdx]?.event ?? null;
 
@@ -202,10 +199,6 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
       event={openEvent}
       width={width}
       height={Math.max(4, height - 1)}
-      onOpenTicker={openTicker}
-      onOpenEstimates={openEstimates}
-      onOpenCalls={openCalls}
-      onOpenAnalysts={openAnalysts}
     />
   ) : null;
 
@@ -221,7 +214,7 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
         kind: "index",
         selectedIndex: selectedRowIndex,
         onChange: (_index, row) => {
-          if (row.kind === "event") setSelectedIdx(row.eventIdx);
+          if (row.kind === "event") setSelectedKey(eventKey(row.event));
         },
       }}
       isNavigable={(row) => row.kind === "event"}

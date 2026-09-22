@@ -112,13 +112,13 @@ describe("FuturesPane", () => {
 
     // Selection starts on the first contract, so step up onto its header.
     expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
-    expect(testSetup.captureCharFrame()).toContain("▼ Equity Index");
+    expect(testSetup.captureCharFrame()).toContain("▾ Equity Index");
 
     await emitKeypress({ name: "up", sequence: "\u001B[A" });
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
     const collapsed = testSetup.captureCharFrame();
-    expect(collapsed).toContain("▶ Equity Index");
+    expect(collapsed).toContain("▸ Equity Index");
     expect(collapsed).not.toContain("E-Mini S&P 500");
     // Other sectors keep their contracts.
     expect(collapsed).toContain("WTI Crude Oil");
@@ -145,7 +145,7 @@ describe("FuturesPane", () => {
     await renderSettled();
 
     const collapsed = testSetup.captureCharFrame();
-    expect(collapsed).toContain("▶ Equity Index");
+    expect(collapsed).toContain("▸ Equity Index");
     expect(collapsed).not.toContain("E-Mini S&P 500");
     // A header click must not also open the pinned-ticker pane.
     expect(pinned).toEqual([]);
@@ -182,7 +182,7 @@ describe("FuturesPane", () => {
 
     const searching = testSetup.captureCharFrame();
     expect(searching).toContain("E-Mini Dow");
-    expect(searching).toContain("▼ Equity Index");
+    expect(searching).toContain("▾ Equity Index");
   });
 
   test("opens the selected contract in ticker research", async () => {

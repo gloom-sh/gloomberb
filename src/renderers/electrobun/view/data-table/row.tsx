@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { memo, type CSSProperties } from "react";
 import { TextAttributes } from "../../../../ui/host";
+import { DisclosureMarker } from "../../../../components/ui/disclosure-marker";
 import type {
   DataTableCell,
   DataTableColumn,
@@ -249,8 +250,14 @@ function WebDataTableRowInner<
             gridColumn: "1 / -1",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
+          {sectionHeader.expanded !== undefined && (
+            <DisclosureMarker expanded={sectionHeader.expanded} color={sectionHeader.color ?? CSS_TEXT_BRIGHT} />
+          )}
           {sectionHeader.text}
         </span>
       </div>

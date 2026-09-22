@@ -136,6 +136,8 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
     setHasMore(false);
     setNextOffset(0);
     setLoadingMore(false);
+    // A new query starts from an empty list; a refresh keeps the rows it has.
+    if (!refresh) setRows([]);
     void loadBrowserRows(browserMode, query, controller.signal, { forceRefresh: refresh })
       .then((result) => {
         if (abortRef.current !== controller) return;
@@ -151,7 +153,6 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
         if (abortRef.current !== controller) return;
         if (loadError instanceof Error && loadError.name === "AbortError") return;
         setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setRows([]);
         setHasMore(false);
         setNextOffset(0);
         setStatus("error");
@@ -700,7 +701,8 @@ function FilingDetailView({
     setStatus("loading");
     setError(null);
     setWarnings([]);
-    setHoldings([]);
+    // Another filing starts empty; a refresh keeps its positions on screen.
+    if (!refresh) setHoldings([]);
     setHasMore(false);
     setNextOffset(0);
     void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { forceRefresh: refresh, offset: 0 })

@@ -3,6 +3,7 @@ import { Box, type ScrollBoxRenderable, useRendererHost } from "../../../../ui";
 import {
   DataTableStackView,
   EmptyState,
+  PageStackView,
   Spinner,
   useTableLoadMore,
   usePaneFooter,
@@ -11,11 +12,9 @@ import {
 } from "../../../../components";
 import type { PaneProps } from "../../../../types/plugin";
 import { useShortcut } from "../../../../react/input";
+import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
-import {
-  BuildoutDetail,
-  CompaniesUpgradeCta,
-} from "../detail";
+import { BuildoutDetail } from "../detail";
 import type {
   BuildoutColumn,
   BuildoutColumnId,
@@ -62,7 +61,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const rendererHost = useRendererHost();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const favoriteBusyKeysRef = useRef<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<BuildoutTabId>("companies");
+  const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "companies");
   const [selectedList, setSelectedList] = useState<BuildoutList | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<BuildoutRow | null>(null);
@@ -162,10 +161,25 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     return hints;
   }, [detailCompanyTicker, openDetailTicker, startUpgrade, state]);
 
+  // The free tier sees the head of a list; the footer says so, the `u` hint
+  // is the way out, and no count of what is hidden is drawn.
+  const partialList = state.status === "ready"
+    && activeTab === "companies"
+    && !!selectedList
+    && !state.companies.loadingMore
+    && !state.companies.hasMore
+    && !state.companies.error
+    && state.companies.blurredCompanyCount > 0;
+
   usePaneFooter("buildout", () => ({
-    info: updateBuildoutFooterInfo(state, activeTab, selectedList, favoriteMessage),
+    info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
+      favoriteMessage,
+      upgradeMessage,
+      partialList,
+      onUpgrade: startUpgrade,
+    }),
     hints: footerHints,
-  }), [activeTab, favoriteMessage, footerHints, selectedList, state]);
+  }), [activeTab, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     const nextColumnId = columnId as BuildoutColumnId;
@@ -281,14 +295,9 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       refresh();
       return true;
     }
-    if (activeTab === "companies" && selectedList && (event.name === "escape" || event.name === "backspace")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      closeCompanyList();
-      return true;
-    }
+    // Esc and Backspace close an open list through the stack below.
     return false;
-  }, [activeTab, closeCompanyList, refresh, selectedList, selectedRow, startUpgrade, state, toggleFavoriteRow]);
+  }, [refresh, selectedRow, startUpgrade, state, toggleFavoriteRow]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (event.name === "u" && state.status === "ready" && state.access !== "pro") {
@@ -331,16 +340,9 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  const hiddenCompanyCount = state.status === "ready"
-    && activeTab === "companies"
-    && selectedList
-    && !state.companies.loadingMore
-    && !state.companies.hasMore
-    && !state.companies.error
-    ? state.companies.blurredCompanyCount
-    : 0;
-
-  return (
+  const listOpen = activeTab === "companies" && !!selectedList;
+  const tableHeight = Math.max(1, height - 1 - (listOpen ? 1 : 0));
+  const table = (
     <DataTableStackView<BuildoutRow, BuildoutColumn>
       focused={focused}
       detailOpen={!!detailRow}
@@ -359,17 +361,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
         />
       )}
       rootWidth={width}
-      rootHeight={height}
-      rootBefore={(
-        <BuildoutPaneHeader
-          activeTab={activeTab}
-          focused={focused && !detailRow}
-          selectedList={selectedList}
-          width={width}
-          onCloseCompanyList={closeCompanyList}
-          onSelectTab={setActiveTab}
-        />
-      )}
+      rootHeight={tableHeight}
       columns={columns}
       items={rows}
       selection={{
@@ -383,15 +375,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       renderCell={renderCell}
-      bodyAfter={hiddenCompanyCount > 0 ? (
-        <CompaniesUpgradeCta
-          hiddenCount={hiddenCompanyCount}
-          width={width}
-          busy={upgradeBusy}
-          message={upgradeMessage}
-          onUpgrade={startUpgrade}
-        />
-      ) : null}
       emptyContent={renderBuildoutPageStatus(state, activeTab, selectedList)}
       emptyStateTitle={selectedList ? "No companies" : "No rows"}
       onRootKeyDown={handleRootKeyDown}
@@ -400,5 +383,26 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       scrollRef={tableScrollRef}
       resetScrollKey={`${activeTab}:${selectedList?.slug ?? "lists"}`}
     />
+  );
+
+  // Tabs on top; below them a list opened from Companies is a stack level with
+  // the shared Back row, and a company opened from that list is the table's
+  // own detail. The outer stack only listens while the inner detail is closed.
+  return (
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <BuildoutPaneHeader
+        activeTab={activeTab}
+        focused={focused && !detailRow}
+        onSelectTab={setActiveTab}
+      />
+      <PageStackView
+        focused={focused && !detailRow}
+        detailOpen={listOpen}
+        onBack={closeCompanyList}
+        detailTitle={selectedList?.name}
+        rootContent={table}
+        detailContent={table}
+      />
+    </Box>
   );
 }

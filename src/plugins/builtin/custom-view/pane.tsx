@@ -232,17 +232,14 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     }
   });
 
+  // The source is fixed for the life of the view and the table shows its
+  // rows, so the footer carries only the current failure. `r` is global.
   usePaneFooter(CUSTOM_VIEW_PANE_ID, () => ({
-    info: [
-      { id: "source", parts: [{ text: data?.sourceLabel ?? (spec?.source.kind === "inline" ? spec.source.pane : "team view"), tone: "muted" as const }] },
-      ...(data?.errors.length ? [{ id: "errors", parts: [{ text: data.errors[0]!, tone: "warning" as const }] }] : []),
-      { id: "count", parts: [{ text: `${rows.length} rows`, tone: "muted" as const }] },
-    ],
-    hints: [
-      { id: "refresh", key: "r", label: "efresh", onPress: () => { void reload(); } },
-      ...(spec ? [{ id: "team", key: "t", label: spec.source.kind === "ref" ? "eam revision" : "eam publish", onPress: () => { void publishToTeam(); } }] : []),
-    ],
-  }), [data?.errors, data?.sourceLabel, publishToTeam, reload, rows.length, spec]);
+    info: data?.errors.length ? [{ id: "errors", parts: [{ text: data.errors[0]!, tone: "warning" as const }] }] : [],
+    hints: spec
+      ? [{ id: "team", key: "t", label: spec.source.kind === "ref" ? "eam revision" : "eam publish", onPress: () => { void publishToTeam(); } }]
+      : [],
+  }), [data?.errors, publishToTeam, spec]);
 
   if (!spec) {
     return (

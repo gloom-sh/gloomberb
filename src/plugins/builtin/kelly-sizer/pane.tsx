@@ -4,6 +4,7 @@ import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
+  EmptyState,
   InputSearchBar,
   Tabs,
   usePaneFooter,
@@ -370,16 +371,19 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   }, { enabled: focused });
 
   usePaneFooter(KELLY_PANE_ID, () => ({
-    info: result.warnings.length > 0
-      ? [{ id: "warning", parts: [{ text: result.warnings[0]!, tone: "warning" as const }] }]
-      : result.clipReasons.length > 0
-        ? [{ id: "clip", parts: [{ text: `clip ${result.clipReasons.join(", ")}`, tone: "muted" as const }] }]
-        : [],
+    info: bankroll <= 0 && ticker
+      // Every size reads 0% until there is a bankroll; say so where status lives.
+      ? [{ id: "bankroll", parts: [{ text: "no bankroll", tone: "warning" as const }] }]
+      : result.warnings.length > 0
+        ? [{ id: "warning", parts: [{ text: result.warnings[0]!, tone: "warning" as const }] }]
+        : result.clipReasons.length > 0
+          ? [{ id: "clip", parts: [{ text: `clip ${result.clipReasons.join(", ")}`, tone: "muted" as const }] }]
+          : [],
     hints: [
       { id: "search", key: "/", label: "search", onPress: focusTickerSearch },
       { id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity },
     ],
-  }), [focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, toggleSensitivity]);
+  }), [bankroll, focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, ticker, toggleSensitivity]);
 
   const portfolioTabs = useMemo(
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
@@ -404,9 +408,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   if (!requestedSymbol || !ticker) {
     return (
       <Box flexDirection="column" width={width} height={height} paddingX={1} paddingY={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>Position Sizer</Text>
-        <Box height={1} />
-        <Text fg={colors.textMuted}>Select a ticker or open with KELLY &lt;ticker&gt;.</Text>
+        <EmptyState title="No ticker selected." hint="Select a ticker or open with KELLY <ticker>." />
       </Box>
     );
   }
@@ -544,14 +546,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           </Box>
         ))}
       </Box>
-
-      {bankroll > 0 ? null : (
-        <Box height={1} paddingX={1} overflow="hidden">
-          <Text fg={colors.warning}>
-            No bankroll yet, so every size below reads 0%. Click Bankroll above to set one.
-          </Text>
-        </Box>
-      )}
 
       <KellyResultMetrics
         result={result}

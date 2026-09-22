@@ -180,7 +180,8 @@ function useTweetSearchData(
       .catch((error) => {
         if (fetchGenRef.current !== gen) return;
         const message = error instanceof Error ? error.message : String(error);
-        setState({ data: null, loading: false, error: message, loadingMore: false, hasMore: false });
+        // A failed refresh keeps the tweets it had; the footer says it failed.
+        setState((current) => ({ data: force || cached ? current.data : null, loading: false, error: message, loadingMore: false, hasMore: false }));
         onErrorRef.current?.(message);
       });
   }, [enabled, load, requestKey]);

@@ -12,6 +12,7 @@ import {
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
+import { usePaneStateValue } from "../../../state/app/context";
 import { colors, getChartIndicatorColor } from "../../../theme/colors";
 import {
   Box,
@@ -20,6 +21,7 @@ import {
   TextAttributes,
   useRendererHost,
   useUiCapabilities,
+  useUiHost,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -83,9 +85,10 @@ const PAY_PARTS: Array<{ key: keyof CloudExecutiveRowPayload; label: string }> =
   ];
 
 /**
- * How the chief executive's pay was made up, as one bar of blocks. Salary
- * is usually a sliver and equity most of it; seeing that beats the table.
- * Every piece gets at least one cell so a small one still shows.
+ * How the chief executive's pay was made up, as one bar. Salary is usually
+ * a sliver and equity most of it; seeing that beats the table. The terminal
+ * draws block runs with at least one cell per piece so a small one still
+ * shows; the desktop draws real elements so a piece can be thinner than a cell.
  */
 function PayMixBar({
   row,
@@ -94,6 +97,7 @@ function PayMixBar({
   row: CloudExecutiveRowPayload;
   width: number;
 }) {
+  const isDesktopWeb = useUiHost().kind === "desktop-web";
   const parts = PAY_PARTS.map((part, index) => ({
     ...part,
     value: (row[part.key] as number | null) ?? 0,
@@ -113,13 +117,31 @@ function PayMixBar({
   cells = cells.map((count) => Math.max(1, count));
   return (
     <Box flexDirection="column">
-      <Box height={1} flexDirection="row">
-        {parts.map((part, index) => (
-          <Text key={part.key} fg={part.color}>
-            {"█".repeat(cells[index]!)}
-          </Text>
-        ))}
-      </Box>
+      {isDesktopWeb ? (
+        <Box
+          height={1}
+          flexDirection="row"
+          alignItems="center"
+          width={barWidth}
+          style={{ height: "9px", borderRadius: "2px", overflow: "hidden" }}
+        >
+          {parts.map((part) => (
+            <Box
+              key={part.key}
+              backgroundColor={part.color}
+              style={{ width: `${((part.value / sum) * 100).toFixed(2)}%`, height: "100%", minWidth: "2px" }}
+            />
+          ))}
+        </Box>
+      ) : (
+        <Box height={1} flexDirection="row">
+          {parts.map((part, index) => (
+            <Text key={part.key} fg={part.color}>
+              {"█".repeat(cells[index]!)}
+            </Text>
+          ))}
+        </Box>
+      )}
       <Box flexDirection="row" flexWrap="wrap">
         {parts.map((part) => (
           <Box key={part.key} flexDirection="row" marginRight={2}>
@@ -257,7 +279,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const [selectedYear, setYear] = useState<number | null>(null);
+  const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
   const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: discardProxyData });
   const years = list.data?.data?.proxies ?? [];
@@ -330,12 +352,10 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
         ],
       });
     }
-    const hints = [
-      ...(statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : []),
-      { id: "refresh", key: "r", label: "efresh", onPress: refresh },
-    ];
+    // `r` refreshes every pane, so it gets no hint here.
+    const hints = statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : [];
     return { info, hints };
-  }, [loading, statement, openFiling, refresh]);
+  }, [loading, statement, openFiling]);
 
   const figures = useMemo(
     () => (statement ? figuresOf(statement) : []),

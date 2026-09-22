@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { Button } from "../../../components/ui/button";
 import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../ui";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -9,10 +8,6 @@ interface EarningsDetailViewProps {
   event: EarningsEvent;
   width: number;
   height: number;
-  onOpenTicker: (symbol: string) => void;
-  onOpenEstimates: (symbol: string) => void;
-  onOpenCalls: (symbol: string) => void;
-  onOpenAnalysts: (symbol: string) => void;
 }
 
 function signColor(value: number | null): string {
@@ -85,17 +80,10 @@ function EstimatePanel({ block, width }: { block: EstimateBlock; width: number }
 
 /**
  * Everything the provider knows about one upcoming report, laid out instead
- * of squeezed into fifteen columns, with the deeper surfaces one key away.
+ * of squeezed into fifteen columns. The deeper surfaces (ticker, estimates,
+ * calls, analysts) are the pane footer's `t` `e` `c` `a`, not a row here.
  */
-export function EarningsDetailView({
-  event,
-  width,
-  height,
-  onOpenTicker,
-  onOpenEstimates,
-  onOpenCalls,
-  onOpenAnalysts,
-}: EarningsDetailViewProps) {
+export function EarningsDetailView({ event, width, height }: EarningsDetailViewProps) {
   const detail = useMemo(() => buildEarningsDetail(event), [event]);
   const inner = Math.max(20, width - 2);
   const wide = inner >= 76;
@@ -118,13 +106,6 @@ export function EarningsDetailView({
       <Box flexDirection={wide ? "row" : "column"} marginTop={1} gap={wide ? 3 : 1}>
         <EstimatePanel block={detail.eps} width={panelWidth} />
         <EstimatePanel block={detail.revenue} width={panelWidth} />
-      </Box>
-      <Box height={1} flexDirection="row" gap={1} marginTop={1}>
-        <Text fg={colors.textDim}>Open</Text>
-        <Button stopPropagation label="ticker" variant="ghost" compact onPress={() => onOpenTicker(detail.symbol)} />
-        <Button stopPropagation label="estimates" variant="ghost" compact onPress={() => onOpenEstimates(detail.symbol)} />
-        <Button stopPropagation label="calls" variant="ghost" compact onPress={() => onOpenCalls(detail.symbol)} />
-        <Button stopPropagation label="analysts" variant="ghost" compact onPress={() => onOpenAnalysts(detail.symbol)} />
       </Box>
     </Box>
   );

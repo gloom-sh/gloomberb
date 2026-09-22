@@ -3,19 +3,18 @@ import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
-import { DataTableStackView, Divider } from "../../../components";
-import { t, tf } from "../../../i18n";
+import { DataTableStackView } from "../../../components";
+import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
   useAppDispatch,
   useAppSelector,
   usePaneAppConfig,
 } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
-import { usePluginBrokerActions } from "../../runtime";
+import { Box } from "../../../ui";
+import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { BrokerDetailContent, type BrokerEditKey } from "./detail";
 import { useBrokerManagerFooter } from "./footer";
@@ -27,7 +26,6 @@ import {
 import { useBrokerManagerActions } from "./pane-actions";
 import {
   buildBrokerColumns,
-  isBrokerErrorMessage,
   renderBrokerCell,
   type BrokerColumn,
 } from "./table";
@@ -38,11 +36,12 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const { getBrokerAdapter } = usePluginBrokerActions();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // The profile is remembered by id so a reload lands on the same row.
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [editDraft, setEditDraft] = useState<BrokerProfileDraft | null>(null);
   const [activeEditKey, setActiveEditKey] = useState<BrokerEditKey>("label");
   const [statusVersion, setStatusVersion] = useState(0);
-  const [detailOpen, setDetailOpen] = useState(false);
 
   const adapters = useMemo(() => {
     const next = new Map<string, BrokerAdapter | null>();
@@ -67,7 +66,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     () => buildBrokerProfileRows(config, adapters, brokerAccounts),
     [adapters, brokerAccounts, config, language, statusVersion],
   );
-  const selectedRow = rows[Math.min(selectedIndex, rows.length - 1)] ?? null;
+  const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
+  const selectedRow = rows[selectedIndex] ?? null;
   const selectedAccounts = selectedRow ? brokerAccounts[selectedRow.id] ?? [] : [];
   const editFields = editDraft && selectedRow?.adapter
     ? getVisibleBrokerConfigFields(selectedRow.adapter, editDraft.values)
@@ -78,14 +78,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   );
 
   useEffect(() => {
-    setSelectedIndex((current) => Math.max(0, Math.min(current, rows.length - 1)));
-  }, [rows.length]);
-
-  useEffect(() => {
-    if (rows.length === 0) {
-      setDetailOpen(false);
-    }
-  }, [rows.length]);
+    if (rows.length === 0 && detailOpen) setDetailOpen(false);
+  }, [detailOpen, rows.length, setDetailOpen]);
 
   useEffect(() => {
     if (!editDraft) return;
@@ -133,9 +127,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const openSelectedDetailFromKeyboard = useCallback(() => {
     setEditDraft(null);
     setDetailOpen(true);
-  }, []);
+  }, [setDetailOpen]);
 
   useBrokerManagerFooter({
+    busy,
+    message,
     actions: {
       connectSelected,
       openAddBroker,
@@ -173,24 +169,22 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     syncSelected,
   });
 
-  const connectedCount = rows.filter((row) => row.state === "connected").length;
-  const errorCount = rows.filter((row) => row.state === "error" || row.state === "unavailable").length;
-  const bodyHeight = Math.max(5, height - 4);
+  const bodyHeight = Math.max(5, height);
   const tableWidth = Math.max(24, width - 2);
   const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
-  const openSelectedDetail = useCallback((index: number, _row: BrokerProfileRow) => {
-    setSelectedIndex(index);
+  const openSelectedDetail = useCallback((_index: number, row: BrokerProfileRow) => {
+    setSelectedId(row.id);
     setEditDraft(null);
     setDetailOpen(true);
-  }, []);
+  }, [setDetailOpen, setSelectedId]);
 
-  const selectBrokerRow = useCallback((index: number, row: BrokerProfileRow) => {
-    setSelectedIndex(index);
+  const selectBrokerRow = useCallback((_index: number, row: BrokerProfileRow) => {
+    setSelectedId(row.id);
     if (selectedRow?.id !== row.id) {
       setEditDraft(null);
     }
-  }, [selectedRow?.id]);
+  }, [selectedRow?.id, setSelectedId]);
 
   const updateDraftValue = useCallback((key: string, value: string) => {
     setEditDraft((current) => current
@@ -210,18 +204,6 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     saveEdit().catch(() => {});
   }, [saveEdit]);
 
-  const connectCurrent = useCallback(() => {
-    connectSelected().catch(() => {});
-  }, [connectSelected]);
-
-  const syncCurrent = useCallback(() => {
-    syncSelected().catch(() => {});
-  }, [syncSelected]);
-
-  const removeCurrent = useCallback(() => {
-    removeSelected().catch(() => {});
-  }, [removeSelected]);
-
   const detailContentWidth = Math.max(24, tableWidth - 2);
   const detailContent = (
     <BrokerDetailContent
@@ -233,36 +215,17 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       busy={busy}
       message={message}
       width={detailContentWidth}
-      actions={selectedProfileActions}
       onActiveEditKeyChange={setActiveEditKey}
       onDraftLabelChange={updateDraftLabel}
       onDraftEnabledChange={updateDraftEnabled}
       onDraftValueChange={updateDraftValue}
       onSaveEdit={saveCurrentEdit}
       onCancelEdit={cancelEdit}
-      onStartEdit={startEdit}
-      onConnect={connectCurrent}
-      onSync={syncCurrent}
-      onOpenAction={openProfileAction}
-      onRemove={removeCurrent}
     />
   );
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
-      <Box height={1} flexDirection="row">
-        <Box flexGrow={1} flexDirection="row" overflow="hidden">
-          <Text fg={colors.textDim}>{tf("{profiles} profiles · {connected} connected · {issues} issues", { profiles: rows.length, connected: connectedCount, issues: errorCount })}</Text>
-        </Box>
-        {busy && <Text fg={colors.textDim}>{busy}</Text>}
-      </Box>
-      <Box height={1}>
-        <Text fg={isBrokerErrorMessage(message) ? colors.negative : colors.textDim}>
-          {message || t("Manage broker profiles, connection tests, and position syncs.")}
-        </Text>
-      </Box>
-      <Divider width={Math.max(1, width - 2)} />
-
       <Box height={bodyHeight} overflow="hidden">
         <DataTableStackView<BrokerProfileRow, BrokerColumn>
           focused={focused}
@@ -277,7 +240,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           rootHeight={bodyHeight}
           selection={{
             kind: "index",
-            selectedIndex: Math.min(selectedIndex, Math.max(0, rows.length - 1)),
+            selectedIndex,
             onChange: (index, row) => selectBrokerRow(index, row),
           }}
           onActivate={(row, index) => openSelectedDetail(index, row)}

@@ -113,9 +113,6 @@ export function MembersSection({
           );
         })}
       </Box>
-      {!manage ? (
-        <Muted width={width}>Owners and admins manage members. Anyone can share an invite link when the team allows it.</Muted>
-      ) : null}
     </Box>
   );
 }
@@ -482,12 +479,10 @@ export function CreateTeamForm({
   const problem = draftProblem(draft);
   return (
     <Box flexDirection="column" gap={1} width={width}>
-      <Box flexDirection="column">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>New team</Text>
-        <Muted width={width}>
-          A team shares layouts, watchlists, paper portfolios, notes, custom views, and chat channels. Creating needs Pro; joining is free.
-        </Muted>
-      </Box>
+      {/* The "New team" tab above already names this form. */}
+      <Muted width={width}>
+        A team shares layouts, watchlists, paper portfolios, notes, custom views, and chat channels. Creating needs Pro; joining is free.
+      </Muted>
       <TeamDraftFields draft={draft} width={width} onChange={onChange} onSubmit={onCreate} editable={false} />
       <Box flexDirection="row" gap={1} alignItems="center">
         {hasPro ? (

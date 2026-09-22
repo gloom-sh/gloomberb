@@ -140,8 +140,9 @@ describe("TeamPane", () => {
     if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("New team");
     expect(frame).toContain("Create team");
-    // The picker marks the chosen swatch and previews the prefix.
-    expect(frame).toContain("▣");
+    // The picker names the chosen accent and previews the prefix; the swatches
+    // themselves are colored badges, which a char frame cannot show.
+    expect(frame).toMatch(/Accent\s+\w+/);
     expect(frame).toContain("TM· Your team");
   });
 

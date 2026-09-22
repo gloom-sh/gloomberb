@@ -1,4 +1,5 @@
 import { ActionRow } from "../../../../components/ui/action-row";
+import { getCurrentPluginTarget } from "../../../current-target";
 import {
   useCallback,
   useEffect,
@@ -82,9 +83,9 @@ export const ASKG_PANE_ID = "askg";
 const CLIENT_VERSION = "1";
 const MIN_DETAIL_HEIGHT = 8;
 
-function clientKind(nativePaneChrome: boolean): "tui" | "desktop" | "web" {
-  if (!nativePaneChrome) return "tui";
-  return typeof location !== "undefined" && location.protocol.startsWith("http") ? "web" : "desktop";
+function clientKind(): "tui" | "desktop" | "web" {
+  const target = getCurrentPluginTarget();
+  return target === "web" || target === "desktop" ? target : "tui";
 }
 
 function tierLabel(row: ASKGToolRow): string | null {
@@ -473,12 +474,12 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         },
       });
     },
-    client: { kind: clientKind(!!nativePaneChrome), version: CLIENT_VERSION },
+    client: { kind: clientKind(), version: CLIENT_VERSION },
     getContext: () => ({
       ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
       paneId: contextRef.current.paneId,
     }),
-  }), [nativePaneChrome]);
+  }), []);
 
   useEffect(() => () => controller.dispose(), [controller]);
 

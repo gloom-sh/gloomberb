@@ -4,7 +4,7 @@ import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPaylo
 import { ApiRequestError } from "../../../api-client/errors";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -52,12 +52,16 @@ async function mount(initialSymbol = "ALPHA", width = 100, height = 24) {
   function Harness() {
     const [symbol, setSymbol] = useState(initialSymbol);
     selectTicker = setSymbol;
+    // The selected proxy year is pane state, so the harness needs a reducer.
+    const [paneState, setPaneState] = useState<AppState["paneState"]>({});
     const state = createInitialState(createTestPaneConfig("/tmp/executives-test", {
       paneId: "executives", instanceId: paneId, binding: { kind: "fixed", symbol },
     }));
+    state.paneState = paneState;
+    const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
     const listing = parsePublicTickerKey(symbol);
     state.tickers.set(symbol, createTestTicker(listing.symbol, listing.symbol, { exchange: listing.exchange ?? "NASDAQ" }));
-    return <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
+    return <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
       <PaneFooterProvider>{footer => <Box width={width} height={height} flexDirection="column">
         <Box height={height - 1}><ExecutivesPane focused width={width} height={height - 1} /></Box>
         <PaneFooterBar footer={footer} focused width={width} />

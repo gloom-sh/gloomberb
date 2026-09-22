@@ -184,7 +184,7 @@ function Chart({ summary, width, height }: { summary: CloudJobsSummaryPayload; w
     return (
       <Box flexDirection="column" width={width} height={height}>
         <Box height={1} paddingX={1}>
-          <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>Open roles</Text>
+          <SectionHeading title="Open roles" />
         </Box>
         <StaticChartSurface
           points={points}
@@ -205,7 +205,7 @@ function Chart({ summary, width, height }: { summary: CloudJobsSummaryPayload; w
   return (
     <Box flexDirection="column" width={width} height={height} paddingX={1}>
       <Box height={1} flexDirection="row">
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>Open roles by posting age</Text>
+        <SectionHeading title="Open roles by posting age" />
         {daysLeft > 0 ? (
           <Text fg={colors.textMuted}>{`  history chart in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`}</Text>
         ) : null}

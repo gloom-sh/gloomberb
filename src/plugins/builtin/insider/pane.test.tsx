@@ -59,7 +59,7 @@ test("narrow actual amendment detail retains corrected shares, explanation, stat
   expect(frame).toContain("Original filed 2026-08-20");
   expect(frame).toContain("Corrects the original disclosure.");
   expect(frame).toContain("Shares: 40");
-  expect(frame).toContain("4/A unreconciled");
+  expect(frame).toContain("⚠");
   expect(frame).toContain("[o]pen");
 });
 
@@ -83,5 +83,5 @@ test("owner filtering keeps explanation-only amendments and clears amendment sta
   await settle();
   expect(setup!.captureCharFrame()).toContain("B. OFFICER");
   expect(setup!.captureCharFrame()).not.toContain("A. OFFICER");
-  expect(setup!.captureCharFrame()).not.toContain("4/A unreconciled");
+  expect(setup!.captureCharFrame()).not.toContain("⚠");
 });

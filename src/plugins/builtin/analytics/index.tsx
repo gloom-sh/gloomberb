@@ -1,7 +1,7 @@
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
-import { EmptyState, Tabs, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, SectionHeading, Tabs, usePaneNoticeFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
@@ -346,9 +346,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
               {hasPositions && (
                 <>
                   <Box height={1} paddingX={1}>
-                    <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-                      Holdings by sector
-                    </Text>
+                    <SectionHeading title="Holdings by sector" />
                   </Box>
 
                   <SectorAllocationTable

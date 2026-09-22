@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  DataTableStackView, KeyValueRow, Spinner, usePaneFooter, type DataTableCell,
+  DataTableStackView, KeyValueRow, SectionHeading, Spinner, usePaneFooter, type DataTableCell,
   type DataTableColumn
 } from "../../../components";
 import type {
@@ -100,7 +100,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
         {source.recentRequests.length > 0 ? (
           <>
             <Box height={1} />
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>Recent requests</Text>
+            <SectionHeading title="Recent requests" />
             {source.recentRequests.slice(0, 8).map((request, index) => (
               <Box key={`${request.at}:${index}`} height={1} flexDirection="row">
                 <Box width={7}><Text fg={request.success ? colors.positive : colors.negative}>{request.success ? "ok" : "error"}</Text></Box>

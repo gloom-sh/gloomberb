@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
-import { Button, Section, Tabs, type TableSection } from "../../../components";
+import { Button, Section, SectionHeading, Tabs, type TableSection } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
 import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
@@ -189,7 +189,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         return (
           <>
             <Box flexDirection="column" gap={1}>
-              <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("How To Use Gloomberb")}</Text>
+              <SectionHeading title="How To Use Gloomberb" />
               <Box flexDirection="column">
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
                 <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>

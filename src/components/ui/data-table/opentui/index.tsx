@@ -115,6 +115,9 @@ function OpenTuiDataTableRowInner<
           event.preventDefault();
         }}
       >
+        {sectionHeader.expanded !== undefined && (
+          <Text fg={sectionHeader.color ?? colors.textBright}>{sectionHeader.expanded ? "\u25be " : "\u25b8 "}</Text>
+        )}
         <Text
           attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
           fg={sectionHeader.color ?? colors.textBright}

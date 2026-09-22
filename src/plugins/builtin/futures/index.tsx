@@ -117,7 +117,8 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   const renderSectorHeader = useCallback((row: FuturesTableRow) => (
     row.type === "header"
       ? {
-        text: `${visibleCollapsed.has(row.sector) ? "▶" : "▼"} ${FUTURES_SECTOR_LABELS[row.sector]}`,
+        text: FUTURES_SECTOR_LABELS[row.sector],
+        expanded: !visibleCollapsed.has(row.sector),
         onMouseDown: () => toggleSector(row.sector),
       }
       : null

@@ -7,6 +7,8 @@ export type { DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRa
 
 export { Button } from "./button";
 export { ActionRow } from "./action-row";
+export { DisclosureMarker } from "./disclosure-marker";
+export type { DisclosureMarkerProps } from "./disclosure-marker";
 export type { ActionRowProps } from "./action-row";
 export type { ButtonProps, ButtonVariant } from "./button";
 export { Checkbox } from "./checkbox";

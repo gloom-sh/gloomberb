@@ -272,6 +272,10 @@ export type BuildoutLoadState =
     sites: BuildoutPagedState<BuildoutSite>;
     intel: BuildoutPagedState<BuildoutUpdate>;
     loadedAt: number;
+    /** A refresh in flight keeps the loaded data on screen. */
+    refreshing?: boolean;
+    /** The failure of the last refresh, while the previous data stays. */
+    refreshError?: string | null;
   };
 
 export type BuildoutColumnId =
