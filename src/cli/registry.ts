@@ -16,6 +16,7 @@ import {
   colorBySign,
   renderSection,
   renderStat,
+  renderStats,
   renderTable,
 } from "../utils/cli-output";
 import { debugLog } from "../utils/debug-log";
@@ -63,57 +64,6 @@ export function normalizeCliDispatchResult(result: void | CliDispatchResult): Cl
     return { kind: "handled" };
   }
   return result;
-}
-
-function getCommandUsageLabel(command: CliCommandDef): string {
-  return command.help?.usage?.[0] ?? command.name;
-}
-
-function renderHelpSections(registry: CliCommandRegistry): string[] {
-  const lines: string[] = [];
-
-  for (const { command } of registry.commands) {
-    const sections = command.help?.sections ?? [];
-    for (const section of sections) {
-      lines.push("");
-      lines.push(renderSection(section.title));
-      if (section.lines && section.lines.length > 0) {
-        lines.push(...section.lines);
-      }
-      if (section.columns && section.rows) {
-        lines.push(renderTable(section.columns, section.rows));
-      }
-    }
-  }
-
-  return lines;
-}
-
-export function renderCliHelp(registry: CliCommandRegistry, version: string): string {
-  const lines = [
-    `${cliStyles.bold(`gloomberb v${version}`)}\n${cliStyles.muted("Market research and portfolio tracker for the terminal")}`,
-    "",
-    renderSection("Usage"),
-    "gloomberb [command]",
-    "",
-    renderSection("Commands"),
-    renderTable(
-      [
-        { header: "Command" },
-        { header: "Description" },
-      ],
-      [
-        ["(no command)", "Launch the terminal UI"],
-        ...registry.commands.map(({ command }) => [
-          getCommandUsageLabel(command),
-          command.description,
-        ]),
-      ],
-    ),
-  ];
-
-  lines.push(...renderHelpSections(registry));
-  return lines.join("\n");
 }
 
 export function buildCliCommandRegistry({
@@ -213,6 +163,7 @@ export function createCliCommandContext(
       colorBySign,
       renderSection,
       renderStat,
+      renderStats,
       renderTable,
     },
     printResult: (result, options) => printCliResult(result, cliOptions, options),

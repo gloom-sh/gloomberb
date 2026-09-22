@@ -382,8 +382,21 @@ interface CliCommandHelpSection {
   lines?: string[];
 }
 
+interface CliCommandHelpOption {
+  /** Flag spelling with its value, e.g. `--range <range>`. */
+  flags: string;
+  description: string;
+}
+
 interface CliCommandHelp {
+  /** Heading `gloomberb help` lists the command under. Plugin commands without one share a plugin heading. */
+  group?: string;
+  /** Invocations without the leading `gloomberb`, e.g. `quote <symbol...>`. */
   usage?: string[];
+  options?: CliCommandHelpOption[];
+  /** Complete invocations without the leading `gloomberb`. */
+  examples?: string[];
+  /** Extra blocks shown only in the command's own help (`gloomberb help <command>`). */
   sections?: CliCommandHelpSection[];
 }
 
@@ -435,6 +448,7 @@ export interface CliCommandContext {
     colorBySign: typeof import("../utils/cli-output").colorBySign;
     renderSection: typeof import("../utils/cli-output").renderSection;
     renderStat: typeof import("../utils/cli-output").renderStat;
+    renderStats: typeof import("../utils/cli-output").renderStats;
     renderTable: typeof import("../utils/cli-output").renderTable;
   };
   printResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(

@@ -59,6 +59,24 @@ describe("serializeCliResult", () => {
     expect(output).toBe('Symbol,Name\nAAPL,"Apple, Inc."');
   });
 
+  test("prints one record as aligned label/value lines while CSV keeps raw keys and values", () => {
+    const data = { dataDir: "/tmp/gloom", changePercent: 0.9499999999999886, enabled: true, tags: [] };
+
+    const text = serializeCliResult({ data }, baseOptions);
+    expect(text.split("\n")).toEqual([
+      "Data Dir        /tmp/gloom",
+      "Change Percent  0.95",
+      "Enabled         yes",
+      "Tags            none",
+    ]);
+    expect(serializeCliResult({ data }, { ...baseOptions, format: "csv" }))
+      .toBe("dataDir,changePercent,enabled,tags\n/tmp/gloom,0.9499999999999886,true,[]");
+  });
+
+  test("shows an empty-state message instead of an empty table", () => {
+    expect(serializeCliResult({ data: [] }, baseOptions, { empty: "No alerts." })).toBe("No alerts.");
+  });
+
   test("renders NDJSON rows", () => {
     const output = serializeCliResult(
       { data: [{ symbol: "AAPL" }, { symbol: "MSFT" }] },

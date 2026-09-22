@@ -1,5 +1,6 @@
-import { dispatchCli } from "./index";
-import { fail, inferCliErrorOptions, printCliError } from "./errors";
+import { dispatchCli, failUnknownCliCommand } from "./index";
+import { inferCliErrorOptions, printCliError } from "./errors";
+import { isCliHelpFlag } from "./options";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
 import type { CliLaunchRequest } from "../types/plugin";
@@ -50,7 +51,7 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     return;
   }
 
-  if (command === "launch-ui" || command === "ui") {
+  if ((command === "launch-ui" || command === "ui") && !rawArgs.some(isCliHelpFlag)) {
     await launchOpenTuiApp({ cliArgs: rawArgs.slice(1) });
     return;
   }
@@ -66,7 +67,7 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     return;
   }
 
-  fail(`Unknown command "${command}".`, "Run gloomberb help to list available commands.");
+  await failUnknownCliCommand(command, { externalPlugins });
 }
 
 runCliEntrypoint().catch((error) => {

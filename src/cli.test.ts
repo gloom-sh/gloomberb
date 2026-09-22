@@ -156,12 +156,15 @@ function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRe
 }
 
 describe("CLI watchlist commands", () => {
-  test("help lists the core command sections", async () => {
-    const { result, stdout } = await captureConsole(() => runCli(["help"]));
+  test("a help flag prints the command's help instead of running it", async () => {
+    const { dataDir } = await createCliFixture({ watchlists: [] });
+
+    const { result, stdout } = await captureConsole(() => runCli(["watchlist", "create", "--help"]));
+    const config = await loadConfig(dataDir);
 
     expect(result).toBe(true);
-    expect(stdout).toContain("Portfolio Actions");
-    expect(stdout).toContain("Watchlist Actions");
+    expect(config.watchlists).toEqual([]);
+    expect(stdout).toContain("gloomberb watchlist create <name>");
   });
 
   test("creates a watchlist and persists the generated id", async () => {

@@ -10,10 +10,28 @@ import {
 } from "../../plugins/builtin/market-movers/screener";
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
 import { isoDate, requireArg, takeOption } from "./command-utils";
+import { CLI_COMMAND_GROUPS } from "../help";
+import { formatChangePercentCell, formatCompactCell } from "../helpers";
+import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
+import { SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 
 const SECTOR_ETFS = [
   "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLK", "XLB", "XLRE", "XLU",
 ];
+// Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
+const BASKET_NAMES = new Map<string, string>([
+  ...WORLD_INDICES.map((entry) => [entry.symbol, entry.name] as const),
+  ...SECTOR_COLLECTIONS.flatMap((collection) => collection.items.map((item) => [item.etf, item.name] as const)),
+]);
+const MOVER_COLUMNS = [
+  { key: "symbol", header: "Symbol" },
+  { key: "name", header: "Name" },
+  { key: "price", header: "Last", align: "right" as const },
+  { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+  { key: "volume", header: "Volume", align: "right" as const, format: formatCompactCell },
+  { key: "marketCap", header: "Mkt Cap", align: "right" as const, format: formatCompactCell },
+];
+const START_OPTION = { flags: "--start <yyyy-mm-dd>", description: "First observation date (default 2021-01-01)" };
 
 function screenerCategory(value: string | undefined): ScreenerCategory | "trending" {
   if (value === "losers") return "day_losers";
@@ -27,7 +45,7 @@ function quoteRows(results: Awaited<ReturnType<NonNullable<import("../../types/d
     const quote = result.quote;
     return {
       symbol: result.target.symbol,
-      name: quote?.name ?? "",
+      name: quote?.name || BASKET_NAMES.get(result.target.symbol) || "",
       price: quote?.price ?? null,
       change: quote?.change ?? null,
       changePercent: quote?.changePercent == null ? null : Number(quote.changePercent.toFixed(2)),
@@ -48,7 +66,9 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
         trending.map(({ symbol }) => ({ symbol, exchange: "" })),
         { forceRefresh: ctx.cliOptions.refresh },
       );
-      ctx.printResult({ data: quoteRows(results), metadata: { category } });
+      ctx.printResult({ data: quoteRows(results), metadata: { category } }, {
+        columns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
+      });
     });
     return;
   }
@@ -56,10 +76,7 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
   const rows = await fetchScreener(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
   ctx.printResult({ data: rows }, {
     columns: [
-      { key: "symbol", header: "Symbol" },
-      { key: "name", header: "Name" },
-      { key: "price", header: "Last", align: "right" },
-      { key: "changePercent", header: "Chg%", align: "right" },
+      ...MOVER_COLUMNS.slice(0, 4),
       { key: "volume", header: "Volume", align: "right", value: (row) => formatCompact(Number(row.volume)) },
       { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
     ],
@@ -77,11 +94,19 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
         { key: "price", header: "Last", align: "right" },
-        { key: "changePercent", header: "Chg%", align: "right" },
-        { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
+        { key: "changePercent", header: "Chg%", align: "right", format: formatChangePercentCell },
       ],
     });
   });
+}
+
+function localDateTimePart(value: unknown, part: "date" | "time"): string {
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (number: number) => String(number).padStart(2, "0");
+  return part === "date"
+    ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    : `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -106,8 +131,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }));
     ctx.printResult({ data: rows, metadata: { country, impact } }, {
       columns: [
-        { key: "date", header: "Date" },
-        { key: "time", header: "Time" },
+        // Text shows both halves of the event timestamp in local time; exports keep the source values.
+        { key: "date", header: "Date", format: (value) => localDateTimePart(value, "date") },
+        { key: "time", header: "Time", format: (_value, row) => localDateTimePart(row.date, "time") },
         { key: "country", header: "Country" },
         { key: "impact", header: "Impact" },
         { key: "event", header: "Event" },
@@ -119,18 +145,26 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   });
 }
 
-async function runFred(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const seriesId = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb fred <series-id>", ctx);
+async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+  const args = [...rawArgs];
   const startDate = takeOption(args, "--start") ?? "2021-01-01";
   const sortOrder = (takeOption(args, "--sort") ?? "desc") as "asc" | "desc";
+  const seriesId = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb fred <series-id> [--start <yyyy-mm-dd>]", ctx);
   const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
   const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
-  ctx.printResult({ data: rows, metadata: { info: data.info, seriesId, startDate, sortOrder } });
+  ctx.printResult({ data: rows, metadata: { info: data.info, seriesId, startDate, sortOrder } }, {
+    columns: [
+      { key: "date", header: "Date" },
+      { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
+    ],
+  });
 }
+
+const YIELD_TENORS: Record<string, string> = { DGS3MO: "3M", DGS2: "2Y", DGS10: "10Y", DGS30: "30Y" };
 
 async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const startDate = takeOption(args, "--start") ?? "2021-01-01";
-  const series = ["DGS3MO", "DGS2", "DGS10", "DGS30"];
+  const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
     const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
     const latest = data.observations[0];
@@ -141,7 +175,14 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
       title: data.info?.title ?? "",
     };
   }));
-  ctx.printResult({ data: results, metadata: { startDate } });
+  ctx.printResult({ data: results, metadata: { startDate } }, {
+    columns: [
+      { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
+      { key: "value", header: "Yield %", align: "right" },
+      { key: "date", header: "Date" },
+      { key: "seriesId", header: "Series" },
+    ],
+  });
 }
 
 async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -164,17 +205,87 @@ async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["exe
     const correlation = leftVariance > 0 && rightVariance > 0
       ? numerator / Math.sqrt(leftVariance * rightVariance)
       : null;
-    ctx.printResult({ data: [{ left, right, samples: pairs.length, correlation }] });
+    ctx.printResult({ data: [{ left, right, samples: pairs.length, correlation }] }, {
+      layout: "record",
+      columns: [
+        { key: "left", header: "Symbols", value: (row) => `${row.left} / ${row.right}` },
+        { key: "correlation", header: "Correlation", format: (value) => typeof value === "number" ? value.toFixed(3) : "n/a" },
+        { key: "samples", header: "Trading days" },
+      ],
+    });
   });
 }
 
 export const overviewCliCommands: CliCommandDef[] = [
-  { name: "movers", description: "Fetch gainers, losers, active, or trending market movers", help: { usage: ["movers [gainers|losers|active|trending]"] }, execute: runMoverCommand },
-  { name: "indices", description: "Fetch major US index quotes", execute: (_args, ctx) => runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" }) },
-  { name: "sectors", description: "Fetch SPDR sector ETF quotes", execute: (_args, ctx) => runQuoteBasket(SECTOR_ETFS, ctx, { group: "sectors" }) },
-  { name: "econ", description: "Fetch economic calendar events", help: { usage: ["econ [--country US|G7|EU|all] [--impact high|medium|low|all]"] }, execute: runEcon },
-  { name: "fred", description: "Fetch a FRED series through the configured cloud session", help: { usage: ["fred <series-id> [--start yyyy-mm-dd]"] }, execute: runFred },
-  { name: "yield-curve", description: "Fetch standard Treasury yield FRED series", help: { usage: ["yield-curve [--start yyyy-mm-dd]"] }, execute: runYieldCurve },
-  { name: "correlation", description: "Compute 1Y close-price correlation for two symbols", help: { usage: ["correlation <symbol-a> <symbol-b>"] }, execute: runCorrelation },
-  { name: "relationship", description: "Alias for correlation", help: { usage: ["relationship <symbol-a> <symbol-b>"] }, execute: runCorrelation },
+  {
+    name: "movers",
+    description: "Show the day's gainers, losers, most active, or trending stocks",
+    help: {
+      group: CLI_COMMAND_GROUPS.markets,
+      usage: ["movers [gainers|losers|active|trending]"],
+      examples: ["movers", "movers losers --limit 10", "movers trending"],
+    },
+    execute: runMoverCommand,
+  },
+  {
+    name: "indices",
+    description: "Show the major US stock indices",
+    help: { group: CLI_COMMAND_GROUPS.markets, usage: ["indices"] },
+    execute: (_args, ctx) => runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" }),
+  },
+  {
+    name: "sectors",
+    description: "Show the SPDR sector ETFs",
+    help: { group: CLI_COMMAND_GROUPS.markets, usage: ["sectors"] },
+    execute: (_args, ctx) => runQuoteBasket(SECTOR_ETFS, ctx, { group: "sectors" }),
+  },
+  {
+    name: "econ",
+    description: "List upcoming economic calendar events",
+    help: {
+      group: CLI_COMMAND_GROUPS.markets,
+      usage: ["econ [--country <region>] [--impact <level>]"],
+      options: [
+        { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
+        { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
+      ],
+      examples: ["econ", "econ --country US --impact high"],
+    },
+    execute: runEcon,
+  },
+  {
+    name: "fred",
+    description: "Fetch a FRED economic series (needs a Gloom Cloud sign-in)",
+    help: {
+      group: CLI_COMMAND_GROUPS.markets,
+      usage: ["fred <series-id> [--start <yyyy-mm-dd>]"],
+      options: [
+        START_OPTION,
+        { flags: "--sort <order>", description: "desc for newest first (default) or asc" },
+      ],
+      examples: ["fred CPIAUCSL", "fred UNRATE --start 2020-01-01 --csv"],
+    },
+    execute: runFred,
+  },
+  {
+    name: "yield-curve",
+    description: "Show the latest 3M, 2Y, 10Y, and 30Y Treasury yields",
+    help: {
+      group: CLI_COMMAND_GROUPS.markets,
+      usage: ["yield-curve [--start <yyyy-mm-dd>]"],
+      options: [START_OPTION],
+    },
+    execute: runYieldCurve,
+  },
+  {
+    name: "correlation",
+    aliases: ["relationship"],
+    description: "Correlate two symbols' daily closes over the past year",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["correlation <symbol-a> <symbol-b>"],
+      examples: ["correlation AAPL MSFT", "correlation GLD TLT"],
+    },
+    execute: runCorrelation,
+  },
 ];

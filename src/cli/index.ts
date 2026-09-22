@@ -1,5 +1,5 @@
 import { VERSION } from "../version";
-import type { CliCommandDef, CliDispatchResult, CliLaunchRequest } from "../types/plugin";
+import type { CliCommandContext, CliCommandDef, CliDispatchResult, CliLaunchRequest } from "../types/plugin";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { loadCliConfigIfAvailable } from "./context";
 import { parseCliGlobalArgs } from "./options";
@@ -8,9 +8,17 @@ import {
   createCliCommandContext,
   normalizeCliCommandToken,
   normalizeCliDispatchResult,
-  renderCliHelp,
   type CliCommandRegistry,
 } from "./registry";
+import {
+  CLI_COMMAND_GROUPS,
+  describeCliCommand,
+  renderCliHelp,
+  renderCommandHelp,
+  suggestCliCommand,
+  type CliHelpEntry,
+} from "./help";
+import { parsePaneFunctionArgs } from "./pane-functions/options";
 import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
@@ -36,39 +44,49 @@ import {
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 
 function createCoreCliCommands(
-  renderHelp: () => string,
+  helpEntries: () => CliHelpEntry[],
+  lookupCommand: (token: string) => CliCommandDef | null,
   allCommands: () => CliCommandDef[],
 ): CliCommandDef[] {
-  let commands: CliCommandDef[] = [];
   const launchUiRequest: CliLaunchRequest = {
     applyConfig: (config) => ({ config }),
   };
-  commands = [
+  return [
     {
       name: "help",
-      aliases: ["--help", "-h"],
-      description: "Show this help message",
+      description: "Show every command, or the usage, options, and examples for one",
       help: {
-        usage: ["help"],
+        group: CLI_COMMAND_GROUPS.app,
+        usage: ["help [command]", "<command> --help"],
+        examples: ["help", "help quote", "quote --help"],
       },
-      execute: (_args, ctx) => {
-        if (ctx.cliOptions.format === "text") {
-          console.log(renderHelp());
+      execute: (args, ctx) => {
+        const topic = args[0];
+        if (topic) {
+          const command = lookupCommand(topic);
+          if (!command) failUnknownCommand(topic, allCommands());
+          printCommandHelp(command, ctx);
           return;
         }
-        ctx.printResult({ data: allCommands().map((command) => ({
-          name: command.name,
-          aliases: command.aliases ?? [],
-          description: command.description,
-          usage: command.help?.usage ?? [],
-        })) });
+        if (ctx.cliOptions.format === "text") {
+          printHelpText(renderCliHelp(helpEntries(), VERSION, CLI_DESCRIPTION), ctx);
+          return;
+        }
+        ctx.printResult({ data: allCommands().map(describeCliCommand) }, {
+          columns: [
+            { key: "name", header: "Command" },
+            { key: "group", header: "Group" },
+            { key: "description", header: "Description" },
+          ],
+        });
       },
     },
     {
       name: "launch-ui",
       aliases: ["ui"],
-      description: "Launch the terminal UI explicitly",
+      description: "Open the terminal UI, same as running gloomberb with no command",
       help: {
+        group: CLI_COMMAND_GROUPS.app,
         usage: ["launch-ui"],
       },
       execute: () => ({ kind: "launch-ui", request: launchUiRequest }),
@@ -77,7 +95,9 @@ function createCoreCliCommands(
       name: "search",
       description: "Search tickers and company names",
       help: {
+        group: CLI_COMMAND_GROUPS.research,
         usage: ["search <query>"],
+        examples: ["search nvidia", "search \"berkshire hathaway\""],
       },
       execute: async (args, ctx) => {
         const query = args.join(" ");
@@ -90,9 +110,11 @@ function createCoreCliCommands(
     },
     {
       name: "ticker",
-      description: "Show quote, ownership, and detailed financials",
+      description: "Show quote, fundamentals, financials, and positions for a symbol",
       help: {
+        group: CLI_COMMAND_GROUPS.research,
         usage: ["ticker <symbol>"],
+        examples: ["ticker AAPL", "ticker 7203.T", "ticker AAPL --json"],
       },
       execute: async (args, ctx) => {
         const symbol = args[0];
@@ -107,48 +129,99 @@ function createCoreCliCommands(
       },
     },
     {
-      name: "fn",
-      aliases: ["function"],
-      description: "Run a pane-backed market function and print a human-readable report",
-      help: {
-        usage: ["fn <function-or-pane> [argument] [--key value]"],
-      },
-      execute: async (args, ctx) => {
-        await runPaneFunction(args, ctx);
-      },
-    },
-    {
-      name: "shot",
-      aliases: ["screenshot"],
-      description: "Render a desktop-style screenshot for a pane-backed market function",
-      help: {
-        usage: ["shot <function-or-pane> [argument] [--output path] [--width px] [--height px] [--theme id] [--scale n] [--watermark text] [--key value]"],
-      },
-      execute: async (args, ctx) => {
-        await runPaneScreenshot(args, ctx);
-      },
-    },
-    {
       name: "catalog",
       aliases: ["functions", "capabilities"],
-      description: "List searchable pane-backed market functions and screenshots",
+      description: "Find market functions to run with fn or capture with shot",
       help: {
-        usage: ["catalog [query] [--limit n] [--all]"],
+        group: CLI_COMMAND_GROUPS.functions,
+        usage: ["catalog [query] [--all] [--bot-safe]"],
+        options: [
+          { flags: "--all", description: "List every match instead of the first 25" },
+          { flags: "--bot-safe", description: "Only functions with a verified unattended report" },
+        ],
+        examples: ["catalog", "catalog options", "catalog HP"],
       },
       execute: async (args, ctx) => {
         await runPaneCatalog(args, ctx);
       },
     },
     {
+      name: "fn",
+      aliases: ["function"],
+      description: "Run a market function and print its report",
+      help: {
+        group: CLI_COMMAND_GROUPS.functions,
+        usage: ["fn <function> [argument] [options]"],
+        options: [
+          { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+          { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
+        ],
+        examples: [
+          "fn HP AAPL",
+          "fn CBR --json",
+          "fn 13F AAPL --view=ticker-holdings",
+          "fn OVME --model american --spot 100 --strike 100 --days 30 --volatility 25",
+        ],
+      },
+      execute: async (args, ctx) => {
+        requirePaneFunctionTarget(args, "fn", ctx);
+        await runPaneFunction(args, ctx);
+      },
+    },
+    {
+      name: "shot",
+      aliases: ["screenshot"],
+      description: "Save a desktop-style PNG of a market function",
+      help: {
+        group: CLI_COMMAND_GROUPS.functions,
+        usage: ["shot <function> [argument] [options]"],
+        options: [
+          { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>.png in this folder" },
+          { flags: "--width <px>", description: "Image width, 720 to 2400 (default 1280)" },
+          { flags: "--height <px>", description: "Image height, 360 to 1800 (default 720)" },
+          { flags: "--theme <id>", description: "Render with another theme, such as amber or green" },
+          { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
+          { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
+          { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+        ],
+        examples: [
+          "shot TAS AAPL --output tape.png",
+          "shot DDIS MSFT --tab history",
+          "shot HP NVDA --width 1600 --theme green",
+        ],
+      },
+      execute: async (args, ctx) => {
+        requirePaneFunctionTarget(args, "shot", ctx);
+        await runPaneScreenshot(args, ctx);
+      },
+    },
+    {
+      name: "plugins",
+      aliases: ["list"],
+      description: "List plugins installed from GitHub",
+      help: {
+        group: CLI_COMMAND_GROUPS.plugins,
+        usage: ["plugins [--check]"],
+        options: [
+          { flags: "--check", description: "Ask each plugin's remote whether an update is waiting" },
+        ],
+      },
+      execute: async (args, ctx) => {
+        await listPlugins(ctx, { check: args.includes("--check") });
+      },
+    },
+    {
       name: "install",
       description: "Install a plugin from GitHub",
       help: {
+        group: CLI_COMMAND_GROUPS.plugins,
         usage: ["install <user/repo>"],
+        examples: ["install gloom-sh/gloom-fear-greed", "install https://github.com/gloom-sh/gloom-tv"],
       },
       execute: async (args) => {
         const ref = args[0];
         if (!ref) {
-          fail("Usage: gloomberb install <github-user/repo>");
+          fail("Usage: gloomberb install <user/repo>");
         }
         // A listed plugin lands on the commit the registry reviewed, the same
         // as an install from the marketplace pane. Unlisted ones follow HEAD.
@@ -157,43 +230,32 @@ function createCoreCliCommands(
       },
     },
     {
-      name: "remove",
-      aliases: ["uninstall"],
-      description: "Remove an installed plugin",
-      help: {
-        usage: ["remove <name>"],
-      },
-      execute: async (args) => {
-        const name = args[0];
-        if (!name) {
-          fail("Usage: gloomberb remove <plugin-name>");
-        }
-        await removePlugin(name);
-      },
-    },
-    {
       name: "update",
-      description: "Update plugins",
+      description: "Update installed plugins, or one by name",
       help: {
+        group: CLI_COMMAND_GROUPS.plugins,
         usage: ["update [name]"],
+        examples: ["update", "update gloom-tv"],
       },
       execute: async (args) => {
         await updatePlugins(args[0]);
       },
     },
     {
-      name: "plugins",
-      aliases: ["list"],
-      description: "List installed plugins",
+      name: "remove",
+      aliases: ["uninstall"],
+      description: "Remove an installed plugin",
       help: {
-        usage: ["plugins [--check]"],
-        sections: [{
-          title: "Options",
-          lines: ["--check  ask each plugin's remote whether an update is waiting"],
-        }],
+        group: CLI_COMMAND_GROUPS.plugins,
+        usage: ["remove <name>"],
+        examples: ["remove gloom-tv"],
       },
       execute: async (args) => {
-        await listPlugins({ check: args.includes("--check") });
+        const name = args[0];
+        if (!name) {
+          fail("Usage: gloomberb remove <name>");
+        }
+        await removePlugin(name);
       },
     },
     apiCliCommand,
@@ -205,8 +267,40 @@ function createCoreCliCommands(
     ibkrCliCommand,
     rssCliCommand,
   ];
-  return commands;
 }
+
+function requirePaneFunctionTarget(args: string[], commandName: string, ctx: CliCommandContext): void {
+  if (!parsePaneFunctionArgs(args).target) {
+    ctx.fail(`Usage: gloomberb ${commandName} <function> [argument] [options]`);
+  }
+}
+
+function printHelpText(text: string, ctx: CliCommandContext): void {
+  if (!ctx.cliOptions.quiet) process.stdout.write(`${text}\n`);
+}
+
+function printCommandHelp(command: CliCommandDef, ctx: CliCommandContext): void {
+  if (ctx.cliOptions.format === "text") {
+    printHelpText(renderCommandHelp(command), ctx);
+    return;
+  }
+  ctx.printResult({ data: { ...describeCliCommand(command), sections: command.help?.sections ?? [] } });
+}
+
+function failUnknownCommand(token: string, commands: CliCommandDef[]): never {
+  const suggestion = suggestCliCommand(
+    normalizeCliCommandToken(token),
+    commands.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
+  );
+  fail(
+    `Unknown command "${token}".`,
+    suggestion
+      ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
+      : "Run gloomberb help to see every command.",
+  );
+}
+
+const CLI_DESCRIPTION = "Market research and portfolio tracker for the terminal";
 
 export interface DispatchCliOptions {
   externalPlugins?: LoadedExternalPlugin[];
@@ -216,7 +310,8 @@ async function createRegistry(options: DispatchCliOptions = {}): Promise<CliComm
   const config = await loadCliConfigIfAvailable();
   let registry: CliCommandRegistry | null = null;
   const coreCommands = createCoreCliCommands(
-    () => renderCliHelp(registry!, VERSION),
+    () => registry!.commands.map(({ command, source }) => ({ command, source })),
+    (token) => registry!.lookup.get(normalizeCliCommandToken(token))?.command ?? null,
     () => registry!.commands.map((entry) => entry.command),
   );
   registry = buildCliCommandRegistry({
@@ -239,7 +334,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     return { kind: "handled" };
   }
   setCliColorEnabledOverride(parsed.options.color);
-  const command = parsed.args[0];
+  const command = parsed.args[0] ?? (parsed.help ? "help" : undefined);
   if (!command) {
     return { kind: "unhandled" };
   }
@@ -250,17 +345,28 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     return { kind: "unhandled" };
   }
 
+  // Help flags never reach the command, where they would read as a symbol, a
+  // plugin name, or a note to write.
+  const helpOnly = parsed.help && resolved.command.name !== "help";
+  const help = helpOnly ? registry.lookup.get("help")! : resolved;
+  const commandArgs = helpOnly ? [resolved.command.name] : parsed.args.slice(1);
   try {
-    const result = await resolved.command.execute(
-      parsed.args.slice(1),
-      createCliCommandContext(resolved.ownerId, registry, parsed.options),
+    const result = await help.command.execute(
+      commandArgs,
+      createCliCommandContext(help.ownerId, registry, parsed.options),
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
-    printCliError(error, parsed.options);
+    printCliError(error, parsed.options, { command: resolved.command.name });
     process.exitCode = 1;
     return { kind: "handled" };
   }
+}
+
+/** Explains an unknown command, suggesting the closest one. */
+export async function failUnknownCliCommand(token: string, options: DispatchCliOptions = {}): Promise<never> {
+  const registry = await createRegistry(options);
+  return failUnknownCommand(token, registry.commands.map((entry) => entry.command));
 }
 
 export async function runCli(args: string[], options: DispatchCliOptions = {}): Promise<boolean> {

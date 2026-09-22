@@ -15,10 +15,10 @@ import { isReservedBuiltinPluginId } from "../../plugins/ownership";
 import { ALL_PLUGIN_TARGETS, type GloomPlugin, type PluginTarget } from "../../types/plugin";
 import {
   cliStyles,
-  renderSection,
-  renderStat,
+  renderStats,
   renderTable,
 } from "../../utils/cli-output";
+import type { CliCommandContext } from "../../types/plugin";
 import { fail } from "../errors";
 
 const PLUGINS_DIR = getPluginsDir();
@@ -613,37 +613,48 @@ export async function doctorPlugins(nameOrPath?: string): Promise<PluginDoctorRe
   return reports;
 }
 
-export async function listPlugins(options: { check?: boolean } = {}) {
-  const entries = installedPluginDirectories();
+export interface InstalledPluginRow {
+  name: string;
+  version: string;
+  commit: string;
+  /** Set only with --check: "up to date", the commit waiting, or "" for a linked checkout. */
+  update?: string;
+  description: string;
+  linked: boolean;
+}
 
-  if (entries.length === 0) {
-    console.log(cliStyles.muted("No plugins installed."));
-    console.log(cliStyles.muted("Install one with: gloomberb install <github-user/repo>"));
-    return;
-  }
+async function readInstalledPlugins(options: { check?: boolean }): Promise<InstalledPluginRow[]> {
+  const entries = installedPluginDirectories();
+  if (entries.length === 0) return [];
 
   // Off by default: this is a local listing, and asking every remote turns it
   // into a network call that can hang behind a credential prompt.
   const pins = options.check ? await loadRegistryPins() : new Map<string, PluginPin>();
   const heads = options.check ? await readPluginRemoteHeads(entries) : {};
 
-  const rows = entries.map((name) => {
+  return entries.map((name) => {
     const dir = join(PLUGINS_DIR, name);
-    let version = "—";
-    let description = "—";
+    let version = "";
+    let description = "";
     const pkgPath = join(dir, "package.json");
     if (existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        version = pkg.version || "—";
-        description = pkg.description || "—";
+        version = pkg.version || "";
+        description = pkg.description || "";
       } catch {
         description = "Unreadable package.json";
       }
     }
     const linked = lstatSync(dir).isSymbolicLink();
     const commit = readPluginCommit(dir);
-    const row = [name, version, linked ? "linked" : commit ? commit.slice(0, 7) : "—", description];
+    const row: InstalledPluginRow = {
+      name,
+      version,
+      commit: linked ? "linked" : commit ? commit.slice(0, 7) : "",
+      description,
+      linked,
+    };
     if (!options.check) return row;
     const remote = readPluginRemote(dir);
     // A registry-listed plugin moves between reviewed commits, so what its
@@ -651,21 +662,36 @@ export async function listPlugins(options: { check?: boolean } = {}) {
     const reviewed = remote ? pins.get(remote.toLowerCase())?.commit : undefined;
     const target = reviewed ?? heads[name];
     const behind = !linked && !!target && !!commit && !commit.toLowerCase().startsWith(target.toLowerCase());
-    row.splice(3, 0, linked ? "—" : behind ? target!.slice(0, 7) : "up to date");
-    return row;
+    return { ...row, update: linked ? "" : behind ? target!.slice(0, 7) : "up to date" };
   });
+}
 
-  console.log(renderSection("Installed Plugins"));
-  console.log(renderTable(
-    [
-      { header: "Plugin" },
-      { header: "Version" },
-      { header: "Commit" },
-      ...(options.check ? [{ header: "Update" }] : []),
-      { header: "Description" },
-    ],
-    rows,
-  ));
-  console.log("");
-  console.log(renderStat("Directory", PLUGINS_DIR));
+export async function listPlugins(ctx: CliCommandContext, options: { check?: boolean } = {}) {
+  const plugins = await readInstalledPlugins(options);
+  const columns = [
+    { key: "name", header: "Plugin" },
+    { key: "version", header: "Version" },
+    { key: "commit", header: "Commit" },
+    ...(options.check ? [{ key: "update", header: "Update" }] : []),
+    { key: "description", header: "Description" },
+  ];
+  ctx.printResult({ data: plugins, metadata: { directory: PLUGINS_DIR } }, {
+    columns,
+    text: (rows) => {
+      if (rows.length === 0) {
+        return cliStyles.muted("No plugins installed. Install one with gloomberb install <user/repo>.");
+      }
+      return [
+        renderTable(
+          columns.map(({ header }) => ({ header })),
+          rows.map((row) => columns.map(({ key }) => {
+            const value = String(row[key as keyof InstalledPluginRow] ?? "");
+            return key === "update" && value && value !== "up to date" ? cliStyles.warning(value) : value;
+          })),
+        ),
+        "",
+        renderStats([["Directory", cliStyles.muted(PLUGINS_DIR)]]),
+      ].join("\n");
+    },
+  });
 }

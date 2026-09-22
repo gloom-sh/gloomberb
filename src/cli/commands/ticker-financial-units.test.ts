@@ -7,7 +7,7 @@ const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
 const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
 async function report(financials: TickerFinancials): Promise<string> {
   return (await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials, config, toBase: async value => value }))
-    .replace(/\u001b\[[0-9;]*m/g, "").replace(/: +/g, " ");
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
 }
 
 test("ticker monetary fundamentals keep reported units across foreign, minor and unknown currencies", async () => {

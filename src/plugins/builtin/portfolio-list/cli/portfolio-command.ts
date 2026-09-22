@@ -2,7 +2,8 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
-import { cliStyles, renderStat } from "../../../../utils/cli-output";
+import { cliStyles, renderStats } from "../../../../utils/cli-output";
+import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import {
@@ -50,7 +51,7 @@ async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
       const result = createManualPortfolio(config, name, config.baseCurrency);
       await saveConfig(result.config);
       console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}".`));
-      console.log(renderStat("ID", result.portfolio.id));
+      console.log(renderStats([["ID", result.portfolio.id]]));
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to create portfolio "${name}".`);
     }
@@ -67,8 +68,10 @@ async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
       }
       await saveConfig(result.config);
       console.log(cliStyles.success(`Deleted portfolio "${result.portfolio.name}".`));
-      console.log(renderStat("Cleaned Tickers", String(result.cleanedTickerCount)));
-      console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
+      console.log(renderStats([
+        ["Cleaned Tickers", String(result.cleanedTickerCount)],
+        ["Removed Positions", String(result.removedPositionCount)],
+      ]));
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to delete portfolio "${name}".`);
     }
@@ -88,7 +91,7 @@ async function addTickerToPortfolioCommand(portfolioName: string, symbol: string
       await store.saveTicker(result.ticker);
       console.log(cliStyles.success(`Added ${result.ticker.metadata.ticker} to "${portfolio.name}".`));
       if (result.ticker.metadata.name) {
-        console.log(renderStat("Name", result.ticker.metadata.name));
+        console.log(renderStats([["Name", result.ticker.metadata.name]]));
       }
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to add ${symbol} to "${portfolioName}".`);
@@ -108,7 +111,7 @@ async function removeTickerFromPortfolioCommand(portfolioName: string, symbol: s
       if (!result.changed) ctx.fail(`${normalized} is not in "${portfolio.name}".`);
       await store.saveTicker(result.ticker);
       console.log(cliStyles.success(`Removed ${normalized} from "${portfolio.name}".`));
-      console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
+      console.log(renderStats([["Removed Positions", String(result.removedPositionCount)]]));
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to remove ${symbol} from "${portfolioName}".`);
     }
@@ -137,9 +140,11 @@ async function setPositionCommand(
       });
       await store.saveTicker(result.ticker);
       console.log(cliStyles.success(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`));
-      console.log(renderStat("Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })));
-      console.log(renderStat("Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })));
-      console.log(renderStat("Currency", currency));
+      console.log(renderStats([
+        ["Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })],
+        ["Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })],
+        ["Currency", currency],
+      ]));
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to set position for ${symbol} in "${portfolioName}".`);
     }
@@ -148,26 +153,24 @@ async function setPositionCommand(
 
 export const portfolioCliCommand: CliCommandDef = {
   name: "portfolio",
-  description: "List, inspect, create, delete, and manage manual portfolios",
+  description: "List portfolios, show holdings and P&L, and manage manual positions",
   help: {
-    usage: ["portfolio [action]"],
-    sections: [{
-      title: "Portfolio Actions",
-      columns: [
-        { header: "Action" },
-        { header: "Example" },
-      ],
-      rows: [
-        ["list", "gloomberb portfolio list"],
-        ["show", "gloomberb portfolio show Research"],
-        ["show (legacy)", "gloomberb portfolio Research"],
-        ["create", "gloomberb portfolio create Research"],
-        ["delete", "gloomberb portfolio delete Research"],
-        ["add", "gloomberb portfolio add Research ASML"],
-        ["remove", "gloomberb portfolio remove Research ASML"],
-        ["position set", "gloomberb portfolio position set Research ASML 10 800 EUR"],
-      ],
-    }],
+    group: CLI_COMMAND_GROUPS.portfolios,
+    usage: [
+      "portfolio [list]",
+      "portfolio show <name>",
+      "portfolio create <name>",
+      "portfolio delete <name>",
+      "portfolio add <portfolio> <symbol>",
+      "portfolio remove <portfolio> <symbol>",
+      "portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]",
+    ],
+    examples: [
+      "portfolio show Research",
+      "portfolio add Research ASML",
+      "portfolio position set Research ASML 10 800 EUR",
+      "portfolio show Research --csv",
+    ],
   },
   execute: async (args, ctx) => {
     const action = args[0];

@@ -13,6 +13,12 @@ export interface CliGlobalOptions {
 export interface ParsedCliArgs {
   args: string[];
   options: CliGlobalOptions;
+  /** `--help` or `-h` appeared before `--`. The flag is removed from args. */
+  help: boolean;
+}
+
+export function isCliHelpFlag(arg: string): boolean {
+  return arg === "--help" || arg === "-h";
 }
 
 export const DEFAULT_CLI_OPTIONS: CliGlobalOptions = {
@@ -36,12 +42,17 @@ function parseLimit(value: string | undefined): number {
 export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
   const options: CliGlobalOptions = { ...DEFAULT_CLI_OPTIONS };
   const args: string[] = [];
+  let help = false;
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
     if (arg === "--") {
       args.push(...rawArgs.slice(index + 1));
       break;
+    }
+    if (isCliHelpFlag(arg)) {
+      help = true;
+      continue;
     }
     if (arg === "--json") {
       options.format = "json";
@@ -91,5 +102,5 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     args.push(arg);
   }
 
-  return { args, options };
+  return { args, options, help };
 }

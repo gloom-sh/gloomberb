@@ -6,6 +6,7 @@ import {
   formatPercentRaw,
 } from "../utils/format";
 import { formatMarketPriceWithCurrency } from "../market-data/market/format";
+import { cliStyles, colorBySign } from "../utils/cli-output";
 
 export { slugifyName } from "../utils/slugify";
 import type { AppConfig } from "../types/config";
@@ -17,6 +18,54 @@ export function formatSignedCurrency(value: number, currency: string): string {
 
 export function formatSignedPercentRaw(value: number | undefined): string {
   return formatPercentRaw(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// Text-table cell formats. They leave missing values blank; CSV and JSON keep the raw numbers.
+
+/** A change already in percent: 1.23 becomes +1.23%, colored by sign. */
+export function formatChangePercentCell(value: unknown): string {
+  return isFiniteNumber(value) ? colorBySign(formatPercentRaw(value), value) : "";
+}
+
+/** A fraction as a percent: 0.0797 becomes 7.97%. */
+export function formatFractionPercentCell(value: unknown): string {
+  return isFiniteNumber(value) ? `${(value * 100).toFixed(2)}%` : "";
+}
+
+/** A count with thousands separators. */
+export function formatCountCell(value: unknown): string {
+  return isFiniteNumber(value) ? formatNumber(value, 0) : "";
+}
+
+/** A large amount in compact form: 4.96T, 128.9B. */
+export function formatCompactCell(value: unknown): string {
+  return isFiniteNumber(value) ? formatCompact(value) : "";
+}
+
+const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+
+/** A byte count in the largest unit that keeps it at or above 1: 40590994 becomes 38.7 MB. */
+export function formatBytes(bytes: number): string {
+  let value = bytes;
+  let unit = 0;
+  while (Math.abs(value) >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${BYTE_UNITS[unit]}`;
+}
+
+/** A check or health status word, colored by outcome. */
+export function formatStatusCell(value: unknown): string {
+  const status = String(value ?? "");
+  if (status === "ok" || status === "pass") return cliStyles.success(status);
+  if (status === "warn" || status === "warning") return cliStyles.warning(status);
+  if (status === "error" || status === "fail") return cliStyles.danger(status);
+  return status;
 }
 
 export function formatTimestamp(timestamp: number | undefined): string {

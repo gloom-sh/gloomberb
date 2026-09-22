@@ -1,7 +1,8 @@
-import { extname, resolve } from "path";
+import { extname, isAbsolute, relative, resolve } from "path";
 import type { CliCommandContext } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
+import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
@@ -115,20 +116,23 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         );
       }
       ctx.printResult({ data: result }, {
-        text: (data) => [
-          `Saved screenshot to ${data.outputPath}`,
-          `Result: ${data.rowCount} semantic rows; empty=${data.empty}; complete=${data.complete}; mismatch=${data.semanticMismatch}; usable=${data.usable}`,
-          ...(data.unusableReason ? [`Unusable reason: ${data.unusableReason}`] : []),
-          ...(data.unavailableSymbols.length > 0
-            ? [`Unavailable symbols: ${data.unavailableSymbols.join(", ")}`]
-            : []),
-          ...(data.render.emptyStateMarkers.length > 0
-            ? [`Empty markers: ${data.render.emptyStateMarkers.join(", ")}`]
-            : []),
-          ...(data.render.missingExpectedText.length > 0
-            ? [`Missing expected text: ${data.render.missingExpectedText.join(", ")}`]
-            : []),
-        ].join("\n"),
+        text: (data) => {
+          const issues = [
+            data.empty ? "empty" : null,
+            data.complete ? null : "incomplete",
+            data.semanticMismatch ? "does not match the data" : null,
+            data.usable ? null : "not usable",
+          ].filter((issue): issue is string => issue != null);
+          const stats: CliStatEntry[] = [
+            ["Rows", String(data.rowCount)],
+            ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],
+          ];
+          if (data.unusableReason) stats.push(["Reason", data.unusableReason]);
+          if (data.unavailableSymbols.length > 0) stats.push(["No data for", data.unavailableSymbols.join(", ")]);
+          if (data.render.emptyStateMarkers.length > 0) stats.push(["Empty states", data.render.emptyStateMarkers.join(", ")]);
+          if (data.render.missingExpectedText.length > 0) stats.push(["Missing text", data.render.missingExpectedText.join(", ")]);
+          return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
+        },
       });
     });
   });
@@ -149,11 +153,9 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;
         const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
-        if (ctx.cliOptions.format === "text") {
-          console.log(renderPaneCatalogReport(filtered, effectiveParsed));
-        } else {
-          ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) });
-        }
+        ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) }, {
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed),
+        });
       } finally {
         registry.destroy();
       }
@@ -168,6 +170,12 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     const message = error instanceof Error ? error.message : String(error);
     ctx.fail(message);
   }
+}
+
+/** A path under the working directory reads shorter relative to it. */
+function displayPath(path: string): string {
+  const relativePath = relative(process.cwd(), path);
+  return relativePath && !relativePath.startsWith("..") && !isAbsolute(relativePath) ? relativePath : path;
 }
 
 function ensurePngExtension(path: string): string {

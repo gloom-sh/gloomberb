@@ -8,8 +8,9 @@ import {
   buildCliCommandRegistry,
   createCliCommandContext,
   normalizeCliCommandToken,
-  renderCliHelp,
+  type CliCommandRegistry,
 } from "./registry";
+import { renderCliHelp, renderCommandHelp } from "./help";
 import { dispatchCli } from "./index";
 
 const tempDirs: string[] = [];
@@ -59,6 +60,10 @@ async function captureConsole<T>(fn: () => Promise<T> | T): Promise<{ result: T;
   }
 }
 
+function renderOverview(registry: CliCommandRegistry): string {
+  return renderCliHelp(registry.commands.map(({ command, source }) => ({ command, source })), "0.0.0", "Test");
+}
+
 function createSyntheticPlugin(commandName = "example"): GloomPlugin {
   return {
     id: "synthetic-cli",
@@ -97,7 +102,7 @@ describe("CLI registry", () => {
     expect(registry.lookup.get(normalizeCliCommandToken("alias-example"))?.ownerId).toBe("synthetic-cli");
   });
 
-  test("renders a plugin command's usage and help sections in the CLI help", () => {
+  test("lists a plugin command in the overview and keeps its sections for its own help", () => {
     const registry = buildCliCommandRegistry({
       coreCommands: [],
       externalPlugins: [{
@@ -107,9 +112,14 @@ describe("CLI registry", () => {
       config: null,
     });
 
-    const help = renderCliHelp(registry, "0.0.0");
+    const overview = renderOverview(registry);
+    expect(overview).toContain("Plugin commands");
+    expect(overview).toContain("Synthetic plugin command");
+    expect(overview).not.toContain("Hello from the synthetic plugin.");
 
-    expect(help).toContain("example [value]");
+    const help = renderCommandHelp(registry.lookup.get("example")!.command);
+    expect(help).toContain("gloomberb example [value]");
+    expect(help).toContain("alias-example");
     expect(help).toContain("Synthetic Help");
     expect(help).toContain("Hello from the synthetic plugin.");
   });
@@ -153,7 +163,7 @@ describe("CLI registry", () => {
     });
 
     expect(registry.lookup.get("example")).toBeUndefined();
-    expect(renderCliHelp(registry, "0.0.0")).not.toContain("Synthetic plugin command");
+    expect(renderOverview(registry)).not.toContain("Synthetic plugin command");
   });
 
   test("ignores broken external plugins while keeping other commands available", () => {

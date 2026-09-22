@@ -2,6 +2,7 @@ import { getDataDir } from "../../data/config/store";
 import type { CliCommandContext, CliCommandDef } from "../../types/plugin";
 import { sendRemoteControlRequest } from "../../remote/client";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse } from "../../remote/types";
+import { CLI_COMMAND_GROUPS } from "../help";
 
 interface RemoteArgs {
   args: string[];
@@ -12,17 +13,25 @@ interface RemoteArgs {
 
 export const remoteCliCommand: CliCommandDef = {
   name: "remote",
-  description: "Control a running app through the semantic remote API",
+  description: "Read and drive a running gloomberb app through its remote API",
   help: {
+    group: CLI_COMMAND_GROUPS.app,
     usage: [
-      "remote schema [--app tui|desktop]",
-      "remote help [--app tui|desktop]",
-      "remote get <resource> [--app tui|desktop]",
-      "remote call <operation> [json] [--dry-run] [--app tui|desktop]",
-      "remote patch <resource> <json-patch> [--expect-rev rev] [--dry-run] [--app tui|desktop]",
-      "remote batch <json> [--dry-run] [--app tui|desktop]",
-      "remote watch <resource> [--interval ms] [--limit n] [--app tui|desktop]",
+      "remote schema",
+      "remote help",
+      "remote get <resource>",
+      "remote call <operation> [json]",
+      "remote patch <resource> <json-patch> [--expect-rev <rev>]",
+      "remote batch <json>",
+      "remote watch <resource> [--interval <ms>]",
     ],
+    options: [
+      { flags: "--app <app>", description: "tui or desktop, when both are running" },
+      { flags: "--expect-rev <rev>", description: "Refuse the patch unless the resource is still at this revision" },
+      { flags: "--interval <ms>", description: "How often watch polls, at least 100 (default 1000)" },
+      { flags: "--dry-run", description: "Check a call, patch, or batch without applying it" },
+    ],
+    examples: ["remote schema", "remote get layout", "remote watch layout --limit 5"],
   },
   execute: async (rawArgs, ctx) => {
     const parsed = parseRemoteArgs(rawArgs);

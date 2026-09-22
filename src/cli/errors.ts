@@ -1,6 +1,14 @@
 import type { AppPersistence } from "../data/app-persistence";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
+import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
+
+const USAGE_PREFIX = "Usage: ";
+
+export interface CliErrorContext {
+  /** The command that failed, used to point at its help. */
+  command?: string;
+}
 
 export class CliFailure extends Error {
   readonly code: string;
@@ -58,7 +66,31 @@ export function inferCliErrorOptions(rawArgs: string[]): CliGlobalOptions {
   return options;
 }
 
-export function printCliError(error: unknown, options: CliGlobalOptions): void {
+function formatCliErrorText(error: CliErrorObject, context: CliErrorContext): string {
+  const width = cliTerminalWidth();
+  const details = error.details == null
+    ? []
+    : width == null ? String(error.details).split("\n") : wrapText(String(error.details), width);
+  if (error.message.startsWith(USAGE_PREFIX)) {
+    const lines = [
+      `${cliStyles.heading("Usage:")} ${error.message.slice(USAGE_PREFIX.length)}`,
+      ...details.map((line) => cliStyles.muted(line)),
+    ];
+    if (context.command) {
+      lines.push(cliStyles.muted(`Run gloomberb help ${context.command} for details.`));
+    }
+    return lines.join("\n");
+  }
+  return [
+    `${cliStyles.danger(cliStyles.bold("error:"))} ${error.message}`,
+    ...details.map((line) => cliStyles.muted(line)),
+  ].join("\n");
+}
+
+export function printCliError(error: unknown, options: CliGlobalOptions, context: CliErrorContext = {}): void {
   if (options.quiet && options.format === "text") return;
-  console.error(serializeCliError(cliErrorObject(error), options));
+  const errorObject = cliErrorObject(error);
+  console.error(options.format === "text"
+    ? formatCliErrorText(errorObject, context)
+    : serializeCliError(errorObject, options));
 }

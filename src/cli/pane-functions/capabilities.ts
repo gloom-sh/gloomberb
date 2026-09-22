@@ -231,11 +231,3 @@ export function capabilityPluginState(
   }
   return pluginState;
 }
-
-export function capabilityOptionSummary(capability: PaneFunctionCapability): string[] {
-  return capability.options.map((option) => {
-    const values = option.values?.map(({ value }) => value).join("|");
-    const defaultValue = option.defaultValue !== undefined ? ` default=${String(option.defaultValue)}` : "";
-    return `--${option.key}${values ? ` <${values}>` : ` <${option.type}>`}${defaultValue}`;
-  });
-}

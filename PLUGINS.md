@@ -500,7 +500,10 @@ export const myPlugin: GloomPlugin = {
       aliases: ["mp"],
       description: "Run a plugin-owned CLI command",
       help: {
-        usage: ["my-plugin run [--limit N]"],
+        group: "Markets",
+        usage: ["my-plugin run [--limit <n>]"],
+        options: [{ flags: "--limit <n>", description: "Show at most n rows" }],
+        examples: ["my-plugin run", "my-plugin run --json"],
       },
       async execute(args, ctx) {
         if (args[0] !== "run") {
@@ -531,9 +534,11 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
+`gloomberb help` lists every command under its `help.group`: one of Research, Company data, Markets, Functions, Portfolios, Plugins, or App, or a heading of your own. Commands without a group appear under Plugin commands. `gloomberb help <command>` and `gloomberb <command> --help` print the description, `usage` lines, aliases, `options`, any `sections` (`{ title, lines?, columns?, rows? }`), and `examples`. Write usage and examples without the leading `gloomberb`. The host handles `--help` and `-h` before `execute` runs, so a command never receives them as arguments.
+
 Each CLI command owns one root namespace and parses its own subactions internally. Commands should call shared service/model code or capabilities, not pane React components. Only explicit visual commands such as screenshots should route through pane rendering.
 
-For automation, prefer returning the richest useful structured model in `ctx.printResult({ data })` and use `rows`/`columns` render options to keep text, CSV, and NDJSON compact. JSON output preserves `data` and includes display-column metadata, so agents can inspect both the full model and the human/table projection without scraping terminal text.
+For automation, prefer returning the richest useful structured model in `ctx.printResult({ data })` and use `rows`/`columns` render options to keep text, CSV, and NDJSON compact. In text mode a single object prints as aligned label and value lines (`layout: "record"` forces this for rows), an empty result prints `empty` (default "No results."), and a column's `format(value, row)` styles the cell without changing CSV or JSON. Tables fit the terminal: `maxWidth` caps a column and `optional: true` lets it drop first when space runs out. JSON output preserves `data` and includes display-column metadata, so agents can inspect both the full model and the human/table projection without scraping terminal text.
 
 Available CLI context helpers:
 
@@ -546,7 +551,7 @@ Available CLI context helpers:
 | `ctx.printResult(...)` | Render text, JSON, CSV, or NDJSON through the shared CLI result contract |
 | `ctx.fail(...)` | Print an error and exit |
 | `ctx.closeAndFail(...)` | Close persistence, then print an error and exit |
-| `ctx.output.*` | CLI formatting helpers (`cliStyles`, `renderSection`, `renderTable`, `renderStat`, `colorBySign`) |
+| `ctx.output.*` | CLI formatting helpers (`cliStyles`, `renderSection`, `renderTable`, `renderStats` for an aligned label/value block, `renderStat`, `colorBySign`) |
 | `ctx.log` | Scoped debug logger for the owning plugin |
 
 CLI commands may also launch the TUI instead of exiting by returning:

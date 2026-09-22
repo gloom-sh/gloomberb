@@ -1,13 +1,31 @@
-
 type CliAlign = "left" | "right" | "center";
 
 export interface CliTableColumn {
   header: string;
   align?: CliAlign;
   width?: number;
+  /** Cap for this column when the table is fitted to a terminal. Piped output stays whole. */
+  maxWidth?: number;
+  /** Dropped, rightmost first, before other columns are shortened to fit a terminal. */
+  optional?: boolean;
 }
 
+export interface CliTableOptions {
+  /** Total width to fit the table into. Defaults to the terminal width; null keeps every cell whole. */
+  maxWidth?: number | null;
+  indent?: number;
+}
+
+export type CliStatEntry = readonly [label: string, value: string];
+
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+const ANSI_PREFIX = /^\x1b\[[0-9;]*m/;
+const ELLIPSIS = "…";
+const COLUMN_GAP = 2;
+// A shrunk text column keeps at least this many cells, or its header width when wider.
+const MIN_SHRUNK_COLUMN_WIDTH = 8;
+// Text columns first shrink right to left down to this width, then all shrink together.
+const SOFT_MIN_COLUMN_WIDTH = 20;
 let colorEnabledOverride: boolean | null = null;
 
 function colorEnabled(): boolean {
@@ -28,8 +46,16 @@ function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, "");
 }
 
-function visibleLength(text: string): number {
-  return stripAnsi(text).length;
+export function visibleLength(text: string): number {
+  // Bun counts wide glyphs as two cells and skips escape codes; other hosts only need the ASCII case.
+  return typeof Bun !== "undefined" ? Bun.stringWidth(text) : stripAnsi(text).length;
+}
+
+/** Columns of the terminal stdout writes to, or null when output is piped or redirected. */
+export function cliTerminalWidth(): number | null {
+  if (!process.stdout.isTTY) return null;
+  const columns = process.stdout.columns;
+  return typeof columns === "number" && columns > 0 ? columns : null;
 }
 
 function padDisplay(text: string, width: number, align: CliAlign = "left"): string {
@@ -45,11 +71,75 @@ function padDisplay(text: string, width: number, align: CliAlign = "left"): stri
   return `${text}${" ".repeat(padding)}`;
 }
 
+/** Cuts text to `width` cells, ending in an ellipsis, without breaking escape codes. */
+export function truncateDisplay(text: string, width: number): string {
+  if (visibleLength(text) <= width) return text;
+  if (width <= 0) return "";
+  let output = "";
+  let used = 0;
+  let styled = false;
+  for (let index = 0; index < text.length;) {
+    const escape = text[index] === "\x1b" ? ANSI_PREFIX.exec(text.slice(index)) : null;
+    if (escape) {
+      output += escape[0];
+      styled = true;
+      index += escape[0].length;
+      continue;
+    }
+    const char = String.fromCodePoint(text.codePointAt(index)!);
+    const charWidth = visibleLength(char);
+    if (used + charWidth > width - 1) break;
+    output += char;
+    used += charWidth;
+    index += char.length;
+  }
+  return `${output}${ELLIPSIS}${styled ? "\x1b[0m" : ""}`;
+}
+
+/**
+ * Word-wraps text to `width` cells. Lines that already fit are kept verbatim, so aligned
+ * columns survive; continuation lines keep the paragraph's leading indent.
+ */
+export function wrapText(text: string, width: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    if (visibleLength(paragraph) <= width) {
+      lines.push(paragraph);
+      continue;
+    }
+    const indent = /^ */.exec(paragraph)![0];
+    const words = paragraph.slice(indent.length).split(/ +/).filter(Boolean);
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let line = indent;
+    let lineWidth = indent.length;
+    let lineHasWord = false;
+    for (const word of words) {
+      const wordWidth = visibleLength(word);
+      if (lineHasWord && lineWidth + 1 + wordWidth > width) {
+        lines.push(line);
+        line = indent;
+        lineWidth = indent.length;
+        lineHasWord = false;
+      }
+      line += lineHasWord ? ` ${word}` : word;
+      lineWidth += (lineHasWord ? 1 : 0) + wordWidth;
+      lineHasWord = true;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
 export const cliStyles = {
   bold: (text: string) => applyAnsi(text, "1"),
   dim: (text: string) => applyAnsi(text, "2"),
   muted: (text: string) => applyAnsi(text, "90"),
   accent: (text: string) => applyAnsi(text, "1;36"),
+  heading: (text: string) => applyAnsi(text, "1;33"),
+  command: (text: string) => applyAnsi(text, "36"),
   success: (text: string) => applyAnsi(text, "32"),
   warning: (text: string) => applyAnsi(text, "33"),
   danger: (text: string) => applyAnsi(text, "31"),
@@ -63,28 +153,129 @@ export function colorBySign(text: string, value: number | undefined | null): str
 }
 
 export function renderSection(title: string): string {
-  return `${cliStyles.accent(title)}\n${cliStyles.muted("-".repeat(Math.max(12, title.length)))}`;
+  return cliStyles.heading(title);
 }
 
+/** One aligned label/value line. Prefer renderStats for a block so every value lines up. */
 export function renderStat(label: string, value: string, labelWidth = 16): string {
-  return `${cliStyles.dim(padDisplay(`${label}:`, labelWidth))} ${value}`;
+  return `${cliStyles.muted(padDisplay(label, Math.max(labelWidth, visibleLength(label) + 1)))} ${value}`.trimEnd();
 }
 
-export function renderTable(columns: CliTableColumn[], rows: string[][]): string {
-  const widths = columns.map((column, index) => {
+/** A block of label/value lines aligned on the longest label. Values wrap under themselves. */
+export function renderStats(entries: readonly CliStatEntry[], options: { indent?: number } = {}): string {
+  const indent = " ".repeat(options.indent ?? 0);
+  const labelWidth = Math.max(0, ...entries.map(([label]) => visibleLength(label)));
+  const valueIndent = `${indent}${" ".repeat(labelWidth + COLUMN_GAP)}`;
+  const terminalWidth = cliTerminalWidth();
+  const valueWidth = terminalWidth == null ? null : Math.max(20, terminalWidth - valueIndent.length);
+  return entries.map(([label, value]) => {
+    const valueLines = valueWidth == null ? value.split("\n") : wrapText(value, valueWidth);
+    const [first = "", ...rest] = valueLines;
+    return [
+      `${indent}${cliStyles.muted(padDisplay(label, labelWidth))}${" ".repeat(COLUMN_GAP)}${first}`.trimEnd(),
+      ...rest.map((line) => `${valueIndent}${line}`.trimEnd()),
+    ].join("\n");
+  }).join("\n");
+}
+
+export interface CliDefinitionOptions {
+  /** Total width descriptions wrap within. */
+  width: number;
+  indent?: number;
+  termStyle?: (text: string) => string;
+  /** Column width for terms; defaults to the longest term so several lists can share one. */
+  termWidth?: number;
+}
+
+const DEFINITION_GAP = 3;
+
+/** Terms on the left and their descriptions wrapped in a column on the right, as in help text. */
+export function renderDefinitions(entries: ReadonlyArray<readonly [string, string]>, options: CliDefinitionOptions): string[] {
+  const indent = options.indent ?? 2;
+  const termWidth = options.termWidth ?? Math.max(0, ...entries.map(([term]) => visibleLength(term)));
+  const descriptionIndent = indent + termWidth + DEFINITION_GAP;
+  const descriptionWidth = Math.max(24, options.width - descriptionIndent);
+  const lines: string[] = [];
+  for (const [term, description] of entries) {
+    const styledTerm = options.termStyle ? options.termStyle(term) : term;
+    const padding = " ".repeat(Math.max(1, termWidth - visibleLength(term) + DEFINITION_GAP));
+    const [first = "", ...rest] = wrapText(description, descriptionWidth);
+    lines.push(`${" ".repeat(indent)}${styledTerm}${padding}${first}`.trimEnd());
+    for (const line of rest) lines.push(`${" ".repeat(descriptionIndent)}${line}`);
+  }
+  return lines;
+}
+
+function tableWidth(widths: number[]): number {
+  return widths.reduce((sum, width) => sum + width, 0) + COLUMN_GAP * Math.max(0, widths.length - 1);
+}
+
+function fitColumnWidths(columns: CliTableColumn[], widths: number[], maxWidth: number): number[] {
+  const fitted = [...widths];
+  let overflow = tableWidth(fitted) - maxWidth;
+  if (overflow <= 0) return fitted;
+  // Fixed and right-aligned (numeric) columns keep their width.
+  const floors = columns.map((column, index) => (
+    column.width != null || column.align === "right"
+      ? fitted[index]!
+      : Math.min(fitted[index]!, Math.max(MIN_SHRUNK_COLUMN_WIDTH, visibleLength(column.header)))
+  ));
+  // The rightmost text column is usually the free text (a title, description, or message),
+  // so it gives way first and identifiers to its left stay whole.
+  for (let index = fitted.length - 1; index >= 0 && overflow > 0; index -= 1) {
+    const floor = Math.max(floors[index]!, Math.min(fitted[index]!, SOFT_MIN_COLUMN_WIDTH));
+    const cut = Math.min(overflow, Math.max(0, fitted[index]! - floor));
+    fitted[index] = fitted[index]! - cut;
+    overflow -= cut;
+  }
+  while (overflow > 0) {
+    let widest = -1;
+    for (let index = 0; index < fitted.length; index += 1) {
+      if (fitted[index]! <= floors[index]!) continue;
+      if (widest < 0 || fitted[index]! > fitted[widest]!) widest = index;
+    }
+    if (widest < 0) break;
+    fitted[widest] = fitted[widest]! - 1;
+    overflow -= 1;
+  }
+  return fitted;
+}
+
+export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
+  const indent = " ".repeat(options.indent ?? 0);
+  const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
+  const available = maxWidth == null ? null : maxWidth - indent.length;
+  let shown = columns.map((column, index) => {
     const cellWidths = rows.map((row) => visibleLength(row[index] ?? ""));
-    return column.width ?? Math.max(visibleLength(column.header), ...cellWidths);
+    const natural = column.width ?? Math.max(visibleLength(column.header), ...cellWidths);
+    const capped = available != null && column.maxWidth != null
+      ? Math.min(natural, Math.max(column.maxWidth, visibleLength(column.header)))
+      : natural;
+    return { column, index, width: capped };
   });
+  if (available != null) {
+    while (tableWidth(shown.map((entry) => entry.width)) > available) {
+      const dropped = shown.findLast((entry) => entry.column.optional);
+      if (!dropped) break;
+      shown = shown.filter((entry) => entry !== dropped);
+    }
+    const fitted = fitColumnWidths(shown.map((entry) => entry.column), shown.map((entry) => entry.width), available);
+    shown = shown.map((entry, position) => ({ ...entry, width: fitted[position]! }));
+  }
 
-  const header = columns
-    .map((column, index) => cliStyles.bold(padDisplay(column.header, widths[index]!, column.align ?? "left")))
-    .join("  ");
-  const divider = widths.map((width) => cliStyles.muted("-".repeat(width))).join("  ");
-  const body = rows.map((row) =>
-    row
-      .map((cell, index) => padDisplay(cell ?? "", widths[index]!, columns[index]?.align ?? "left"))
-      .join("  ")
-  );
+  const renderRow = (cells: string[], style?: (text: string) => string) => {
+    const rendered = shown.map(({ column, index, width }, position) => {
+      const cell = truncateDisplay(cells[index] ?? "", width);
+      // The last left-aligned column is not padded so lines carry no trailing spaces.
+      const padded = position === shown.length - 1 && (column.align ?? "left") === "left"
+        ? cell
+        : padDisplay(cell, width, column.align ?? "left");
+      return style ? style(padded) : padded;
+    });
+    return `${indent}${rendered.join(" ".repeat(COLUMN_GAP))}`.trimEnd();
+  };
 
-  return [header, divider, ...body].join("\n");
+  const header = renderRow(columns.map((column) => column.header), cliStyles.bold);
+  const divider = `${indent}${shown.map(({ width }) => cliStyles.muted("─".repeat(width))).join(" ".repeat(COLUMN_GAP))}`;
+  return [header, divider, ...rows.map((row) => renderRow(row))].join("\n");
 }

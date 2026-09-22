@@ -6,11 +6,22 @@ import {
   type ParsedPaneCatalogArgs,
 } from "./options";
 import {
-  capabilityOptionSummary,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
   type PaneFunctionCapability,
+  type PaneFunctionOptionDef,
+  type PaneFunctionReadiness,
 } from "./capabilities";
+import {
+  cliStyles,
+  cliTerminalWidth,
+  renderDefinitions,
+  renderSection,
+  renderStats,
+  renderTable,
+  wrapText,
+  type CliStatEntry,
+} from "../../utils/cli-output";
 
 export interface PaneFunctionCatalog {
   panes: ReadonlyMap<string, PaneDef>;
@@ -94,13 +105,6 @@ function sampleArgForTemplate(template: PaneTemplateDef): string {
     default:
       return "";
   }
-}
-
-function formatCatalogSettings(settings: Record<string, unknown>): string {
-  const entries = Object.entries(settings)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${String(value)}`);
-  return entries.length > 0 ? entries.join(", ") : "none";
 }
 
 async function buildTemplateCatalogEntry(
@@ -235,61 +239,111 @@ export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: str
     .map(({ entry }) => entry);
 }
 
-export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: ParsedPaneCatalogArgs): string {
-  const shown = entries.slice(0, args.limit);
+const CATALOG_TEXT_WIDTH = 100;
+const READINESS_LABELS: Record<PaneFunctionReadiness, string> = {
+  ready: "ready",
+  partial: "partial",
+  "live-dom": "rendered",
+  unsupported: "none",
+};
+
+function readinessCell(readiness: PaneFunctionReadiness): string {
+  const label = READINESS_LABELS[readiness];
+  if (readiness === "ready") return cliStyles.success(label);
+  if (readiness === "partial") return cliStyles.warning(label);
+  return cliStyles.muted(label);
+}
+
+function catalogArgument(entry: PaneCatalogEntry): string {
+  if (entry.argPlaceholder) return `<${entry.argPlaceholder}>`;
+  return entry.argKind && entry.argKind !== "none" ? `<${entry.argKind}>` : "";
+}
+
+function optionFlags(option: PaneFunctionOptionDef): string {
+  const values = option.values?.map(({ value }) => value).join("|");
+  return `--${option.key} <${values || option.type}>`;
+}
+
+function optionDescription(option: PaneFunctionOptionDef): string {
+  return option.defaultValue !== undefined && option.defaultValue !== ""
+    ? `${option.description.replace(/\.$/, "")} (default ${String(option.defaultValue)})`
+    : option.description;
+}
+
+function renderCatalogEntry(entry: PaneCatalogEntry): string {
+  const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
+  const capability = entry.capability;
+  const argument = catalogArgument(entry);
+  const invocation = `${entry.token}${argument ? ` ${argument}` : ""}`;
   const lines = [
-    "Gloomberb Function Catalog",
-    "",
-    "Use:",
-    "  gloomberb fn <shortcut-or-pane> [argument] [--key value]",
-    "  gloomberb shot <shortcut-or-pane> [argument] [--output path] [--key value]",
-    "",
-    args.query
-      ? `Matches for "${args.query}" (${shown.length}${entries.length > shown.length ? ` of ${entries.length}` : ""})`
-      : `Available pane functions (${shown.length}${entries.length > shown.length ? ` of ${entries.length}` : ""})`,
+    `${cliStyles.accent(entry.token)}  ${cliStyles.bold(entry.label)}`,
+    ...wrapText(entry.description, width),
     "",
   ];
+  const stats: CliStatEntry[] = [
+    ["Argument", argument || cliStyles.muted("none")],
+    ["Report", readinessCell(capability.reportReadiness)],
+    ["Screenshot", readinessCell(capability.screenshotReadiness)],
+    ["Bot safe", capability.botSafe ? "yes" : "no"],
+    ["Pane", entry.paneId],
+  ];
+  if (capability.aliases.length > 0) stats.push(["Aliases", capability.aliases.join(", ")]);
+  if (capability.dataRequirements.length > 0) stats.push(["Requires", capability.dataRequirements.join(", ")]);
+  if (capability.limitations.length > 0) stats.push(["Limitations", capability.limitations.join(" ")]);
+  lines.push(renderStats(stats));
 
-  if (shown.length === 0) {
-    lines.push("No matching pane functions.");
-    return lines.join("\n");
+  if (capability.options.length > 0) {
+    lines.push("", renderSection("Options"));
+    lines.push(...renderDefinitions(
+      capability.options.map((option) => [optionFlags(option), optionDescription(option)] as const),
+      { width, termStyle: cliStyles.command },
+    ));
   }
 
-  for (const entry of shown) {
-    const arg = entry.argKind === "none"
-      ? ""
-      : entry.argPlaceholder
-        ? `<${entry.argPlaceholder}>`
-        : entry.argKind
-          ? `<${entry.argKind}>`
-          : "[argument]";
-    lines.push(`${entry.token} | ${entry.label}`);
-    lines.push(`  Description: ${entry.description}`);
-    lines.push(`  Pane: ${entry.paneId} (${entry.paneName})`);
-    if (entry.templateId) lines.push(`  Template: ${entry.templateId}`);
-    if (entry.shortcut) lines.push(`  Shortcut: ${entry.shortcut}`);
-    if (entry.argKind) lines.push(`  Argument: ${entry.argKind}${entry.argPlaceholder ? ` (${entry.argPlaceholder})` : ""}`);
-    if (entry.keywords.length > 0) lines.push(`  Keywords: ${entry.keywords.join(", ")}`);
-    lines.push(`  Bot safe: ${entry.capability.botSafe ? "yes" : "no"}`);
-    lines.push(`  Output: ${entry.capability.outputKind}`);
-    lines.push(`  Readiness: report=${entry.capability.reportReadiness}, screenshot=${entry.capability.screenshotReadiness}`);
-    if (entry.capability.aliases.length > 0) lines.push(`  Aliases: ${entry.capability.aliases.join(", ")}`);
-    if (entry.capability.intents.length > 0) lines.push(`  Intents: ${entry.capability.intents.join("; ")}`);
-    const optionSummary = capabilityOptionSummary(entry.capability);
-    if (optionSummary.length > 0) lines.push(`  Options: ${optionSummary.join(", ")}`);
-    if (entry.capability.dataRequirements.length > 0) {
-      lines.push(`  Requires: ${entry.capability.dataRequirements.join(", ")}`);
-    }
-    if (entry.capability.limitations.length > 0) {
-      lines.push(`  Limitations: ${entry.capability.limitations.join(" ")}`);
-    }
-    lines.push(`  Defaults: ${formatCatalogSettings(entry.defaultSettings)}`);
-    const fnExample = `gloomberb fn ${entry.token}${arg ? ` ${arg}` : ""}`;
-    const shotExample = `gloomberb shot ${entry.token}${arg ? ` ${arg}` : ""} --output /tmp/${entry.token.toLowerCase()}.png`;
-    lines.push(`  Examples: ${fnExample} | ${shotExample}`);
-    lines.push("");
+  lines.push("", renderSection("Examples"));
+  if (capability.reportReadiness !== "unsupported") lines.push(`  gloomberb fn ${invocation}`);
+  lines.push(`  gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`);
+  return lines.join("\n");
+}
+
+export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: ParsedPaneCatalogArgs): string {
+  const exact = args.query
+    ? entries.find((entry) => entry.token.toLowerCase() === args.query.trim().toLowerCase())
+    : undefined;
+  if (exact) return renderCatalogEntry(exact);
+  if (args.query && entries.length === 1) return renderCatalogEntry(entries[0]!);
+
+  if (entries.length === 0) {
+    return cliStyles.muted(args.query
+      ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
+      : "No functions are available.");
   }
 
-  lines.push("Use --require-bot-safe to reject unverified functions and undeclared options. Generic UI screenshots may also accept --tab, --activeTabId, and --state options.");
-  return lines.join("\n").trimEnd();
+  const shown = entries.slice(0, args.limit);
+  const count = shown.length < entries.length ? `${shown.length} of ${entries.length}` : String(entries.length);
+  const title = args.query ? `Matches for "${args.query}"` : "Functions";
+  const lines = [
+    `${renderSection(title)} ${cliStyles.muted(`(${count})`)}`,
+    renderTable(
+      [
+        { header: "Function" },
+        { header: "Name", maxWidth: 20 },
+        { header: "Argument", maxWidth: 14 },
+        { header: "Report" },
+        { header: "Description" },
+      ],
+      shown.map((entry) => [
+        cliStyles.command(entry.token),
+        entry.label,
+        catalogArgument(entry),
+        readinessCell(entry.capability.reportReadiness),
+        entry.description,
+      ]),
+    ),
+    "",
+    cliStyles.muted(shown.length < entries.length
+      ? `gloomberb catalog <function> shows its options and examples. Add --all to list all ${entries.length}.`
+      : "gloomberb catalog <function> shows its options and examples."),
+  ];
+  return lines.join("\n");
 }

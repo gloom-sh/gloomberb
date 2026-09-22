@@ -9,7 +9,7 @@ import {
   cliStyles,
   colorBySign,
   renderSection,
-  renderStat,
+  renderStats,
   renderTable,
 } from "../../../../utils/cli-output";
 import { formatCompact } from "../../../../utils/format";
@@ -226,7 +226,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    console.log(renderStat(brokerPnlSymbols.size ? "Total P&L (incl. broker snapshots)" : "Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, baseCurrency), totalPnl)));
+    console.log(renderStats([[brokerPnlSymbols.size ? "Total P&L (incl. broker snapshots)" : "Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, baseCurrency), totalPnl)]]));
     if (unavailableCost.size > 0) console.log(cliStyles.muted(`Cost unavailable for ${[...unavailableCost].join(", ")}.`));
     if (unavailablePnl.size > 0) console.log(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}.`));
   } else {

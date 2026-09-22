@@ -26,10 +26,17 @@ describe("parseCliGlobalArgs", () => {
     });
   });
 
+  test("takes help flags out of the arguments so a command never reads them as input", () => {
+    const parsed = parseCliGlobalArgs(["notes", "set", "-h", "AAPL", "--help"]);
+    expect(parsed.args).toEqual(["notes", "set", "AAPL"]);
+    expect(parsed.help).toBe(true);
+  });
+
   test("leaves arguments after -- untouched", () => {
-    const parsed = parseCliGlobalArgs(["ai", "ask", "--", "--json"]);
-    expect(parsed.args).toEqual(["ai", "ask", "--json"]);
+    const parsed = parseCliGlobalArgs(["ai", "ask", "--", "--json", "--help"]);
+    expect(parsed.args).toEqual(["ai", "ask", "--json", "--help"]);
     expect(parsed.options.format).toBe("text");
+    expect(parsed.help).toBe(false);
   });
 
   test("rejects invalid limits", () => {

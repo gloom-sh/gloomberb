@@ -15,8 +15,20 @@ import { formatCompact } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { createBaseConverter } from "../base-converter";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
+import { CLI_COMMAND_GROUPS } from "../help";
+import {
+  formatChangePercentCell,
+  formatCountCell,
+  formatFractionPercentCell,
+} from "../helpers";
+import { cliStyles } from "../../utils/cli-output";
+import { renderFundamentalsReport } from "./ticker";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
+const EXCHANGE_OPTION = {
+  flags: "--exchange <code>",
+  description: "Listing exchange, for a symbol that trades in several places",
+};
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & { error: string | null };
@@ -46,8 +58,15 @@ function quoteColumns() {
   return [
     { key: "symbol", header: "Symbol" },
     { key: "name", header: "Name" },
-    { key: "price", header: "Last", align: "right" as const },
-    { key: "changePercent", header: "Chg%", align: "right" as const },
+    {
+      key: "price",
+      header: "Last",
+      align: "right" as const,
+      format: (value: unknown, row: ReturnType<typeof quoteRows>[number]) => (
+        row.error && !value ? cliStyles.danger("unavailable") : String(value ?? "")
+      ),
+    },
+    { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
     { key: "currency", header: "Cur" },
     { key: "source", header: "Source" },
     { key: "updatedAt", header: "Updated" },
@@ -200,11 +219,11 @@ function earningsRows(events: EarningsEvent[]) {
   }));
 }
 
-async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
+async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: string) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbols = normalizeSymbols(args);
-  if (symbols.length === 0) ctx.fail("Usage: gloomberb quote <symbol...>");
+  if (symbols.length === 0) ctx.fail(`Usage: gloomberb ${commandName} <symbol...>`);
 
   await withMarketData(ctx, async (market) => {
     const results = await market.dataProvider.getQuotesBatch(
@@ -224,7 +243,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const range = parseRange(takeOption(args, "--range"));
   const requestedExchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range 1Y]", ctx);
+  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range <range>]", ctx);
   await withMarketData(ctx, async (market) => {
     const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
     const exchange = requestedExchange || localTicker?.metadata.exchange || "";
@@ -237,16 +256,19 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "high", header: "High", align: "right" },
         { key: "low", header: "Low", align: "right" },
         { key: "close", header: "Close", align: "right" },
-        { key: "volume", header: "Volume", align: "right" },
+        { key: "volume", header: "Volume", align: "right", format: formatCountCell },
       ],
     });
   });
 }
 
-async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], fundamentalsOnly = false) {
+type FinancialsView = "statements" | "fundamentals" | "valuation";
+
+async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], view: FinancialsView) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), fundamentalsOnly ? "Usage: gloomberb fundamentals <symbol>" : "Usage: gloomberb financials <symbol>", ctx);
+  const commandName = view === "statements" ? "financials" : view;
+  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
   await withMarketData(ctx, async (market) => {
     const financials = await market.dataProvider.getTickerFinancials(symbol, exchange, {
       cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
@@ -257,8 +279,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       providerId: financials.quote?.providerId ?? null,
       ...financials,
     };
-    if (fundamentalsOnly) {
-      ctx.printResult({ data });
+    if (view !== "statements") {
+      ctx.printResult({ data }, { text: (financialsData) => renderFundamentalsReport(financialsData, view) });
       return;
     }
     ctx.printResult({
@@ -301,10 +323,10 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       rows: newsRows,
       columns: [
         { key: "publishedAt", header: "Published" },
-        { key: "source", header: "Source" },
+        { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },
-        { key: "tickers", header: "Tickers" },
-        { key: "url", header: "URL" },
+        { key: "tickers", header: "Tickers", maxWidth: 16 },
+        { key: "url", header: "URL", optional: true },
       ],
     });
   });
@@ -322,17 +344,22 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       columns: [
         { key: "filingDate", header: "Date" },
         { key: "form", header: "Form" },
-        { key: "companyName", header: "Company" },
-        { key: "url", header: "URL" },
+        { key: "companyName", header: "Company", maxWidth: 24 },
+        { key: "url", header: "URL", optional: true },
       ],
     });
   });
 }
 
-async function runHolders(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], ownerTypes?: Set<string>) {
+async function runHolders(
+  rawArgs: string[],
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+  commandName: string,
+  ownerTypes?: Set<string>,
+) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb holders <symbol>", ctx);
+  const symbol = requireArg(args[0]?.toUpperCase(), `Usage: gloomberb ${commandName} <symbol>`, ctx);
   await withMarketData(ctx, async (market) => {
     const data = await market.dataProvider.getHolders(symbol, exchange);
     ctx.printResult({ data, metadata: { symbol, summary: data.summary } }, {
@@ -341,10 +368,11 @@ async function runHolders(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "type", header: "Type" },
         { key: "name", header: "Holder" },
         { key: "reportDate", header: "Date" },
-        { key: "shares", header: "Shares", align: "right" },
+        { key: "shares", header: "Shares", align: "right", format: formatCountCell },
         { key: "value", header: "Value", align: "right", value: (row) => row.value == null ? "" : formatCompact(Number(row.value)) },
-        { key: "percentHeld", header: "% Held", align: "right" },
+        { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
       ],
+      empty: `No holders reported for ${symbol}.`,
     });
   });
 }
@@ -397,7 +425,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const expiration = takeOption(args, "--expiration");
   const exchange = takeOption(args, "--exchange") ?? "";
-  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol>", ctx);
+  const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
   await withMarketData(ctx, async (market) => {
     const chain = await market.dataProvider.getOptionsChain(
       symbol,
@@ -414,8 +442,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "last", header: "Last", align: "right" },
         { key: "bid", header: "Bid", align: "right" },
         { key: "ask", header: "Ask", align: "right" },
-        { key: "volume", header: "Vol", align: "right" },
-        { key: "openInterest", header: "OI", align: "right" },
+        { key: "volume", header: "Vol", align: "right", format: formatCountCell },
+        { key: "openInterest", header: "OI", align: "right", format: formatCountCell },
       ],
     });
   });
@@ -428,6 +456,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const rate = await createBaseConverter(market.dataProvider, baseCurrency)(1, currency);
     if (!Number.isFinite(rate) || rate <= 0) ctx.fail(`Exchange rate unavailable for ${currency}/${baseCurrency}`);
     ctx.printResult({ data: [{ currency, baseCurrency, rate }] }, {
+      layout: "record",
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
@@ -457,28 +486,216 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
 }
 
 export const marketDataCliCommands: CliCommandDef[] = [
-  { name: "quote", description: "Fetch one or more quotes", help: { usage: ["quote <symbol...>"] }, execute: runQuote },
-  { name: "provider-search", description: "Search provider instruments", help: { usage: ["provider-search <query>"] }, execute: async (args, ctx) => {
-    const query = args.join(" ");
-    if (!query) ctx.fail("Usage: gloomberb provider-search <query>");
-    await withMarketData(ctx, async (market) => {
-      const results = await market.dataProvider.search(query);
-      ctx.printResult({ data: results.slice(0, ctx.cliOptions.limit ?? results.length) });
-    });
-  } },
-  { name: "history", description: "Fetch historical prices", help: { usage: ["history <symbol> [--range 1Y]"] }, execute: runHistory },
-  { name: "financials", description: "Fetch annual financial statements", help: { usage: ["financials <symbol>"] }, execute: (args, ctx) => runFinancials(args, ctx, false) },
-  { name: "fundamentals", description: "Fetch fundamentals and profile data", help: { usage: ["fundamentals <symbol>"] }, execute: (args, ctx) => runFinancials(args, ctx, true) },
-  { name: "news", description: "Fetch market or ticker news", help: { usage: ["news [symbol] [--feed latest|top|ticker]"] }, execute: runNews },
-  { name: "filings", description: "Fetch SEC filings", help: { usage: ["filings <symbol>"] }, execute: runFilings },
-  { name: "holders", description: "Fetch holder data", help: { usage: ["holders <symbol>"] }, execute: (args, ctx) => runHolders(args, ctx) },
-  { name: "insider", description: "Fetch insider holder rows", help: { usage: ["insider <symbol>"] }, execute: (args, ctx) => runHolders(args, ctx, new Set(["insider", "direct"])) },
-  { name: "13f", description: "Fetch institutional and fund holder rows", help: { usage: ["13f <symbol>"] }, execute: (args, ctx) => runHolders(args, ctx, new Set(["institution", "fund"])) },
-  { name: "analyst", description: "Fetch analyst research and ratings", help: { usage: ["analyst <symbol>"] }, execute: runAnalyst },
-  { name: "events", description: "Fetch dividends, splits, and earnings events", help: { usage: ["events <symbol>"] }, execute: runEvents },
-  { name: "valuation", description: "Fetch valuation-related fundamentals", help: { usage: ["valuation <symbol>"] }, execute: (args, ctx) => runFinancials(args, ctx, true) },
-  { name: "options", description: "Fetch options chain rows", help: { usage: ["options <symbol> [--expiration unix]"] }, execute: runOptions },
-  { name: "compare", description: "Compare quotes for several symbols", help: { usage: ["compare <symbol...>"] }, execute: runQuote },
-  { name: "fx", description: "Fetch exchange rate into the configured base currency", help: { usage: ["fx <currency>"] }, execute: runFx },
-  { name: "earnings", description: "Fetch earnings calendar entries for symbols", help: { usage: ["earnings <symbol...>"] }, execute: runEarnings },
+  {
+    name: "quote",
+    description: "Show the latest price for one or more symbols",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["quote <symbol...>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["quote AAPL MSFT NVDA", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
+    },
+    execute: (args, ctx) => runQuote(args, ctx, "quote"),
+  },
+  {
+    name: "compare",
+    description: "Compare quotes for several symbols side by side",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["compare <symbol...>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["compare KO PEP", "compare SPY QQQ IWM --csv"],
+    },
+    execute: (args, ctx) => runQuote(args, ctx, "compare"),
+  },
+  {
+    name: "history",
+    description: "Fetch open, high, low, close, and volume over a range",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["history <symbol> [--range <range>]"],
+      options: [
+        { flags: "--range <range>", description: `${TIME_RANGES.join(", ")} (default 1Y)` },
+        EXCHANGE_OPTION,
+      ],
+      examples: ["history AAPL", "history AAPL --range 5Y --csv > aapl.csv"],
+    },
+    execute: runHistory,
+  },
+  {
+    name: "options",
+    description: "Fetch an options chain",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["options <symbol> [--expiration <unix>]"],
+      options: [
+        { flags: "--expiration <unix>", description: "Expiration as Unix seconds; defaults to the nearest one" },
+        EXCHANGE_OPTION,
+      ],
+      examples: ["options AAPL", "options AAPL --json"],
+    },
+    execute: runOptions,
+  },
+  {
+    name: "provider-search",
+    description: "Search instruments at the connected data providers",
+    help: {
+      group: CLI_COMMAND_GROUPS.research,
+      usage: ["provider-search <query>"],
+      examples: ["provider-search toyota"],
+    },
+    execute: async (args, ctx) => {
+      const query = args.join(" ");
+      if (!query) ctx.fail("Usage: gloomberb provider-search <query>");
+      await withMarketData(ctx, async (market) => {
+        const results = await market.dataProvider.search(query);
+        ctx.printResult({ data: results.slice(0, ctx.cliOptions.limit ?? results.length) }, {
+          columns: [
+            { key: "symbol", header: "Symbol" },
+            { key: "name", header: "Name" },
+            { key: "exchange", header: "Exchange" },
+            { key: "type", header: "Type" },
+            { key: "currency", header: "Currency" },
+            { key: "providerId", header: "Provider" },
+          ],
+          empty: `No instruments match "${query}".`,
+        });
+      });
+    },
+  },
+  {
+    name: "financials",
+    description: "Fetch annual revenue, profit, and EPS",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["financials <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["financials MSFT", "financials MSFT --json"],
+    },
+    execute: (args, ctx) => runFinancials(args, ctx, "statements"),
+  },
+  {
+    name: "fundamentals",
+    description: "Fetch fundamentals and the company profile",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["fundamentals <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["fundamentals NVDA"],
+    },
+    execute: (args, ctx) => runFinancials(args, ctx, "fundamentals"),
+  },
+  {
+    name: "valuation",
+    description: "Fetch market cap, enterprise value, and valuation multiples",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["valuation <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["valuation NVDA"],
+    },
+    execute: (args, ctx) => runFinancials(args, ctx, "valuation"),
+  },
+  {
+    name: "earnings",
+    description: "Show upcoming and recent earnings dates",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["earnings <symbol...>"],
+      examples: ["earnings AAPL MSFT GOOGL"],
+    },
+    execute: runEarnings,
+  },
+  {
+    name: "events",
+    description: "Fetch dividends, splits, and earnings events",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["events <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["events KO"],
+    },
+    execute: runEvents,
+  },
+  {
+    name: "analyst",
+    description: "Fetch analyst rating changes and price targets",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["analyst <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["analyst TSLA"],
+    },
+    execute: runAnalyst,
+  },
+  {
+    name: "holders",
+    description: "Fetch institutional, fund, and insider holders",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["holders <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["holders AAPL"],
+    },
+    execute: (args, ctx) => runHolders(args, ctx, "holders"),
+  },
+  {
+    name: "insider",
+    description: "Fetch insider holders",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["insider <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["insider NVDA"],
+    },
+    execute: (args, ctx) => runHolders(args, ctx, "insider", new Set(["insider", "direct"])),
+  },
+  {
+    name: "13f",
+    description: "Fetch institutional and fund holders",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["13f <symbol>"],
+      options: [EXCHANGE_OPTION],
+      examples: ["13f AAPL"],
+    },
+    execute: (args, ctx) => runHolders(args, ctx, "13f", new Set(["institution", "fund"])),
+  },
+  {
+    name: "filings",
+    description: "Fetch recent SEC filings",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["filings <symbol> [--count <n>]"],
+      options: [
+        { flags: "--count <n>", description: "Number of filings (default 15)" },
+        EXCHANGE_OPTION,
+      ],
+      examples: ["filings AAPL", "filings AAPL --count 40 --json"],
+    },
+    execute: runFilings,
+  },
+  {
+    name: "news",
+    description: "Fetch market headlines, or news for one symbol",
+    help: {
+      group: CLI_COMMAND_GROUPS.companyData,
+      usage: ["news [symbol] [--feed <feed>]"],
+      options: [
+        { flags: "--feed <feed>", description: "latest, top, or breaking for market news (default latest)" },
+      ],
+      examples: ["news", "news TSLA", "news --feed top --limit 10"],
+    },
+    execute: runNews,
+  },
+  {
+    name: "fx",
+    description: "Convert a currency into your base currency",
+    help: {
+      group: CLI_COMMAND_GROUPS.markets,
+      usage: ["fx <currency>"],
+      examples: ["fx EUR", "fx JPY --json"],
+    },
+    execute: runFx,
+  },
 ];

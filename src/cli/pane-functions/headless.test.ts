@@ -76,7 +76,7 @@ describe("headless pane printer", () => {
     const result: HeadlessRowsResult = { rows: [{ name: "CPI", value: 2.45 }] };
 
     const text = renderHeadlessPaneText(definition, result, args, "Statistics");
-    expect(text).toContain("NAME");
+    expect(text).toContain("Name");
     expect(text).toContain("2.5%");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,
@@ -285,7 +285,7 @@ test("headless text preserves applicable coverage notices once before the export
     { rows: [{ value: 96_571_000_000 }], metadata: { notices: ["Historical versions unavailable.", "Historical versions unavailable.", null, ""] } },
     { symbols: ["MSFT"], options: {}, argument: "MSFT", rawArgument: "MSFT" }, "Financial Statements");
   expect(text.match(/Historical versions unavailable\./g)).toHaveLength(1);
-  expect(text.indexOf("Historical versions unavailable.")).toBeLessThan(text.indexOf("VALUE"));
+  expect(text.indexOf("Historical versions unavailable.")).toBeLessThan(text.indexOf("Value"));
   expect(text).toContain("96571000000");
 });
 
@@ -300,7 +300,7 @@ test("series text distinguishes explicit percent, basis-point and index units wi
     { id: "empty", label: "Missing value", unit: "%", points: [] },
   ] };
   const text = renderHeadlessPaneText(definition, result, args, "Research");
-  expect(text).toContain("UNIT");
+  expect(text).toContain("Unit");
   expect(text.split("\n").find(line => line.includes("Credit percent"))).toMatch(/2\.7\s+%/);
   expect(text.split("\n").find(line => line.includes("Credit basis points"))).toMatch(/270\s+bp/);
   expect(text.split("\n").find(line => line.includes("Indexed value"))).toMatch(/102\.5\s+index/);
@@ -310,5 +310,5 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   const csv = serializeCliResult({ data: serializeHeadlessPaneResult(definition, result) }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
   expect(csv).toContain('""unit"":""%"",""points"":[{""date"":""2026-09-10"",""value"":2.7}]');
   expect(csv).toContain('""unit"":""bp"",""points"":[{""date"":""2026-09-10"",""value"":270}]');
-  expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("UNIT");
+  expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("Unit");
 });

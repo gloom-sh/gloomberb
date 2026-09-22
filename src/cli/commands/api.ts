@@ -1,6 +1,8 @@
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { parseJsonPayload, requireArg, takeOption } from "./command-utils";
+import { CLI_COMMAND_GROUPS } from "../help";
+import { renderSection, renderStats, renderTable } from "../../utils/cli-output";
 
 function splitOperationTarget(target: string): { capabilityId: string; operationId: string } {
   const separator = target.lastIndexOf(".");
@@ -23,14 +25,20 @@ function parseOperationTarget(target: string, ctx: Parameters<CliCommandDef["exe
 
 export const apiCliCommand: CliCommandDef = {
   name: "api",
-  description: "List, inspect, invoke, or subscribe to plugin capabilities",
+  description: "List, inspect, call, or subscribe to plugin capabilities",
   help: {
+    group: CLI_COMMAND_GROUPS.app,
     usage: [
-      "api list [--kind kind]",
+      "api list [--kind <kind>]",
       "api get <capability-id>",
       "api invoke <capability.operation> [json-payload]",
-      "api subscribe <capability.operation> [json-payload] [--limit n]",
+      "api subscribe <capability.operation> [json-payload] [--limit <n>]",
     ],
+    options: [
+      { flags: "--kind <kind>", description: "With list, only capabilities of one kind" },
+      { flags: "--limit <n>", description: "With subscribe, stop after n events (default 10)" },
+    ],
+    examples: ["api list", "api get application.connection-health", "api invoke application.connection-health.snapshot"],
   },
   execute: async (rawArgs, ctx) => {
     const action = rawArgs[0] ?? "list";
@@ -63,8 +71,23 @@ export const apiCliCommand: CliCommandDef = {
         const manifest = services.services.pluginRegistry.capabilities
           .manifests()
           .find((entry) => entry.id === capabilityId);
-        if (!manifest) ctx.fail(`Capability "${capabilityId}" is not available.`);
-        ctx.printResult({ data: manifest });
+        if (!manifest) ctx.fail(`Capability "${capabilityId}" is not available.`, "Run gloomberb api list to see them.");
+        ctx.printResult({ data: manifest }, {
+          text: (data) => [
+            renderStats([
+              ["Capability", data!.id],
+              ["Name", data!.name],
+              ["Kind", data!.kind],
+              ...(data!.sourceId ? [["Source", data!.sourceId] as const] : []),
+            ]),
+            "",
+            renderSection("Operations"),
+            renderTable(
+              [{ header: "Operation" }, { header: "Kind" }, { header: "Summary" }],
+              data!.operations.map((operation) => [operation.id, operation.kind, operation.summary ?? ""]),
+            ),
+          ].join("\n"),
+        });
         return;
       }
 

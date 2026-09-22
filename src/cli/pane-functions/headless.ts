@@ -16,7 +16,8 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
-import { renderSection, renderTable } from "../../utils/cli-output";
+import { cliStyles, renderSection, renderStats, renderTable } from "../../utils/cli-output";
+import { humanizeCliKey } from "../result";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 
@@ -290,7 +291,7 @@ function renderRows(
   const columns = columnsFor(rows, ownColumns, fallbackColumns);
   return renderTable(
     columns.map((column) => ({
-      header: column.header.toUpperCase(),
+      header: humanizeCliKey(column.header),
       align: column.align,
       width: column.width,
     })),
@@ -303,10 +304,7 @@ function renderRows(
 
 function renderEntries(entries: HeadlessPaneEntry[]): string {
   if (entries.length === 0) return "No data.";
-  return renderTable(
-    [{ header: "METRIC" }, { header: "VALUE" }],
-    entries.map((entry) => [entry.label, entry.formatted ?? displayValue(entry.value)]),
-  );
+  return renderStats(entries.map((entry) => [entry.label, entry.formatted ?? displayValue(entry.value)]));
 }
 
 function renderBundle(
@@ -363,7 +361,7 @@ export function renderHeadlessPaneText(
   args: HeadlessPaneLoadArgs,
   fallbackTitle: string,
 ): string {
-  const lines = [reportTitle(definition, args, fallbackTitle), ""];
+  const lines = [cliStyles.bold(reportTitle(definition, args, fallbackTitle)), ""];
   const notices = result.metadata?.notices;
   if (Array.isArray(notices)) {
     const textNotices = [...new Set(notices.filter((notice): notice is string => typeof notice === "string" && notice.trim().length > 0))];
@@ -391,7 +389,7 @@ export function renderHeadlessPaneText(
       return _exhaustive;
     }
   }
-  if (result.errors?.length) lines.push("", `Errors: ${result.errors.join(" ")}`);
+  if (result.errors?.length) lines.push("", cliStyles.warning(`Errors: ${result.errors.join(" ")}`));
   return lines.join("\n").trimEnd();
 }
 

@@ -11,9 +11,12 @@ import {
 import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import {
   cliStyles,
+  cliTerminalWidth,
   colorBySign,
   renderSection,
-  renderStat,
+  renderStats,
+  wrapText,
+  type CliStatEntry,
 } from "../../utils/cli-output";
 import { exchangeShortName, marketStateLabel } from "../../market-data/market/status";
 import type { AppConfig } from "../../types/config";
@@ -30,6 +33,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import {
   formatBidAsk,
+  formatFractionPercentCell,
   formatNullableCompact,
   formatPortfolioNames,
   formatSignedCurrency,
@@ -42,6 +46,9 @@ import { isUsEquityTicker } from "../../utils/sec";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
+// Prose such as a company description stays readable on wide terminals.
+const MAX_PROSE_WIDTH = 100;
+const METADATA_SEPARATOR = "  ·  ";
 
 interface TickerCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -54,9 +61,11 @@ function appendMetricSection(lines: string[], title: string, metrics: Array<[str
   if (populated.length === 0) return;
   if (lines.length > 0) lines.push("");
   lines.push(renderSection(title));
-  for (const [label, value] of populated) {
-    lines.push(renderStat(label, value));
-  }
+  lines.push(renderStats(populated));
+}
+
+function wrapProse(text: string): string {
+  return wrapText(text, Math.min(cliTerminalWidth() ?? MAX_PROSE_WIDTH, MAX_PROSE_WIDTH)).join("\n");
 }
 
 function buildStatementMetrics(statement: FinancialStatement, currency?: string): Array<[string, string]> {
@@ -86,7 +95,7 @@ function appendTextSection(lines: string[], title: string, content: string | und
   if (!text) return;
   lines.push("");
   lines.push(renderSection(title));
-  lines.push(text);
+  lines.push(wrapProse(text));
 }
 
 function normalizeTimestamp(value: Date | string | number | undefined): number | null {
@@ -133,16 +142,16 @@ function appendFeedSection(
     lines.push(cliStyles.bold(entry.title.trim()));
     const meta = (entry.meta ?? []).filter((value) => value.trim().length > 0);
     if (meta.length > 0) {
-      lines.push(cliStyles.muted(meta.join("  |  ")));
+      lines.push(cliStyles.muted(meta.join(METADATA_SEPARATOR)));
     }
     if (entry.body?.trim()) {
-      lines.push(entry.body.trim());
+      lines.push(wrapProse(entry.body.trim()));
     }
     if (entry.link?.trim()) {
       lines.push(cliStyles.muted(entry.link.trim()));
     }
     if (index < populated.length - 1) {
-      lines.push(cliStyles.muted("-".repeat(24)));
+      lines.push("");
     }
   }
 }
@@ -207,22 +216,89 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
 
       lines.push(cliStyles.bold(`${portfolioName} (${position.broker})`));
       if (!positionCurrency) lines.push(cliStyles.muted("Currency unavailable."));
-      lines.push(renderStat(
-        "Position",
-        `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : multiplier > 1 ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"}`,
-      ));
-      lines.push(renderStat("Cost Basis", formatCurrency(costBasisBase, config.baseCurrency)));
-      lines.push(renderStat("Market Value", formatCurrency(marketValueBase, config.baseCurrency)));
-      lines.push(renderStat(selectedPnl.basis === "broker-snapshot" ? "Broker P&L" : "P&L",
-        pnl === null ? "—" : colorBySign(formatSignedCurrency(pnl, config.baseCurrency), pnl)));
+      const stats: CliStatEntry[] = [
+        [
+          "Position",
+          `${formatMarketQuantity(metrics.totalShares, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency })} ${metrics.priceBasis === "percent-of-par" ? "@" : `${tickerFile.metadata.assetCategory === "BOND" ? "units" : multiplier > 1 ? "contracts" : "shares"} @`} ${positionCurrency ? formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"}`,
+        ],
+        ["Cost Basis", formatCurrency(costBasisBase, config.baseCurrency)],
+        ["Market Value", formatCurrency(marketValueBase, config.baseCurrency)],
+        [
+          selectedPnl.basis === "broker-snapshot" ? "Broker P&L" : "P&L",
+          pnl === null ? "—" : colorBySign(formatSignedCurrency(pnl, config.baseCurrency), pnl),
+        ],
+      ];
       if (position.markPrice != null) {
-        lines.push(renderStat("Broker Mark", positionCurrency ? formatMarketPriceWithCurrency(position.markPrice, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"));
+        stats.push(["Broker Mark", positionCurrency ? formatMarketPriceWithCurrency(position.markPrice, positionCurrency, { assetCategory: tickerFile.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }) : "—"]);
       }
+      lines.push(renderStats(stats));
       if (index < positions.length - 1) {
-        lines.push(cliStyles.muted("-".repeat(24)));
+        lines.push("");
       }
     }
   }
+}
+
+function fundamentalsMetrics(
+  fundamentals: TickerFinancials["fundamentals"],
+  marketCapText: string,
+  priceReturns: { return1Y?: number | null; return3Y?: number | null },
+): Array<[string, string]> {
+  return [
+    ["Market Cap", marketCapText],
+    ["Enterprise Value", formatNullableCompact(fundamentals?.enterpriseValue)],
+    ["P/E (TTM)", formatPriceEarnings(fundamentals?.trailingPE, 2)],
+    ["Forward P/E", formatPriceEarnings(fundamentals?.forwardPE, 2)],
+    ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
+    ["EPS", formatReportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true)],
+    [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatFractionPercentCell(fundamentals.dividendYield) : "—"],
+    ["Revenue", formatReportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency)],
+    ["Net Income", formatReportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency)],
+    ["Operating Cash Flow", formatReportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency)],
+    ["Free Cash Flow", formatReportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency)],
+    // Levels, not changes, so they carry no sign.
+    ["Operating Margin", fundamentals?.operatingMargin != null ? formatFractionPercentCell(fundamentals.operatingMargin) : "—"],
+    ["Profit Margin", fundamentals?.profitMargin != null ? formatFractionPercentCell(fundamentals.profitMargin) : "—"],
+    ["Revenue Growth", fundamentals?.revenueGrowth != null ? colorBySign(formatPercent(fundamentals.revenueGrowth), fundamentals.revenueGrowth) : "—"],
+    ["Last Quarter Growth", fundamentals?.lastQuarterGrowth != null ? colorBySign(formatPercent(fundamentals.lastQuarterGrowth), fundamentals.lastQuarterGrowth) : "—"],
+    ["1Y Return", priceReturns.return1Y != null ? colorBySign(formatPercent(priceReturns.return1Y), priceReturns.return1Y) : "—"],
+    ["3Y Return", priceReturns.return3Y != null ? colorBySign(formatPercent(priceReturns.return3Y), priceReturns.return3Y) : "—"],
+    ["Shares Outstanding", formatNullableCompact(fundamentals?.sharesOutstanding)],
+  ];
+}
+
+const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS"]);
+
+/** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
+export function renderFundamentalsReport(
+  financials: TickerFinancials & { symbol: string },
+  view: "fundamentals" | "valuation",
+): string {
+  const quote = financials.quote;
+  const fundamentals = financials.fundamentals;
+  const profile = financials.profile;
+  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  const marketCapText = capitalization
+    ? `${formatCompact(capitalization.value)} ${capitalization.currency}`
+    : "—";
+  const metrics = fundamentalsMetrics(fundamentals, marketCapText, computeTickerPriceReturns(financials));
+  const symbol = quote?.symbol ?? financials.symbol;
+  const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
+  const lines = [`${cliStyles.accent(symbol)}${name}`];
+  const profileParts = [
+    profile?.sector ? `Sector ${profile.sector}` : undefined,
+    profile?.industry ? `Industry ${profile.industry}` : undefined,
+  ].filter((part): part is string => !!part);
+  if (profileParts.length > 0) lines.push(cliStyles.muted(profileParts.join(METADATA_SEPARATOR)));
+
+  const shown = view === "valuation"
+    ? metrics.filter(([label]) => VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield"))
+    : metrics;
+  const before = lines.length;
+  appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", shown);
+  if (lines.length === before) lines.push("", cliStyles.muted(`No ${view} reported for ${financials.symbol}.`));
+  if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
+  return lines.join("\n");
 }
 
 export async function buildTickerReport({
@@ -263,7 +339,7 @@ export async function buildTickerReport({
     quote?.dataSource ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
   ].filter((part): part is string => !!part);
   if (summaryParts.length > 0) {
-    lines.push(cliStyles.muted(summaryParts.join("  |  ")));
+    lines.push(cliStyles.muted(summaryParts.join(METADATA_SEPARATOR)));
   }
 
   const instrumentType = quote?.instrumentType?.trim()
@@ -275,7 +351,7 @@ export async function buildTickerReport({
     (tickerFile?.metadata.industry || profile?.industry) ? `Industry ${tickerFile?.metadata.industry || profile?.industry}` : undefined,
   ].filter((part): part is string => !!part);
   if (metadataParts.length > 0) {
-    lines.push(cliStyles.muted(metadataParts.join("  |  ")));
+    lines.push(cliStyles.muted(metadataParts.join(METADATA_SEPARATOR)));
   }
 
   const portfolioNames = tickerFile ? formatPortfolioNames(config, tickerFile.metadata.portfolios) : [];
@@ -289,7 +365,7 @@ export async function buildTickerReport({
       : undefined,
   ].filter((part): part is string => !!part);
   if (membershipParts.length > 0) {
-    lines.push(cliStyles.muted(membershipParts.join("  |  ")));
+    lines.push(cliStyles.muted(membershipParts.join(METADATA_SEPARATOR)));
   }
 
   const capitalization = selectMarketCapitalization(quote, fundamentals);
@@ -332,26 +408,7 @@ export async function buildTickerReport({
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", [
-    ["Market Cap", marketCapText],
-    ["Enterprise Value", formatNullableCompact(fundamentals?.enterpriseValue)],
-    ["P/E (TTM)", formatPriceEarnings(fundamentals?.trailingPE, 2)],
-    ["Forward P/E", formatPriceEarnings(fundamentals?.forwardPE, 2)],
-    ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
-    ["EPS", formatReportedMoney(fundamentals?.eps, fundamentals?.financialCurrency, true)],
-    [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatPercent(fundamentals.dividendYield) : "—"],
-    ["Revenue", formatReportedMoney(fundamentals?.revenue, fundamentals?.financialCurrency)],
-    ["Net Income", formatReportedMoney(fundamentals?.netIncome, fundamentals?.financialCurrency)],
-    ["Operating Cash Flow", formatReportedMoney(fundamentals?.operatingCashFlow, fundamentals?.financialCurrency)],
-    ["Free Cash Flow", formatReportedMoney(fundamentals?.freeCashFlow, fundamentals?.financialCurrency)],
-    ["Operating Margin", fundamentals?.operatingMargin != null ? formatPercent(fundamentals.operatingMargin) : "—"],
-    ["Profit Margin", fundamentals?.profitMargin != null ? formatPercent(fundamentals.profitMargin) : "—"],
-    ["Revenue Growth", fundamentals?.revenueGrowth != null ? colorBySign(formatPercent(fundamentals.revenueGrowth), fundamentals.revenueGrowth) : "—"],
-    ["Last Quarter Growth", fundamentals?.lastQuarterGrowth != null ? colorBySign(formatPercent(fundamentals.lastQuarterGrowth), fundamentals.lastQuarterGrowth) : "—"],
-    ["1Y Return", priceReturns.return1Y != null ? colorBySign(formatPercent(priceReturns.return1Y), priceReturns.return1Y) : "—"],
-    ["3Y Return", priceReturns.return3Y != null ? colorBySign(formatPercent(priceReturns.return3Y), priceReturns.return3Y) : "—"],
-    ["Shares Outstanding", formatNullableCompact(fundamentals?.sharesOutstanding)],
-  ]);
+  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(fundamentals, marketCapText, priceReturns));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));
@@ -372,12 +429,7 @@ export async function buildTickerReport({
     appendMetricSection(lines, `Latest Quarter (${latestQuarter.date})`, buildStatementMetrics(latestQuarter, statementCurrency(latestQuarter)));
   }
 
-  const description = profile?.description?.trim();
-  if (description) {
-    lines.push("");
-    lines.push(renderSection("Description"));
-    lines.push(description);
-  }
+  appendTextSection(lines, "Description", profile?.description);
 
   appendTextSection(lines, "Notes", notes);
 
@@ -397,7 +449,7 @@ export async function buildTickerReport({
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
       const filingDate = formatFeedDate(filing.filingDate as Date | string | number | undefined);
-      return filingDate ? `${filing.form} | ${filingDate}` : filing.form;
+      return filingDate ? `Form ${filing.form}${METADATA_SEPARATOR}${filingDate}` : `Form ${filing.form}`;
     })(),
     meta: [
       filing.items ? `Items ${filing.items}` : "",

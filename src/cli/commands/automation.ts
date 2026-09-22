@@ -2,12 +2,13 @@ import { createRssNewsCapability } from "../../plugins/builtin/news/wire/rss/sou
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices } from "../context";
 import { requireArg, takeOption } from "./command-utils";
+import { CLI_COMMAND_GROUPS } from "../help";
 
 export const brokerCliCommand: CliCommandDef = {
   name: "broker",
   aliases: ["brokers"],
-  description: "Inspect broker profiles",
-  help: { usage: ["broker list", "broker status"] },
+  description: "List connected broker accounts",
+  help: { group: CLI_COMMAND_GROUPS.portfolios, usage: ["broker list"] },
   execute: async (args, ctx) => {
     const action = args[0] ?? "list";
     if (action !== "list" && action !== "status") {
@@ -23,15 +24,15 @@ export const brokerCliCommand: CliCommandDef = {
           connectionMode: instance.connectionMode ?? "",
           lastSyncedAt: instance.lastSyncedAt ? new Date(instance.lastSyncedAt).toISOString() : "",
         })),
-      });
+      }, { empty: "No brokers connected. Add one from the Broker pane in the app." });
     });
   },
 };
 
 export const ibkrCliCommand: CliCommandDef = {
   name: "ibkr",
-  description: "Inspect IBKR profiles",
-  help: { usage: ["ibkr accounts", "ibkr status"] },
+  description: "List Interactive Brokers profiles",
+  help: { group: CLI_COMMAND_GROUPS.portfolios, usage: ["ibkr status"] },
   execute: async (args, ctx) => {
     const action = args[0] ?? "status";
     if (action !== "accounts" && action !== "status") {
@@ -48,21 +49,26 @@ export const ibkrCliCommand: CliCommandDef = {
             connectionMode: instance.connectionMode ?? "",
             lastSyncedAt: instance.lastSyncedAt ? new Date(instance.lastSyncedAt).toISOString() : "",
           })),
-      });
+      }, { empty: "No Interactive Brokers profiles." });
     });
   },
 };
 
 export const rssCliCommand: CliCommandDef = {
   name: "rss",
-  description: "Fetch an RSS feed as news rows",
-  help: { usage: ["rss fetch <url> [--name label]"] },
+  description: "Read any RSS or Atom feed as headlines",
+  help: {
+    group: CLI_COMMAND_GROUPS.markets,
+    usage: ["rss fetch <url> [--name <label>]"],
+    options: [{ flags: "--name <label>", description: "Source name shown on each row (default RSS)" }],
+    examples: ["rss fetch https://feeds.a.dj.com/rss/RSSMarketsMain.xml --limit 10"],
+  },
   execute: async (args, ctx) => {
     const action = args[0] ?? "fetch";
-    if (action !== "fetch") ctx.fail("Usage: gloomberb rss fetch <url> [--name label]");
+    if (action !== "fetch") ctx.fail("Usage: gloomberb rss fetch <url> [--name <label>]");
     const rawArgs = args.slice(1);
     const name = takeOption(rawArgs, "--name") ?? "RSS";
-    const url = requireArg(rawArgs[0], "Usage: gloomberb rss fetch <url> [--name label]", ctx);
+    const url = requireArg(rawArgs[0], "Usage: gloomberb rss fetch <url> [--name <label>]", ctx);
     const capability = createRssNewsCapability([{
       id: "cli-feed",
       url,
@@ -78,6 +84,15 @@ export const rssCliCommand: CliCommandDef = {
       publishedAt: article.publishedAt.toISOString(),
       url: article.url,
       summary: article.summary ?? "",
-    })) });
+    })) }, {
+      columns: [
+        { key: "publishedAt", header: "Published" },
+        { key: "source", header: "Source", maxWidth: 20 },
+        { key: "title", header: "Title" },
+        { key: "url", header: "URL", optional: true },
+        { key: "summary", header: "Summary", optional: true },
+      ],
+      empty: "The feed has no items.",
+    });
   },
 };

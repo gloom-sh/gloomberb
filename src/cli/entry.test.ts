@@ -21,10 +21,13 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
         calls.push("catalog:" + target);
         return restored ? [{ plugin: { id: "tv" }, path: "tv" }] : [];
       }}));
-      mock.module(${modulePath("cli/index.ts")}, () => ({ dispatchCli: async (args) => {
-        calls.push("dispatch:" + args[0]);
-        return args[0] === "handoff" ? { kind: "launch-ui", request: { source: "handoff" } } : { kind: "handled" };
-      }}));
+      mock.module(${modulePath("cli/index.ts")}, () => ({
+        dispatchCli: async (args) => {
+          calls.push("dispatch:" + args[0]);
+          return args[0] === "handoff" ? { kind: "launch-ui", request: { source: "handoff" } } : { kind: "handled" };
+        },
+        failUnknownCliCommand: async () => {},
+      }));
       mock.module(${modulePath("renderers/opentui/start.tsx")}, () => ({ startOpenTuiApp: async (options) => {
         calls.push({ launch: options.externalPlugins.map((entry) => entry.plugin.id), args: options.cliArgs, request: options.cliLaunchRequest });
       }}));

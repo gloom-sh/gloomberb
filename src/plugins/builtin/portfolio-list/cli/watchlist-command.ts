@@ -5,13 +5,14 @@ import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import {
   cliStyles,
   renderSection,
-  renderStat,
+  renderStats,
   renderTable,
 } from "../../../../utils/cli-output";
 import type { CliCommandContext, CliCommandDef } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToWatchlist } from "../mutations";
 import { showCollection } from "./render";
+import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
 async function createWatchlist(name: string, ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config }) => {
@@ -30,7 +31,7 @@ async function createWatchlist(name: string, ctx: CliCommandContext) {
     };
     await saveConfig(nextConfig);
     console.log(cliStyles.success(`Created watchlist "${trimmedName}".`));
-    console.log(renderStat("ID", id));
+    console.log(renderStats([["ID", id]]));
   });
 }
 
@@ -60,7 +61,7 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
 
     await saveConfig(nextConfig);
     console.log(cliStyles.success(`Deleted watchlist "${watchlist.name}".`));
-    console.log(renderStat("Cleaned Tickers", String(cleanedTickers)));
+    console.log(renderStats([["Cleaned Tickers", String(cleanedTickers)]]));
   });
 }
 
@@ -81,7 +82,7 @@ async function addTickerToWatchlistCommand(watchlistName: string, symbol: string
       await store.saveTicker(nextTicker);
       console.log(cliStyles.success(`Added ${nextTicker.metadata.ticker} to "${watchlist.name}".`));
       if (nextTicker.metadata.name) {
-        console.log(renderStat("Name", nextTicker.metadata.name));
+        console.log(renderStats([["Name", nextTicker.metadata.name]]));
       }
     } catch (error) {
       ctx.fail(error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`);
@@ -157,24 +158,18 @@ async function listWatchlists(ctx: CliCommandContext) {
 export const watchlistCliCommand: CliCommandDef = {
   name: "watchlist",
   aliases: ["watchlists"],
-  description: "List, create, delete, add, or remove watchlists",
+  description: "List watchlists, show their quotes, and add or remove symbols",
   help: {
-    usage: ["watchlist [action]"],
-    sections: [{
-      title: "Watchlist Actions",
-      columns: [
-        { header: "Action" },
-        { header: "Example" },
-      ],
-      rows: [
-        ["list", "gloomberb watchlist list"],
-        ["show", "gloomberb watchlist show Growth"],
-        ["create", "gloomberb watchlist create Growth"],
-        ["delete", "gloomberb watchlist delete Growth"],
-        ["add", "gloomberb watchlist add Growth NVDA"],
-        ["remove", "gloomberb watchlist remove Growth NVDA"],
-      ],
-    }],
+    group: CLI_COMMAND_GROUPS.portfolios,
+    usage: [
+      "watchlist [list]",
+      "watchlist show <name>",
+      "watchlist create <name>",
+      "watchlist delete <name>",
+      "watchlist add <watchlist> <symbol>",
+      "watchlist remove <watchlist> <symbol>",
+    ],
+    examples: ["watchlist show Growth", "watchlist create Growth", "watchlist add Growth NVDA"],
   },
   execute: async (args, ctx) => {
     const action = args[0];

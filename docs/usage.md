@@ -275,7 +275,7 @@ notification settings have one switch for these market and research alerts.
 
 Running `gloomberb` with no arguments launches the terminal UI. Normal commands run through a headless CLI path; use `gloomberb launch-ui` when a script should explicitly open the UI.
 
-Human-readable output is the default. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
+Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text output keeps every cell whole. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
 
 Headless chart text includes a Unit column when a series supplies one; values keep that unit's scale (for example, `2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields remain fractional ratios (`0.03` means 3%). `fn --csv` preserves the report fields and encodes nested sections or series as JSON cells, retaining raw numeric values alongside any separate display strings; it does not flatten or rescale those observations.
 
@@ -285,7 +285,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 |---------|-----|
 | `gloomberb` | Launch the terminal UI |
 | `gloomberb launch-ui` | Explicitly launch the terminal UI |
-| `gloomberb help` | Show all CLI commands |
+| `gloomberb help` | Show all CLI commands, grouped |
+| `gloomberb help <command>` / `<command> --help` | Show a command's usage, options, and examples |
 | `gloomberb api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
 | `gloomberb quote <symbols>` | Fetch current quotes |
 | `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols |
@@ -294,7 +295,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
 | `gloomberb movers\|indices\|sectors\|fx\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
-| `gloomberb compare\|correlation\|relationship <symbols>` | Compare securities |
+| `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Manage manual portfolios |
 | `gloomberb watchlist [action]` | Manage watchlists |
 | `gloomberb notes\|alerts [action]` | Manage local notes and alerts |
