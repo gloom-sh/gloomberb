@@ -2,6 +2,7 @@ import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { FuturesCurvePayload } from "./futures-curve";
+import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { TickerFinancials } from "../types/financials";
@@ -331,6 +332,14 @@ export class CloudDataApi {
 
   async getCloudShiller(): Promise<CloudShillerPayload> {
     return this.request<CloudShillerPayload>(cloudShillerPath());
+  }
+
+  async getCloudCotBoard(report: CotFamily, traderClass: CotClass): Promise<CotBoardPayload> {
+    return this.request<CotBoardPayload>(`/cloud/cot/board?${new URLSearchParams({ report, traderClass })}`);
+  }
+
+  async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
+    return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
   }
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {

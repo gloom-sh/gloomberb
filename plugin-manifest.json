@@ -154,6 +154,7 @@
       "contributes": {
         "panes": [
           "correlation",
+          "cot",
           "futures",
           "futures-curve",
           "fx-matrix",

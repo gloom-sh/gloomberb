@@ -29,6 +29,7 @@ import { economicCalendarModule } from "./builtin/econ";
 import { econStatisticsModule } from "./builtin/econ-statistics";
 import { futuresModule } from "./builtin/futures";
 import { futuresCurveModule } from "./builtin/futures-curve";
+import { cotModule } from "./builtin/cot";
 import { fxMatrixModule } from "./builtin/fx-matrix";
 import { helpModule } from "./builtin/help";
 import { positionSizerModule } from "./builtin/kelly-sizer";
@@ -127,6 +128,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     fxMatrixModule,
     futuresModule,
     futuresCurveModule,
+    cotModule,
   ],
 });
 

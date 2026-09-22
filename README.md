@@ -71,6 +71,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `GP NVDA` | Price chart |
 | `OVDV AAPL` | Implied-volatility surface and options term structure |
 | `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
+| `COT [code or root]` | CFTC positioning and cross-market extremes |
 | `TOP` | Market stories |
 | `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
 | `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |

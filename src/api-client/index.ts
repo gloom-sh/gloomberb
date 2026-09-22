@@ -694,6 +694,8 @@ class GloomApiClient {
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
   getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
+  getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
+  getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
