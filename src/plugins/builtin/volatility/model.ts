@@ -91,6 +91,9 @@ export interface VolatilityCurve {
   date: string | null;
   points: VolatilityCurvePoint[];
   ratio: number | null;
+  /** Midpoint rank of the current 3M/30D ratio within the trailing year of FRED daily ratios. */
+  ratioPercentile1y: number | null;
+  ratioSampleSize: number;
   slope: number | null;
   termState: TermState;
   warnings: string[];
@@ -187,6 +190,38 @@ function fredHistory(inputs: VolatilityInputs["fred"]): FredVolatilityHistory {
   return { metrics, termDate, ratio: latest?.value ?? null, slope: front != null && back != null ? back - front : null,
     ratioHistory, termState: classifyTermState(front, back), warnings };
 }
+/** Internal routing ids are not sources a reader can act on. */
+export function sourceLabel(source: string | null | undefined): string {
+  if (!source) return "--";
+  if (source === "asset-data-router") return "market data";
+  if (source === "gloomberb-cloud") return "Gloom Cloud";
+  if (source === "yahoo") return "Yahoo";
+  if (source === "fred") return "FRED";
+  return source;
+}
+
+/** Declared order (tenor curve, then broad and asset-class indices, then single names), with unavailable rows last. */
+export function boardOrder(rows: readonly VolatilityBoardRow[]): VolatilityBoardRow[] {
+  const rank = new Map(VOLATILITY_INDICES.map((definition, index) => [definition.id, index]));
+  return [...rows].sort((left, right) => {
+    const missing = Number(left.value == null) - Number(right.value == null);
+    return missing || (rank.get(left.id) ?? 0) - (rank.get(right.id) ?? 0);
+  });
+}
+
+function midpointPercentile(values: readonly number[], current: number): number {
+  return 100 * (values.filter((value) => value < current).length + 0.5 * values.filter((value) => value === current).length) / values.length;
+}
+
+function ratioPercentile(fred: FredVolatilityHistory, ratio: number | null, date: string | null): { percentile: number | null; sampleSize: number } {
+  if (ratio == null || date == null) return { percentile: null, sampleSize: 0 };
+  const cutoff = calendarYearCutoff(date);
+  const window = fred.ratioHistory.filter((point) => Date.parse(point.date) > cutoff && point.date <= date);
+  const coverageDays = window.length > 1 ? (Date.parse(window.at(-1)!.date) - Date.parse(window[0]!.date)) / DAY_MS : 0;
+  return { percentile: window.length >= 200 && coverageDays >= 300 ? midpointPercentile(window.map((point) => point.value), ratio) : null,
+    sampleSize: window.length };
+}
+
 function calendarYearCutoff(date: string): number {
   const cutoff = new Date(date);
   const month = cutoff.getUTCMonth();
@@ -206,8 +241,7 @@ function boardRow(definition: typeof VOLATILITY_INDICES[number], input: Volatili
   const history = normalized.history.filter((point) => Date.parse(point.date) > cutoff);
   const coverageDays = history.length > 1 ? (Date.parse(history.at(-1)!.date) - Date.parse(history[0]!.date)) / DAY_MS : 0;
   const broadCoverage = history.length >= 200 && coverageDays >= 300;
-  const percentile1y = latest && broadCoverage ? 100 * (history.filter((point) => point.value < latest.value).length
-    + 0.5 * history.filter((point) => point.value === latest.value).length) / history.length : null;
+  const percentile1y = latest && broadCoverage ? midpointPercentile(history.map((point) => point.value), latest.value) : null;
   const warnings = [...normalized.warnings];
   if (latest && latest.date !== normalized.rows.at(-1)?.date) warnings.push("Latest supplied close unavailable; showing last valid observation");
   if (latest && !adjacent) warnings.push("1D change unavailable: previous daily close missing or too far apart");
@@ -228,11 +262,12 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
   const rows = VOLATILITY_CURVE_INDICES.map((definition) => board.find((row) => row.id === definition.id)!);
   const front = rows[1]!, back = rows[2]!;
   if (front.history.length === 0 && back.history.length === 0 && fred.termDate != null) {
+    const context = ratioPercentile(fred, fred.ratio, fred.termDate);
     return { source: "fred", date: fred.termDate, points: VOLATILITY_SERIES.map((definition, index) => ({
       id: index === 0 ? "vix" : "vix3m", label: definition.label, tenor: definition.tenor, days: definition.days,
       value: fred.metrics[index]!.history.find((point) => point.date === fred.termDate)?.value ?? null,
       source: "fred", sourceId: definition.seriesId,
-    })), ratio: fred.ratio, slope: fred.slope, termState: fred.termState,
+    })), ratio: fred.ratio, ratioPercentile1y: context.percentile, ratioSampleSize: context.sampleSize, slope: fred.slope, termState: fred.termState,
     warnings: ["Market-history VIX core unavailable; showing the aligned FRED 30D/3M pair", ...fred.warnings] };
   }
   const frontDates = new Set(front.history.map((point) => point.date));
@@ -252,7 +287,9 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
     ...(point.value == null ? [`${point.label}: no close aligned to ${date ?? "a common date"}`] : []),
     ...(point.value != null && rows[index]!.stale ? [`${point.label}: aligned close is from stale cached history`] : []),
   ]);
-  return { source: "market-history", date, points, ratio: spot != null && threeMonth != null ? threeMonth / spot : null,
+  const ratio = spot != null && threeMonth != null ? threeMonth / spot : null;
+  const context = ratioPercentile(fred, ratio, date);
+  return { source: "market-history", date, points, ratio, ratioPercentile1y: context.percentile, ratioSampleSize: context.sampleSize,
     slope: spot != null && threeMonth != null ? threeMonth - spot : null,
     termState: classifyTermState(spot, threeMonth), warnings };
 }

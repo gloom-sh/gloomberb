@@ -8,6 +8,7 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
     { title: "Cash VIX tenor curve", entries: [
       { label: "Source", value: data.curve.source }, { label: "As of", value: data.curve.date },
       { label: "State", value: data.curve.termState }, { label: "3M / 30D", value: data.curve.ratio },
+      { label: "3M / 30D 1Y percentile", value: data.curve.ratioPercentile1y }, { label: "3M / 30D 1Y sample", value: data.curve.ratioSampleSize },
       { label: "3M spread (points)", value: data.curve.slope },
     ] },
     { title: "Aligned curve observations", columns: [

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { buildVolatilityData, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
+import { boardOrder, buildVolatilityData, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
 
 function history(rows: Array<[string, number]>, source = "yahoo"): VolatilityHistoryInput {
   return { source, history: rows.map(([date, close]) => ({ date: new Date(date), close })) };
@@ -33,6 +33,31 @@ describe("dated volatility sources", () => {
     expect(data.fred.metrics[0]).toMatchObject({ date: "2026-09-18", observationEnd: "2026-09-17" });
     expect(data.board.find((item) => item.id === "vix")).toMatchObject({ date: "2026-09-22", value: 24 });
     expect(data.board.find((item) => item.id === "vix1y")).toMatchObject({ value: 26, change1d: null, percentile1y: null, sampleSize: 1 });
+  });
+
+  test("ranks the current ratio within a trailing year of FRED ratios only with broad coverage", () => {
+    const days = Array.from({ length: 420 }, (_, index) => new Date(Date.UTC(2025, 7, 1) + index * 86_400_000).toISOString().slice(0, 10))
+      .filter((date) => ![0, 6].includes(new Date(date).getUTCDay()));
+    const vix = days.map((date, index): [string, number] => [date, 20 + (index % 5)]);
+    const vix3m = days.map((date, index): [string, number] => [date, (20 + (index % 5)) * (index === days.length - 1 ? 1.5 : 1 + (index % 7) / 100)]);
+    const last = days.at(-1)!;
+    const cutoff = new Date(last);
+    cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+    const window = days.filter((date) => Date.parse(date) > cutoff.getTime()).length;
+    const data = buildVolatilityData({ history: { vix: history([[last, 20]]), vix3m: history([[last, 30]]) },
+      fred: { VIXCLS: fred(vix), VXVCLS: fred(vix3m) } });
+    expect(window).toBeGreaterThan(200);
+    expect(data.curve).toMatchObject({ date: last, ratio: 1.5, ratioPercentile1y: 100 - 50 / window, ratioSampleSize: window });
+    const thin = buildVolatilityData({ history: { vix: history([[last, 20]]), vix3m: history([[last, 30]]) },
+      fred: { VIXCLS: fred(vix.slice(-30)), VXVCLS: fred(vix3m.slice(-30)) } });
+    expect(thin.curve).toMatchObject({ ratio: 1.5, ratioPercentile1y: null, ratioSampleSize: 30 });
+  });
+
+  test("orders the board by declared index with unavailable rows last", () => {
+    const data = buildVolatilityData({ history: { vxapl: history([["2026-09-22", 24]]), vix: history([["2026-09-21", 15]]), vvix: history([["2026-09-21", 85]]) } });
+    const ordered = boardOrder(data.board).map((item) => item.id);
+    expect(ordered.slice(0, 3)).toEqual(["vix", "vvix", "vxapl"]);
+    expect(ordered.slice(3).every((id) => data.board.find((item) => item.id === id)!.value == null)).toBe(true);
   });
 
   test("falls back to a dated FRED pair only when both market core histories are absent", () => {
