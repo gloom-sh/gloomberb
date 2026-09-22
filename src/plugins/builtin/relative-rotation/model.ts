@@ -1,3 +1,4 @@
+import { publishedWeekClose } from "../analytics/sharpe-cadence";
 import { historyStatistics } from "../../../components/chart/curve/model";
 import type { CloudPricePointPayload } from "../../../api-client/types";
 import { getSectorCollection } from "../sectors/sector-data";
@@ -73,9 +74,7 @@ export const rotationId = (row: RotationInstrument) =>
 export function rotationInstruments(value: string): RotationInstrument[] {
   const symbols = value.split(/[\s,]+/).filter(Boolean);
   const values = [...new Set(symbols.map((value) => value.toUpperCase()))];
-  if (values.length > ROTATION_LIMIT)
-    throw new Error(`Choose at most ${ROTATION_LIMIT} instruments.`);
-  return values.map((value) => {
+  const instruments = values.map((value) => {
     const parsed = parsePublicTickerKey(value);
     if (!/^[A-Z0-9.^=-]{1,20}$/.test(parsed.symbol))
       throw new Error(`Invalid rotation symbol: ${value}`);
@@ -85,6 +84,16 @@ export function rotationInstruments(value: string): RotationInstrument[] {
       label: parsed.symbol,
     };
   });
+  const unique = [
+    ...new Map(instruments.map((row) => [rotationId(row), row])).values(),
+  ];
+  if (unique.length > ROTATION_LIMIT)
+    throw new Error(`Choose at most ${ROTATION_LIMIT} instruments.`);
+  return unique;
+}
+export function rotationTrailWeeks(value: unknown): number {
+  const weeks = Number(value);
+  return Number.isInteger(weeks) && weeks >= 2 && weeks <= 12 ? weeks : 6;
 }
 function day(value: string) {
   const parsed = new Date(value);
@@ -172,10 +181,20 @@ export function buildRotation(
     const week = weekEnd(date);
     if (week <= through) weekly.set(week, { date, close });
   }
-  // A Monday-Wednesday terminal observation cannot establish a US week close.
-  // Thursday remains valid for a Friday market holiday. Exact peer dates still match.
-  for (const [week, point] of weekly)
-    if (new Date(point.date).getUTCDay() < 4) weekly.delete(week);
+  for (const [week, point] of weekly) {
+    if (point.date !== publishedWeekClose(week, benchmark.instrument.exchange))
+      weekly.delete(week);
+  }
+  const weekday = new Date(through).getUTCDay();
+  const lastFriday = new Date(
+    Date.parse(through) - ((weekday - 5 + 7) % 7) * DAY,
+  )
+    .toISOString()
+    .slice(0, 10);
+  const expectedClose = publishedWeekClose(
+    lastFriday,
+    benchmark.instrument.exchange,
+  );
   const end = [...weekly.keys()].at(-1) ?? null;
   const weeks: string[] = [];
   if (end && weekly.size) {
@@ -186,6 +205,11 @@ export function buildRotation(
   const asOf = end ? (weekly.get(end)?.date ?? null) : null;
   const benchmarkGaps = [
     benchmark.error,
+    !expectedClose
+      ? "Benchmark market calendar is outside published coverage."
+      : !weekly.has(lastFriday)
+        ? `Benchmark week ending ${lastFriday} is missing its verified ${expectedClose} close.`
+        : null,
     benchmark.stale ? "Benchmark history is stale." : null,
     !benchmark.currency ? "Benchmark currency is unavailable." : null,
     asOf && Date.parse(today) - Date.parse(asOf) > 10 * DAY
@@ -205,7 +229,13 @@ export function buildRotation(
     const ratios = weeks.map((week) => {
       const base = weekly.get(week);
       const close = base ? closes.get(base.date) : null;
-      const ratio = base && close != null ? close / base.close : null;
+      const ratio =
+        benchmarkUsable &&
+        source.currency === benchmark.currency &&
+        base &&
+        close != null
+          ? close / base.close
+          : null;
       return ratio != null && Number.isFinite(ratio) && ratio > 0
         ? ratio
         : null;
@@ -279,9 +309,7 @@ export function buildRotation(
       strengthRank,
       momentumRank,
       relativeReturn13w: usable ? latest.relativeReturn13w : null,
-      trail: usable
-        ? history.slice(-Math.max(2, Math.min(12, trailWeeks)))
-        : [],
+      trail: usable ? history.slice(-rotationTrailWeeks(trailWeeks)) : [],
       history,
       gaps,
     };

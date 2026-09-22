@@ -32,6 +32,7 @@ import { cachedRotation, loadRotation } from "./client";
 import {
   ROTATION_LIMIT,
   rotationId,
+  rotationTrailWeeks,
   rotationInstruments,
   sectorRotationInstruments,
   type RotationInstrument,
@@ -180,9 +181,7 @@ export function RelativeRotationPane(props: PaneProps) {
       };
     }
   }, [scope, symbols, benchmarkText, collectionId, tickers]);
-  const trail = [2, 4, 6, 8, 12].includes(Number(trailText))
-    ? Number(trailText)
-    : 6;
+  const trail = rotationTrailWeeks(trailText);
   return context.benchmark ? (
     <RotationView
       key={`${rotationId(context.benchmark)}:${context.instruments.map(rotationId).join(",")}:${trail}`}

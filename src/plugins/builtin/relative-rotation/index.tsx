@@ -44,10 +44,12 @@ export const relativeRotationModule: PluginModule = {
             key: "trail",
             label: "Trail weeks",
             type: "select",
-            options: [2, 4, 6, 8, 12].map((value) => ({
-              value: String(value),
-              label: String(value),
-            })),
+            options: Array.from({ length: 11 }, (_, index) => index + 2).map(
+              (value) => ({
+                value: String(value),
+                label: String(value),
+              }),
+            ),
           },
         ],
       },

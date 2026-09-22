@@ -67,6 +67,21 @@ function isSession(time: number): boolean {
   return weekday !== 0 && weekday !== 6 && !CLOSURES[date.getUTCFullYear()]!.includes(date.toISOString().slice(5, 10));
 }
 
+/** Last verified session in a Monday-Friday week, or null outside published coverage. */
+export function publishedWeekClose(friday: string, venue: string): string | null {
+  const time = dateTimestamp(friday);
+  if (time == null || new Date(time).getUTCDay() !== 5) return null;
+  const exchange = canonicalExchange(venue);
+  const years: readonly number[] = exchange === "NASDAQ" ? SHARPE_SESSION_BASIS.nasdaq.years
+    : NYSE_VENUES.has(exchange) ? SHARPE_SESSION_BASIS.nyse.years : [];
+  for (let offset = 0; offset < 5; offset++) {
+    const candidate = time - offset * DAY_MS;
+    if (!years.includes(new Date(candidate).getUTCFullYear())) return null;
+    if (isSession(candidate)) return new Date(candidate).toISOString().slice(0, 10);
+  }
+  return null;
+}
+
 function timestampConventions(time: number, date: string, exchange: string): Set<string> {
   if (time % DAY_MS === 0) return new Set(["utc-date-label"]);
   const timeZone = NYSE_VENUES.has(exchange) ? "America/New_York" : resolveExchangeTimeZone(exchange);

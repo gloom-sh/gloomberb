@@ -18,7 +18,7 @@ import {
 export const rotationCache = createPluginCache<RotationPayload>({
   kind: "relative-rotation",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  schemaVersion: 2,
   policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 },
 });
 type RotationClient = Pick<

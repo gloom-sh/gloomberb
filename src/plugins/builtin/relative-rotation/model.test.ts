@@ -1,9 +1,11 @@
+import { publishedWeekClose } from "../analytics/sharpe-cadence";
 import { expect, test } from "bun:test";
 import {
   buildRotation,
   rotationCloses,
   rotationInstruments,
   rotationQuadrant,
+  rotationTrailWeeks,
   type RotationHistory,
 } from "./model";
 import { fetchRotation, validateRotationHistory } from "./client";
@@ -17,7 +19,12 @@ function history(symbol: string, ratios: number[]): RotationHistory {
     stale: false,
     error: null,
     points: ratios.map((value, index) => ({
-      date: new Date(Date.parse("2025-01-03") + index * 7 * DAY).toISOString(),
+      date: publishedWeekClose(
+        new Date(Date.parse("2025-01-03") + index * 7 * DAY)
+          .toISOString()
+          .slice(0, 10),
+        "ARCA",
+      )!,
       close: value * 100,
     })),
   };
@@ -154,4 +161,34 @@ test("Cloud currency and listing provenance cannot be overridden by a valid quot
       "USD",
     ),
   ).toThrow("listing identity");
+});
+
+test("calendar gaps, canonical aliases and screenshot trail settings stay consistent", () => {
+  expect(publishedWeekClose("2026-07-03", "NYSEARCA")).toBe("2026-07-02");
+  expect(publishedWeekClose("2026-09-18", "NYSEARCA")).toBe("2026-09-18");
+  expect(publishedWeekClose("2026-09-18", "LSE")).toBeNull();
+  expect(rotationInstruments("SPY:NYSEARCA SPY:ARCA")).toHaveLength(1);
+  expect(rotationTrailWeeks(3)).toBe(3);
+  const reference = history("SPY", Array(90).fill(1)),
+    asset = history("XLK", Array(90).fill(2));
+  reference.points.at(-1)!.date = "2026-09-17";
+  asset.points.at(-1)!.date = "2026-09-17";
+  const data = buildRotation(reference, [asset], 3, new Date("2026-09-22"));
+  expect(data.asOf).not.toBe("2026-09-17");
+  expect(data.gaps.join(" ")).toContain(
+    "missing its verified 2026-09-18 close",
+  );
+  asset.currency = "EUR";
+  const mismatched = buildRotation(
+    reference,
+    [asset],
+    3,
+    new Date("2026-09-22"),
+  ).rows[0]!;
+  expect(
+    mismatched.history.every(
+      (point) => point.strength == null && point.momentum == null,
+    ),
+  ).toBe(true);
+  expect(mismatched.strengthRank.samples).toBe(0);
 });

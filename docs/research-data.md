@@ -581,10 +581,10 @@ longer histories never expand the plotted axes. Each path retains its chronologi
 edges even when strength reverses direction.
 
 The latest eligible benchmark daily observation in each completed Friday-ending
-week defines the required date for peers. The current week is excluded. A final
-Monday-Wednesday observation cannot establish a week close; Thursday is accepted
-for a Friday holiday. This conservative US-week rule can leave non-US calendars
-unavailable. Missing or contradictory closes break continuity; no forward-fill,
+week defines the required date for peers. The current week is excluded. The final session must match the existing published NYSE/Nasdaq closure calendar;
+a Thursday is accepted only for a verified Friday closure. Unknown venues and years
+are unavailable, and a missing expected weekly close is flagged. Earlier history
+outside the published calendar does not enter the model. Missing or contradictory closes break continuity; no forward-fill,
 zero price or cross-currency comparison is allowed. Seventeen consecutive matched
 weekly closes are needed for momentum. Returned history identity and currency are
 checked against the requested listing and quote metadata. Stale histories keep
