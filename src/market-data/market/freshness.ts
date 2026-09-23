@@ -1,8 +1,9 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
 import { isPublishedJpxClosure } from "../published-jpx-sessions";
-import { getPublishedUsEquityCalendarDay } from "../published-us-sessions";
+import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
+import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 
 const US_EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
@@ -33,6 +34,20 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   HKEX: 9 * 60 + 30,
   TWSE: 9 * 60,
   NSE: 9 * 60 + 15,
+};
+// Local regular close with the closing auction, rounded up. A close taken too
+// early would let a copy fetched during the auction pass as final.
+const REGULAR_CLOSE_MINUTES: Record<string, number> = {
+  NASDAQ: 16 * 60, NYSE: 16 * 60, ARCA: 16 * 60, AMEX: 16 * 60, BATS: 16 * 60,
+  TSX: 16 * 60, TSXV: 16 * 60, CSE: 16 * 60,
+  FWB: 22 * 60, FWB2: 22 * 60, XETRA: 17 * 60 + 40, SWX: 17 * 60 + 40, VIE: 17 * 60 + 40,
+  LSE: 16 * 60 + 40, EPA: 17 * 60 + 40, AMS: 17 * 60 + 40, BRU: 17 * 60 + 40, LIS: 17 * 60 + 40,
+  BIT: 17 * 60 + 45, SFB: 17 * 60 + 40, HEL: 18 * 60 + 40, CPH: 17 * 60 + 10, OSL: 16 * 60 + 30,
+  ICEX: 15 * 60 + 40, WSE: 17 * 60 + 10, PSE: 16 * 60 + 30,
+  JPX: 15 * 60 + 30, HKEX: 16 * 60 + 10, TWSE: 14 * 60 + 30, TPEX: 14 * 60 + 30,
+  NSE: 16 * 60, BSE: 16 * 60, ASX: 16 * 60 + 15, SGX: 17 * 60 + 20, KRX: 16 * 60, KOSDAQ: 16 * 60,
+  NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
+  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
 };
 const exchangeLocalDateFormatters = new Map<string, Intl.DateTimeFormat>();
 const exchangeLocalTimeFormatters = new Map<string, Intl.DateTimeFormat>();
@@ -170,6 +185,38 @@ function localTradingDaysBetween(exchange: string, earlierDate: string, laterDat
 function localWeekday(date: string): number | null {
   const day = isoLocalDateToUtcDay(date);
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
+}
+
+/**
+ * The latest regular session that closed at or before `time`: the published
+ * calendar for US venues, otherwise local weekdays less published closures. A
+ * venue without a known close hour is taken to close at local midnight. Null
+ * for round-the-clock and unknown venues.
+ */
+export function latestRegularSessionClose(
+  exchange: string | undefined,
+  time: number,
+): { date: string; close: number; timeZone: string } | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = EXCHANGE_TIME_ZONES[canonical]
+    ?? (getPublishedUsEquityCalendarYears(canonical) ? "America/New_York" : undefined);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= 10; offset++) {
+    const date = new Date((today - offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let close: number | null = null;
+    if (published) {
+      if (published.kind === "session") close = published.close;
+    } else if (isLocalTradingDay(canonical, date)) {
+      const minutes = REGULAR_CLOSE_MINUTES[canonical] ?? 24 * 60;
+      close = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (close != null && close <= time) return { date, close, timeZone };
+  }
+  return null;
 }
 
 function usSessionState(timestampMs: number): UsSessionState {

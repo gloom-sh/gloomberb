@@ -1,8 +1,8 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
-import { isTimestampStaleForExchangeSession } from "../market-data/market/freshness";
+import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "./exchanges";
+import { isTimestampStaleForExchangeSession, latestRegularSessionClose } from "../market-data/market/freshness";
+import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
-import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../market-data/published-us-sessions";
 import type { HistorySession } from "../types/price-history";
 
 const MAX_CURRENT_INTRADAY_HISTORY_LAG_MS = 18 * 60 * 60 * 1000;
@@ -190,46 +190,69 @@ export function isPriceHistoryStaleForCurrentWindow(
 }
 
 // Sources finish the closing auction and late prints some minutes after the
-// bell. Cloud expires its own daily copies at the same point.
+// bell, past the delayed feed's lag. Cloud expires its own daily copies at the
+// same point.
 const SESSION_BAR_SETTLE_MS = 30 * 60 * 1000;
 const CRYPTO_BAR_MAX_AGE_MS = 60 * 60 * 1000;
-const newYorkDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-});
+// A copy missing a settled session is asked again at this pace, so a halted,
+// illiquid or differently scheduled listing does not refetch on every request.
+const BEHIND_RECHECK_MS = 60 * 60 * 1000;
 
-function latestUsSessionClose(exchange: string, time: number): number | null {
-  const parts = new Map(newYorkDate.formatToParts(time).map((part) => [part.type, part.value]));
-  const today = Date.parse(`${parts.get("year")}-${parts.get("month")}-${parts.get("day")}T00:00:00Z`);
-  for (let offset = 0; offset <= 10; offset++) {
-    const session = getPublishedUsEquitySession(exchange, new Date(today - offset * DAY_MS).toISOString().slice(0, 10));
-    if (!session) return null;
-    if (session.kind === "session" && session.close <= time) return session.close;
+interface CalendarHistoryFetchOptions extends Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> {
+  /** FX (`=X`) and futures (`=F`) trade through their venue's closed days. */
+  symbol?: string;
+  /** The latest refetch attempt for this request, including a failed one. */
+  checkedAt?: number;
+}
+
+function dayNumber(date: string): number {
+  return Date.parse(`${date}T00:00:00Z`) / DAY_MS;
+}
+
+/** Daily labels at UTC midnight name that date; others read in the venue's zone. */
+function barDate(time: number, timeZone: string): string {
+  if (time % DAY_MS === 0) return new Date(time).toISOString().slice(0, 10);
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** True when the session date falls in a later bar than the latest one. */
+function isBarBeforeSession(latestTime: number, session: string, intervalMs: number, timeZone: string): boolean {
+  const bar = barDate(latestTime, timeZone);
+  if (intervalMs >= 28 * DAY_MS) {
+    const month = (date: string) => Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7));
+    return month(session) >= month(bar) + Math.max(1, Math.round(intervalMs / (30 * DAY_MS)));
   }
-  return null;
+  return dayNumber(session) >= dayNumber(bar) + Math.max(1, Math.round(intervalMs / DAY_MS));
 }
 
 /**
  * A daily or coarser series changes at every close. A copy fetched before the
- * latest settled close is outdated whatever its cache TTL, and a copy of a
- * 24/7 series goes out of date within the hour.
+ * latest settled close can hold that session in progress, so it is outdated
+ * whatever its cache TTL. A copy fetched after that close but without its bar
+ * is asked again at most hourly. A copy of a 24/7 series goes out of date
+ * within the hour.
  */
 export function isCalendarHistoryFetchOutdated(
   points: PricePoint[],
   fetchedAt: number,
   now = Date.now(),
-  options: Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> = {},
+  options: CalendarHistoryFetchOptions = {},
 ): boolean {
   if (!Number.isFinite(fetchedAt) || !Number.isFinite(now) || fetchedAt >= now) return false;
-  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalizePriceHistory(points));
+  const normalized = normalizePriceHistory(points);
+  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
   if (intervalMs == null || intervalMs < DAY_MS) return false;
   const exchange = canonicalExchange(options.exchange);
   if (exchange === "CCC") return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS;
   // Bare symbols resolve to their US listing at the sources.
-  if (!exchange || getPublishedUsEquityCalendarYears(exchange)) {
-    const close = latestUsSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
-    if (close != null) return fetchedAt < close + SESSION_BAR_SETTLE_MS;
-  }
-  return isTimestampStaleForExchangeSession(fetchedAt, exchange, now);
+  const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
+  if (!session) return false;
+  if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return true;
+  if (/=[XF]$/.test(parsePublicTickerKey(options.symbol ?? "").symbol)) return false;
+  if (now - Math.max(fetchedAt, options.checkedAt ?? Number.NEGATIVE_INFINITY) < BEHIND_RECHECK_MS) return false;
+  const latest = normalized.findLast(hasFiniteClose);
+  return !!latest && isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone);
 }
 
 export function normalizeTickerFinancialsPriceHistory(financials: TickerFinancials): TickerFinancials {

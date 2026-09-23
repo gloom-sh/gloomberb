@@ -64,3 +64,86 @@ test("a weekly series ending in a trade-time row is refetched after the close", 
     expect(calls).toHaveLength(2);
   } finally { store.close(); }
 });
+
+test("daily history missing a settled session is re-checked at most hourly", async () => {
+  const calls: string[] = [];
+  let load = () => daily("2026-09-21", 210);
+  const store = new AppPersistence(createTempDbPath("calendar-behind"));
+  const router = new AssetDataRouter(source(() => load(), calls), [], store.resources);
+  const last = async () => new Date((await router.getPriceHistory("NVDA", "NASDAQ", "1Y")).at(-1)!.date).toISOString().slice(0, 10);
+  try {
+    // Fetched after the 09-22 close, still without that session (a halt, a
+    // late source, or a listing on another schedule).
+    setSystemTime(new Date("2026-09-23T10:00:00Z"));
+    expect(await last()).toBe("2026-09-21");
+    setSystemTime(new Date("2026-09-23T10:50:00Z"));
+    await last();
+    expect(calls).toHaveLength(1);
+    setSystemTime(new Date("2026-09-23T11:05:00Z"));
+    await last();
+    setSystemTime(new Date("2026-09-23T11:40:00Z"));
+    await last();
+    expect(calls).toHaveLength(2);
+    // A failed re-check is bounded the same way.
+    load = () => { throw new Error("offline"); };
+    setSystemTime(new Date("2026-09-23T12:10:00Z"));
+    expect(await last()).toBe("2026-09-21");
+    setSystemTime(new Date("2026-09-23T12:40:00Z"));
+    await last();
+    expect(calls).toHaveLength(3);
+    load = () => daily("2026-09-22", 219);
+    setSystemTime(new Date("2026-09-23T13:15:00Z"));
+    expect(await last()).toBe("2026-09-22");
+    setSystemTime(new Date("2026-09-23T19:00:00Z"));
+    await last();
+    expect(calls).toHaveLength(4);
+  } finally { store.close(); }
+});
+
+test("a narrower range is not answered from a broader copy that is behind or in progress", async () => {
+  const calls: string[] = [];
+  const bars = (last: string, volume: number): PricePoint[] => ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23"]
+    .filter((date) => date <= last)
+    .map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 200, volume: date === last ? volume : 50_000_000 }));
+  let load = () => bars("2026-09-21", 40_000_000);
+  const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
+    calls.push(range);
+    return load();
+  } };
+  const store = new AppPersistence(createTempDbPath("calendar-broader"));
+  const router = new AssetDataRouter(provider, [], store.resources);
+  const last = async (range: "1M" | "5Y") => {
+    const point = (await router.getPriceHistory("TSLA", "NASDAQ", range)).at(-1)!;
+    return { date: new Date(point.date).toISOString().slice(0, 10), volume: point.volume };
+  };
+  try {
+    // A 5Y copy fetched mid-morning after the backend dropped Monday's row.
+    setSystemTime(new Date("2026-09-23T11:41:00Z"));
+    await last("5Y");
+    load = () => bars("2026-09-22", 45_000_000);
+    setSystemTime(new Date("2026-09-23T13:00:00Z"));
+    expect((await last("1M")).date).toBe("2026-09-22");
+    // The fresh 1M copy now answers; the broader copy does not force refetches.
+    setSystemTime(new Date("2026-09-23T13:03:00Z"));
+    expect((await last("1M")).date).toBe("2026-09-22");
+    expect(calls).toEqual(["5Y", "1M"]);
+    // Once the 1M copy is past its short TTL, it still outranks the broader
+    // copy that is behind, even while its revalidation fails.
+    load = () => { throw new Error("offline"); };
+    setSystemTime(new Date("2026-09-23T13:10:00Z"));
+    expect((await last("1M")).date).toBe("2026-09-22");
+    await Bun.sleep(10);
+    expect(calls).toEqual(["5Y", "1M", "1M"]);
+
+    // A 5Y copy with today's in-progress bar is replaced after the close.
+    load = () => bars("2026-09-23", 1_236_003);
+    setSystemTime(new Date("2026-09-23T15:00:00Z"));
+    await last("5Y");
+    load = () => bars("2026-09-23", 88_000_000);
+    setSystemTime(new Date("2026-09-23T20:40:00Z"));
+    expect((await last("1M")).volume).toBe(88_000_000);
+    setSystemTime(new Date("2026-09-23T20:43:00Z"));
+    expect((await last("1M")).volume).toBe(88_000_000);
+    expect(calls).toEqual(["5Y", "1M", "1M", "5Y", "1M"]);
+  } finally { store.close(); }
+});

@@ -314,6 +314,7 @@ function historyCoverage(request: HistoryRequestDescriptor) {
 export class ProviderRouterHistoryRoutes {
   constructor(private readonly deps: ProviderRouterCoreDeps) {}
   private readonly historyRefreshInFlight = new Map<string, Promise<unknown>>();
+  private readonly calendarRecheckAt = new Map<string, number>();
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
     return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, context)).points;
@@ -567,7 +568,25 @@ export class ProviderRouterHistoryRoutes {
       return request.cachePolicyKey === "priceHistoryIntraday"
         || !hasUnverifiedShellHistory(record.value.points, request.target, record.sourceKey, request.requestedStart);
     });
-    const cached = cachedRecords.find((record) => hasUsablePriceHistory(record.value.points)) ?? cachedRecords[0] ?? null;
+    // A background revalidation cannot correct bars from before a close in
+    // time: a one-shot CLI exits first, and this caller keeps the old bars.
+    // Broader variants answer the same way, and a current copy under another
+    // key (such as the refetch of this range) outranks an outdated one.
+    const target = parsePublicTickerKey(request.target.symbol);
+    const recheckKey = request.identity.revalidationKey;
+    const currentWindow = request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd));
+    const isOutdated = (record: { fetchedAt: number; value: PriceHistoryResult }, checkedAt?: number) => currentWindow
+      && isCalendarHistoryFetchOutdated(record.value.points, record.fetchedAt, Date.now(), {
+        exchange: target.exchange || request.target.exchange,
+        symbol: target.symbol,
+        checkedAt,
+        // Bar size comes from the request: a cached weekly or monthly series
+        // can end in a trade-time row that hides its cadence.
+        intervalMs: record.value.resolution ? priceHistoryIntervalMs(record.value.resolution)
+          : request.cachePolicyKey === "priceHistoryDaily" ? DAY_MS : undefined,
+      });
+    const usableRecords = cachedRecords.filter((record) => hasUsablePriceHistory(record.value.points));
+    const cached = usableRecords.find((record) => !isOutdated(record)) ?? usableRecords[0] ?? cachedRecords[0] ?? null;
     const cachedValue: PriceHistoryResult = cached?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) };
     const reportedGaps = cachedRecords.map((record) => record.value)
       .filter((value) => !hasUsablePriceHistory(value.points));
@@ -576,17 +595,12 @@ export class ProviderRouterHistoryRoutes {
       ? clipHistoryToRange(value, request.requestedRange, request.target.exchange) : value;
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
-    // A background revalidation cannot correct bars from before a close in
-    // time: a one-shot CLI exits first, and this caller keeps the old bars.
-    const cachedBeforeClose = !!cached
-      && (request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd)))
-      && isCalendarHistoryFetchOutdated(cachedValue.points, cached.fetchedAt, Date.now(), {
-        exchange: parsePublicTickerKey(request.target.symbol).exchange || request.target.exchange,
-        // Bar size comes from the request: a cached weekly or monthly series
-        // can end in a trade-time row that hides its cadence.
-        intervalMs: cachedValue.resolution ? priceHistoryIntervalMs(cachedValue.resolution)
-          : request.cachePolicyKey === "priceHistoryDaily" ? DAY_MS : undefined,
-      });
+    // A recent failed re-check defers the next one; it does not make the copy current.
+    const cachedBeforeClose = !!cached && isOutdated(cached, this.calendarRecheckAt.get(recheckKey));
+    if (cachedBeforeClose) {
+      if (this.calendarRecheckAt.size >= 4096) this.calendarRecheckAt.clear();
+      this.calendarRecheckAt.set(recheckKey, Date.now());
+    }
     const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale
       && !cachedBeforeClose;
     if (usableCached && !forceRefresh) {
