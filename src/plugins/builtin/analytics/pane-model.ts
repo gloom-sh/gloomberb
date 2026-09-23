@@ -8,7 +8,11 @@ import { formatRelativeAge } from "../../../utils/relative-time";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
 import { buildChartKey } from "../../../market-data/selectors";
-import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../portfolio-list/account-metrics";
+import {
+  resolvePortfolioAccountMetrics,
+  resolvePortfolioMarketValue,
+  resolvePortfolioNetLiquidation,
+} from "../portfolio-list/account-metrics";
 import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import { buildPerformanceChartPoints, resolvePerformanceMetric } from "./broker-performance";
@@ -216,9 +220,12 @@ export function buildAnalyticsSummaryRows({
 }): AnalyticsMetricRow[] {
   const rows: AnalyticsMetricRow[] = [];
   const account = accountState?.account;
-  const accountMetrics = resolvePortfolioAccountMetrics(portfolioStats, account, convertAccountValue);
+  // The same live carry-forward as the portfolio header, so both show one figure.
+  const basis = accountState?.snapshotBasis;
+  const accountMetrics = resolvePortfolioAccountMetrics(portfolioStats, account, convertAccountValue, basis);
   const accountFreshness = formatAccountFreshness(account);
-  const totalMarketValue = resolvePortfolioMarketValue(portfolioStats, account, convertAccountValue);
+  const totalMarketValue = resolvePortfolioMarketValue(portfolioStats, account, convertAccountValue, basis);
+  const netLiquidation = resolvePortfolioNetLiquidation(portfolioStats, account, convertAccountValue, basis);
   const hasMarketValue = portfolioStats.hasPositions || finiteNumber(account?.grossPositionValue);
 
   if (portfolioStats.unavailableConversions?.length || (account && !Number.isFinite(convertAccountValue(1)))) {
@@ -229,11 +236,11 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  if (account?.netLiquidation != null) {
+  if (netLiquidation != null) {
     rows.push({
       id: "net-liquidation",
       label: "Net Liq",
-      value: formatCompact(convertAccountValue(account.netLiquidation)),
+      value: formatCompact(netLiquidation),
       color: colors.text,
     });
   }
@@ -247,10 +254,7 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  const marginLeverage = hasMarketValue && formatMarginLeverage(
-    account?.netLiquidation == null ? undefined : convertAccountValue(account.netLiquidation),
-    totalMarketValue,
-  );
+  const marginLeverage = hasMarketValue && formatMarginLeverage(netLiquidation ?? undefined, totalMarketValue);
   if (marginLeverage) {
     rows.push({
       id: "margin-leverage",
