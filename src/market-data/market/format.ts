@@ -378,6 +378,15 @@ export function formatMarketChangeWithCurrency(
   return `${value > 0 ? "+" : ""}${formatCurrency(value, currency)}`;
 }
 
+/** Decimals the currency's minor unit has: two for GBP, none for JPY. */
+export function currencyMinorDigits(currency: string | undefined): number {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
 export function formatMarketPriceWithCurrency(
   value: number | undefined,
   currency = "USD",

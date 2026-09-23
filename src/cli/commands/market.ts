@@ -9,14 +9,13 @@ import type {
   OptionsChain,
   TickerFinancials,
 } from "../../types/financials";
-import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { currencyMinorDigits, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
 import {
-  currencyMinorDigits,
   formatChangePercentCell,
   formatCountCell,
   formatFractionPercentCell,

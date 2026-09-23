@@ -8,7 +8,7 @@ import { dividendReferencePrice, fetchDividendData, type DividendData } from "./
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
-import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
+import { currencyMinorDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
@@ -85,7 +85,7 @@ export function projectDividendYieldHeadless(
       {
         title: "Dividend metrics",
         entries: [
-          { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency) } : {}) },
+          { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, { minimumFractionDigits: Math.min(2, currencyMinorDigits(currency)) }) } : {}) },
           ...(data.stale ? [{ label: "History status", value: "Stale cash history; recent distributions may be missing." }] : []),
           ...(priceStatus ? [{ label: "Price status", value: priceStatus === "stale"
             ? "Stale reference price; cash yield may be out of date."
