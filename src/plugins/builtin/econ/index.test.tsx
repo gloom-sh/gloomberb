@@ -105,31 +105,40 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("NOW");
   });
 
-  // The payload's `time` is the UTC clock; rows group by local day.
-  test("shows a late-UTC release at its local time under its local day", async () => {
-    const previousTz = process.env.TZ;
-    process.env.TZ = "Europe/Paris";
-    try {
-      const persistence = new MemoryPluginPersistence();
-      persistence.seedResource("calendar", "global", [{
-        id: "au",
-        date: "2026-08-21T23:00:00.000Z",
-        time: "23:00",
-        country: "AU",
-        event: "Flash Manufacturing PMI",
-        impact: "medium",
-        actual: null,
-        forecast: null,
-        prior: "52.0",
-      }], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
-      attachEconCalendarPersistence(persistence);
-      const frame = await renderPane(110);
+  // The payload's `time` is the UTC clock; rows group by local day. The test
+  // runs in whatever zone the process has, so it places the release on the far
+  // side of local midnight from its UTC day: 00:30 tomorrow east of UTC, 23:30
+  // today west of it. Changing process.env.TZ here would leak into later files.
+  test("shows a release at its local time under its local day", async () => {
+    const now = new Date();
+    const eastOfUtc = now.getTimezoneOffset() <= 0;
+    const at = eastOfUtc
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 30)
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 30);
+    const iso = at.toISOString();
+    const utcClock = iso.slice(11, 16);
+    const localClock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const separator = `${eastOfUtc ? "TOMORROW" : "TODAY"} · ${days[at.getDay()]} ${months[at.getMonth()]} ${at.getDate()}`;
 
-      expect(frame).toContain("TOMORROW · Sat Aug 22");
-      expect(frame).toContain("01:00");
-      expect(frame).not.toContain("23:00");
-    } finally {
-      process.env.TZ = previousTz;
-    }
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [{
+      id: "au",
+      date: iso,
+      time: utcClock,
+      country: "AU",
+      event: "Flash Manufacturing PMI",
+      impact: "medium",
+      actual: null,
+      forecast: null,
+      prior: "52.0",
+    }], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110);
+
+    expect(frame).toContain(separator);
+    expect(frame).toContain(localClock);
+    if (utcClock !== localClock) expect(frame).not.toContain(utcClock);
   });
 });
