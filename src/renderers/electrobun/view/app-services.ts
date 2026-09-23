@@ -28,6 +28,9 @@ export function createElectrobunAppServices({ config, plugins, externalPlugins }
       remoteCapabilityManifests: () => getElectrobunBackendInitSnapshot()?.capabilityManifests ?? [],
       remoteCapabilityInvoke: invokeCapability,
     },
+    // The news service's own two-minute cadence, even while the window is
+    // hidden or minimized: breaking-news notifications stay prompt, where the
+    // shared default drops a hidden app to the configured refresh interval.
     newsOptions: { pollIntervalMs: undefined },
     configure({ newsService }) {
       newsService.register(newsProvider({
