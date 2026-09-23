@@ -38,6 +38,7 @@ import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
+import { Button } from "../ui/button";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
 
@@ -409,12 +410,6 @@ export function Header({
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   }, [dispatch]);
 
-  const openHelp = useCallback((event?: HeaderActionEvent) => {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    onOpenHelp?.();
-  }, [onOpenHelp]);
-
   const commandPrompt = (
     <HeaderCommandPrompt
       nativePaneChrome={nativePaneChrome}
@@ -450,32 +445,8 @@ export function Header({
           <UpdateStatus />
         </Box>
         {onOpenHelp ? (
-          <Box
-            height={1}
-            flexDirection="row"
-            alignItems="center"
-            data-gloom-role="header-help-action"
-            data-gloom-interactive="true"
-            role="button"
-            tabIndex={0}
-            aria-label="Open Help"
-            aria-keyshortcuts="?"
-            onMouseDown={openHelp}
-            onKeyDown={(event: { key?: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
-              if (event.key === "Enter" || event.key === " ") openHelp(event);
-            }}
-            hoverBackgroundColor={blendHex(colors.header, colors.headerText, 0.15)}
-            style={{
-              border: `1px solid ${blendHex(colors.border, colors.headerText, 0.28)}`,
-              borderRadius: 5,
-              paddingInline: 7,
-              marginRight: 8,
-              backgroundColor: blendHex(colors.header, colors.headerText, 0.08),
-              cursor: "pointer",
-            }}
-          >
-            <Text fg={colors.headerText} style={{ fontSize: 11, fontWeight: 700 }}>Help</Text>
-            <Text fg={blendHex(colors.headerText, colors.header, 0.38)} style={{ marginLeft: 6, fontSize: 10 }}>?</Text>
+          <Box flexShrink={0} data-gloom-role="header-help-action" style={{ marginRight: 8 }}>
+            <Button compact label="Open Help" displayLabel="Help" shortcut="?" onPress={onOpenHelp} stopPropagation />
           </Box>
         ) : null}
         {marketSummary}

@@ -5,20 +5,7 @@ import {
   type KellySizingMode,
   type ScenarioKellyAssumptions,
 } from "./model";
-
-export interface InlineField {
-  id: string;
-  label: string;
-  value?: number;
-  valueText?: string;
-  percent?: boolean;
-  suffix?: string;
-  allowNegative?: boolean;
-  onValue?: (value: number) => void;
-  onClear?: () => void;
-  onPress?: () => void;
-  tone?: "neutral" | "positive" | "negative";
-}
+import type { GridField } from "../../../components";
 
 export function buildModeFields({
   mode,
@@ -28,7 +15,7 @@ export function buildModeFields({
   mode: KellySizingMode;
   draft: KellySizerDraft;
   updateDraft: (patch: Partial<KellySizerDraft>) => void;
-}): InlineField[] {
+}): GridField[] {
   if (mode === "scenario") {
     const scenario = draft as ScenarioKellyAssumptions;
     const updateOutcome = (index: number, patch: Partial<ScenarioKellyAssumptions["outcomes"][number]>) => {
@@ -38,7 +25,7 @@ export function buildModeFields({
         )),
       } as Partial<KellySizerDraft>);
     };
-    return scenario.outcomes.flatMap((outcome, index): InlineField[] => [
+    return scenario.outcomes.flatMap((outcome, index): GridField[] => [
       {
         id: `${outcome.id}:p`,
         label: `${outcome.label} p`,
@@ -187,7 +174,7 @@ export function buildCommonFields({
 }: {
   common: KellyCommonAssumptions;
   updateCommon: (patch: Partial<KellyCommonAssumptions>) => void;
-}): InlineField[] {
+}): GridField[] {
   return [
     {
       id: "common:kellyFraction",

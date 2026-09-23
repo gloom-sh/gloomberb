@@ -182,6 +182,11 @@ more of what is loaded" uses the same helper.
   title as the bar's first segments automatically; do not add a second row.
 - Every menu, dropdown and pop-up list is `MenuPopover`/`Menu` in the kit
   `Popover`. No positioned boxes, no native `<select>`.
+- Calculators and sizers: mode switches in the `QueryBar` (inline filters),
+  inputs in a `FieldGrid`. Icon-only actions are `IconButton`s from the shared
+  icon set. A long strip of choices above content (expiries, chart ranges) is
+  an inline filter in the bar, not a raw `Tabs` row; `Tabs` stays for a
+  pane's primary strip and for section switches inside content.
 - On the desktop, pane headers, query bars, detail bars and table header rows
   share one chrome height (`chromeRowPx()`, `--chrome-h`). Tables and details
   fill to the pane footer; do not size them with terminal row arithmetic.

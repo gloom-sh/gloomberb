@@ -1,6 +1,8 @@
 /** @jsxImportSource react */
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { ToastHostProvider, type ToastHost, type ToastOptions } from "../../../ui/toast";
+import { WebButton } from "./desktop/controls";
+import { WebIconButton } from "./desktop/icons";
 
 type WebToastType = "info" | "success" | "error";
 
@@ -73,46 +75,23 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
                 </div>
                 <div className="gloom-toast-controls">
                   {toast.action && (
-                    <button
-                      type="button"
-                      className="gloom-toast-action"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        activate();
-                      }}
-                    >
-                      {toast.action.label}
-                    </button>
+                    <WebButton label={toast.action.label} onPress={activate} stopPropagation />
                   )}
                   {toast.secondaryAction && (
-                    <button
-                      type="button"
-                      className="gloom-toast-action gloom-toast-action-secondary"
-                      onClick={(event) => {
-                        event.stopPropagation();
+                    <WebButton
+                      label={toast.secondaryAction.label}
+                      variant="ghost"
+                      stopPropagation
+                      onPress={() => {
                         try {
                           toast.secondaryAction?.onClick();
                         } finally {
                           dismiss(toast.id);
                         }
                       }}
-                    >
-                      {toast.secondaryAction.label}
-                    </button>
+                    />
                   )}
-                  <button
-                    type="button"
-                    className="gloom-toast-dismiss"
-                    aria-label="Dismiss notification"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      dismiss(toast.id);
-                    }}
-                  >
-                    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-                      <path d="M2.25 2.25 9.75 9.75M9.75 2.25 2.25 9.75" />
-                    </svg>
-                  </button>
+                  <WebIconButton icon="close" label="Dismiss notification" onPress={() => dismiss(toast.id)} />
                 </div>
               </div>
             );

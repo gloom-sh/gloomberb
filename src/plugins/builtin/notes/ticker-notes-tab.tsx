@@ -181,7 +181,7 @@ export function createNotesTab(registry: NotesStoreRegistry) {
         <NoteOwnerStrip
           owner={effectiveOwner}
           teams={teams}
-          focused={focused && !notesFocused}
+          width={width}
           onSelect={(next) => {
             if (tickerSymbol && loadedSymbolRef.current === tickerSymbol) saveNotesFor(tickerSymbol, getCurrentNoteText());
             setOwner(next);

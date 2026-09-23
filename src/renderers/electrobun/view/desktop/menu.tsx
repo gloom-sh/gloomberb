@@ -2,16 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HostMenuItem, HostMenuProps } from "../../../../ui/host";
 import { CheckboxBox } from "./controls";
+import { WebIcon } from "./icons";
 
 const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "j", "k"]);
-
-function Check() {
-  return (
-    <svg viewBox="0 0 10 10" fill="none" aria-hidden="true">
-      <path d="M2.2 5.3l1.9 1.9 3.8-4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function selectable(item: HostMenuItem): boolean {
   return item.kind !== "divider" && item.kind !== "heading" && !item.disabled;
@@ -101,7 +94,7 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
               {item.description ? <span className="gloom-menu-description">{item.description}</span> : null}
             </span>
             {item.hint ? <span className="gloom-menu-hint">{item.hint}</span> : null}
-            {selection === "single" && item.selected ? <span className="gloom-menu-check"><Check /></span> : null}
+            {selection === "single" && item.selected ? <span className="gloom-menu-check"><WebIcon name="check" size={11} /></span> : null}
           </div>
         );
       })}

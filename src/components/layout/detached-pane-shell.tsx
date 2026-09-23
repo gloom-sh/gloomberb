@@ -1,4 +1,4 @@
-import { Box, Span, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
+import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -9,6 +9,7 @@ import { isPaneLocked, PANE_LOCK_SETTING_KEY } from "../../pane-settings";
 import type { PluginRegistry } from "../../plugins/registry";
 import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
+import { IconButton } from "../ui/icon";
 import { hasPaneFooterContent, PaneFooterBar, PaneFooterProvider } from "./pane/footer";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneContent } from "./pane/content";
@@ -33,11 +34,6 @@ import {
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
   desktopWindowBridge: DesktopWindowBridge & { kind: "detached"; paneId: string };
-}
-
-function stopMouse(event?: { stopPropagation?: () => void; preventDefault?: () => void }) {
-  event?.stopPropagation?.();
-  event?.preventDefault?.();
 }
 
 export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: DetachedPaneShellProps) {
@@ -188,8 +184,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     });
   }, [desktopWindowBridge.paneId, locked, pluginRegistry]);
 
-  const openActions = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
-    stopMouse(event);
+  const openActions = useCallback(() => {
     focusPane();
     const items: ContextMenuItem[] = [];
     if (hasPaneSettings) {
@@ -217,13 +212,12 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       paneType: instance?.paneId ?? "",
       title,
       floating: true,
-    }, items, event).then((shown) => {
+    }, items).then((shown) => {
       if (!shown && hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
       else if (!shown && sharePayload) void sharePane();
     });
   }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, locked, pluginRegistry, sharePane, sharePayload, showContextMenu, title, togglePaneLock]);
-  const toggleQuickSetting = useCallback((key: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
-    stopMouse(event);
+  const toggleQuickSetting = useCallback((key: string) => {
     focusPane();
     void pluginRegistry.togglePaneQuickSetting(desktopWindowBridge.paneId, key).catch((error) => {
       pluginRegistry.notify({
@@ -303,62 +297,28 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                 {quickSettings.map((setting) => (
                   <Box
                     key={setting.key}
-                    height={1}
-                    minWidth={20}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    alignItems="center"
-                    justifyContent="center"
                     className="electrobun-webkit-app-region-no-drag"
                     data-gloom-role="pane-quick-setting"
                     data-setting-key={setting.key}
-                    data-gloom-interactive="true"
-                    aria-label={`${setting.label}: ${setting.value ? "on" : "off"}`}
-                    aria-pressed={setting.value}
-                    title={`${setting.label}: ${setting.value ? "on" : "off"}`}
-                    style={{ cursor: "pointer" }}
-                    onMouseDown={(event: any) => toggleQuickSetting(setting.key, event)}
                   >
-                    <Span style={{ display: "inline-flex", width: 12, height: 12, color: setting.value ? colors.warning : colors.textDim }}>
-                      <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                        <path d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z" fill="currentColor" />
-                      </svg>
-                    </Span>
+                    <IconButton
+                      icon="zap"
+                      label={`${setting.label}: ${setting.value ? "on" : "off"}`}
+                      pressed={setting.value}
+                      onPress={() => toggleQuickSetting(setting.key)}
+                    />
                   </Box>
                 ))}
                 <Box flexGrow={1} minWidth={0} />
                 {locked && (
-                  <Box
-                    height={1}
-                    minWidth={20}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    alignItems="center"
-                    justifyContent="center"
-                    data-gloom-role="pane-lock"
-                    aria-label="Locked: the close shortcut leaves this pane open"
-                    title="Locked: the close shortcut leaves this pane open"
-                  >
-                    <Span style={{ display: "inline-flex", width: 12, height: 12, color: colors.textDim }}>
-                      <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                        <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />
-                        <path d="M4.25 5.5V4a1.75 1.75 0 0 1 3.5 0v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                      </svg>
-                    </Span>
+                  <Box data-gloom-role="pane-lock">
+                    <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" />
                   </Box>
                 )}
                 {(hasPaneSettings || sharePayload) && (
-                  <Text
-                    fg={paneTitleText(focused, true, colors)}
-                    selectable={false}
-                    className="electrobun-webkit-app-region-no-drag"
-                    data-gloom-role="pane-action"
-                    data-gloom-interactive="true"
-                    aria-label="Pane actions"
-                    onMouseDown={openActions}
-                  >
-                    {" ... "}
-                  </Text>
+                  <Box className="electrobun-webkit-app-region-no-drag" data-gloom-role="pane-action">
+                    <IconButton icon="more" label="Pane actions" onPress={openActions} />
+                  </Box>
                 )}
                 {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
                 {showWindowControls ? <WindowControls windowKind="detached" /> : null}

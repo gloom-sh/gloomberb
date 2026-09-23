@@ -1,9 +1,10 @@
-import { Box, Span, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
-import { useCallback, useRef, type ReactNode } from "react";
+import { Box, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
+import { useCallback, useRef } from "react";
 import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
+import { IconButton } from "../../ui/icon";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
@@ -56,52 +57,6 @@ function truncateTitle(title: string, maxWidth: number): string {
   return truncateToDisplayWidth(title, maxWidth);
 }
 
-function DesktopPaneButton({
-  icon,
-  onMouseDown,
-  color = colors.textDim,
-  label,
-  pressed,
-}: {
-  icon: ReactNode;
-  onMouseDown?: (event: any) => void;
-  color?: string;
-  label?: string;
-  pressed?: boolean;
-}) {
-  return (
-    <Box
-      height={1}
-      alignItems="center"
-      justifyContent="center"
-      onMouseDown={onMouseDown}
-      data-gloom-interactive={onMouseDown ? "true" : undefined}
-      aria-label={label}
-      aria-pressed={pressed}
-      title={label}
-      style={{
-        borderRadius: 4,
-        minWidth: 20,
-        paddingInline: 4,
-        backgroundColor: "transparent",
-        cursor: onMouseDown ? "pointer" : "default",
-      }}
-    >
-      <Span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 12,
-          height: 12,
-          color,
-        }}
-      >
-        {icon}
-      </Span>
-    </Box>
-  );
-}
 
 function TerminalPaneButton({
   text,
@@ -257,70 +212,36 @@ export function PaneHeader({
         )}
         {quickSettings.map((setting) => (
           <Box key={setting.key} data-gloom-role="pane-quick-setting" data-setting-key={setting.key}>
-            <DesktopPaneButton
-              onMouseDown={setting.onMouseDown}
-              color={setting.active ? colors.warning : colors.textDim}
+            <IconButton
+              icon="zap"
               label={`${setting.label}: ${setting.active ? "on" : "off"}`}
               pressed={setting.active}
-              icon={(
-                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <path
-                    d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z"
-                    fill="currentColor"
-                  />
-                </svg>
-              )}
+              onPress={setting.onMouseDown ? (event) => setting.onMouseDown?.(event) : undefined}
             />
           </Box>
         ))}
         <Box flexGrow={1} minWidth={0} />
         {locked && (
           <Box data-gloom-role="pane-lock">
-            <DesktopPaneButton
-              color={colors.textMuted}
-              label="Locked: the close shortcut leaves this pane open"
-              icon={(
-                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />
-                  <path
-                    d="M4.25 5.5V4a1.75 1.75 0 0 1 3.5 0v1.5"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              )}
-            />
+            <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" color={colors.textMuted} />
           </Box>
         )}
         <Box data-gloom-role="pane-action">
           {showActions ? (
-            <DesktopPaneButton
-              onMouseDown={onActionMouseDown}
-              icon={(
-                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <circle cx="2" cy="6" r="1.1" fill="currentColor" />
-                  <circle cx="6" cy="6" r="1.1" fill="currentColor" />
-                  <circle cx="10" cy="6" r="1.1" fill="currentColor" />
-                </svg>
-              )}
+            <IconButton
+              icon="more"
+              label="Pane actions"
+              hasPopup="menu"
+              onPress={onActionMouseDown ? (event) => onActionMouseDown(event) : undefined}
             />
           ) : <Box width={2} />}
         </Box>
         {floating && (
           <Box data-gloom-role="pane-close" marginLeft={1}>
-            <DesktopPaneButton
-              onMouseDown={onCloseMouseDown}
-              icon={(
-                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <path
-                    d="M3 3L9 9M9 3L3 9"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              )}
+            <IconButton
+              icon="close"
+              label="Close pane"
+              onPress={onCloseMouseDown ? (event) => onCloseMouseDown(event) : undefined}
             />
           </Box>
         )}

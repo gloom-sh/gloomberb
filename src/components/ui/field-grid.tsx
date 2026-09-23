@@ -121,6 +121,7 @@ export function FieldGrid({
           {row.map((field) => (
             <GridFieldView
               key={field.id}
+              labelWidth={Math.min(labelChars + 1, Math.max(7, Math.floor(fieldWidth * 0.5)))}
               field={field}
               active={activeId === field.id}
               focused={focused}
@@ -163,6 +164,7 @@ export function GridFieldView({
   focused,
   onFocus,
   onDone,
+  labelWidth: labelWidthProp,
 }: {
   field: GridField;
   active: boolean;
@@ -170,11 +172,13 @@ export function GridFieldView({
   focused: boolean;
   onFocus: () => void;
   onDone?: () => void;
+  /** Terminal label column; a grid passes one width so values line up. */
+  labelWidth?: number;
 }) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const text = field.kind === "text";
-  const labelWidth = Math.min(12, Math.max(7, Math.floor(width * 0.38)));
+  const labelWidth = labelWidthProp ?? Math.min(12, Math.max(7, Math.floor(width * 0.38)));
   const suffixText = field.suffix ?? (field.percent ? "%" : "");
   const suffixWidth = suffixText ? suffixText.length + 1 : 0;
   // Capped so the unit sits next to the number instead of being pushed to the
@@ -308,7 +312,7 @@ export function GridFieldView({
 
   const labelNode = (
     <Text fg={active && !nativePaneChrome ? colors.selectedText : colors.textDim} data-gloom-role="field-grid-label">
-      {nativePaneChrome ? field.label : truncate(field.label, labelWidth).padEnd(labelWidth)}
+      {nativePaneChrome ? field.label : truncate(field.label, labelWidth - 1).padEnd(labelWidth)}
     </Text>
   );
   const cellProps = {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -13,9 +13,10 @@ import {
   KeyValueRow,
   usePaneFooter,
   usePaneNoticeFooter,
+  QueryBar,
   Spinner,
-  Tabs,
   type DataTableKeyEvent,
+  type QueryBarFilter,
   type DataTableVisibleRange,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -227,10 +228,16 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   // Keep the date strip stable while a mouse press focuses this pane. A new
   // tab list asks the web host to reveal the active tab and can move the date
   // being clicked before mouse-up, cancelling selection of an offscreen expiry.
-  const expirationTabs = useMemo(() => expirationDates.map((ts) => ({
-    label: formatExpDate(ts),
-    value: String(ts),
-  })), [expirationDates]);
+  const expirationPickRef = useRef<(value: string) => void>(() => {});
+  const { nativePaneChrome } = useUiCapabilities();
+  const expirationFilters = useMemo<QueryBarFilter[]>(() => [{
+    id: "expiration",
+    label: "Exp",
+    inline: true,
+    value: String(selectedExpiration),
+    options: expirationDates.map((ts) => ({ label: formatExpDate(ts), value: String(ts) })),
+    onChange: (value: string) => expirationPickRef.current(value),
+  }], [expirationDates, selectedExpiration]);
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
     || (expirationChainEntry?.phase === "loading" || expirationChainEntry?.phase === "refreshing");
   // Refresh failures keep a ready entry with last-good data and an error.
@@ -261,6 +268,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   const selectExpiration = useCallback((expiration: number) => {
     updatePaneSettings({ expiration, expirationTargetKey: selectionTargetKey });
   }, [selectionTargetKey, updatePaneSettings]);
+  expirationPickRef.current = (value: string) => {
+    enterInteractive();
+    selectExpiration(Number(value));
+  };
   const selectAdjacentExpiration = useCallback((offset: -1 | 1) => {
     if (expirationDates.length === 0) return;
     const index = expirationDates.indexOf(selectedExpiration!);
@@ -627,48 +638,30 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   const positionContracts = isOpt && parsed
     ? ticker.metadata.positions.reduce((sum, p) => sum + Math.abs(p.shares) * signedPositionDirection(p), 0)
     : 0;
-  const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
   const desiredSummaryRows = width >= 110 ? 3 : width >= 65 ? 4 : 6;
   const summaryRowCount = Math.min(desiredSummaryRows, Math.max(0, height - 6));
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.
   const tableHeight = Math.max(1, height - 1 - summaryRowCount - (isOpt && parsed ? 1 : 0));
-  // The strip scrolls; without a marker a clipped last date reads as the last expiry.
-  const expirationStripOverflows = expirationDates
-    .reduce((total, ts) => total + formatExpDate(ts).length + 2, 0) > expirationTabsWidth;
+  // Desktop: the expiry bar and the chain run edge to edge like every other
+  // pane, so the inset moves from the column onto the rows that need it.
+  const inset = nativePaneChrome ? 1 : 0;
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
+    <Box flexDirection="column" flexGrow={1} paddingX={nativePaneChrome ? 0 : 1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
       {summaryRowCount > 0 && (
-        <OptionsSummaryStrip summary={summary} enrichment={enrichment} width={width}
-          rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""}
-          ivRank={showIvRank ? { stats: ivRank } : null} />
+        <Box paddingX={inset} flexShrink={0}>
+          <OptionsSummaryStrip summary={summary} enrichment={enrichment} width={width}
+            rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""}
+            ivRank={showIvRank ? { stats: ivRank } : null} />
+        </Box>
       )}
 
-      <Box flexDirection="row" height={1} gap={1}>
-        <Text fg={colors.textDim}>Exp:</Text>
-        <Box width={expirationTabsWidth} height={1} overflow="hidden">
-          <Tabs
-            tabs={expirationTabs}
-            activeValue={String(selectedExpiration)}
-            onSelect={(value) => {
-              enterInteractive();
-              selectExpiration(Number(value));
-            }}
-            compact
-            variant="bare"
-            focused={focused && interactive}
-            keyboardNavigation={false}
-            scrollId="options-expiration-tabs-scroll"
-          />
-        </Box>
-        {expirationStripOverflows && <Text fg={colors.textDim}>{"\u203a"}</Text>}
-        {loading && <Spinner />}
-      </Box>
+      <QueryBar width={Math.max(1, width - 2)} filters={expirationFilters} />
 
       {isOpt && parsed && (
-        <Box height={1}>
+        <Box height={1} paddingX={inset}>
           <Text fg={colors.textBright}>
             {`Position: ${positionContracts} ${parsed.side === "C" ? "call" : "put"} contract${Math.abs(positionContracts) !== 1 ? "s" : ""}${positionContracts < 0 ? " (SHORT)" : ""} @ $${parsed.strike}`}
           </Text>
@@ -710,10 +703,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
         getItemKey={(row) => String(row.strike)}
         renderCell={renderCell}
         emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..." : "No strikes available."}
-        rootWidth={Math.max(1, width - 2)}
+        rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}
         columnGap={0}
-        horizontalPadding={0}
+        horizontalPadding={inset}
         scrollToIndex={selectedStrikeIdx >= 0 ? selectedStrikeIdx : undefined}
         scrollToIndexAlign={scrollToIndexAlign}
         scrollToIndexVersion={autoScrollVersion}

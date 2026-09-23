@@ -50,7 +50,7 @@ test("DOM notifications show context and open from the whole card", async () => 
       action: { label: "Open", onClick: () => opened++ },
     });
   });
-  const dismiss = container.querySelector(".gloom-toast-dismiss") as unknown as HTMLElement;
+  const dismiss = container.querySelector("[aria-label='Dismiss notification']") as unknown as HTMLElement;
   await act(async () => {
     dismiss.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });

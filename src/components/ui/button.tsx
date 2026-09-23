@@ -26,6 +26,8 @@ export interface ButtonProps {
   disabled?: boolean;
   active?: boolean;
   shortcut?: string;
+  /** Tooltip, when it should say more than the label. */
+  title?: string;
   width?: number;
   height?: number | string;
   compact?: boolean;
@@ -78,6 +80,7 @@ export function Button({
   compact = false,
   flush = false,
   stopPropagation = false,
+  title,
 }: ButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
@@ -104,6 +107,7 @@ export function Button({
         disabled={disabled}
         active={active}
         shortcut={shortcut}
+        title={title}
         width={width}
         height={height}
         compact={compact}

@@ -7,7 +7,7 @@ import {
   DataTableView,
   DisclosureMarker,
   PaneStatusBody,
-  Tabs,
+  QueryBar,
   usePaneFooter,
   usePaneNoticeFooter,
   type DataTableCell,
@@ -18,9 +18,7 @@ import { padTo } from "../../../../utils/format";
 import {
   FINANCIAL_COL_W,
   FINANCIAL_LABEL_W,
-  FINANCIAL_PERIOD_TABS_WIDTH,
   FINANCIAL_SUB_TABS,
-  FINANCIAL_SUB_TABS_WIDTH,
   buildFinancialRows,
   canCompareFinancialRow,
   collectDefaultCollapsedGroupIds,
@@ -48,11 +46,13 @@ type FinancialTableColumn = DataTableColumn & (
 );
 
 export function FinancialsTab({
+  width,
   focused,
   headerScrollId,
   bodyScrollId,
   allowArrowSubTabNavigation = true,
 }: {
+  width: number;
   focused: boolean;
   headerScrollId?: string;
   bodyScrollId?: string;
@@ -61,6 +61,7 @@ export function FinancialsTab({
   const { financials } = usePaneTicker();
   return (
     <ResolvedFinancialsTab
+      width={width}
       focused={focused}
       financials={financials}
       headerScrollId={headerScrollId}
@@ -77,12 +78,14 @@ const financialRowBackground = (row: FinancialTableRow) => (
 );
 
 export function ResolvedFinancialsTab({
+  width,
   focused,
   financials,
   headerScrollId,
   bodyScrollId,
   allowArrowSubTabNavigation = true,
 }: {
+  width: number;
   focused: boolean;
   financials: ReturnType<typeof usePaneTicker>["financials"];
   headerScrollId?: string;
@@ -400,7 +403,9 @@ export function ResolvedFinancialsTab({
       flexDirection="column"
       flexGrow={1}
       flexBasis={0}
-      paddingX={1}
+      // Desktop: the query bar and table run edge to edge like every other
+      // pane; the table keeps its own inline padding.
+      paddingX={nativePaneChrome ? 0 : 1}
       paddingBottom={nativePaneChrome ? 0 : 1}
       overflow="hidden"
     >
@@ -437,35 +442,23 @@ export function ResolvedFinancialsTab({
         showHorizontalScrollbar
         resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
         rootBefore={(
-          <>
-            <Box flexDirection="row" height={1}>
-              <Box width={FINANCIAL_SUB_TABS_WIDTH} height={1}>
-                <Tabs
-                  tabs={FINANCIAL_SUB_TABS.map((tab, index) => ({
-                    label: tab.name,
-                    value: String(index),
-                  }))}
-                  activeValue={String(subTabIdx)}
-                  onSelect={(value) => setSubTabIdx(Number(value))}
-                  compact
-                  variant="bare"
-                />
-              </Box>
-              <Box flexGrow={1} />
-              <Box width={FINANCIAL_PERIOD_TABS_WIDTH} height={1}>
-                <Tabs
-                  tabs={[
-                    { label: "Annual", value: "annual", disabled: !hasAnnualStatements },
-                    { label: "Quarterly", value: "quarterly", disabled: !hasQuarterlyStatements },
-                  ]}
-                  activeValue={isAnnual ? "annual" : "quarterly"}
-                  onSelect={(value) => setPeriod(value as FinancialPeriod)}
-                  compact
-                  variant="bare"
-                />
-              </Box>
-            </Box>
-          </>
+          <QueryBar
+            width={Math.max(1, width - 2)}
+            filters={[
+              { id: "statement", label: "Statement", inline: true,
+                value: String(subTabIdx),
+                options: FINANCIAL_SUB_TABS.map((tab, index) => ({ label: tab.name, value: String(index) })),
+                onChange: (value: string) => setSubTabIdx(Number(value)) },
+            ]}
+            view={{
+              value: isAnnual ? "annual" : "quarterly",
+              options: [
+                { label: "Annual", value: "annual", disabled: !hasAnnualStatements },
+                { label: "Quarterly", value: "quarterly", disabled: !hasQuarterlyStatements },
+              ],
+              onChange: (value: string) => setPeriod(value as FinancialPeriod),
+            }}
+          />
         )}
       />
     </Box>

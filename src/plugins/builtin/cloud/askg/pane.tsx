@@ -25,7 +25,7 @@ import {
   getPaneSidebarWidth,
   MessageComposer,
   Prose,
-  SegmentedControl,
+  QueryBar,
   shouldShowPaneSidebar,
   Spinner,
   usePaneFooter,
@@ -313,16 +313,20 @@ function ToolResultDetail({
         ) : null}
       </Box>
       {tables.length > 1 ? (
-        <Box height={1} paddingX={1}>
-          <SegmentedControl
-            options={tables.map((entry, index) => ({
+        <QueryBar
+          width={width}
+          filters={[{
+            id: "section",
+            label: "Section",
+            inline: true,
+            value: String(tableIndex),
+            options: tables.map((entry, index) => ({
               value: String(index),
               label: entry.title ?? `Section ${index + 1}`,
-            }))}
-            value={String(tableIndex)}
-            onChange={(value) => setTableIndex(Number(value))}
-          />
-        </Box>
+            })),
+            onChange: (value: string) => setTableIndex(Number(value)),
+          }]}
+        />
       ) : null}
       {table && table.rows.length > 0 ? (
         <DataTableView<Record<string, JsonValue>>

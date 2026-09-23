@@ -8,7 +8,7 @@ import {
   Button,
   DataTableStackView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, QueryBar, Spinner,
+  PaneStatusBody, QueryBar, Spinner,
   usePaneFooter,
   useTableLoadMore,
   type DataTableCell,
@@ -816,24 +816,22 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     </Box>
   ) : (
 
-    // The reader gets its own search bar: a transcript runs to thousands of
+    // The reader gets its own find field: a transcript runs to thousands of
     // words, so finding a topic matters as much as filtering the call list.
     <Box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} minHeight={0} overflow="hidden">
-      <InputSearchBar
-        value={searchQuery}
-        focused={focused && detailOpen}
-        active={searchFocused}
-        width={width}
-        focusToken={searchFocusToken}
-        inputRef={searchInputRef}
-        placeholder="find in transcript"
-        debounceMs={80}
-        onFocus={focusSearch}
-        onBlur={blurSearch}
-        onNavigateDown={blurSearch}
-        onQueryChange={changeTranscriptQuery}
-      />
       <TranscriptView
+        search={{
+          value: searchQuery,
+          onChange: changeTranscriptQuery,
+          placeholder: "find in transcript",
+          focused: focused && detailOpen,
+          active: searchFocused,
+          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+          focusToken: searchFocusToken,
+          inputRef: searchInputRef,
+          debounceMs: 80,
+          onNavigateDown: blurSearch,
+        }}
         transcript={selectedTranscript}
         loading={transcriptLoading}
         error={transcriptError?.message ?? null}

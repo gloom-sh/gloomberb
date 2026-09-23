@@ -15,6 +15,7 @@ import type { DialogFrameProps } from "../../../../components/ui/frame";
 import type { MessageComposerProps } from "../../../../components/ui/message-composer";
 import type { PageStackViewProps } from "../../../../components/ui/page-stack-view";
 import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
+import { WebIcon, WebIconButton } from "./icons";
 import { NestedPaneTabs } from "../../../../components/layout/pane/header-tabs";
 import type { SegmentedControlProps } from "../../../../components/ui/toggle";
 import {
@@ -43,6 +44,7 @@ export function WebButton({
   compact = false,
   flush = false,
   stopPropagation = false,
+  title,
 }: ButtonProps) {
   const colors = useThemeColors();
   const palette = buttonPalette({ variant, active, disabled }, colors);
@@ -51,6 +53,8 @@ export function WebButton({
     <button
       type="button"
       aria-label={label}
+      aria-keyshortcuts={shortcut}
+      title={title}
       aria-expanded={expanded}
       disabled={disabled}
       onMouseDown={(event) => {
@@ -552,17 +556,7 @@ export function WebDialogFrame({
           ) : null}
         </Box>
         {onClose ? (
-          <button
-            type="button"
-            className="gloom-dialog-close"
-            aria-label="Close"
-            onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
-            onClick={(event) => { event.stopPropagation(); onClose(); }}
-          >
-            <svg viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <WebIconButton icon="close" label="Close" onPress={onClose} />
         ) : null}
       </Box>
       {children}
@@ -646,7 +640,7 @@ export function WebPageStackView({
               onBack();
             }}
           >
-            <BackChevron />
+            <WebIcon name="back" size={11} />
             <span className="gloom-qb-text">{backLabel}</span>
           </button>
           {detailTitle ? <div className="gloom-stack-title">{detailTitle}</div> : <div style={{ flex: 1 }} />}
@@ -664,13 +658,5 @@ export function WebPageStackView({
         </StackHeaderContext.Provider>
       </div>
     </Box>
-  );
-}
-
-export function BackChevron() {
-  return (
-    <svg viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M7.5 2.5L4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

@@ -18,7 +18,7 @@ import {
 import { FINANCIAL_SUB_TABS } from "./schema";
 
 export { buildPreviousStatementMap, computeTTM } from "./aggregation";
-export { FINANCIAL_SUB_TABS, FINANCIAL_SUB_TABS_WIDTH } from "./schema";
+export { FINANCIAL_SUB_TABS } from "./schema";
 export type { FinancialPeriod } from "./aggregation";
 
 type FinancialMetricFormat = "compact" | "eps" | "percent";
@@ -87,8 +87,6 @@ export function statementMetricValue(
   const value = def.key ? statement[def.key] : def.compute?.(statement);
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
-
-export const FINANCIAL_PERIOD_TABS_WIDTH = "Annual".length + "Quarterly".length + 4;
 
 export const FINANCIAL_COL_W = 18;
 export const FINANCIAL_LABEL_W = 28;

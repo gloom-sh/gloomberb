@@ -24,7 +24,7 @@ afterEach(async()=>{if(setup){await act(async()=>setup.renderer.destroy());setup
 async function mount(financials:any,period="annual"){
  const config=createTestPaneConfig("/tmp/fundamental-controlled",{instanceId:paneId,paneId:"financial-analysis",binding:{kind:"fixed",symbol:"CONTROL"}});
  const initial=createInitialState(config);initial.tickers=new Map([["CONTROL",createTestTicker("CONTROL")]]);initial.financials=new Map([["CONTROL",financials]]);initial.paneState[paneId]={financialPeriod:period,financialSubTab:"income"};
- function Harness(){const [state,dispatch]=useReducer(appReducer,initial);return <AppContext value={{state,dispatch}}><PaneInstanceProvider paneId={paneId}><PaneFooterProvider>{(footer:any)=><Box width={120} height={28} flexDirection="column"><Box height={27}><FinancialsTab focused/></Box><PaneFooterBar footer={footer} focused width={120}/></Box>}</PaneFooterProvider></PaneInstanceProvider></AppContext>;}
+ function Harness(){const [state,dispatch]=useReducer(appReducer,initial);return <AppContext value={{state,dispatch}}><PaneInstanceProvider paneId={paneId}><PaneFooterProvider>{(footer:any)=><Box width={120} height={28} flexDirection="column"><Box height={27}><FinancialsTab width={120} focused/></Box><PaneFooterBar footer={footer} focused width={120}/></Box>}</PaneFooterProvider></PaneInstanceProvider></AppContext>;}
  setup=await testRender(<Harness/>,{width:120,height:28});for(let i=0;i<3;i++)await act(async()=>setup.renderOnce());await act(async()=>{setup.mockInput.pressKey("e");await setup.renderOnce();});await act(async()=>setup.renderOnce());
 }
 async function capture(name:string,financials:any,period="annual"){

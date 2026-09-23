@@ -1,7 +1,6 @@
 import {
   Box,
   Text,
-  TextAttributes,
   contextMenuDivider,
   useContextMenu,
   useRendererHost,
@@ -31,6 +30,7 @@ import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
+import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Tabs } from "../ui/tabs";
 import { useTransientLayout } from "./transient-layout";
@@ -533,6 +533,13 @@ function StatusBarChip({
 }) {
   const colors = useThemeColors();
   const hovered = hoveredControl === id;
+  if (nativePaneChrome && onPress) {
+    return (
+      <Box paddingRight={1} flexShrink={0}>
+        <Button variant="plain" compact label={title ?? label} displayLabel={label} title={title} onPress={() => onPress()} />
+      </Box>
+    );
+  }
   const press = onPress
     ? (event?: StatusBarEvent) => {
       event?.preventDefault?.();
@@ -557,7 +564,6 @@ function StatusBarChip({
             if (event.key === "Enter") press(event);
           }
           : undefined}
-        {...(nativePaneChrome && press ? { "data-gloom-interactive": "true" } : {})}
         style={press ? { cursor: "pointer" } : undefined}
       >
         {label}
@@ -566,25 +572,11 @@ function StatusBarChip({
   );
 }
 
-function NativeTidyWindows({
-  handleTidyWindows,
-  hoveredControl,
-  setHoveredControl,
-}: Pick<StatusBarViewProps, "handleTidyWindows" | "hoveredControl" | "setHoveredControl">) {
-  const colors = useThemeColors();
-  const hovered = hoveredControl === "tidy-windows";
+function NativeTidyWindows({ handleTidyWindows }: Pick<StatusBarViewProps, "handleTidyWindows">) {
   return (
     <Box paddingLeft={2} flexShrink={0} flexDirection="row" alignItems="center">
-      <Text
-        fg={hovered ? colors.textBright : colors.borderFocused}
-        attributes={TextAttributes.BOLD}
-        title={t("Tidy Windows")}
-        onMouseOver={() => setHoveredControl((current) => (current === "tidy-windows" ? current : "tidy-windows"))}
-        onMouseDown={handleTidyWindows}
-        data-gloom-interactive="true"
-      >
-        {t("Tidy Windows")}
-      </Text>
+      {/* Active keeps it as prominent as the old accent label beside the layout tabs. */}
+      <Button variant="plain" compact active label="Tidy Windows" onPress={() => handleTidyWindows()} />
     </Box>
   );
 }

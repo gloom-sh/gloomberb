@@ -1,14 +1,18 @@
-import { Button } from "../../../components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
+import { Box, type InputRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
   EmptyState,
-  InputSearchBar,
+  FieldGrid,
+  QueryBar,
   Tabs,
+  fieldGridColumns,
+  fieldGridRows,
   usePaneFooter,
   usePaneHeaderTabs,
+  type GridField,
+  type QueryBarFilter,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { useFxRatesMap, useTickerFinancials, useTickerFinancialsMap } from "../../../market-data/hooks";
@@ -49,15 +53,12 @@ import {
 } from "./model";
 import { KELLY_PANE_ID } from "./constants";
 import {
-  InlineFieldView,
   buildKellyCurveXAxisLabels,
   isPlainShortcut,
-  truncateText,
 } from "./view";
 import {
   buildCommonFields,
   buildModeFields,
-  type InlineField,
 } from "./fields";
 import type { StaticChartXMarker } from "../../../components/chart/static";
 import {
@@ -252,7 +253,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     () => buildCommonFields({ common: commonAssumptions, updateCommon }),
     [commonAssumptions, updateCommon],
   );
-  const contextFields = useMemo<InlineField[]>(() => [
+  const contextFields = useMemo<GridField[]>(() => [
     {
       id: "context:bankroll",
       label: "Bankroll",
@@ -339,9 +340,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     result.currentFraction,
     result.fullKellyFraction,
   ]);
-  const summaryLine = requestedSymbol
-    ? `${requestedSymbol}${activePortfolio ? ` · ${activePortfolio.name}` : ""}`
-    : "No ticker selected";
 
   const toggleSensitivity = useCallback(() => {
     setShowSensitivity((current) => !current);
@@ -403,19 +401,32 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     focused: focused && !activeInputId,
   });
   const tabRows = tabsInHeader ? 0 : 1;
-  const fieldColumns = width >= 92 ? 3 : 2;
-  const commonColumns = width >= 78 ? 3 : 2;
-  const commonRows = Math.max(1, Math.ceil(commonFields.length / commonColumns));
-  const fieldsRows = Math.max(1, Math.ceil(fields.length / fieldColumns));
-  // Floors low enough that a narrow pane shrinks instead of clipping, ceilings so a
-  // wide pane keeps the label, value, and unit together.
-  const commonFieldWidth = Math.max(14, Math.min(30, Math.floor((width - 2) / commonColumns)));
-  const fieldWidth = Math.max(14, Math.min(30, Math.floor((width - 2) / fieldColumns)));
-  const contextFieldWidth = Math.max(16, Math.min(32, Math.floor((width - 2) / 2)));
+  const gridFields = [...contextFields, ...editableFields];
+  const gridRows = fieldGridRows(gridFields, fieldGridColumns(width));
   const metricsRows = 6;
   const curveDecisionRows = 1;
-  const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - commonRows - fieldsRows - metricsRows - curveDecisionRows - 7 - tabRows));
+  const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - gridRows - metricsRows - curveDecisionRows - 5 - tabRows));
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
+  const quoteCurrency = positionFinancials?.quote?.currency ?? ticker?.metadata.currency ?? config.baseCurrency;
+  // The search shows the ticker and the Portfolio filter the account, so the
+  // context is the price first, then the account only when there is no filter.
+  const meta = [
+    price != null ? formatCurrency(price, quoteCurrency) : null,
+    portfolioTabs.length > 1 ? null : activePortfolio?.name ?? null,
+    bankrollOverride != null || currentValueOverride != null ? "override" : null,
+    tickerSearchStatus,
+  ].filter(Boolean).join(" · ");
+  const filters: QueryBarFilter[] = portfolioTabs.length > 1 ? [{
+    id: "portfolio",
+    label: "Portfolio",
+    value: activePortfolioId ?? "",
+    options: portfolioTabs,
+    onChange: (portfolioId: string) => {
+      setSelectedPortfolioId(portfolioId);
+      setBankrollOverride(null);
+      setCurrentValueOverride(null);
+    },
+  }] : [];
   const leftMetricsWidth = Math.max(18, Math.floor((width - 2) * 0.52));
   const rightMetricsWidth = Math.max(16, width - 2 - leftMetricsWidth);
 
@@ -433,79 +444,28 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       width={width}
       height={height}
     >
-      <Box height={1} paddingX={1} flexDirection="row">
-        <Box flexGrow={1} overflow="hidden">
-          {tickerSearchActive ? (
-            <InputSearchBar
-              value={tickerSearchQuery}
-              focused={focused}
-              active={tickerSearchActive}
-              width={Math.min(36, Math.max(12, width - 18))}
-              focusToken={tickerSearchFocusToken}
-              inputRef={tickerInputRef}
-              placeholder="ticker"
-              debounceMs={500}
-              normalizeValue={(value) => value.trim().toUpperCase()}
-              onFocus={() => setTickerSearchActive(true)}
-              onBlur={() => setTickerSearchActive(false)}
-              onQueryChange={(query) => {
-                void resolveTickerQuery(query);
-              }}
-            />
-          ) : (
-            <Button label="Change ticker" variant="plain" compact stopPropagation onPress={focusTickerSearch}>
-              <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-                {truncateText(summaryLine, Math.max(8, width - 2))}
-              </Text>
-              {tickerSearchStatus ? (
-                <Text fg={colors.textMuted}>
-                  {truncateText(`  ${tickerSearchStatus}`, Math.max(0, width - summaryLine.length - 18))}
-                </Text>
-              ) : null}
-            </Button>
-          )}
-        </Box>
-        {price != null && (
-          <Text fg={colors.textDim}>
-            {formatCurrency(price, positionFinancials?.quote?.currency ?? ticker.metadata.currency ?? config.baseCurrency)}
-          </Text>
-        )}
-      </Box>
-
-      {portfolioTabs.length > 1 && (
-        <Box height={1} flexDirection="row">
-          <Box flexShrink={1} overflow="hidden">
-            <Tabs
-              tabs={portfolioTabs}
-              activeValue={activePortfolioId}
-              onSelect={(portfolioId) => {
-                setSelectedPortfolioId(portfolioId);
-                setBankrollOverride(null);
-                setCurrentValueOverride(null);
-              }}
-              compact
-              focused={focused && !activeInputId}
-              keyboardNavigation={false}
-            />
-          </Box>
-        </Box>
-      )}
-
-      <Box height={1} flexDirection="row" paddingX={1}>
-        {contextFields.map((field) => (
-          <InlineFieldView
-            key={field.id}
-            field={field}
-            active={activeInputId === field.id}
-            focused={focused}
-            width={contextFieldWidth}
-            onFocus={() => activateInput(field.id)}
-          />
-        ))}
-        {bankrollOverride != null || currentValueOverride != null ? (
-          <Text fg={colors.textMuted}> override</Text>
-        ) : null}
-      </Box>
+      <QueryBar
+        width={width}
+        search={{
+          value: tickerSearchQuery,
+          onChange: (query) => {
+            void resolveTickerQuery(query);
+          },
+          placeholder: "ticker",
+          focused,
+          active: tickerSearchActive,
+          onActiveChange: (active) => {
+            setTickerSearchActive(active);
+            if (active) activateInput(null);
+          },
+          focusToken: tickerSearchFocusToken,
+          inputRef: tickerInputRef,
+          debounceMs: 500,
+          normalizeValue: (value) => value.trim().toUpperCase(),
+        }}
+        filters={filters}
+        meta={meta}
+      />
 
       {!tabsInHeader && (
         <Box height={1} paddingX={1}>
@@ -519,45 +479,17 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         </Box>
       )}
 
-      <Box flexDirection="column" paddingX={1} height={commonRows}>
-        {Array.from({ length: commonRows }, (_, rowIndex) => (
-          <Box key={rowIndex} height={1} flexDirection="row">
-            {commonFields.slice(rowIndex * commonColumns, rowIndex * commonColumns + commonColumns).map((field, offset) => {
-              const index = rowIndex * commonColumns + offset;
-              return (
-                <InlineFieldView
-                  key={field.id}
-                  field={field}
-                  active={activeInputId === field.id}
-                  focused={focused}
-                  width={commonFieldWidth}
-                  onFocus={() => activateInput(field.id, index)}
-                />
-              );
-            })}
-          </Box>
-        ))}
-      </Box>
-
-      <Box flexDirection="column" paddingX={1} height={fieldsRows}>
-        {Array.from({ length: fieldsRows }, (_, rowIndex) => (
-          <Box key={rowIndex} height={1} flexDirection="row">
-            {fields.slice(rowIndex * fieldColumns, rowIndex * fieldColumns + fieldColumns).map((field, offset) => {
-              const index = rowIndex * fieldColumns + offset;
-              return (
-                <InlineFieldView
-                  key={field.id}
-                  field={field}
-                  active={activeInputId === field.id}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={() => activateInput(field.id, commonFields.length + index)}
-                />
-              );
-            })}
-          </Box>
-        ))}
-      </Box>
+      <FieldGrid
+        fields={gridFields}
+        activeId={activeInputId}
+        width={width}
+        focused={focused}
+        onActivate={(id) => {
+          const index = editableFields.findIndex((field) => field.id === id);
+          activateInput(id, index >= 0 ? index : undefined);
+        }}
+        onDeactivate={() => activateInput(null)}
+      />
 
       <KellyResultMetrics
         result={result}

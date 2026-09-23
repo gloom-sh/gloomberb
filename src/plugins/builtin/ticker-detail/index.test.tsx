@@ -83,7 +83,7 @@ function makeFinancials(overrides: Partial<TickerFinancials> = {}): TickerFinanc
   };
 }
 
-function FinancialsTabHarness() {
+function FinancialsTabHarness({ width }: { width: number }) {
   const config = createDefaultConfig("/tmp/gloomberb-test");
   config.layout.instances = config.layout.instances.map((instance) => (
     instance.instanceId === "ticker-detail:main"
@@ -119,6 +119,7 @@ function FinancialsTabHarness() {
     <AppContext value={{ state: appState, dispatch }}>
       <PaneInstanceProvider paneId="ticker-detail:main">
         <FinancialsTab
+          width={width}
           focused
           headerScrollId="financials-header-scroll"
           bodyScrollId="financials-body-scroll"
@@ -128,12 +129,12 @@ function FinancialsTabHarness() {
   );
 }
 
-function createFinancialsTabHarness() {
-  return <FinancialsTabHarness />;
+function createFinancialsTabHarness(width: number) {
+  return <FinancialsTabHarness width={width} />;
 }
 
 function createFinancialsTabFooterHarness(width = 90, height = 18) {
-  const content = createFinancialsTabHarness();
+  const content = createFinancialsTabHarness(width);
   return (
     <PaneFooterProvider>
       {(footer) => (
@@ -375,6 +376,7 @@ describe("FinancialsTab", () => {
     });
 
     frame = testSetup.captureCharFrame();
+    expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("quarterly");
     expect(frame).toContain("Quarterly");
     expect(frame).toContain("[p]eriod");
   });
@@ -391,10 +393,10 @@ describe("FinancialsTab", () => {
     expect(testSetup.captureCharFrame()).toContain("Annual");
 
     await clickFrameText("[p]eriod");
-    expect(testSetup.captureCharFrame()).toContain("Quarterly");
+    expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("quarterly");
 
     await clickFrameText("[p]eriod");
-    expect(testSetup.captureCharFrame()).toContain("Annual");
+    expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("annual");
   });
 
   test("moves selection with down without collapsing the selected financial group", async () => {

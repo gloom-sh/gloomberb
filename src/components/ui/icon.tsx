@@ -18,7 +18,11 @@ export type IconName =
   | "check"
   | "minimize"
   | "maximize"
-  | "restore";
+  | "restore"
+  | "cloud"
+  | "sound-on"
+  | "sound-off"
+  | "user";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -36,6 +40,10 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   minimize: "_",
   maximize: "□",
   restore: "❐",
+  cloud: "☁",
+  "sound-on": "◖)",
+  "sound-off": "◖·",
+  user: "@",
 };
 
 export interface IconProps {
@@ -53,11 +61,27 @@ export function Icon({ name, size = 12, color }: IconProps) {
   return <Text fg={color ?? colors.textDim} selectable={false}>{ICON_GLYPHS[name]}</Text>;
 }
 
+/** What a press hands back: where it happened, so a menu can open from the button. */
+export interface IconButtonPressEvent {
+  target?: unknown;
+  pixelX?: number;
+  pixelY?: number;
+  button?: number;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
 export interface IconButtonProps {
   icon: IconName;
-  /** Accessible name and tooltip. */
+  /** Accessible name. Also the tooltip unless `title` is given. */
   label: string;
-  onPress?: () => void;
+  /** Tooltip when it should say more than the name (a count, a state). */
+  title?: string;
+  /** Key that triggers the same action, announced to assistive tech. */
+  shortcut?: string;
+  /** The press opens a menu or dialog. */
+  hasPopup?: "menu" | "dialog";
+  onPress?: (event?: IconButtonPressEvent) => void;
   /** Toggle state for a pressed/unpressed icon (quick settings). */
   pressed?: boolean;
   color?: string;
@@ -75,6 +99,9 @@ export interface IconButtonProps {
 export function IconButton({
   icon,
   label: rawLabel,
+  title,
+  shortcut,
+  hasPopup,
   onPress,
   pressed,
   color,
@@ -97,6 +124,9 @@ export function IconButton({
       <HostIconButton
         icon={icon}
         label={label}
+        title={title}
+        shortcut={shortcut}
+        hasPopup={hasPopup}
         onPress={onPress}
         pressed={pressed}
         color={color}
@@ -112,12 +142,12 @@ export function IconButton({
       flexDirection="row"
       cursor={disabled || !onPress ? "default" : "pointer"}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
-      onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+      onMouseDown={(event: IconButtonPressEvent) => {
         if (stopPropagation) {
           event.preventDefault?.();
           event.stopPropagation?.();
         }
-        if (!disabled) onPress?.();
+        if (!disabled) onPress?.(event);
       }}
     >
       <Text fg={disabled ? colors.textMuted : color ?? colors.textDim} selectable={false}>{` ${ICON_GLYPHS[icon]} `}</Text>

@@ -385,8 +385,3 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
     ],
   },
 ];
-
-export const FINANCIAL_SUB_TABS_WIDTH = FINANCIAL_SUB_TABS.reduce(
-  (sum, tab) => sum + tab.name.length + 2,
-  0,
-);

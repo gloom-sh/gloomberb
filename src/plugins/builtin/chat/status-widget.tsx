@@ -1,4 +1,5 @@
 import { Button } from "../../../components/ui/button";
+import { Icon } from "../../../components/ui/icon";
 import { useEffect, useState } from "react";
 import { usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -39,15 +40,7 @@ function CloudStatusIcon() {
         color: colors.textDim,
       }}
     >
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-        <path
-          d="M7.5 18.5h9.1a4.4 4.4 0 0 0 .8-8.7 6.1 6.1 0 0 0-11.7 1.7A3.6 3.6 0 0 0 7.5 18.5Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <Icon name="cloud" size={14} />
     </Span>
   );
 }

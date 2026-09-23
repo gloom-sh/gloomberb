@@ -12,7 +12,7 @@ import {
   KeyValueRow,
   MarketBoardStack,
   PaneStatusBody,
-  Tabs,
+  QueryBar,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   type MarketBoardStackProps,
@@ -70,6 +70,14 @@ function CryptoDetail({
   focused: boolean;
 }) {
   const [metric, setMetric] = usePluginPaneState("crypto:metric", "price");
+  useShortcut((event) => {
+    if (!focused) return;
+    const next = isPlainKey(event, "h", "left") ? "price" : isPlainKey(event, "l", "right") ? "volume" : null;
+    if (!next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (next !== metric) setMetric(next);
+  });
   const series = useMemo(
     () => [
       staticSeries(
@@ -92,7 +100,7 @@ function CryptoDetail({
   const p = row.price.percentile;
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Tabs tabs={METRICS} activeValue={metric} onSelect={setMetric} focused={focused} dense />
+      <QueryBar width={width} view={{ value: metric, options: METRICS, onChange: setMetric }} />
       <ScrollBox height={summaryHeight} flexShrink={0} scrollY>
         <Box paddingX={1} flexDirection="column">
           <KeyValueRow

@@ -7,7 +7,7 @@ export type { DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRa
 
 export { Button } from "./button";
 export { Icon, IconButton, ICON_GLYPHS } from "./icon";
-export type { IconButtonProps, IconName, IconProps } from "./icon";
+export type { IconButtonPressEvent, IconButtonProps, IconName, IconProps } from "./icon";
 export { ActionRow } from "./action-row";
 export { DisclosureMarker } from "./disclosure-marker";
 export type { DisclosureMarkerProps } from "./disclosure-marker";

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValueRow, NumberField,
-  PageStackView, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
+import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValueRow,
+  PageStackView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, Text } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
@@ -171,7 +171,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (hint) { event.preventDefault(); event.stopPropagation(); hint.onPress(); }
     else if (event.name === "r") void resource.reload();
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
-  const controlsHeight = useUiCapabilities().nativePaneChrome ? 3 : 2;
+  const controlsHeight = 1;
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: focused && !volActive });
   const tabRows = tabsInHeader ? 0 : 1;
   const bodyHeight = Math.max(3, height - 7 - tabRows - controlsHeight);
@@ -211,15 +211,19 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const root = <>
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused && !volActive} />}
     {scenario && <>
-      <Box paddingX={1} flexDirection="row" gap={3} height={controlsHeight} flexShrink={0}>
-        <SelectButton label="Scenario date" controlRef={dateControl} value={String(scenario.controls.date)}
-          options={[...new Set([...scenario.dates, scenario.controls.date])].sort((a, b) => a - b)
-            .map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` }))}
-          onChange={(value) => setControls({ ...scenario.controls, date: Number(value) })} />
-        <NumberField label="Vol shift (pts)" width={14} value={volText} allowNegative focused={focused && volActive}
-          onMouseDown={() => setVolActive(true)} onChange={(value) => { setVolText(value); shiftVol(value); }}
-          onSubmit={(value) => { shiftVol(value); setVolActive(false); }} onBlur={(value) => { shiftVol(value); setVolActive(false); }} />
-      </Box>
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "date", label: "Scenario date", controlRef: dateControl, value: String(scenario.controls.date),
+            options: [...new Set([...scenario.dates, scenario.controls.date])].sort((a, b) => a - b)
+              .map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
+            onChange: (value: string) => setControls({ ...scenario.controls, date: Number(value) }) },
+          { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "vol shift", debounceMs: 0,
+            value: !volActive && volText === "0" ? "" : volText, focused, active: volActive,
+            onActiveChange: (active: boolean) => { if (!active) shiftVol(volText); setVolActive(active); },
+            onChange: (value: string) => { setVolText(value); shiftVol(value.trim() ? value : "0"); } },
+        ]}
+      />
       <Box paddingX={1} height={1} flexDirection="row" gap={3}>
         <KeyValueRow label={`P&L ${scenario.position.currency}`} value={money(scenario.valuation.pnl)} color={scenario.valuation.pnl >= 0 ? colors.positive : colors.negative} width={28} />
         <KeyValueRow label="Spot" value={money(scenario.position.spot)} width={23} />
@@ -236,17 +240,18 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       <Box height={1} />
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
-      <EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} />
-    </PaneStatusBody> : !scenario && tab !== "legs" ? <EmptyState title="Scenario unavailable." hint={error ?? undefined}
-      actions={<Button label="Edit inputs" onPress={() => setDetail("inputs")} />} /> : activeContent}
+      <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>
+    </PaneStatusBody> : !scenario && tab !== "legs" ? <Box paddingX={1}><EmptyState title="Scenario unavailable." hint={error ?? undefined}
+      actions={<Button label="Edit inputs" onPress={() => setDetail("inputs")} />} /></Box> : activeContent}
   </>;
   const chainRows = [...(market?.chain?.calls ?? []).map((contract) => ({ ...contract, side: "call" as const })),
     ...(market?.chain?.puts ?? []).map((contract) => ({ ...contract, side: "put" as const }))].sort((a, b) => a.strike - b.strike || a.side.localeCompare(b.side));
   const [chainSelection, setChainSelection] = useState<string | null>(null);
   const chainDetail = <>
-    <Box height={1} paddingX={1}><SelectButton label="Expiry" controlRef={chainExpiryControl} value={String(expiration ?? market?.chain?.calls[0]?.expiration ?? market?.chain?.puts[0]?.expiration ?? "")}
-      options={(market?.expirationDates ?? []).map((date) => ({ value: String(date), label: dateLabel(date * 1000) }))}
-      onChange={(value) => setExpiration(Number(value))} /></Box>
+    <QueryBar width={width} filters={[{ id: "expiry", label: "Expiry", controlRef: chainExpiryControl,
+      value: String(expiration ?? market?.chain?.calls[0]?.expiration ?? market?.chain?.puts[0]?.expiration ?? ""),
+      options: (market?.expirationDates ?? []).map((date) => ({ value: String(date), label: dateLabel(date * 1000) })),
+      onChange: (value: string) => setExpiration(Number(value)) }]} />
     <PaneStatusBody loading={!!resource.loading && !chainRows.length} error={!chainRows.length ? resource.error : null}
       empty={!resource.loading && !chainRows.length} subject="option chain">
       <DataTableView focused={focused} rootWidth={width} rootHeight={Math.max(3, height - 2)} items={chainRows.toSorted((a, b) => { const value = (row: typeof a) => chainSort.id === "iv" ? row.impliedVolatility : chainSort.id === "oi" ? row.openInterest ?? 0 : row[chainSort.id as "side" | "strike" | "bid" | "ask"]; const x = value(a), y = value(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (chainSort.direction === "asc" ? 1 : -1); })}

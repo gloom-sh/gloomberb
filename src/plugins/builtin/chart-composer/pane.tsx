@@ -1,10 +1,10 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import {
   ChoiceDialog,
   EmptyState,
-  Tabs,
+  QueryBar,
   usePaneFooter,
   usePaneNoticeFooter,
   type PaneFooterPressEvent,
@@ -79,7 +79,7 @@ import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 import type { InstrumentRef } from "../../../market-data/request-types";
 
-const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
+const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 /**
  * Drawings persist into pane settings on a short debounce after the pointer
@@ -158,7 +158,6 @@ function ChartComposerSurface({
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
   const { publicSharing, cellWidthPx = 8 } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
@@ -240,13 +239,9 @@ function ChartComposerSurface({
     spec.viewport.range,
     spec.viewport.resolution,
   ]);
-  const resolutionTabs = useMemo(
+  const resolutionOptions = useMemo(
     () => availableResolutions.map((value) => ({ label: value.toUpperCase(), value })),
     [availableResolutions],
-  );
-  const resolutionTabsWidth = useMemo(
-    () => resolutionTabs.reduce((total, tab) => total + [...tab.label].length + 1, 0),
-    [resolutionTabs],
   );
   const selectedStudies = getSelectedBuiltinStudies(spec);
   const selectedPairStudies = getSelectedPairStudies(spec);
@@ -602,50 +597,20 @@ function ChartComposerSurface({
 
   return (
     <Box flexDirection="column" width={width} height={height} backgroundColor={colors.panel}>
-      <Box flexDirection="row" height={1} paddingX={1} gap={0} overflow="hidden">
-        <Box
-          flexShrink={0}
-          height={1}
-          maxWidth={52}
-          overflow="hidden"
-          // Desktop tabs are laid out in pixels, so a cell budget clips them
-          // while the row still has room to spare.
-          style={isDesktopWeb ? { maxWidth: "none", width: "auto" } : undefined}
-        >
-          <Tabs
-            tabs={RANGE_TABS}
-            activeValue={spec.viewport.dateWindow ? null : spec.viewport.range}
-            onSelect={(value) => setRange(value as TimeRange)}
-            compact
-            dense
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={false}
-          />
-        </Box>
-
-        <Box flexGrow={1} minWidth={0} height={1} />
-        <Box
-          flexShrink={1}
-          minWidth={0}
-          width={resolutionTabsWidth}
-          height={1}
-          overflow="hidden"
-          style={isDesktopWeb ? { width: "auto", flexShrink: 0 } : undefined}
-          data-gloom-role="chart-resolution-control"
-        >
-          <Tabs
-            tabs={resolutionTabs}
-            activeValue={spec.viewport.resolution}
-            onSelect={(value) => setResolution(value as ChartResolution)}
-            compact
-            dense
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={false}
-          />
-        </Box>
-      </Box>
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "range", label: "Range", inline: true,
+            value: spec.viewport.dateWindow ? "" : spec.viewport.range,
+            options: RANGE_OPTIONS,
+            onChange: (value: string) => setRange(value as TimeRange) },
+        ]}
+        view={{
+          value: spec.viewport.resolution,
+          options: resolutionOptions,
+          onChange: (value: string) => setResolution(value as ChartResolution),
+        }}
+      />
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}
         label="Indicators"

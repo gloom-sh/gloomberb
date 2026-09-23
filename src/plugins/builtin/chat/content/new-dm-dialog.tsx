@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, ListView, SectionHeading, TextField, type ListViewItem } from "../../../../components/ui";
+import { Button, DialogFrame, ListView, TextField, type ListViewItem } from "../../../../components/ui";
+import { modalSurfaceStyle } from "../../../../components/ui/frame";
 import { useShortcut } from "../../../../react/input";
 import { colors, hoverBg } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import { Box, Text, TextAttributes, type InputRenderable } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../../ui";
 import type { ChatUserSummary } from "../../../../api-client";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
@@ -15,7 +16,7 @@ import {
 const MAX_RECENT_USERS = 6;
 const MIN_DIALOG_WIDTH = 32;
 const MAX_DIALOG_WIDTH = 52;
-const DIALOG_HEIGHT = 10;
+const DIALOG_HEIGHT = 11;
 
 interface DmUserCandidate {
   username: string;
@@ -73,6 +74,7 @@ export function NewDmDialog({
   onCancel: () => void;
   onSubmit: (usernames: string[]) => Promise<void>;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const inputRef = useRef<InputRenderable | null>(null);
   const [value, setValue] = useState("");
   const valueRef = useRef("");
@@ -80,7 +82,7 @@ export function NewDmDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogWidth = Math.max(MIN_DIALOG_WIDTH, Math.min(MAX_DIALOG_WIDTH, width - 4));
-  const dialogHeight = Math.min(DIALOG_HEIGHT, Math.max(7, height - 2));
+  const dialogHeight = Math.min(DIALOG_HEIGHT, Math.max(8, height - 2));
   const left = Math.max(0, Math.floor((width - dialogWidth) / 2));
   const top = Math.max(0, Math.floor((height - dialogHeight) / 2));
   const contentWidth = Math.max(1, dialogWidth - 4);
@@ -175,86 +177,82 @@ export function NewDmDialog({
       left={left}
       top={top}
       width={dialogWidth}
-      height={dialogHeight}
+      height={nativePaneChrome ? undefined : dialogHeight}
       flexDirection="column"
-      border
-      borderColor={colors.borderFocused}
-      backgroundColor={colors.bg}
-      paddingX={1}
+      {...(nativePaneChrome ? {} : { border: true, borderColor: colors.borderFocused, backgroundColor: colors.bg, paddingX: 1 })}
       onMouseDown={(event: any) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();
       }}
-      style={{ zIndex: 8 }}
+      style={nativePaneChrome
+        ? { ...modalSurfaceStyle(colors, { padding: 0, width: `calc(${dialogWidth} * var(--cell-w))` }), zIndex: 8 }
+        : { zIndex: 8 }}
     >
-      <Box height={1} flexDirection="row">
-        <SectionHeading title="New DM" />
-        <Box flexGrow={1} />
-        <Button label={t("Close")} displayLabel="×" width={3} compact stopPropagation onPress={onCancel} />
-      </Box>
-      <TextField
-        inputRef={inputRef}
-        value={value}
-        placeholder="@username, @second"
-        focused
-        width={contentWidth}
-        backgroundColor={colors.panel}
-        onChange={(nextValue) => {
-          updateValue(nextValue);
-          setError(null);
-        }}
-        onSubmit={() => { void submit(); }}
-      />
-      <Box height={1}>
-        <Text fg={selectedUsernames.length > 0 ? colors.textMuted : colors.textDim}>
-          {selectedUsernames.length > 0 ? usernamesLabel(selectedUsernames, contentWidth) : t("Recent users")}
-        </Text>
-      </Box>
-      <ListView
-        items={items}
-        selectedIndex={items.length > 0 ? selectedIndex : -1}
-        height={Math.max(1, dialogHeight - 6)}
-        bgColor={colors.bg}
-        selectedBgColor={colors.selected}
-        hoverBgColor={hoverBg()}
-        emptyMessage={t("No recent users")}
-        selectOnHover
-        onSelect={setSelectedIndex}
-        onActivate={(item) => toggleCandidate(item.id)}
-        renderRow={(item, state) => (
-          <Box flexDirection="row" width={contentWidth}>
-            <Text fg={state.selected ? colors.selectedText : colors.textDim}>
-              {item.checked ? "x " : "+ "}
-            </Text>
-            <Text
-              fg={state.selected ? colors.text : colors.textMuted}
-              attributes={state.selected ? TextAttributes.BOLD : 0}
-            >
-              {truncateWithEllipsis(item.label, Math.max(1, contentWidth - 12))}
-            </Text>
-            <Box flexGrow={1} />
-            {item.detail ? (
-              <Text fg={colors.textDim}>{truncateWithEllipsis(item.detail, 10)}</Text>
-            ) : null}
-          </Box>
-        )}
-      />
-      <Box height={1} flexDirection="row">
-        {error ? (
-          <Text fg={colors.negative}>{truncateWithEllipsis(error, contentWidth)}</Text>
-        ) : (
-          <Text fg={colors.textDim}>{selectedUsernames.length > 1 ? t("Group chat") : t("Direct message")}</Text>
-        )}
-        <Box flexGrow={1} />
-        <Button
-          label={submitting ? t("Starting") : t("Start")}
-          width={submitting ? 10 : 7}
-          variant="primary"
-          disabled={!canSubmit}
-          stopPropagation
-          onPress={() => { void submit(); }}
+      <DialogFrame title="New DM" onClose={onCancel}>
+        <TextField
+          inputRef={inputRef}
+          value={value}
+          placeholder="@username, @second"
+          focused
+          width={contentWidth}
+          backgroundColor={colors.panel}
+          onChange={(nextValue) => {
+            updateValue(nextValue);
+            setError(null);
+          }}
+          onSubmit={() => { void submit(); }}
         />
-      </Box>
+        <Box height={1}>
+          <Text fg={selectedUsernames.length > 0 ? colors.textMuted : colors.textDim}>
+            {selectedUsernames.length > 0 ? usernamesLabel(selectedUsernames, contentWidth) : t("Recent users")}
+          </Text>
+        </Box>
+        <ListView
+          items={items}
+          selectedIndex={items.length > 0 ? selectedIndex : -1}
+          height={Math.max(1, dialogHeight - 7)}
+          bgColor={colors.bg}
+          selectedBgColor={colors.selected}
+          hoverBgColor={hoverBg()}
+          emptyMessage={t("No recent users")}
+          selectOnHover
+          onSelect={setSelectedIndex}
+          onActivate={(item) => toggleCandidate(item.id)}
+          renderRow={(item, state) => (
+            <Box flexDirection="row" width={contentWidth}>
+              <Text fg={state.selected ? colors.selectedText : colors.textDim}>
+                {item.checked ? "x " : "+ "}
+              </Text>
+              <Text
+                fg={state.selected ? colors.text : colors.textMuted}
+                attributes={state.selected ? TextAttributes.BOLD : 0}
+              >
+                {truncateWithEllipsis(item.label, Math.max(1, contentWidth - 12))}
+              </Text>
+              <Box flexGrow={1} />
+              {item.detail ? (
+                <Text fg={colors.textDim}>{truncateWithEllipsis(item.detail, 10)}</Text>
+              ) : null}
+            </Box>
+          )}
+        />
+        <Box height={1} flexDirection="row">
+          {error ? (
+            <Text fg={colors.negative}>{truncateWithEllipsis(error, contentWidth)}</Text>
+          ) : (
+            <Text fg={colors.textDim}>{selectedUsernames.length > 1 ? t("Group chat") : t("Direct message")}</Text>
+          )}
+          <Box flexGrow={1} />
+          <Button
+            label={submitting ? t("Starting") : t("Start")}
+            width={submitting ? 10 : 7}
+            variant="primary"
+            disabled={!canSubmit}
+            stopPropagation
+            onPress={() => { void submit(); }}
+          />
+        </Box>
+      </DialogFrame>
     </Box>
   );
 }

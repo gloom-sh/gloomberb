@@ -7,6 +7,7 @@ import {
   EmptyState, PaneStatusBody, Prose, SectionHeading,
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
   type PaneFooterSegment
 } from "../../../components";
@@ -361,6 +362,17 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
     () => (statement ? figuresOf(statement) : []),
     [statement],
   );
+  const yearTabs = useMemo(() => years.map((entry) => ({
+    label: `${entry.proxyYear} proxy`,
+    value: String(entry.proxyYear),
+  })), [years]);
+  const selectYear = useCallback((value: string) => setYear(Number(value)), [setYear]);
+  const tabsInHeader = usePaneHeaderTabs(years.length > 1 ? {
+    tabs: yearTabs,
+    activeValue: year === null ? "" : String(year),
+    onSelect: selectYear,
+    focused,
+  } : null);
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
   const valueWidth = Math.min(
@@ -387,15 +399,12 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
       minHeight={0}
       overflow="hidden"
     >
-      {years.length > 1 && (
+      {years.length > 1 && !tabsInHeader && (
         <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
           <Tabs
-            tabs={years.map((entry) => ({
-              label: `${entry.proxyYear} proxy`,
-              value: String(entry.proxyYear),
-            }))}
+            tabs={yearTabs}
             activeValue={year === null ? "" : String(year)}
-            onSelect={(value) => setYear(Number(value))}
+            onSelect={selectYear}
             compact
             variant="bare"
             focused={focused}

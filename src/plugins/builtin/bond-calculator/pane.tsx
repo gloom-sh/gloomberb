@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
-import { Checkbox, DataTableView, KeyValueRow, Notice, NumberField, Section, SegmentedControl, SelectButton, Tabs, TextField, usePaneHeaderTabs, usePaneNoticeFooter, type SelectControl } from "../../../components";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Box, ScrollBox, Text } from "../../../ui";
+import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, type GridField, type SelectControl } from "../../../components";
 import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -11,10 +11,10 @@ import { loadBondBenchmark } from "./client";
 import { bondDraftFromOptions, calculateBond, type BondDraft } from "./model";
 
 const TABS = [{ label: "Valuation", value: "valuation" }, { label: "Cash flows", value: "cashflows" }, { label: "Sensitivity", value: "sensitivity" }];
-const MODES = [{ label: "From yield", value: "yield" }, { label: "From price", value: "price" }];
+const MODES = [{ label: "Yield", value: "yield" }, { label: "Price", value: "price" }];
 const FREQUENCIES = [{ label: "Annual", value: "1" }, { label: "Semiannual", value: "2" }, { label: "Quarterly", value: "4" }];
 const CONVENTIONS = [{ label: "ACT/ACT ICMA", value: "act-act-icma" }, { label: "30/360 US", value: "30-360-us" }];
-const FIELDS = ["settlement", "maturity", "coupon", "quote", "mode", "frequency", "dayCount", "endOfMonth"] as const;
+const FIELDS = ["settlement", "maturity", "coupon", "quote"] as const;
 const FLOW_COLUMNS = [
   { id: "date", label: "Payment date", width: 14, align: "left" as const },
   { id: "amount", label: "Cash / 100", width: 13, align: "right" as const },
@@ -45,8 +45,6 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     [settlement, maturity, coupon, yieldInput, price, frequency, dayCount, endOfMonth]);
   const [draft, setDraft] = usePaneStateValue<BondDraft>("draft", seed);
   const [activeField, setActiveField] = useState<(typeof FIELDS)[number] | null>(null);
-  const formScroll = useRef<ScrollBoxRenderable>(null);
-  useEffect(() => { if (activeField) formScroll.current?.scrollTo(0); }, [activeField]);
   const frequencyControl = useRef<SelectControl>(null);
   const conventionControl = useRef<SelectControl>(null);
   const { data, loading, error, updatedAt, load } = useAsyncResource(loadBenchmark);
@@ -88,28 +86,37 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
       consume();
       const index = activeField ? FIELDS.indexOf(activeField) : -1;
       setActiveField(FIELDS[(index + (event.name === "j" ? 1 : -1) + FIELDS.length) % FIELDS.length]!);
-    } else if (["enter", "return", "space"].includes(event.name ?? "")) {
-      if (activeField === "frequency") { consume(); frequencyControl.current?.open(); }
-      if (activeField === "dayCount") { consume(); conventionControl.current?.open(); }
-      if (activeField === "endOfMonth") { consume(); update({ endOfMonth: !draft.endOfMonth }); }
-      if (activeField === "mode") { consume(); setMode(draft.mode === "yield" ? "price" : "yield"); }
     }
+    // The bar's conventions are one key each rather than stops in the Tab order,
+    // where they would take focus without showing it.
+    else if (tab === "valuation" && event.name === "m") { consume(); setMode(draft.mode === "yield" ? "price" : "yield"); }
+    else if (tab === "valuation" && event.name === "f") { consume(); frequencyControl.current?.open(); }
+    else if (tab === "valuation" && event.name === "d") { consume(); conventionControl.current?.open(); }
+    else if (tab === "valuation" && event.name === "n") { consume(); update({ endOfMonth: !draft.endOfMonth }); }
   }, { enabled: focused, allowEditable: true, phase: "before", scope: "bond-calculator:form" });
   const notices = [...data?.notices ?? [],
     ...(result && !result.spread && !loading && !error ? ["Treasury spread needs matching dated tenors bracketing remaining maturity. Older servers may lack observation dates."] : [])];
   usePaneNoticeFooter({ registrationId: "bond-calculator:notices", notices, focused: focused && !activeField });
   usePaneStatusFooter({ registrationId: "bond-calculator", loading, error: error ? `Treasury: ${error}` : null,
-    hints: [{ id: "edit", key: "e", label: "dit", onPress: () => { setTab("valuation"); setActiveField("settlement"); } }] });
+    hints: [
+      { id: "edit", key: "e", label: "dit", onPress: () => { setTab("valuation"); setActiveField("settlement"); } },
+      ...(tab === "valuation" && !activeField ? [
+        { id: "mode", key: "m", label: "ode", onPress: () => setMode(draft.mode === "yield" ? "price" : "yield") },
+        { id: "frequency", key: "f", label: "requency", onPress: () => frequencyControl.current?.open() },
+        { id: "day-count", key: "d", label: "ay count", onPress: () => conventionControl.current?.open() },
+        { id: "eom", key: "n", label: " month end", onPress: () => update({ endOfMonth: !draft.endOfMonth }) },
+      ] : []),
+    ] });
 
   const availableWidth = Math.max(12, width - 3);
   const paired = width >= 70;
   const metricWidth = paired ? Math.floor(availableWidth / 2) : availableWidth;
-  const fieldWidth = Math.max(12, Math.min(22, Math.floor((availableWidth - 2) / 2)));
-  const field = (id: "settlement" | "maturity" | "coupon" | "quote", label: string) => {
-    const props = { label, value: draft[id], width: fieldWidth, focused: focused && activeField === id,
-      onChange: (value: string) => update({ [id]: value }), onSubmit: () => setActiveField(null), onMouseDown: () => setActiveField(id) };
-    return id === "settlement" || id === "maturity" ? <TextField {...props} type="date" /> : <NumberField {...props} allowDecimal allowNegative={id === "quote"} />;
-  };
+  const dateField = (id: "settlement" | "maturity", label: string): GridField => ({ id, label, kind: "text", valueText: draft[id], placeholder: "YYYY-MM-DD",
+    onText: (value) => update({ [id]: value }) });
+  const numberField = (id: "coupon" | "quote", label: string): GridField => ({ id, label, value: Number(draft[id]) || 0, valueText: draft[id],
+    allowNegative: id === "quote", onValue: (value) => update({ [id]: String(value) }), onClear: () => update({ [id]: "" }) });
+  const gridFields = [dateField("settlement", "Settlement"), dateField("maturity", "Maturity"),
+    numberField("coupon", "Coupon %"), numberField("quote", draft.mode === "yield" ? "Yield %" : "Clean price")];
   const metricRows = result ? [
     [{ label: "Clean price", value: fixed(result.analytics.cleanPrice) }, { label: "Yield", value: `${fixed(result.analytics.yieldPercent)}%` }],
     [{ label: "Dirty price", value: fixed(result.analytics.dirtyPrice) }, { label: "Accrued", value: fixed(result.analytics.accruedInterest) }],
@@ -118,27 +125,27 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   ] : [];
   return <Box flexDirection="column" width={width} height={height}>
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !activeField} dense />}
-    {tab === "valuation" ? <ScrollBox ref={formScroll} flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
-      <Box flexDirection="column" paddingX={1} gap={1}>
-        <Box flexDirection="row" gap={2}>{field("settlement", "Settlement")}{field("maturity", "Maturity")}</Box>
-        <Box flexDirection="row" gap={2}>{field("coupon", "Coupon %")}{field("quote", draft.mode === "yield" ? "Yield %" : "Clean price / 100")}</Box>
-        <SegmentedControl options={MODES} value={draft.mode} onChange={setMode} focused={focused && activeField === "mode"} shortcutScope="bond-calculator:mode" />
-        <Box flexDirection={width >= 60 ? "row" : "column"} gap={1}>
-          <SelectButton label="Frequency" value={draft.frequency} options={FREQUENCIES} onChange={(value) => update({ frequency: value })} emphasized={activeField === "frequency"} onFocus={() => setActiveField("frequency")} controlRef={frequencyControl} />
-          <SelectButton label="Day count" value={draft.dayCount} options={CONVENTIONS} onChange={(value) => update({ dayCount: value })} emphasized={activeField === "dayCount"} onFocus={() => setActiveField("dayCount")} controlRef={conventionControl} />
-        </Box>
-        <Checkbox label="End-of-month coupons" checked={draft.endOfMonth} active={activeField === "endOfMonth"} onChange={(value) => { setActiveField("endOfMonth"); update({ endOfMonth: value }); }} />
-      </Box>
-      {evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <Box paddingX={1} flexDirection="column">
-        <Section title={`Settlement ${result.terms.settlement} · per 100 face`}>
-          {metricRows.map((row, index) => <Box key={index} flexDirection={paired ? "row" : "column"}>{row.map((metric) => <KeyValueRow key={metric.label} {...metric} width={metricWidth} color={index === 0 ? colors.textBright : undefined} />)}</Box>)}
-        </Section>
-        <Section title={result.spread ? `Treasury · as of ${result.spread.asOf}` : "Treasury"}>
-          <KeyValueRow label="Spread" value={result.spread ? `${result.spread.spreadBps >= 0 ? "+" : ""}${fixed(result.spread.spreadBps, 1)} bp` : "Unavailable"} width={availableWidth} color={result.spread ? colors.borderFocused : colors.textMuted} />
-          {result.spread ? <KeyValueRow label="Par yield" value={`${fixed(result.spread.benchmarkPercent)}%`} width={availableWidth} /> : null}
-        </Section>
-      </Box> : null}
-    </ScrollBox> : evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <>
+    {tab === "valuation" ? <>
+      <QueryBar width={width} filters={[
+        { id: "mode", label: "Mode", inline: true, value: draft.mode, options: MODES, onChange: setMode },
+        { id: "frequency", label: "Frequency", value: draft.frequency, options: FREQUENCIES, onChange: (value: string) => update({ frequency: value }), controlRef: frequencyControl },
+        { id: "dayCount", label: "Day count", value: draft.dayCount, options: CONVENTIONS, onChange: (value: string) => update({ dayCount: value }), controlRef: conventionControl },
+        { id: "endOfMonth", kind: "toggle", label: "End-of-month", value: draft.endOfMonth, onChange: (value) => update({ endOfMonth: value }) },
+      ]} />
+      <FieldGrid fields={gridFields} activeId={activeField} width={width} focused={focused}
+        onActivate={(id) => setActiveField(id as (typeof FIELDS)[number])} onDeactivate={() => setActiveField(null)} />
+      <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
+        {evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <Box paddingX={1} flexDirection="column">
+          <Section title={`Settlement ${result.terms.settlement} · per 100 face`}>
+            {metricRows.map((row, index) => <Box key={index} flexDirection={paired ? "row" : "column"}>{row.map((metric) => <KeyValueRow key={metric.label} {...metric} width={metricWidth} color={index === 0 ? colors.textBright : undefined} />)}</Box>)}
+          </Section>
+          <Section title={result.spread ? `Treasury · as of ${result.spread.asOf}` : "Treasury"}>
+            <KeyValueRow label="Spread" value={result.spread ? `${result.spread.spreadBps >= 0 ? "+" : ""}${fixed(result.spread.spreadBps, 1)} bp` : "Unavailable"} width={availableWidth} color={result.spread ? colors.borderFocused : colors.textMuted} />
+            {result.spread ? <KeyValueRow label="Par yield" value={`${fixed(result.spread.benchmarkPercent)}%`} width={availableWidth} /> : null}
+          </Section>
+        </Box> : null}
+      </ScrollBox>
+    </> : evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <>
       <Box paddingX={1} height={1}><Text fg={colors.textMuted}>{`Settlement ${result.terms.settlement} · per 100 face`}</Text></Box>
       {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 1 - tabRows)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
         renderCell={(row, column) => ({ text: column.id === "date" ? row.date : fixed(row[column.id as "amount" | "presentValue"]) })} />

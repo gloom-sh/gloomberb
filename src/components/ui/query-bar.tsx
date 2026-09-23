@@ -233,12 +233,12 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         value={filter.value}
         focused={filter.focused}
         active={filter.active}
-        width={HostQueryBar ? "100%" : filter.width ?? 20}
+        width={HostQueryBar ? "100%" : (filter.width ?? 20) + filter.label.length + 1}
         focusToken={filter.focusToken ?? 0}
         inputRef={filter.inputRef ?? fallbackTextRef}
         placeholder={filter.placeholder}
         debounceMs={filter.debounceMs ?? 80}
-        glyph="#"
+        glyph={filter.label}
         appearance={HostQueryBar ? "plain" : "strip"}
         onNavigateDown={() => filter.onActiveChange(false)}
         onFocus={() => filter.onActiveChange(true)}

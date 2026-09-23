@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState, type Dispatch, type SetStateAction } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { InlineFieldView } from "./view";
+import { GridFieldView } from "../../../components";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setFieldActive: Dispatch<SetStateAction<boolean>> | null = null;
@@ -21,7 +21,7 @@ function InlineFieldHarness({ commits }: { commits: number[] }) {
   setFieldActive = setActive;
 
   return (
-    <InlineFieldView
+    <GridFieldView
       field={{
         id: "loss-cap",
         label: "Loss cap",
@@ -40,7 +40,7 @@ function InlineFieldHarness({ commits }: { commits: number[] }) {
   );
 }
 
-describe("InlineFieldView", () => {
+describe("GridFieldView", () => {
   test("replaces the formatted value and commits when focus leaves the active field", async () => {
     const commits: number[] = [];
     testSetup = await testRender(<InlineFieldHarness commits={commits} />, { width: 36, height: 4 });

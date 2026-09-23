@@ -121,7 +121,8 @@ describe("KellySizerPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("SIVE · Main Portfolio");
+    expect(frame).toContain("SIVE");
+    expect(frame).toContain("Main Portfolio");
     expect(frame).toMatch(/Current\s+1000\s+USD/);
     expect(frame).not.toMatch(/Current\s+10000\s+USD/);
   });

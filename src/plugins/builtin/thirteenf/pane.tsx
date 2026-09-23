@@ -515,6 +515,17 @@ export function FundDetailView({
   }, [setStoredTab]);
 
   useShortcut((event) => {
+    if (!focused || !data) return;
+    const direction = isPlainKey(event, "h", "left") ? -1 : isPlainKey(event, "l", "right") ? 1 : 0;
+    if (!direction) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const index = FUND_DETAIL_TABS.findIndex((entry) => entry.value === activeTab);
+    const next = FUND_DETAIL_TABS[Math.max(0, Math.min(FUND_DETAIL_TABS.length - 1, index + direction))];
+    if (next && next.value !== activeTab) selectDetailTab(next.value);
+  });
+
+  useShortcut((event) => {
     if (!focused || !openFiling || event.targetEditable) return;
     if (!isDetailBackNavigationKey(event)) return;
     event.preventDefault?.();
@@ -591,19 +602,14 @@ export function FundDetailView({
 
   return (
     <Box flexDirection="column" width={width} flexGrow={1} overflow="hidden">
-      {data?.name && data.name !== seed.name ? (
-        <Box paddingX={1}><Text fg={colors.text}>{data.name}</Text></Box>
-      ) : null}
-      <Box height={1}>
-        <Tabs
-          tabs={FUND_DETAIL_TABS}
-          activeValue={activeTab}
-          onSelect={selectDetailTab}
-          compact
-          variant="pill"
-          focused={focused}
-        />
-      </Box>
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "section", label: "Show", inline: true, value: activeTab, options: FUND_DETAIL_TABS, onChange: selectDetailTab },
+          ...(activeTab === "holdings" ? [{ id: "mine", kind: "toggle" as const, label: "Mine", value: mineOnly, onChange: setMineOnly }] : []),
+        ]}
+        meta={data?.name && data.name !== seed.name ? data.name : undefined}
+      />
       {activeTab === "overlap" && data ? <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
         <DataTableStackView<FundTimelineRow, FundTimelineColumn>
           focused={focused}
@@ -654,15 +660,12 @@ export function FundDetailView({
           }}
           rootWidth={width}
           rootBefore={(
-            <Box flexDirection="column">
-              <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]} />
-              <Box flexDirection="column" paddingX={1}>
-                <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
-                <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
-                {data?.latestReport && data.latestReport.filings.length > 1 ? (
-                  <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
-                ) : null}
-              </Box>
+            <Box flexDirection="column" paddingX={1}>
+              <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
+              <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
+              {data?.latestReport && data.latestReport.filings.length > 1 ? (
+                <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
+              ) : null}
             </Box>
           )}
           columns={[{ id: "mine", label: "MINE", width: 5, align: "left" }, ...buildHoldingColumns(width - 6)]}

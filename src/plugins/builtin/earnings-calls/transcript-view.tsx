@@ -4,8 +4,8 @@ import type {
   CloudTranscriptKeyFigurePayload,
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
-import { PaneStatusBody, Prose, SectionHeading } from "../../../components";
-import { Tabs } from "../../../components/ui/tabs";
+import { PaneStatusBody, Prose, QueryBar, SectionHeading, type QueryBarSearch } from "../../../components";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
   Box,
@@ -15,6 +15,7 @@ import {
   useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import {
   formatCallDate,
   formatDuration,
@@ -165,6 +166,7 @@ export function TranscriptView({
   onTabChange,
   tabsFocused,
   query,
+  search,
   width,
   scrollRef,
 }: {
@@ -177,6 +179,8 @@ export function TranscriptView({
   tabsFocused: boolean;
   /** Free-text filter applied to the turns, for finding a topic in a long call. */
   query?: string;
+  /** The find field, drawn in the reader's bar beside the section switch. */
+  search?: QueryBarSearch;
   width: number;
   /** Lets the owning pane drive keyboard scrolling. */
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
@@ -196,6 +200,26 @@ export function TranscriptView({
     transcript && tab === "transcript" && !transcript.turns?.length
       ? buildTranscriptSegments(transcript, "transcript", { search: query }) : []
   ), [transcript, tab, query]);
+  const hasQa = (transcript?.turns ?? []).some((turn) => turn.isQa);
+  const readerTabs = READER_TABS.map((entry) => ({
+    label: entry.label,
+    value: entry.value,
+    disabled: entry.value === "qa" && !hasQa,
+  }));
+
+  useShortcut((event) => {
+    if (!tabsFocused || !transcript) return;
+    const direction = isPlainKey(event, "h", "left") ? -1 : isPlainKey(event, "l", "right") ? 1 : 0;
+    if (!direction) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const enabled = readerTabs.filter((entry) => !entry.disabled);
+    const index = enabled.findIndex((entry) => entry.value === tab);
+    const next = index < 0
+      ? enabled[direction > 0 ? 0 : enabled.length - 1]
+      : enabled[Math.max(0, Math.min(enabled.length - 1, index + direction))];
+    if (next && next.value !== tab) onTabChange(next.value);
+  });
 
   if (loading && !transcript) {
     return (
@@ -230,7 +254,6 @@ export function TranscriptView({
   const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
   const contentWidth = isNative ? "100%" : bodyWidth;
   const contentStyle = isNative ? NATIVE_STRETCH_STYLE : undefined;
-  const hasQa = (transcript.turns ?? []).some((turn) => turn.isQa);
 
   return (
     <Box
@@ -241,20 +264,18 @@ export function TranscriptView({
       minHeight={0}
       overflow="hidden"
     >
-      <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
-        <Tabs
-          tabs={READER_TABS.map((entry) => ({
-            label: entry.label,
-            value: entry.value,
-            disabled: entry.value === "qa" && !hasQa,
-          }))}
-          activeValue={tab}
-          onSelect={(value) => onTabChange(value as ReaderTab)}
-          compact
-          variant="bare"
-          focused={tabsFocused}
-        />
-      </Box>
+      <QueryBar
+        width={width}
+        search={search}
+        filters={[{
+          id: "section",
+          label: "Show",
+          inline: true,
+          value: tab,
+          options: readerTabs,
+          onChange: (value: string) => onTabChange(value as ReaderTab),
+        }]}
+      />
       <ScrollBox
         ref={scrollRef}
         flexGrow={1}

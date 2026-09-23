@@ -6,14 +6,15 @@ import { WEB_CELL_HEIGHT } from "../../../../theme/font-scale";
 import { Box } from "../../../../ui";
 import { MenuPopover } from "../../../../components/ui/menu";
 import type { SelectFieldHandle, SelectFieldProps } from "../../../../components/ui/select-field";
+import { WebIcon } from "./icons";
 
 const UNSET_VALUE = "\u0000unset";
 
 function Chevron() {
   return (
-    <svg viewBox="0 0 10 10" fill="none" aria-hidden="true" style={{ width: 9, height: 9, flex: "none", opacity: 0.7 }}>
-      <path d="M2.5 4l2.5 2.5L7.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span style={{ display: "inline-flex", flex: "none", opacity: 0.7 }}>
+      <WebIcon name="chevron-down" size={9} />
+    </span>
   );
 }
 

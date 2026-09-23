@@ -1,4 +1,5 @@
 import { ActionRow } from "../../../components/ui/action-row";
+import { Icon } from "../../../components/ui/icon";
 import { useMemo, useSyncExternalStore } from "react";
 import {
   getPaneSidebarWidth,
@@ -72,38 +73,7 @@ function ChannelNotificationIcon({
         height: 16,
       }}
     >
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
-        <path
-          d="M4.5 9.5v5h3.2l4.8 4v-13l-4.8 4H4.5Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {enabled ? (
-          <>
-            <path
-              d="M16 8.5a5 5 0 0 1 0 7"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-            <path
-              d="M18.8 5.8a9 9 0 0 1 0 12.4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-            />
-          </>
-        ) : (
-          <path
-            d="M19 5 5 19"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-        )}
-      </svg>
+      <Icon name={enabled ? "sound-on" : "sound-off"} size={15} />
     </Span>
   );
 }
@@ -136,15 +106,7 @@ function ProfileIcon({
         height: 16,
       }}
     >
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
-        <circle cx="12" cy="8.5" r="3.4" stroke="currentColor" strokeWidth="1.8" />
-        <path
-          d="M5.5 19.5a6.5 6.5 0 0 1 13 0"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
+      <Icon name="user" size={15} />
     </Span>
   );
 }

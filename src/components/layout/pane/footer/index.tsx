@@ -2,6 +2,7 @@ import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../../
 import { useRef } from "react";
 import { colors, blendHex } from "../../../../theme/colors";
 import { getShortcutHintWidth, ShortcutHint } from "../../../ui/shortcut-hint";
+import { IconButton } from "../../../ui/icon";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import {
   EMPTY_FOOTER,
@@ -79,36 +80,17 @@ function SegmentView({ segment }: { segment: PaneFooterSegment }) {
 
   if (nativePaneChrome && segment.icon) {
     return (
-      <button
-        type="button"
-        aria-label={label}
-        aria-keyshortcuts={segment.shortcut}
-        aria-haspopup={interactive ? "dialog" : undefined}
+      <IconButton
+        icon={segment.icon}
+        label={label}
         title={segment.title ?? label}
+        shortcut={segment.shortcut}
+        hasPopup={interactive ? "dialog" : undefined}
+        size={14}
         disabled={!interactive}
-        data-gloom-interactive={interactive ? "true" : undefined}
-        onMouseDown={(event) => event.stopPropagation()}
-        onMouseUp={(event) => event.stopPropagation()}
-        onClick={(event) => { event.stopPropagation(); segment.onPress?.(); }}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (interactive) segment.onPress?.();
-        }}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          minWidth: 20, padding: "0 3px", border: 0, borderRadius: 3,
-          color: segment.disabled ? colors.textMuted : footerToneColor(segment.parts[0] ?? { text: "" }),
-          backgroundColor: "transparent", cursor: interactive ? "pointer" : "default",
-        }}
-      >
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-          <path d="M7.1 2.3a1 1 0 0 1 1.8 0l5.4 10a1 1 0 0 1-.9 1.5H2.6a1 1 0 0 1-.9-1.5l5.4-10Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-          <path d="M8 5.8v3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-          <circle cx="8" cy="11.4" r=".8" fill="currentColor" />
-        </svg>
-      </button>
+        color={segment.disabled ? colors.textMuted : footerToneColor(segment.parts[0] ?? { text: "" })}
+        onPress={() => segment.onPress?.()}
+      />
     );
   }
 

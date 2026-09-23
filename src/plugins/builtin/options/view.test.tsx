@@ -428,9 +428,7 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
 
   await renderSettled();
   const bodyScroll = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
-  const expirationTabsScroll = testSetup!.renderer.root.findDescendantById("options-expiration-tabs-scroll") as ScrollBoxRenderable | undefined;
   expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
-  expect(expirationTabsScroll?.horizontalScrollBar.visible).toBe(false);
   expect(testSetup!.captureCharFrame()).not.toContain(formatExpDate(expirationDates.at(-1)!));
 
   await act(async () => {
@@ -451,7 +449,6 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
 
   expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
   expect(bodyScroll?.scrollLeft ?? 0).toBe(0);
-  expect(expirationTabsScroll?.scrollLeft ?? 0).toBeGreaterThan(0);
   expect(requestedExpirations).toContain(expirationDates.at(-1));
   expect(testSetup!.captureCharFrame()).toContain(formatExpDate(expirationDates.at(-1)!));
 });

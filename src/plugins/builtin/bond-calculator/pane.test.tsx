@@ -39,8 +39,10 @@ test("unavailable benchmark preserves calculator and invalid edits remove the pr
   await mount();
   expect(setup!.captureCharFrame()).toContain("103.3339");
   expect(setup!.captureCharFrame()).toContain("HTTP 404");
-  const coupon = registry!.snapshot().find((node) => node.role === "text-field" && node.label === "Coupon %")!;
-  await act(async () => { await registry!.invoke(coupon.id, "setValue", ""); }); await frame();
+  const editCoupon = registry!.snapshot().find((node) => node.role === "button" && node.label === "Edit Coupon %")!;
+  await act(async () => { await registry!.invoke(editCoupon.id, "press"); }); await frame();
+  const coupon = registry!.snapshot().find((node) => node.role === "text-field" && node.metadata?.focused === true)!;
+  await act(async () => { await registry!.invoke(coupon.id, "setValue", ""); await registry!.invoke(coupon.id, "submit", ""); }); await frame();
   expect(setup!.captureCharFrame()).not.toContain("103.3339");
   expect(setup!.captureCharFrame()).toContain("Coupon must be a number");
 });

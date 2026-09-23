@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apiClient } from "../../../../api-client";
-import { Button, EmptyState, Tabs, usePaneFooter } from "../../../../components";
+import { Button, EmptyState, QueryBar, usePaneFooter } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { usePaneTicker } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
@@ -112,22 +112,25 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
       </Box>
     );
   }
-  const tabsHeight = covering.length > 1 ? 1 : 0;
+  const barRows = covering.length > 1 ? 1 : 0;
   return (
     <Box flexDirection="column" flexGrow={1}>
       {covering.length > 1 && (
-        <Tabs
-          tabs={covering.map((thesis) => ({ label: thesis.title, value: thesis.id }))}
-          activeValue={active.id}
-          onSelect={setActiveId}
-          compact
-          variant="bare"
+        <QueryBar
+          width={width}
+          filters={[{
+            id: "thesis",
+            label: "Thesis",
+            value: active.id,
+            options: covering.map((thesis) => ({ label: thesis.title, value: thesis.id })),
+            onChange: setActiveId,
+          }]}
         />
       )}
       <ThesisDetail
         thesis={active}
         width={width}
-        height={height - tabsHeight}
+        height={height - barRows}
         focused={focused}
         footerId="ticker-thesis"
         onDeleted={() => setActiveId(null)}

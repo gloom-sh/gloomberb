@@ -5,31 +5,19 @@ import { WebPopover } from "./popover";
 import { WebMenu } from "./menu";
 import { useHorizontalOverflow } from "../host/overflow-fade";
 import { StackHeaderContext } from "./stack-header";
-import { BackChevron, CheckboxBox } from "./controls";
+import { CheckboxBox } from "./controls";
+import { WebIcon } from "./icons";
 
 function Chevron() {
-  return (
-    <svg className="gloom-qb-chevron" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-      <path d="M2.5 4l2.5 2.5L7.5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <span className="gloom-qb-chevron"><WebIcon name="chevron-down" size={9} /></span>;
 }
 
 function Cross() {
-  return (
-    <svg viewBox="0 0 10 10" fill="none" aria-hidden="true">
-      <path d="M3 3l4 4M7 3L3 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
+  return <WebIcon name="close" size={10} />;
 }
 
 function SearchIcon() {
-  return (
-    <svg className="gloom-qb-search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="7" cy="7" r="4.25" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M10.3 10.3L13.5 13.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+  return <span className="gloom-qb-search-icon"><WebIcon name="search" size={11} /></span>;
 }
 
 function QueryMenu({ item, onClose }: { item: HostQueryBarItem; onClose: () => void }) {
@@ -268,7 +256,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
             onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
             onClick={(event) => { event.stopPropagation(); stack.onBack(); }}
           >
-            <BackChevron />
+            <WebIcon name="back" size={11} />
             <span className="gloom-qb-text">{stack.backLabel}</span>
           </button>
           {stack.title ? <span className="gloom-qb-title" title={stack.title}>{stack.title}</span> : null}

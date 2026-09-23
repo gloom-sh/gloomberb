@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { act, useMemo, useState, type ReactNode } from "react";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
 import { createDomTestHarness } from "../../../../renderers/electrobun/view/test-utils";
+import { WebIcon, WebIconButton } from "../../../../renderers/electrobun/view/desktop/icons";
 import { PaneFooterBar, PaneFooterProvider, usePaneFooter, type PaneFooterSegment } from "./index";
 
 const { render } = createDomTestHarness();
@@ -9,7 +10,7 @@ const { render } = createDomTestHarness();
 function DesktopChrome({ children }: { children: ReactNode }) {
   const base = useUiHost();
   const renderer = useRendererHost();
-  const ui = useMemo(() => ({ ...base, capabilities: { ...base.capabilities, nativePaneChrome: true } }), [base]);
+  const ui = useMemo(() => ({ ...base, Icon: WebIcon, IconButton: WebIconButton, capabilities: { ...base.capabilities, nativePaneChrome: true } }), [base]);
   return <UiHostProvider ui={ui} renderer={renderer}>{children}</UiHostProvider>;
 }
 

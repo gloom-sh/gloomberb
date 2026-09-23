@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { TeamSummary } from "../../../api-client";
 import { ChoiceDialog } from "../../../components/ui/choice-dialog";
-import { Tabs } from "../../../components/ui/tabs";
+import { QueryBar } from "../../../components/ui/query-bar";
 import { Box, Text } from "../../../ui";
 import type { DialogApi, PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
@@ -34,35 +34,35 @@ export function ownerColor(owner: NoteOwner, teams: readonly TeamSummary[]): str
   return team ? teamAccentHex(team.accentColor) : colors.textDim;
 }
 
-/** Me plus one pill per team. Hidden when there are no teams. */
+/** Me plus one choice per team. Hidden when there are no teams. */
 export function NoteOwnerStrip({
   owner,
   teams,
   onSelect,
-  focused,
+  width,
 }: {
   owner: NoteOwner;
   teams: readonly TeamSummary[];
   onSelect: (owner: NoteOwner) => void;
-  focused: boolean;
+  width: number;
 }) {
   if (teams.length === 0) return null;
-  const tabs = [
+  const options = [
     { label: "Me", value: "user" },
-    ...teams.map((team) => ({ label: teamPrefix(team), value: `team:${team.id}`, fg: teamAccentHex(team.accentColor) })),
+    ...teams.map((team) => ({ label: teamPrefix(team), value: `team:${team.id}` })),
   ];
   return (
-    <Box height={1} flexDirection="row" paddingLeft={1}>
-      <Tabs
-        tabs={tabs}
-        activeValue={noteOwnerKey(owner)}
-        onSelect={(value) => onSelect(value === "user" ? { kind: "user" } : { kind: "team", teamId: value.slice("team:".length) })}
-        compact
-        variant="pill"
-        focused={focused}
-        keyboardNavigation={false}
-      />
-    </Box>
+    <QueryBar
+      width={width}
+      filters={[{
+        id: "owner",
+        label: "Owner",
+        inline: true,
+        value: noteOwnerKey(owner),
+        options,
+        onChange: (value: string) => onSelect(value === "user" ? { kind: "user" } : { kind: "team", teamId: value.slice("team:".length) }),
+      }]}
+    />
   );
 }
 
