@@ -60,7 +60,8 @@ import {
 } from "./sorting";
 
 const clearDeniedEstimates = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
+  (error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0))
+  || (error instanceof Error && isCloudSessionRequired(error.message));
 
 const TABS = [
   { value: "revisions", label: "Revisions" },

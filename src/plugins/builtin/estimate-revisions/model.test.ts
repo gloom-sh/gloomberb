@@ -4,6 +4,7 @@ import type {
   EstimateRevisionsPayload,
 } from "../../../api-client/estimate-revisions";
 import { ApiRequestError } from "../../../api-client/errors";
+import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { fetchEstimates, validateEstimates } from "./client";
 import {
   estimateCurrent,
@@ -139,14 +140,16 @@ test("absent endpoint and denied access remain distinct", async () => {
       },
     }),
   ).rejects.toThrow("not available on this Gloom Cloud server yet");
-  const denied = new ApiRequestError("Forbidden", 403);
-  await expect(
-    fetchEstimates("AAPL", "NASDAQ", {
-      getCloudEstimateRevisions: async () => {
-        throw denied;
-      },
-    }),
-  ).rejects.toBe(denied);
+  // A signed-out (401) or unverified (403) session becomes the shared Cloud gate the pane walls on.
+  for (const status of [401, 403]) {
+    await expect(
+      fetchEstimates("AAPL", "NASDAQ", {
+        getCloudEstimateRevisions: async () => {
+          throw new ApiRequestError(status === 401 ? "Unauthorized" : "Email verification required", status);
+        },
+      }),
+    ).rejects.toThrow(CLOUD_SESSION_REQUIRED);
+  }
 });
 
 test("fiscal pin preserves frequency and currency identity and rejects invalid or unavailable dates", () => {

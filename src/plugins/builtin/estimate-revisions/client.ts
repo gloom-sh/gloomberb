@@ -1,3 +1,4 @@
+import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { EstimateRevisionsPayload } from "../../../api-client/estimate-revisions";
@@ -245,6 +246,9 @@ export async function fetchEstimates(
       throw new Error(
         "Estimate revisions is not available on this Gloom Cloud server yet",
       );
+    // The route answers a missing or unverified session with a bare 401/403; the pane's sign-in wall keys on the shared gate.
+    if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403))
+      throw new Error(CLOUD_SESSION_REQUIRED);
     throw error;
   }
 }
