@@ -43,6 +43,11 @@ export { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/
 export type { ColumnContext } from "../plugins/builtin/portfolio-list/column-values";
 export { TickerBadgeList } from "./ticker/badge/list";
 export { TickerBadgeText } from "./ticker/badge/text";
+// One `useInlineTickers` catalog entry in running text. With `badgeQuotes`
+// the badge follows its own symbol's quote, so a tick re-renders the chip
+// rather than the document around it.
+export { InlineTickerBadge } from "./ticker/badge";
+export type { InlineTickerBadgeProps } from "./ticker/badge";
 export { InputSearchBar } from "./input-search-bar";
 export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
 export { DataTableView } from "./data-table/view";

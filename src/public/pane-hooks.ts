@@ -49,6 +49,14 @@ export const usePaneCollection = usePaneCollectionInternal;
 export const usePaneTicker = usePaneTickerInternal;
 
 /**
+ * The pane's symbol, ticker and bound contract without its financials. A pane
+ * that only needs the symbol (news, filings, holders) uses this instead of
+ * `usePaneTicker`, which also re-renders on every quote tick of the symbol.
+ */
+export { usePaneTickerIdentity } from "../state/hooks/pane-ticker";
+export type { PaneTickerIdentity } from "../state/hooks/pane-ticker";
+
+/**
  * Declares that this pane owns keyboard input while `captured` is true, so the
  * app stops routing keys to global shortcuts. Released automatically on unmount.
  */

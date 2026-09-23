@@ -59,8 +59,10 @@ export {
   usePaneStateValue,
   usePaneTitle,
   usePaneTicker,
+  usePaneTickerIdentity,
   useTickers,
 } from "./pane-hooks";
+export type { PaneTickerIdentity } from "./pane-hooks";
 
 // Keyboard handling for plugin panes; the renderer decides how events arrive.
 export { useShortcut } from "../react/input";
@@ -87,8 +89,18 @@ export { useTickerSourceActivate } from "../plugins/builtin/shared/ticker-source
 
 // Financials and FX for a list of tickers, from the same query store the
 // built-in tables read, so a plugin table shows the values the rest of the app
-// already fetched instead of fetching them again.
+// already fetched instead of fetching them again. `useTickerFinancialsMap` is
+// passive: it observes the store and opens no stream, so its prices move only
+// while some other pane streams the same symbols.
 export { useFxRatesMap, useTickerFinancialsMap } from "../market-data/hooks";
+
+// The same reads that also stream the quotes, for a pane that shows a price or
+// something computed from it. Identical symbols share one subscription with
+// every other pane; a covered pane's quotes drop to the off-screen cadence and
+// a hidden app pauses them. Pass `visible: false` for values that are only
+// aggregated (totals, weights) rather than shown per row.
+export { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../state/hooks/live-ticker-financials";
+export type { LiveQuoteStreamOptions } from "../state/hooks/live-ticker-financials";
 
 // Loading one thing asynchronously into a pane: data, loading, error, reload.
 // Every data pane needs this, and a plugin that hand-rolls it drifts from the
