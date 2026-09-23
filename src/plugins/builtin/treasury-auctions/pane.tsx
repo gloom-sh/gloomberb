@@ -35,6 +35,7 @@ import {
   isPendingAuction,
   nextAuctionSort,
   nextFilter,
+  rateLabel,
   rateValue,
   visibleAuctions,
   type AuctionColumn,
@@ -150,7 +151,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
           {isPendingAuction(auction) && <Text fg={colors.warning}>results pending</Text>}
         </Box>
         <Box height={1} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High rate" value={formatAuctionRate(auction, rateValue(auction), "—")} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), "—")} />
         {auction.avgMedYield != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
         )}

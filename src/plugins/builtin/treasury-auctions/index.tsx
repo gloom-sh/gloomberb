@@ -73,7 +73,7 @@ export const treasuryAuctionsModule: PluginModule = {
       paneId: TREASURY_AUCTIONS_PANE_ID,
       label: "Treasury Auctions",
       description:
-        "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: high rate, bid-to-cover, indirect share, and size.",
+        "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: auction rate, bid-to-cover, indirect share, and size.",
       keywords: [
         "treasury",
         "auction",
