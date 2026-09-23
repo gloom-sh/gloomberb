@@ -15,6 +15,8 @@ import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
 
+export { useLiveBrokerAccounts, type LiveBrokerAccounts } from "./live-accounts";
+
 export interface PortfolioSummarySegment {
   id: string;
   parts: Array<{
