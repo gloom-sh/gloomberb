@@ -34,10 +34,12 @@ import type { DataFrameScheduler } from "../frame-scheduler";
 import {
   FX_LIVE_RATE_MAX_AGE_MS,
   FX_LIVE_RATE_MAX_DEVIATION,
+  FX_LIVE_RATE_MAX_OBSERVATION_AGE_MS,
   FX_LIVE_RATE_MIN_CHANGE,
   FX_LIVE_RATE_REFRESH_MS,
   FX_LIVE_RATE_STALE_MS,
   fxLegForCurrency,
+  fxObservationAgeMs,
   fxRateFromLegQuote,
   type FxLeg,
 } from "./fx-legs";
@@ -118,8 +120,13 @@ export class MarketDataCoordinator {
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key));
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key));
   private readonly liveFxRates = new Map<string, { rate: number; observedAt: number; receivedAt: number }>();
-  /** The last rate a request loaded per currency; a streamed rate must stay near it to be believed. */
-  private readonly loadedFxRates = new Map<string, number>();
+  /**
+   * The last rate a request loaded per currency; a streamed rate must stay
+   * near it to be believed, and one observed before it does not replace it.
+   */
+  private readonly loadedFxRates = new Map<string, { rate: number; asOf: number | null }>();
+  /** The last pair quote each currency's leg received, as the stream sent it. */
+  private readonly fxLegFrames = new Map<string, Quote>();
   private writingLiveFxRate = false;
   private readonly fxLegsByQuoteKey = new Map<string, FxLeg>();
   private readonly fxLegsByCurrency = new Map<string, FxLeg>();
@@ -553,17 +560,22 @@ export class MarketDataCoordinator {
     })));
   }
 
-  private applyLiveFxLeg(leg: FxLeg, quote: Quote | null): void {
+  private applyLiveFxLeg(leg: FxLeg, quote: Quote | undefined): void {
     if (!quote || quote.stale === true) return;
+    const now = Date.now();
+    // Only a current observation is a live rate; a delayed or quiet pair
+    // leaves the loaded rate in charge.
+    if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0
+      || fxObservationAgeMs(quote.lastUpdated, now) > FX_LIVE_RATE_MAX_OBSERVATION_AGE_MS) return;
+    const observedAt = Math.min(quote.lastUpdated, now);
     const rate = fxRateFromLegQuote(leg, quote);
     if (rate == null) return;
     // Without a loaded rate there is nothing to catch a wrong pair or a bad print.
     const reference = this.loadedFxRates.get(leg.currency);
-    if (reference == null || Math.abs(rate / reference - 1) > FX_LIVE_RATE_MAX_DEVIATION) return;
-    const now = Date.now();
+    if (reference == null || Math.abs(rate / reference.rate - 1) > FX_LIVE_RATE_MAX_DEVIATION) return;
+    if (reference.asOf != null && reference.asOf > observedAt) return;
     const previous = this.liveFxRates.get(leg.currency);
     if (previous && Math.abs(rate / previous.rate - 1) < FX_LIVE_RATE_MIN_CHANGE && now - previous.receivedAt < FX_LIVE_RATE_REFRESH_MS) return;
-    const observedAt = Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? Math.min(quote.lastUpdated, now) : now;
     this.liveFxRates.set(leg.currency, { rate, observedAt, receivedAt: now });
     const key = buildFxKey(leg.currency);
     this.writingLiveFxRate = true;
@@ -582,12 +594,16 @@ export class MarketDataCoordinator {
     // streamed value; only a rate a request produced is a reference.
     if (!this.writingLiveFxRate && loaded != null && Number.isFinite(loaded) && loaded > 0 && loaded !== live?.rate) {
       const firstReference = !this.loadedFxRates.has(currency);
-      this.loadedFxRates.set(currency, loaded);
+      const asOf = typeof entry.asOf === "number" && Number.isFinite(entry.asOf) ? entry.asOf : null;
+      this.loadedFxRates.set(currency, { rate: loaded, asOf });
       // A pair that streamed before any rate loaded can be checked now.
       const leg = firstReference && !live ? this.fxLegsByCurrency.get(currency) : undefined;
-      if (leg) queueMicrotask(() => this.applyLiveFxLeg(leg, this.quoteStore.get(buildQuoteKey(leg.instrument)).data));
+      if (leg) queueMicrotask(() => this.applyLiveFxLeg(leg, this.fxLegFrames.get(leg.currency)));
     }
-    if (!live || Date.now() - live.receivedAt > FX_LIVE_RATE_MAX_AGE_MS) return entry;
+    if (!live || fxObservationAgeMs(live.observedAt, Date.now()) > FX_LIVE_RATE_MAX_AGE_MS) return entry;
+    // A request that observed the market after the last tick is the better rate.
+    const loadedAsOf = this.loadedFxRates.get(currency)?.asOf;
+    if (loadedAsOf != null && loadedAsOf > live.observedAt) return entry;
     if (entry.data === live.rate && entry.asOf === live.observedAt) return entry;
     return {
       ...entry,
@@ -617,7 +633,10 @@ export class MarketDataCoordinator {
     const entry = readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts);
     this.quoteStore.set(key, entry);
     const fxLeg = this.fxLegsByQuoteKey.get(key);
-    if (fxLeg) this.applyLiveFxLeg(fxLeg, entry.data);
+    if (fxLeg && entry.data) {
+      this.fxLegFrames.set(fxLeg.currency, quote);
+      this.applyLiveFxLeg(fxLeg, quote);
+    }
   }
 
   private resolveIncomingQuote(instrument: InstrumentRef, quote: Quote): Quote {

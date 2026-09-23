@@ -110,3 +110,51 @@ test("streamed USD pairs move the FX rate while current and keep the loaded rate
   expect(coordinator.getQuoteEntry({ symbol: "EURUSD=X", exchange: "" }).data?.price).toBe(0.5);
   expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
 });
+
+test("a pair overrides the loaded rate only with a current observation of its own", async () => {
+  const now = Date.now();
+  // The loaded rate is half an hour old, so only the pair's own age can reject it.
+  let loaded = { rate: 1.1, asOf: now - 30 * 60_000 };
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  const pairQuote = (quote: Partial<Quote>): Quote => ({
+    symbol: "EURUSD=X", currency: "USD", change: 0, changePercent: 0, lastUpdated: now, price: 0, dataSource: "live", ...quote,
+  });
+  const provider = createTestDataProvider({
+    getExchangeRateSnapshot: async () => ({
+      rate: loaded.rate, fromCurrency: "EUR", toCurrency: "USD", source: "controlled-fx",
+      asOf: new Date(loaded.asOf).toISOString(), fetchedAt: new Date(now).toISOString(), stale: false,
+    }),
+    // An open EURUSD=X detail holds a snapshot with its own bid and ask.
+    getTickerFinancials: async () => ({
+      annualStatements: [], quarterlyStatements: [], priceHistory: [],
+      quote: pairQuote({ price: 1.1181, bid: 1.118, ask: 1.1182, lastUpdated: now - 20 * 60_000 }),
+    }),
+    subscribeQuotes: (_targets, onQuote) => { emit = onQuote; return () => {}; },
+  });
+  const clock = createManualFrameDriver(0);
+  const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(clock.driver) });
+  const pair = (quote: Partial<Quote>) => {
+    emit!({ symbol: "EURUSD=X", exchange: "" }, pairQuote(quote));
+    clock.advance(1_000);
+  };
+  try {
+    await coordinator.loadFxRate("EUR");
+    await coordinator.loadSnapshot({ symbol: "EURUSD=X", exchange: "" });
+    coordinator.subscribeFxRates(["EUR"]);
+
+    // A pair last observed minutes ago (a delayed feed, a quiet market) is not a live rate.
+    pair({ price: 1.105, lastUpdated: now - 3 * 60_000, dataSource: "delayed" });
+    expect(coordinator.getFxEntry("EUR").data).toBe(1.1);
+
+    // A frame with only a price moves the rate; the snapshot's bid and ask do not pin it.
+    pair({ price: 1.119 });
+    expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.119, 6);
+
+    // A request that observed the market after the last tick is the better rate.
+    loaded = { rate: 1.12, asOf: now + 1_000 };
+    await coordinator.loadFxRate("EUR", { forceRefresh: true });
+    expect(coordinator.getFxEntry("EUR").data).toBe(1.12);
+  } finally {
+    coordinator.destroy();
+  }
+});
