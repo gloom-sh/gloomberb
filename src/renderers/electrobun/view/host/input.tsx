@@ -43,6 +43,14 @@ function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSS
   };
 }
 
+/**
+ * The Enter that confirms an IME conversion (Japanese, Chinese, Korean) must
+ * not submit. WebKit already clears `isComposing` on that key, hence 229.
+ */
+function isImeComposing(event: { nativeEvent: { isComposing: boolean }; keyCode: number }): boolean {
+  return event.nativeEvent.isComposing || event.keyCode === 229;
+}
+
 function getStringProp(props: Record<string, unknown>, key: string): string | undefined {
   const value = props[key];
   return typeof value === "string" ? value : undefined;
@@ -254,6 +262,7 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
   });
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isImeComposing(event)) return;
     const keyEvent = toKeyEventLike(event.nativeEvent);
     if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
     if (keyEvent.defaultPrevented) return;
@@ -379,6 +388,7 @@ export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown
   });
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposing(event)) return;
     const keyEvent = toKeyEventLike(event.nativeEvent);
     if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
     if (keyEvent.defaultPrevented) return;

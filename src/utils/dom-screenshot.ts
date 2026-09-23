@@ -245,7 +245,10 @@ function drawInputElement(
   element: HTMLInputElement | HTMLTextAreaElement,
   origin: CaptureOrigin,
 ): void {
-  const value = element.value;
+  // Paint what the screen shows: a password field is dots, never its value.
+  const value = element instanceof HTMLInputElement && element.type === "password"
+    ? "\u2022".repeat(element.value.length)
+    : element.value;
   if (!value) return;
   const style = getComputedStyle(element);
   const rect = element.getBoundingClientRect();

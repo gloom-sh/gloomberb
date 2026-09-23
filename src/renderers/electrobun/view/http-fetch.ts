@@ -5,6 +5,12 @@ import type { DesktopHttpFetchResponse } from "../shared/protocol";
 import { backendRequest, onHttpStreamChunk } from "./backend-rpc";
 
 const CLOUD_MARKET_HTTP_TIMEOUT_MS = 10_000;
+/**
+ * The view gives up on a feedback upload after 45 s (api-client/feedback.ts),
+ * but aborting in the view does not stop the Bun process's fetch. Stop it a
+ * little sooner there, so a retry after the timeout cannot store the report twice.
+ */
+const FEEDBACK_SUBMIT_BUN_TIMEOUT_MS = 43_000;
 
 function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
   const normalized: Record<string, string> = {};
@@ -91,9 +97,12 @@ async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise
   if (init?.signal?.aborted) {
     throw createAbortError();
   }
-  const timeoutMs = new URL(url).pathname.startsWith("/market/")
+  const path = new URL(url).pathname;
+  const timeoutMs = path.startsWith("/market/")
     ? CLOUD_MARKET_HTTP_TIMEOUT_MS
-    : undefined;
+    : path.endsWith("/feedback") && init?.method === "POST"
+      ? FEEDBACK_SUBMIT_BUN_TIMEOUT_MS
+      : undefined;
   const response = await withAbort(requestBackendHttpFetch(url, init, timeoutMs), init?.signal);
 
   return {

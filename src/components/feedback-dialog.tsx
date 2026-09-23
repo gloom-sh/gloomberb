@@ -60,9 +60,12 @@ export function FeedbackDialog({
   dismiss,
   terminalScreenshot,
   buildReport,
+  onSentAfterClose,
   width,
 }: PromptContext<FeedbackSubmitResponse | undefined> & {
   width: number;
+  /** A send that finishes after Esc still counts: the host announces it instead of resolving. */
+  onSentAfterClose: (response: FeedbackSubmitResponse) => void;
   /** The screen as it was when the dialog opened, on the terminal renderer. */
   terminalScreenshot: FeedbackScreenshot | null;
   buildReport: (input: { title: string; message: string; screenshot: FeedbackScreenshot | null }) => FeedbackSubmitRequest;
@@ -78,6 +81,9 @@ export function FeedbackDialog({
   const [screenshot, setScreenshot] = useState<FeedbackScreenshot | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [sending, setSending] = useState(false);
+  // State lags a render behind: two Enters in one terminal read would both see `sending` false.
+  const sendingRef = useRef(false);
+  const closedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const signedIn = apiClient.isSignedIn();
   const canAttach = !!terminalScreenshot || nativePaneChrome;
@@ -88,6 +94,9 @@ export function FeedbackDialog({
   }, [activeField]);
 
   useEffect(focusActiveField, [focusActiveField]);
+  useEffect(() => () => {
+    closedRef.current = true;
+  }, []);
 
   const readMessage = () => {
     try {
@@ -113,25 +122,32 @@ export function FeedbackDialog({
   }, []);
 
   const send = useCallback(async () => {
-    if (sending || capturing) return;
+    if (sendingRef.current || capturing) return;
     const message = readMessage().trim().slice(0, FEEDBACK_MESSAGE_MAX);
     const trimmedTitle = title.trim().slice(0, FEEDBACK_TITLE_MAX);
     if (!trimmedTitle && !message) {
       setError(t("Write a title or a message."));
       return;
     }
+    sendingRef.current = true;
     setSending(true);
     setError(null);
     try {
       const response = await apiClient.submitFeedback(buildReport({ title: trimmedTitle, message, screenshot }));
-      draft.title = "";
-      draft.message = "";
-      resolve(response);
+      // Leave a draft alone if it has moved on since (typed into a reopened dialog).
+      if (draft.title.trim() === trimmedTitle && draft.message.trim() === message) {
+        draft.title = "";
+        draft.message = "";
+      }
+      if (closedRef.current) onSentAfterClose(response);
+      else resolve(response);
     } catch (errorValue) {
+      sendingRef.current = false;
+      if (closedRef.current) return;
       setError(errorMessage(errorValue));
       setSending(false);
     }
-  }, [buildReport, capturing, resolve, screenshot, sending, title]);
+  }, [buildReport, capturing, onSentAfterClose, resolve, screenshot, title]);
 
   // A click on the button takes DOM focus; hand it back so Enter still sends.
   const toggleScreenshot = useCallback(async () => {
@@ -154,7 +170,11 @@ export function FeedbackDialog({
 
   const signIn = () => {
     dismiss();
-    requestAuthDialog({ onSignedIn: () => { requestFeedbackDialog(); } });
+    // After the close settles: closing hands focus back to the pane behind,
+    // which would otherwise land after the auth dialog focused its email field.
+    setTimeout(() => {
+      requestAuthDialog({ onSignedIn: () => { requestFeedbackDialog(); } });
+    }, 0);
   };
 
   useDialogKeyboard((event) => {
@@ -250,7 +270,7 @@ export function FeedbackDialog({
         </Box>
         {!signedIn && (
           <Box flexDirection="row">
-            <Button label="Sign in to get a reply" variant="plain" compact flush onPress={signIn} />
+            <Button label="Sign in to get a reply" variant="plain" compact flush disabled={sending} onPress={signIn} />
           </Box>
         )}
       </Box>
@@ -287,6 +307,12 @@ export function FeedbackDialogHost() {
   const openRef = useRef(false);
 
   useEffect(() => {
+    const announce = (response: FeedbackSubmitResponse) => {
+      for (const listener of feedbackSentListeners) listener();
+      toast.success(response.replyTo
+        ? tf("Thanks. We'll reply to {email}.", { email: response.replyTo })
+        : t("Thanks. Your feedback was sent."));
+    };
     const open = () => {
       if (openRef.current) return;
       openRef.current = true;
@@ -320,16 +346,13 @@ export function FeedbackDialogHost() {
                 {...(context as PromptContext<FeedbackSubmitResponse | undefined>)}
                 terminalScreenshot={terminalScreenshot}
                 buildReport={buildReport}
+                onSentAfterClose={announce}
                 width={width}
               />
             ),
           })
           .then((response) => {
-            if (!response) return;
-            for (const listener of feedbackSentListeners) listener();
-            toast.success(response.replyTo
-              ? tf("Thanks. We'll reply to {email}.", { email: response.replyTo })
-              : t("Thanks. Your feedback was sent."));
+            if (response) announce(response);
           })
           .finally(() => {
             openRef.current = false;

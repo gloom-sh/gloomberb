@@ -44,6 +44,7 @@ import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
+import { displayWidth } from "../../utils/format";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Tabs } from "../ui/tabs";
@@ -410,7 +411,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     openChangelog: onOpenChangelog ? openChangelog : undefined,
     openLayoutContextMenu,
     // Feedback keeps the bottom-right corner; the version chip gives way first.
-    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - (t("Feedback").length + 1)),
+    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - (displayWidth(t("Feedback")) + 1)),
     setHoveredControl,
     showTidyWindows,
     tidyWindowsKey,

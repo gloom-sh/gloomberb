@@ -19,6 +19,29 @@ const MAX_PROBLEM_ENTRIES = 150;
 const MAX_RECENT_ENTRIES = 150;
 const MAX_LINE_CHARS = 400;
 const MAX_DATA_CHARS = 300;
+/** The server drops diagnostics over 16,000 characters; stay under it. */
+const MAX_DIAGNOSTICS_CHARS = 15_000;
+
+function clip(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+/**
+ * A request error as it can go in a report: scrubbed, then cut. A schema
+ * failure echoes the whole request body back (an Ask G prompt, a note), so
+ * only its kind is kept.
+ */
+function connectionError(message: string): string {
+  if (message.startsWith("{\"type\":\"validation\"")) {
+    try {
+      const parsed = JSON.parse(message) as { on?: unknown };
+      return `validation failed (${typeof parsed.on === "string" ? parsed.on : "request"})`;
+    } catch {
+      return "validation failed";
+    }
+  }
+  return clip(redactText(message), MAX_DATA_CHARS);
+}
 
 export function feedbackSource(): FeedbackSource {
   return getCurrentPluginTarget();
@@ -51,7 +74,11 @@ function failingConnections(): Array<Record<string, unknown>> {
       status: source.status,
       socket: source.socketState,
       lastError: source.lastError
-        ? { at: new Date(source.lastError.at).toISOString(), operation: source.lastError.operation, error: source.lastError.error ?? null }
+        ? {
+          at: new Date(source.lastError.at).toISOString(),
+          operation: clip(source.lastError.operation, 120),
+          error: source.lastError.error ? connectionError(source.lastError.error) : null,
+        }
         : null,
     }));
 }
@@ -80,7 +107,11 @@ export function collectFeedbackDiagnostics(state: AppState, registry: PluginRegi
     plugins,
     connections: failingConnections(),
   };
-  return redactValue(diagnostics) as Record<string, unknown>;
+  const result = redactValue(diagnostics) as Record<string, unknown> & { connections: unknown[] };
+  while (result.connections.length > 0 && JSON.stringify(result).length > MAX_DIAGNOSTICS_CHARS) {
+    result.connections.pop();
+  }
+  return result;
 }
 
 function safeData(data: unknown): string {
