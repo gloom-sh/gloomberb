@@ -101,3 +101,38 @@ export function reconcileYahooCurrentPeriod(rows: PricePoint[], interval: string
   };
   return result;
 }
+
+// Yahoo builds an FX pair's calendar high and low from a different quote
+// stream than its open and close, so they can miss each other by a few pips.
+const FX_RANGE_TOLERANCE = 1e-3;
+
+/**
+ * Widen an FX calendar bar's high and low over an open or close that sits a
+ * few pips outside them. A larger contradiction stays for the integrity checks.
+ */
+export function coverFxOpenClose(rows: PricePoint[]): PricePoint[] {
+  return rows.map((row) => {
+    const { open, high, low, close } = row;
+    if (high == null || low == null || !(close > 0)) return row;
+    const top = Math.max(close, open ?? close);
+    const bottom = Math.min(close, open ?? close);
+    if (top <= high && bottom >= low) return row;
+    const tolerance = close * FX_RANGE_TOLERANCE;
+    if (top - high > tolerance || low - bottom > tolerance) return row;
+    return { ...row, high: Math.max(high, top), low: Math.min(low, bottom) };
+  });
+}
+
+/**
+ * Yahoo ends an intraday chart with the latest trade as its own row, stamped
+ * at the trade time off the bar grid, with a placeholder volume of 0. That
+ * volume is not known yet, so it must not read as a bar with no trading.
+ */
+export function withoutLiveRowVolume(rows: PricePoint[], intervalMs: number): PricePoint[] {
+  const last = rows.at(-1);
+  const previous = rows.at(-2);
+  if (!last || !previous || last.volume !== 0) return rows;
+  const offset = last.date.getTime() - previous.date.getTime();
+  if (!(offset > 0) || offset % intervalMs === 0) return rows;
+  return [...rows.slice(0, -1), { ...last, volume: undefined }];
+}

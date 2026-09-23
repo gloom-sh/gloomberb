@@ -325,6 +325,12 @@ describe("study resolution", () => {
     ]);
   });
 
+  test("adds no volume panel for an instrument that reports zero volume on every bar", () => {
+    const input = resolved("a");
+    input.points = input.points.map((point, index) => ({ ...point, volume: index === input.points.length - 1 ? undefined : 0 }));
+    expect(resolveStudies([input], [study("volume", "volume", ["a"])]).series).toEqual([]);
+  });
+
   test("aligns pair formulas to the latest available value even when display interpolation is off", () => {
     const point = (date: string, value: number): TimeSeriesPoint => {
       const availableAt = new Date(`${date}T00:00:00Z`);

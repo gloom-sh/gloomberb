@@ -350,6 +350,9 @@ function resolveMacd(spec: ChartStudySpec, input: ResolvedSeries, color: string)
 }
 
 function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: string): ResolvedSeries[] {
+  // Spot FX and similar quotes report 0 for every bar: there is no volume to
+  // plot, so the study adds no panel rather than an empty one.
+  if (input.points.some((point) => point.volume === 0) && input.points.every((point) => !point.volume)) return [];
   const points = [...input.points]
     .sort((left, right) => left.date.getTime() - right.date.getTime())
     .flatMap((point) => finiteNumber(point.volume)

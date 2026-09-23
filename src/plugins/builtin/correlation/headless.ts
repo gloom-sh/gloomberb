@@ -10,7 +10,8 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 
 async function loadHistory(ctx: HeadlessPaneContext, key: string, range: TimeRange) {
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
-  return loadCorrelationHistory(ctx.marketData, symbol, exchange ?? "", range);
+  return loadCorrelationHistory(ctx.marketData, symbol, exchange ?? "", range,
+    ctx.refresh ? { cacheMode: "refresh" } : undefined);
 }
 
 export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -89,7 +90,9 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         { key: "latestCorrelation", label: `Rolling correlation (${correlationWindow})`, value: analysis.latestCorrelation, formatted: formatNumber(analysis.latestCorrelation ?? undefined, 3) },
         ...(["beta", "alpha", "rSquared"] as const).map((key) => ({
           key, label: { beta: "Beta", alpha: "Alpha", rSquared: "R squared" }[key],
-          value: analysis.stats?.[key] ?? null, formatted: formatNumber(analysis.stats?.[key], 3),
+          value: analysis.stats?.[key] ?? null,
+          // Alpha is the regression intercept on daily percent returns.
+          formatted: key === "alpha" && analysis.stats ? `${formatNumber(analysis.stats.alpha, 3)}%` : formatNumber(analysis.stats?.[key], 3),
         })),
         { key: "returnCount", label: "Shared returns", value: analysis.stats?.sampleSize ?? analysis.returns.length },
       ],

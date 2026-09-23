@@ -20,7 +20,8 @@ import type {
 } from "./types";
 import type { YahooHttpClient } from "./http";
 import { applyYahooHistoryCoverage } from "../history-coverage";
-import { reconcileYahooCurrentPeriod } from "./chart-period";
+import { coverFxOpenClose, reconcileYahooCurrentPeriod, withoutLiveRowVolume } from "./chart-period";
+import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "../../time-series/resolution";
 
 /**
  * Yahoo stamps calendar bars at midnight in the instrument's zone, so an FX
@@ -84,11 +85,14 @@ export async function fetchYahooChart(
     close: quote.close?.[i] ?? Number.NaN,
     volume: quote.volume?.[i] ?? undefined,
   }));
-  const dated = dateCalendarBars(
-    reconcileYahooCurrentPeriod(rows, interval, result.meta),
-    interval,
-    result.meta?.exchangeTimezoneName,
-  );
+  let reconciled = reconcileYahooCurrentPeriod(rows, interval, result.meta);
+  const resolution = interval as ManualChartResolution;
+  if (Object.hasOwn(CHART_RESOLUTION_STEP_MS, interval) && isIntradayResolution(resolution)) {
+    reconciled = withoutLiveRowVolume(reconciled, CHART_RESOLUTION_STEP_MS[resolution]);
+  } else if (result.meta?.instrumentType === "CURRENCY") {
+    reconciled = coverFxOpenClose(reconciled);
+  }
+  const dated = dateCalendarBars(reconciled, interval, result.meta?.exchangeTimezoneName);
   const hasClose = (point: PricePoint) => Number.isFinite(point.close) && point.close > 0;
   const history = dated.filter(hasClose);
   return { meta: result.meta || {},
