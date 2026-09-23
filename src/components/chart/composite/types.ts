@@ -29,6 +29,9 @@ export interface CompositeAxisDomain {
   seriesIds: string[];
   /** Most labeled ticks the axis shows, sized to the panel height. */
   maxTicks?: number;
+  /** Rows the labels snap to, one per row, in the terminal. Unset where labels
+   * sit at their exact heights. */
+  tickRows?: number;
 }
 
 export interface CompositeProjectedPoint {

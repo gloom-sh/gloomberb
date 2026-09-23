@@ -5,11 +5,13 @@ import {
   applyCompositeChartCursor,
   buildCompositeChartScene,
   projectCompositeValue,
+  resizeCompositePanel,
   resolveCompositeCursorDate,
   unprojectCompositeValue,
 } from "./scene";
 import { buildCompositeColumnLayout } from "./column-layout";
 import { compositeAxisTicks, compositeGridRatios, formatCompositeAxisValue } from "./format";
+import { renderCompositeAxisText } from "./text-renderer";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 
 /** Ratio the newest observation lands on once the right offset is reserved. */
@@ -339,6 +341,33 @@ describe("composite chart scene", () => {
     expect(ticks.map((tick) => tick.label)).toEqual(["$250", "$200", "$150", "$100", "$50", "$0"]);
     expect(compositeGridRatios(main!)).toEqual(ticks.map((tick) => tick.ratio).filter((ratio) => ratio > 0.01 && ratio < 0.99));
     expect(formatCompositeAxisValue(-4, { ...main!.axes.left!, min: -5, max: 5 })).toBe("-$4");
+  });
+
+  // Regression: a 3-row volume panel took 30M/20M/10M/0, two ticks shared a
+  // row, and the surviving "10M" sat on the row worth 17M.
+  test("gives every terminal axis label its own row, at the value that row shows", () => {
+    const volume = (max: number) => series({ id: "volume", style: "columns", unit: "shares", unitGroup: "volume", points: [
+      point("2025-06-27", max / 3), point("2025-06-30", max),
+    ] });
+    for (const rows of [2, 3, 4, 5, 6, 9, 16]) {
+      for (const max of [32e6, 7_700, 18.6, 1.23e9]) {
+        const panel = buildCompositeChartScene([volume(max)], [{ id: "main" }], { width: 40, height: rows })!.panels[0]!;
+        const domain = panel.axes.left!;
+        const ticks = compositeAxisTicks(domain);
+        const labeledRows = renderCompositeAxisText(domain, rows, 8, "left").filter((row) => row.trim()).length;
+        expect(labeledRows).toBe(ticks.length);
+        for (const tick of ticks) {
+          const row = Math.round(tick.ratio * (rows - 1));
+          const rowValue = domain.max - (domain.max - domain.min) * (row / (rows - 1));
+          expect(Math.abs(rowValue - tick.value)).toBeLessThanOrEqual((domain.max - domain.min) * 0.04 + 1e-9);
+        }
+      }
+    }
+    const short = buildCompositeChartScene([volume(32e6)], [{ id: "main" }], { width: 40, height: 3 })!.panels[0]!;
+    expect(compositeAxisTicks(short.axes.left!).map((tick) => tick.label)).toEqual(["34M", "17M", "0"]);
+    // Labels placed at their exact heights keep the round values.
+    const exact = resizeCompositePanel(short, 3, false).axes.left!;
+    expect(compositeAxisTicks(exact).map((tick) => tick.label)).toEqual(["30M", "20M", "10M", "0"]);
   });
 
   test("extends a prior step anchor across an otherwise empty viewport", () => {

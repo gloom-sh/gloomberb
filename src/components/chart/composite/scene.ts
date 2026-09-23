@@ -310,17 +310,27 @@ function buildAxisDomain(
     priceAssetCategories: [...new Set(axisSeries.flatMap((entry) => entry.priceAssetCategory ? [entry.priceAssetCategory] : []))],
     seriesIds: axisSeries.map((entry) => entry.id),
     maxTicks: compositeAxisMaxTicks(rows),
+    tickRows: rows,
   };
 }
 
-/** A panel laid out at another height keeps as many axis ticks as it can label. */
-export function resizeCompositePanel(panel: CompositePanelScene, height: number): CompositePanelScene {
-  if (panel.height === height) return panel;
+/** A panel laid out at another height keeps as many axis ticks as it can
+ * label. Hosts that place labels at exact heights drop the row snapping. */
+export function resizeCompositePanel(
+  panel: CompositePanelScene,
+  height: number,
+  snapTicksToRows = true,
+): CompositePanelScene {
   const maxTicks = compositeAxisMaxTicks(height);
+  const tickRows = snapTicksToRows ? height : undefined;
+  const fits = (domain: CompositeAxisDomain) => domain.maxTicks === maxTicks && domain.tickRows === tickRows;
+  if (panel.height === height && (["left", "right"] as const).every((side) => !panel.axes[side] || fits(panel.axes[side]!))) {
+    return panel;
+  }
   const axes: CompositePanelScene["axes"] = {};
   for (const side of ["left", "right"] as const) {
     const domain = panel.axes[side];
-    if (domain) axes[side] = domain.maxTicks === maxTicks ? domain : { ...domain, maxTicks };
+    if (domain) axes[side] = fits(domain) ? domain : { ...domain, maxTicks, tickRows };
   }
   return { ...panel, height, axes };
 }

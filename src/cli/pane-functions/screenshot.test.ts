@@ -5,6 +5,7 @@ import {
   chartSeriesEvidenceWithinRange,
   chartEvidenceMismatchesFor,
   createDesktopShotBridge,
+  filledKeyValueCount,
   isPaneScreenshotUsable,
   missingActiveTabSelections,
   resolveDesktopShotApiProxy,
@@ -82,6 +83,13 @@ test("calculator screenshot evidence must match the requested inputs, not just a
   expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues })).toEqual([]);
   expect(calculatorVisibilityMismatchesFor(request, { visibleKeyValues: visibleKeyValues.slice(0, 5) }))
     .toEqual(["option calculator metrics are clipped or missing: Vega, Rho"]);
+});
+
+// Regression: an overview without fundamentals reported its "-" grid as rows.
+test("counts only labeled values that hold data", () => {
+  const row = (label: string, value: string) => ({ label, text: `${label} ${value}` });
+  expect(filledKeyValueCount([row("P/E", "-"), row("Beta", "—"), row("Yield", "N/A"), row("EPS", "")])).toBe(0);
+  expect(filledKeyValueCount([row("P/E", "-12.5"), row("Sector", "Technology"), row("Beta", "-")])).toBe(2);
 });
 
 test("typed option scenario screenshot freezes report inputs without an unrelated market request", async () => {

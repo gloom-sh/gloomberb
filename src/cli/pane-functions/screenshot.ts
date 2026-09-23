@@ -768,7 +768,7 @@ export async function renderDesktopShot({
   // A live pane without a table, such as a ticker overview, shows its data
   // as labeled values.
   const rowCount = usesLiveDomEvidence
-    ? render.rows.length || (render.visibleKeyValues?.length ?? 0)
+    ? render.rows.length || filledKeyValueCount(render.visibleKeyValues)
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
   const unavailableSymbols = usesLiveDomEvidence
     ? []
@@ -903,6 +903,17 @@ export function calculatorEvidenceMismatchesFor(resolved: ResolvedPaneFunction, 
     mismatches.push("rendered option calculator surface does not match");
   }
   return mismatches;
+}
+
+const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
+
+/** Labeled values that hold data. A grid of labels over "-" placeholders,
+ * as for a ticker without fundamentals, is an empty pane. */
+export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKeyValues"]): number {
+  return (rows ?? []).filter(({ label, text }) => {
+    const value = text.startsWith(label) ? text.slice(label.length) : text;
+    return !PLACEHOLDER_VALUE.test(value.trim());
+  }).length;
 }
 
 export function calculatorVisibilityMismatchesFor(resolved: ResolvedPaneFunction,

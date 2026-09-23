@@ -1701,7 +1701,7 @@ export function CompositeChart({
   isSeriesToggleable,
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
-  const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
+  const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const showTextFallback = useShowChartTextFallback();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
@@ -1957,8 +1957,9 @@ export function CompositeChart({
       })),
       plotHeight,
     );
-    return projectedScene.panels.map((panel) => resizeCompositePanel(panel, panelHeights.get(panel.id) ?? 1));
-  }, [panels, plotHeight, projectedScene]);
+    // Terminal labels snap to rows; a fractional viewport places them exactly.
+    return projectedScene.panels.map((panel) => resizeCompositePanel(panel, panelHeights.get(panel.id) ?? 1, !fractionalViewport));
+  }, [fractionalViewport, panels, plotHeight, projectedScene]);
   // Static overview charts also pin the latest price with cursor precision.
   const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
   const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(

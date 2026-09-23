@@ -60,6 +60,9 @@ function formatAxisPriceValue(value: number, domain: CompositeAxisDomain, option
 
 const AXIS_TICK_COUNT = 3;
 const DEFAULT_AXIS_MAX_TICKS = 5;
+// How far a row-snapped label may sit from its value, as a share of the axis
+// range: about half a row on a 12-row panel, near exact on a 3-row one.
+const ROW_SNAP_TOLERANCE = 0.04;
 
 function axisTickValue(domain: CompositeAxisDomain, ratio: number): number {
   return domain.scale === "log"
@@ -102,15 +105,44 @@ function stepMultiples(min: number, max: number, step: number): number[] {
   return values;
 }
 
-/** Round values inside a linear domain, so every gridline carries a readable
- * value. A log axis keeps its top, middle and bottom values. */
-function axisTickValues(domain: CompositeAxisDomain): number[] {
-  const edges = () => Array.from(
+/** The top, middle and bottom of the axis. Row-snapped labels take the values
+ * of the rows they sit on, so each reads exactly at its own row. */
+function edgeTickValues(domain: CompositeAxisDomain): number[] {
+  const rows = domain.tickRows;
+  if (rows !== undefined && rows >= 1) {
+    const lastRow = Math.max(rows - 1, 0);
+    return [...new Set([0, Math.round(lastRow / 2), lastRow])]
+      .map((row) => axisTickValue(domain, lastRow > 0 ? row / lastRow : 0));
+  }
+  return Array.from(
     { length: AXIS_TICK_COUNT },
     (_, index) => axisTickValue(domain, index / (AXIS_TICK_COUNT - 1)),
   );
+}
+
+/** Terminal labels and gridlines snap to whole rows. A round tick only works
+ * there if it gets a row of its own and that row's value stays close to it. */
+function ticksFitRows(domain: CompositeAxisDomain, values: number[]): boolean {
+  const rows = domain.tickRows;
+  if (rows === undefined) return true;
+  const lastRow = rows - 1;
+  if (lastRow < 1) return false;
+  const used = new Set<number>();
+  for (const value of values) {
+    const position = axisTickRatio(domain, value) * lastRow;
+    const row = Math.round(position);
+    if (used.has(row) || Math.abs(position - row) / lastRow > ROW_SNAP_TOLERANCE) return false;
+    used.add(row);
+  }
+  return true;
+}
+
+/** Round values inside a linear domain, so every gridline carries a readable
+ * value. A log axis, or a short terminal panel no round step fits, keeps its
+ * top, middle and bottom values. */
+function axisTickValues(domain: CompositeAxisDomain): number[] {
   const span = domain.max - domain.min;
-  if (domain.scale === "log" || !Number.isFinite(span) || span <= 0) return edges();
+  if (domain.scale === "log" || !Number.isFinite(span) || span <= 0) return edgeTickValues(domain);
   const maxTicks = Math.max(2, domain.maxTicks ?? DEFAULT_AXIS_MAX_TICKS);
   // Walk the 1-2-5 ladder around the target spacing and keep the step whose
   // tick count lands nearest the target, one extra tick allowed.
@@ -119,12 +151,15 @@ function axisTickValues(domain: CompositeAxisDomain): number[] {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const values = stepMultiples(domain.min, domain.max, step);
     if (values.length >= 2 && values.length <= maxTicks + 1
-      && (best.length === 0 || Math.abs(values.length - maxTicks) < Math.abs(best.length - maxTicks))) {
+      && (best.length === 0 || Math.abs(values.length - maxTicks) < Math.abs(best.length - maxTicks))
+      && ticksFitRows(domain, values)) {
       best = values;
     }
     step = adjacentNiceStep(step, 1);
   }
-  return best.length >= 2 ? best : edges();
+  // Round labels win only where they are at least as many as the exact ones.
+  const edges = edgeTickValues(domain);
+  return best.length >= Math.max(2, edges.length) ? best : edges;
 }
 
 /** The narrowest distance between neighbouring ticks. A log axis bunches its
