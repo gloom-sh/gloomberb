@@ -16,7 +16,11 @@ import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { OPTIONS_CALCULATOR_PANE_ID } from "./model";
 import { OptionsCalculatorPane } from "./pane";
 import { valueBinomialOption } from "./binomial";
-import { draftFromParams, valueOption } from "./model";
+import { daysToExpiryFrom, draftFromParams, valueOption } from "./model";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { Quote } from "../../../types/financials";
 
 const TEST_PANE_ID = "options-calculator:test";
 
@@ -89,6 +93,57 @@ afterEach(async () => {
     await act(async () => { testSetup!.renderer.destroy(); });
     testSetup = undefined;
   }
+  setSharedMarketDataCoordinator(null);
+});
+
+test("a chain-seeded calculator follows the contract and underlying until the user edits them", async () => {
+  const targets: QuoteSubscriptionTarget[] = [];
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | undefined;
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    subscribeQuotes: (next, onQuote) => { targets.splice(0, targets.length, ...next); emit = onQuote; return () => {}; },
+  })));
+  const expiration = Math.floor(Date.now() / 86_400_000) * 86_400 + 30 * 86_400;
+  await render({ symbol: "COST", side: "call", spot: "900", strike: "905", days: "30", volatility: "0.25", rate: "0.04",
+    marketPrice: "20", marketPriceSource: "mid", marketReference: JSON.stringify({ contractSymbol: "COST261023C00905000",
+      expiration, currency: "USD", bid: 19.9, ask: 20.1, lastPrice: 20, lastTradeDate: Math.floor(Date.now() / 1000) - 600 }) }, 90, 24);
+  const contract = targets.find((target) => target.symbol === "COST261023C00905000")!;
+  const underlying = targets.find((target) => target.symbol === "COST")!;
+  expect(contract).toBeDefined();
+  expect(underlying).toBeDefined();
+  const quote = (symbol: string, fields: Partial<Quote>): Quote => ({ symbol, price: 0, currency: "USD", change: 0, changePercent: 0,
+    lastUpdated: Date.now(), receivedAt: Date.now(), dataSource: "live", delivery: "stream", stale: false, ...fields });
+  const settle = async () => {
+    for (let index = 0; index < 4; index += 1) await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await testSetup!.renderOnce();
+    });
+  };
+  await act(async () => {
+    emit!(contract, quote(contract.symbol, { price: 24, bid: 23.9, ask: 24.1 }));
+    emit!(underlying, quote("COST", { price: 910 }));
+  });
+  await settle();
+  let frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Mid\s+24(?!\.)/);
+  expect(frame).toMatch(/Spot\s+910/);
+  // The contract context is the live quote now, not a saved snapshot.
+  expect(frame).not.toContain("Snapshot:");
+  expect(frame).toContain("Bid 23.9 · Ask 24.1");
+  const liveIv = frame.match(/Implied IV\s+([\d.]+)%/)![1];
+  const expected = valueOption({ ...draftFromParams({}), side: "call", spot: 910, strike: 905, rate: 0.04,
+    daysToExpiry: daysToExpiryFrom(expiration, Date.now()), volatility: Number(liveIv) / 100, dividendYield: 0 }).price;
+  expect(expected).toBeCloseTo(24, 1);
+
+  // A typed spot is the user's: later underlying ticks no longer move it.
+  await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await act(async () => { await testSetup!.mockInput.typeText("905"); testSetup!.mockInput.pressEnter(); });
+  await act(async () => { await testSetup!.renderOnce(); });
+  await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" });
+  await act(async () => { emit!(underlying, quote("COST", { price: 915 })); });
+  await settle();
+  frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Spot\s+905/);
+  expect(frame).toMatch(/Mid\s+24(?!\.)/);
 });
 
 test("narrow results keep contract context reachable while scrolling Greeks and editing fixed inputs", async () => {

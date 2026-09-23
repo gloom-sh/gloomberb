@@ -89,10 +89,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const reference = draft.marketReference;
   const priceLinked = !screenshotSnapshot && !!draft.marketPriceSource && !!reference && !!draft.symbol;
   const spotLinked = priceLinked && draft.spot === seed.spot;
+  // One stable subscription while the price is linked: dropping the
+  // underlying when only the spot is edited would restart the contract's
+  // freshness window and briefly fall back to the saved observation.
   const liveTargets = useMemo<QuoteSubscriptionTarget[]>(() => !priceLinked ? [] : [
-    ...(spotLinked ? [{ symbol: draft.symbol, exchange: "", route: "provider" as const, surface: "options" as const, visible: true, selected: true, weight: 90 }] : []),
+    { symbol: draft.symbol, exchange: "", route: "provider", surface: "options", visible: true, selected: true, weight: 90 },
     { symbol: reference!.contractSymbol, exchange: OPTIONS_QUOTE_EXCHANGE, surface: "options", visible: true, selected: true, weight: 90 },
-  ], [priceLinked, spotLinked, draft.symbol, reference?.contractSymbol]);
+  ], [priceLinked, draft.symbol, reference?.contractSymbol]);
   const { entries: liveEntries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(liveTargets, { liveStreaming });
   // American trees solve IV by repeated valuation, so their live inputs move at most twice a second.
   const liveInputs = useThrottledValue(useMemo(() => {
