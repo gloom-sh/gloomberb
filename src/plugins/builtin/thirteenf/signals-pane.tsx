@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, usePaneNoticeFooter, usePaneTicker, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, usePaneNoticeFooter, usePaneTicker, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -15,11 +15,31 @@ import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, 
 export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
   const { ticker } = usePaneTicker();
   const symbol = ticker?.metadata.ticker ?? "";
+  if (!symbol) return <EmptyState title="Select a ticker." />;
+  return <ThirteenFTickerHoldingsView symbol={symbol} focused={focused} width={width} height={height} />;
+}
+
+/**
+ * A ticker's 13F holders with their position in that ticker: value, shares,
+ * weight in the fund's book and the quarter's action. The 13F pane shows it
+ * for a ticker query, as `fn 13F <ticker>` does.
+ */
+export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, queryBar, hints, onRootKeyDown, onUnavailable, onDetailChange }: Pick<PaneProps, "focused" | "width" | "height"> & {
+  symbol: string;
+  queryBar?: ReactNode;
+  hints?: PaneHint[];
+  onRootKeyDown?: (event: DataTableKeyEvent, context: DataTableRootKeyContext) => boolean;
+  /** The first page failed, e.g. a ticker without a mapped CUSIP. */
+  onUnavailable?: () => void;
+  onDetailChange?: (open: boolean) => void;
+}) {
   const [data, setData] = useState<TickerHoldings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("13f-ticker:selected", null);
   const [fund, setFund] = usePluginPaneState<{ cik: string; name: string } | null>("13f-ticker:fund", null);
+  const unavailableRef = useRef(onUnavailable); unavailableRef.current = onUnavailable;
+  useEffect(() => { onDetailChange?.(!!fund); }, [fund, onDetailChange]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const controller = useRef<AbortController | null>(null);
   const load = useCallback((more = false) => {
@@ -32,7 +52,9 @@ export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, 
       if (controller.current !== request) return;
       setData(current => more && current ? appendTickerHoldings(current, page) : page);
     }).catch(cause => {
-      if (controller.current === request && !request.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause));
+      if (controller.current !== request || request.signal.aborted) return;
+      if (!more && !data && unavailableRef.current) unavailableRef.current();
+      else setError(cause instanceof Error ? cause.message : String(cause));
     }).finally(() => { if (controller.current === request) setLoading(false); });
   }, [symbol, loading, data]);
   const loadRef = useRef(load); loadRef.current = load;
@@ -43,7 +65,7 @@ export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, 
   }, [symbol]);
   const more = useTableLoadMore(scrollRef, !!data?.hasMore && !loading && !fund, () => load(true));
   useShortcut(event => { if (focused && !fund && isPlainKey(event, "r")) { event.preventDefault?.(); load(); } });
-  usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error });
+  usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints });
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
     { id: "fund", label: "FUND", width: Math.max(20, width - 57), align: "left" },
@@ -55,14 +77,15 @@ export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, 
   ];
   const [sort, setSort] = usePluginPaneState<{ id: string; desc: boolean }>("13f-ticker:sort", { id: "value", desc: true });
   const rows = useMemo(() => [...(data?.rows ?? [])].sort((a, b) => compareCells(a, b, sort.id, sort.desc)), [data?.rows, sort]);
-  if (!symbol) return <EmptyState title="Select a ticker." />;
+  const summary = data ? <Box flexDirection="column" paddingX={1}>
+    <KeyValueRow label={data.period} value={`${data.holderCount} holders · ${formatMoneyCompact(data.totalValue)} loaded · ${data.newCount - data.exitCount >= 0 ? "+" : ""}${data.newCount - data.exitCount} net funds`} />
+  </Box> : null;
   return <DataTableStackView<TickerHolderRow, DataTableColumn>
     focused={focused} detailOpen={!!fund} onBack={() => setFund(null)} detailTitle={fund?.name}
     detailContent={fund ? <FundDetailView focused={focused} seed={fund} width={width} /> : <Box />}
     rootWidth={width} rootHeight={height} scrollRef={scrollRef} onBodyScrollActivity={more}
-    rootBefore={data ? <Box flexDirection="column" paddingX={1}>
-      <KeyValueRow label={data.period} value={`${data.holderCount} holders · ${formatMoneyCompact(data.totalValue)} loaded · ${data.newCount - data.exitCount >= 0 ? "+" : ""}${data.newCount - data.exitCount} net funds`} />
-    </Box> : undefined}
+    onRootKeyDown={onRootKeyDown}
+    rootBefore={queryBar || summary ? <>{queryBar}{summary}</> : undefined}
     columns={columns} items={rows} getItemKey={row => row.id}
     selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}
     onActivate={row => setFund({ cik: row.cik, name: row.fund })}

@@ -26,7 +26,7 @@ import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
 import { FundOverlapView } from "./overlap-pane";
-import { ThirteenFCrowdingPane } from "./signals-pane";
+import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
 import {
   DEFAULT_BROWSER_SORT,
@@ -110,6 +110,10 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     DEFAULT_BROWSER_SORT,
   );
   const browserMode = useMemo(() => inferBrowserTabFromQuery(query), [query]);
+  // A ticker query lists its holders with their positions, as `fn 13F` does. A
+  // ticker the positions lookup cannot resolve falls back to the holders' books.
+  const [tickerFallbackQuery, setTickerFallbackQuery] = useState<string | null>(null);
+  const showTickerHoldings = browserMode === "byTicker" && tickerFallbackQuery !== query;
   // Selection is pane state, so a reload or a shared layout keeps the row.
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [rows, setRows] = useState<FundBrowserRow[]>([]);
@@ -136,6 +140,12 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   const load = useCallback((refresh = false) => {
     abortRef.current?.abort();
     moreAbortRef.current?.abort();
+    if (showTickerHoldings) {
+      abortRef.current = null;
+      setRows([]);
+      setStatus("idle");
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus("loading");
@@ -165,7 +175,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         setNextOffset(0);
         setStatus("error");
       });
-  }, [browserMode, query]);
+  }, [browserMode, query, showTickerHoldings]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore || status !== "loaded") return;
@@ -221,7 +231,8 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       return;
     }
     if (event.targetEditable) return;
-    if (isPlainKey(event, "r")) {
+    // The ticker holdings view refreshes itself.
+    if (isPlainKey(event, "r") && !showTickerHoldings) {
       event.stopPropagation?.();
       event.preventDefault?.();
       load(true);
@@ -280,15 +291,14 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
         ...(warning ? [{ id: "warning", parts: [{ text: warning, tone: "warning" as const }] }] : []),
   ], [loadingMore, warning]);
+  const searchHints = useMemo(() => [{ id: "search", key: "/", label: "search", onPress: focusSearch }], [focusSearch]);
   usePaneStatusFooter({
     registrationId: THIRTEENF_PANE_ID,
-    enabled: !detailSeed,
+    enabled: !detailSeed && !showTickerHoldings,
     loading: status === "loading",
     error,
     info: browserStatusInfo,
-    hints: [
-      { id: "search", key: "/", label: "search", onPress: focusSearch },
-    ],
+    hints: searchHints,
   });
 
   const rootBefore = (
@@ -337,6 +347,36 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     }
     return false;
   }, [focusSearch, refresh]);
+
+  const handleTickerRootKeyDown = useCallback((
+    event: DataTableKeyEvent,
+    context: DataTableRootKeyContext,
+  ) => {
+    if ((context.selectedIndex <= 0 && isPlainArrowUp(event)) || event.name === "/") {
+      stopSearchFocusNavigation(event);
+      focusSearch();
+      return true;
+    }
+    return false;
+  }, [focusSearch]);
+
+  if (showTickerHoldings) {
+    return (
+      <Box flexDirection="column" width={width} height={height}>
+        <ThirteenFTickerHoldingsView
+          symbol={query.replace(/^\$/, "").toUpperCase()}
+          focused={focused && !searchFocused}
+          width={width}
+          height={height}
+          queryBar={rootBefore}
+          hints={searchHints}
+          onRootKeyDown={handleTickerRootKeyDown}
+          onUnavailable={() => setTickerFallbackQuery(query)}
+          onDetailChange={onDetailChange}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column" width={width} height={height}>
