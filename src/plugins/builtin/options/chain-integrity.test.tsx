@@ -54,7 +54,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     const raw = (strike: number, side: "C" | "P") => ({
         contractSymbol: `${contractPrefix}280121${side}${String(Math.round(strike * 1000)).padStart(8, "0")}`,
         strike, currency: "USD", lastPrice: 8, bid: 9, ask: 11, impliedVolatility: .25,
-        volume: activity === "missing" && side === "P" ? undefined : activity === "zero" && side === "P" ? 0 : 10,
+        volume: activity === "missing" && side === "P" ? null : activity === "zero" && side === "P" ? 0 : 10,
         openInterest: activity === "missing" && side === "C" ? undefined : activity === "zero" && side === "P" ? 0 : 20,
         change: 0, percentChange: 0, inTheMoney: side === "P", expiration: EXPIRY, lastTradeDate: NOW / 1000 - 86400,
     });

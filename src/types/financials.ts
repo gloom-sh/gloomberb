@@ -619,7 +619,7 @@ export interface OptionContract {
   lastPrice: number;
   change: number;
   percentChange: number;
-  /** Missing activity is unknown; an explicitly reported zero remains zero. */
+  /** Missing activity is unknown; an explicitly reported zero remains zero. Yahoo reports an untraded volume as zero. */
   volume?: number;
   openInterest?: number;
   bid: number;

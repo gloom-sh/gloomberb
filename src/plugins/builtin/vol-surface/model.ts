@@ -237,7 +237,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   // The quoted straddle needs no rate or parity estimate. Preserve it in partial models.
   result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, null);
   if (rate.rate === null) return result;
-  result.parity = extractImpliedForward(cleaned.calls, cleaned.puts, spot, result.years, rate.rate);
+  result.parity = extractImpliedForward(cleaned.calls, cleaned.puts, spot, result.years, rate.rate, chain.underlyingSymbol);
   result.forward = result.parity.forward;
   result.dividendYield = result.parity.dividendYield;
   result.warnings.push(...result.parity.warnings);

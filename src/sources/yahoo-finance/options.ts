@@ -69,7 +69,8 @@ function mapYahooOptionContract(raw: Record<string, any>): OptionContract {
     lastPrice: raw.lastPrice ?? 0,
     change: raw.change ?? 0,
     percentChange: raw.percentChange ?? 0,
-    volume: activity(raw.volume),
+    // Yahoo omits volume for contracts that have not traded this session.
+    volume: raw.volume === undefined ? 0 : activity(raw.volume),
     openInterest: activity(raw.openInterest),
     bid: raw.bid ?? 0,
     ask: raw.ask ?? 0,

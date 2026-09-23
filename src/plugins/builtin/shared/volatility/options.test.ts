@@ -75,6 +75,9 @@ describe("parity forward", () => {
     const result = extractImpliedForward(pairs.map(([call]) => call), pairs.map(([, put]) => put), 229, 0.24, 0.04);
     expect(result.forward).toBeNull();
     expect(result.warnings).toEqual(["Parity forwards are inconsistent with spot"]);
+    // VIX options settle on a future that can trade far from the spot index.
+    const vix = extractImpliedForward(pairs.map(([call]) => call), pairs.map(([, put]) => put), 229, 0.24, 0.04, "^VIX");
+    expect(vix.forward).not.toBeNull();
     // A stale pair nearest spot is skipped for the next valid strike.
     const strikes = [90, 95, 100, 110, 115];
     const [call105, put105] = stale(105, 400, 1);

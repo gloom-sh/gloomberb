@@ -92,14 +92,22 @@ export interface ImpliedForward {
  * 5% for spot and chain observed at different times plus 100% a year of
  * dividend and borrow carry. Stale quotes left on far strikes (for example
  * contracts listed before a split) otherwise produce forwards several times spot.
+ * A genuine forward can still exceed it: a hard-to-borrow name with extreme
+ * borrow cost, or a short-dated chain around a special dividend loses its
+ * forward. Volatility indices are exempt because their options settle on a
+ * future that can trade far from the spot index.
  */
-export function maxParityCarryLogGap(years: number): number {
+function maxParityCarryLogGap(years: number, underlying?: string): number {
+  if (underlying && VOLATILITY_INDEX.test(underlying)) return Infinity;
   return 0.05 + Math.max(0, years);
 }
+
+const VOLATILITY_INDEX = /^\^?(VIX(1D|9D|3M|6M)?|VVIX|VXN|VXD|RVX|OVX|GVZ|VXEEM|VXEFA|VXTLT)$/i;
 
 /** Use the two nearest valid paired strikes on each side of spot, then their median. */
 export function extractImpliedForward(
   calls: readonly ParityQuote[], puts: readonly ParityQuote[], spot: number, years: number, rate: number,
+  underlying?: string,
 ): ImpliedForward {
   const unavailable = (reason: string): ImpliedForward => ({ forward: null, dividendYield: null,
     pairs: [], method: "unavailable", warnings: [reason] });
@@ -118,7 +126,7 @@ export function extractImpliedForward(
   };
   const putMap = quotesByStrike(puts);
   const candidates: ParityPair[] = [];
-  const maxGap = maxParityCarryLogGap(years);
+  const maxGap = maxParityCarryLogGap(years, underlying);
   let implausible = 0;
   for (const call of quotesByStrike(calls).values()) {
     const put = putMap.get(call.strike);
