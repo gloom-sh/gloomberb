@@ -107,6 +107,42 @@ function normalizeChartCurrency(
   return { normalizedCurrency, currencyDivisor };
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * The close the regular-market price moved from: the row before the session
+ * that regularMarketTime falls in, or the latest row when Yahoo has not added
+ * that session's row yet.
+ */
+function previousSessionClose(history: PricePoint[], meta: YahooChartSnapshot["meta"]): number | undefined {
+  const time = (meta.regularMarketTime ?? Number.NaN) * 1000;
+  const index = Number.isFinite(time) ? history.findLastIndex((point) => point.date.getTime() <= time) : -1;
+  if (index < 0) return history.length > 1 ? history[history.length - 2]!.close : meta.chartPreviousClose;
+  if (time >= history[index]!.date.getTime() + DAY_MS) return history[index]!.close;
+  return index > 0 ? history[index - 1]!.close : meta.chartPreviousClose;
+}
+
+/**
+ * Extended-hours moves are measured from the last completed regular session.
+ * Yahoo can move regularMarketPrice with extended-hours trades, so it is only
+ * that close while its time sits before pre-market or at the regular close.
+ */
+function extendedHoursReference(
+  meta: YahooChartSnapshot["meta"],
+  marketState: Quote["marketState"],
+  fallback: number | undefined,
+): number | undefined {
+  const price = meta.regularMarketPrice;
+  const time = meta.regularMarketTime;
+  const period = meta.currentTradingPeriod;
+  if (price == null || !(price > 0) || time == null) return fallback;
+  if (marketState === "PRE" && period?.pre?.start != null && time <= period.pre.start) return price;
+  const regular = period?.regular;
+  if (marketState === "POST" && regular?.start != null && regular.end != null
+    && time >= regular.start && time <= regular.end + 60) return price;
+  return fallback;
+}
+
 export async function loadYahooTickerFinancials(
   symbol: string,
   loaders: YahooSnapshotLoaders,
@@ -130,12 +166,12 @@ export async function loadYahooTickerFinancials(
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
 
   const currentPrice = meta.regularMarketPrice ?? history[history.length - 1]!.close;
-  const prev = history.length > 1 ? history[history.length - 2]!.close : meta.chartPreviousClose;
+  const prev = previousSessionClose(history, meta);
   const change = prev != null ? currentPrice - prev : 0;
   const changePct = prev ? (change / prev) * 100 : 0;
 
   const marketState = deriveMarketState(meta);
-  const extendedHoursBase = quoteSupplement.previousClose ?? prev;
+  const extendedHoursBase = extendedHoursReference(meta, marketState, quoteSupplement.previousClose ?? prev);
   const extHours = await loaders.fetchExtendedHoursData(
     symbol,
     meta,
@@ -219,12 +255,12 @@ export async function loadYahooQuote(
   const { normalizedCurrency, currencyDivisor } = normalizeChartCurrency(chart);
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
   const latest = history[history.length - 1]!;
-  const prev = history.length > 1 ? history[history.length - 2]!.close : meta.chartPreviousClose;
+  const prev = previousSessionClose(history, meta);
   const price = meta.regularMarketPrice ?? latest.close;
   const change = prev != null ? price - prev : 0;
 
   const marketState = deriveMarketState(meta);
-  const extendedHoursBase = quoteSupplement.previousClose ?? prev;
+  const extendedHoursBase = extendedHoursReference(meta, marketState, quoteSupplement.previousClose ?? prev);
   const extHours = await loaders.fetchExtendedHoursData(
     symbol,
     meta,

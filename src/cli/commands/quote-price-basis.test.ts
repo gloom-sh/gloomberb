@@ -56,7 +56,7 @@ test("quote command preserves raw declarations and formats its actual output row
   } as unknown as CliCommandContext;
   await marketDataCliCommands.find(command => command.name === "quote")!.execute(quotes.map(quote => quote.symbol), ctx);
   expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toEqual(quotes);
-  expect(rows.map(row => row.price)).toEqual(["87% par", "—", "$87"]);
+  expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00"]);
   expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87]);
   expect(closed).toBe(1);
 });

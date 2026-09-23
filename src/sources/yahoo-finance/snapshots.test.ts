@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildYahooStatements, computeYahooReturn, latestYahooMetric, parseYahooTimeseries } from "./financials";
-import { loadYahooTickerFinancials } from "./snapshots";
+import { loadYahooQuote, loadYahooTickerFinancials } from "./snapshots";
 
 test("Yahoo annual summary never borrows a wholly omitted latest-year metric", async () => {
   for (const currentValue of [undefined, 0]) {
@@ -137,4 +137,35 @@ test("Yahoo dated missing latest metrics preserve the period without borrowing o
     expect(financials.quarterlyStatements.at(-1)?.totalRevenue).toBe(0);
     expect(JSON.parse(JSON.stringify(financials)).annualStatements.at(-1).totalRevenue).toBeUndefined();
   }
+});
+
+test("Yahoo quote measures session moves from the right close when the latest daily row is missing", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const hour = 3600;
+  let extendedBase: number | undefined;
+  const quote = await loadYahooQuote("JNJ", {
+    providerId: "yahoo",
+    // The row for the session that closed 12 hours ago has not been published yet.
+    fetchChart: async () => ({
+      meta: {
+        currency: "USD", regularMarketPrice: 102, regularMarketTime: now - 12 * hour,
+        currentTradingPeriod: {
+          pre: { start: now - hour, end: now + hour },
+          regular: { start: now + hour, end: now + 8 * hour },
+          post: { start: now + 8 * hour, end: now + 12 * hour },
+        },
+      },
+      history: [{ date: new Date((now - 72 * hour) * 1000), close: 100 }, { date: new Date((now - 44 * hour) * 1000), close: 104 }],
+    }),
+    fetchExtendedHoursData: async (_symbol, _meta, regularClose) => {
+      extendedBase = regularClose;
+      return {};
+    },
+    // Yahoo's summary still reports the close before the completed session.
+    fetchQuoteSupplement: async () => ({ previousClose: 104 }),
+  });
+  expect(quote.change).toBeCloseTo(-2, 8);
+  expect(quote.changePercent).toBeCloseTo(-2 / 104 * 100, 8);
+  expect(quote.marketState).toBe("PRE");
+  expect(extendedBase).toBe(102);
 });

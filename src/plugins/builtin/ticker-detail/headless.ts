@@ -1,5 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -112,13 +113,17 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       return quote;
     });
     return {
-      rows: loaded.entries.map(({ symbol, data: quote }) => ({
-        symbol, name: quote.name ?? "", price: quote.price, currency: quote.currency,
-        ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
-        ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
-        change: quote.change, changePercent: quote.changePercent,
-        marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
-      })),
+      rows: loaded.entries.map(({ symbol, data: quote }) => {
+        // The pane's cards show the live session's print, so the rows do too.
+        const display = getActiveQuoteDisplay(quote)!;
+        return {
+          symbol, name: quote.name ?? "", price: display.price, currency: quote.currency,
+          ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
+          ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
+          change: display.change, changePercent: display.changePercent,
+          marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+        };
+      }),
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
     };
   },

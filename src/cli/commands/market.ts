@@ -11,6 +11,7 @@ import type {
   TickerFinancials,
 } from "../../types/financials";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
@@ -53,22 +54,37 @@ function normalizeSymbols(args: string[]): string[] {
     .filter(Boolean);
 }
 
+const QUOTE_LEAD_COLUMNS = [
+  { key: "symbol", header: "Symbol" },
+  { key: "name", header: "Name" },
+  {
+    key: "price",
+    header: "Last",
+    align: "right" as const,
+    format: (value: unknown, row: ReturnType<typeof quoteRows>[number]) => (
+      row.error && !value ? cliStyles.danger("unavailable") : String(value ?? "")
+    ),
+  },
+  { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+  { key: "session", header: "Session" },
+];
+
 function quoteColumns() {
   return [
-    { key: "symbol", header: "Symbol" },
-    { key: "name", header: "Name" },
-    {
-      key: "price",
-      header: "Last",
-      align: "right" as const,
-      format: (value: unknown, row: ReturnType<typeof quoteRows>[number]) => (
-        row.error && !value ? cliStyles.danger("unavailable") : String(value ?? "")
-      ),
-    },
-    { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+    ...QUOTE_LEAD_COLUMNS,
     { key: "currency", header: "Cur" },
     { key: "source", header: "Source" },
     { key: "updatedAt", header: "Updated" },
+  ];
+}
+
+function compareColumns() {
+  return [
+    ...QUOTE_LEAD_COLUMNS,
+    { key: "previousClose", header: "Prev Close", align: "right" as const },
+    { key: "dayRange", header: "Day Range", align: "right" as const },
+    { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell },
+    { key: "currency", header: "Cur" },
   ];
 }
 
@@ -80,15 +96,26 @@ function errorMessage(error: unknown): string | null {
 function quoteRows(results: QuoteCliRecord[]) {
   return results.map((result) => {
     const quote = result.quote;
+    // Same price and move as the quote monitor: the live session's print against the daily reference.
+    const display = getActiveQuoteDisplay(quote);
+    const options = { ...quoteFormatOptions(quote), minimumFractionDigits: 2 };
+    const price = (value: number | undefined) => (
+      quote && value != null ? formatMarketPriceWithCurrency(value, quote.currency, options) : ""
+    );
     return {
       symbol: result.target.symbol,
       name: quote?.name ?? "",
-      price: quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, quoteFormatOptions(quote)) : "",
-      rawPrice: quote?.price ?? null,
+      price: price(display?.price),
+      rawPrice: display?.price ?? null,
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
-      change: quote?.change ?? null,
-      changePercent: quote?.changePercent == null ? null : Number(quote.changePercent.toFixed(2)),
+      change: display?.change ?? null,
+      changePercent: display?.changePercent == null ? null : Number(display.changePercent.toFixed(2)),
+      session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
+      // The close the shown move is measured from; a pre-market move starts at the last close.
+      previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
+      dayRange: quote?.low != null && quote.high != null ? `${price(quote.low)}-${price(quote.high)}` : "",
+      volume: quote?.volume ?? null,
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
@@ -218,7 +245,7 @@ function earningsRows(events: EarningsEvent[]) {
   }));
 }
 
-async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: string) {
+async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbols = normalizeSymbols(args);
@@ -234,7 +261,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: result.quote,
       error: errorMessage(result.error),
     }));
-    ctx.printResult({ data }, { rows: quoteRows, columns: quoteColumns() });
+    ctx.printResult({ data }, { rows: quoteRows, columns: commandName === "compare" ? compareColumns() : quoteColumns() });
   });
 }
 
