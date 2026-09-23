@@ -10,7 +10,7 @@ import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotRank, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotRank, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -144,7 +144,7 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
         {current ? <KeyValueRow label="3Y percentile" value={rank(current.percentile3Y.value)} detail={`${payload.asOf ?? "--"} · ${current.percentile3Y.sampleCount} obs · ${current.percentile3Y.historyStart ?? "--"} to ${current.percentile3Y.historyEnd ?? "--"}`} /> : null}
       </Box>
       <CompositeChart series={series} panels={data.price.length ? [{ id: "price", height: 2 }, { id: "net", height: 1 }] : [{ id: "net" }]}
-        width={width} height={chartHeight} showLegend showTimeAxis navigable={false} remoteKind="cot-history" />
+        width={width} height={chartHeight} showLegend showTimeAxis navigable={false} formatValue={cotLegendValue} remoteKind="cot-history" />
       <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={Math.max(3, height - chartHeight - 2)}
         selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
         onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}

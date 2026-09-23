@@ -2,6 +2,7 @@ import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHisto
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
+import { formatPriceObservation } from "../../../market-data/market/format";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
@@ -49,6 +50,10 @@ export function cotContractCode(value: unknown): string | null {
   const input = value.trim().toUpperCase().replace(/=F$/, "");
   return ROOTS[input === "VIX" ? "VX" : input]?.code ?? (/^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null);
 }
+/** The verified futures root a CFTC code belongs to, for titles readers recognize. */
+export function cotRoot(code: string): string | null {
+  return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0] ?? null;
+}
 export function cotPriceMapping(code: string) { return Object.values(ROOTS).find((row) => row.code === code) ?? null; }
 export function cotClass(family: CotFamily, value: unknown): CotClass {
   return COT_CLASSES[family].find((row) => row.value === value)?.value ?? COT_CLASSES[family][0]!.value;
@@ -59,6 +64,12 @@ export function cotInteger(value: number | null, signed = false): string {
 export function cotRank(position: CotClassSummary, years: 1 | 3): string {
   const rank = years === 1 ? position.percentile1Y : position.percentile3Y;
   return `${rank.value == null ? "--" : rank.value.toFixed(0)} pctl ${years}Y · ${rank.sampleCount} obs${rank.completeWindow ? "" : " · partial"}`;
+}
+
+/** Legend values stay exact: a compact 7.8K hides the futures price and -100K the net position. */
+export function cotLegendValue(value: number, series: Pick<ResolvedSeries, "id">): string {
+  // Seven significant digits keep every tick while dropping the float32 tail of provider bars.
+  return series.id === "price" ? formatPriceObservation(Number(value.toPrecision(7))) : cotInteger(value, true);
 }
 
 /** Add explicit gaps so absent weeks are not silently joined across a release gap. */

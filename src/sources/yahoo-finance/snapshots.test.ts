@@ -189,3 +189,19 @@ test("Yahoo quote does not measure the move from two sessions back when the prio
   expect(quote.change).toBeCloseTo(50.21 - 50.53, 8);
   expect(quote.changePercent).toBeCloseTo((50.21 - 50.53) / 50.53 * 100, 8);
 });
+
+test("Yahoo futures quote measures its move from the current contract's settlement after a roll", async () => {
+  const time = Date.parse("2026-09-23T13:04:10Z") / 1000;
+  const quote = await loadYahooQuote("SB=F", {
+    providerId: "yahoo",
+    // The continuous chart's earlier rows are the expiring October contract.
+    fetchChart: async () => ({
+      meta: { currency: "USD", instrumentType: "FUTURE", regularMarketPrice: 18.76, regularMarketTime: time },
+      history: [{ date: new Date("2026-09-22T04:00:00Z"), close: 17.59 }, { date: new Date("2026-09-23T04:00:00Z"), close: 18.76 }],
+    }),
+    fetchExtendedHoursData: async () => ({}),
+    fetchQuoteSupplement: async () => ({ previousClose: 18.56 }),
+  });
+  expect(quote.previousClose).toBe(18.56);
+  expect(quote.change).toBeCloseTo(0.2, 8);
+});

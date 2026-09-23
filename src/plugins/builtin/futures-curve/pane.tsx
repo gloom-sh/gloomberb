@@ -86,9 +86,9 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       {data ? <>
         <Box flexDirection="column" paddingX={1} flexShrink={0}>
           {selectedRow ? <KeyValueRow labelWidth={16} label={selectedRow.symbol} value={curvePrice(selectedRow.price, root)}
-            detail={`${curveTimestamp(selectedRow.asOf)} · ${curveRank(selectedRow.percentile, selectedRow.samples, selectedRow.historyStart, selectedRow.historyEnd)}`} /> : null}
+            detail={`${tab === "curve" && selectedRow.asOf === curves[0]?.asOf ? "" : `${curveTimestamp(selectedRow.asOf)} · `}${curveRank(selectedRow.percentile, selectedRow.samples, selectedRow.historyStart, selectedRow.historyEnd)}`} /> : null}
           <KeyValueRow labelWidth={16} label="Ann. roll yield" value={signedPercent(data.slope.annualizedRollYield)}
-            detail={`${curveTimestamp(data.slope.asOf)} · ${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd)}`} />
+            detail={`${tab === "curve" ? "" : `${curveTimestamp(data.slope.asOf)} · `}${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd)}`} />
         </Box>
         {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
           formatValue={(value) => curvePrice(value, root)} formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(2, 10)}

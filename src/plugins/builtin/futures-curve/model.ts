@@ -55,10 +55,15 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   return [{
     id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
-  }, ...data.ghosts.map((ghost) => ({
-    id: ghost.label, label: ghost.asOf ? ghost.label : `${ghost.label} unavailable`, asOf: ghost.asOf, color: palette?.ghosts[ghost.label], chartVisible: ghost.label !== "1Y",
-    points: charted(ghost.points, horizon, now).map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
-  }))];
+  }, ...data.ghosts.map((ghost) => {
+    // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
+    const points = charted(ghost.points, horizon, now);
+    const asOf = newestQuote(points);
+    return {
+      id: ghost.label, label: asOf ? ghost.label : `${ghost.label} unavailable`, asOf, color: palette?.ghosts[ghost.label], chartVisible: ghost.label !== "1Y",
+      points: points.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
+    };
+  })];
 }
 
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: "asc" | "desc"): FuturesContract[] {

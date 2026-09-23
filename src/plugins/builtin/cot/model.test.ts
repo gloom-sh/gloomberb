@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, cotContractCode, cotNetPoints, cotScope } from "./model";
+import { COT_MAJOR_CODES, cotContractCode, cotLegendValue, cotNetPoints, cotScope } from "./model";
 
 function position(): CotClassSummary {
   const percentile = { value: null, rank: null, sampleCount: 2, windowStart: "2025-09-15", windowEnd: "2026-09-15",
@@ -67,4 +67,10 @@ test("major scope keeps only verified codes and never invents a market", () => {
   expect(COT_MAJOR_CODES.has("13874A")).toBe(true);
   expect(COT_MAJOR_CODES.has("0063DB")).toBe(false);
   expect([...COT_MAJOR_CODES].every((code) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(code))).toBe(true);
+});
+
+test("legend values stay exact without the float32 tail of price bars", () => {
+  expect(cotLegendValue(Math.fround(4346.3), { id: "price" })).toBe("4,346.3");
+  expect(cotLegendValue(7765.25, { id: "price" })).toBe("7,765.25");
+  expect(cotLegendValue(-100461, { id: "net" })).toBe("-100,461");
 });

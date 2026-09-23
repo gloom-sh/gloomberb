@@ -138,6 +138,17 @@ function previousSessionClose(
 }
 
 /**
+ * A continuous futures chart splices contracts at each roll, so its prior row
+ * can belong to the expiring contract. The quote's own previous close is the
+ * current contract's prior settlement, and it is the close the quote displays.
+ */
+function changeReference(chart: YahooChartSnapshot, supplement: YahooQuoteSupplement): number | undefined {
+  const settlement = supplement.previousClose;
+  if (chart.meta.instrumentType === "FUTURE" && settlement != null && settlement > 0) return settlement;
+  return previousSessionClose(chart, settlement);
+}
+
+/**
  * Extended-hours moves are measured from the last completed regular session.
  * Yahoo can move regularMarketPrice with extended-hours trades, so it is only
  * that close while its time sits before pre-market or at the regular close.
@@ -181,7 +192,7 @@ export async function loadYahooTickerFinancials(
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
 
   const currentPrice = meta.regularMarketPrice ?? history[history.length - 1]!.close;
-  const prev = previousSessionClose(chart, quoteSupplement.previousClose);
+  const prev = changeReference(chart, quoteSupplement);
   const change = prev != null ? currentPrice - prev : 0;
   const changePct = prev ? (change / prev) * 100 : 0;
 
@@ -270,7 +281,7 @@ export async function loadYahooQuote(
   const { normalizedCurrency, currencyDivisor } = normalizeChartCurrency(chart);
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
   const latest = history[history.length - 1]!;
-  const prev = previousSessionClose(chart, quoteSupplement.previousClose);
+  const prev = changeReference(chart, quoteSupplement);
   const price = meta.regularMarketPrice ?? latest.close;
   const change = prev != null ? price - prev : 0;
 

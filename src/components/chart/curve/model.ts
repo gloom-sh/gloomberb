@@ -152,10 +152,21 @@ export function buildCurveChart(series: readonly CurveSeries[], width: number, c
   const candidates = [...new Map(plotted.flatMap((entry) => entry.points)
     .filter((point) => Number.isFinite(point.x)).map((point) => [point.x, point])).values()].sort((a, b) => a.x - b.x);
   const ticks: Array<{ label: string; ratio: number }> = [];
+  const columns = Math.max(1, width - 1);
+  // The axis centers each label on its tick but pins one that would spill past
+  // an edge, so the first and last labels extend inward by their full width.
+  const extent = (label: string, ratio: number) => {
+    const left = Math.max(0, Math.min(width - label.length, Math.round(ratio * columns) - Math.floor(label.length / 2)));
+    return [left, left + label.length] as const;
+  };
   const addTick = (point: CurvePoint | undefined) => {
     if (!point) return;
     const ratio = span ? (point.x - min) / span : 0;
-    if (ticks.some((tick) => Math.abs(tick.ratio - ratio) * Math.max(1, width - 1) < Math.max(6, point.label.length + 1))) return;
+    const [left, right] = extent(point.label, ratio);
+    if (ticks.some((tick) => {
+      const [tickLeft, tickRight] = extent(tick.label, tick.ratio);
+      return Math.abs(tick.ratio - ratio) * columns < 6 || (left <= tickRight && tickLeft <= right);
+    })) return;
     ticks.push({ label: point.label, ratio });
   };
   addTick(candidates[0]);

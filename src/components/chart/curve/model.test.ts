@@ -104,3 +104,12 @@ test("off-chart comparisons retain table context without expanding either chart 
   expect([chart.min, chart.max]).toEqual([1, 2]);
   expect(curveTableRows(series)[0]?.points.old?.value).toBe(15);
 });
+
+test("axis ticks leave room for edge labels that pin inward", () => {
+  const day = 86_400_000;
+  const start = Date.parse("2026-10-20");
+  const points = [0, 92, 1000].map((offset, index) => ({ id: String(index), label: new Date(start + offset * day).toISOString().slice(2, 10), x: start + offset * day, value: 1 }));
+  // At 120 columns the second expiry sits eleven columns in: clear of a centered label, not of the pinned first one.
+  const chart = buildCurveChart([{ id: "current", label: "Latest", asOf: null, points }], 120, ["green"]);
+  expect(chart.ticks.map((tick) => tick.label)).toEqual(["26-10-20", "29-07-16"]);
+});

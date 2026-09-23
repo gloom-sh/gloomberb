@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { cotBoardCache } from "./client";
 import { cotHeadless } from "./headless";
-import { cotContractCode } from "./model";
+import { cotContractCode, cotRoot } from "./model";
 import { CotPane } from "./pane";
 
 export const cotModule: PluginModule = {
@@ -16,7 +16,7 @@ export const cotModule: PluginModule = {
       const input = options?.arg?.trim();
       const code = cotContractCode(input || context.activeTicker);
       if (input && !code) throw new Error("Use a CFTC market code or supported futures root");
-      return { title: code ? `COT ${code}` : "CFTC Positioning", params: code ? { code } : undefined,
+      return { title: code ? `COT ${cotRoot(code) ?? code}` : "CFTC Positioning", params: code ? { code } : undefined,
         settings: { report: options?.values?.report ?? "legacy" }, placement: "floating" as const };
     },
   }],

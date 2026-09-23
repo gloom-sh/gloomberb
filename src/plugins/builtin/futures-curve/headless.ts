@@ -2,6 +2,9 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchFuturesCurve } from "./client";
 import { normalizeCurveRoot } from "./model";
 
+/** Percentiles read as the pane shows them, a whole rank. */
+const rank = (value: number | null) => value == null ? null : Math.round(value);
+
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CTM"], dataRequirements: ["Gloom Cloud futures curve endpoint"],
     limitations: ["Yahoo catalogues can be incomplete", "Ghosts and percentiles use the same listed contracts", "Cboe VIX is daily settlement"] },
@@ -14,8 +17,9 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const data = await fetchFuturesCurve(root, ctx.apiClient);
     return {
       sections: [
-        { title: "Contracts", rows: data.contracts.map((row) => ({ ...row })) },
-        { title: "Front spread", rows: [{ ...data.slope }] },
+        { title: "Contracts", rows: data.contracts.map((row) => ({ ...row, percentile: rank(row.percentile) })) },
+        { title: "Front spread", rows: [{ ...data.slope, annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
+          percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile) }] },
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,

@@ -64,6 +64,10 @@ test("charts the strip within the horizon and dates it by its freshest quote, no
   expect(near[0]!.points.map((point) => point.id)).toEqual(["CLX26.NYM"]);
   expect(near[0]!.asOf).toBe(first.asOf);
   expect(near[1]!.points.map((point) => point.id)).toEqual(["CLX26.NYM"]);
+  // The payload dates the ghost by its oldest point, here a contract beyond the charted horizon.
+  data.ghosts[0]!.points[2]!.asOf = "2026-09-14";
+  data.ghosts[0]!.asOf = "2026-09-14";
+  expect(futuresCurveSeries(data, undefined, "24", now)[1]!.asOf).toBe("2026-09-15");
   const all = futuresCurveSeries(data, undefined, "all", now);
   expect(all[0]!.points).toHaveLength(3);
   expect(all[0]!.asOf).toBe(first.asOf);
