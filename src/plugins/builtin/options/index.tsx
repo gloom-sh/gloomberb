@@ -84,6 +84,7 @@ export const optionsModule: PluginModule = {
       name: "Options",
       order: 35,
       component: OptionsPane,
+      instruments: ["equity", "fund", "index", "future", "option"],
       isVisible: ({ hasOptionsChain }) => hasOptionsChain,
     });
   },

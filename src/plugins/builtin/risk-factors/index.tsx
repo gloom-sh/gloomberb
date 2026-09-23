@@ -9,6 +9,7 @@ import { riskFactorsHeadless } from "./headless";
 export { riskFactorsHeadless } from "./headless";
 
 import { RISK_FACTORS_PANE_ID, RiskFactorsPane } from "./pane";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
   "The company's 10-K risk factors, and what was added, dropped, or rewritten since the prior year.";
@@ -21,7 +22,8 @@ export const riskFactorsModule: PluginModule = {
       name: "Risks",
       order: 36,
       component: RiskFactorsPane,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });
   },
 

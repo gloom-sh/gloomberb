@@ -815,4 +815,36 @@ describe("TickerResearchPane", () => {
     expect(frame).not.toContain("Trade");
   });
 
+  test("opens the Chart tab from a click on the overview price chart", async () => {
+    setSharedRegistryForTests(makeRegistry());
+    setOptionsProvider(createProvider(false));
+    const priceHistory = Array.from({ length: 40 }, (_, index) => ({
+      date: new Date(Date.UTC(2025, 0, index + 1)),
+      close: 100 + index,
+    }));
+
+    testSetup = await testRender(
+      <DetailHarness
+        config={createDetailConfig("AAPL")}
+        ticker={makeTicker("AAPL")}
+        financials={makeFinancials({ priceHistory })}
+      />,
+      { width: 90, height: 24 },
+    );
+
+    await flushFrame();
+    // The chart is not interactive here, so the click has to bubble out of
+    // the plot surface to the overview's handler.
+    const lines = testSetup.captureCharFrame().split("\n");
+    const plotRow = lines.findIndex((line) => line.includes("$120"));
+    expect(plotRow).toBeGreaterThan(0);
+    await act(async () => {
+      await testSetup!.mockMouse.click(5, plotRow);
+      await testSetup!.renderOnce();
+    });
+    await flushFrame();
+
+    expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("chart");
+  });
+
 });

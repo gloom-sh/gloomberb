@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { thirteenFHeadless } from "./headless";
 import { ThirteenFTickerPane } from "./signals-pane";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 export { thirteenFHeadless } from "./headless";
 
@@ -27,7 +28,14 @@ function initialCikFromQuery(query: string): string | undefined {
 export const thirteenFModule: PluginModule = {
   setup(ctx) {
     attachThirteenFApiPersistence(ctx.persistence);
-    ctx.registerTickerResearchTab({ id: "thirteenf", name: "13F", order: 39, component: ThirteenFTickerPane, isVisible: ({ ticker }) => !!ticker });
+    ctx.registerTickerResearchTab({
+      id: "thirteenf",
+      name: "13F",
+      order: 39,
+      component: ThirteenFTickerPane,
+      instruments: ["equity", "fund"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
+    });
   },
 
   dispose() {

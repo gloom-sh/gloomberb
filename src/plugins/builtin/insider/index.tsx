@@ -301,6 +301,7 @@ export const insiderModule: PluginModule = {
       name: "Insider",
       order: 47,
       component: InsiderView,
+      instruments: ["equity"],
       isVisible: ({ ticker }) => isUsEquityTicker(ticker),
     });
   },

@@ -2,6 +2,7 @@ import { EmptyState, usePaneTicker } from "../../../components";
 import type { TickerResearchTabProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { CongressTradesPane } from "./pane";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 function CongressTickerTab(props: TickerResearchTabProps) {
   const { ticker } = usePaneTicker();
@@ -17,7 +18,8 @@ export const congressResearchModule: PluginModule = {
       name: "Congress",
       order: 38,
       component: CongressTickerTab,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity", "fund"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });
   },
 };

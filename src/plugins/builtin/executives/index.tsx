@@ -5,6 +5,7 @@ import {
   resetExecutivesPersistence,
 } from "./data";
 import { EXECUTIVES_PANE_ID, ExecutivesPane } from "./pane";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
   "Named executive officers and what they were paid, read from the company's proxy statement and checked against the filing.";
@@ -17,7 +18,8 @@ export const executivesModule: PluginModule = {
       name: "Exec",
       order: 35,
       component: ExecutivesPane,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });
   },
 

@@ -117,6 +117,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
 | `RV <tickers>` | Relative valuation |
 
+Ticker Research shows the tabs that have data for the instrument. Stocks get the company tabs (analyst coverage, diagnostic, earnings calls, executives, filings, risk factors, hiring, holders, insider and short interest); funds keep events, dividends, options, congress trades and 13F; coins, currency pairs and indices keep the overview, chart, news and notes. Tabs sourced from SEC, FINRA and congressional filings are hidden for listings outside the US. Click the price chart on the Overview tab to open the Chart tab.
+
 Earnings-call data exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope; the interactive list loads 50. The server does not supply a total or a `hasMore` marker. When a response fills its source limit, exports report `sourceLimitReached: true`, `complete: false`, and `truncated: true`: additional calls may exist. `total` counts matching loaded calls; `totalIsExact: false` marks capped, pending, or stale results. A missing quarter in a capped lookup is not proof that the company has no such call. Pending discovery remains pending when reopening or refreshing the pane. Full-text documents can be read and searched without structured turns, but Q&A requires source segmentation.
 
 ### Chart Composer

@@ -26,6 +26,8 @@ interface OverviewTabProps {
   focused?: boolean;
   ticker: TickerRecord | null;
   financials: TickerFinancials | null;
+  /** A click on the price chart opens the full chart. */
+  onOpenChart?: () => void;
 }
 
 export function OverviewTab(props: OverviewTabProps) {
@@ -33,7 +35,7 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const exchangeRatesState = useAppSelector((state) => state.exchangeRates);
   const { width: termWidth } = useViewport();
@@ -250,16 +252,28 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials }: Ove
         )}
 
         {hasHistory && (
-          <CompositeChart
-            width={chartWidth}
-            height={10}
-            focused={false}
-            interactive={false}
-            series={[priceSeries]}
-            panels={[{ id: "price" }]}
-            axisWidth={8}
-            showLegend={false}
-          />
+          <Box
+            onMouseDown={onOpenChart
+              ? (event?: { button?: number }) => {
+                if ((event?.button ?? 0) === 0) onOpenChart();
+              }
+              : undefined}
+            cursor={onOpenChart ? "pointer" : undefined}
+            data-gloom-interactive={onOpenChart ? "true" : undefined}
+            data-gloom-role="overview-chart"
+            data-gloom-label={onOpenChart ? "Open chart" : undefined}
+          >
+            <CompositeChart
+              width={chartWidth}
+              height={10}
+              focused={false}
+              interactive={false}
+              series={[priceSeries]}
+              panels={[{ id: "price" }]}
+              axisWidth={8}
+              showLegend={false}
+            />
+          </Box>
         )}
 
         {hasPerformance && (

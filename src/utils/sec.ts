@@ -13,7 +13,17 @@ const US_EQUITY_EXCHANGES = new Set([
   "NYSEARCA",
   "OTC",
   "PINK",
+  // Yahoo's codes for Cboe BZX and the OTC Markets tiers.
+  "BTS",
+  "PNK",
+  "OQB",
+  "OQX",
+  "OEM",
+  "OBB",
 ]);
+
+/** Order-routing destinations, not listings. */
+const ROUTING_EXCHANGES = new Set(["SMART"]);
 
 function normalize(value?: string): string {
   return (value ?? "").trim().toUpperCase();
@@ -43,6 +53,23 @@ export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boole
   return isEquityType(type)
     && currency === "USD"
     && exchangeCandidates.some((exchange) => isUsExchange(exchange));
+}
+
+/**
+ * The metadata places the listing outside the US: a non-USD currency, or
+ * venues none of which is a US exchange. A missing currency or venue is
+ * unknown rather than foreign. SEC filings, FINRA short interest, 13F and
+ * congressional disclosures only cover US listings.
+ */
+export function isKnownNonUsListing(ticker: TickerRecord | null | undefined): boolean {
+  if (!ticker) return false;
+  const primaryContract = ticker.metadata.broker_contracts?.[0];
+  const currency = normalize(primaryContract?.currency ?? ticker.metadata.currency);
+  if (currency && currency !== "USD") return true;
+  const venues = [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
+    .map(normalize)
+    .filter((exchange) => exchange.length > 0 && !ROUTING_EXCHANGES.has(exchange));
+  return venues.length > 0 && !venues.some((exchange) => isUsExchange(exchange));
 }
 
 /**

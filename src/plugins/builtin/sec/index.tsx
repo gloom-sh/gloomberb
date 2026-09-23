@@ -419,6 +419,7 @@ export const secModule: PluginModule = {
       name: "SEC",
       order: 45,
       component: SecView,
+      instruments: ["equity"],
       isVisible: ({ ticker }) => isUsEquityTicker(ticker),
     });
   },

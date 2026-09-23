@@ -47,8 +47,10 @@ import type { DataProvider } from "./data-provider";
 import type { TickerFinancials } from "./financials";
 import type { CachePolicy, PersistedResourceValue } from "./persistence";
 import type { TickerRecord } from "./ticker";
-import type { BrokerContractRef, InstrumentSearchResult, TickerListingRef } from "./instrument";
+import type { BrokerContractRef, InstrumentSearchResult, TickerInstrumentKind, TickerListingRef } from "./instrument";
 import type { SyncContributor, SyncTransport } from "../sync/types";
+
+export type { TickerInstrumentKind } from "./instrument";
 
 export interface GloomSlots {
   "ticker-research:tab": { ticker: TickerRecord; financials: TickerFinancials | null };
@@ -515,6 +517,8 @@ interface TickerResearchTabVisibilityContext {
   ticker: TickerRecord | null;
   financials: TickerFinancials | null | undefined;
   hasOptionsChain: boolean;
+  /** Resolved from the quote, broker contract and saved type; `equity` when nothing says otherwise. */
+  instrumentKind: TickerInstrumentKind;
 }
 
 export interface TickerResearchTabDef {
@@ -522,6 +526,12 @@ export interface TickerResearchTabDef {
   name: string;
   order: number;
   component: (props: TickerResearchTabProps) => ReactNode;
+  /**
+   * Instrument kinds this tab has data for, such as `["equity"]` for company
+   * filings. Omit when every ticker has it (chart, news, notes).
+   */
+  instruments?: readonly TickerInstrumentKind[];
+  /** Narrower checks than `instruments`: a US listing, an options chain, a connected broker. */
   isVisible?: (context: TickerResearchTabVisibilityContext) => boolean;
 }
 

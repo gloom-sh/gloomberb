@@ -1,3 +1,20 @@
+/**
+ * What a ticker is, at the grain that decides which research has data for it:
+ * filings, executives and analyst coverage exist for a company's stock,
+ * distributions and 13F ownership for funds too, and none of them for a coin,
+ * a currency pair or an index.
+ */
+export type TickerInstrumentKind =
+  | "equity"
+  | "fund"
+  | "crypto"
+  | "currency"
+  | "index"
+  | "future"
+  | "option"
+  | "bond"
+  | "other";
+
 /** Source price convention. Percent-of-par quantities are nominal face amounts;
  * prices are percentage points per 100 face, independently of contract multiplier. */
 export type PriceBasis = "per-unit" | "percent-of-par";

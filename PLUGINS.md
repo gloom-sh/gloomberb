@@ -1254,7 +1254,7 @@ interface TickerResearchTabProps {
 
 Call `onCapture(true)` when your tab needs exclusive keyboard input (e.g., a text editor or chat input) and `onCapture(false)` when done, so global shortcuts keep working.
 
-Ticker Research tabs can control their visibility based on the current ticker:
+A tab only appears for tickers it has data for. Declare the instrument kinds it covers with `instruments`; the host resolves the ticker's kind from its quote, broker contract and saved type (`equity`, `fund`, `crypto`, `currency`, `index`, `future`, `option`, `bond`, `other`; `equity` when nothing says otherwise) and hides the tab for any other kind. Omit `instruments` for tabs every ticker has, such as a chart or notes. `isVisible` handles narrower conditions and receives the resolved `instrumentKind`:
 
 ```typescript
 ctx.registerTickerResearchTab({
@@ -1262,11 +1262,14 @@ ctx.registerTickerResearchTab({
   name: "Options",
   order: 50,
   component: OptionsTab,
-  isVisible({ ticker, financials, hasOptionsChain }) {
+  instruments: ["equity", "fund", "index"],
+  isVisible({ ticker, financials, hasOptionsChain, instrumentKind }) {
     return hasOptionsChain;
   },
 });
 ```
+
+A tab that would open on an empty state for most tickers should not be visible for them: company filings are `["equity"]`, distributions and 13F ownership `["equity", "fund"]`.
 
 ## Example: adding a Ticker Research tab
 

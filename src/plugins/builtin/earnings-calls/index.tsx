@@ -22,7 +22,7 @@ export const earningsCallsModule: PluginModule = {
       name: "Calls",
       order: 34,
       component: EarningsCallsPane,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
     });
   },
 

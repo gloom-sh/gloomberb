@@ -5,6 +5,7 @@ import type { AppConfig } from "../../../types/config";
 import type { PriceSparklinePeriod } from "../../../components/price-sparkline/view";
 import { getSharedRegistry } from "../../registry";
 import { formatTickerListInput, MAX_TICKER_LIST_SIZE, parseTickerListInput } from "../../../tickers/list";
+import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 
 type TickerResearchTabSummary = { id: string; name: string; order: number };
 
@@ -184,13 +185,16 @@ export function buildVisibleTickerResearchTabs(
   },
 ): TickerResearchTabSummary[] {
   const tabs: TickerResearchTabSummary[] = [];
+  const instrumentKind = resolveTickerInstrumentKind(ticker, financials);
 
   for (const tab of pluginTabs) {
+    if (tab.instruments && !tab.instruments.includes(instrumentKind)) continue;
     if (tab.isVisible && !tab.isVisible({
       config: options.config,
       ticker,
       financials,
       hasOptionsChain: options.hasOptionsChain,
+      instrumentKind,
     })) continue;
     tabs.push({ id: tab.id, name: tab.name, order: tab.order });
   }

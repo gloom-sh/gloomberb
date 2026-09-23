@@ -8,6 +8,7 @@ import {
 import { shortInterestHeadless } from "./headless";
 import { ShortInterestSurface } from "./surface";
 import { shortVolumeSettings } from "../short-volume";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 export { shortInterestHeadless } from "./headless";
 
@@ -30,7 +31,8 @@ export const shortInterestModule: PluginModule = {
       name: "Short Interest",
       order: 36,
       component: ShortInterestSurface,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });
   },
 

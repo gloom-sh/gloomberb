@@ -37,7 +37,7 @@ export function createDividendYieldModule({
         name: "Dividends",
         order: 38,
         component,
-        isVisible: ({ ticker }) => !!ticker,
+        instruments: ["equity", "fund"],
       });
     },
 

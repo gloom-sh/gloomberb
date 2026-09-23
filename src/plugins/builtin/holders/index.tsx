@@ -12,7 +12,7 @@ export const holdersModule: PluginModule = {
       name: "Holders",
       order: 42,
       component: HoldersView,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
     });
   },
 

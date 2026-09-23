@@ -1,6 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { FILING_EVENTS_PANE_ID, FilingEventsPane } from "./pane";
+import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
   "The company's 8-K filings, classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each said.";
@@ -12,7 +13,8 @@ export const filingEventsModule: PluginModule = {
       name: "8-K",
       order: 37,
       component: FilingEventsPane,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
+      isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });
   },
 

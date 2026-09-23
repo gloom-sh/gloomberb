@@ -21,7 +21,7 @@ export const jobsModule: PluginModule = {
       name: "Hiring",
       order: 37,
       component: JobsResearchTab,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
     });
   },
 

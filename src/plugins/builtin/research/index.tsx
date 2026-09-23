@@ -31,21 +31,21 @@ export const researchModule: PluginModule = {
       name: "Analyst",
       order: 32,
       component: AnalystResearchView,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
     });
     ctx.registerTickerResearchTab({
       id: "equity-diagnostic",
       name: "Diagnostic",
       order: 33,
       component: EquityDiagnosticView,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity"],
     });
     ctx.registerTickerResearchTab({
       id: "corporate-actions",
       name: "Events",
       order: 34,
       component: CorporateActionsView,
-      isVisible: ({ ticker }) => !!ticker,
+      instruments: ["equity", "fund"],
     });
   },
 

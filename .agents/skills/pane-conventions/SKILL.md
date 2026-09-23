@@ -166,6 +166,11 @@ more of what is loaded" uses the same helper.
   `visible={false}` plus `PaneFooterScope` when tabs are different surfaces
   (Ticker Research). Never mount every tab up front.
 - Labels are translated nouns.
+- A Ticker Research tab is shown only for tickers it can have data for:
+  `instruments` on the tab def (`["equity"]` for company filings,
+  `["equity", "fund"]` for distributions and ownership), `isVisible` for
+  narrower rules such as a US listing. Never ship a tab that opens on
+  "not available for this instrument".
 - `SegmentedControl` is a mode inside a form or dialog, not a tab strip.
 - Tabs and stacks compose: strip on top, stack below, strip stays while the
   detail is open.
