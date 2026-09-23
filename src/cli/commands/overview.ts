@@ -29,10 +29,10 @@ const BASKET_NAMES = new Map<string, string>([
   ...WORLD_INDICES.map((entry) => [entry.symbol, entry.name] as const),
   ...SECTOR_COLLECTIONS.flatMap((collection) => collection.items.map((item) => [item.etf, item.name] as const)),
 ]);
-// Priced like the MOST pane: listing currency, two decimals.
+// Priced like the MOST pane. Index and yield levels (^GSPC, ^TNX) carry no currency sign.
 const PRICE_COLUMN = { key: "price", header: "Last", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
-    ? formatMoverPrice(value, typeof row.currency === "string" ? row.currency : "") : "" };
+    ? formatMoverPrice(value, typeof row.currency === "string" && !String(row.symbol ?? "").startsWith("^") ? row.currency : "") : "" };
 const MOVER_COLUMNS = [
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },

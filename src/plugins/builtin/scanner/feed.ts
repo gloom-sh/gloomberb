@@ -88,7 +88,7 @@ export function useScannerStatusFooter(
   const delayMinutes = state.payload?.access === "delayed" ? state.payload.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;
   const info = useMemo<PaneFooterSegment[]>(
     () => segment ? [segment, ...status]
-      : delayMinutes != null ? [{ id: "scanner-delay", parts: [{ text: tf("{count}m delayed", { count: delayMinutes }), tone: "muted" }] }, ...status]
+      : delayMinutes != null ? [{ id: "scanner-delay", parts: [{ text: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }), tone: "muted" }] }, ...status]
         : status,
     [delayMinutes, segment, status],
   );

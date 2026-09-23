@@ -319,3 +319,11 @@ describe("fetchScreener", () => {
     expect(results.map((result) => result.symbol)).toEqual(["AAPL", "MSFT"]);
   });
 });
+
+test("mover prices keep the currency's minor unit and a sub-cent coin's digits", async () => {
+  const { formatMoverPrice } = await import("./model");
+  expect(formatMoverPrice(0.00001234, "USD")).toBe("$0.00001234");
+  expect(formatMoverPrice(33.4, "USD")).toBe("$33.40");
+  expect(formatMoverPrice(45678, "JPY")).toBe("¥45,678");
+  expect(formatMoverPrice(1234.5, "GBp")).toBe("£12.35");
+});
