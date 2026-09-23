@@ -251,7 +251,11 @@ export function createThirteenFHeadless(
     async load(args, ctx) {
       const query = typeof args.argument === "string" ? args.argument.trim() : "";
       const requestedView = String(args.options.view) as HeadlessThirteenFView;
-      const view = requestedView === "auto" && isCikQuery(query) ? "holdings" : requestedView;
+      // A ticker's holders with their positions, not the holders' whole books.
+      const view = requestedView !== "auto" ? requestedView
+        : isCikQuery(query) ? "holdings"
+          : inferBrowserTabFromQuery(query) === "byTicker" ? "ticker-holdings"
+            : requestedView;
       const limit = Number(args.options.limit);
       if (view === "overlap") {
         const fund = await resolveFund(query, args, ctx, dependencies);
@@ -277,7 +281,7 @@ export function createThirteenFHeadless(
       }
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
-        const { rows, ...metadata } = await loadTickerHoldings(query.toUpperCase(), Number(args.options.offset ?? 0), ctx.signal);
+        const { rows, ...metadata } = await loadTickerHoldings(query.replace(/^\$/, "").toUpperCase(), Number(args.options.offset ?? 0), ctx.signal);
         return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
       }
 
