@@ -7,7 +7,7 @@ import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, isHistoryRetent
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 import { publicListingTarget } from "../sources/listing-target";
 import { fetchHistoryResult } from "../sources/history-result";
-import type { PriceHistoryResult } from "../types/price-history";
+import type { HistorySession, PriceHistoryResult } from "../types/price-history";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "./chart-data";
 import { LiveBarAccumulator } from "./live-bars";
@@ -645,6 +645,10 @@ export function mergePriceHistoryWindows(
     sorted = [];
     let currentIndex = 0;
     let incomingIndex = 0;
+    // An intraday point strictly inside a later window's bar is that window's
+    // earlier observation of it, such as a trade-time final print.
+    const step = isIntradayResolution(resolution) ? CHART_RESOLUTION_STEP_MS[resolution] : 0;
+    let coveredUntil = Number.NEGATIVE_INFINITY;
     const append = (
       point: TickerFinancials["priceHistory"][number],
       timestamp: number,
@@ -665,10 +669,13 @@ export function mergePriceHistoryWindows(
       } else if (incomingPoint && !Number.isFinite(incomingTimestamp)) {
         incomingIndex += 1;
       } else if (currentPoint && currentTimestamp <= incomingTimestamp) {
-        append(currentPoint, currentTimestamp);
+        if (!(incomingPoint && currentTimestamp < incomingTimestamp && currentTimestamp < coveredUntil)) {
+          append(currentPoint, currentTimestamp);
+        }
         currentIndex += 1;
       } else if (incomingPoint) {
         append(incomingPoint, incomingTimestamp);
+        if (step) coveredUntil = incomingTimestamp + step;
         incomingIndex += 1;
       }
     }
@@ -736,7 +743,7 @@ function mergeHistory(
   exchange?: string,
   appendQuote = true,
   assetCategory?: string,
-  live?: { bars: LiveBarAccumulator; since?: number },
+  live?: { bars: LiveBarAccumulator; since?: number; session?: HistorySession },
 ): TickerFinancials {
   const base = financials ?? emptyFinancials();
   const quote = latestQuote(base.quote, quoteOverride);
@@ -745,7 +752,7 @@ function mergeHistory(
   // Market bars fold every observed quote into the forming bar; other series
   // price their latest point from the current quote alone.
   const priceHistory = live && liveBarResolution
-    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, liveSince: live.since })
+    ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, liveSince: live.since, session: live.session })
     : appendLiveQuotePoint(history, quote, liveBarResolution
       ? { now, mode: "ohlc", resolution: liveBarResolution, exchange }
       : { now });
@@ -1613,7 +1620,7 @@ export async function resolveChartSpecData(
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType,
           marketField && history.accumulationKey
-            ? { bars: cache.liveBarsFor(history.accumulationKey), since: sources.liveSince }
+            ? { bars: cache.liveBarsFor(history.accumulationKey), since: sources.liveSince, session: history.session }
             : undefined),
           priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
           priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint, Quote } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
+import type { HistorySession } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { ChartResolveCache, reconcileChartTail, resolveChartSpecData, type ChartResolveSources } from "./resolve";
+import { ChartResolveCache, mergePriceHistoryWindows, reconcileChartTail, resolveChartSpecData, type ChartResolveSources } from "./resolve";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 
 const at = (time: string) => Date.parse(`2026-09-22T${time}Z`);
@@ -93,6 +94,57 @@ describe("LiveBarAccumulator", () => {
     expect(points[0]?.volume).toBe(40_500_000);
     expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), open: 99, high: 101, low: 99, close: 101, volume: 600_000 });
   });
+  describe("a history ending in a trade-time observation", () => {
+    // 5m bars, then the latest trade stamped at 14:23.
+    const history = [
+      bar("14:15:00", 100, 101, 99.5, 100.5, 4_000),
+      bar("14:20:00", 100.5, 101, 100, 100.8, 3_000),
+      bar("14:23:00", 100.9, 101.4, 100.9, 101.4, 200),
+    ];
+    const session: Pick<HistorySession, "timestampConvention" | "observedAt"> = {
+      timestampConvention: "bar-open-with-final-observation", observedAt: at("14:23:05"),
+    };
+
+    for (const [label, declared] of [["declared by its source", session], ["undeclared", undefined]] as const) {
+      test(`folds it into its bar and forms later bars on the source's grid (${label})`, () => {
+        const bars = new LiveBarAccumulator();
+        const apply = (next: Quote) => bars.apply(history, next,
+          { now: next.lastUpdated + 100, resolution: "5m", exchange: "NASDAQ", liveSince: at("14:23:30"), session: declared });
+        apply(quote("14:24:00", 101.6));
+        apply(quote("14:26:00", 101.2));
+        apply(quote("14:29:00", 101.0));
+        const points = apply(quote("14:31:00", 100.7));
+        expect(points.map((point) => point.date.toISOString().slice(11, 16))).toEqual(["14:15", "14:20", "14:25", "14:30"]);
+        expect(points[1]).toMatchObject({ open: 100.5, high: 101.6, low: 100, close: 101.6, volume: 3_200 });
+        expect(points[2]).toMatchObject({ open: 101.2, high: 101.2, low: 101.0, close: 101.0 });
+        expect(points[3]).toMatchObject({ open: 100.7, close: 100.7 });
+      });
+    }
+
+    test("a declared closing print ends the last bar instead of opening one", () => {
+      const close = [bar("19:50:00", 100, 101, 99.5, 100.5, 4_000), bar("19:55:00", 100.5, 101, 100, 100.8, 3_000),
+        bar("20:00:00", 100.7, 100.7, 100.7, 100.7, 0)];
+      const points = new LiveBarAccumulator().apply(close, null, { now: at("20:05:00"), resolution: "5m", session });
+      expect(points).toHaveLength(2);
+      expect(points[1]).toMatchObject({ date: new Date(at("19:55:00")), close: 100.7, volume: 3_000 });
+    });
+
+    test("a partial opening bar followed by clock-aligned bars is not an observation", () => {
+      const opening = [bar("19:00:00", 100, 101, 99, 100, 5_000), bar("13:30:00", 100, 101, 99, 100.5, 900),
+        bar("14:00:00", 100.5, 101.5, 100, 101, 700)];
+      opening[0] = { ...opening[0]!, date: new Date(Date.parse("2026-09-21T19:00:00Z")) };
+      const points = new LiveBarAccumulator().apply(opening, null, { now: at("14:10:00"), resolution: "1h" });
+      expect(points).toBe(opening);
+    });
+
+    test("a later window supersedes the earlier observation inside one of its bars", () => {
+      const window = [bar("14:20:00", 100.5, 101.4, 100, 101.2, 3_600), bar("14:25:00", 101.2, 101.6, 101, 101.3, 900)];
+      expect(mergePriceHistoryWindows(history, window, "5m").map((point) => point.date.toISOString().slice(11, 16)))
+        .toEqual(["14:15", "14:20", "14:25"]);
+      // An observation after the window's last bar is newer than it and stays.
+      expect(mergePriceHistoryWindows(history, window.slice(0, 1), "5m")).toHaveLength(3);
+    });
+  });
 });
 
 describe("reconcileChartTail", () => {
@@ -156,5 +208,31 @@ describe("reconcileChartTail", () => {
 
     // An unchanged window is not a change.
     expect(await reconcileChartTail({ dataProvider: provider }, cache, at("14:02:50"))).toBe(false);
+  });
+
+  test("windows ending in a trade-time observation settle without stray or off-grid candles", async () => {
+    const five = { ...spec, viewport: { range: "1D" as const, resolution: "5m" as const } };
+    let tail: PricePoint[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getPriceHistoryForResolution: async () => [bar("14:15:00", 100, 101, 99.5, 100.5, 4_000),
+        bar("14:20:00", 100.5, 101, 100, 100.8, 3_000), bar("14:23:00", 100.9, 101.4, 100.9, 101.4, 200)],
+      getDetailedPriceHistory: async () => tail,
+    });
+    const cache = new ChartResolveCache();
+    const resolve = async (time: string, price: number) => ((await resolveChartSpecData(five, {
+      dataProvider: provider, now: new Date(at(time) + 100), liveSince: at("14:23:30"),
+      loadFredSeries: async () => { throw new Error("unused"); },
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), quote(time, price)]]),
+    }, cache)).bufferedSeries ?? []).find((series) => series.id === "price")!.points
+      .map(({ date, close }) => `${date.toISOString().slice(11, 16)}=${close}`);
+
+    await resolve("14:24:00", 101.6);
+    expect(await resolve("14:26:00", 101.2)).toEqual(["14:15=100.5", "14:20=101.6", "14:25=101.2"]);
+    tail = [bar("14:20:00", 100.5, 101.6, 100, 101.5, 3_500), bar("14:25:00", 101.5, 101.5, 101.1, 101.2, 600),
+      bar("14:26:00", 101.2, 101.2, 101.2, 101.2, 50)];
+    expect(await reconcileChartTail({ dataProvider: provider }, cache, at("14:26:10"))).toBe(true);
+    expect(await resolve("14:29:00", 101.0)).toEqual(["14:15=100.5", "14:20=101.5", "14:25=101"]);
+    expect(await resolve("14:31:00", 100.7)).toEqual(["14:15=100.5", "14:20=101.5", "14:25=101", "14:30=100.7"]);
   });
 });

@@ -1,4 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
+import type { HistorySession } from "../types/price-history";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import {
@@ -25,6 +26,8 @@ export interface LiveBarOptions {
    * it had no trades, so it is not a gap in the history.
    */
   liveSince?: number;
+  /** The history's declared bar contract and acquisition time, when its source provides one. */
+  session?: Pick<HistorySession, "timestampConvention" | "observedAt">;
 }
 
 interface FormedBar {
@@ -68,6 +71,61 @@ function anchorKey(point: PricePoint, time: number): string {
   return `${time}|${point.open}|${point.high}|${point.low}|${point.close}|${point.volume}`;
 }
 
+function foldIntoBar(bar: PricePoint, observation: PricePoint): PricePoint {
+  const open = finite(bar.open) ? bar.open : bar.close;
+  const extremes = pricePointIntegrity(observation) ? [] : [observation.high, observation.low];
+  const prices = [bar.high, bar.low, open, bar.close, observation.close, ...extremes].filter(finite);
+  const volume = finite(bar.volume) || finite(observation.volume)
+    ? (finite(bar.volume) ? bar.volume : 0) + (finite(observation.volume) ? observation.volume : 0)
+    : undefined;
+  return {
+    ...bar,
+    open,
+    high: Math.max(...prices),
+    low: Math.min(...prices),
+    close: observation.close,
+    ...(volume === undefined ? {} : { volume }),
+  };
+}
+
+/**
+ * Some sources end an intraday history with the latest trade stamped at its
+ * own time, or at the session close, instead of at a bar open. It belongs to
+ * the bar containing it. Kept as a point of its own, it would move the grid
+ * every later bar is placed on.
+ */
+export function foldFinalObservation(
+  history: PricePoint[],
+  stepMs: number,
+  session?: Pick<HistorySession, "timestampConvention">,
+): PricePoint[] {
+  const last = history.at(-1);
+  const previous = history.at(-2);
+  if (!last || !previous || !finite(last.close) || !finite(previous.close) || pricePointIntegrity(previous)) return history;
+  const previousTime = pointTime(previous);
+  const gap = pointTime(last) - previousTime;
+  if (!(gap > 0)) return history;
+  const declared = session?.timestampConvention === "bar-open-with-final-observation";
+  let barTime: number;
+  if (gap % stepMs !== 0) {
+    if (!declared) {
+      // Without a declaration, only a point inside a bar that itself sits on
+      // its predecessor's grid. A partial opening bar is not an observation.
+      const before = history.at(-3);
+      if (gap >= stepMs || !before || (previousTime - pointTime(before)) % stepMs !== 0) return history;
+    }
+    barTime = previousTime + Math.floor(gap / stepMs) * stepMs;
+  } else if (declared) {
+    // A declared observation on the grid is the closing print, which ends the previous bar.
+    barTime = pointTime(last) - stepMs;
+  } else {
+    return history;
+  }
+  return barTime === previousTime
+    ? [...history.slice(0, -2), foldIntoBar(previous, last)]
+    : [...history.slice(0, -1), { ...last, date: new Date(barTime) }];
+}
+
 /**
  * Folds streamed quotes into the forming bar of one price history. Unlike a
  * single quote appended to the loaded bars, it remembers every observed price
@@ -85,16 +143,28 @@ export class LiveBarAccumulator {
   private cumulative: number | null = null;
   private version = 0;
   private gapPending = false;
+  private folded: { source: PricePoint[]; key: string; value: PricePoint[] } | null = null;
 
   apply(history: PricePoint[], quote: Quote | null | undefined, options: LiveBarOptions): PricePoint[] {
-    const latest = history.at(-1);
-    if (!latest) return history;
+    const bars = this.onGrid(history, options);
+    const latest = bars.at(-1);
+    if (!latest) return bars;
     const latestTime = pointTime(latest);
-    if (!Number.isFinite(latestTime)) return history;
+    if (!Number.isFinite(latestTime)) return bars;
     const exchange = options.exchange || quote?.listingExchangeName || quote?.exchangeName;
-    this.syncAnchor(latest, latestTime, options.resolution, exchange);
+    this.syncAnchor(latest, latestTime, options, exchange);
     if (quote) this.observe(latest, quote, options, exchange);
-    return this.project(history, latest);
+    return this.project(bars, latest);
+  }
+
+  /** The history with any trailing observation folded into its bar, computed once per loaded history. */
+  private onGrid(history: PricePoint[], options: LiveBarOptions): PricePoint[] {
+    if (isCalendarResolution(options.resolution)) return history;
+    const key = `${options.resolution}|${options.session?.timestampConvention ?? ""}`;
+    if (this.folded?.source === history && this.folded.key === key) return this.folded.value;
+    const value = foldFinalObservation(history, CHART_RESOLUTION_STEP_MS[options.resolution], options.session);
+    this.folded = { source: history, key, value };
+    return value;
   }
 
   /** True once after a quote could not extend the tail across missing history. */
@@ -121,7 +191,8 @@ export class LiveBarAccumulator {
     return barTime >= anchorTime && barTime - anchorTime < CHART_RESOLUTION_STEP_MS[resolution];
   }
 
-  private syncAnchor(latest: PricePoint, latestTime: number, resolution: ManualChartResolution, exchange?: string): void {
+  private syncAnchor(latest: PricePoint, latestTime: number, options: LiveBarOptions, exchange?: string): void {
+    const { resolution } = options;
     const key = anchorKey(latest, latestTime);
     if (this.anchor?.key === key) return;
     const previous = this.anchor?.time === latestTime ? this.anchor : null;
