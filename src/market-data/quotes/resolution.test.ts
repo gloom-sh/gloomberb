@@ -597,3 +597,16 @@ test("canonical quote preserves unavailable day changes while retaining zero and
   expect(resolveCanonicalQuote({ quote: { ...base, change: 0, changePercent: 0 } }).quote).toMatchObject({ change: 0, changePercent: 0 });
   expect(resolveCanonicalQuote({ quote: { ...base, previousClose: 10 } }).quote).toMatchObject({ change: 2, changePercent: 20 });
 });
+
+test("a current live price outranks a delayed one stamped later, but a stale live price does not", () => {
+  const now = Date.parse("2026-09-14T18:00:00Z");
+  const common = { symbol: "AAPL", currency: "USD", change: 0, changePercent: 0, listingExchangeName: "NASDAQ", marketState: "REGULAR" as const };
+  const contributions: QuoteContributionMap = {
+    "gloomberb-cloud": { ...common, providerId: "gloomberb-cloud", dataSource: "live", price: 231.4, lastUpdated: now - 30_000 },
+    yahoo: { ...common, providerId: "yahoo", dataSource: "delayed", price: 229.9, lastUpdated: now - 5_000 },
+  };
+  expect(resolveCanonicalQuote(contributions, now).quote?.price).toBe(231.4);
+
+  contributions["gloomberb-cloud"] = { ...contributions["gloomberb-cloud"]!, stale: true };
+  expect(resolveCanonicalQuote(contributions, now).quote?.price).toBe(229.9);
+});
