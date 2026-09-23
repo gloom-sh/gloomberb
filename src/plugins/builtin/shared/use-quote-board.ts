@@ -44,6 +44,8 @@ export interface QuoteBoardOptions {
 const QUOTE_BOARD_FALLBACK_MS = 60_000;
 /** An open market the stream has not moved for this long is polled as well. */
 const STREAM_SILENCE_MS = 3 * 60_000;
+/** The feed answers a new subscription with a snapshot; give it this long before polling around it. */
+const STREAM_CONNECT_GRACE_MS = 10_000;
 
 const EMPTY_STATE: BoardQuoteState = { quote: null, loading: false, error: null, stale: false };
 
@@ -263,8 +265,13 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
       schedule();
     };
     const schedule = () => {
-      const delay = lastLoadAtRef.current + fallbackIntervalMs - Date.now();
-      timer = setTimeout(poll, Math.max(0, delay));
+      const due = lastLoadAtRef.current + fallbackIntervalMs;
+      // Coming back into view resubscribes; the snapshot the feed sends on
+      // subscribe usually lands before a poll would.
+      const settled = liveStreaming
+        ? streamStartRef.current.at + Math.min(STREAM_CONNECT_GRACE_MS, fallbackIntervalMs)
+        : 0;
+      timer = setTimeout(poll, Math.max(0, Math.max(due, settled) - Date.now()));
     };
     schedule();
     return () => {
