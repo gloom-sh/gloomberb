@@ -4,6 +4,7 @@ import type { PricePoint } from "../../types/financials";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
 import type { DataTableColumn, DataTableCell } from "../ui";
+import { getTableWidth } from "../ui/table-layout";
 
 export interface MarketBoardRow {
   id: string;
@@ -71,10 +72,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     return sort.direction === "asc" ? comparison : -comparison;
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
-  const withLabelDetail = rows.some((row) => row.labelDetail !== undefined);
-  const columns: DataTableColumn[] = [
-    { id: "label", label: labelHeader, width: labelWidth, align: "left", flexGrow: withLabelDetail ? 0 : 1 },
-    ...(withLabelDetail ? [{ id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left" as const, flexGrow: 1 }] : []),
+  const baseColumns: DataTableColumn[] = [
     { id: "value", label: valueLabel, width: valueWidth, align: "right" },
     { id: "change", label: changeLabel, width: 10, align: "right" },
     ...(rows.some((row) => row.changeAsOf !== undefined) ? [{ id: "changeAsOf", label: "LAST CHANGE", width: 11, align: "left" as const }] : []),
@@ -82,6 +80,15 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     { id: "percentile", label: percentileLabel, width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: asOfWidth, align: "left" },
+  ];
+  const labelDetailColumn: DataTableColumn = { id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left", flexGrow: 1 };
+  // The detail name is the first thing to go: history and as-of dates matter more than a second label.
+  const withLabelDetail = rows.some((row) => row.labelDetail !== undefined)
+    && getTableWidth([{ width: labelWidth, label: labelHeader }, labelDetailColumn, ...baseColumns]) <= width;
+  const columns: DataTableColumn[] = [
+    { id: "label", label: labelHeader, width: labelWidth, align: "left", flexGrow: withLabelDetail ? 0 : 1 },
+    ...(withLabelDetail ? [labelDetailColumn] : []),
+    ...baseColumns,
   ];
   const renderCell = (row: T, column: DataTableColumn): DataTableCell => {
     const extra = extraColumns?.find((item) => item.column.id === column.id);

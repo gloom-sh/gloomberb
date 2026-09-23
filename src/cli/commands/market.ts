@@ -111,10 +111,14 @@ function quoteRows(results: QuoteCliRecord[]) {
     const quote = result.quote;
     // Same price and move as the quote monitor: the live session's print against the daily reference.
     const display = getActiveQuoteDisplay(quote);
-    // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
-    const options = { ...quoteFormatOptions(quote), minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) };
     // An index level is in points, not in the currency its members trade in.
     const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
+    // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
+    // Points have no minor unit, so a yen-listed index still pads to two.
+    const options = {
+      ...quoteFormatOptions(quote),
+      minimumFractionDigits: indexPoints ? 2 : Math.min(2, currencyMinorDigits(quote?.currency)),
+    };
     const price = (value: number | undefined) => (
       quote && value != null
         ? indexPoints ? formatMarketPrice(value, options) : formatMarketPriceWithCurrency(value, quote.currency, options)

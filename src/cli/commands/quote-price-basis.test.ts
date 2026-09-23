@@ -40,6 +40,8 @@ test("quote command preserves raw declarations and formats its actual output row
     { ...rawQuote, symbol: "UNKNOWN" },
     { ...rawQuote, symbol: "UNIT", priceBasis: "per-unit" as const },
     { ...rawQuote, symbol: "^IDX", instrumentType: "INDEX" },
+    { ...rawQuote, symbol: "^N225", instrumentType: "INDEX", currency: "JPY", price: 65018.95, change: 882.75 },
+    { ...rawQuote, symbol: "7203.T", instrumentType: "EQUITY", currency: "JPY", price: 2710, change: 12 },
   ];
   let closed = 0;
   let captured: unknown;
@@ -58,8 +60,10 @@ test("quote command preserves raw declarations and formats its actual output row
   await marketDataCliCommands.find(command => command.name === "quote")!.execute(quotes.map(quote => quote.symbol), ctx);
   expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toEqual(quotes);
   // An index level is in points, never dollars.
-  expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00", "87.00"]);
-  expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87, 87]);
+  // A yen-listed index pads its points like any other; yen prices keep no decimals.
+  expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00", "87.00", "65,018.95", "¥2,710"]);
+  expect(rows[4]!.previousClose).toBe("64,136.20");
+  expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87, 87, 65018.95, 2710]);
   expect(closed).toBe(1);
 });
 
