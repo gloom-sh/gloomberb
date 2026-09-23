@@ -284,8 +284,9 @@ export function isQuoteContributionStaleForCurrentSession(contribution: Quote, n
   if (contribution.marketState != null) return isQuoteStaleForCurrentSession(contribution, now);
   // A price-only source can be combined with independent session metadata.
   // Its observation must still belong to the current active session.
-  const timestamp = contribution.lastUpdated;
   if (contribution.stale === true || !hasValidQuoteObservationTime(contribution, now)) return true;
+  // A tolerated future stamp belongs to the session in progress, not the next one.
+  const timestamp = Math.min(contribution.lastUpdated, now);
   const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now) : null;
   if (activeSession && activeUsExtendedHoursSession(timestamp) !== activeSession) return true;
   return isTimestampStaleForExchangeSession(timestamp, contribution.listingExchangeName || contribution.exchangeName, now);

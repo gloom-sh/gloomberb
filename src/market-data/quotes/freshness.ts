@@ -42,8 +42,9 @@ export function isQuoteStaleForCurrentSession(quote: Quote | null | undefined, n
   if (!hasValidQuoteObservationTime(quote, now)) return true;
   if (isQuoteMissingActiveSessionPrice(quote, now)) return true;
 
+  // A tolerated future stamp belongs to the session in progress, not the next one.
   return isTimestampStaleForExchangeSession(
-    quote.lastUpdated,
+    Math.min(quote.lastUpdated, now),
     quote.listingExchangeName || quote.exchangeName,
     now,
     quote.marketState,
