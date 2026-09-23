@@ -9,7 +9,6 @@ import type { InstrumentRef } from "../market-data/request-types";
 import type { QueryEntry } from "../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../market-data/selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
-import { LIVE_QUOTE_FUTURE_TOLERANCE_MS } from "./chart-data";
 
 /**
  * A terminal chart re-rasterizes its whole bitmap for each redraw. It follows
@@ -83,10 +82,11 @@ export function liveChartQuoteTargetSignature(spec: ChartSpec): string {
 
 /**
  * A malformed timestamp cannot outrank a usable source observation forever. A
- * stamp just ahead of the local clock is a clock difference, not a malformed one.
+ * stamp just ahead of the local clock is a clock difference, not a malformed
+ * one; the observation check already allows the shared clock tolerance.
  */
 export function compareChartQuoteRecency(next: Quote, current: Quote): number {
-  const now = Date.now() + LIVE_QUOTE_FUTURE_TOLERANCE_MS;
+  const now = Date.now();
   const sourceTime = (quote: Quote) => hasValidQuoteObservationTime(quote, now) ? quote.lastUpdated : -Infinity;
   const nextTime = sourceTime(next);
   const currentTime = sourceTime(current);

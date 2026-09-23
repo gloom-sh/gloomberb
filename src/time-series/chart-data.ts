@@ -1,6 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { quoteFutureToleranceMs } from "../market-data/quotes/clock";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
 import {
@@ -12,11 +13,6 @@ const MAX_LIVE_QUOTE_TAIL_AGE_MS = 7 * 24 * 60 * 60_000;
 const MAX_LIVE_QUOTE_CLOCK_SKEW_MS = 5 * 60_000;
 const MAX_INTRADAY_BAR_INTERVAL_MS = 6 * 60 * 60_000;
 export const MIN_LIVE_QUOTE_TAIL_GAP_MS = 5 * 60_000;
-/**
- * A quote stamped slightly after the local clock is a clock difference, not a
- * malformed observation. Dropping it froze the tail on machines running behind.
- */
-export const LIVE_QUOTE_FUTURE_TOLERANCE_MS = 2_000;
 const DAY_MS = 24 * 60 * 60_000;
 // Closer daily points than this are intraday data, not calendar bars.
 const MIN_CALENDAR_BAR_INTERVAL_MS = 20 * 60 * 60_000;
@@ -119,10 +115,14 @@ function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number): PriceP
   };
 }
 
-/** The clock a quote is judged against, allowing a small local clock lag. */
+/**
+ * The clock a quote is judged against. A quote stamped slightly after the
+ * local clock is a clock difference, not a malformed observation: dropping it
+ * froze the tail on machines running behind the server.
+ */
 function quoteObservationNow(quote: Pick<Quote, "lastUpdated">, now: number): number {
   const quoteTime = quote.lastUpdated;
-  return Number.isFinite(quoteTime) && quoteTime > now && quoteTime - now <= LIVE_QUOTE_FUTURE_TOLERANCE_MS
+  return Number.isFinite(quoteTime) && quoteTime > now && quoteTime - now <= quoteFutureToleranceMs()
     ? quoteTime
     : now;
 }
