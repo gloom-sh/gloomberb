@@ -53,6 +53,16 @@ export function optionSpread({ bid, ask }: Pick<OptionMarketReference, "bid" | "
   return { kind: bid > 0 || ask > 0 ? "one-sided" : "unavailable" };
 }
 
+/**
+ * Providers send 0 for a side with no quote. A zero ask is never a real offer;
+ * a zero bid is one (nobody pays for a far wing) unless the ask is missing too.
+ */
+export function optionQuoteSide(contract: Pick<OptionContract, "bid" | "ask">, side: "bid" | "ask"): number | null {
+  const valid = (value: number) => Number.isFinite(value) && value > 0;
+  if (side === "ask") return valid(contract.ask) ? contract.ask : null;
+  return valid(contract.bid) || valid(contract.ask) ? contract.bid : null;
+}
+
 export function optionMarketReferenceLines(reference: OptionMarketReference): string[] {
   const { bid, ask } = reference;
   const spread = optionSpread(reference);

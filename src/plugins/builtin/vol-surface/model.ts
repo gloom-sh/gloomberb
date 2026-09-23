@@ -235,6 +235,26 @@ export interface BuildSurfaceExpiryInput {
 }
 
 const CLOSED_QUOTE_GAP_MS = 60 * 60_000;
+/**
+ * Listed strikes the cleaned smile may skip around the forward. A coarse
+ * chain skips one; a chain whose near-the-money quotes are all zero-bid
+ * (Yahoo after the close, on LEAPS) skips dozens, and a fit bridging the
+ * wings then invents the ATM level.
+ */
+const MAX_UNQUOTED_FORWARD_STRIKES = 8;
+
+function unquotedStrikesAroundForward(chain: OptionsChain, expiration: number, points: readonly SurfacePoint[], forward: number): number {
+  let below = -Infinity, above = Infinity;
+  for (const point of points) {
+    if (point.strike < forward) below = Math.max(below, point.strike);
+    else above = Math.min(above, point.strike);
+  }
+  if (!Number.isFinite(below) || !Number.isFinite(above)) return 0;
+  const listed = new Set([...chain.calls, ...chain.puts]
+    .filter((contract) => contract.expiration === expiration && contract.strike > below && contract.strike < above)
+    .map((contract) => contract.strike));
+  return listed.size;
+}
 
 /**
  * The expiries the 3D sheet draws. An expiry whose SVI fit failed falls back
@@ -304,6 +324,10 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
     }
   }
   result.points.sort((a, b) => a.strike - b.strike);
+  if (unquotedStrikesAroundForward(chain, expiration, result.points, forward) > MAX_UNQUOTED_FORWARD_STRIKES) {
+    result.warnings.push("No usable quotes near the forward");
+    return result;
+  }
   result.fit = fitVolatilitySmile(result.points, result.years);
   if (!result.fit) {
     result.warnings.push("Fewer than two cleaned OTM strikes are available");

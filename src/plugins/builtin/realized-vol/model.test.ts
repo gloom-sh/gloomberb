@@ -137,5 +137,7 @@ describe("current ATM IV reference", () => {
     expect(missing.reference).toBeNull();
     expect(missing.error).toBeTruthy();
     expect(projectCurrentAtmIv(surface([expiry(30, { atmIV: NaN })])).reference).toBeNull();
+    // With every short expiry withheld, a LEAPS was the nearest to 30 days.
+    expect(projectCurrentAtmIv(surface([stale, expiry(451)])).reference).toBeNull();
   });
 });

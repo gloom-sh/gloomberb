@@ -13,6 +13,8 @@ export type ConfigContext = {
 
 export type MarketContext = ConfigContext & {
   dataProvider: AssetDataRouter;
+  /** `--refresh`: prefetched data bypasses the local cache. */
+  refresh?: boolean;
 };
 
 export type CliServicesContext = {

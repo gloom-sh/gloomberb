@@ -244,6 +244,10 @@ export class AssetDataRouter implements DataProvider {
     this.revalidateInBackground = enabled;
   }
 
+  get revalidatesInBackground(): boolean {
+    return this.revalidateInBackground;
+  }
+
   async getExchangeRate(fromCurrency: string, context?: Pick<MarketDataRequestContext, "cacheMode">): Promise<number> {
     return (await this.getCachedQuery("getExchangeRate", [fromCurrency]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }

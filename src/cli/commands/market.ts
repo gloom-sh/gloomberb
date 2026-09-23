@@ -32,6 +32,8 @@ import {
   recommendationTotal,
   targetUpside,
 } from "../../plugins/builtin/research/analyst-model";
+import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
+import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 
@@ -277,6 +279,25 @@ function optionRows(chain: OptionsChain) {
     }));
 }
 
+/**
+ * After a US open, a chain last observed before it is the prior session's:
+ * zero bids and yesterday's volume. The delayed feed lags the open by about
+ * fifteen minutes, so this is expected early in the session.
+ */
+function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: number): string | null {
+  const observed = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+  if (!Number.isFinite(observed) || (exchange && !getPublishedUsEquityCalendarYears(exchange))) return null;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+  const session = getPublishedUsEquitySession(exchange || "NYSE", today);
+  if (session?.kind !== "session" || now < session.open || observed >= session.open) return null;
+  return `Chain is from the prior session (last observed ${chain.asOf})`;
+}
+
+function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" | "ask"): string {
+  const quote = optionQuoteSide({ bid: Number(row.bid), ask: Number(row.ask) }, side);
+  return quote == null ? "—" : String(quote);
+}
+
 /** Per-share earnings to the cent, as reported; consensus averages carry more digits. */
 function formatEpsCell(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
@@ -517,10 +538,11 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
     });
     // A failed refresh falls back to the stored chain, which can be days old.
-    const warnings = result?.refreshError == null ? undefined : [
-      `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
-        + (chain.asOf ? ` (last trade ${chain.asOf})` : ""),
-    ];
+    const refreshWarning = result?.refreshError == null ? null
+      : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
+        + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
+    const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, exchange, Date.now());
+    const warnings = refreshWarning ? [refreshWarning] : sessionWarning ? [sessionWarning] : undefined;
     ctx.printResult({ data: chain, metadata: { symbol, expirations: chain.expirationDates }, warnings }, {
       rows: optionRows,
       columns: [
@@ -529,8 +551,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "expiration", header: "Expiry" },
         { key: "strike", header: "Strike", align: "right" },
         { key: "last", header: "Last", align: "right" },
-        { key: "bid", header: "Bid", align: "right" },
-        { key: "ask", header: "Ask", align: "right" },
+        { key: "bid", header: "Bid", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "bid") },
+        { key: "ask", header: "Ask", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "ask") },
         { key: "volume", header: "Vol", align: "right", format: formatCountCell },
         { key: "openInterest", header: "OI", align: "right", format: formatCountCell },
       ],

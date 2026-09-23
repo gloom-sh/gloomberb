@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { CompositeChart } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { formatCompositeSeriesValue } from "../../../components/chart/composite/format";
 import { staticSeries } from "../../../components/chart/static/series";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
+import { formatPoints } from "./format";
 import type { DatedValue, IvHistoryModel } from "./model";
 
 const PANELS = [{ id: "vol", height: 3 }, { id: "spread", height: 1 }];
@@ -16,6 +18,13 @@ function volSeries(id: string, label: string, color: string, points: readonly Da
     { id, label, color, style }), unit: "%", unitGroup: "volatility", panelId, observationKind: "market" };
 }
 
+/** The IV-HV spread is a difference of two vols: volatility points, not a percentage. */
+const SPREAD_UNIT = { unit: "pts", unitGroup: "derived-unit:volatility-points" };
+
+function formatLegendValue(value: number, series: ResolvedSeries): string {
+  return series.id === "spread" ? `${formatPoints(value / 100)} pts` : formatCompositeSeriesValue(value, series);
+}
+
 export function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; iv90: string; hv: string; quote: string; spread: string },
   hvLabel: string): ResolvedSeries[] {
   return [
@@ -23,7 +32,7 @@ export function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; i
     volSeries("iv90", "IV 90d", colors.iv90, model.iv90, "vol"),
     volSeries("hv", hvLabel, colors.hv, model.hv, "vol"),
     ...(model.quoteIv30.length ? [volSeries("iv30-quote", "IV 30d live", colors.quote, model.quoteIv30, "vol", "points")] : []),
-    volSeries("spread", "IV 30d - HV", colors.spread, model.spread, "spread", "columns"),
+    { ...volSeries("spread", `IV 30d - ${hvLabel}`, colors.spread, model.spread, "spread", "columns"), ...SPREAD_UNIT },
   ];
 }
 
@@ -32,7 +41,7 @@ export function IvHistoryChart({ model, width, height, hvLabel }: { model: IvHis
   const palette = resolveChartPalette(colors);
   const series = useMemo(() => ivHistorySeries(model, { iv30: colors.warning, iv90: IV90_COLOR, hv: colors.positive,
     quote: colors.textBright, spread: colors.textDim }, hvLabel), [model, colors, hvLabel]);
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} navigable={false} showLegend showTimeAxis
+  return <CompositeChart series={series} panels={PANELS} width={width} height={height} navigable={false} showLegend showTimeAxis formatValue={formatLegendValue}
     remoteKind="implied-volatility-history"
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
       textDim: palette.axisColor, negative: colors.negative }} />;

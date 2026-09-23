@@ -629,7 +629,8 @@ export async function buildDesktopShotPayload(
       tapeSnapshots.push([entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)]);
     }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
-      const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange);
+      const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange, undefined,
+        context.refresh ? { cacheMode: "refresh" } : undefined);
       optionsChains.push([symbol, chain]);
     }
   }

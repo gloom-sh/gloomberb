@@ -12,7 +12,7 @@ const expiration = Date.UTC(2026, 11, 18) / 1000;
 const curve = [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" },
   { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-09-21" }];
 
-function chain(expiry = expiration, volatility = 0.3): OptionsChain {
+function chain(expiry = expiration, volatility = 0.3, strikes = [70, 80, 90, 95, 100, 105, 110, 120, 130]): OptionsChain {
   const contract = (strike: number, side: "call" | "put"): OptionContract => {
     const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: 100, strike,
       daysToExpiry: daysToExpiryFrom(expiry, now), rate: 0.04, dividendYield: 0.01, volatility }).price;
@@ -21,7 +21,6 @@ function chain(expiry = expiration, volatility = 0.3): OptionsChain {
       openInterest: 10, volume: 2, lastTradeDate: now / 1000 - 1000,
       change: 0, percentChange: 0, inTheMoney: side === "call" ? strike < 100 : strike > 100 };
   };
-  const strikes = [70, 80, 90, 95, 100, 105, 110, 120, 130];
   return { underlyingSymbol: "AAPL", expirationDates: [expiry], calls: strikes.map((strike) => contract(strike, "call")),
     puts: strikes.map((strike) => contract(strike, "put")), providerId: "test", dataSource: "delayed", delayMinutes: 15,
     asOf: "2026-09-22T13:45:00Z" };
@@ -67,6 +66,19 @@ describe("surface cleaning and midpoint model", () => {
       expect(result.forward).toBeNull();
       expect(result.filterCounts["zero-bid"]).toBe(18);
     }
+  });
+
+  test("does not fit a smile whose near-the-money quotes are all missing", () => {
+    // Yahoo's post-close LEAPS: the wings keep quotes while every strike near
+    // the forward is zero-bid. A fit bridging the wings invented a 12% ATM.
+    const input = chain(expiration, 0.3, Array.from({ length: 33 }, (_, index) => 60 + index * 2.5));
+    const unquoted = (contract: OptionContract) => contract.strike > 80 && contract.strike < 120 ? { ...contract, bid: 0, ask: 0 } : contract;
+    const gapped = { ...input, calls: input.calls.map(unquoted), puts: input.puts.map(unquoted) };
+    const result = buildSurfaceExpiry({ chain: gapped, expiration, spot: 100, curve, now });
+    expect(result.points.length).toBeGreaterThan(0);
+    expect(result.fit).toBeNull();
+    expect(result.atmIV).toBeNull();
+    expect(result.state).not.toBe("ready");
   });
 
   test("records cleaning reasons, rejects mismatched expiries and prefers fresh duplicate quotes", () => {

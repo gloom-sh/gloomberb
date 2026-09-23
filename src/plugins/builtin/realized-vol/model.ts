@@ -101,11 +101,14 @@ export interface CurrentAtmIvSnapshot {
   warnings: string[];
 }
 
+/** A LEAPS ATM IV is not comparable with a 10 to 260 session realized cone. */
+export const MAX_CURRENT_ATM_IV_DAYS = 90;
+
 /** Use a listed expiry nearest 30 days, preserving its own observation date and tenor. */
 export function projectCurrentAtmIv(surface: SurfaceSnapshot): CurrentAtmIvSnapshot {
   const warnings = [...surface.warnings];
   const candidates = surface.expiries.filter((expiry) => expiry.atmIV != null
-    && Number.isFinite(expiry.atmIV) && expiry.atmIV > 0 && expiry.years > 0);
+    && Number.isFinite(expiry.atmIV) && expiry.atmIV > 0 && expiry.years > 0 && expiry.years * 365 <= MAX_CURRENT_ATM_IV_DAYS);
   const fresh = candidates.filter((expiry) => !expiry.stale && !expiry.error);
   if (fresh.length < candidates.length) warnings.push("Stale or failed ATM IV slices excluded from the current reference");
   const dated = fresh.filter((expiry) => expiry.asOf != null && Number.isFinite(Date.parse(expiry.asOf)));

@@ -477,7 +477,9 @@ export class MarketDataCoordinator {
       this.cachedQueries.set(key, { query, dispose: query.subscribe(update) });
       update();
     }
-    return query.load({ force, background: true }).then(
+    // A CLI report exits before a background refresh lands, so it would
+    // print a stale entry (options chains stay stored for two days).
+    return query.load({ force, background: this.dataProvider.revalidatesInBackground ?? true }).then(
       () => { if (this.cachedQueries.get(key)?.query === query) update(); return store.get(key); },
       () => store.get(key),
     );

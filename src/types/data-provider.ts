@@ -172,6 +172,8 @@ export interface AssetDataProvider {
 
   /** Optional shared query owner. Consumers observe its age and refreshes instead of caching its values again. */
   getCachedQuery?<K extends CachedAssetMethod>(method: K, args: CachedAssetArgs<K>): CachedQueryHandle<CachedAssetValue<K>>;
+  /** False in a short-lived process, where callers of getCachedQuery must await a stale entry's refresh. */
+  readonly revalidatesInBackground?: boolean;
 
   canProvide?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<boolean> | boolean;
   /**

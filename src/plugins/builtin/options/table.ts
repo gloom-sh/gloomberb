@@ -5,7 +5,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
 import { formatMarketPrice } from "../../../market-data/market/format";
-import { optionSpread } from "./market-reference";
+import { optionQuoteSide, optionSpread } from "./market-reference";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -254,9 +254,10 @@ function formatOptionContractCell(
         ? formatMarketPrice(contract.lastPrice, { assetCategory: "OPT", maxWidth: column.width })
         : "—";
     case "bid":
-      return formatMarketPrice(contract.bid, { assetCategory: "OPT", maxWidth: column.width });
-    case "ask":
-      return formatMarketPrice(contract.ask, { assetCategory: "OPT", maxWidth: column.width });
+    case "ask": {
+      const quote = optionQuoteSide(contract, column.field);
+      return quote == null ? "—" : formatMarketPrice(quote, { assetCategory: "OPT", maxWidth: column.width });
+    }
     case "spread":
       return formatSpreadPercent(contract);
     case "volume":
