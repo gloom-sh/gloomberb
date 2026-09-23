@@ -1,18 +1,30 @@
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { OptionContract, Quote } from "../../../types/financials";
+import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionTableRow } from "./types";
 
 export const OPTIONS_QUOTE_EXCHANGE = "OPTIONS";
 export const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
+/**
+ * Real-time chains are cached for about ten seconds upstream, so a visible
+ * chain in the regular session refetches its whole snapshot at this cadence.
+ * Visible strikes stream on top of it.
+ */
+export const OPTIONS_LIVE_CHAIN_REFRESH_INTERVAL_MS = 15_000;
 
 /** Minutes come from the pane setting; anything unparseable keeps the default. */
-export function resolveChainRefreshIntervalMs(minutes: string | number | undefined): number {
+export function resolveChainRefreshIntervalMs(minutes: string | number | undefined, liveSession = false): number {
   const parsed = Number(minutes);
-  return Number.isFinite(parsed) && parsed > 0
+  const configured = Number.isFinite(parsed) && parsed > 0
     ? parsed * 60_000
     : OPTIONS_CHAIN_REFRESH_INTERVAL_MS;
+  return liveSession ? Math.min(configured, OPTIONS_LIVE_CHAIN_REFRESH_INTERVAL_MS) : configured;
+}
+
+/** A delayed chain is cached for minutes upstream; only a real-time chain gains from the session cadence. */
+export function isRealtimeOptionsChain(chain: Pick<OptionsChain, "dataSource" | "realtimeEligible"> | null | undefined): boolean {
+  return chain?.realtimeEligible === true || chain?.dataSource === "live";
 }
 export const OPTIONS_STREAM_FRESHNESS_MS = 2 * 60_000;
 export const OPTIONS_STREAM_CONNECTING_GRACE_MS = 15_000;
@@ -127,6 +139,11 @@ export function overlayOptionContractQuote(
   const hasNewTrade = isFiniteNumber(quote.lastTradePrice) && quote.lastTradePrice > 0
     && isFiniteNumber(quote.lastTradeTime) && quote.lastTradeTime > 0
     && quote.lastTradeTime >= contract.lastTradeDate * 1000;
+  // Session volume only grows. A smaller streamed figure is an older anchor
+  // (or tomorrow's session before the next chain refresh), never a correction.
+  const volume = isFiniteNumber(quote.volume) && quote.volume >= 0
+    && (contract.volume == null || !Number.isFinite(contract.volume) || quote.volume >= contract.volume)
+    ? quote.volume : contract.volume;
   return {
     ...contract,
     // Generic quote.price may itself be a midpoint. LAST must remain an
@@ -135,6 +152,7 @@ export function overlayOptionContractQuote(
     lastTradeDate: hasNewTrade ? quote.lastTradeTime! / 1000 : contract.lastTradeDate,
     bid: isFiniteNumber(quote.bid) ? quote.bid : contract.bid,
     ask: isFiniteNumber(quote.ask) ? quote.ask : contract.ask,
+    ...(volume === undefined ? {} : { volume }),
     lastUpdated: quote.lastUpdated,
   };
 }
@@ -153,22 +171,72 @@ function freshOptionQuote(entry: QueryEntry<Quote> | undefined, freshness: Optio
   return quote;
 }
 
-export function overlayOptionRowQuotes(
-  rows: readonly OptionTableRow[],
+export interface LiveOptionsChain {
+  /** The snapshot itself when nothing streamed, so memoized consumers keep their identity. */
+  chain: OptionsChain;
+  /** Strikes with at least one side carrying a fresh streamed quote. */
+  streamedStrikes: ReadonlySet<number>;
+  /** Latest streamed quote time applied, in milliseconds. */
+  quotedAt: number | null;
+}
+
+const EMPTY_STRIKES: ReadonlySet<number> = new Set();
+const contractKeyIndexes = new WeakMap<readonly OptionContract[], Map<string, number[]>>();
+
+function contractKeyIndex(contracts: readonly OptionContract[]): Map<string, number[]> {
+  let index = contractKeyIndexes.get(contracts);
+  if (!index) {
+    index = new Map();
+    contracts.forEach((contract, position) => {
+      const key = buildOptionQuoteKey(contract.contractSymbol);
+      index!.set(key, [...(index!.get(key) ?? []), position]);
+    });
+    contractKeyIndexes.set(contracts, index);
+  }
+  return index;
+}
+
+/**
+ * The chain as the stream sees it: every fresh streamed quote overlaid on its
+ * contract. Only subscribed contracts have entries, so the work per batch is
+ * over the handful that streamed, not the whole snapshot. The as-of moves to
+ * the newest applied quote, which is the observation time the pricers use.
+ */
+export function overlayOptionChainQuotes(
+  chain: OptionsChain,
   quoteEntries: ReadonlyMap<string, QueryEntry<Quote>>,
   freshness: OptionsQuoteFreshness,
-): OptionTableRow[] {
-  return rows.map((row) => ({
-    ...row,
-    call: overlayOptionContractQuote(
-      row.call,
-      row.call ? freshOptionQuote(quoteEntries.get(buildOptionQuoteKey(row.call.contractSymbol)), freshness) : null,
-    ),
-    put: overlayOptionContractQuote(
-      row.put,
-      row.put ? freshOptionQuote(quoteEntries.get(buildOptionQuoteKey(row.put.contractSymbol)), freshness) : null,
-    ),
-  }));
+): LiveOptionsChain {
+  if (quoteEntries.size === 0) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null };
+  const streamedStrikes = new Set<number>();
+  let quotedAt: number | null = null;
+  const overlay = (contracts: OptionContract[]): OptionContract[] => {
+    const index = contractKeyIndex(contracts);
+    let next: OptionContract[] | null = null;
+    for (const [key, entry] of quoteEntries) {
+      const positions = index.get(key);
+      if (!positions) continue;
+      const quote = freshOptionQuote(entry, freshness);
+      if (!quote) continue;
+      for (const position of positions) {
+        const contract = contracts[position]!;
+        const live = overlayOptionContractQuote(contract, quote);
+        if (!live || live === contract) continue;
+        next ??= contracts.slice();
+        next[position] = live;
+        streamedStrikes.add(contract.strike);
+        if (isFiniteNumber(quote.lastUpdated) && (quotedAt == null || quote.lastUpdated > quotedAt)) quotedAt = quote.lastUpdated;
+      }
+    }
+    return next ?? contracts;
+  };
+  const calls = overlay(chain.calls);
+  const puts = overlay(chain.puts);
+  if (calls === chain.calls && puts === chain.puts) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null };
+  const snapshotAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+  const asOf = quotedAt != null && (!Number.isFinite(snapshotAt) || quotedAt > snapshotAt)
+    ? new Date(quotedAt).toISOString() : chain.asOf;
+  return { chain: { ...chain, calls, puts, ...(asOf ? { asOf } : {}) }, streamedStrikes, quotedAt };
 }
 
 export function resolveOptionQuoteCoverage(

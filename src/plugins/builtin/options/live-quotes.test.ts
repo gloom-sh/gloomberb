@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { OptionContract, Quote } from "../../../types/financials";
+import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
+import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../options-calculator/model";
+import { calculateOptionGreeks, solveChainVolatilities } from "./analytics";
 import type { OptionTableRow } from "./types";
 import {
   buildOptionQuoteKey,
   buildOptionQuoteTargets,
-  overlayOptionRowQuotes,
+  overlayOptionChainQuotes,
   overlayOptionContractQuote,
   resolveOptionQuoteCoverage,
+  type OptionsQuoteFreshness,
 } from "./live-quotes";
 
 function contract(strike: number, side: "C" | "P"): OptionContract {
@@ -36,6 +39,15 @@ function row(strike: number): OptionTableRow {
     put: contract(strike, "P"),
     isPositionStrike: false,
   };
+}
+
+/** The row's contracts after the chain overlay, as OMON renders them. */
+function overlayOptionRowQuotes(rows: OptionTableRow[], entries: ReadonlyMap<string, QueryEntry<Quote>>, freshness: OptionsQuoteFreshness) {
+  const chain: OptionsChain = { underlyingSymbol: "AAPL", expirationDates: [1_785_456_000],
+    calls: rows.flatMap((entry) => entry.call ? [entry.call] : []), puts: rows.flatMap((entry) => entry.put ? [entry.put] : []) };
+  const live = overlayOptionChainQuotes(chain, entries, freshness).chain;
+  return rows.map((entry) => ({ ...entry, call: live.calls.find((item) => item.strike === entry.strike),
+    put: live.puts.find((item) => item.strike === entry.strike) }));
 }
 
 function readyQuote(quote: Quote): QueryEntry<Quote> {
@@ -341,7 +353,7 @@ describe("options live quotes", () => {
   });
 });
 
- test("LAST only advances for a dated executed trade, never a mark or older trade", () => {
+test("LAST only advances for a dated executed trade, never a mark or older trade", () => {
   const original = contract(100, "C");
   const quote: Quote = { symbol: original.contractSymbol, price: 8, mark: 9,
     currency: "USD", change: 0, changePercent: 0, lastUpdated: 1_800_000_000_000,
@@ -352,4 +364,58 @@ describe("options live quotes", () => {
   expect(overlayOptionContractQuote(updated, { ...quote, lastTradePrice: 5,
     lastTradeTime: 1_789_000_000_000 })!.lastPrice).toBe(7);
   expect(overlayOptionContractQuote(original, { ...quote, lastTradeTime: undefined })!.lastPrice).toBe(original.lastPrice);
+});
+
+test("streamed session volume grows the contract's volume and never shrinks it", () => {
+  const original = contract(100, "C");
+  const quote: Quote = { symbol: original.contractSymbol, price: 1, currency: "USD", change: 0, changePercent: 0,
+    lastUpdated: 1_800_000_000_000, volume: 25 };
+  expect(overlayOptionContractQuote(original, quote)!.volume).toBe(25);
+  // An older anchor below the snapshot's count is not a correction.
+  expect(overlayOptionContractQuote(original, { ...quote, volume: 4 })!.volume).toBe(10);
+  expect(overlayOptionContractQuote({ ...original, volume: undefined }, { ...quote, volume: 0 })!.volume).toBe(0);
+  expect(overlayOptionContractQuote(original, { ...quote, volume: undefined })!.volume).toBe(10);
+});
+
+test("a streamed midpoint re-solves its strike's IV and Greeks at the live spot; the rest keep the snapshot", () => {
+  const now = Date.parse("2026-09-23T15:00:00Z");
+  const expiration = Date.UTC(2026, 9, 16) / 1000;
+  const days = daysToExpiryFrom(expiration, now);
+  const priced = (strike: number, side: "call" | "put", volatility: number): OptionContract => {
+    const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: 100, strike, daysToExpiry: days,
+      volatility, rate: DEFAULT_OPTION_CALC_DRAFT.rate, dividendYield: 0 }).price;
+    return { ...contract(strike, side === "call" ? "C" : "P"), expiration, bid: price - 0.01, ask: price + 0.01, lastPrice: price };
+  };
+  const strikes = [90, 95, 100, 105, 110];
+  const chain: OptionsChain = { underlyingSymbol: "AAPL", expirationDates: [expiration], asOf: new Date(now - 5_000).toISOString(),
+    calls: strikes.map((strike) => priced(strike, "call", 0.25)), puts: strikes.map((strike) => priced(strike, "put", 0.25)) };
+  const freshness = { now, subscriptionStartedAt: now - 60_000 };
+  const snapshot = solveChainVolatilities(chain, 100, 0, now);
+  expect(overlayOptionChainQuotes(chain, new Map(), freshness).chain).toBe(chain);
+
+  // The 105 call reprices to a 30% volatility while every other quote stands still.
+  const call105 = chain.calls[3]!;
+  const liveMid = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side: "call", spot: 100, strike: 105, daysToExpiry: days,
+    volatility: 0.3, rate: DEFAULT_OPTION_CALC_DRAFT.rate, dividendYield: 0 }).price;
+  const streamed: Quote = { symbol: call105.contractSymbol, price: liveMid, bid: liveMid - 0.01, ask: liveMid + 0.01,
+    currency: "USD", change: 0, changePercent: 0, lastUpdated: now - 1_000, receivedAt: now - 500,
+    dataSource: "live", delivery: "stream", stale: false };
+  const live = overlayOptionChainQuotes(chain, new Map([[buildOptionQuoteKey(call105.contractSymbol), readyQuote(streamed)]]), freshness);
+  expect([...live.streamedStrikes]).toEqual([105]);
+  expect(live.chain.calls[3]!.bid).toBeCloseTo(liveMid - 0.01, 10);
+  expect(live.chain.asOf).toBe(new Date(now - 1_000).toISOString());
+
+  const volatilities = solveChainVolatilities(live.chain, 100, 0, now);
+  const expected = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side: "call", spot: 100, strike: 105,
+    daysToExpiry: days, volatility: 0.25, dividendYield: 0 }, liveMid).volatility!;
+  expect(volatilities.byStrike.get(105)!).toBeGreaterThan(snapshot.byStrike.get(105)! + 0.03);
+  expect(volatilities.byStrike.get(105)!).toBeCloseTo(expected, 2);
+  expect(volatilities.byStrike.get(95)!).toBeCloseTo(snapshot.byStrike.get(95)!, 6);
+  // Greeks follow the re-solved volatility and the spot they are given.
+  const before = calculateOptionGreeks(chain.calls[3], "call", 100, 0, snapshot)!;
+  const after = calculateOptionGreeks(live.chain.calls[3], "call", 101, 0, volatilities)!;
+  expect(after.delta).toBeGreaterThan(before.delta);
+  expect(after.price).toBeCloseTo(valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side: "call", spot: 101, strike: 105,
+    daysToExpiry: daysToExpiryFrom(expiration, volatilities.valuationTime), volatility: volatilities.byStrike.get(105)!,
+    dividendYield: 0 }).price, 10);
 });

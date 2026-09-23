@@ -47,7 +47,8 @@ import {
 import type { OptionColumn, OptionFieldId, OptionTableRow, OptionsViewProps } from "./types";
 import {
   buildOptionQuoteTargets,
-  overlayOptionRowQuotes,
+  isRealtimeOptionsChain,
+  overlayOptionChainQuotes,
   resolveOptionQuoteCoverage,
   resolveChainRefreshIntervalMs,
 } from "./live-quotes";
@@ -61,6 +62,10 @@ import { optionMid } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
 import type { IvStats } from "../iv-history/client";
 import { formatIvRank, useIvRank } from "../iv-history/rank";
+import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
+
+/** The summary strip and analytics recompute from live quotes at most this often. */
+const OPTIONS_SUMMARY_THROTTLE_MS = 1_000;
 
 type SummaryMetric = { label: string; value: string };
 
@@ -197,11 +202,17 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   const viewportKey = `${effectiveTicker}:${selectedExpiration ?? "initial"}`;
   const strikeSelectionKey = `${selectionTargetKey}|${selectedExpiration ?? "initial"}`;
   const selectedContract = contractSelection?.context === strikeSelectionKey ? contractSelection : null;
+  // In the regular session a real-time chain refetches its snapshot every 15
+  // seconds while visible, bypassing the local chain cache; otherwise it keeps
+  // the configured cadence. The refresh is gated on visibility by the query.
+  const optionsSessionOpen = useOptionsSessionOpen(liveStreaming);
+  // The catalogue response carries the account's entitlement for every slice.
+  const liveChainEligible = isRealtimeOptionsChain(initialChain);
   const expirationChainEntry = useOptionsQuery(
     baseRequest && selectedExpiration != null
       ? { ...baseRequest, expirationDate: selectedExpiration }
       : null,
-    { refreshIntervalMs: resolveChainRefreshIntervalMs(chainRefreshMinutes) },
+    { refreshIntervalMs: resolveChainRefreshIntervalMs(chainRefreshMinutes, liveStreaming && optionsSessionOpen && liveChainEligible) },
   );
   const expirationChain = useResolvedEntryValue(expirationChainEntry);
   // Either query can refresh the expiry catalogue. The selected date remains
@@ -303,56 +314,13 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
 
   const strikes = useMemo(() => strikeChain ? buildStrikeList(strikeChain) : [], [strikeChain]);
   const selectedStrikeIdx = selectedContract ? strikes.indexOf(selectedContract.strike) : strikeIdx;
-  const callsByStrike = useMemo(
-    () => new Map(strikeChain?.calls.map((c) => [c.strike, c]) ?? []),
-    [strikeChain],
-  );
-  const putsByStrike = useMemo(
-    () => new Map(strikeChain?.puts.map((p) => [p.strike, p]) ?? []),
-    [strikeChain],
-  );
-  const volatilities = useMemo(
-    () => strikeChain ? solveChainVolatilities(strikeChain, spot, dividendYield) : null,
-    [dividendYield, spot, strikeChain],
-  );
-  const snapshotRows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
-    const call = callsByStrike.get(strike);
-    const put = putsByStrike.get(strike);
-    return {
-      strike,
-      call,
-      put,
-      impliedVolatility: volatilities?.byStrike.get(strike),
-      callGreeks: volatilities ? calculateOptionGreeks(call, "call", spot, dividendYield, volatilities) : undefined,
-      putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
-      isPositionStrike: !!parsed && strike === parsed.strike,
-    };
-  }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);
-  const summary = useMemo(
-    () => strikeChain && volatilities
-      ? calculateOptionsSummary(strikeChain, spot, dailyHistory ?? [], volatilities)
-      : null,
-    [spot, strikeChain, dailyHistory, volatilities],
-  );
-  const enrichmentState = useOptionsEnrichment({
-    instrument: baseRequest?.instrument ?? null, expiration: selectedExpiration,
-    selectedEntry: strikeChain === expirationChain ? expirationChainEntry
-      : strikeChain === initialChain ? initialChainEntry : null,
-    catalogue: availableExpirations, spot, spotAsOf: underlying?.quote?.lastUpdated,
-  });
-  const enrichment = expirationUnavailable ? null : enrichmentState.snapshot;
-  usePaneNoticeFooter({ registrationId: "options-enrichment-warnings", focused,
-    notices: [...(enrichment?.warnings ?? []), enrichmentState.error, enrichment?.error]
-      .filter((value): value is string => !!value) });
-  usePaneFooter("options-enrichment", () => ({ info: [
-    ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),
-    ...(enrichment?.asOf ? [{ id: "enrichment-asof",
-      title: [`Selected: ${enrichment.asOf}`,
-        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"}`,
-        `Treasury: ${enrichment.rateAsOf.join(", ") || "unavailable"}`,
-        `Underlying mark: ${enrichment.spot} as of ${enrichment.spotAsOf ?? "unavailable"}`].join("\n"),
-      parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
-  ] }), [enrichmentState.loading, enrichment]);
+  // The snapshot's contracts decide which symbols stream; they do not change
+  // with the stream itself, so the subscription is stable between refreshes.
+  const quoteRows = useMemo<OptionTableRow[]>(() => {
+    const calls = new Map(strikeChain?.calls.map((contract) => [contract.strike, contract]) ?? []);
+    const puts = new Map(strikeChain?.puts.map((contract) => [contract.strike, contract]) ?? []);
+    return strikes.map((strike) => ({ strike, call: calls.get(strike), put: puts.get(strike), isPositionStrike: false }));
+  }, [strikeChain, strikes]);
   const visibleStrikeRange = visibleStrikeViewport?.key === viewportKey
     ? visibleStrikeViewport.range
     : null;
@@ -366,12 +334,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     ));
   }, [viewportKey]);
   const optionQuoteTargets = useMemo(
-    () => buildOptionQuoteTargets(snapshotRows, {
+    () => buildOptionQuoteTargets(quoteRows, {
       fallbackHeight: height,
       selectedIndex: selectedStrikeIdx,
       visibleRange: visibleStrikeRange,
     }),
-    [height, snapshotRows, selectedStrikeIdx, visibleStrikeRange],
+    [height, quoteRows, selectedStrikeIdx, visibleStrikeRange],
   );
   const {
     entries: optionQuoteEntries,
@@ -388,10 +356,76 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     }),
     [freshnessNow, subscriptionStartedAt],
   );
-  const rows = useMemo(
-    () => overlayOptionRowQuotes(snapshotRows, optionQuoteEntries, optionQuoteFreshness),
-    [optionQuoteEntries, optionQuoteFreshness, snapshotRows],
+  // Streamed bid/ask, last trade and volume replace the snapshot's for the
+  // visible contracts, and every value derived below (IV, Greeks, summary,
+  // analytics) reads this chain rather than the snapshot.
+  const liveChain = useMemo(
+    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness) : null,
+    [optionQuoteEntries, optionQuoteFreshness, strikeChain],
   );
+  const callsByStrike = useMemo(
+    () => new Map(liveChain?.chain.calls.map((c) => [c.strike, c]) ?? []),
+    [liveChain],
+  );
+  const putsByStrike = useMemo(
+    () => new Map(liveChain?.chain.puts.map((p) => [p.strike, p]) ?? []),
+    [liveChain],
+  );
+  // One solve per applied batch: a streamed contract's IV comes from its live
+  // midpoint, the rest from the snapshot, all against the same forward.
+  const volatilities = useMemo(
+    () => liveChain ? solveChainVolatilities(liveChain.chain, spot, dividendYield) : null,
+    [dividendYield, spot, liveChain],
+  );
+  const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
+    const call = callsByStrike.get(strike);
+    const put = putsByStrike.get(strike);
+    return {
+      strike,
+      call,
+      put,
+      impliedVolatility: volatilities?.byStrike.get(strike),
+      callGreeks: volatilities ? calculateOptionGreeks(call, "call", spot, dividendYield, volatilities) : undefined,
+      putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
+      isPositionStrike: !!parsed && strike === parsed.strike,
+    };
+  }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);
+  // Figures that summarise the whole expiry move at most once a second, so a
+  // busy stream reads as a steady strip rather than flicker.
+  // A new expiry, a refreshed snapshot or the underlying price arriving or
+  // going stale shows at once; only the stream itself is paced.
+  const summaryResetKey = useMemo(() => ({}), [strikeSelectionKey, strikeChain, spot == null]);
+  const summaryInput = useThrottledValue(
+    useMemo(() => ({ chain: liveChain?.chain ?? null, spot, volatilities }), [liveChain, spot, volatilities]),
+    OPTIONS_SUMMARY_THROTTLE_MS,
+    summaryResetKey,
+  );
+  const summary = useMemo(
+    () => summaryInput.chain && summaryInput.volatilities
+      ? calculateOptionsSummary(summaryInput.chain, summaryInput.spot, dailyHistory ?? [], summaryInput.volatilities)
+      : null,
+    [summaryInput, dailyHistory],
+  );
+  const enrichmentState = useOptionsEnrichment({
+    instrument: baseRequest?.instrument ?? null, expiration: selectedExpiration,
+    selectedEntry: strikeChain === expirationChain ? expirationChainEntry
+      : strikeChain === initialChain ? initialChainEntry : null,
+    catalogue: availableExpirations, spot, spotAsOf: underlying?.quote?.lastUpdated,
+    liveChain: liveChain && liveChain.chain !== strikeChain ? liveChain.chain : null,
+  });
+  const enrichment = expirationUnavailable ? null : enrichmentState.snapshot;
+  usePaneNoticeFooter({ registrationId: "options-enrichment-warnings", focused,
+    notices: [...(enrichment?.warnings ?? []), enrichmentState.error, enrichment?.error]
+      .filter((value): value is string => !!value) });
+  usePaneFooter("options-enrichment", () => ({ info: [
+    ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),
+    ...(enrichment?.asOf ? [{ id: "enrichment-asof",
+      title: [`Selected: ${enrichment.asOf}`,
+        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"}`,
+        `Treasury: ${enrichment.rateAsOf.join(", ") || "unavailable"}`,
+        `Underlying mark: ${enrichment.spot} as of ${enrichment.spotAsOf ?? "unavailable"}`].join("\n"),
+      parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
+  ] }), [enrichmentState.loading, enrichment]);
   const optionQuoteCoverage = useMemo(
     () => resolveOptionQuoteCoverage(
       optionQuoteTargets,

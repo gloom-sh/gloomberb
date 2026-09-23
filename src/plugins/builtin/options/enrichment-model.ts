@@ -5,7 +5,7 @@ import type { OptionsChain } from "../../../types/financials";
 import { normalizeSymbol, parsePublicTickerKey } from "../../../utils/exchanges";
 import { daysToExpiryFrom } from "../options-calculator/model";
 import { volatilityTermSlope, type ExpectedMove } from "../shared/volatility";
-import { buildSurfaceExpiry } from "../vol-surface/model";
+import { buildSurfaceExpiry, evaluateSurfaceSmile, type SurfaceExpiry } from "../vol-surface/model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 
 export interface OptionsEnrichmentSelection {
@@ -96,8 +96,17 @@ export function optionsEnrichmentSelectionIssue(input: OptionsEnrichmentSelectio
   return chainIssue(input.selectedEntry, input.instrument, input.expiration, now);
 }
 
+/**
+ * Models kept between projections of one selection. The adjacent expiry does
+ * not stream, so a live re-projection refits only the selected smile and reads
+ * the adjacent ATM level off its existing fit at the current spot.
+ */
+export interface OptionsEnrichmentCache {
+  neighbour?: { chain: OptionsChain; curve: readonly YieldPoint[] | undefined; model: SurfaceExpiry };
+}
+
 /** Project snapshot quotes with the same cleaning, parity, fitting and pricer as OVDV. */
-export function projectOptionsEnrichment(input: OptionsEnrichmentProjection): OptionsEnrichmentSnapshot {
+export function projectOptionsEnrichment(input: OptionsEnrichmentProjection, cache?: OptionsEnrichmentCache): OptionsEnrichmentSnapshot {
   const chain = resolveEntryData(input.selectedEntry);
   const neighbourExpiration = optionsEnrichmentNeighbour(input.catalogue, input.expiration, input.now);
   const result: OptionsEnrichmentSnapshot = {
@@ -124,8 +133,12 @@ export function projectOptionsEnrichment(input: OptionsEnrichmentProjection): Op
     result.neighbourAsOf = neighbourChain?.asOf ?? null;
     if (neighbourIssue) errors.push(`Adjacent expiry: ${neighbourIssue}`);
     else if (neighbourChain) {
-      const neighbour = buildSurfaceExpiry({ chain: neighbourChain, expiration: neighbourExpiration, spot: input.spot,
-        curve: input.curve ?? [], now: input.now, source: input.neighbourEntry?.source });
+      const cached = cache?.neighbour?.chain === neighbourChain && cache.neighbour.curve === input.curve
+        ? cache.neighbour.model : null;
+      const neighbour = cached ? { ...cached, atmIV: evaluateSurfaceSmile(cached, input.spot) }
+        : buildSurfaceExpiry({ chain: neighbourChain, expiration: neighbourExpiration, spot: input.spot,
+          curve: input.curve ?? [], now: input.now, source: input.neighbourEntry?.source });
+      if (cache && !cached) cache.neighbour = { chain: neighbourChain, curve: input.curve, model: neighbour };
       result.rateAsOf = [...new Set([...result.rateAsOf, ...neighbour.rateAsOf])];
       result.warnings.push(...neighbour.warnings
         .filter((warning) => !(input.curveLoading && warning === "Treasury rate unavailable"))

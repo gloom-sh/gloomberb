@@ -94,7 +94,8 @@ test("new projections and spot ticks do not reload analytics; an accepted same-t
   expect(f.rateSpy).toHaveBeenCalledTimes(1);
   await act(async () => { gate.resolve(chain(first, 4)); await refreshed; });
   await f.update({ spot: 100.7 });
-  expect(f.rateSpy).toHaveBeenCalledTimes(2);
+  // The refreshed slice reuses the daily Treasury curve its expiry already loaded.
+  expect(f.rateSpy).toHaveBeenCalledTimes(1);
   expect(f.resource().snapshot!.expectedMove.straddle).toBe(8);
   expect(f.resource().snapshot!.spot).toBe(100.7);
   expect(f.resource().loading).toBe(false);
