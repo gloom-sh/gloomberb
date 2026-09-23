@@ -16,6 +16,7 @@ import type { AppAction, AppState } from "../../../../state/app/context";
 import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
+import { requestFeedbackDialog } from "../../../feedback-dialog";
 import type { OpenInlineConfirm } from "../../routing/confirm";
 import {
   isRouteCommandId,
@@ -89,6 +90,10 @@ export function runDirectCommandAction(options: {
     case "help":
       closeAll({ revertThemePreview: false });
       pluginRegistry.showPane("help");
+      return;
+    case "send-feedback":
+      closeAll({ revertThemePreview: false });
+      requestFeedbackDialog();
       return;
     case "layout-marketplace":
       closeAll({ revertThemePreview: false });

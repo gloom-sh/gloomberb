@@ -52,6 +52,7 @@ import { linkedLayoutMarker, linkedLayoutStatus, linkedLayoutUpdates } from "../
 import { teamAccentHex } from "../../plugins/builtin/cloud/team/model";
 import { teamStore } from "../../plugins/builtin/cloud/team/store";
 import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } from "./status-bar-groups";
+import { requestFeedbackDialog } from "../feedback-dialog";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -408,7 +409,8 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     layoutTabsWidth,
     openChangelog: onOpenChangelog ? openChangelog : undefined,
     openLayoutContextMenu,
-    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS),
+    // Feedback keeps the bottom-right corner; the version chip gives way first.
+    rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS - (t("Feedback").length + 1)),
     setHoveredControl,
     showTidyWindows,
     tidyWindowsKey,
@@ -449,6 +451,7 @@ function NativeStatusBar({
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome {...props} />
       <PluginSlot name="status:widget" />
+      <StatusBarFeedback nativePaneChrome {...props} />
     </Box>
   );
 }
@@ -476,6 +479,7 @@ function TerminalStatusBar({
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome={false} {...props} />
       <PluginSlot name="status:widget" />
+      <StatusBarFeedback nativePaneChrome={false} {...props} />
     </Box>
   );
 }
@@ -568,6 +572,26 @@ function StatusBarSummary({
         />
       )}
     </>
+  );
+}
+
+/** Opens Send Feedback from the bottom-right corner, on every renderer. */
+function StatusBarFeedback({
+  hoveredControl,
+  nativePaneChrome,
+  setHoveredControl,
+}: Pick<StatusBarViewProps, "hoveredControl" | "setHoveredControl"> & { nativePaneChrome: boolean }) {
+  return (
+    <StatusBarChip
+      hoveredControl={hoveredControl}
+      id="feedback"
+      label={t("Feedback")}
+      nativePaneChrome={nativePaneChrome}
+      onPress={() => { requestFeedbackDialog(); }}
+      role="button"
+      setHoveredControl={setHoveredControl}
+      title={t("Send Feedback")}
+    />
   );
 }
 

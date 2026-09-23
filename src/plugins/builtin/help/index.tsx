@@ -10,6 +10,8 @@ import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode }
 import { getSharedRegistry } from "../../registry";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { requestFeedbackDialog } from "../../../components/feedback-dialog";
+import { FeedbackTab } from "./feedback-tab";
 import { FunctionsTable } from "./functions-table";
 import { KeybindingsEditor } from "./keybindings-editor";
 import { ShortcutTable, type ShortcutTableEntry } from "./shortcut-table";
@@ -20,7 +22,8 @@ const HELP_TABS = [
   { label: "Functions", value: "functions" },
   { label: "Shortcuts", value: "shortcuts" },
   { label: "Reference", value: "reference" },
-  { label: "Issues", value: "issues" },
+  // The value stays "issues" so panes saved on this tab still open on it.
+  { label: "Feedback", value: "issues" },
 ] as const;
 
 type HelpTabId = typeof HELP_TABS[number]["value"];
@@ -93,6 +96,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
     }
     if (activeTabId === "issues") {
       return [
+        { id: "send-feedback", key: "s", label: "end feedback", title: "Send Feedback", onPress: () => { requestFeedbackDialog(); } },
         { id: "debug-log", key: "d", label: "ebug log", title: "Open Debug Log", onPress: openDebugLog },
         { id: "issues", key: "o", label: "pen GitHub issues", title: "Open GitHub Issues", onPress: openIssues },
       ];
@@ -218,14 +222,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         return null;
 
       case "issues":
-        return (
-          <>
-            <Section title="If There Is A Bug" marginTop={0}>
-              <Text fg={colors.text} wrapText>{t("Open Debug Log, then run Export Debug Log from the command bar.")}</Text>
-              <Text fg={colors.text} wrapText>{t("The file lands in ~/Downloads. Include steps, ticker or layout, plugin, and a screenshot if it is visual.")}</Text>
-            </Section>
-          </>
-        );
+        return <FeedbackTab width={bodyWidth} />;
 
       case "basics":
       default:

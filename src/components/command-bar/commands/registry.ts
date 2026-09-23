@@ -40,6 +40,14 @@ export const commands: Command[] = [
     description: "Open the help window",
     category: "Navigation",
   },
+  {
+    id: "send-feedback",
+    prefix: "FB",
+    aliases: ["FEEDBACK", "BUG"],
+    label: "Send Feedback",
+    description: "Report a bug or suggest an idea",
+    category: "Navigation",
+  },
 
   // Watchlist/Portfolio management
   {

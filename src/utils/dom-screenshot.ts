@@ -263,8 +263,10 @@ function drawElement(
   context: CanvasRenderingContext2D,
   element: Element,
   origin: CaptureOrigin,
+  skip?: (element: Element) => boolean,
 ): void {
   if (!(element instanceof HTMLElement || element instanceof SVGElement)) return;
+  if (skip?.(element)) return;
 
   const style = getComputedStyle(element);
   if (!isVisible(style)) return;
@@ -292,7 +294,7 @@ function drawElement(
     if (child.nodeType === Node.TEXT_NODE) {
       drawTextNode(context, child as Text, origin);
     } else if (child.nodeType === Node.ELEMENT_NODE) {
-      drawElement(context, child as Element, origin);
+      drawElement(context, child as Element, origin, skip);
     }
   }
 
@@ -337,7 +339,11 @@ async function waitForFonts(): Promise<void> {
   ]).catch(() => {});
 }
 
-async function captureElementPngBase64(element: HTMLElement): Promise<PngScreenshot> {
+function paintElement(
+  element: HTMLElement,
+  scale: number,
+  options: { background?: string; skip?: (element: Element) => boolean } = {},
+): { canvas: HTMLCanvasElement; width: number; height: number } {
   const rect = element.getBoundingClientRect();
   const width = Math.ceil(rect.width);
   const height = Math.ceil(rect.height);
@@ -345,9 +351,6 @@ async function captureElementPngBase64(element: HTMLElement): Promise<PngScreens
     throw new Error("Pane is not visible.");
   }
 
-  await waitForFonts();
-
-  const scale = Math.max(1, Math.min(globalThis.devicePixelRatio || 1, 3));
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(width * scale);
   canvas.height = Math.ceil(height * scale);
@@ -357,21 +360,90 @@ async function captureElementPngBase64(element: HTMLElement): Promise<PngScreens
   if (!context) throw new Error("Could not create pane screenshot.");
   context.scale(scale, scale);
   context.clearRect(0, 0, width, height);
+  if (options.background) {
+    context.fillStyle = options.background;
+    context.fillRect(0, 0, width, height);
+  }
   // Reveal the chart watermark only for the synchronous paint below: the
   // browser never gets a frame in between, so the live UI does not flicker.
   const watermarkWasVisible = isScreenshotWatermarkVisible();
   setScreenshotWatermarkVisible(true);
   try {
-    drawElement(context, element, { left: rect.left, top: rect.top });
+    drawElement(context, element, { left: rect.left, top: rect.top }, options.skip);
   } finally {
     if (!watermarkWasVisible) setScreenshotWatermarkVisible(false);
   }
+  return { canvas, width, height };
+}
 
+async function captureElementPngBase64(element: HTMLElement): Promise<PngScreenshot> {
+  await waitForFonts();
+  const scale = Math.max(1, Math.min(globalThis.devicePixelRatio || 1, 3));
+  const { canvas, width, height } = paintElement(element, scale);
   return {
     pngBase64: await blobToBase64(await canvasToPngBlob(canvas)),
     width,
     height,
   };
+}
+
+export interface JpegScreenshot {
+  jpegBase64: string;
+  width: number;
+  height: number;
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not encode screenshot."));
+      }, "image/jpeg", quality);
+    } catch {
+      reject(new Error("Could not encode screenshot."));
+    }
+  });
+}
+
+function downscale(source: HTMLCanvasElement, factor: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(source.width * factor));
+  canvas.height = Math.max(1, Math.round(source.height * factor));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not encode screenshot.");
+  context.imageSmoothingQuality = "high";
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/**
+ * The whole app window as a JPEG no longer than `maxBase64Length`, for bug
+ * reports. Painted at 1x (text stays legible, the file stays small), then
+ * shrunk until it fits. Elements matching `skip` (the feedback dialog itself)
+ * are left out.
+ */
+export async function captureAppScreenshotJpegBase64(options: {
+  maxBase64Length: number;
+  skipSelector?: string;
+}): Promise<JpegScreenshot> {
+  if (typeof document === "undefined") throw new Error("Screenshots need a window.");
+  const root = document.getElementById("root") ?? document.body;
+  await waitForFonts();
+  const background = getComputedStyle(document.body).backgroundColor;
+  const skipSelector = options.skipSelector;
+  let { canvas } = paintElement(root, 1, {
+    background: isPaintableColor(background) ? background : "#000",
+    skip: skipSelector ? (element) => element.matches(skipSelector) : undefined,
+  });
+  for (const quality of [0.8, 0.7, 0.6, 0.6, 0.6]) {
+    const jpegBase64 = await blobToBase64(await canvasToJpegBlob(canvas, quality));
+    if (jpegBase64.length <= options.maxBase64Length) {
+      return { jpegBase64, width: canvas.width, height: canvas.height };
+    }
+    canvas = downscale(canvas, 0.8);
+  }
+  throw new Error("Screenshot is too large.");
 }
 
 export async function capturePaneScreenshotPngBase64(paneId?: string): Promise<PngScreenshot> {

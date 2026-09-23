@@ -25,6 +25,7 @@ import { ApiRequestError } from "./errors";
 import { CloudApiRequestTransport } from "./request";
 import { CloudApiSocket } from "./socket";
 import { CloudCollectionsApi } from "./collections";
+import { CloudFeedbackApi } from "./feedback";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
 import { CloudThesesApi } from "./theses";
@@ -109,6 +110,7 @@ class GloomApiClient {
   });
   private readonly data: CloudDataApi = new CloudDataApi((path, options) => this.request(path, options));
   private readonly notes: CloudNotesApi = new CloudNotesApi((path, options) => this.request(path, options));
+  private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
   private readonly views: CloudViewsApi = new CloudViewsApi((path, options) => this.request(path, options));
@@ -629,6 +631,8 @@ class GloomApiClient {
   listCloudNotes = this.notes.listNotes.bind(this.notes);
   getCloudNote = this.notes.getNote.bind(this.notes);
   putCloudNote = this.notes.putNote.bind(this.notes);
+  submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
+  listFeedback = this.feedback.listFeedback.bind(this.feedback);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);

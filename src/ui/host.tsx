@@ -174,6 +174,21 @@ export interface NativeCursorState {
 
 export type NativePostProcessFn = (buffer: unknown, deltaTime: number) => void;
 
+/** One styled run of a rendered terminal row; colours are 0-255 RGBA. */
+export interface NativeFrameSpan {
+  text: string;
+  fg: readonly [number, number, number, number];
+  bg: readonly [number, number, number, number];
+  attributes: number;
+}
+
+/** The last frame the terminal renderer drew, as styled rows. */
+export interface NativeFrameCapture {
+  cols: number;
+  rows: number;
+  lines: NativeFrameSpan[][];
+}
+
 export interface NativeRendererHost {
   terminalWidth: number;
   terminalHeight: number;
@@ -197,6 +212,8 @@ export interface NativeRendererHost {
   setCursorPosition?(x: number, y: number, visible?: boolean): void;
   addPostProcessFn?(processFn: NativePostProcessFn): void;
   removePostProcessFn?(processFn: NativePostProcessFn): void;
+  /** Terminal renderers only. Kitty graphics are drawn out of band and come back as blank cells. */
+  captureFrame?(): NativeFrameCapture | null;
   copyToClipboardOSC52?(text: string): boolean;
   write?(data: string | Uint8Array): boolean;
   captureMouseRenderable?(renderable: unknown): void;
