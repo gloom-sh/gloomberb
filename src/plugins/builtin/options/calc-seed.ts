@@ -53,7 +53,7 @@ export function buildChainCalcParams(options: {
     spot: options.spot,
     strike: contract.strike,
     expiration: contract.expiration,
-    volatility: contract.impliedVolatility,
+    volatility: row?.impliedVolatility,
     marketPrice: market.price,
     dividendYield: options.dividendYield,
   }, options.now);

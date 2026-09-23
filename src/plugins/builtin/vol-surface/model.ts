@@ -235,6 +235,17 @@ export interface BuildSurfaceExpiryInput {
 }
 
 const CLOSED_QUOTE_GAP_MS = 60 * 60_000;
+
+/**
+ * Quotes carry the time value of the moment they were observed. A closed
+ * session's final NBBO read against today's clock would shorten every
+ * expiry by the overnight gap and inflate the front-month IVs. A delayed
+ * feed's quarter hour is immaterial, so only a gap over an hour moves it.
+ */
+export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf">, now: number): number {
+  const observedAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+  return Number.isFinite(observedAt) && observedAt < now - CLOSED_QUOTE_GAP_MS ? observedAt : now;
+}
 /**
  * Listed strikes the cleaned smile may skip around the forward. A coarse
  * chain skips one; a chain whose near-the-money quotes are all zero-bid
@@ -271,12 +282,7 @@ export function surfaceSheetSnapshot<T extends SurfaceSnapshot>(snapshot: T): { 
 export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpiry {
   const { chain, expiration, spot, curve, now } = input;
   const settings = normalizeSurfaceSettings(input.settings);
-  // Quotes carry the time value of the moment they were observed. A closed
-  // session's final NBBO read against today's clock would shorten every
-  // expiry by the overnight gap and inflate the front-month IVs. A delayed
-  // feed's quarter hour is immaterial, so only a gap over an hour moves it.
-  const observedAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
-  const valuationTime = Number.isFinite(observedAt) && observedAt < now - CLOSED_QUOTE_GAP_MS ? observedAt : now;
+  const valuationTime = optionQuoteValuationTime(chain, now);
   const result = pendingSurfaceExpiry(expiration, valuationTime);
   result.state = "empty";
   result.source = chain.providerId ?? input.source ?? null;

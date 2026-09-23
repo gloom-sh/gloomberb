@@ -1,10 +1,15 @@
 import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
+import { valueOption } from "../options-calculator/model";
 import {
   calculateOptionGreeks,
   calculateOptionsSummary,
   historicalVolatility30d,
+  solveChainVolatilities,
+  type ChainVolatilities,
 } from "./analytics";
+
+const NO_VOLS: ChainVolatilities = { valuationTime: 0, byStrike: new Map() };
 
 function contract(
   strike: number,
@@ -58,7 +63,7 @@ test("summarizes the selected expiration without presenting it as whole-chain vo
     calls: [contract(100, 0.2, 100, 200), contract(105, 0.3, 200, 400)],
     puts: [contract(100, 0.22, 150, 180), contract(105, 0.4, 300, 420)],
   };
-  const summary = calculateOptionsSummary(chain, 101, priceHistory());
+  const summary = calculateOptionsSummary(chain, 101, priceHistory(), { valuationTime: 0, byStrike: new Map([[100, 0.21], [105, 0.3]]) });
 
   expect(summary.atmImpliedVolatility).toBeCloseTo(0.21, 10);
   expect(summary.expirationVolume).toBe(750);
@@ -70,16 +75,47 @@ test("summarizes the selected expiration without presenting it as whole-chain vo
   );
 });
 
-test("derives call and put Greeks from the chain IV", () => {
-  const option = contract(100, 0.25, 0, 0);
-  const now = Date.UTC(2026, 11, 15);
-  const call = calculateOptionGreeks(option, "call", 100, 0, now);
-  const put = calculateOptionGreeks(option, "put", 100, 0, now);
+// A same-day expiry priced on calendar time, as OVDV and the pricer value it.
+// The vendor IVs (trading-time basis, and a 1e-5 placeholder) must not leak in.
+test("solves one calendar-time IV per strike from midpoints and ignores vendor IVs", () => {
+  const expiration = Date.UTC(2026, 8, 23) / 1000;
+  const now = Date.UTC(2026, 8, 23, 16, 0); // 12:00 ET, four hours to the close
+  const days = 4 / 24;
+  const spot = 769;
+  const price = (side: "call" | "put", strike: number) => valueOption({ symbol: "SPY", side, spot, strike,
+    daysToExpiry: days, rate: 0.04, volatility: 0.14, dividendYield: 0.04, marketPrice: 0 }).price;
+  const quoted = (side: "call" | "put", strike: number, vendorIv: number): OptionContract => {
+    const mid = price(side, strike);
+    return { ...contract(strike, vendorIv, 10, 10), expiration, bid: mid - 0.005, ask: mid + 0.005 };
+  };
+  const strikes = [760, 767, 768, 769, 770, 771, 772];
+  const chain: OptionsChain = { underlyingSymbol: "SPY", expirationDates: [expiration], asOf: new Date(now).toISOString(),
+    calls: strikes.map((strike) => quoted("call", strike, 0.06)),
+    puts: [...strikes.map((strike) => quoted("put", strike, strike === 772 ? 1e-5 : 0.06)),
+      // Deep in the money, quoted under intrinsic, with no bid on the call: no time value left.
+      { ...contract(785, 1e-5, 10, 10), expiration, bid: 15.9, ask: 15.95 }],
+  };
+  chain.calls.push({ ...contract(785, 0, 10, 10), expiration, bid: 0, ask: 0.01 });
 
-  expect(call?.delta).toBeGreaterThan(0);
-  expect(put?.delta).toBeLessThan(0);
-  expect(call?.gamma).toBeCloseTo(put!.gamma, 10);
-  expect(call?.vegaPerPoint).toBeCloseTo(put!.vegaPerPoint, 10);
+  const volatilities = solveChainVolatilities(chain, spot, 0, now);
+  for (const strike of strikes.slice(1)) expect(volatilities.byStrike.get(strike)!).toBeCloseTo(0.14, 2);
+  // Only intrinsic value is quoted this deep: no time value to solve.
+  expect(volatilities.byStrike.get(760)).toBe(0);
+  expect(volatilities.byStrike.get(785)).toBe(0);
+  expect(calculateOptionsSummary(chain, spot, [], volatilities).atmImpliedVolatility).toBeCloseTo(0.14, 2);
+
+  // Parity: equal gamma, and put delta = call delta - 1 at the same strike.
+  const row = (strike: number) => ["call", "put"].map((side) => calculateOptionGreeks(
+    side === "call" ? chain.calls.find((c) => c.strike === strike) : chain.puts.find((p) => p.strike === strike),
+    side as "call" | "put", spot, 0, volatilities)!);
+  const [call772, put772] = row(772);
+  expect(put772.gamma).toBeCloseTo(call772.gamma, 10);
+  expect(put772.delta).toBeCloseTo(call772.delta - 1, 10);
+  expect(put772.delta).toBeGreaterThan(-0.95);
+  const [call785, put785] = row(785);
+  expect(put785.delta).toBeCloseTo(-1, 10);
+  expect(call785.delta).toBe(0);
+  expect(put785.gamma).toBe(0);
 });
 
 test("activity totals require each reported contract's input without discarding independent metrics", () => {
@@ -89,17 +125,17 @@ test("activity totals require each reported contract's input without discarding 
   };
   for (const invalid of [undefined, Number.NaN, Infinity, -1]) {
     const partial = { ...chain, calls: [{ ...chain.calls[0]!, openInterest: invalid }] };
-    const summary = calculateOptionsSummary(partial, 100, []);
+    const summary = calculateOptionsSummary(partial, 100, [], { valuationTime: 0, byStrike: new Map([[100, .25]]) });
     expect(summary.expirationVolume).toBe(10);
     expect(summary.putCallVolumeRatio).toBe(0);
     expect(summary.putCallOpenInterestRatio).toBeNull();
     expect(summary.atmImpliedVolatility).toBe(.25);
   }
-  const missingVolume = calculateOptionsSummary({ ...chain, puts: [{ ...chain.puts[0]!, volume: undefined }] }, 100, []);
+  const missingVolume = calculateOptionsSummary({ ...chain, puts: [{ ...chain.puts[0]!, volume: undefined }] }, 100, [], NO_VOLS);
   expect(missingVolume.expirationVolume).toBeNull();
   expect(missingVolume.putCallVolumeRatio).toBeNull();
   expect(missingVolume.putCallOpenInterestRatio).toBe(0);
-  const zero = calculateOptionsSummary({ ...chain, calls: [{ ...chain.calls[0]!, volume: 0, openInterest: 0 }] }, 100, []);
+  const zero = calculateOptionsSummary({ ...chain, calls: [{ ...chain.calls[0]!, volume: 0, openInterest: 0 }] }, 100, [], NO_VOLS);
   expect(zero.expirationVolume).toBe(0);
   expect(zero.putCallVolumeRatio).toBeNull();
   expect(zero.putCallOpenInterestRatio).toBeNull();
@@ -112,7 +148,7 @@ test("rejects bad observations inside the selected HV window instead of bridging
   for (const bad of [{ high: 90, low: 110 }, { high: 99 }, { close: 0 }, { close: Number.NaN }]) {
     const points = extended.map((point, i) => i === 15 ? { ...point, ...bad } : point);
     expect(historicalVolatility30d(points)).toBeNull();
-    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points);
+    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points, { valuationTime: 0, byStrike: new Map([[100, .2]]) });
     expect(summary.historicalVolatilityUnavailableReason).toBeTruthy();
     expect(summary.impliedHistoricalRatio).toBeNull();
     expect(summary.atmImpliedVolatility).toBe(.2);
@@ -128,7 +164,7 @@ test("deduplicates corrections before selecting 31 observations and retains immu
   const corrected = [...good.slice(0, 15), broken, ...good.slice(16), good[15]!];
   expect(historicalVolatility30d(corrected)).toBeCloseTo(historicalVolatility30d(good)!, 12);
   const chain = { underlyingSymbol: "AAPL", expirationDates: [], calls: [], puts: [] };
-  const summary = calculateOptionsSummary(chain, 100, [...good, broken]);
+  const summary = calculateOptionsSummary(chain, 100, [...good, broken], NO_VOLS);
   expect(summary.historicalVolatility30d).toBeNull();
   const diagnostic = summary.historicalVolatilityIntegrity!;
   expect(diagnostic.sourcePoints).toHaveLength(1);
@@ -150,13 +186,13 @@ test("validates chronology without requiring full OHLC and handles finite extrem
 test("retains rejected-source diagnostics before enough history exists for HV30", () => {
   const chain = { underlyingSymbol: "AAPL", expirationDates: [], calls: [], puts: [] };
   const bad = { date: new Date("2026-09-22"), close: 100, high: 90, low: 110 };
-  const summary = calculateOptionsSummary(chain, 100, [bad]);
+  const summary = calculateOptionsSummary(chain, 100, [bad], NO_VOLS);
   expect(summary.historicalVolatility30d).toBeNull();
   expect(summary.historicalVolatilityIntegrity!.sourcePoints).toHaveLength(1);
   expect(summary.historicalVolatilityUnavailableReason).toContain("inconsistent OHLC");
   bad.high = 120;
   expect(summary.historicalVolatilityIntegrity!.sourcePoints[0]!.high).toBe(90);
-  const missing = calculateOptionsSummary(chain, 100, [{ date: bad.date, close: 0 }]);
+  const missing = calculateOptionsSummary(chain, 100, [{ date: bad.date, close: 0 }], NO_VOLS);
   expect(missing.historicalVolatilityUnavailableReason).toContain("nonpositive close");
 });
 
@@ -165,7 +201,7 @@ test("HV30 rejects weekly and intraday bars instead of applying daily annualizat
   const daily = priceHistory();
   for (const step of [7 * 86_400_000, 3_600_000]) {
     const points = daily.map((point, index) => ({ ...point, date: new Date(Date.UTC(2026, 0, 1) + index * step) }));
-    const summary = calculateOptionsSummary({ underlyingSymbol: "TEST", expirationDates: [], calls: [], puts: [] }, 100, points);
+    const summary = calculateOptionsSummary({ underlyingSymbol: "TEST", expirationDates: [], calls: [], puts: [] }, 100, points, NO_VOLS);
     expect(summary.historicalVolatility30d).toBeNull();
     expect(summary.impliedHistoricalRatio).toBeNull();
     expect(summary.historicalVolatilityUnavailableReason).toContain(step > 86_400_000 ? "weekly" : "intraday");

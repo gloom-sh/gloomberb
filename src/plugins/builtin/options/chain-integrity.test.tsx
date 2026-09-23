@@ -198,7 +198,7 @@ test("preserves call identity across partial chains, and permits an explicit put
     const scenario = await f.scenario();
     expect(scenario.symbol).toBe("AAPL:NASDAQ");
     expect(JSON.parse(scenario.values.seedLeg)).toMatchObject({ side: "put", strike: 100, expiration: EXPIRY,
-        quantity: 1, price: 10, volatility: .25, multiplier: 100 });
+        quantity: 1, price: 10, volatility: expect.closeTo(0.2774, 4), multiplier: 100 });
     expect(scenario.values.asOf).toBe(new Date(NOW).toISOString());
     f.setCalls(true);
     await f.refresh([100]);

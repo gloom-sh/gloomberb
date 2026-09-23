@@ -28,6 +28,8 @@ export interface OptionTableRow {
   strike: number;
   call?: OptionContract;
   put?: OptionContract;
+  /** Solved from quote midpoints; the call and put at a strike share it. */
+  impliedVolatility?: number;
   callGreeks?: OptionValuation;
   putGreeks?: OptionValuation;
   isPositionStrike: boolean;
