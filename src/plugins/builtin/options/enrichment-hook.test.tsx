@@ -110,7 +110,8 @@ test("streamed quotes refit the selected smile within a second without reloading
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
   await settle();
   expect(f.resource().snapshot!.expectedMove.straddle).toBe(6);
-  expect(f.resource().snapshot!.asOf).toBe("2026-09-22T13:59:00Z");
+  // Off-screen strikes are still the snapshot's, so its time is the as-of.
+  expect(f.resource().snapshot!.asOf).toBe("2026-09-22T13:45:00Z");
   expect(f.resource().snapshot!.spot).toBe(100.2);
   expect(f.rateSpy).toHaveBeenCalledTimes(1);
   expect(f.requests).toEqual([first, second]);

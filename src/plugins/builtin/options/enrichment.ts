@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
-import { buildOptionsKey } from "../../../market-data/selectors";
+import { buildOptionsKey, resolveEntryData } from "../../../market-data/selectors";
 import type { OptionsChain } from "../../../types/financials";
 import { useThrottledValue } from "../shared/volatility/live-session";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -118,7 +118,9 @@ export function useOptionsEnrichment(input: {
     const snapshot = projectOptionsEnrichment({ ...projection, selectedEntry: { ...projection.selectedEntry, data: liveChain },
       spot, spotAsOf: spotAsOf ?? null, now: Date.now() }, store.current.cache);
     refitMs.current = performance.now() - started;
-    return snapshot;
+    // Strikes off screen still come from the chain snapshot: the as-of is its
+    // time, so the analytics never read fresher than their oldest input.
+    return { ...snapshot, asOf: resolveEntryData(projection.selectedEntry)?.asOf ?? snapshot.asOf };
   }, [key, liveChain, projection]);
   return { snapshot: liveSnapshot ?? active?.snapshot ?? null, error: active?.error ?? null,
     loading: eligible && (!active || (active.loading && !active.carried)) };
