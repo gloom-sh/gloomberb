@@ -36,11 +36,23 @@ export function vintageLabel(prefix: string, vintageDate: string): string {
   return `${prefix} as of ${d.getUTCFullYear()}Q${quarter}`;
 }
 
+/**
+ * Shiller's columns publish on different lags: price runs to the current month
+ * while dividends and earnings trail it by a quarter or more. A column's blank
+ * tail is months not reported yet rather than a gap, so it ends the series at
+ * its last reported month. Blanks inside the history stay gaps.
+ */
+function withoutUnreportedTail<T extends { value: unknown }>(observations: readonly T[]): readonly T[] {
+  let end = observations.length;
+  while (end > 0 && observations[end - 1]!.value == null) end -= 1;
+  return end === observations.length ? observations : observations.slice(0, end);
+}
+
 export function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
   if (def.unavailableReason) throw new Error(def.unavailableReason);
   validateObservationDates(data.observations);
   const points: ScaledObs[] = [];
-  for (const obs of data.observations) {
+  for (const obs of def.source.kind === "shiller" ? withoutUnreportedTail(data.observations) : data.observations) {
     const scaled = typeof obs.value === "number" ? obs.value * def.scaleToBillions : null;
     points.push({ date: obs.date, value: scaled != null && Number.isFinite(scaled) ? scaled : null });
   }

@@ -374,6 +374,25 @@ describe("valuation observation gaps", () => {
       expect(zone.points[3]!.value).toBeNull();
     }
   });
+
+  test("a Shiller column's unreported tail ends the series instead of blanking the current value", () => {
+    const legs = new Map<string, DatedSeries>([
+      ["SHILLER_DIVIDEND", series([
+        { date: "2026-04-01", value: 80 }, { date: "2026-05-01", value: null },
+        { date: "2026-06-01", value: 82 }, { date: "2026-07-01", value: null },
+        { date: "2026-08-01", value: null },
+      ])],
+      ["SHILLER_PRICE", series([
+        { date: "2026-04-01", value: 8000 }, { date: "2026-05-01", value: 8100 },
+        { date: "2026-06-01", value: 8200 }, { date: "2026-07-01", value: 8300 },
+        { date: "2026-08-01", value: 8400 },
+      ])],
+    ]);
+    const built = buildValuationSeries(SP500_DIVIDEND_YIELD, legs);
+    expect(built.points.map((point) => [point.date, point.ratio])).toEqual([
+      ["2026-04-01", 1], ["2026-05-01", null], ["2026-06-01", 1],
+    ]);
+  });
 });
 
 

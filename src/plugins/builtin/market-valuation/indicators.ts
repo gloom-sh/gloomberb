@@ -8,6 +8,8 @@ const MILLIONS_TO_BILLIONS = 0.001;
 const QUARTERLY_STALE_MS = 270 * DAY_MS;
 /** Shiller republishes monthly; two missed months means something is wrong. */
 const MONTHLY_STALE_MS = 75 * DAY_MS;
+/** Shiller's dividend column trails his price column by about a quarter, on top of that cadence. */
+const SHILLER_DIVIDEND_STALE_MS = MONTHLY_STALE_MS + 90 * DAY_MS;
 
 function percent(value: number): string {
   return `${Math.round(value)}%`;
@@ -207,7 +209,7 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   reference: { value: 4.2, label: "median" },
   chartGridStep: 4,
   trendModel: "log",
-  staleAfterMs: MONTHLY_STALE_MS,
+  staleAfterMs: SHILLER_DIVIDEND_STALE_MS,
   link: { url: "https://en.wikipedia.org/wiki/Dividend_yield", label: "Dividend yield, Wikipedia" },
 };
 

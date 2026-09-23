@@ -108,11 +108,13 @@ export function StaticXAxisLabels({
         <Box position="absolute" left={0} top={0} width={width} height={1}>
           {visiblePositionedLabels.map((entry, index) => {
             const ratio = clampRatio(entry.ratio);
+            // A centered label that would spill past either edge pins to it instead.
+            const halfLabel = entry.label.length / 2;
             const edgeStyle = uiHost.kind !== "desktop-web"
               ? { left: Math.max(0, Math.min(width - entry.label.length, markerColumn(ratio, width) - Math.floor(entry.label.length / 2))) }
-              : ratio <= 0
+              : ratio * width <= halfLabel
               ? { left: 0 }
-              : ratio >= 1
+              : ratio * width >= width - halfLabel
                 ? { right: 0 }
                 : {
                   left: `${ratio * 100}%`,

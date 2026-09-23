@@ -55,6 +55,10 @@ export function commonStyle(props: Record<string, unknown>): CSSProperties {
     marginTop: cellInset(props.marginTop ?? props.marginY ?? props.margin, "y"),
     marginBottom: cellInset(props.marginBottom ?? props.marginY ?? props.margin, "y"),
     gap: typeof props.gap === "number" ? `${props.gap * gapUnit}px` : props.gap as CSSProperties["gap"],
+    // Axis gaps as Yoga takes them in the terminal. Only set when given: React
+    // writes an undefined longhand as an empty value, clearing what `gap` set.
+    ...(props.columnGap != null ? { columnGap: cellWidth(props.columnGap) as CSSProperties["columnGap"] } : {}),
+    ...(props.rowGap != null ? { rowGap: cellHeight(props.rowGap) as CSSProperties["rowGap"] } : {}),
     overflow: props.overflow as CSSProperties["overflow"],
     border: props.border ? `1px solid ${typeof props.borderColor === "string" ? props.borderColor : "var(--gloom-border)"}` : undefined,
     boxSizing: "border-box",
@@ -98,7 +102,7 @@ export function cleanDomProps(props: Record<string, unknown>): Record<string, un
     "padding", "paddingX", "paddingY", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom",
     "margin", "marginX", "marginY", "marginLeft", "marginRight", "marginTop", "marginBottom",
     "bold", "underline", "inverse", "dim", "italic", "strikethrough", "attributes", "content", "position", "left", "right", "top", "bottom",
-    "zIndex", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "gap",
+    "zIndex", "width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "gap", "columnGap", "rowGap",
     "border", "borderStyle", "borderColor", "overflow", "selectable", "visible", "name", "color",
     "focused", "focusedBackgroundColor", "textColor", "focusedTextColor", "placeholderColor",
     "cursorColor", "selectionBg", "selectionFg", "showCursor", "keyBindings", "wrapText", "wrapMode",

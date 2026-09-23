@@ -1,4 +1,5 @@
 import type { CompositeViewportRange } from "./interactions";
+import { projectCompositeTimestamp } from "./time-scale";
 import type { CompositeChartScene } from "./types";
 
 const MONTHS = [
@@ -434,11 +435,18 @@ function layoutTimeAxis({
   endTime,
   width,
   samples,
+  timeRatio,
 }: {
   startTime: number;
   endTime: number;
   width: number;
   samples?: readonly CompositeTimeAxisSample[];
+  /**
+   * Where a timestamp lands across the plot. Defaults to the viewport filling
+   * the full width; a scene passes its own scale so labels follow the reserved
+   * right offset instead of stretching the viewport to the edge.
+   */
+  timeRatio?: (timestamp: number) => number;
 }): CompositeTimeAxisLayout {
   const axisWidth = Math.max(1, Math.floor(width));
   const axis = Array(axisWidth).fill(" ");
@@ -447,6 +455,15 @@ function layoutTimeAxis({
   }
 
   const interval = resolveTimeAxisInterval(startTime, endTime, axisWidth);
+  const span = Math.max(endTime - startTime, 1);
+  const ratioAt = (timestamp: number) => {
+    const projected = timeRatio?.(timestamp);
+    const ratio = projected !== undefined && Number.isFinite(projected)
+      ? projected
+      : (timestamp - startTime) / span;
+    return clamp(ratio, 0, 1);
+  };
+  const endRatio = ratioAt(endTime);
   const marketSamples = samples?.length ? [...samples] : null;
   const firstTimestamp = startTime;
   const lastTimestamp = endTime;
@@ -472,17 +489,16 @@ function layoutTimeAxis({
     }
     const bucket = intervalBucketKey(boundary, interval);
     if (bucket === firstBucket) continue;
-    const span = Math.max(endTime - startTime, 1);
     addCandidate(candidates, {
       timestamp: boundary,
-      ratio: clamp((boundary - startTime) / span, 0, 1),
+      ratio: ratioAt(boundary),
       boundary: false,
     });
   }
 
   addCandidate(candidates, {
     timestamp: lastTimestamp,
-    ratio: 1,
+    ratio: endRatio,
     boundary: true,
   });
   candidates.sort((left, right) => left.ratio - right.ratio || left.timestamp - right.timestamp);
@@ -547,7 +563,15 @@ function layoutTimeAxis({
   });
 
   const endPadding = axisWidth > startLabel.length + endLabel.length + 2 ? 1 : 0;
-  const endStart = axisWidth - endLabel.length - endPadding;
+  // The endpoint sits under the last observation; with no reserved offset
+  // that is the right edge.
+  const endStart = Math.max(
+    startLabel.length + 1,
+    Math.min(
+      axisWidth - endLabel.length - endPadding,
+      resolveLabelStart(endRatio * Math.max(axisWidth - 1, 0), endLabel, axisWidth),
+    ),
+  );
   const minimumGap = interval.unit === "month" || interval.unit === "year" ? 2 : 1;
   let previousTimestamp = firstTimestamp;
   let previousEnd = startLabel.length - 1;
@@ -575,7 +599,7 @@ function layoutTimeAxis({
   writeLabel(axis, endStart, endLabel);
   placed.push({
     timestamp: lastTimestamp,
-    ratio: 1,
+    ratio: endRatio,
     label: endLabel,
     start: endStart,
     end: endStart + endLabel.length - 1,
@@ -598,6 +622,7 @@ export function buildCompositeTimeAxisLayout(
     samples: scene.timeScale.kind === "market"
       ? normalizeMarketSamples(scene)
       : undefined,
+    timeRatio: (timestamp) => projectCompositeTimestamp(scene.timeScale, timestamp)?.ratio ?? Number.NaN,
   });
 }
 

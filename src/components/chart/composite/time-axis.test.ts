@@ -232,6 +232,27 @@ describe("adaptive composite time axis", () => {
     expectValidLayout(layout, 80);
   });
 
+  test("places calendar ticks where the plot draws them when a right offset is reserved", () => {
+    const startTime = Date.parse("2001-04-01T00:00:00.000Z");
+    const endTime = Date.parse("2026-04-01T00:00:00.000Z");
+    const scene: CompositeChartScene = {
+      ...marketScene(["2001-04-01", "2026-04-01"], [0, 1]),
+      startTime,
+      endTime,
+      timeScale: { kind: "calendar", startTime, endTime, rightOffsetRatio: 0.06 },
+    };
+    const layout = buildCompositeTimeAxisLayout(scene, 160);
+    const span = (endTime - startTime) * 1.06;
+    const interior = layout.ticks.slice(1, -1);
+
+    expect(interior.length).toBeGreaterThan(3);
+    for (const tick of interior) expect(tick.ratio).toBeCloseTo((tick.timestamp - startTime) / span, 9);
+    expect(layout.ticks.at(-1)!.timestamp).toBe(endTime);
+    expect(layout.ticks.at(-1)!.ratio).toBeCloseTo(1 / 1.06, 9);
+    expect(layout.ticks.at(-1)!.end).toBeLessThan(159);
+    expectValidLayout(layout, 160);
+  });
+
   test("compacts cross-year endpoints before dropping either side", () => {
     const layout = viewport(
       "2025-12-31T23:30:00.000Z",
