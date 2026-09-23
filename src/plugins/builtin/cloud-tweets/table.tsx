@@ -20,6 +20,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import {
   appendNewTweets,
+  mergeLatestTweets,
   buildTweetColumns,
   formatMetric,
   formatRelativeShort,
@@ -36,6 +37,7 @@ import {
   type TweetSortColumnId,
   type TweetSortDirection,
 } from "./model";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusLinkFooter } from "../shared/pane-footer";
 
 function isAuthError(error: string | null): boolean {
@@ -48,6 +50,8 @@ function isAuthError(error: string | null): boolean {
 // ponytail: in-memory only, move to plugin state if results must survive restarts
 const TWEET_RESULT_CACHE = new Map<string, { data: CloudTweetSearchResponse; fetchedAt: number; hasMore: boolean }>();
 const TWEET_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Matches the server's search cache, so a visible pane never asks for a result it cannot get. */
+const TWEET_REFRESH_MS = 2 * 60 * 1000;
 // Every edited query is its own key, so the map is capped instead of growing
 // with each keystroke-sized search.
 const TWEET_CACHE_MAX_ENTRIES = 20;
@@ -219,6 +223,28 @@ function useTweetSearchData(
   useEffect(() => {
     reload();
   }, [reload, requestKey]);
+
+  // While the pane can be seen, the first page refreshes in the background and
+  // merges in, so the reading position and older pages survive.
+  const refreshLatest = useCallback(() => {
+    const current = stateRef.current;
+    if (!enabled || current.loading || current.loadingMore || !current.data) return;
+    const gen = fetchGenRef.current;
+    load(0)
+      .then((page) => {
+        if (fetchGenRef.current !== gen) return;
+        setState((value) => {
+          if (!value.data) return value;
+          const data = { ...value.data, tweets: mergeLatestTweets(value.data.tweets, page.tweets) };
+          cacheTweetResult(requestKey, data, value.hasMore);
+          return { ...value, data };
+        });
+      })
+      // The tweets on screen are still the answer; the next cycle tries again.
+      .catch(() => {});
+  }, [enabled, load, requestKey]);
+  const fetchedAt = state.data ? cachedTweetResult(requestKey)?.fetchedAt ?? null : null;
+  useAutoRefresh(fetchedAt, refreshLatest, { intervalMs: TWEET_REFRESH_MS });
 
   return { ...state, reload, loadMore };
 }

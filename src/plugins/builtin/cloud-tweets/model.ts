@@ -45,6 +45,20 @@ export function appendNewTweets(
   return added.length > 0 ? [...current, ...added] : current;
 }
 
+/**
+ * A background refresh of the first page: its tweets replace their older
+ * copies (views and replies move) and new ones join, while the older pages
+ * the reader already loaded stay.
+ */
+export function mergeLatestTweets(
+  current: CloudTweetPayload[],
+  latest: CloudTweetPayload[],
+): CloudTweetPayload[] {
+  if (latest.length === 0) return current;
+  const latestIds = new Set(latest.map((tweet) => tweet.id));
+  return [...latest, ...current.filter((tweet) => !latestIds.has(tweet.id))];
+}
+
 export interface TwitterFeed {
   id: string;
   title: string;

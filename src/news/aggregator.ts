@@ -1,6 +1,7 @@
 import type { NewsCapability } from "../capabilities";
 import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
+import { isAppVisible, subscribeAppVisibility } from "../state/app/activity";
 import {
   DEFAULT_GLOBAL_QUERY,
   MAX_ARTICLES,
@@ -25,11 +26,20 @@ export interface NewsServiceOptions {
   maxInactiveQueries?: number;
   now?: () => number;
   connectionHealth?: ConnectionHealthRegistry;
+  /** Defaults to the app's visibility; injectable for tests. */
+  visibility?: { isVisible(): boolean; subscribe(listener: () => void): () => void };
 }
 
 export type NewsQueryListener = (state: NewsQueryState) => void;
 
 const DEFAULT_POLL_INTERVAL_MS = 2 * 60 * 1000;
+/**
+ * The slowest a visible app refreshes open news panes, whatever research
+ * cadence is configured: headlines are the one research feed that moves by
+ * the minute. A hidden app falls back to the configured cadence, which still
+ * feeds breaking-news notifications.
+ */
+const VISIBLE_POLL_INTERVAL_MS = 2 * 60 * 1000;
 const MIN_POLL_INTERVAL_MS = 15 * 1000;
 const DEFAULT_INACTIVE_QUERY_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_INACTIVE_QUERIES = 50;
@@ -72,6 +82,9 @@ export class NewsService {
   private readonly maxInactiveQueries: number;
   private readonly now: () => number;
   private readonly connectionHealth?: ConnectionHealthRegistry;
+  private readonly visibility: NonNullable<NewsServiceOptions["visibility"]>;
+  private lastPollAt = 0;
+  private unsubscribeVisibility: (() => void) | null = null;
 
   constructor(options: NewsServiceOptions = {}) {
     const pollInterval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -80,6 +93,7 @@ export class NewsService {
     this.maxInactiveQueries = Math.max(1, Math.floor(options.maxInactiveQueries ?? DEFAULT_MAX_INACTIVE_QUERIES));
     this.now = options.now ?? Date.now;
     this.connectionHealth = options.connectionHealth;
+    this.visibility = options.visibility ?? { isVisible: isAppVisible, subscribe: subscribeAppVisibility };
   }
 
   register(source: NewsCapability): () => void {
@@ -102,25 +116,49 @@ export class NewsService {
   start(): void {
     if (this.polling) return;
     this.polling = true;
+    // Watching a query fetches it, so the first cycle is one interval out.
+    this.lastPollAt = this.now();
+    // Coming back into view reschedules at the faster cadence, and polls at
+    // once if a poll came due while the app was hidden.
+    this.unsubscribeVisibility = this.visibility.subscribe(() => {
+      if (!this.polling || this.pollInFlight) return;
+      this.clearPollTimer();
+      this.scheduleNextPoll();
+    });
     this.scheduleNextPoll();
   }
 
   stop(): void {
     this.polling = false;
+    this.unsubscribeVisibility?.();
+    this.unsubscribeVisibility = null;
+    this.clearPollTimer();
+  }
+
+  private pollInFlight = false;
+
+  private clearPollTimer(): void {
     if (this.pollTimer !== null) {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
   }
 
-  /** Rescheduled every cycle so a config change takes effect on the next tick. */
+  /** Rescheduled every cycle so a config or visibility change takes effect on the next tick. */
   private scheduleNextPoll(): void {
     if (!this.polling) return;
-    const interval = Math.max(MIN_POLL_INTERVAL_MS, this.pollIntervalMs());
+    const configured = Math.max(MIN_POLL_INTERVAL_MS, this.pollIntervalMs());
+    const interval = this.visibility.isVisible() ? Math.min(configured, VISIBLE_POLL_INTERVAL_MS) : configured;
+    const delay = Math.max(0, this.lastPollAt + interval - this.now());
     this.pollTimer = setTimeout(() => {
       this.pollTimer = null;
-      void this.pollActiveQueries().catch(() => {}).then(() => this.scheduleNextPoll());
-    }, interval);
+      this.pollInFlight = true;
+      this.lastPollAt = this.now();
+      void this.pollActiveQueries().catch(() => {}).then(() => {
+        this.pollInFlight = false;
+        this.scheduleNextPoll();
+      });
+    }, delay);
   }
 
   subscribe(listener: () => void): () => void {
