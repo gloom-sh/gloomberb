@@ -6,7 +6,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, PricePoint } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
 import { createSurfaceDependencies } from "../vol-surface/client";
-import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
+import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory, refreshCurrentAtmIv } from "./client";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const points: PricePoint[] = [{ date: new Date(now - 86400000), close: 100 }, { date: new Date(now), close: 101 }];
@@ -117,6 +117,42 @@ describe("independent current-IV loading", () => {
     expect(result.reference!.date.toISOString()).toBe("2026-09-22T13:45:00.000Z");
     expect(result.reference!.ivSource).toBe("recomputed");
     expect(result.error).toBeNull();
+  });
+
+  test("the in-session refresh refetches only the reference's own expiry at the new spot", async () => {
+    const near = now / 1000 + 31 * 86400, far = now / 1000 + 200 * 86400;
+    const chain = (expiration: number, volatility: number): OptionsChain => {
+      const days = daysToExpiryFrom(expiration, now);
+      const contract = (strike: number, side: "call" | "put") => {
+        const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: 100, strike,
+          daysToExpiry: days, rate: 0.04, dividendYield: 0.01, volatility }).price;
+        return { contractSymbol: `${expiration}-${side}-${strike}`, strike, expiration, currency: "USD", bid: price * 0.99,
+          ask: price * 1.01, lastPrice: price, openInterest: 100, volume: 1, lastTradeDate: now / 1000,
+          impliedVolatility: volatility, change: 0, percentChange: 0, inTheMoney: false };
+      };
+      const strikes = [80, 90, 95, 100, 105, 110, 120];
+      return { underlyingSymbol: "AAPL", expirationDates: [near, far], calls: strikes.map((strike) => contract(strike, "call")),
+        puts: strikes.map((strike) => contract(strike, "put")), asOf: new Date(now).toISOString(), providerId: "test" };
+    };
+    let volatility = 0.3;
+    const requests: Array<{ expiration?: number; force: boolean }> = [];
+    const dependencies = { now: () => now, loadYieldCurve: async () => [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" }],
+      loadOptions: async (request: { expirationDate?: number }, options?: { forceRefresh?: boolean }) => {
+        requests.push({ expiration: request.expirationDate, force: !!options?.forceRefresh });
+        return ready(chain(request.expirationDate ?? near, volatility));
+      } };
+    const loaded = await loadCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, dependencies);
+    expect(loaded.reference!.expiration).toBe(near);
+    requests.length = 0;
+    volatility = 0.36;
+    const refreshed = await refreshCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, loaded, dependencies);
+    expect(requests).toEqual([{ expiration: undefined, force: false }, { expiration: near, force: true }]);
+    expect(refreshed.reference!.value).toBeCloseTo(0.36, 3);
+    expect(refreshed.warnings).toBe(loaded.warnings);
+    // A slice that cannot price an ATM level keeps the dated reference already shown.
+    const failed = await refreshCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100 }, loaded,
+      { ...dependencies, loadOptions: async () => { throw new Error("offline"); } });
+    expect(failed).toBe(loaded);
   });
 
   test("option failures and missing spot leave daily history independently available", async () => {

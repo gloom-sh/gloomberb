@@ -92,6 +92,11 @@ export interface SurfaceLoadRequest {
   limit?: number;
   /** Listed expiries required by a selection, added to the representative sample. */
   requiredExpiries?: readonly number[];
+  /**
+   * Load exactly these listed expiries instead of a representative sample.
+   * The catalogue is then read from cache and only these slices refresh.
+   */
+  expiries?: readonly number[];
   signal?: AbortSignal;
   onSnapshot?: (snapshot: SurfaceSnapshot) => void;
   forceRefresh?: boolean;
@@ -193,7 +198,8 @@ export async function loadVolatilitySurface(
   });
 
   try {
-    const initial = await abortable(dependencies.loadOptions({ instrument: request.instrument }, { forceRefresh: request.forceRefresh }), request.signal);
+    const initial = await abortable(dependencies.loadOptions({ instrument: request.instrument },
+      { forceRefresh: request.expiries ? false : request.forceRefresh }), request.signal);
     checkAbort();
     const chain = resolveEntryValue(initial);
     const initialContracts = chain ? [...chain.calls, ...chain.puts] : [];
@@ -204,10 +210,11 @@ export async function loadVolatilitySurface(
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
       Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
-    const required = [...new Set((request.requiredExpiries ?? []).filter((expiration) => Number.isFinite(expiration) && expiration > 0))];
+    const required = [...new Set([...(request.requiredExpiries ?? []), ...(request.expiries ?? [])]
+      .filter((expiration) => Number.isFinite(expiration) && expiration > 0))];
     const listed = new Set(catalogue);
-    selected = [...new Set([...selectSurfaceExpiries(catalogue, limit, now), ...required.filter((expiration) => listed.has(expiration))])]
-      .sort((a, b) => a - b);
+    selected = [...new Set([...request.expiries ? [] : selectSurfaceExpiries(catalogue, limit, now),
+      ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
       expiration, message: "Selected expiration unavailable in the current option catalogue",
     }));
@@ -225,8 +232,9 @@ export async function loadVolatilitySurface(
     while (!request.signal?.aborted && next < selected.length) {
       const expiration = selected[next++]!;
       try {
+        // The catalogue response already refreshed its own slice, unless it came from cache.
         const entry = await dependencies.loadOptions({ instrument: request.instrument, expirationDate: expiration },
-          { forceRefresh: !!request.forceRefresh && expiration !== catalogueExpiration });
+          { forceRefresh: !!request.forceRefresh && (!!request.expiries || expiration !== catalogueExpiration) });
         if (request.signal?.aborted) return;
         entries.set(expiration, entry);
         if (!resolveEntryValue(entry) && !entry.error) errors.set(expiration, "Options chain unavailable");

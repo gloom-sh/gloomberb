@@ -76,6 +76,30 @@ export interface CurrentAtmIvRequest extends RealizedHistoryRequest {
   spotAsOf?: string | number | null;
 }
 
+/**
+ * Re-read the current reference's own expiry at the live spot: that one chain
+ * is refetched and refitted, the catalogue comes from cache, and the other
+ * slices of the full load are not touched. When the refreshed slice cannot
+ * price an ATM level, the previous dated reference stands.
+ */
+export async function refreshCurrentAtmIv(
+  request: CurrentAtmIvRequest,
+  previous: CurrentAtmIvSnapshot,
+  dependencies: SurfaceLoaderDependencies = createSurfaceDependencies(),
+): Promise<CurrentAtmIvSnapshot> {
+  const reference = previous.reference;
+  if (!reference || !(request.spot > 0) || !Number.isFinite(request.spot)) return previous;
+  if (request.signal?.aborted) throw abortError();
+  try {
+    const next = projectCurrentAtmIv(await loadVolatilitySurface({ ...request, forceRefresh: true, expiries: [reference.expiration],
+      settings: { ivSource: reference.ivSource } }, dependencies));
+    return next.reference?.expiration === reference.expiration ? { ...previous, reference: next.reference } : previous;
+  } catch (error) {
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError();
+    return previous;
+  }
+}
+
 /** Options are independent of daily history and use the existing surface chain cache. */
 export async function loadCurrentAtmIv(
   request: CurrentAtmIvRequest,

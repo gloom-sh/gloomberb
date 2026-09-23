@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
   usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
-import { instrumentFromTicker } from "../../../market-data/request-types";
+import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
+import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -9,13 +10,18 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveSessionRefresh } from "../shared/volatility/live-session";
 import type { RealizedVolatilityEstimator, VolatilityConeStatistics } from "../shared/volatility";
-import { loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
+import { loadCurrentAtmIv, loadRealizedVolatilityHistory, refreshCurrentAtmIv } from "./client";
+import type { CurrentAtmIvSnapshot } from "./model";
 import { projectRealizedVolatility } from "./model";
 import { RealizedVolGraph, VolatilityConeChart } from "./charts";
 import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 
+/** In session, while visible, the current ATM IV reference re-reads its expiry this often. */
+const ATM_IV_REFRESH_MS = 60_000;
 const TABS = [{ value: "graph", label: "History" }, { value: "cone", label: "Cone" }];
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(2)}%`;
 const CONE_COLUMNS: DataTableColumn[] = [
@@ -64,11 +70,36 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       forceRefresh: force, signal: controller.signal });
   }, [instrumentKey, spotAvailable]);
   const history = useAsyncResource(instrument ? historyLoader : null);
-  const iv = useAsyncResource(instrument && showIv && spotAvailable ? ivLoader : null);
+  const loadedIv = useAsyncResource(instrument && showIv && spotAvailable ? ivLoader : null);
   useEffect(() => () => historyController.current?.abort(), [historyLoader]);
   useEffect(() => () => ivController.current?.abort(), [ivLoader, showIv]);
   useAutoRefresh(history.updatedAt, history.load);
-  useAutoRefresh(iv.updatedAt, iv.load);
+  useAutoRefresh(loadedIv.updatedAt, loadedIv.load);
+  // The pane subscribes its own quote: the IV reference is fitted at the live
+  // price even when no other pane streams this ticker.
+  const liveStreaming = useLiveStreamingSetting();
+  const quoteTarget = quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
+  useQuoteUpdates(quoteTarget ? [{ ...quoteTarget, surface: "detail", visible: true, weight: 70 }] : [], { liveStreaming });
+  // In session the reference's own expiry is re-read every minute; the full
+  // load that chose it still runs on the global refresh.
+  const [refreshedIv, setRefreshedIv] = useState<{ owner: typeof ivLoader; at: number; data: CurrentAtmIvSnapshot } | null>(null);
+  const ivDataRef = useRef<CurrentAtmIvSnapshot | null>(null);
+  const refreshIv = useCallback(async () => {
+    const previous = ivDataRef.current;
+    const currentQuote = quoteRef.current;
+    if (!previous?.reference || !instrument || !currentQuote || currentQuote.stale || !(currentQuote.price > 0)) return;
+    ivController.current?.abort();
+    const controller = new AbortController();
+    ivController.current = controller;
+    const owner = ivLoader;
+    const data = await refreshCurrentAtmIv({ instrument, spot: currentQuote.price, spotAsOf: currentQuote.lastUpdated,
+      signal: controller.signal }, previous);
+    if (!controller.signal.aborted) setRefreshedIv({ owner, at: Date.now(), data });
+  }, [ivLoader]);
+  const refreshedCurrent = refreshedIv?.owner === ivLoader && refreshedIv.at > (loadedIv.updatedAt ?? 0) ? refreshedIv.data : null;
+  const iv = { ...loadedIv, data: refreshedCurrent ?? loadedIv.data };
+  ivDataRef.current = iv.data;
+  useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !!iv.data?.reference && !loadedIv.loading);
   const model = useMemo(() => history.data ? projectRealizedVolatility(history.data.history, {
     symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
   }) : null, [history.data, estimator, windows, lookback]);
