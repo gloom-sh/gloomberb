@@ -11,6 +11,8 @@ import { projectOptionsEnrichment, type OptionsEnrichmentCache, type OptionsEnri
 
 /** Live quotes refit the selected smile at most this often. */
 export const OPTIONS_LIVE_ANALYTICS_INTERVAL_MS = 1_000;
+/** A dense chain's refit is slower; its cadence stretches so the refit never takes more than this share of the time. */
+const LIVE_ANALYTICS_MAX_LOAD = 0.05;
 /** The Treasury curve is daily; a refreshed chain reuses the one it already loaded. */
 const TREASURY_REUSE_MS = 30 * 60_000;
 
@@ -102,7 +104,9 @@ export function useOptionsEnrichment(input: {
   }, [key, eligible, entryKey, catalogueKey]);
   const active = eligible && result?.key === key && result.entryKey === entryKey
     && result.catalogueKey === catalogueKey ? result : null;
-  const liveChain = useThrottledValue(eligible ? input.liveChain ?? null : null, OPTIONS_LIVE_ANALYTICS_INTERVAL_MS, key);
+  const refitMs = useRef(0);
+  const liveChain = useThrottledValue(eligible ? input.liveChain ?? null : null,
+    Math.max(OPTIONS_LIVE_ANALYTICS_INTERVAL_MS, refitMs.current / LIVE_ANALYTICS_MAX_LOAD), key);
   const projection = active?.projection ?? null;
   const liveSnapshot = useMemo(() => {
     if (!liveChain || !projection || !key) return null;
@@ -110,8 +114,11 @@ export function useOptionsEnrichment(input: {
     if (expiration !== projection.expiration) return null;
     const { spot, spotAsOf } = current.current;
     if (spot == null || !(spot > 0)) return null;
-    return projectOptionsEnrichment({ ...projection, selectedEntry: { ...projection.selectedEntry, data: liveChain },
+    const started = performance.now();
+    const snapshot = projectOptionsEnrichment({ ...projection, selectedEntry: { ...projection.selectedEntry, data: liveChain },
       spot, spotAsOf: spotAsOf ?? null, now: Date.now() }, store.current.cache);
+    refitMs.current = performance.now() - started;
+    return snapshot;
   }, [key, liveChain, projection]);
   return { snapshot: liveSnapshot ?? active?.snapshot ?? null, error: active?.error ?? null,
     loading: eligible && (!active || (active.loading && !active.carried)) };

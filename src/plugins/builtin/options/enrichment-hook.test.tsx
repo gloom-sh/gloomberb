@@ -55,7 +55,7 @@ async function fixture(loadRates: () => Promise<YieldPoint[]>) {
   setSharedMarketDataCoordinator(coordinator);
   await coordinator.loadOptions({ instrument, expirationDate: first });
   await coordinator.loadOptions({ instrument, expirationDate: second });
-  type Parameters = { expiration: number; catalogue: number[]; spot: number };
+  type Parameters = { expiration: number; catalogue: number[]; spot: number; liveChain?: OptionsChain | null };
   let update!: (patch: Partial<Parameters>) => void;
   let resource!: ReturnType<typeof useOptionsEnrichment>;
   function Probe() {
@@ -100,6 +100,24 @@ test("new projections and spot ticks do not reload analytics; an accepted same-t
   expect(f.resource().snapshot!.spot).toBe(100.7);
   expect(f.resource().loading).toBe(false);
   expect(f.requests).toEqual([first, second, first]);
+});
+
+test("streamed quotes refit the selected smile within a second without reloading its inputs", async () => {
+  const f = await fixture(async () => curve);
+  expect(f.resource().snapshot!.expectedMove.straddle).toBe(4);
+  const live = { ...chain(first, 3), asOf: "2026-09-22T13:59:00Z" };
+  await f.update({ liveChain: live, spot: 100.2 });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
+  await settle();
+  expect(f.resource().snapshot!.expectedMove.straddle).toBe(6);
+  expect(f.resource().snapshot!.asOf).toBe("2026-09-22T13:59:00Z");
+  expect(f.resource().snapshot!.spot).toBe(100.2);
+  expect(f.rateSpy).toHaveBeenCalledTimes(1);
+  expect(f.requests).toEqual([first, second]);
+  await f.update({ liveChain: null });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1_100)); });
+  await settle();
+  expect(f.resource().snapshot!.expectedMove.straddle).toBe(4);
 });
 
 test("removal and expiry switches immediately hide old analytics and ignore their late completions", async () => {
