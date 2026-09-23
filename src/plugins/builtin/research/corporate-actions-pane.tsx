@@ -330,7 +330,14 @@ export function CorporateActionsView({
   const cloudSession = useResearchCloudSession();
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
   // The shared ticker snapshot already subscribes to financials for this pane.
-  const { financials: financialsData } = usePaneTicker();
+  // Only the statements are read, so the rows do not rebuild on price ticks.
+  const { financials: tickerFinancials } = usePaneTicker();
+  const quarterlyStatements = tickerFinancials?.quarterlyStatements;
+  const financialCurrency = tickerFinancials?.financialCurrency;
+  const financialsData = useMemo(
+    () => (quarterlyStatements || financialCurrency ? { quarterlyStatements: quarterlyStatements ?? [], financialCurrency } : null),
+    [financialCurrency, quarterlyStatements],
+  );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
     return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
