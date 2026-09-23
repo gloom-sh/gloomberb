@@ -276,32 +276,40 @@ function hasFinancialRowValue(
   );
 }
 
-function repeatsHeadline(
+function repeatsLine(
   line: Pick<MetricDef, "key" | "compute">,
-  headline: keyof FinancialStatement,
+  other: Pick<MetricDef, "key" | "compute">,
   statements: FinancialStatement[],
 ): boolean {
   return statements.every((statement) => {
     const value = statementMetricValue(line, statement);
-    return value === undefined || value === statementMetricValue({ key: headline }, statement);
+    return value === undefined || value === statementMetricValue(other, statement);
   });
 }
 
 /**
  * Companies without minority interests or discontinued operations report the
- * net income headline again on several lines. A line that equals its group's
- * headline in every shown period where it is reported adds nothing.
+ * net income headline again on several lines, and statements repeat one
+ * amount under several names (D&A and Depreciation, Buybacks and Stock
+ * Payments). A line that equals its group's headline, or a line kept above
+ * it, in every shown period where it is reported adds nothing.
  */
 function distinctChildren(
   group: FinancialGroupDef,
   statements: FinancialStatement[],
 ): FinancialRowDef[] {
   const summaryKey = group.summaryKey;
-  return group.children.filter((child) => (
-    hasFinancialRowValue(child, statements)
-    && (isFinancialGroup(child) || !summaryKey || child.key === summaryKey
-      || !repeatsHeadline(child, summaryKey, statements))
-  ));
+  const kept: FinancialRowDef[] = [];
+  for (const child of group.children) {
+    if (!hasFinancialRowValue(child, statements)) continue;
+    if (!isFinancialGroup(child) && child.key !== summaryKey && (
+      (summaryKey && repeatsLine(child, { key: summaryKey }, statements))
+      || kept.some((line) => !isFinancialGroup(line) && line.format === child.format
+        && repeatsLine(child, line, statements))
+    )) continue;
+    kept.push(child);
+  }
+  return kept;
 }
 
 function resolveMetricUnit(

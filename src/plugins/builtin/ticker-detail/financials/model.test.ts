@@ -82,6 +82,21 @@ describe("financial statement table model", () => {
     expect(labels(45)).toContain("Diluted EPS");
   });
 
+  // MSFT cash flow: D&A and Depreciation, Buybacks and Stock Payments.
+  test("hides a line that repeats a sibling above it in every shown period", () => {
+    const labels = (depreciation: number) => buildFinancialTableModel({
+      annualStatements: [
+        { date: "2024-12-31", operatingCashFlow: 100, depreciationAndAmortization: 20, depreciation: 20, stockBasedCompensation: 5 },
+        { date: "2025-12-31", operatingCashFlow: 120, depreciationAndAmortization: 30, depreciation, stockBasedCompensation: 6 },
+      ],
+      quarterlyStatements: [],
+      priceHistory: [],
+    }, { period: "annual", statement: "cashflow", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
+    expect(labels(30)).toContain("D&A");
+    expect(labels(30)).not.toContain("Depreciation");
+    expect(labels(25)).toContain("Depreciation");
+  });
+
   test("applies financial row semantics to growth color values", () => {
     const table = buildFinancialTableModel({
       financialCurrency: "USD",
