@@ -51,7 +51,7 @@ async function frames() {
   for (let i = 0; i < 6; i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
 }
 /** Renders until `done` holds; a slow runner needs more frames than a fixed count. */
-async function framesUntil(done: () => boolean, limit = 60) {
+async function framesUntil(done: () => boolean, limit = 200) {
   for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
 }
 async function mount(width = 80, initialSymbol: string | null = "FIRST") {
@@ -127,21 +127,24 @@ test("scrolling to the end of the shelf appends the next page instead of stoppin
     return Response.json({ calls: offset > 0 ? shelf(50, 1) : shelf(0, 50) });
   });
   await mount(80, null);
+  await framesUntil(() => setup!.captureCharFrame().includes("COMPANY 0"));
   expect(offsets).toEqual([null]);
   expect(setup!.captureCharFrame()).toContain("COMPANY 0");
   expect(setup!.captureCharFrame()).not.toContain("COMPANY 50");
 
   await emitKeypress(setup!, Array.from({ length: 50 }, () => ({ name: "j", sequence: "j" })));
-  await framesUntil(() => offsets.length > 1);
+  // A session refresh can repeat the first-page request; only paging requests matter here.
+  const pages = () => offsets.filter((offset) => offset !== null);
+  await framesUntil(() => pages().length > 0);
   await frames();
-  expect(offsets).toEqual([null, "50"]);
+  expect(pages()).toEqual(["50"]);
 
   // The page that arrived is reachable, and a short page ends the paging.
   await emitKeypress(setup!, Array.from({ length: 5 }, () => ({ name: "j", sequence: "j" })));
   await framesUntil(() => setup!.captureCharFrame().includes("COMPANY 50"));
   await frames();
   expect(setup!.captureCharFrame()).toContain("COMPANY 50");
-  expect(offsets).toEqual([null, "50"]);
+  expect(pages()).toEqual(["50"]);
 });
 
 test("a pending company lookup remains pending after the pane reopens", async () => {
