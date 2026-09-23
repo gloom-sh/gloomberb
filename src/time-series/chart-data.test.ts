@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resetServerClockForTests, setForwardedServerClockOffset } from "../market-data/quotes/clock";
 import { appendLiveQuotePoint } from "./chart-data";
 import type { PricePoint, Quote } from "../types/financials";
 
@@ -17,6 +18,22 @@ function quoteFixture(overrides: Partial<Quote> = {}): Quote {
 }
 
 describe("appendLiveQuotePoint", () => {
+  test("follows quotes from a server clock measured more than five minutes ahead", () => {
+    const now = Date.parse("2026-05-15T19:30:00Z");
+    const history: PricePoint[] = [
+      { date: new Date("2026-05-15T19:34:00Z"), close: 128 },
+      { date: new Date("2026-05-15T19:35:00Z"), close: 128.5 },
+    ];
+    const quote = quoteFixture({ lastUpdated: Date.parse("2026-05-15T19:36:00Z") });
+    try {
+      expect(appendLiveQuotePoint(history, quote, { now })).toBe(history);
+      setForwardedServerClockOffset(6 * 60_000);
+      expect(appendLiveQuotePoint(history, quote, { now }).at(-1)).toEqual({ date: new Date("2026-05-15T19:36:00Z"), close: 129 });
+    } finally {
+      resetServerClockForTests();
+    }
+  });
+
   test("merges daily quote updates by session for date labels and opening timestamps", () => {
     const now = Date.parse("2026-09-10T18:44:00Z");
     const quote = quoteFixture({ price: 39.75, lastUpdated: now });

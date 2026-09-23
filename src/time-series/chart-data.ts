@@ -146,7 +146,7 @@ export function liveQuoteObservation(
     !Number.isFinite(quoteTime)
     || !Number.isFinite(quotePrice)
     || quotePrice <= 0
-    || quoteTime > now + MAX_LIVE_QUOTE_CLOCK_SKEW_MS
+    || quoteTime > now + Math.max(MAX_LIVE_QUOTE_CLOCK_SKEW_MS, quoteFutureToleranceMs())
     || now - quoteTime > MAX_LIVE_QUOTE_TAIL_AGE_MS
   ) {
     return null;
