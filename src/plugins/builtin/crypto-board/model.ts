@@ -1,6 +1,5 @@
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
-import { formatMarketPrice } from "../../../market-data/market/format";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
@@ -20,6 +19,8 @@ export interface CryptoRow {
   code: string;
   name: string;
   price: number;
+  /** The price as the board prints it. */
+  priceText: string;
   changePercent: number | null;
   return7d: number | null;
   return30d: number | null;
@@ -93,6 +94,7 @@ export function buildCryptoRow(
     code: asset.code,
     name: asset.name,
     price,
+    priceText: formatCryptoPrice(price, asset.kind === "stablecoin" ? 4 : 2),
     changePercent,
     return7d: percentChange(price, closeDaysAgo(asset, 7, now)),
     return30d: percentChange(price, closeDaysAgo(asset, 30, now)),
@@ -116,8 +118,16 @@ export function buildCryptoRows(
     .map((asset) => buildCryptoRow(asset, liveQuote(asset, entries), now));
 }
 
-export function formatCryptoPrice(value: number | null, maxWidth?: number): string {
-  return value == null ? "—" : formatMarketPrice(value, { assetCategory: "CRYPTO", maxWidth });
+/**
+ * Four significant digits and never fewer than two decimals, with trailing
+ * zeros kept, so a column running from 84,399.24 to 0.000005660 reads evenly.
+ * Stablecoins ask for four decimals so 1.0001 and 0.9998 show the same peg detail.
+ */
+export function formatCryptoPrice(value: number | null, minimumDecimals = 2): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return "—";
+  const magnitude = Math.floor(Math.log10(value));
+  const decimals = Math.min(12, Math.max(minimumDecimals, 3 - magnitude));
+  return value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 export function formatCryptoPercent(value: number | null): string {

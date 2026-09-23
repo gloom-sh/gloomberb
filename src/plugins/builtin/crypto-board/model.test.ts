@@ -90,8 +90,13 @@ test("a move that rounds to zero is unsigned", () => {
   expect(formatCryptoPercent(-1.5)).toBe("-1.50%");
 });
 
-test("prices keep the precision a sub-cent token needs", () => {
+test("prices show four significant digits and at least two decimals", () => {
   expect(formatCryptoPrice(84_352.31)).toBe("84,352.31");
-  expect(formatCryptoPrice(0.00000567)).toBe("0.00000567");
+  expect(formatCryptoPrice(114.7)).toBe("114.70");
+  expect(formatCryptoPrice(1.5142)).toBe("1.514");
+  expect(formatCryptoPrice(0.33978266)).toBe("0.3398");
+  expect(formatCryptoPrice(0.0936)).toBe("0.09360");
+  expect(formatCryptoPrice(0.00000566)).toBe("0.000005660");
+  expect(formatCryptoPrice(1.0001, 4)).toBe("1.0001");
   expect(formatCryptoPrice(null)).toBe("—");
 });

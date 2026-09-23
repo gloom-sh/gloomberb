@@ -35,7 +35,6 @@ import {
   CRYPTO_TABS,
   DEFAULT_CRYPTO_SORT,
   formatCryptoPercent,
-  formatCryptoPrice,
   nextCryptoSort,
   sortCryptoRows,
   type CryptoColumn,
@@ -89,7 +88,7 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
     case "name":
       return { text: row.name, color: selectedColor };
     case "price":
-      return { text: formatCryptoPrice(row.price, column.width), color: selectedColor };
+      return { text: row.priceText, color: selectedColor };
     case "changePercent":
       return signed(row.changePercent);
     case "return7d":

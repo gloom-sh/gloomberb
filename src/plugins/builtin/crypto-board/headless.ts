@@ -2,7 +2,7 @@ import type { CryptoAssetKind } from "../../../api-client/crypto-markets";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact } from "../../../utils/format";
 import { fetchCryptoMarkets } from "./client";
-import { buildCryptoRows, formatCryptoPercent, formatCryptoPrice } from "./model";
+import { buildCryptoRows, formatCryptoPercent } from "./model";
 
 const NO_QUOTES = new Map();
 const number = (value: unknown) => (typeof value === "number" ? value : null);
@@ -27,7 +27,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     { key: "rank", header: "#", align: "right" },
     { key: "code", header: "Coin" },
     { key: "name", header: "Name" },
-    { key: "price", header: "Price", align: "right", format: (value) => formatCryptoPrice(number(value)) },
+    { key: "price", header: "Price", align: "right", format: (_value, row) => String(row.priceText ?? "—") },
     { key: "changePercent", header: "Chg %", align: "right", format: percent },
     { key: "return7d", header: "7D %", align: "right", format: percent },
     { key: "return30d", header: "30D %", align: "right", format: percent },
@@ -49,6 +49,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
       code: row.code,
       name: row.name,
       price: row.price,
+      priceText: row.priceText,
       changePercent: row.changePercent,
       return7d: row.return7d,
       return30d: row.return30d,
