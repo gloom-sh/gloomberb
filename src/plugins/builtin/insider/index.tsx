@@ -28,6 +28,7 @@ import {
   buildInsiderDisclosureText,
   matchesInsiderOwner,
   insiderTransactionId,
+  isInsiderDisclosureOnly,
   insiderReportedName,
   parseInsiderFiling,
   type ParsedInsiderFiling as ParsedFiling,
@@ -58,8 +59,9 @@ function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
     ];
 
     if (!transaction) {
+      const disclosureOnly = isInsiderDisclosureOnly(entry);
       const title = isLoading ? `Loading ${formatFilingFormLabel(filing.form)} filing...`
-        : amendment && entry.disclosure ? "Form 4/A disclosure" : "Form 4 transaction unavailable";
+        : disclosureOnly ? `${amendment ? "Form 4/A" : "Form 4"} disclosure` : "Form 4 transaction unavailable";
       return {
         id,
         eyebrow: insiderReportedName(entry) ?? formatFilingFormLabel(filing.form),
@@ -69,7 +71,7 @@ function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
         detailMeta: filingMeta,
         detailBody: isLoading
           ? "Loading filing content..."
-          : disclosureText || (amendment && entry.disclosure ? "No transaction lines reported." : "This Form 4 filing could not be parsed into a transaction summary."),
+          : disclosureText || (disclosureOnly ? "No transaction lines reported." : "This Form 4 filing could not be parsed into a transaction summary."),
       };
     }
 

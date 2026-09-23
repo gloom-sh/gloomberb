@@ -20,6 +20,15 @@ export function parseInsiderFiling(filing: SecFilingItem, content: string | null
     : [{ filing, transaction: null, isLoading, disclosure }];
 }
 
+/**
+ * A filing read without transaction lines: an unreconciled 4/A, or a Form 4
+ * that reports none (e.g. the owner is no longer subject to Section 16).
+ */
+export function isInsiderDisclosureOnly(entry: ParsedInsiderFiling): boolean {
+  return !entry.transaction && !!entry.disclosure
+    && (isAmendedInsiderFiling(entry) || !entry.disclosure.hasTransactionLines);
+}
+
 export function insiderTransactionId({ filing, transaction }: ParsedInsiderFiling): string {
   return `${filing.accessionNumber}:${transaction?.transactionIndex ?? 0}`;
 }
@@ -51,7 +60,7 @@ export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.no
   const amendments = buildInsiderAmendmentScopes(context);
   const incomplete = parsed.some((entry) => {
     const { transaction } = entry;
-    if (!transaction && entry.disclosure && isAmendedInsiderFiling(entry)) return false;
+    if (isInsiderDisclosureOnly(entry)) return false;
     return !transaction?.filingDate || transaction.shares == null || !transaction.transactionType || !transaction.securityTitle;
   });
   const cutoff = now - NINETY_DAYS_MS;
@@ -113,7 +122,7 @@ export function buildInsiderRows(parsed: readonly ParsedInsiderFiling[], context
       remarks: entry.disclosure?.remarks ?? null,
       accessionNumber: filing.accessionNumber,
       url: filing.filingUrl,
-      status: isLoading ? "loading" : !transaction ? isAmendedInsiderFiling(entry) && entry.disclosure ? "disclosure" : "unavailable" : transaction.filingDate && transaction.shares != null && transaction.transactionType && transaction.securityTitle ? "parsed" : "partial",
+      status: isLoading ? "loading" : !transaction ? isInsiderDisclosureOnly(entry) ? "disclosure" : "unavailable" : transaction.filingDate && transaction.shares != null && transaction.transactionType && transaction.securityTitle ? "parsed" : "partial",
     };
   });
 }

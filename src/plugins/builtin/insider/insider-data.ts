@@ -27,6 +27,8 @@ export interface InsiderFilingDisclosure {
   reportingOwners: Array<{ name: string; cik: string; title: string }>;
   footnotes: Array<{ id: string; text: string }>;
   remarks: string | null;
+  /** False for a filing with no transaction lines, e.g. one reporting only that the owner left Section 16. */
+  hasTransactionLines: boolean;
 }
 
 export function isInsiderForm(form: string): boolean {
@@ -52,9 +54,25 @@ function numberValue(xml: string, tag: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+function isFlagSet(xml: string, tag: string): boolean {
+  return /^(?:1|true)$/i.test(tagText(xml, tag));
+}
+
+/** The officer title, else the relationship boxes checked on the form (directors have no officer title). */
+function ownerTitle(owner: string): string {
+  const officerTitle = tagText(owner, "officerTitle");
+  if (officerTitle) return officerTitle;
+  return [
+    isFlagSet(owner, "isDirector") ? "Director" : "",
+    isFlagSet(owner, "isOfficer") ? "Officer" : "",
+    isFlagSet(owner, "isTenPercentOwner") ? "10% Owner" : "",
+    isFlagSet(owner, "isOther") ? tagText(owner, "otherText") || "Other" : "",
+  ].filter(Boolean).join(", ");
+}
+
 function reportingOwners(xml: string): InsiderFilingDisclosure["reportingOwners"] {
   return [...xml.matchAll(/<(?:[\w.-]+:)?reportingOwner(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?reportingOwner\s*>/gi)]
-    .map((match) => ({ name: tagText(match[1]!, "rptOwnerName"), cik: tagText(match[1]!, "rptOwnerCik"), title: tagText(match[1]!, "officerTitle") }));
+    .map((match) => ({ name: tagText(match[1]!, "rptOwnerName"), cik: tagText(match[1]!, "rptOwnerCik"), title: ownerTitle(match[1]!) }));
 }
 
 function disclosureText(xml: string): string {
@@ -72,6 +90,7 @@ export function parseForm4Disclosure(xml: string): InsiderFilingDisclosure | nul
     footnotes: [...xml.matchAll(/<(?:[\w.-]+:)?footnote\s[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?footnote\s*>/gi)]
       .map((match) => ({ id: match[1]!, text: disclosureText(match[2]!) })),
     remarks: disclosureText(tagContent(xml, "remarks") ?? "") || null,
+    hasTransactionLines: /<(?:[\w.-]+:)?(?:nonDerivative|derivative)Transaction(?:\s|>)/i.test(xml),
   };
 }
 

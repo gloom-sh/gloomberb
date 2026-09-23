@@ -30,8 +30,12 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "insider", header: "Insider" },
   { key: "title", header: "Title" },
   { key: "security", header: "Security" },
-  { key: "isDerivative", header: "Derivative" },
-  { key: "side", header: "Side" },
+  {
+    key: "side",
+    header: "Side",
+    // A filing without transaction lines, matching the pane's "Form 4 disclosure" row.
+    format: (value, row) => typeof value === "string" ? value : row.status === "disclosure" ? "DISCLOSURE" : "-",
+  },
   {
     key: "shares",
     header: "Shares",
@@ -48,7 +52,7 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
     key: "totalValue",
     header: "Value",
     align: "right",
-    format: (value) => value == null ? "-" : formatCurrency(Number(value)),
+    format: (value) => value == null ? "-" : `$${formatCompact(Number(value))}`,
   },
 ];
 

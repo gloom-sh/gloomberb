@@ -45,6 +45,14 @@ describe("Form 4 transaction parsing", () => {
     expect(buildInsiderRows(parseInsiderFiling(filing, "<ownershipDocument/>"))[0]?.status).toBe("unavailable");
   });
 
+  test("a director without an officer title is labeled, and a Form 4 without transaction lines is a disclosure, not a parse failure", () => {
+    const director = `<reportingOwner><reportingOwnerId><rptOwnerName>DIRECTOR A</rptOwnerName><rptOwnerCik>9</rptOwnerCik></reportingOwnerId><reportingOwnerRelationship><isDirector>1</isDirector><officerTitle></officerTitle></reportingOwnerRelationship></reportingOwner>`;
+    expect(parseForm4Xml(`<ownershipDocument>${director}${transaction("S", "Common Stock", "10", "5")}</ownershipDocument>`)[0]?.title).toBe("Director");
+    const exit = parseInsiderFiling(filing, `<ownershipDocument>${owner}<remarks>No longer subject to Section 16.</remarks></ownershipDocument>`);
+    expect(buildInsiderRows(exit)[0]).toMatchObject({ status: "disclosure", remarks: "No longer subject to Section 16." });
+    expect(buildInsiderSummary(exit, new Date("2026-09-10").getTime())).toBe("Loaded filings, last 90 days: no parsed non-derivative buys/sales.");
+  });
+
   test("summary excludes exercises and gifts, separates securities, and exposes missing sale prices", () => {
     const xml = `<ownershipDocument>${owner}
       ${transaction("S", "Class A", "100", "10")}${transaction("S", "Class A", "25", "")}
