@@ -54,6 +54,23 @@ test("Yahoo preserves report currency and calculates operating margin from opera
 });
 
 
+test("Yahoo market cap moves from its dated session to the quote's price", async () => {
+  // 0700.HK after the 2026-09-23 close: the series still holds 09-22's close.
+  const load = (asOfDate: string) => loadYahooTickerFinancials("0700.HK", {
+    providerId: "yahoo", fetchAssetProfile: async () => undefined,
+    fetchChart: async () => ({ meta: { currency: "HKD", regularMarketPrice: 441 }, history: [
+      { date: new Date("2026-09-22T01:30:00Z"), close: 451.6 }, { date: new Date("2026-09-23T01:30:00Z"), close: 441 },
+    ] }),
+    fetchExtendedHoursData: async () => ({}), fetchQuoteSupplement: async () => ({}),
+    fetchTimeseries: async () => [{ meta: { type: ["trailingMarketCap"] }, trailingMarketCap: [
+      { asOfDate, currencyCode: "HKD", reportedValue: { raw: 4_068_146_293_411 } },
+    ] }],
+  });
+  expect((await load("2026-09-22")).quote?.marketCap).toBeCloseTo(3_972_658_626_560, -7);
+  // Without a close on the series' date the value stays as dated.
+  expect((await load("2026-09-19")).quote?.marketCap).toBe(4_068_146_293_411);
+});
+
 test("Yahoo never overwrites statement currency while adding another metric", () => {
   expect(buildYahooStatements({
     annualTotalRevenue: [{ asOfDate: "2025-12-31", value: 3000, currency: "TWD" }],

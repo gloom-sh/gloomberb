@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooDividends, mapYahooEarningsHistory, mapYahooSplits, yahooRawDate } from "./mappers";
+import { cleanYahooDividendAmounts, extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooDividends, mapYahooEarningsHistory, mapYahooSplits, yahooRawDate } from "./mappers";
 import { loadYahooCorporateActions } from "./quote-summary";
 import type { ChartResult } from "./types";
 
@@ -27,6 +27,16 @@ describe("Yahoo mappers", () => {
       expect(mapYahooDividends(events, meta)).toEqual([{ exDate: expected, amount: 0.25 }]);
       expect(mapYahooSplits(events, meta)).toEqual([{ date: expected, description: "1:10 split", ratio: 0.1, fromFactor: 10, toFactor: 1 }]);
     }
+  });
+
+  test("reads dividend residue as the declared cent amount and keeps finer declared amounts", () => {
+    expect(cleanYahooDividendAmounts([7.000001, 6.000036, 5, 3.999637, 4.000138, 3.49979, 2.749821]))
+      .toEqual([7, 6, 5, 4, 4, 3.5, 2.75]);
+    // Converted, four-decimal and fund amounts away from a cent stay.
+    expect(cleanYahooDividendAmounts([2.0301435])).toEqual([2.0301435]);
+    expect(cleanYahooDividendAmounts([2.0301435, 7.000001])).toEqual([2.0301435, 7]);
+    expect(cleanYahooDividendAmounts([0.2475, 0.0502, 0.180345, 0.123456, 12.3412, 3.999637]))
+      .toEqual([0.2475, 0.0502, 0.180345, 0.123456, 12.3412, 3.999637]);
   });
 
   test("preserves UTC fallback and independent date-only fields without inferring a timezone", () => {

@@ -169,6 +169,26 @@ function extendedHoursReference(
   return fallback;
 }
 
+/**
+ * Yahoo's trailingMarketCap series is dated at the last completed session, so
+ * after a close it still holds the session before: 0700.HK on 2026-09-23 read
+ * 4.07T HKD from the 451.6 close of 09-22 while it closed at 441 (3.97T). The
+ * value moves to the quote's price by the close on its own date, which keeps
+ * Yahoo's share basis (every class for GOOGL). Without that close it stays as
+ * dated. Daily bars are dated in the exchange's zone (see fetchYahooChart).
+ */
+function currentMarketCap(
+  metrics: ReturnType<typeof parseYahooTimeseries>,
+  history: PricePoint[],
+  price: number,
+): number | undefined {
+  const point = latestFinancialPeriod(metrics.trailingMarketCap, (row) => row.asOfDate);
+  const value = point?.value;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const close = history.findLast((bar) => bar.date.toISOString().slice(0, 10) === point!.asOfDate)?.close;
+  return close != null && close > 0 && Number.isFinite(price) && price > 0 ? value * (price / close) : value;
+}
+
 export async function loadYahooTickerFinancials(
   symbol: string,
   loaders: YahooSnapshotLoaders,
@@ -217,7 +237,7 @@ export async function loadYahooTickerFinancials(
     changePercent: changePct,
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
-    marketCap: latest("trailingMarketCap"),
+    marketCap: currentMarketCap(metrics, history, currentPrice),
     name: yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,

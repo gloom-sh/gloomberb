@@ -76,9 +76,12 @@ export function createLocalTickerSearchCandidates(
 ): TickerSearchCandidate[] {
   return Array.from(tickers).flatMap((ticker) => {
     const symbol = normalizeTickerSymbol(ticker.metadata.ticker);
-    const hint = providerHints.get(symbol);
-    const exchangeLabel = ticker.metadata.exchange || hint?.exchange || hint?.primaryExchange;
     const savedExchange = canonicalExchange(ticker.metadata.exchange);
+    // The same symbol on another venue can be another security (MSFT's BYMA
+    // receipt, NVO on Warsaw); it must not type or route the saved listing.
+    const venueHint = providerHints.get(symbol);
+    const hint = venueHint && savedExchange && isOtherVenue(venueHint, savedExchange) ? undefined : venueHint;
+    const exchangeLabel = ticker.metadata.exchange || hint?.exchange || hint?.primaryExchange;
     const hintPrimaryExchange = canonicalExchange(hint?.primaryExchange);
     const primaryExchangeLabel = !savedExchange || !hintPrimaryExchange || savedExchange === hintPrimaryExchange
       ? hint?.primaryExchange
@@ -482,15 +485,27 @@ function getProviderHintRichness(result: InstrumentSearchResult): number {
   return score;
 }
 
+function resultVenues(result: InstrumentSearchResult): string[] {
+  return [
+    result.exchange,
+    result.primaryExchange,
+    result.brokerContract?.exchange,
+    result.brokerContract?.primaryExchange,
+  ].map((exchange) => canonicalExchange(exchange)).filter(Boolean);
+}
+
+/** A result that names a listing venue, none of them the saved one. Broker
+ * routing (SMART) names no venue. */
+function isOtherVenue(result: InstrumentSearchResult, savedExchange: string): boolean {
+  if (savedExchange === "SMART") return false;
+  const venues = resultVenues(result).filter((exchange) => exchange !== "SMART");
+  return venues.length > 0 && !venues.includes(savedExchange);
+}
+
 function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?: string): number {
   const canonicalPreferredExchange = canonicalExchange(preferredExchange);
-  const matchesPreferredExchange = canonicalPreferredExchange
-    && [
-      result.exchange,
-      result.primaryExchange,
-      result.brokerContract?.exchange,
-      result.brokerContract?.primaryExchange,
-    ].some((exchange) => canonicalExchange(exchange) === canonicalPreferredExchange);
+  const matchesPreferredExchange = !!canonicalPreferredExchange
+    && resultVenues(result).includes(canonicalPreferredExchange);
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
 }
 
