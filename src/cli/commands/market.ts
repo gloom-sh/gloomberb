@@ -93,12 +93,21 @@ function errorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : String(error);
 }
 
+function currencyMinorDigits(currency: string | undefined): number {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
 function quoteRows(results: QuoteCliRecord[]) {
   return results.map((result) => {
     const quote = result.quote;
     // Same price and move as the quote monitor: the live session's print against the daily reference.
     const display = getActiveQuoteDisplay(quote);
-    const options = { ...quoteFormatOptions(quote), minimumFractionDigits: 2 };
+    // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
+    const options = { ...quoteFormatOptions(quote), minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) };
     const price = (value: number | undefined) => (
       quote && value != null ? formatMarketPriceWithCurrency(value, quote.currency, options) : ""
     );
