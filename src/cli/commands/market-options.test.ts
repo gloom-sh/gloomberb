@@ -36,7 +36,7 @@ test("options flags a chain last observed before today's US open", async () => {
       const chain = { underlyingSymbol: "AAPL", expirationDates: [1], calls: [], puts: [], asOf };
       await options.execute(["AAPL"], cliContext(chain, Date.now(), undefined, printed));
     }
-    expect(printed[0]!.warnings).toEqual(["Chain is from the prior session (last observed 2026-09-22T19:59:59Z)"]);
+    expect(printed[0]!.warnings).toEqual(["No option trades this session yet (last trade 2026-09-22T19:59:59Z)"]);
     expect(printed[1]!.warnings).toBeUndefined();
   } finally {
     setSystemTime();

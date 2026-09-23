@@ -280,8 +280,8 @@ function optionRows(chain: OptionsChain) {
 }
 
 /**
- * After a US open, a chain last observed before it is the prior session's:
- * zero bids and yesterday's volume. The delayed feed lags the open by about
+ * After a US open, a chain whose latest trade predates it still carries the
+ * prior session's quotes and volume. The delayed feed lags the open by about
  * fifteen minutes, so this is expected early in the session.
  */
 function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: number): string | null {
@@ -290,7 +290,7 @@ function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: nu
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
   const session = getPublishedUsEquitySession(exchange || "NYSE", today);
   if (session?.kind !== "session" || now < session.open || observed >= session.open) return null;
-  return `Chain is from the prior session (last observed ${chain.asOf})`;
+  return `No option trades this session yet (last trade ${chain.asOf})`;
 }
 
 function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" | "ask"): string {
