@@ -3,12 +3,12 @@ import type { HoldingAction } from "./types";
 
 export function formatMoneyCompact(value: number | null | undefined): string {
   if (value == null) return "--";
-  return value < 0 ? `-$${formatCompact(-value)}` : `$${formatCompact(value)}`;
+  return value < 0 ? `-$${formatCompact(-value, { fixedDecimals: true })}` : `$${formatCompact(value, { fixedDecimals: true })}`;
 }
 
 export function formatShares(value: number | null | undefined): string {
   if (value == null) return "--";
-  return formatCompact(value);
+  return formatCompact(value, { fixedDecimals: true });
 }
 
 export function formatPercentMaybe(value: number | null | undefined): string {

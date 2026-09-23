@@ -9,7 +9,7 @@ import { formatCompact } from "../../../utils/format";
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
 export const debtAmount = (value: number | null) =>
-  value === null ? "--" : formatCompact(value);
+  value === null ? "--" : formatCompact(value, { fixedDecimals: true });
 export const debtPercent = (value: number | null) =>
   value === null ? "--" : `${value.toFixed(1)}%`;
 export const debtMetricValue = (metric: DebtMetric) =>
