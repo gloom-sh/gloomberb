@@ -118,9 +118,9 @@ export function buildEarningsColumns(width: number, sharedCurrency: string | nul
   const symbolWidth = 8;
   const epsWidth = shared ? 8 : 11;
   const forecastEndWidth = 10;
-  // Shared-currency ranges drop the code but must still fit four-figure EPS
-  // ("1,234.56-1,300.00") and three-figure-billion sales ("174.12B-180.55B").
-  const epsRangeWidth = shared ? 17 : 20;
+  // Shared-currency ranges drop the code; three-figure-billion sales
+  // ("174.12B-180.55B") need the extra width, EPS ranges rarely do.
+  const epsRangeWidth = shared ? 13 : 20;
   const growthWidth = 8;
   const trendWidth = shared ? 7 : 11;
   const revisionsWidth = 7;

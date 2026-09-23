@@ -47,7 +47,7 @@ describe("earnings estimate comparison basis", () => {
 
   test("shared-currency range columns fit large-cap estimates", () => {
     const large = event({
-      epsEstimate: 1250, epsLow: 1234.56, epsHigh: 1300,
+      epsEstimate: 12.5, epsLow: 12.34, epsHigh: 13,
       revenueEstimate: 177e9, revenueLow: 174.12e9, revenueHigh: 180.55e9,
     });
     for (const basis of Object.values(large.estimateBasis!)) basis!.currency = "USD";
