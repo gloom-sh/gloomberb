@@ -1037,3 +1037,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 [data-gloom-role="data-table-header-cell"][data-gloom-interactive="true"]:not([data-gloom-tinted="true"]):hover > * {
   color: var(--gloom-text) !important;
 }
+
+/* Keyboard focus. Tab walks the controls of an open dialog, and a focused
+   control shows where Enter and Space will land. Pointer focus draws nothing. */
+:where(button, a[href], summary, [role="button"], [role="radio"], [role="option"], input[type="checkbox"]):focus-visible {
+  outline: 2px solid var(--gloom-border-focused);
+  outline-offset: 1px;
+}

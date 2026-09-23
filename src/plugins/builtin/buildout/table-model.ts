@@ -9,7 +9,7 @@ import type {
   SortComparable,
   SortDirection,
 } from "./model/types";
-import { metricNumber, textOrNull, tickerSymbol } from "./format";
+import { metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
 
 export const tabs: Array<{ label: string; value: BuildoutTabId }> = [
   { label: "Companies", value: "companies" },
@@ -364,5 +364,68 @@ export function rowTickerSymbols(row: BuildoutRow): string[] {
         .filter((symbol): symbol is string => symbol != null);
     case "list":
       return [];
+  }
+}
+
+export type BuildoutOpenTarget =
+  | { kind: "ticker"; id: string; symbol: string; label: string; detail?: string }
+  | { kind: "url"; id: string; url: string; label: string; detail?: string };
+
+function tickerTargets(entries: Array<{ ticker: string | null | undefined; detail?: string | null }>): BuildoutOpenTarget[] {
+  const seen = new Set<string>();
+  const targets: BuildoutOpenTarget[] = [];
+  for (const entry of entries) {
+    const symbol = tickerSymbol(entry.ticker);
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    targets.push({ kind: "ticker", id: `ticker:${symbol}`, symbol, label: symbol, detail: textOrNull(entry.detail) ?? undefined });
+  }
+  return targets;
+}
+
+/**
+ * What `o` opens: the tickers a row's cells show, or in a detail every ticker
+ * badge and source link it draws, so none of them needs the mouse.
+ */
+export function rowOpenTargets(row: BuildoutRow | null, scope: "row" | "detail"): BuildoutOpenTarget[] {
+  if (!row || row.kind === "list") return [];
+  if (scope === "row") return tickerTargets(rowTickerSymbols(row).map((ticker) => ({ ticker })));
+  switch (row.kind) {
+    case "company": {
+      const chain = row.item.supplyChain;
+      const related = (label: string, companies: readonly { ticker?: string | null; name?: string | null }[] | undefined) => (
+        (companies ?? []).slice(0, 8).map((company) => ({
+          ticker: company.ticker,
+          detail: [label, textOrNull(company.name)].filter(Boolean).join(" · "),
+        }))
+      );
+      return tickerTargets([
+        { ticker: row.item.ticker, detail: row.item.name },
+        ...related("Supplier", chain?.suppliers),
+        ...related("Customer", chain?.customers),
+        ...related("Competitor", chain?.competitors),
+      ]);
+    }
+    case "site": {
+      const sources = [...(row.item.discoverySources ?? []), ...(row.item.projectReportSources ?? [])];
+      const links = sourceDetailEntries(sources, 3).flatMap((entry, index): BuildoutOpenTarget[] => entry.url
+        ? [{
+          kind: "url",
+          id: `url:${index}:${entry.url}`,
+          url: entry.url,
+          label: entry.domain ?? entry.url,
+          detail: textOrNull(entry.title ?? entry.note) ?? undefined,
+        }]
+        : []);
+      return [
+        ...tickerTargets([
+          { ticker: row.item.ownerTicker, detail: row.item.ownerName ? `Owner · ${row.item.ownerName}` : "Owner" },
+          ...(row.item.builders ?? []).slice(0, 12).map((builder) => ({ ticker: builder.companyTicker, detail: builder.companyName })),
+        ]),
+        ...links,
+      ];
+    }
+    case "intel":
+      return tickerTargets((row.item.companies ?? []).map((company) => ({ ticker: company.ticker, detail: company.name })));
   }
 }

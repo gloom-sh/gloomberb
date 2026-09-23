@@ -67,7 +67,9 @@ export function SegmentedControl({
     const next = enabled[nextIndex];
     if (next && next.value !== value) onChange?.(next.value);
   }, {
-    enabled: ui.kind !== "desktop-web" && focused && !!onChange,
+    // Both hosts: a desktop option holding DOM focus handles its own arrows and
+    // stops them, so the two never step twice.
+    enabled: focused && !!onChange,
     phase: "before",
     scope: shortcutScope,
     allowEditable,

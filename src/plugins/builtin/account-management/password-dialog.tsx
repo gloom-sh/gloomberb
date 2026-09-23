@@ -52,10 +52,11 @@ export function PasswordChangeDialog({
     }
   }, [confirmPassword, currentPassword, dismiss, newPassword, onChangePassword, submitting]);
 
+  // The three fields are a ring: Tab past Confirm comes back to Current.
   const cycleDialogField = useCallback((delta: number) => {
     setActiveField((field) => {
       const index = fieldOrder.indexOf(field);
-      return fieldOrder[Math.max(0, Math.min(fieldOrder.length - 1, index + delta))] ?? "current";
+      return fieldOrder[(index + delta + fieldOrder.length) % fieldOrder.length] ?? "current";
     });
   }, []);
 
@@ -65,16 +66,11 @@ export function PasswordChangeDialog({
       dismiss();
       return;
     }
-    if (isPlainKey(event, "tab") || (!event.targetEditable && isPlainKey(event, "down", "j"))) {
+    const tab = event.name === "tab" && !event.ctrl && !event.meta && !event.alt;
+    if (tab || (!event.targetEditable && isPlainKey(event, "down", "j", "up", "k"))) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      cycleDialogField(1);
-      return;
-    }
-    if (!event.targetEditable && isPlainKey(event, "up", "k")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      cycleDialogField(-1);
+      cycleDialogField((tab ? event.shift : event.name === "up" || event.name === "k") ? -1 : 1);
     }
   }, { allowEditable: true });
 
@@ -91,7 +87,7 @@ export function PasswordChangeDialog({
           type="password"
           onMouseDown={() => setActiveField("current")}
           onChange={setCurrentPassword}
-          onSubmit={() => { void submit(); }}
+          onSubmit={() => setActiveField("new")}
         />
         <TextField
           label={fieldLabel(t("New Password"), activeField === "new")}
@@ -101,7 +97,7 @@ export function PasswordChangeDialog({
           type="password"
           onMouseDown={() => setActiveField("new")}
           onChange={setNewPassword}
-          onSubmit={() => { void submit(); }}
+          onSubmit={() => setActiveField("confirm")}
         />
         <TextField
           label={fieldLabel(t("Confirm Password"), activeField === "confirm")}

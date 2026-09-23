@@ -41,6 +41,7 @@ function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationM
         : null;
     case "check-for-updates":
     case "toggle-status-bar":
+    case "open-layout-gallery":
     case "layout-undo":
     case "layout-redo":
     case "layout-gridlock":

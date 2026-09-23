@@ -3,6 +3,7 @@ import { Button, NumberField, TextField, SelectButton, Notice, type SelectContro
 import { useInputCapture, useShortcut } from "../../../public/react";
 import { Box, ScrollBox } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
+import { isPlainKey } from "../../../utils/keyboard";
 import { parseScenarioInputFields } from "./state";
 import { parseLegs, type ScenarioLeg, type ScenarioPosition, type ScenarioControls } from "./model";
 
@@ -18,7 +19,8 @@ export function ScenarioLegEditor({ leg, focused, width, onSave, onCancel }: {
   type Field = keyof typeof fields;
   const fieldIds: Field[] = ["strike", "expiration", "quantity", "price", "volatility", "multiplier"];
   const [active, setActive] = useState<Field | "side" | "direction">("strike");
-  const focusIds = [...fieldIds, "side", "direction"] as const;
+  // Tab walks the form in reading order: the Option and Position row sits on top.
+  const focusIds = ["side", "direction", ...fieldIds] as const;
   const sideControl = useRef<SelectControl>(null), directionControl = useRef<SelectControl>(null);
   const [error, setError] = useState<string | null>(null);
   // While the Option or Position choice dialog is open it owns Escape, Enter and
@@ -39,6 +41,11 @@ export function ScenarioLegEditor({ leg, focused, width, onSave, onCancel }: {
     } else if (["enter", "return", "space"].includes(event.name ?? "") && (active === "side" || active === "direction")) {
       event.preventDefault(); event.stopPropagation();
       (active === "side" ? sideControl : directionControl).current?.open();
+    } else if ((active === "side" || active === "direction") && isPlainKey(event, "left", "right", "h", "l")) {
+      // Both choices have two values, so stepping either way flips it in place.
+      event.preventDefault(); event.stopPropagation();
+      if (active === "side") setSide((current) => current === "call" ? "put" : "call");
+      else setDirection((current) => current === "sell" ? "buy" : "sell");
     } else if (event.name === "escape") {
       event.preventDefault(); event.stopPropagation(); onCancel();
     }

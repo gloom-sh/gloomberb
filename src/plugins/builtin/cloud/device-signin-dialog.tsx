@@ -50,10 +50,16 @@ export function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: stri
 export function DeviceSignInPanel({
   snapshot,
   height,
+  shortcutScope = "device-signin:browser",
 }: {
   snapshot: DeviceSignInSnapshot;
   /** Rows available to this panel; drives the degradation tiers. */
   height: number;
+  /**
+   * Scope for the browser key. A host that holds every key it does not use
+   * (the sign-in gate) passes its own, so the key runs ahead of the hold.
+   */
+  shortcutScope?: string;
 }) {
   useAppLanguage();
   const renderer = useRendererHost();
@@ -73,7 +79,7 @@ export function DeviceSignInPanel({
     if (!isPlainKey(event, "b") || !snapshot.verificationUri) return;
     event.preventDefault(); event.stopPropagation();
     void renderer.openExternal(snapshot.verificationUri).catch(() => {});
-  }, { scope: "device-signin:browser", phase: "before" });
+  }, { scope: shortcutScope, phase: "before" });
 
   // Reserve the browser button before fitting the QR, code, and status.
   const contentHeight = height - (snapshot.verificationUri ? 2 : 0);

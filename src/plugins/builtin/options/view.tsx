@@ -11,18 +11,19 @@ import {
   DataTableView,
   EmptyState,
   usePaneFooter,
+  usePaneMenuItems,
   usePaneNoticeFooter,
   QueryBar,
   Spinner,
   StatGrid,
   statGridColumns,
   statGridRows,
-  type DataTableKeyEvent,
   type StatItem,
   type QueryBarFilter,
   type DataTableVisibleRange,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
+import { useOptionalDialog, type AlertContext } from "../../../ui/dialog";
 import { useLiveQuoteEntries, useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { buildChartKey } from "../../../market-data/selectors";
 import type { ChartRequest } from "../../../market-data/request-types";
@@ -56,6 +57,7 @@ import {
   resolveChainRefreshIntervalMs,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
+import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { signedPositionDirection } from "../portfolio-list/position-metrics";
 import { optionMarketReference } from "./market-reference";
@@ -69,6 +71,11 @@ import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/l
 
 /** The summary strip and analytics recompute from live quotes at most this often. */
 const OPTIONS_SUMMARY_THROTTLE_MS = 1_000;
+/** Step the expiry strip; h/l and the arrows do too when no parent tab strip owns them. */
+const EXPIRY_PREVIOUS_KEY = "[";
+const EXPIRY_NEXT_KEY = "]";
+/** Switches the cursor row between its call and its put, as clicking either side does. */
+const SIDE_KEY = "x";
 
 function formatRatio(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
@@ -116,7 +123,7 @@ function optionsSummaryItems({ summary, enrichment, currency, ivRank }: {
   ];
 }
 
-export function OptionsView({ width, height, focused, onCapture = () => {}, ivRank: showIvRank = false }: OptionsViewProps) {
+export function OptionsView({ width, height, focused, nestedInTabs = false, ivRank: showIvRank = false }: OptionsViewProps) {
   const { ticker: savedTicker, symbol: boundSymbol, financials } = usePaneTicker();
   // A shared layout binds a bare symbol; without a saved record the chain still has its underlying.
   const fallbackExchange = financials?.quote?.listingExchangeName ?? financials?.quote?.exchangeName ?? "";
@@ -139,9 +146,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     key: string;
     range: DataTableVisibleRange;
   } | null>(null);
-  const [interactive, setInteractive] = useState(false);
   const userSelectedStrikeRef = useRef(false);
-  const onCaptureRef = useRef(onCapture);
   const target = resolveOptionsTarget(ticker);
   const isOpt = target?.isOptionTicker ?? false;
   const parsed = target?.parsedOption ?? null;
@@ -231,14 +236,23 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   // being clicked before mouse-up, cancelling selection of an offscreen expiry.
   const expirationPickRef = useRef<(value: string) => void>(() => {});
   const { nativePaneChrome } = useUiCapabilities();
+  const selectedExpirationIndex = selectedExpiration == null ? -1 : expirationDates.indexOf(selectedExpiration);
   const expirationFilters = useMemo<QueryBarFilter[]>(() => [{
     id: "expiration",
     label: "Exp",
     inline: true,
     value: String(selectedExpiration),
-    options: expirationDates.map((ts) => ({ label: formatExpDate(ts), value: String(ts) })),
+    // The dates either side name the key that steps to them: a terminal
+    // label prefix, a desktop tooltip.
+    options: expirationDates.map((ts, index) => ({
+      label: formatExpDate(ts),
+      value: String(ts),
+      hint: selectedExpirationIndex < 0 ? undefined
+        : index === selectedExpirationIndex - 1 ? EXPIRY_PREVIOUS_KEY
+          : index === selectedExpirationIndex + 1 ? EXPIRY_NEXT_KEY : undefined,
+    })),
     onChange: (value: string) => expirationPickRef.current(value),
-  }], [expirationDates, selectedExpiration]);
+  }], [expirationDates, selectedExpiration, selectedExpirationIndex]);
   // A scheduled refresh of a chain already on screen is quiet: the in-session
   // cadence would otherwise blink the footer every few seconds.
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
@@ -251,29 +265,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     ?? (initialChainEntry?.phase === "error" || expirationChainEntry?.phase === "error"
       ? "Failed to load options" : null);
 
-  useEffect(() => {
-    onCaptureRef.current = onCapture;
-  }, [onCapture]);
-
-  const enterInteractive = useCallback(() => {
-    if (!interactive) {
-      setInteractive(true);
-      onCaptureRef.current(true);
-    }
-  }, [interactive]);
-
-  const exitInteractive = useCallback(() => {
-    if (interactive) {
-      setInteractive(false);
-      onCaptureRef.current(false);
-    }
-  }, [interactive]);
-
   const selectExpiration = useCallback((expiration: number) => {
     updatePaneSettings({ expiration, expirationTargetKey: selectionTargetKey });
   }, [selectionTargetKey, updatePaneSettings]);
   expirationPickRef.current = (value: string) => {
-    enterInteractive();
     selectExpiration(Number(value));
   };
   const selectAdjacentExpiration = useCallback((offset: -1 | 1) => {
@@ -285,8 +280,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   useEffect(() => {
     userSelectedStrikeRef.current = false;
     setScrollToIndexAlign("nearest");
-    setInteractive(false);
-    onCaptureRef.current(false);
     setStrikeIdx(0);
     setCalcSide(null);
     setContractSelection(null);
@@ -412,13 +405,21 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   usePaneNoticeFooter({ registrationId: "options-enrichment-warnings", focused,
     notices: [...(enrichment?.warnings ?? []), enrichmentState.error, enrichment?.error]
       .filter((value): value is string => !!value) });
+  const dialog = useOptionalDialog();
+  // The footer tooltip's detail, for the keyboard and the terminal (which has
+  // no tooltip): the pane menu opens it in a dialog.
+  const showAnalyticsAsOf = useCallback(() => {
+    if (!dialog || !enrichment?.asOf) return;
+    const rows = analyticsAsOfRows(enrichment);
+    void dialog.alert({
+      closeOnClickOutside: true,
+      content: (ctx: AlertContext) => <AnalyticsAsOfDialog {...ctx} rows={rows} />,
+    }).catch(() => {});
+  }, [dialog, enrichment]);
   usePaneFooter("options-enrichment", () => ({ info: [
     ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),
     ...(enrichment?.asOf ? [{ id: "enrichment-asof",
-      title: [`Selected: ${enrichment.asOf}`,
-        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"}`,
-        `Treasury: ${enrichment.rateAsOf.join(", ") || "unavailable"}`,
-        `Underlying mark: ${enrichment.spot} as of ${enrichment.spotAsOf ?? "unavailable"}`].join("\n"),
+      title: analyticsAsOfRows(enrichment).map((row) => `${row.label}: ${row.value}`).join("\n"),
       parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
   ] }), [enrichmentState.loading, enrichment]);
   const optionQuoteCoverage = useMemo(
@@ -482,12 +483,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
         currency: ticker.metadata.currency, type: ticker.metadata.assetCategory ?? "STK" },
       values: { expiration: String(selectedExpiration) } });
   }, [createPaneFromTemplate, ticker, instrument, selectedExpiration]);
-  const footerHints = useMemo(() => [
-    ...(calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : []),
-    ...(scenarioAvailable ? [{ id: "scenario", key: "a", label: "dd to OSA", onPress: openScenario }] : []),
-    ...(ticker && selectedExpiration != null ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
-  ], [calcParams, openCalculator, scenarioAvailable, openScenario, ticker, selectedExpiration, openSurface]);
-
   const selectContract = useCallback((row: OptionTableRow, index: number, side?: OptionSide, preservePointer = false) => {
     userSelectedStrikeRef.current = true;
     setScrollToIndexAlign("nearest");
@@ -501,13 +496,56 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     }
   }, [calcSide, parsed?.side, strikeSelectionKey]);
 
+  // [x] is the keyboard's click on the other half of the cursor row: it picks
+  // that contract for [c]alc, [a]dd and the status bar, and later rows keep it.
+  const sideTarget: OptionSide | null = !selectedRow ? null
+    : selectedSide === "put" ? (selectedRow.call ? "call" : null)
+      : selectedRow.put ? "put" : null;
+  const switchSide = useCallback(() => {
+    if (!selectedRow || !sideTarget) return;
+    selectContract(selectedRow, selectedStrikeIdx, sideTarget);
+    setCalcSide(sideTarget);
+  }, [selectContract, selectedRow, selectedStrikeIdx, sideTarget]);
+
+  const footerHints = useMemo(() => [
+    ...(sideTarget ? [{ id: "side", key: SIDE_KEY, label: ` ${sideTarget}`, title: sideTarget === "put" ? "Select Put" : "Select Call", onPress: switchSide }] : []),
+    ...(calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : []),
+    ...(scenarioAvailable ? [{ id: "scenario", key: "a", label: "dd to OSA", onPress: openScenario }] : []),
+    ...(ticker && selectedExpiration != null ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
+  ], [sideTarget, switchSide, calcParams, openCalculator, scenarioAvailable, openScenario, ticker, selectedExpiration, openSurface]);
+
+  // Back to where the chain opens: the held contract's strike, else the money.
+  const defaultStrikeIndex = strikes.length === 0 ? -1 : (() => {
+    const targetStrike = resolveDefaultStrikeTarget(parsed?.strike, spot);
+    return targetStrike == null ? -1 : findNearestStrikeIndex(strikes, targetStrike);
+  })();
+  const goToDefaultStrike = useCallback(() => {
+    const row = rows[defaultStrikeIndex];
+    if (!row) return;
+    selectContract(row, defaultStrikeIndex);
+    setScrollToIndexAlign("center");
+    setAutoScrollVersion((version) => version + 1);
+  }, [defaultStrikeIndex, rows, selectContract]);
+
+  usePaneMenuItems("options-chain", () => [
+    { id: "expiry-previous", label: "Previous Expiry", accelerator: EXPIRY_PREVIOUS_KEY,
+      enabled: selectedExpirationIndex > 0, onSelect: () => selectAdjacentExpiration(-1) },
+    { id: "expiry-next", label: "Next Expiry", accelerator: EXPIRY_NEXT_KEY,
+      enabled: selectedExpirationIndex >= 0 && selectedExpirationIndex < expirationDates.length - 1,
+      onSelect: () => selectAdjacentExpiration(1) },
+    { id: "default-strike", label: parsed ? "Go to Held Strike" : "Go to ATM Strike",
+      enabled: defaultStrikeIndex >= 0, onSelect: goToDefaultStrike },
+    ...(enrichment?.asOf && dialog ? [{ id: "analytics-as-of", label: "Analytics As Of…", onSelect: showAnalyticsAsOf }] : []),
+  ], [defaultStrikeIndex, dialog, enrichment?.asOf, expirationDates.length, goToDefaultStrike, parsed,
+    selectAdjacentExpiration, selectedExpirationIndex, showAnalyticsAsOf]);
+
   const renderCell = useCallback((
     row: OptionTableRow,
     column: OptionColumn,
     index: number,
     rowState: { selected: boolean },
   ) => {
-    const cell = renderOptionCell(row, column, index, rowState);
+    const cell = renderOptionCell(row, column, index, rowState, selectedSide);
     if (!column.side) return cell;
     // Clicking a call or put cell is the mouse way to choose which contract
     // [c]alc opens, so it has to select the row itself as well.
@@ -515,12 +553,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     return {
       ...cell,
       onMouseDown: () => {
-        enterInteractive();
         selectContract(row, index, side);
         setCalcSide(side);
       },
     };
-  }, [enterInteractive, selectContract]);
+  }, [selectContract, selectedSide]);
 
   useOptionsAccessFooter({
     chain,
@@ -552,110 +589,38 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     setAutoScrollVersion((version) => version + 1);
   }, [selectedExpiration, parsed?.strike, spot, strikes]);
 
+  // [ and ] step the expiry strip. A chain in its own pane also takes h/l and
+  // the arrows for it; in a research tab those stay with the tab strip.
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
     if (event.ctrl || event.meta || event.alt || event.shift) return;
 
-    const isEnter = event.name === "enter" || event.name === "return";
-    const isEscape = event.name === "escape" || event.name === "esc";
-    if (isEnter && !interactive) {
+    const expiryStep = isPlainKey(event, EXPIRY_PREVIOUS_KEY) || (!nestedInTabs && isPlainKey(event, "h", "left")) ? -1
+      : isPlainKey(event, EXPIRY_NEXT_KEY) || (!nestedInTabs && isPlainKey(event, "l", "right")) ? 1 : 0;
+    if (expiryStep) {
       event.preventDefault();
       event.stopPropagation();
-      enterInteractive();
-      return;
-    }
-    if (isEscape && interactive) {
-      event.preventDefault();
-      event.stopPropagation();
-      exitInteractive();
-      return;
-    }
-    if (interactive && isPlainKey(event, "h", "left")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectAdjacentExpiration(-1);
-      return;
-    }
-    if (interactive && isPlainKey(event, "l", "right")) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectAdjacentExpiration(1);
+      selectAdjacentExpiration(expiryStep);
       return;
     }
     if (isPlainKey(event, "s") && ticker && selectedExpiration != null) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
+      event.preventDefault();
+      event.stopPropagation();
       openSurface();
-      return true;
+      return;
     }
     if (isPlainKey(event, "c") && calcParams) {
       event.preventDefault();
       event.stopPropagation();
       openCalculator();
+      return;
     }
     if (isPlainKey(event, "a") && scenarioAvailable) {
-      event.preventDefault(); event.stopPropagation(); openScenario();
+      event.preventDefault();
+      event.stopPropagation();
+      openScenario();
     }
   }, { enabled: focused, phase: "before" });
-
-  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    const isEnter = event.name === "enter" || event.name === "return";
-
-    if (isEnter && !interactive) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      enterInteractive();
-      return true;
-    }
-    if (event.name === "escape" && interactive) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      exitInteractive();
-      return true;
-    }
-    if (interactive && isPlainKey(event, "h", "left")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      selectAdjacentExpiration(-1);
-      return true;
-    }
-    if (interactive && isPlainKey(event, "l", "right")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      selectAdjacentExpiration(1);
-      return true;
-    }
-
-    if (isPlainKey(event, "s") && ticker && selectedExpiration != null) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openSurface();
-      return true;
-    }
-    if (isPlainKey(event, "c") && calcParams) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openCalculator();
-      return true;
-    }
-    if (isPlainKey(event, "a") && scenarioAvailable) {
-      event.preventDefault?.(); event.stopPropagation?.(); openScenario(); return true;
-    }
-
-    return false;
-  }, [
-    calcParams,
-    enterInteractive,
-    exitInteractive,
-    interactive,
-    openCalculator,
-    openScenario,
-    scenarioAvailable,
-    openSurface,
-    ticker,
-    selectedExpiration,
-    selectAdjacentExpiration,
-  ]);
 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view options." />;
@@ -690,7 +655,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   const inset = nativePaneChrome ? 1 : 0;
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={nativePaneChrome ? 0 : 1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
+    <Box flexDirection="column" flexGrow={1} paddingX={nativePaneChrome ? 0 : 1}>
       <QueryBar width={Math.max(1, width - 2)} filters={expirationFilters} />
 
       {summaryRowCount > 0 && (
@@ -712,7 +677,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
           selectedId: selectedContract ? String(selectedContract.strike) : selectedRow ? String(selectedRow.strike) : null,
           getId: (row) => String(row.strike),
           onChange: (_id, row, index, reason) => {
-            enterInteractive();
             // A side-cell handler owns its precise contract choice. A later
             // row pointer callback must not replace it with the prior side.
             selectContract(row, index, undefined, reason === "pointer");
@@ -721,16 +685,13 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
         onCursorChange={() => {
           userSelectedStrikeRef.current = true;
           setScrollToIndexAlign("nearest");
-          enterInteractive();
         }}
-        onRootKeyDown={handleTableKeyDown}
         headerScrollId="options-table-header-scroll"
         bodyScrollId="options-table-body-scroll"
         columns={optionColumns}
         items={rows}
         sortColumnId={null}
         sortDirection="asc"
-        onTableMouseDown={enterInteractive}
         onBodyScrollActivity={(source) => {
           if (source !== "programmatic") userSelectedStrikeRef.current = true;
         }}

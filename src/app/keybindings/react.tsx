@@ -13,8 +13,11 @@ export function getDefaultKeybindings(): ResolvedKeybindings {
 }
 
 /** Resolves the config once per change; the app passes the result down and into its own hooks. */
-export function useResolvedKeybindings(config: KeybindingsConfig | undefined): ResolvedKeybindings {
-  return useMemo(() => resolveKeybindings(config), [config]);
+export function useResolvedKeybindings(
+  config: KeybindingsConfig | undefined,
+  host?: "terminal" | "desktop",
+): ResolvedKeybindings {
+  return useMemo(() => resolveKeybindings(config, { host }), [config, host]);
 }
 
 export function KeybindingsProvider({

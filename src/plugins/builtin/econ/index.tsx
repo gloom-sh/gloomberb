@@ -4,9 +4,12 @@ import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
   QueryBar,
+  usePaneFooter,
   type DataTableCell,
+  type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
+import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
@@ -185,38 +188,21 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setCountryFilter(value);
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
-  const cycleImpactFilter = useCallback(() => {
-    setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + 1) % FILTER_CYCLE.length]!);
+  const cycleImpactFilter = useCallback((step: 1 | -1) => {
+    setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + step + FILTER_CYCLE.length) % FILTER_CYCLE.length]!);
     setSelectedKey(null);
   }, [setImpactFilter, setSelectedKey]);
-  const cycleCountryFilter = useCallback(() => {
-    setCountryFilter((prev) => COUNTRY_CYCLE[(COUNTRY_CYCLE.indexOf(prev) + 1) % COUNTRY_CYCLE.length]!);
+  const cycleCountryFilter = useCallback((step: 1 | -1) => {
+    setCountryFilter((prev) => COUNTRY_CYCLE[(COUNTRY_CYCLE.indexOf(prev) + step + COUNTRY_CYCLE.length) % COUNTRY_CYCLE.length]!);
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
 
-  const handleRootKeyDown = useCallback((event: {
-    name?: string;
-    preventDefault?: () => void;
-    stopPropagation?: () => void;
-  }) => {
-    if (event.name === "r") {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      load(true);
-      return true;
-    } else if (event.name === "f") {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      cycleImpactFilter();
-      return true;
-    } else if (event.name === "c") {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      cycleCountryFilter();
-      return true;
-    }
-    return false;
-  }, [cycleCountryFilter, cycleImpactFilter, load]);
+  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (!isPlainKey(event, "r")) return false;
+    event.stopPropagation?.();
+    load(true);
+    return true;
+  }, [load]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
     const timeWidth = 6;
@@ -268,6 +254,19 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     error,
     info: calendarStatus,
   });
+  // The filter keys step through the choices; Shift steps back. The pane menu
+  // also offers each filter as a direct choice.
+  const listOpen = !detailEvent;
+  usePaneFooter("econ-calendar:filters", () => listOpen ? {
+    hints: [
+      { id: "impact", key: "f", label: " impact", title: "Next Impact", onPress: () => cycleImpactFilter(1) },
+      { id: "region", key: "c", label: " region", title: "Next Region", onPress: () => cycleCountryFilter(1) },
+    ],
+    keys: [
+      { id: "impact-back", key: "Shift+F", label: "", onPress: () => cycleImpactFilter(-1) },
+      { id: "region-back", key: "Shift+C", label: "", onPress: () => cycleCountryFilter(-1) },
+    ],
+  } : null, [cycleCountryFilter, cycleImpactFilter, listOpen]);
 
   const openDisplayRow = useCallback((row: DisplayRow) => {
     if (row.kind !== "event") return;

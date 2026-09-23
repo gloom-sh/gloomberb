@@ -6,7 +6,7 @@ import {
   YAHOO_SHORT_INTEREST_CONNECTION_ID,
 } from "./client";
 import { shortInterestHeadless } from "./headless";
-import { ShortInterestSurface } from "./surface";
+import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
 import { shortVolumeSettings } from "../short-volume";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
@@ -30,7 +30,7 @@ export const shortInterestModule: PluginModule = {
       id: "short-interest",
       name: "Short Interest",
       order: 36,
-      component: ShortInterestSurface,
+      component: ShortInterestResearchTab,
       instruments: ["equity"],
       isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });

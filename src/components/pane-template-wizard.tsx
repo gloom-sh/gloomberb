@@ -4,8 +4,8 @@ import { type InputRenderable, type TextareaRenderable } from "../ui";
 import { type AlertContext, type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import type { WizardStep } from "../types/plugin";
 import { colors } from "../theme/colors";
-import { isPlainKey } from "../utils/keyboard";
 import { Button, DialogFrame, ListView, TextField } from "./ui";
+import { listCursorMove } from "./ui/list-view";
 import { t } from "../i18n";
 
 export function PaneTemplateInfoStep({
@@ -161,10 +161,10 @@ export function PaneTemplateSelectStep({
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) {
-      setSelectedIndex((index) => Math.max(0, index - 1));
-    } else if (isPlainKey(event, "down", "j")) {
-      setSelectedIndex((index) => Math.min(options.length - 1, index + 1));
+    // The list shows every option, so a page is the whole list.
+    const move = listCursorMove(event, options.length);
+    if (move) {
+      setSelectedIndex((index) => move(options, index));
     } else if (event.name === "return" || event.name === "enter") {
       resolve(options[selectedIndex]?.value ?? "");
     } else if (event.name === "escape") {

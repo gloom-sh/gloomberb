@@ -17,13 +17,25 @@ import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hook
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, Textarea, TextAttributes, type TextareaRenderable, useRendererHost, useUiCapabilities } from "../../../ui";
+import {
+  Box,
+  ScrollBox,
+  Text,
+  Textarea,
+  TextAttributes,
+  useRendererHost,
+  useUiCapabilities,
+  type BoxRenderable,
+  type ScrollBoxRenderable,
+  type TextareaRenderable,
+} from "../../../ui";
 import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
+import { afterLayout, revealInScrollBox } from "../cloud/reveal-in-scroll-box";
 import {
   AccountTextField,
   CheckboxRow,
@@ -505,12 +517,13 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[nextTab][0] ?? "username");
   }, []);
   // Signed out, every tab is the same sign-in wall, so the strip stays away.
+  // h/l and the arrows switch tabs; the portfolio picker keeps them while it is
+  // the active field, and text fields keep them for the cursor.
   const tabsInHeader = usePaneHeaderTabs(hasSession || apiClient.isSignedIn() ? {
     tabs: accountTabs,
     activeValue: activeTab,
     onSelect: selectTab,
     focused,
-    keyboardNavigation: false,
   } : null);
   // The strip and the gap the column puts under it.
   const tabRows = tabsInHeader ? 0 : 2;
@@ -549,13 +562,39 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     portfolioSelectRef.current?.open();
   }, []);
 
+  // A field the keyboard moves to can sit below the fold in a short pane.
+  // Pointer moves (a hover over the stats row, a click) leave the scroll alone.
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const revealActiveFieldRef = useRef(false);
   const cycleField = useCallback((delta: number) => {
     setActiveField((current) => {
       const index = fieldOrder.indexOf(current);
       const nextIndex = Math.max(0, Math.min(fieldOrder.length - 1, index + delta));
-      return fieldOrder[nextIndex] ?? "username";
+      const next = fieldOrder[nextIndex] ?? "username";
+      if (next !== current) revealActiveFieldRef.current = true;
+      return next;
     });
   }, [fieldOrder]);
+  const fieldNodes = useRef(new Map<AccountFieldKey, BoxRenderable>());
+  const fieldNodeRef = useMemo(() => {
+    const refs = new Map<AccountFieldKey, (node: BoxRenderable | null) => void>();
+    return (key: AccountFieldKey) => {
+      let ref = refs.get(key);
+      if (!ref) {
+        ref = (node: BoxRenderable | null) => {
+          if (node) fieldNodes.current.set(key, node);
+          else fieldNodes.current.delete(key);
+        };
+        refs.set(key, ref);
+      }
+      return ref;
+    };
+  }, []);
+  useEffect(() => {
+    if (!revealActiveFieldRef.current) return;
+    revealActiveFieldRef.current = false;
+    return afterLayout(() => revealInScrollBox(scrollRef.current, fieldNodes.current.get(activeField) ?? null));
+  }, [activeField]);
 
   const cyclePortfolio = useCallback((delta: number) => {
     const optionIds = portfolioOptionIds(portfolios);
@@ -701,7 +740,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     cyclePortfolio,
     deleteAccount,
     draftRef,
-    focused: focused && activeTab !== "teams",
+    fieldOrder,
+    // Behind the sign-in wall the fields are not there, and Enter is the wall's.
+    focused: focused && activeTab !== "teams" && (hasSession || apiClient.isSignedIn()),
     openPasswordDialog,
     openPortfolioDialog: openPortfolioPicker,
     openUpgrade,
@@ -724,10 +765,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
           focused={focused}
           variant="pill"
           compact
-          keyboardNavigation={false}
         />
       )}
-      <ScrollBox height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
+      <ScrollBox ref={scrollRef} height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
         <Box flexDirection="column" width={contentWidth} gap={1}>
           {activeTab === "profile" ? (
             <>
@@ -736,6 +776,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   label={t("Public Profile")}
                   checked={draft.profilePublic}
                   active={activeField === "profilePublic"}
+                  nodeRef={fieldNodeRef("profilePublic")}
                   width={fieldWidth}
                   onFocus={() => setActiveField("profilePublic")}
                   onChange={(checked) => setDraftValue("profilePublic", checked)}
@@ -744,6 +785,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   label={t("Incoming DMs")}
                   checked={draft.acceptUnknownDms}
                   active={activeField === "acceptUnknownDms"}
+                  nodeRef={fieldNodeRef("acceptUnknownDms")}
                   width={fieldWidth}
                   onFocus={() => setActiveField("acceptUnknownDms")}
                   onChange={(checked) => setDraftValue("acceptUnknownDms", checked)}
@@ -753,6 +795,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               <FieldRow twoColumns={twoColumns}>
                 <AccountTextField
                   fieldKey="username"
+                  nodeRef={fieldNodeRef("username")}
                   label={t("Username")}
                   value={draft.username}
                   placeholder={t("username")}
@@ -765,6 +808,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 />
                 <AccountTextField
                   fieldKey="name"
+                  nodeRef={fieldNodeRef("name")}
                   label={t("Full Name")}
                   value={draft.name}
                   placeholder={t("Full name")}
@@ -780,6 +824,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               <FieldRow twoColumns={twoColumns}>
                 <AccountTextField
                   fieldKey="company"
+                  nodeRef={fieldNodeRef("company")}
                   label={t("Company")}
                   value={draft.company}
                   placeholder={t("Company")}
@@ -792,6 +837,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 />
                 <AccountTextField
                   fieldKey="title"
+                  nodeRef={fieldNodeRef("title")}
                   label={t("Title")}
                   value={draft.title}
                   placeholder={t("Title")}
@@ -807,6 +853,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               <FieldRow twoColumns={twoColumns}>
                 <AccountTextField
                   fieldKey="publicEmail"
+                  nodeRef={fieldNodeRef("publicEmail")}
                   label={t("Public Email")}
                   value={draft.publicEmail}
                   placeholder="public@example.com"
@@ -819,6 +866,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 />
                 <AccountTextField
                   fieldKey="xAccount"
+                  nodeRef={fieldNodeRef("xAccount")}
                   label={t("X Account")}
                   value={draft.xAccount}
                   placeholder={t("handle")}
@@ -832,6 +880,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               </FieldRow>
 
               <Box
+                ref={fieldNodeRef("bio")}
                 flexDirection="row"
                 width={formWidth}
                 gap={1}
@@ -880,6 +929,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 width={formWidth}
                 disclaimer={draft.sharedPortfolioId ? t("Only 1Y return and SPY Beta are shared. Positions are not shared.") : null}
                 controlRef={portfolioSelectRef}
+                nodeRef={fieldNodeRef("sharedPortfolioId")}
                 onFocus={() => setActiveField("sharedPortfolioId")}
                 onSelect={(selected) => {
                   setActiveField("sharedPortfolioId");
@@ -899,6 +949,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 label={t("Offline Chat")}
                 checked={draft.chatEmailNotificationsEnabled}
                 active={activeField === "chatEmailNotificationsEnabled"}
+                nodeRef={fieldNodeRef("chatEmailNotificationsEnabled")}
                 description={t("Replies and private messages while offline.")}
                 width={formWidth}
                 onFocus={() => setActiveField("chatEmailNotificationsEnabled")}
@@ -908,6 +959,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 label={t("Weekly Roundup")}
                 checked={draft.weeklyRoundupEnabled}
                 active={activeField === "weeklyRoundupEnabled"}
+                nodeRef={fieldNodeRef("weeklyRoundupEnabled")}
                 description={t("Friday after market close.")}
                 width={formWidth}
                 onFocus={() => setActiveField("weeklyRoundupEnabled")}
@@ -917,12 +969,13 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 label={t("Smart Alerts")}
                 checked={draft.positionAlertsEnabled}
                 active={activeField === "positionAlertsEnabled"}
+                nodeRef={fieldNodeRef("positionAlertsEnabled")}
                 description={t("Unusual portfolio or watchlist moves.")}
                 width={formWidth}
                 onFocus={() => setActiveField("positionAlertsEnabled")}
                 onChange={(checked) => setDraftValue("positionAlertsEnabled", checked)}
               />
-              <Box flexDirection="row" gap={1} style={{ marginTop: 8 }}>
+              <Box ref={fieldNodeRef("emailAlertsOffAction")} flexDirection="row" gap={1} style={{ marginTop: 8 }}>
                 <Button
                   label={busy === "alerts" ? t("Turning Off...") : t("Turn Off All")}
                   active={activeField === "emailAlertsOffAction"}
@@ -945,7 +998,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 width={contentWidth}
                 activePlan={planAccess.hasProAccess ? "pro" : "free"}
               />
-              <Box flexDirection="row">
+              <Box ref={fieldNodeRef("upgradeAction")} flexDirection="row">
                 <Button
                   label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
                   variant={planAccess.isPayingPro ? "secondary" : "primary"}

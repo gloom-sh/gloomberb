@@ -88,13 +88,18 @@ export function useCommandBarEnvironment() {
     cellHeightPx = 18,
     nativeWindowChrome,
     titleBarOverlay,
+    windowControls,
   } = useUiCapabilities();
   const nativePaneChrome = nativePaneChromeCapability === true;
+  // Same test the header uses before it draws its own window buttons.
+  const drawsWindowControls = (nativeWindowChrome ?? titleBarOverlay) === true && windowControls === "windows";
   const availableCommands = useMemo(
-    () => nativePaneChrome
-      ? commands.filter((command) => command.id !== "cycle-chart-renderer")
-      : commands,
-    [nativePaneChrome],
+    () => commands.filter((command) => {
+      if (command.id === "cycle-chart-renderer") return !nativePaneChrome;
+      if (command.id === "minimize-window" || command.id === "maximize-window") return drawsWindowControls;
+      return true;
+    }),
+    [drawsWindowControls, nativePaneChrome],
   );
   const skipTickerSearchDebounceRef = useRef(false);
   const nativeListScrollRef = useRef<ScrollBoxRenderable | null>(null);

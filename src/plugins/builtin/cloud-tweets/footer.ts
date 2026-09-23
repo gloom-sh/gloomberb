@@ -12,11 +12,13 @@ export function useTwitterFeedFooter({
   addFeed,
   focusSearch,
   removeFeed,
+  tweetOpen,
 }: {
   activeFeed: TwitterFeed | null;
   addFeed: () => void;
   focusSearch: () => void;
   removeFeed: (feedId: string) => void;
+  tweetOpen: boolean;
 }) {
   const info = useMemo<PaneFooterSegment[]>(() => (
     activeFeed?.lastSuccessAt
@@ -29,7 +31,10 @@ export function useTwitterFeedFooter({
   const hints = useMemo<PaneHint[]>(() => [
     { id: "search", key: "/", label: "search", onPress: focusSearch },
     { id: "new-feed", key: "n", label: "ew feed", onPress: addFeed },
-    ...(activeFeedId ? [{ id: "remove-feed", key: "d", label: " remove feed", onPress: () => removeFeed(activeFeedId) }] : []),
-  ], [activeFeedId, addFeed, focusSearch, removeFeed]);
+    // Deleting the whole feed from inside one of its tweets is never what d meant.
+    ...(activeFeedId && !tweetOpen
+      ? [{ id: "remove-feed", key: "d", label: " remove feed", onPress: () => removeFeed(activeFeedId) }]
+      : []),
+  ], [activeFeedId, addFeed, focusSearch, removeFeed, tweetOpen]);
   usePaneStatusFooter({ registrationId: TWITTER_FEED_PANE_ID, info, hints });
 }

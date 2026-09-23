@@ -76,6 +76,8 @@ const NAMED_KEYS: Array<{ key: string; aliases: string[]; label: string; spellin
   { key: "pageup", aliases: ["pageup", "pgup"], label: "PageUp" },
   { key: "pagedown", aliases: ["pagedown", "pgdn", "pgdown"], label: "PageDown" },
   { key: "digit", aliases: ["digit", "1-9"], label: "1-9", spelling: "Digit" },
+  // The context-menu key beside the right Alt on Windows and Linux keyboards.
+  { key: "contextmenu", aliases: ["contextmenu", "menu", "apps"], label: "Menu", spelling: "ContextMenu" },
   ...Array.from({ length: 24 }, (_, index) => ({
     key: `f${index + 1}`,
     aliases: [`f${index + 1}`],

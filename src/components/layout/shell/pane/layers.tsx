@@ -15,7 +15,7 @@ import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
 import { PaneWrapper } from "../../pane";
 import type { PaneHeaderQuickSetting } from "../../pane/header";
-import { hasPaneFooterContent, PaneFooterProvider } from "../../pane/footer";
+import { hasPaneFooterContent, PaneFooterKeys, PaneFooterProvider } from "../../pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "../../pane/sizing";
 import type { DividerPreviewState } from "../native/window-state";
 
@@ -171,6 +171,7 @@ export function ShellPaneLayers({
                     onHeaderContextMenu={nativePaneChrome && nativeContextMenu === true ? (event) => handleNativePaneContextMenu(leaf.instanceId, rect, event) : undefined}
                     onActionMouseDown={(event) => handlePaneAction(leaf.instanceId, rect, event)}
                   >
+                    <PaneFooterKeys paneId={leaf.instanceId} footer={footer} focused={focused} />
                     <PaneContent
                       component={pane.def.component}
                       paneId={pane.instance.instanceId}
@@ -239,6 +240,7 @@ export function ShellPaneLayers({
                   onResizeMouseDrag={nativePaneChrome ? handleNativeDrag : undefined}
                   onResizeMouseDragEnd={nativePaneChrome ? handleNativeDrag : undefined}
                 >
+                  <PaneFooterKeys paneId={pane.instance.instanceId} footer={footer} focused={focused} />
                   <PaneContent
                     component={pane.def.component}
                     paneId={pane.instance.instanceId}

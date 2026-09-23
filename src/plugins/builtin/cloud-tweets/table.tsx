@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
+  ChoiceDialog,
   DataTableStackView,
   PaneStatusBody,
   StatGrid,
   TickerBadgeList,
+  openUrl,
   useTableLoadMore,
+  type ChoiceDialogChoice,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type PaneHint,
   type StatItem,
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
-import { RemoteImage } from "../../../components/ui";
-import { useInlineTickers } from "../../../state/hooks/inline-tickers";
+import { RemoteImage, PaneLinkMenu } from "../../../components/ui";
+import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/inline-tickers";
+import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/format";
+import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
+import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
 import { SignInWall } from "../cloud/auth-actions";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -71,6 +78,48 @@ function cachedTweetResult(requestKey: string) {
   return TWEET_RESULT_CACHE.get(requestKey);
 }
 
+/** Pane state key for whether a table's tweet detail is open. */
+export function tweetDetailStateKey(footerId: string): string {
+  return `${footerId}:detailOpen`;
+}
+
+type TweetLink =
+  | { kind: "ticker"; symbol: string }
+  | { kind: "username"; username: string }
+  | { kind: "link"; url: string };
+
+/**
+ * What a click can open in a tweet, for the keyboard: its author's feed, the
+ * tickers it tags, the accounts it mentions and the links in its text.
+ */
+function tweetLinks(tweet: CloudTweetPayload): TweetLink[] {
+  const links: TweetLink[] = [];
+  const seen = new Set<string>();
+  const add = (key: string, link: TweetLink) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    links.push(link);
+  };
+  const author = normalizeTwitterUsername(tweet.author.userName);
+  if (author) add(`@${author.toLowerCase()}`, { kind: "username", username: author });
+  for (const symbol of tweetTickers(tweet)) add(`$${symbol}`, { kind: "ticker", symbol });
+  for (const token of tokenizeInlineContent(normalizeTweetDisplayText(tweet.text))) {
+    if (token.kind === "ticker") add(`$${token.symbol}`, { kind: "ticker", symbol: token.symbol });
+    else if (token.kind === "username") {
+      const username = normalizeTwitterUsername(token.username);
+      if (username) add(`@${username.toLowerCase()}`, { kind: "username", username });
+    } else if (token.kind === "link") add(token.url, { kind: "link", url: token.url });
+  }
+  return links;
+}
+
+function tweetLinkChoice(link: TweetLink, index: number): ChoiceDialogChoice {
+  const id = String(index);
+  if (link.kind === "ticker") return { id, label: `$${link.symbol}`, description: "Open ticker" };
+  if (link.kind === "username") return { id, label: `@${link.username}`, description: "Open their X feed" };
+  return { id, label: link.url, description: "Open link" };
+}
+
 function TweetDetail({
   tweet,
   width,
@@ -94,34 +143,37 @@ function TweetDetail({
     { id: "views", label: "Views", value: formatMetric(tweet.metrics.views) },
   ];
 
+  // The open tweet's tickers, mentions and links are pane menu entries too.
   return (
     <Box flexDirection="column" flexGrow={1} flexBasis={0} minHeight={0}>
       <StatGrid items={metrics} width={width} />
       <ScrollBox scrollY focusable={false} flexGrow={1} flexBasis={0} minHeight={0} paddingX={1}>
-        <Box flexDirection="column" width={lineWidth} gap={1}>
-          <TickerBadgeText
-            text={tweetText}
-            lineWidth={lineWidth}
-            catalog={catalog}
-            textColor={colors.text}
-            openTicker={openTicker}
-            openUsername={onOpenUsername}
-          />
-          {imageUrls.length > 0 ? (
-            <Box flexDirection="column" gap={1}>
-              {imageUrls.slice(0, 4).map((url, index) => (
-                <RemoteImage
-                  key={url}
-                  src={url}
-                  alt={`Tweet image ${index + 1}`}
-                  width={imageWidth}
-                  height={imageHeight}
-                  label={imageUrls.length > 1 ? `image ${index + 1}` : "image"}
-                />
-              ))}
-            </Box>
-          ) : null}
-        </Box>
+        <PaneLinkMenu>
+          <Box flexDirection="column" width={lineWidth} gap={1}>
+            <TickerBadgeText
+              text={tweetText}
+              lineWidth={lineWidth}
+              catalog={catalog}
+              textColor={colors.text}
+              openTicker={openTicker}
+              openUsername={onOpenUsername}
+            />
+            {imageUrls.length > 0 ? (
+              <Box flexDirection="column" gap={1}>
+                {imageUrls.slice(0, 4).map((url, index) => (
+                  <RemoteImage
+                    key={url}
+                    src={url}
+                    alt={`Tweet image ${index + 1}`}
+                    width={imageWidth}
+                    height={imageHeight}
+                    label={imageUrls.length > 1 ? `image ${index + 1}` : "image"}
+                  />
+                ))}
+              </Box>
+            ) : null}
+          </Box>
+        </PaneLinkMenu>
       </ScrollBox>
     </Box>
   );
@@ -292,7 +344,7 @@ export function TweetSearchTable({
   // Keyed by footer id because two panes share this table, and held in pane
   // state so a reload or a shared layout comes back to the same tweet.
   const [selectedTweetId, setSelectedTweetId] = usePluginPaneState<string | null>(`${footerId}:selectedTweetId`, null);
-  const [detailOpen, setDetailOpen] = usePluginPaneState(`${footerId}:detailOpen`, false);
+  const [detailOpen, setDetailOpen] = usePluginPaneState(tweetDetailStateKey(footerId), false);
   const [sort, setSort] = useState<{ columnId: TweetSortColumnId; direction: TweetSortDirection }>({
     columnId: "views",
     direction: "desc",
@@ -302,28 +354,6 @@ export function TweetSearchTable({
   const selectedIndex = rows.findIndex((tweet) => tweet.id === selectedTweetId);
   const activeIndex = selectedIndex >= 0 ? selectedIndex : rows.length > 0 ? 0 : -1;
   const selectedTweet = rows[activeIndex] ?? null;
-  const openSelectedTweet = usePaneStatusLinkFooter({
-    registrationId: footerId,
-    focused,
-    url: detailOpen ? selectedTweet?.url : null,
-    source: detailOpen && selectedTweet
-      ? `@${selectedTweet.author.userName || selectedTweet.author.name}`
-      : null,
-    loading: loading || loadingMore,
-    error,
-  });
-
-  useEffect(() => {
-    if (rows.length === 0) {
-      if (selectedTweetId !== null) setSelectedTweetId(null);
-      setDetailOpen(false);
-      return;
-    }
-    if (!selectedTweetId || selectedIndex < 0) {
-      setSelectedTweetId(rows[0]!.id);
-    }
-  }, [rows, selectedIndex, selectedTweetId]);
-
   const openUsernameFeed = useCallback((username: string) => {
     const normalizedUsername = normalizeTwitterUsername(username);
     if (!normalizedUsername) return;
@@ -336,6 +366,51 @@ export function TweetSearchTable({
       },
     });
   }, [createPaneFromTemplate]);
+  const dialog = useDialog();
+  const openTicker = useInlineTickerOpener();
+  const selectedLinks = useMemo(() => (selectedTweet ? tweetLinks(selectedTweet) : []), [selectedTweet]);
+  // Tickers, accounts and links are badges a click opens; `m` lists them.
+  const openTweetLinks = useCallback(async () => {
+    if (selectedLinks.length === 0) return;
+    const choice = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog {...ctx} title="Open from this tweet" choices={selectedLinks.map(tweetLinkChoice)} />
+      ),
+    }).catch(() => undefined);
+    const link = choice === undefined ? undefined : selectedLinks[Number(choice)];
+    if (!link) return;
+    if (link.kind === "ticker") openTicker(link.symbol);
+    else if (link.kind === "username") openUsernameFeed(link.username);
+    else openUrl(link.url);
+  }, [dialog, openTicker, openUsernameFeed, selectedLinks]);
+  const linkHints = useMemo<PaneHint[]>(() => (
+    selectedLinks.length > 0
+      ? [{ id: "mentions", key: "m", label: "entions", title: "Mentions and Links", onPress: () => { void openTweetLinks(); } }]
+      : []
+  ), [openTweetLinks, selectedLinks.length]);
+  const openSelectedTweet = usePaneStatusLinkFooter({
+    registrationId: footerId,
+    focused,
+    url: detailOpen ? selectedTweet?.url : null,
+    source: detailOpen && selectedTweet
+      ? `@${selectedTweet.author.userName || selectedTweet.author.name}`
+      : null,
+    loading: loading || loadingMore,
+    error,
+    hints: linkHints,
+  });
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      if (selectedTweetId !== null) setSelectedTweetId(null);
+      setDetailOpen(false);
+      return;
+    }
+    if (!selectedTweetId || selectedIndex < 0) {
+      setSelectedTweetId(rows[0]!.id);
+    }
+  }, [rows, selectedIndex, selectedTweetId]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     if (!isTweetSortColumnId(columnId)) return;
@@ -355,20 +430,28 @@ export function TweetSearchTable({
       onFocusSearch();
       return true;
     }
-    if (event.name !== "r") return false;
+    if (isPlainKey(event, "m") && selectedLinks.length > 0) {
+      void openTweetLinks();
+      return true;
+    }
+    if (!isPlainKey(event, "r")) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
     reload(true);
     return true;
-  }, [onFocusSearch, reload]);
+  }, [onFocusSearch, openTweetLinks, reload, selectedLinks.length]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name !== "o") return false;
+    if (isPlainKey(event, "m") && selectedLinks.length > 0) {
+      void openTweetLinks();
+      return true;
+    }
+    if (!isPlainKey(event, "o")) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
     openSelectedTweet();
     return true;
-  }, [openSelectedTweet]);
+  }, [openSelectedTweet, openTweetLinks, selectedLinks.length]);
 
   const renderCell = useCallback((
     tweet: CloudTweetPayload,

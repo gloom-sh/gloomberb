@@ -8,6 +8,7 @@ import {
   usePaneFooter,
   usePaneHeaderTabs,
   type PaneFooterSegment,
+  type PaneHint,
   type QueryBarFilter,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -74,13 +75,20 @@ function RiskLine({
   );
 }
 
+export function RiskFactorsResearchTab(props: { focused: boolean; width: number; height: number }) {
+  return <RiskFactorsPane {...props} nested />;
+}
+
 export function RiskFactorsPane({
   focused,
   width,
+  nested = false,
 }: {
   focused: boolean;
   width: number;
   height: number;
+  /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
+  nested?: boolean;
 }) {
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
@@ -116,6 +124,13 @@ export function RiskFactorsPane({
     if (report?.docUrl) void rendererHost.openExternal(report.docUrl);
   }, [rendererHost, report]);
 
+  const nextYear = useCallback(() => {
+    if (years.length < 2) return;
+    const index = years.findIndex((entry) => entry.reportYear === year);
+    setSelectedTicker(ticker);
+    setSelectedYear(years[(index + 1) % years.length]!.reportYear);
+  }, [setSelectedYear, ticker, year, years]);
+
   const scrollBy = useCallback((delta: number) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox?.viewport) return;
@@ -129,9 +144,19 @@ export function RiskFactorsPane({
   useShortcut(
     (event) => {
       if (isPlainKey(event, "r")) refresh();
-      else if (isPlainKey(event, "o")) openFiling();
-      else if (isPlainKey(event, "j", "down")) scrollBy(1);
-      else if (isPlainKey(event, "k", "up")) scrollBy(-1);
+      else if (isPlainKey(event, "o")) {
+        event.preventDefault();
+        openFiling();
+      }
+      // One line per press; marked handled so the pane scroll keys, which
+      // page this report, do not scroll it again.
+      else if (isPlainKey(event, "j", "down")) {
+        event.preventDefault();
+        scrollBy(1);
+      } else if (isPlainKey(event, "k", "up")) {
+        event.preventDefault();
+        scrollBy(-1);
+      }
     },
     { enabled: focused, scope: "risk-factors" },
   );
@@ -148,11 +173,14 @@ export function RiskFactorsPane({
     if ((reportError || report?.stale) && report) {
       info.push({ id: "report-stale", parts: [{ text: `Report cached ${new Date(report.fetchedAt).toISOString()}`, tone: "muted" }] });
     }
-    const hints = report?.docUrl
+    const hints: PaneHint[] = report?.docUrl
       ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }]
       : [];
+    // The year strip answers h/l only where it is the pane's own strip; `y`
+    // steps it everywhere, including under Ticker Research's strip.
+    if (ticker && years.length > 1) hints.push({ id: "year", key: "y", label: "ear", onPress: nextYear });
     return { info, hints };
-  }, [list.loading, detail.loading, listError, reportError, list.data, report, year, openFiling]);
+  }, [list.loading, detail.loading, listError, reportError, list.data, report, year, openFiling, ticker, years.length, nextYear]);
 
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
@@ -215,6 +243,7 @@ export function RiskFactorsPane({
             compact
             variant="bare"
             focused={focused}
+            keyboardNavigation={!nested}
           />
         </Box>
       )}
@@ -232,6 +261,7 @@ export function RiskFactorsPane({
         flexShrink={1}
         flexBasis={0}
         minHeight={0}
+        scrollY
         paddingX={1}
       >
         {report ? (

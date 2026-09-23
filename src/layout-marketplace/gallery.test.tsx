@@ -5,7 +5,7 @@ import { AppContext, createInitialState, type AppAction } from "../state/app/con
 import { cloneLayout, createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { Box } from "../ui";
-import { PaneFooterBar, PaneFooterProvider } from "../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../components/layout/pane/footer";
 import type { PluginRegistry } from "../plugins/registry";
 import { LayoutMarketplaceGallery } from "./gallery";
 
@@ -57,6 +57,7 @@ async function renderGallery() {
               />
             </Box>
             <PaneFooterBar footer={footer} focused width={100} />
+            <PaneFooterKeys paneId="layout-marketplace" footer={footer} focused />
           </Box>
         )}
       </PaneFooterProvider>

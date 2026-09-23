@@ -70,17 +70,31 @@ export function windowEditStatusLine(
   return `${windowEditLabel(state, bounds, dockGeometryOptions)}${notice} · ${title}${target}`;
 }
 
-export function windowEditHelpText(state: WindowEditState): string {
+/**
+ * The keys window mode answers to, most needed first: how to leave comes
+ * before how to move, so a narrow banner or panel that cuts the list short
+ * still says it. Arrows stand for hjkl too, and Tab for w where they match.
+ */
+export function windowEditHelpItems(state: WindowEditState, pending: boolean): string[] {
+  const leave = pending ? ["Enter apply", "Esc cancel"] : ["Esc exit"];
+  const snap = ["1-4 quarter", "5-8 half"];
   if (state.mode === "move") {
     if (state.focus.kind === "dock-move") {
-      return "arrows/hjkl choose side  Tab/w target  m window  d float  r resize  Enter commit/exit  Esc exit/cancel";
+      return [...leave, "arrows side", "Tab target", "m window", "d float", "r resize", ...snap];
     }
-    return "Tab/w window  d dock/float  r resize  arrows/hjkl target/move  Shift fast  Enter commit/exit  Esc exit/cancel";
+    const floating = state.previewLayout.floating.some((entry) => entry.instanceId === state.paneId);
+    return floating
+      ? [...leave, "arrows move", "Shift fast", "Tab window", "d dock", "r resize", ...snap]
+      : [...leave, "arrows target", "Tab window", "d float", "r resize", ...snap];
   }
   if (state.focus.kind === "floating-resize") {
-    return "Tab corner  w window  m move  arrows/hjkl resize  Shift fast  Enter commit/exit  Esc exit/cancel";
+    return [...leave, "arrows resize", "Shift fast", "Tab corner", "w window", "m move"];
   }
-  return "arrows/hjkl move divider  Tab divider  w window  m move  Shift fast  Enter commit/exit  Esc exit/cancel";
+  return [...leave, "arrows divider", "Shift fast", "Tab divider", "w window", "m move"];
+}
+
+export function windowEditHelpText(state: WindowEditState, pending: boolean): string {
+  return windowEditHelpItems(state, pending).join("  ");
 }
 
 export function resolveWindowEditDockMovePreview(

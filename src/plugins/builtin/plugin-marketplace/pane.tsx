@@ -150,7 +150,7 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
   const status = statusOf(entry);
 
   return (
-    <ScrollBox flexDirection="column" width={width} paddingLeft={1} paddingRight={1}>
+    <ScrollBox flexDirection="column" width={width} flexGrow={1} flexBasis={0} minHeight={0} paddingLeft={1} paddingRight={1} scrollY focusable={false}>
       <Box flexDirection="row" gap={2} height={1}>
         <Text fg={colors.textDim}>{entry.tier}</Text>
         {entry.categories.length > 0 ? <Text fg={colors.textDim}>{entry.categories.join(", ")}</Text> : null}
@@ -507,7 +507,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const handleKey = useCallback((key: string): boolean => {
     switch (key) {
       case "i": void installSelected(); return true;
-      case "u": void updateSelected(); return true;
+      // Not u: that installs an app update whenever one is waiting.
+      case "g": void updateSelected(); return true;
       case "x": void removeSelected(); return true;
       case "e": toggleSelected(); return true;
       case "s": setupSelected(); return true;
@@ -531,6 +532,20 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     return handleKey((event.name ?? "").toLowerCase()) ? true : undefined;
   }, [handleKey, searchFocused]);
 
+  // The search bar lives above the list, so `/` in a detail goes back to it.
+  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (searchFocused || !isPlainKeyboardEvent(event)) return;
+    if (event.name === "/") {
+      setDetailOpen(false);
+      focusSearch();
+      return true;
+    }
+    return handleKey((event.name ?? "").toLowerCase()) ? true : undefined;
+  }, [focusSearch, handleKey, searchFocused, setDetailOpen]);
+  useEffect(() => {
+    if (detailOpen && searchFocused) blurSearch();
+  }, [blurSearch, detailOpen, searchFocused]);
+
   const info: PaneFooterSegment[] = [];
   if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
   if (status === "error") info.push({ id: "error", parts: [{ text: "catalog unavailable", tone: "warning" }] });
@@ -551,8 +566,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const hints: PaneHint[] = [];
   if (canInstall) hints.push({ id: "install", key: "i", label: "nstall", onPress: () => { void installSelected(); } });
-  if (canUpdate) hints.push({ id: "update", key: "u", label: selected?.loadError ? "reload" : "pdate", onPress: () => { void updateSelected(); } });
-  if (canToggle) hints.push({ id: "toggle", key: "e", label: selected?.enabled ? "disable" : "nable", onPress: toggleSelected });
+  if (canUpdate) {
+    hints.push(selected?.loadError
+      ? { id: "update", key: "g", label: " reload", title: "Reload", onPress: () => { void updateSelected(); } }
+      : { id: "update", key: "g", label: "et update", onPress: () => { void updateSelected(); } });
+  }
+  if (canToggle) hints.push({ id: "toggle", key: "e", label: selected?.enabled ? "disable" : "nable", title: selected?.enabled ? "Disable" : "Enable", onPress: toggleSelected });
   if (canSetup) hints.push({ id: "setup", key: "s", label: "etup", onPress: setupSelected });
   if (canOpen) hints.push({ id: "open-pane", key: "p", label: "ane", onPress: openSelected });
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
@@ -649,7 +668,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         }}
         isNavigable={isEntryRow}
         onRootKeyDown={handleRootKeyDown}
-        onDetailKeyDown={handleRootKeyDown}
+        onDetailKeyDown={handleDetailKeyDown}
         onActivate={(row) => {
           if (row.type === "entry") setDetailOpen(true);
         }}

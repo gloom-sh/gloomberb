@@ -3,7 +3,6 @@ import { Box, ScrollBox, Text } from "../../../ui";
 import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import { formatCompact, padTo } from "../../../utils/format";
-import { isPlainKey, type KeyboardModifierEventLike } from "../../../utils/keyboard";
 import { formatMarketQuantity } from "../../../market-data/market/format";
 import {
   renderSummarySegments,
@@ -11,14 +10,13 @@ import {
   type ResolvedPortfolioAccountState,
 } from "./summary";
 
-/** Only a bare `c`: Cmd+Shift+C copies a pane screenshot and must not open the drawer on the way. */
-export function shouldToggleCashMarginDrawer(event: KeyboardModifierEventLike, showCashDrawer: boolean): boolean {
-  return showCashDrawer && isPlainKey(event, "c");
-}
-
-/** Rows the open drawer needs: its title, the numbers the header row had no room for, then currency balances. */
+/**
+ * Rows the open drawer needs: its title, the numbers the header row had no room
+ * for, then every currency balance. The pane caps it; the drawer's own list only
+ * scrolls by wheel, since the table keeps the paging keys.
+ */
 export function cashMarginDrawerHeight(accountState: ResolvedPortfolioAccountState, detailCount: number): number {
-  return 1 + (detailCount > 0 ? 1 : 0) + Math.min(4, Math.max(1, accountState.visibleCashBalances.length));
+  return 1 + (detailCount > 0 ? 1 : 0) + Math.max(1, accountState.visibleCashBalances.length);
 }
 
 /**

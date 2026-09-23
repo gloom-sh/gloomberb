@@ -246,13 +246,16 @@ function WebDataTableRowInner<
   };
 
   if (sectionHeader) {
+    // A header the cursor can land on (a collapsible group) shows it like a row.
+    const headerColor = sectionHeader.color ?? (selected ? CSS_SELECTED_TEXT : CSS_TEXT_BRIGHT);
     return (
       <div
         key={itemKey}
         data-gloom-role="data-table-section-header"
+        data-selected={selected ? "true" : undefined}
         style={{
           ...baseRowStyle,
-          backgroundColor: sectionHeader.backgroundColor ?? CSS_BG,
+          backgroundColor: selected ? CSS_SELECTED : sectionHeader.backgroundColor ?? CSS_BG,
           cursor: sectionHeader.onMouseDown ? "pointer" : undefined,
         }}
         onMouseDown={(event) => {
@@ -266,7 +269,7 @@ function WebDataTableRowInner<
           title={sectionHeader.text}
           style={{
             ...cellTextStyle(
-              sectionHeader.color ?? CSS_TEXT_BRIGHT,
+              headerColor,
               sectionHeader.attributes ?? TextAttributes.BOLD,
             ),
             gridColumn: "1 / -1",
@@ -278,7 +281,7 @@ function WebDataTableRowInner<
           }}
         >
           {sectionHeader.expanded !== undefined && (
-            <DisclosureMarker expanded={sectionHeader.expanded} color={sectionHeader.color ?? CSS_TEXT_BRIGHT} />
+            <DisclosureMarker expanded={sectionHeader.expanded} color={headerColor} />
           )}
           {sectionHeader.text}
         </div>

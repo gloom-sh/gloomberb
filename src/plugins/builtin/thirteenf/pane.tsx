@@ -3,7 +3,7 @@ import {
   DataTableStackView,
   DataTableView,
   EmptyState, PaneStatusBody, QueryBar, StatGrid, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
-  type DataTableRootKeyContext, type PaneFooterSegment, type StatItem
+  type DataTableRootKeyContext, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -26,6 +26,7 @@ import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
+import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
 import {
   DEFAULT_BROWSER_SORT,
   DEFAULT_FILING_POSITION_SORT,
@@ -127,6 +128,13 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     initialCik ? { cik: String(initialCik), name: normalizedQuery || String(initialCik) } : null
   ));
   useEffect(() => { onDetailChange(!!detailSeed); return () => onDetailChange(false); }, [detailSeed, onDetailChange]);
+  // A ticker query opens its funds inside the holders view, not through detailSeed.
+  const [tickerFundOpen, setTickerFundOpen] = useState(false);
+  const handleTickerDetailChange = useCallback((open: boolean) => {
+    setTickerFundOpen(open);
+    onDetailChange(open);
+  }, [onDetailChange]);
+  const detailOpen = !!detailSeed || tickerFundOpen;
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);
@@ -219,7 +227,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, [initialCik, query]);
 
   useShortcut((event) => {
-    if (!focused || detailSeed) return;
+    if (!focused || detailOpen) return;
     if (searchFocused) {
       if (isPlainKey(event, "escape")) {
         event.stopPropagation?.();
@@ -307,7 +315,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         value: query,
         onChange: updateQuery,
         placeholder: "fund, ticker, CIK, or latest",
-        focused: focused && !detailSeed,
+        focused: focused && !detailOpen,
         active: searchFocused,
         onActiveChange: (active) => active ? focusSearch() : blurSearch(),
         focusToken: searchFocusToken,
@@ -372,7 +380,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
           hints={searchHints}
           onRootKeyDown={handleTickerRootKeyDown}
           onUnavailable={() => setTickerFallbackQuery(query)}
-          onDetailChange={onDetailChange}
+          onDetailChange={handleTickerDetailChange}
         />
       </Box>
     );
@@ -454,6 +462,9 @@ export function FundDetailView({
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // In the Research pane's 13F tab, h/l move between these sections while the
+  // fund is open, as they do in the 13F pane.
+  useClaimResearchTabKeys(focused);
 
   const load = useCallback((refresh = false) => {
     abortRef.current?.abort();
@@ -615,6 +626,12 @@ export function FundDetailView({
     enabled: !openFiling && activeTab !== "overlap",
   });
 
+  // `f` opens the selected holding's own filing in the pane; Enter opens its ticker.
+  // Mine is a query bar toggle, which also lists it in the pane menu.
+  const hasHoldingFiling = activeTab === "holdings" && !!filingTarget;
+  const detailHints = useMemo<PaneHint[]>(() => hasHoldingFiling
+    ? [{ id: "filing", key: "f", label: "iling", title: "Open Filing", onPress: openSelectedFilingInPane }]
+    : [], [hasHoldingFiling, openSelectedFilingInPane]);
   const detailStatusInfo = useMemo<PaneFooterSegment[]>(() => (
     statusFiling?.isAmendment
       ? [{ id: "amended", parts: [{ text: "amended", tone: "warning" }] }]
@@ -629,6 +646,7 @@ export function FundDetailView({
     error: activeTab === "overlap" ? null : error,
     info: activeTab === "overlap" ? [] : detailStatusInfo,
     showOpenHint: true,
+    hints: detailHints,
   });
 
   if ((status === "loading" || status === "idle") && !data) {

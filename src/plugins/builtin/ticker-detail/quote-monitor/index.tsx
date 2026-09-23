@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useUiCapabilities } from "../../../../ui";
 import type { PaneProps } from "../../../../types/plugin";
 import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
@@ -13,9 +13,10 @@ import { useAppSelector, usePaneInstance, usePaneTicker } from "../../../../stat
 import { useLiveQuoteEntries } from "../../../../state/hooks/quote-streaming";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { colors } from "../../../../theme/colors";
-import { EmptyState } from "../../../../components";
+import { EmptyState, usePaneFooter } from "../../../../components";
 import { getQuoteMonitorPaneSettings } from "../settings";
-import { useShortcut } from "../../../../react/input";
+import { useShortcut, type KeyEventLike } from "../../../../react/input";
+import { isPlainKey } from "../../../../utils/keyboard";
 import { QuoteMonitorCard } from "./card";
 import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
@@ -67,6 +68,40 @@ function resolveGridColumnCount(symbolCount: number, width: number, height: numb
   }
 
   return bestColumns;
+}
+
+type GridCursorMove = "left" | "right" | "up" | "down" | "first" | "last";
+
+function quoteMonitorCursorMove(event: KeyEventLike): GridCursorMove | "open" | null {
+  if (isPlainKey(event, "h", "left")) return "left";
+  if (isPlainKey(event, "l", "right")) return "right";
+  if (isPlainKey(event, "k", "up")) return "up";
+  if (isPlainKey(event, "j", "down")) return "down";
+  if (isPlainKey(event, "home")) return "first";
+  if (isPlainKey(event, "end")) return "last";
+  if (isPlainKey(event, "enter", "return")) return "open";
+  return null;
+}
+
+/**
+ * The card a move lands on in a grid filled row by row. Up and down keep the
+ * column; down from a row above a shorter last row lands on its last card.
+ */
+function moveGridCursor(index: number, count: number, columns: number, move: GridCursorMove): number {
+  if (count <= 0) return 0;
+  const last = count - 1;
+  const current = Math.max(0, Math.min(last, index));
+  const width = Math.max(1, columns);
+  switch (move) {
+    case "left": return Math.max(0, current - 1);
+    case "right": return Math.min(last, current + 1);
+    case "up": return current - width >= 0 ? current - width : current;
+    case "down":
+      if (current + width <= last) return current + width;
+      return Math.floor(current / width) < Math.floor(last / width) ? last : current;
+    case "first": return 0;
+    case "last": return last;
+  }
 }
 
 /** Desktop cards keep a 30-cell (240px) minimum, room for the symbol beside a
@@ -145,12 +180,39 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const openTicker = useCallback((nextSymbol: string) => {
     pinTicker(nextSymbol, { paneType: TICKER_RESEARCH_PANE_ID, floating: true });
   }, [pinTicker]);
+  const editTickers = useCallback(() => openPaneSettings(paneId), [openPaneSettings, paneId]);
+  usePaneFooter("quote-monitor", () => ({
+    hints: [{ id: "tickers", key: "t", label: "ickers", title: "Edit Tickers", onPress: editTickers }],
+  }), [editTickers]);
+
+  // A keyboard cursor over the cards: arrows or h/j/k/l move it, Enter opens
+  // the symbol in Ticker Research the way a double-click does.
+  const [cursorSymbol, setCursorSymbol] = useState<string | null>(null);
+  const cursorIndex = Math.max(0, cursorSymbol ? symbols.indexOf(cursorSymbol) : 0);
+  // Keys can arrive faster than renders; each press moves from the last one.
+  const cursorIndexRef = useRef(cursorIndex);
+  cursorIndexRef.current = cursorIndex;
+  const gridColumns = nativePaneChrome
+    ? resolveDesktopGridColumnCount(symbols.length, width)
+    : resolveGridColumnCount(symbols.length, width, height, false);
   useShortcut((event) => {
-    if (!focused || event.name !== "t") return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    openPaneSettings(paneId);
-  });
+    if (event.defaultPrevented) return;
+    const move = quoteMonitorCursorMove(event);
+    if (!move) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (move === "open") {
+      const symbol = symbols[cursorIndexRef.current];
+      if (symbol) openTicker(symbol);
+      return;
+    }
+    const next = moveGridCursor(cursorIndexRef.current, symbols.length, gridColumns, move);
+    const nextSymbol = symbols[next];
+    if (!nextSymbol) return;
+    cursorIndexRef.current = next;
+    setCursorSymbol(nextSymbol);
+  }, { enabled: focused && symbols.length > 0 });
+  const showCursor = focused && symbols.length > 1;
 
   if (symbols.length === 0) {
     return (
@@ -160,7 +222,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     );
   }
 
-  const columns = resolveGridColumnCount(symbols.length, width, height, nativePaneChrome === true);
+  const columns = gridColumns;
   const rows = chunkEntries(boardEntries, columns);
   const contentWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const contentHeight = Math.max(3, height);
@@ -168,7 +230,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const cardWidth = Math.max(1, Math.floor(contentWidth / columns));
 
   if (nativePaneChrome) {
-    const desktopColumns = resolveDesktopGridColumnCount(symbols.length, width);
+    const desktopColumns = gridColumns;
     return (
       <Box
         flexGrow={1}
@@ -184,7 +246,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
           height: "100%",
         }}
       >
-        {boardEntries.map((entry) => (
+        {boardEntries.map((entry, index) => (
           <QuoteMonitorCard
             key={entry.symbol}
             symbol={entry.symbol}
@@ -198,6 +260,8 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             showBottomDivider
             chartPeriod={settings.chartPeriod}
             valueFlashingEnabled={valueFlashingEnabled}
+            selected={showCursor && index === cursorIndex}
+            onSelect={setCursorSymbol}
             onOpen={openTicker}
           />
         ))}
@@ -230,6 +294,8 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
               showBottomDivider={rowIndex < rows.length - 1}
               chartPeriod={settings.chartPeriod}
               valueFlashingEnabled={valueFlashingEnabled}
+              selected={showCursor && rowIndex * columns + columnIndex === cursorIndex}
+              onSelect={setCursorSymbol}
               onOpen={openTicker}
             />
           ))}

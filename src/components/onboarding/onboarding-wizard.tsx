@@ -17,14 +17,32 @@ import {
   type OnboardingStage,
 } from "../../types/config";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
-import { useShortcut, useViewport } from "../../react/input";
+import { useShortcut, useViewport, type KeyEventLike } from "../../react/input";
+import {
+  matchKeybinding,
+  matchesKeybindingAction,
+  useKeybindings,
+  type ResolvedKeybindings,
+} from "../../app/keybindings";
 import {
   useAppDispatch,
   useAppSelector,
   useAppStateRef,
 } from "../../state/app/context";
 import { useAppActive } from "../../state/app/activity";
-import { Box, Text, TextAttributes, useCommandBarShortcut, useUiHost, type InputRenderable } from "../../ui";
+import {
+  Box,
+  Text,
+  TextAttributes,
+  useActionShortcut,
+  useCommandBarShortcut,
+  useRendererHost,
+  useUiHost,
+  type InputRenderable,
+} from "../../ui";
+import { useDialogState } from "../../ui/dialog";
+import { isPlainKey } from "../../utils/keyboard";
+import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
 import { useThemeColors } from "../../theme/theme-context";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
@@ -39,6 +57,8 @@ import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrad
 import { usePlanAccess } from "../../plugins/builtin/shared/plan-access";
 import { Button, SegmentedControl, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
+import { BROKER_GUIDE_KEY, brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";
+import { REMOVE_POSITION_KEY } from "./portfolio-step/positions-panel";
 import {
   ONBOARDING_DESKTOP,
   OnboardingActions,
@@ -80,11 +100,50 @@ const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
   upgrade: "onboarding_pro_viewed",
 };
 
+/**
+ * Card keys, shown on the buttons they press. Letters only act while no field
+ * is being typed in (Esc leaves the field first); F10, the old skip key, still
+ * works everywhere.
+ */
+const SKIP_SETUP_KEY = "s";
+const KEEP_FREE_KEY = "f";
+const CONNECT_BROKER_KEY = "b";
+const BROWSER_SIGN_IN_KEY = "b";
+
+/** Digits jump straight to a section the header would let you click. */
+const SECTION_DIGITS: Record<string, OnboardingSectionId> = { "1": "portfolio", "2": "cloud", "3": "pro" };
+
+/**
+ * Whether a key the onboarding card did not use may still reach the app
+ * behind it. Toasts float above the card, copy and paste work anywhere, and
+ * Help is the way out (the card steps aside while Help has focus). A field
+ * keeps its typing and editing keys; of the chords that reach app shortcuts
+ * while typing, only the ones the app binds are held back. Everything else
+ * would act on a pane hidden behind the scrim.
+ */
+function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: ResolvedKeybindings): boolean {
+  if (isCopyShortcut(event) || isPasteShortcut(event)) return true;
+  const match = matchKeybinding(keybindings, event);
+  const action = match?.kind === "action" ? match.id : null;
+  if (action === "notification-action" || action === "notification-dismiss") return true;
+  if (event.targetEditable) {
+    const chord = event.ctrl || event.meta || event.super === true;
+    return !chord || !match;
+  }
+  return action === "help";
+}
+
 export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
   const desktop = useUiHost().kind === "desktop-web";
+  const rendererHost = useRendererHost();
   const commandBarShortcut = useCommandBarShortcut();
+  const notificationActionShortcut = useActionShortcut("notification-action");
+  const notificationDismissShortcut = useActionShortcut("notification-dismiss");
+  const keybindings = useKeybindings();
+  const dialogOpen = useDialogState((dialog) => dialog.isOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const { height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
@@ -104,6 +163,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [brokerFieldIdx, setBrokerFieldIdx] = useState(0);
   const [brokerSelectIdx, setBrokerSelectIdx] = useState(0);
   const [editingField, setEditingField] = useState(false);
+  /** The added position the keyboard acts on once no field is being typed in. */
+  const [positionCursorSymbol, setPositionCursorSymbol] = useState<string | null>(null);
   const inputRef = useRef<InputRenderable>(null);
   const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
@@ -176,6 +237,13 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   const positions = useOnboardingPositions({ pluginRegistry, onFieldEditing: setEditingField });
   const positionCount = positions.positions.length;
+  // The cursor rests on the newest row until the keyboard moves it; it only
+  // shows once the fields let go of the keyboard.
+  const cursorMatch = positions.positions.findIndex((row) => row.symbol === positionCursorSymbol);
+  const positionCursorIndex = cursorMatch >= 0 ? cursorMatch : positionCount - 1;
+  const selectedPositionSymbol = !editingField && positionCursorIndex >= 0
+    ? positions.positions[positionCursorIndex]!.symbol
+    : null;
 
   useEffect(() => {
     const activity = STAGE_ACTIVITY[stage];
@@ -528,6 +596,25 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setEditingField(false);
   }, [portfolioSub, resetBrokerSync]);
 
+  const movePositionCursor = useCallback((delta: number) => {
+    if (positionCursorIndex < 0) return;
+    const next = Math.max(0, Math.min(positionCount - 1, positionCursorIndex + delta));
+    setPositionCursorSymbol(positions.positions[next]?.symbol ?? null);
+  }, [positionCount, positionCursorIndex, positions.positions]);
+
+  /** Removes the row under the cursor; the cursor moves to the row that takes its place. */
+  const removePositionAtCursor = useCallback(() => {
+    if (!selectedPositionSymbol) return;
+    const neighbour = positions.positions[positionCursorIndex + 1] ?? positions.positions[positionCursorIndex - 1];
+    setPositionCursorSymbol(neighbour?.symbol ?? null);
+    void positions.removePosition(selectedPositionSymbol);
+  }, [positionCursorIndex, positions, selectedPositionSymbol]);
+
+  const openBrokerGuide = useCallback(() => {
+    const url = selectedBrokerId ? brokerSetupGuideUrl(selectedBrokerId, brokerValues) : null;
+    if (url) void rendererHost.openExternal(url).catch(() => {});
+  }, [brokerValues, rendererHost, selectedBrokerId]);
+
   const submitAccountField = useCallback(() => {
     setEditingField(false);
     account.submitAccountField();
@@ -601,129 +688,193 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     ),
   };
 
-  useShortcut((event) => {
-    if (helpFocused) return;
-    const name = event.name ?? event.key ?? "";
-    const enter = name === "enter" || name === "return";
-    const escape = name === "escape" || name === "backspace";
-    const consume = () => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
+  const activeSection: OnboardingSectionId = stage === "portfolio"
+    ? "portfolio"
+    : stage === "upgrade" || (stage === "ready" && progress.accountStatus === "signed-in")
+      ? "pro"
+      : "cloud";
+  const accountForm = account.accountSub === "signup" || account.accountSub === "login";
+  const modalShown = !helpFocused && stage !== "research";
 
-    if (name === "f10") {
-      consume();
-      if (stage === "portfolio") return;
-      if (!isBrokerCommitting) {
+  /**
+   * The card's keys. The card is modal: whatever it does not use stops here,
+   * so nothing reaches the workspace behind the scrim. The scope carries the
+   * stage so each step registers afresh and runs ahead of any pane that
+   * mounted since (the first-run workspace mounts after the wizard).
+   */
+  useShortcut((event) => {
+    const name = event.name ?? event.key ?? "";
+    const chord = event.ctrl || event.meta || event.super === true || event.alt;
+    const enter = !chord && (name === "enter" || name === "return");
+    const escape = !chord && (name === "escape" || name === "backspace");
+    const letter = (key: string) => !chord && !event.shift && name === key;
+    const tab = !chord && name === "tab";
+    const sectionDigit = !chord && !editingField && !event.targetEditable ? SECTION_DIGITS[name] : undefined;
+
+    const handled = ((): boolean => {
+      if (isPlainKey(event, "f10")) {
+        if (stage === "portfolio" || isBrokerCommitting) return true;
         if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
         else void finish(true);
+        return true;
       }
-      return;
-    }
 
-    if (stage === "portfolio" && portfolioSub === "positions") {
-      if (editingField) {
+      if (sectionDigit) {
+        if (sectionDigit !== activeSection && sectionAvailability[sectionDigit]) goToSection(sectionDigit);
+        return true;
+      }
+
+      if (stage === "portfolio" && portfolioSub === "positions") {
+        if (editingField) {
+          if (enter) {
+            positions.submitField();
+          } else if (tab) {
+            positions.setFieldIdx((index) => (
+              event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)
+            ));
+          } else if (!chord && name === "escape") {
+            setEditingField(false);
+          } else {
+            return false;
+          }
+          return true;
+        }
         if (enter) {
-          consume();
-          positions.submitField();
-        } else if (name === "tab") {
-          consume();
-          positions.setFieldIdx((index) => (
-            event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)
-          ));
-        } else if (name === "escape") {
-          consume();
+          if (positionCount > 0) continueFromPositions();
+          else positions.focusField(0);
+        } else if (letter("a") || tab) {
+          // Tab from the list goes back into the form, at its far end for Shift+Tab.
+          positions.focusField(tab && event.shift ? POSITION_FIELDS.length - 1 : 0);
+        } else if (letter(CONNECT_BROKER_KEY) && positionCount > 0) {
+          openBrokerConnect();
+        } else if (!chord && (name === "up" || name === "k")) {
+          movePositionCursor(-1);
+        } else if (!chord && (name === "down" || name === "j")) {
+          movePositionCursor(1);
+        } else if (letter(REMOVE_POSITION_KEY) || (!chord && name === "delete")) {
+          removePositionAtCursor();
+        } else {
+          return false;
+        }
+        return true;
+      }
+
+      if (editingField && (stage === "portfolio" || (stage === "account" && accountForm))) {
+        if (enter) {
+          if (stage === "portfolio") submitBrokerField();
+          else submitAccountField();
+        } else if (!chord && name === "escape") {
           setEditingField(false);
+          if (stage === "portfolio") backPortfolio();
+        } else if (stage === "account" && tab) {
+          account.focusAccountField(event.shift ? 0 : 1);
+        } else {
+          return false;
         }
-        return;
+        return true;
       }
-      if (enter) {
-        consume();
-        if (positionCount > 0) continueFromPositions();
-        else positions.focusField(0);
-      } else if (name === "a") {
-        consume();
-        positions.focusField(0);
-      } else if (name === "b" && positionCount > 0) {
-        consume();
-        openBrokerConnect();
-      }
-      return;
-    }
 
-    if (editingField) {
-      if (enter) {
-        consume();
-        if (stage === "portfolio") submitBrokerField();
-        else if (stage === "account") submitAccountField();
-      } else if (name === "escape") {
-        consume();
-        setEditingField(false);
-        if (stage === "portfolio") backPortfolio();
-      }
-      return;
-    }
-
-    if (stage === "portfolio") {
-      if (enter) {
-        consume();
-        continuePortfolio();
-      } else if (escape) {
-        consume();
-        backPortfolio();
-      } else if (name === "up" || name === "k") {
-        consume();
-        if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.max(0, index - 1));
-        else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
-      } else if (name === "down" || name === "j") {
-        consume();
-        if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
-        else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
-          const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
-          setBrokerSelectIdx((index) => Math.min(Math.max(0, optionCount - 1), index + 1));
+      if (stage === "portfolio") {
+        if (enter) {
+          continuePortfolio();
+        } else if (escape) {
+          backPortfolio();
+        } else if (!chord && (name === "up" || name === "k")) {
+          if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.max(0, index - 1));
+          else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
+        } else if (!chord && (name === "down" || name === "j")) {
+          if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
+          else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
+            const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
+            setBrokerSelectIdx((index) => Math.min(Math.max(0, optionCount - 1), index + 1));
+          }
+        } else if (portfolioSub === "broker-setup" && letter(BROKER_GUIDE_KEY)) {
+          openBrokerGuide();
+        } else {
+          return false;
         }
+        return true;
       }
+
+      if (stage === "account") {
+        if (enter) {
+          continueAccount();
+        } else if (escape) {
+          if (account.accountSub === "qr" || account.accountSub === "login") account.returnToAccountForm();
+          else goToSection("portfolio");
+        } else if (letter(BROWSER_SIGN_IN_KEY) && accountForm) {
+          account.beginQrSignIn();
+        } else if (letter(SKIP_SETUP_KEY)) {
+          skipSetup();
+        } else if (tab && accountForm) {
+          account.focusAccountField(account.accountFieldIdx > 0 ? 1 : 0);
+        } else {
+          return false;
+        }
+        return true;
+      }
+
+      if (stage === "upgrade") {
+        if (enter) {
+          primaryUpgradeAction();
+        } else if (escape) {
+          goToSection("cloud");
+        } else if (!planAccess.hasProAccess && letter(KEEP_FREE_KEY)) {
+          continueFree();
+        } else if (!planAccess.hasProAccess && (isPlainKey(event, "left") || letter("h"))) {
+          setBillingInterval("month");
+        } else if (!planAccess.hasProAccess && (isPlainKey(event, "right") || letter("l"))) {
+          setBillingInterval("year");
+        } else {
+          return false;
+        }
+        return true;
+      }
+
+      if (stage === "ready") {
+        if (enter) void finish();
+        else if (escape) goToSection(progress.accountStatus === "signed-in" ? "pro" : "cloud");
+        else return false;
+        return true;
+      }
+      return false;
+    })();
+
+    if (handled) {
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
-    if (stage === "research" && enter) {
-      consume();
-      saveProgressInBackground({ stage: "account" });
-      return;
-    }
-    if (stage === "account") {
-      if (enter) {
-        consume();
-        continueAccount();
-      } else if (escape) {
-        consume();
-        if (account.accountSub === "qr" || account.accountSub === "login") account.returnToAccountForm();
-        else goToSection("portfolio");
-      } else if (name === "b" && account.accountSub !== "qr" && account.accountSub !== "signed-in") {
-        consume();
-        account.beginQrSignIn();
-      }
-      return;
-    }
-    if (stage === "upgrade") {
-      if (enter) {
-        consume();
-        primaryUpgradeAction();
-      } else if (escape) {
-        consume();
-        goToSection("cloud");
-      }
-      return;
-    }
-    if (stage === "ready") {
-      if (enter) {
-        consume();
-        void finish();
-      } else if (escape) {
-        consume();
-        goToSection(progress.accountStatus === "signed-in" ? "pro" : "cloud");
-      }
-    }
-  }, { phase: "before", allowEditable: true });
+    if (keyReachesPastOnboardingModal(event, keybindings)) return;
+    // An app chord held here still must not fall through to the browser's own
+    // meaning for it (Cmd+digit switches tabs in a web host).
+    if (matchKeybinding(keybindings, event)) event.preventDefault();
+    event.stopPropagation();
+  }, {
+    phase: "before",
+    allowEditable: true,
+    scope: `onboarding:${stage}`,
+    enabled: modalShown && !dialogOpen && !commandBarOpen,
+  });
+
+  /**
+   * The research coach floats over a live workspace, so it takes no key a pane
+   * could want. It answers the notification keys, like a toast that stays up,
+   * and only when nothing else used them.
+   */
+  useShortcut((event) => {
+    if (event.targetEditable) return;
+    const connect = matchesKeybindingAction(keybindings, "notification-action", event);
+    const dismiss = matchesKeybindingAction(keybindings, "notification-dismiss", event) || isPlainKey(event, "f10");
+    if (!connect && !dismiss) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (connect) saveProgressInBackground({ stage: "account" });
+    else void finish();
+  }, {
+    phase: "after",
+    enabled: stage === "research" && !helpFocused && !dialogOpen && !commandBarOpen,
+  });
 
   if (helpFocused) {
     return null;
@@ -733,8 +884,22 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     const ticker = progress.tickerSymbol ?? t("your company");
     return <OnboardingCoach step={t("YOUR WORKSPACE")}
       title={tf("Built around {ticker}", { ticker })}
-      actions={<><OnboardingButton label="Keep exploring" variant="ghost" onPress={() => { void finish(); }} />
-        <OnboardingButton label="Connect free Cloud" variant="primary" onPress={() => saveProgressInBackground({ stage: "account" })} /></>}>
+      actions={<>
+        {/* The card has no room for both keys: like a toast, the dismiss key
+            is in the desktop tooltip. F10 also dismisses it. */}
+        <OnboardingButton
+          label="Keep exploring"
+          variant="ghost"
+          title={notificationDismissShortcut ? `${t("Keep exploring")} (${notificationDismissShortcut})` : undefined}
+          onPress={() => { void finish(); }}
+        />
+        <OnboardingButton
+          label="Connect free Cloud"
+          variant="primary"
+          shortcut={notificationActionShortcut || undefined}
+          onPress={() => saveProgressInBackground({ stage: "account" })}
+        />
+      </>}>
       <Text fg={colors.textDim} wrapText>{tf("Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
         ticker,
         shortcut: commandBarShortcut,
@@ -789,6 +954,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             positions={positions}
             positionsInputRef={inputRef}
             positionsEditing={editingField}
+            selectedPositionSymbol={selectedPositionSymbol}
             commandBarShortcut={commandBarShortcut}
             choices={brokerChoices}
             optionIdx={portfolioOptionIdx}
@@ -816,7 +982,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           {portfolioSub === "positions" ? (
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (
-                <OnboardingButton label="Connect a broker" variant="ghost" onPress={openBrokerConnect} />
+                <OnboardingButton label="Connect a broker" variant="ghost" shortcut={CONNECT_BROKER_KEY} onPress={openBrokerConnect} />
               ) : null}
               <OnboardingButton
                 label="Continue"
@@ -887,6 +1053,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           available={sectionAvailability}
           onNavigate={goToSection}
           onDismiss={skipSetup}
+          dismissShortcut={SKIP_SETUP_KEY}
           dismissing={isFinishing}
         />
         <OnboardingTitle
@@ -925,7 +1092,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         ) : null}
         <OnboardingActions
           hint={desktop && browserSignIn ? (
-            <Button label="Sign in with the browser instead" variant="plain" compact onPress={account.beginQrSignIn} />
+            <Button label="Sign in with the browser instead" variant="plain" compact shortcut={BROWSER_SIGN_IN_KEY} onPress={account.beginQrSignIn} />
           ) : undefined}
         >
           <OnboardingButton
@@ -986,7 +1153,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
               ]}
               value={billingInterval}
               onChange={(value) => setBillingInterval(value === "year" ? "year" : "month")}
-              focused={!desktop}
+              // The card's Left and Right move it on both hosts.
+              focused
             />
           </Box>
         ) : null}
@@ -1027,7 +1195,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             <OnboardingButton
               label="Keep Free for now"
               variant="secondary"
-              shortcut={desktop ? undefined : "F10"}
+              shortcut={KEEP_FREE_KEY}
               onPress={continueFree}
             />
           ) : null}

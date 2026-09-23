@@ -3,9 +3,8 @@ import { Box, Text } from "../../ui";
 import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
-import { isPlainKey } from "../../utils/keyboard";
 import { DialogFrame } from "./frame";
-import { ListView, type ListViewItem } from "./list-view";
+import { ListView, listCursorMove, type ListViewItem } from "./list-view";
 
 export interface ChoiceDialogChoice {
   id: string;
@@ -80,21 +79,12 @@ export function ChoiceDialog({
     if (!choice || choice.disabled) return;
     resolve(choice.id);
   };
-  const moveSelection = (direction: -1 | 1) => {
-    setIndex((current) => {
-      for (let next = current + direction; next >= 0 && next < choices.length; next += direction) {
-        if (!choices[next]?.disabled) return next;
-      }
-      return current;
-    });
-  };
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) {
-      moveSelection(-1);
-    } else if (isPlainKey(event, "down", "j")) {
-      moveSelection(1);
+    const move = listCursorMove(event, MAX_VISIBLE_CHOICE_ROWS - 1);
+    if (move) {
+      setIndex((current) => move(choices, current));
     } else if (event.name === "enter" || event.name === "return") {
       activateChoice(selectedChoice);
     } else if (event.name === "escape") {

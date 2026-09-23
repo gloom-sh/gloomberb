@@ -3,9 +3,10 @@ import { useShortcut } from "../../../../react/input";
 import { useKeybindings } from "../../../../app/keybindings";
 import type { WindowEditMode } from "../../../../plugins/registry";
 import {
+  armDoubleEscapeClose,
   createDoubleEscapeCloseState,
-  recordDoubleEscapeClose,
   resetDoubleEscapeClose,
+  takeDoubleEscapeClose,
 } from "../../../../utils/double-escape-close";
 import {
   inputCaptureAllowsPaneManagementShortcut,
@@ -22,6 +23,7 @@ interface ShellPaneManagementShortcutOptions {
   gridlockVisiblePanes(): boolean;
   hasActiveDrag(): boolean;
   inputCaptured: boolean;
+  openFocusedPaneMenu(): boolean;
   openFocusedPaneSettings(): boolean;
   openLayoutGallery(): void;
   overlayOpen: boolean;
@@ -42,6 +44,7 @@ export function useShellPaneManagementShortcuts({
   gridlockVisiblePanes,
   hasActiveDrag,
   inputCaptured,
+  openFocusedPaneMenu,
   openFocusedPaneSettings,
   openLayoutGallery,
   overlayOpen,
@@ -79,7 +82,7 @@ export function useShellPaneManagementShortcuts({
     if (isEscape) {
       const doubleEscapeState = doubleEscapeCloseRef.current;
       if (!hasActiveDrag() && !overlayOpen) {
-        if (recordDoubleEscapeClose(doubleEscapeState, focusedPaneId, Date.now()) && closeFocusedPane()) {
+        if (takeDoubleEscapeClose(doubleEscapeState, focusedPaneId, Date.now()) && closeFocusedPane()) {
           event.preventDefault();
           event.stopPropagation();
           return;
@@ -97,10 +100,29 @@ export function useShellPaneManagementShortcuts({
     }
   }, { phase: "before" });
 
+  // Only an Esc nothing else used arms the close, including a footer's Esc
+  // hint: the idle phase runs last and never sees a key a handler consumed.
+  useShortcut((event) => {
+    if (event.name !== "escape" && event.name !== "esc") return;
+    if (hasActiveDrag() || overlayOpen) return;
+    armDoubleEscapeClose(doubleEscapeCloseRef.current, focusedPaneId, Date.now());
+  }, { phase: "idle" });
+
+  // The pane menu key is a fallback too: a pane that binds "." keeps it,
+  // however late it mounted.
+  useShortcut((event) => {
+    if (resolvePaneManagementShortcut(event, keybindings) !== "menu") return;
+    if (hasActiveDrag() || overlayOpen || inputCaptured) return;
+    if (!openFocusedPaneMenu()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { phase: "idle" });
+
   useShortcut((event) => {
     const shortcut = resolvePaneManagementShortcut(event, keybindings);
     if (!shortcut || hasActiveDrag() || overlayOpen) return;
     if (inputCaptured && !inputCaptureAllowsPaneManagementShortcut(shortcut, event)) return;
+    if (shortcut === "menu") return;
 
     let handled = false;
     switch (shortcut) {

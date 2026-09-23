@@ -5,6 +5,7 @@ import {
   PaneStatusBody,
   TickerBadgeList,
   sortStackItems,
+  usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type StackSortPreference,
@@ -16,6 +17,7 @@ import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
 import { formatRelativeTime } from "../../../../../utils/datetime-format";
 import { formatNewsCategory } from "../categories";
+import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 
 export type NewsColumnId =
   | "rank"
@@ -304,6 +306,17 @@ export function NewsArticleStackView({
       setSelectedArticleId(sortedArticles[0]!.id);
     }
   }, [selectedArticleId, selectedIdx, setSelectedArticleId, sortedArticles]);
+
+  // [t]icker opens a company the cursor row mentions, as clicking its badge does.
+  // An open story registers its own.
+  const openTickerChoice = useOpenTickerChoice();
+  const rowTickersKey = detailOpen || selectedIdx < 0
+    ? ""
+    : collectNewsDisplayTickers(sortedArticles[selectedIdx]!.tickers).join(" ");
+  usePaneFooter("news-table:ticker", () => (rowTickersKey ? {
+    order: -1,
+    hints: [{ id: "ticker", key: "t", label: "icker", onPress: () => openTickerChoice(rowTickersKey.split(" ")) }],
+  } : null), [openTickerChoice, rowTickersKey]);
 
   const renderCell = useCallback((
     item: MarketNewsItem,

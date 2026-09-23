@@ -1,4 +1,4 @@
-import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
+import { Box, Text, useActionShortcut, useContextMenu, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -10,7 +10,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { IconButton } from "../ui/icon";
-import { hasPaneFooterContent, PaneFooterBar, PaneFooterProvider } from "./pane/footer";
+import { hasPaneFooterContent, PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "./pane/footer";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneContent } from "./pane/content";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
@@ -19,17 +19,26 @@ import { TITLEBAR_OVERLAY_HEIGHT_PX, getTitlebarLeadingInset } from "./titlebar-
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 import {
+  armDoubleEscapeClose,
   createDoubleEscapeCloseState,
-  recordDoubleEscapeClose,
   resetDoubleEscapeClose,
+  takeDoubleEscapeClose,
 } from "../../utils/double-escape-close";
 import { copyLivePaneShare } from "../../shares/live";
 import { buildPaneSharePayload } from "../../shares/pane";
-import type { ContextMenuItem } from "../../types/context-menu";
+import { contextMenuDivider, type ContextMenuItem } from "../../types/context-menu";
+import { useKeybindings } from "../../app/keybindings";
+import { useDialogState } from "../../ui/dialog";
+import { getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import {
-  PANE_MANAGEMENT_ACCELERATORS,
+  inputCaptureAllowsPaneManagementShortcut,
+  modalSurfaceOwnsKey,
+  paneManagementAccelerators,
   resolvePaneManagementShortcut,
 } from "./shell/shortcuts";
+import { menuItemsForFallback, paneFooterMenuItems } from "./shell/menu";
+import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./shell/action-menu-overlay";
+import { getPaneFooter } from "./pane/footer";
 
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
@@ -45,6 +54,12 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const paneState = useAppSelector((state) => state.paneState);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const doubleEscapeCloseRef = useRef(createDoubleEscapeCloseState());
+  const keybindings = useKeybindings();
+  const accelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
+  const shortcutDisplayMode = getShortcutDisplayMode(useUiHost().kind);
+  const menuShortcut = useActionShortcut("pane-menu");
+  const dialogOpen = useDialogState((state) => state.isOpen);
+  const [menuState, setMenuState] = useState<ActionMenuState | null>(null);
   const [windowFocused, setWindowFocused] = useState(() => (
     typeof document === "undefined" ? true : document.hasFocus()
   ));
@@ -84,7 +99,10 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const title = instance && paneDef
     ? getPaneDisplayTitle(titleState, instance, paneDef, pluginRegistry.panes)
     : "Detached Pane";
-  const focused = windowFocused;
+  // A dialog owns the keyboard while it is open. The pane stays focused under
+  // its own menu, so the menu's sort and tab items still reach it; the menu
+  // keeps keys from the pane below.
+  const focused = windowFocused && !dialogOpen;
 
   const focusPane = useCallback(() => {
     setWindowFocused(true);
@@ -118,7 +136,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     const doubleEscapeState = doubleEscapeCloseRef.current;
     const isEscape = event.name === "escape" || event.name === "esc";
     if (isEscape) {
-      if (recordDoubleEscapeClose(doubleEscapeState, desktopWindowBridge.paneId, Date.now())) {
+      if (takeDoubleEscapeClose(doubleEscapeState, desktopWindowBridge.paneId, Date.now())) {
         event.preventDefault();
         event.stopPropagation();
         if (!locked) void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
@@ -130,18 +148,17 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   }, { phase: "before" });
 
   useShortcut((event) => {
-    if (event.name !== "w" || (!event.ctrl && !event.meta && !event.super)) return;
-    if (inputCaptured && event.ctrl && !event.meta && !event.super) return;
-    // Swallowed either way, so a locked pane never falls through to the
-    // window's own close accelerator.
-    event.preventDefault();
-    event.stopPropagation();
+    if (event.name !== "escape" && event.name !== "esc") return;
+    armDoubleEscapeClose(doubleEscapeCloseRef.current, desktopWindowBridge.paneId, Date.now());
+  }, { phase: "idle" });
+
+  const closePane = useCallback(() => {
     if (locked) {
       pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
       return;
     }
     void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
-  });
+  }, [desktopWindowBridge, locked, pluginRegistry]);
 
   const startWindowDrag = useCallback(() => {
     focusPane();
@@ -163,13 +180,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     };
   }, [pluginRegistry, sharePane]);
 
-  useShortcut((event) => {
-    if (resolvePaneManagementShortcut(event) !== "share" || !sharePayload) return;
-    if (inputCaptured && event.ctrl && !event.meta && !event.super) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void sharePane();
-  });
 
   const togglePaneLock = useCallback(() => {
     void pluginRegistry.applyPaneSettingValueFn(
@@ -184,39 +194,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     });
   }, [desktopWindowBridge.paneId, locked, pluginRegistry]);
 
-  const openActions = useCallback(() => {
-    focusPane();
-    const items: ContextMenuItem[] = [];
-    if (hasPaneSettings) {
-      items.push({
-        id: "settings",
-        label: "Settings",
-        onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
-      });
-    }
-    if (sharePayload) items.push({
-      id: "share-pane",
-      label: "Share Pane",
-      accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
-      onSelect: sharePane,
-    });
-    items.push({
-      id: "toggle-pane-lock",
-      // The label carries the state: the terminal menu has no checkmark column.
-      label: locked ? "Unlock Pane" : "Lock Pane",
-      onSelect: togglePaneLock,
-    });
-    void showContextMenu({
-      kind: "pane",
-      paneId: desktopWindowBridge.paneId,
-      paneType: instance?.paneId ?? "",
-      title,
-      floating: true,
-    }, items).then((shown) => {
-      if (!shown && hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
-      else if (!shown && sharePayload) void sharePane();
-    });
-  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, locked, pluginRegistry, sharePane, sharePayload, showContextMenu, title, togglePaneLock]);
   const toggleQuickSetting = useCallback((key: string) => {
     focusPane();
     void pluginRegistry.togglePaneQuickSetting(desktopWindowBridge.paneId, key).catch((error) => {
@@ -226,6 +203,145 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       });
     });
   }, [desktopWindowBridge.paneId, focusPane, pluginRegistry]);
+
+  const dockPane = desktopWindowBridge.dockDetachedPane
+    ? () => { void desktopWindowBridge.dockDetachedPane?.(desktopWindowBridge.paneId); }
+    : null;
+
+  /** The same menu as a pane in the main window, minus what a window cannot do. */
+  const buildMenuItems = (): ContextMenuItem[] => {
+    const items = paneFooterMenuItems(getPaneFooter(desktopWindowBridge.paneId));
+    if (items.length > 0) items.push(contextMenuDivider("detached:own-actions-divider"));
+    for (const setting of quickSettings) {
+      items.push({
+        id: `quick-setting:${setting.key}`,
+        label: setting.label,
+        checked: setting.value,
+        onSelect: () => toggleQuickSetting(setting.key),
+      });
+    }
+    if (quickSettings.length > 0) items.push(contextMenuDivider("detached:quick-settings-divider"));
+    if (hasPaneSettings) {
+      items.push({
+        id: "settings",
+        label: "Settings",
+        accelerator: accelerators.settings,
+        onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
+      });
+    }
+    if (sharePayload) {
+      items.push({ id: "share-pane", label: "Share Pane", accelerator: accelerators.share, onSelect: sharePane });
+    }
+    if (dockPane) {
+      items.push({ id: "dock", label: "Dock in Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
+    }
+    items.push({
+      id: "toggle-pane-lock",
+      // The label carries the state: the terminal menu has no checkmark column.
+      label: locked ? "Unlock Pane" : "Lock Pane",
+      onSelect: togglePaneLock,
+    });
+    items.push({ id: "close-pane", label: "Close Pane", accelerator: accelerators.close, onSelect: closePane });
+    // Windows draws its own window buttons here, and a popped-out window has no
+    // command bar, so the menu is their keyboard path.
+    if (showWindowControls && rendererHost.controlWindow) {
+      items.push(
+        contextMenuDivider("detached:window-divider"),
+        { id: "window-minimize", label: "Minimize Window", onSelect: () => { void rendererHost.controlWindow?.("minimize"); } },
+        { id: "window-maximize", label: "Maximize Window", onSelect: () => { void rendererHost.controlWindow?.("toggle-maximize"); } },
+      );
+    }
+    return items;
+  };
+
+  const openKitMenu = (items: ContextMenuItem[]) => {
+    const entries = menuItemsForFallback(items, shortcutDisplayMode);
+    if (entries.length === 0) return;
+    setMenuState({
+      paneId: desktopWindowBridge.paneId,
+      x: 0,
+      y: 0,
+      width: 0,
+      items: entries,
+      anchor: paneMenuButtonAnchor(desktopWindowBridge.paneId),
+    });
+  };
+
+  const openActions = (options: { keyboard?: boolean } = {}) => {
+    focusPane();
+    const items = buildMenuItems();
+    // A native menu opens at the pointer, nowhere near the button when the
+    // keyboard asked for it.
+    if (options.keyboard) {
+      openKitMenu(items);
+      return;
+    }
+    void showContextMenu({
+      kind: "pane",
+      paneId: desktopWindowBridge.paneId,
+      paneType: instance?.paneId ?? "",
+      title,
+      floating: true,
+    }, items).then((shown) => {
+      if (!shown) openKitMenu(items);
+    });
+  };
+  const openActionsRef = useRef(openActions);
+  openActionsRef.current = openActions;
+  const dockPaneRef = useRef(dockPane);
+  dockPaneRef.current = dockPane;
+
+  // The open menu keeps keys from the pane, whatever mounted later.
+  useShortcut((event) => {
+    if (!menuState || !modalSurfaceOwnsKey(event, keybindings)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { phase: "capture", scope: "detached-pane-menu", allowEditable: true, enabled: menuState !== null });
+
+  // A pane that binds "." itself keeps it, however late it mounted.
+  useShortcut((event) => {
+    if (dialogOpen || menuState || inputCaptured) return;
+    if (resolvePaneManagementShortcut(event, keybindings) !== "menu") return;
+    event.preventDefault();
+    event.stopPropagation();
+    openActionsRef.current({ keyboard: true });
+  }, { phase: "idle" });
+
+  useShortcut((event) => {
+    const shortcut = resolvePaneManagementShortcut(event, keybindings);
+    if (!shortcut || shortcut === "menu") return;
+    if (shortcut === "close") {
+      if (inputCaptured && !inputCaptureAllowsPaneManagementShortcut(shortcut, event)) return;
+      // Swallowed either way, so a locked pane never falls through to the
+      // window's own close accelerator.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!dialogOpen && !menuState) closePane();
+      return;
+    }
+    if (dialogOpen || menuState) return;
+    if (inputCaptured && !inputCaptureAllowsPaneManagementShortcut(shortcut, event)) return;
+    let handled = true;
+    switch (shortcut) {
+      case "settings":
+        if (hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
+        else handled = false;
+        break;
+      case "share":
+        if (sharePayload) void sharePane();
+        else handled = false;
+        break;
+      case "toggle-floating":
+        if (dockPaneRef.current) dockPaneRef.current();
+        else handled = false;
+        break;
+      default:
+        handled = false;
+    }
+    if (!handled) return;
+    event.preventDefault();
+    event.stopPropagation();
+  });
 
   if (!instance || !paneDef) {
     return (
@@ -315,11 +431,15 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                     <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" />
                   </Box>
                 )}
-                {(hasPaneSettings || sharePayload) && (
-                  <Box className="electrobun-webkit-app-region-no-drag" data-gloom-role="pane-action">
-                    <IconButton icon="more" label="Pane actions" onPress={openActions} />
-                  </Box>
-                )}
+                <Box className="electrobun-webkit-app-region-no-drag" data-gloom-role="pane-action">
+                  <IconButton
+                    icon="more"
+                    label="Pane actions"
+                    shortcut={menuShortcut || undefined}
+                    hasPopup="menu"
+                    onPress={() => openActions()}
+                  />
+                </Box>
                 {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
                 {showWindowControls ? <WindowControls windowKind="detached" /> : null}
               </Box>
@@ -335,6 +455,13 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
               />
             </PaneBodyFrame>
             {renderFooter && <PaneFooterBar footer={footer} focused={focused} width={width} />}
+            <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={footer} focused={focused} />
+            <ShellActionMenuOverlay
+              menuState={menuState}
+              hoveredMenuItemId={null}
+              onClose={() => setMenuState(null)}
+              onHoverItem={() => {}}
+            />
           </Box>
         );
       }}

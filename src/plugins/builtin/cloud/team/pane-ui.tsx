@@ -1,14 +1,14 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { TeamAccentColor, TeamSummary } from "../../../../api-client";
 import { Badge, Button, Checkbox, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
-import { Box, Span, Text, TextAttributes } from "../../../../ui";
+import { Box, Span, Text, TextAttributes, type BoxRenderable } from "../../../../ui";
 import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "./model";
 
 /**
  * Every control in the pane registers under a field id. The pane keeps one
  * active id and walks the ring with Tab and the arrows; Enter fires the
- * registered action. Mouse users click; keyboard users never leave the pane.
+ * registered action. Mouse users click; keyboard users reach every control.
  */
 export interface TeamPaneFocus {
   activeField: string | null;
@@ -16,6 +16,8 @@ export interface TeamPaneFocus {
   /** True while the pane itself has focus; inputs only take keys then. */
   focused: boolean;
   register: (id: string, action: (() => void) | null) => () => void;
+  /** Where the control sits, so the pane can scroll it into view. */
+  registerNode: (id: string, node: BoxRenderable | null) => void;
 }
 
 export const TeamPaneFocusContext = createContext<TeamPaneFocus>({
@@ -23,6 +25,7 @@ export const TeamPaneFocusContext = createContext<TeamPaneFocus>({
   setActiveField: () => {},
   focused: false,
   register: () => () => {},
+  registerNode: () => {},
 });
 
 export function useTeamPaneFocus(): TeamPaneFocus {
@@ -32,6 +35,11 @@ export function useTeamPaneFocus(): TeamPaneFocus {
 function useFieldAction(id: string, action: (() => void) | null) {
   const { register } = useTeamPaneFocus();
   useEffect(() => register(id, action), [action, id, register]);
+}
+
+function useFieldNode(id: string): (node: BoxRenderable | null) => void {
+  const { registerNode } = useTeamPaneFocus();
+  return useCallback((node: BoxRenderable | null) => registerNode(id, node), [id, registerNode]);
 }
 
 /** A labeled single-line input, part of the keyboard ring. */
@@ -62,9 +70,10 @@ export function PaneField({
   const focus = useTeamPaneFocus();
   const active = focus.activeField === id;
   useFieldAction(id, null);
+  const nodeRef = useFieldNode(id);
   const inputWidth = Math.max(8, width - labelWidth - 1);
   return (
-    <Box flexDirection="column" width={Math.max(width, hintWidth ?? 0)}>
+    <Box ref={nodeRef} flexDirection="column" width={Math.max(width, hintWidth ?? 0)}>
       <Box height={1} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => focus.setActiveField(id)}>
         <Text width={labelWidth} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
           {`${active ? "> " : "  "}${label}`}
@@ -94,6 +103,7 @@ export function PaneButton({
   label,
   variant = "secondary",
   disabled = false,
+  compact = false,
   onPress,
   width,
 }: {
@@ -101,25 +111,30 @@ export function PaneButton({
   label: string;
   variant?: ButtonVariant;
   disabled?: boolean;
+  compact?: boolean;
   onPress: () => void;
   width?: number;
 }) {
   const focus = useTeamPaneFocus();
   const active = focus.activeField === id;
   useFieldAction(id, disabled ? null : onPress);
+  const nodeRef = useFieldNode(id);
   return (
-    <Button
-      label={label}
-      variant={variant}
-      active={active && !disabled}
-      disabled={disabled}
-      width={width}
-      stopPropagation
-      onPress={() => {
-        focus.setActiveField(id);
-        if (!disabled) onPress();
-      }}
-    />
+    <Box ref={nodeRef} flexShrink={0}>
+      <Button
+        label={label}
+        variant={variant}
+        active={active && !disabled}
+        disabled={disabled}
+        compact={compact}
+        width={width}
+        stopPropagation
+        onPress={() => {
+          focus.setActiveField(id);
+          if (!disabled) onPress();
+        }}
+      />
+    </Box>
   );
 }
 
@@ -141,8 +156,9 @@ export function PaneCheckbox({
   const focus = useTeamPaneFocus();
   const active = focus.activeField === id;
   useFieldAction(id, () => onChange(!checked));
+  const nodeRef = useFieldNode(id);
   return (
-    <Box onMouseDown={() => focus.setActiveField(id)}>
+    <Box ref={nodeRef} onMouseDown={() => focus.setActiveField(id)}>
       <Checkbox
         label={label}
         description={description}
@@ -183,10 +199,11 @@ export function AccentPicker({
   const focus = useTeamPaneFocus();
   const active = focus.activeField === id;
   useFieldAction(id, null);
+  const nodeRef = useFieldNode(id);
   const team = { name: previewName || "Your team", shortName: previewShortName || "TM" };
   const accent = teamAccentHex(value);
   return (
-    <Box flexDirection="column" width={width} onMouseDown={() => focus.setActiveField(id)}>
+    <Box ref={nodeRef} flexDirection="column" width={width} onMouseDown={() => focus.setActiveField(id)}>
       <Box height={1} flexDirection="row" alignItems="center" gap={1}>
         <Text width={labelWidth} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
           {`${active ? "> " : "  "}Accent`}

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
-  PaneStatusBody, QueryBar, usePaneNoticeFooter, type DataTableCell,
+  PaneStatusBody, QueryBar, useExternalLinkFooter, usePaneNoticeFooter, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableSelectionChangeReason,
@@ -20,7 +20,7 @@ import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { getCachedStatsBundle, loadStatsBundle } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
-import { StatDetail } from "./detail";
+import { fredSeriesUrl, StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 
@@ -223,6 +223,12 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     loading: resource.loading,
     error: selected ? null : error,
     info: footerInfo,
+  });
+  // `o` opens the selected statistic's official series page, the link under its chart.
+  useExternalLinkFooter({
+    registrationId: "econ-statistics:source",
+    focused: focused && !searchFocused,
+    url: selected ? fredSeriesUrl(selected.stat.seriesId) : null,
   });
   usePaneNoticeFooter({
     registrationId: "econ-statistics:notices",

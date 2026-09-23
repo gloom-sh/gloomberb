@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import {
+  ChoiceDialog,
   DataTableView,
   PaneStatusBody,
   SectionHeading,
@@ -8,6 +9,7 @@ import {
   StaticChartSurface,
   TickerBadgeList,
   statGridRows,
+  usePaneFooter,
   usePaneNoticeFooter,
   type DataTableColumn,
   type StatItem,
@@ -20,6 +22,8 @@ import {
   type FredSeriesData,
   type FredSeriesRequest,
 } from "../../../data/fred-series";
+import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
+import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -137,6 +141,39 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     focused,
   });
 
+  // The related badges open on click; the keyboard reaches them through `t`,
+  // which asks which one when there are several.
+  const openTicker = useInlineTickerOpener();
+  const dialog = useOptionalDialog();
+  const relatedTickers = useMemo(() => mapping?.relatedTickers ?? [], [mapping]);
+  const openRelated = useCallback(async () => {
+    if (relatedTickers.length === 1) {
+      openTicker(relatedTickers[0]!);
+      return;
+    }
+    if (!dialog || relatedTickers.length === 0) return;
+    const symbol = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title="Open related ticker"
+          choices={relatedTickers.map((ticker) => ({ id: ticker, label: ticker }))}
+        />
+      ),
+    }).catch(() => undefined);
+    if (symbol) openTicker(symbol);
+  }, [dialog, openTicker, relatedTickers]);
+  usePaneFooter("econ-detail:related", () => relatedTickers.length > 0 ? {
+    hints: [{
+      id: "related",
+      key: "t",
+      label: relatedTickers.length === 1 ? "icker" : "ickers",
+      title: relatedTickers.length === 1 ? `Open ${relatedTickers[0]}` : "Open Related Ticker…",
+      onPress: () => { void openRelated(); },
+    }],
+  } : null, [openRelated, relatedTickers]);
+
   // The stack bar names the event; the detail opens on the release figures.
   const releaseItems: StatItem[] = [
     { id: "time", label: "Release", value: timeLabel(event.date) },
@@ -212,6 +249,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
             timeAxisColor={colors.textDim}
             yAxisColor={colors.textDim}
             formatYAxisValue={(value) => formatCompactAxisValue(value, units)}
+            focused={focused}
           />
         </Box>
       ) : (

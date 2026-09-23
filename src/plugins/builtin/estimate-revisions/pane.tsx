@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Box, ScrollBox, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -22,6 +22,7 @@ import {
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   type DataTableColumn,
+  type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -201,6 +202,7 @@ function EstimateDetail({
           panels={PANELS}
           width={width}
           height={chartHeight}
+          focused={focused}
           showTimeAxis
           showLegend
           navigable={false}
@@ -303,6 +305,25 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     [rows, sort],
   );
   const selectedPeriod = rows.find((row) => row.id === open);
+  // The period detail only covers the Revisions tab; elsewhere a remembered
+  // open period must not take the tab keys away.
+  const detailOpen = tab === "revisions" && !!selectedPeriod;
+  const guidanceScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // PageUp/PageDown read the cited guidance above the sources table first,
+  // and fall through to the table once the text is at that end.
+  const pageGuidance = useCallback((event: DataTableKeyEvent) => {
+    if (!isPlainKey(event, "pageup", "pagedown")) return false;
+    const prose = guidanceScrollRef.current;
+    const viewportHeight = prose?.viewport?.height ?? 0;
+    const max = Math.max(0, (prose?.scrollHeight ?? 0) - viewportHeight);
+    if (!prose || max <= 0) return false;
+    const delta = Math.max(1, viewportHeight - 1) * (event.name === "pageup" ? -1 : 1);
+    const next = Math.max(0, Math.min(max, prose.scrollTop + delta));
+    if (next === prose.scrollTop) return false;
+    prose.scrollTo(next);
+    event.stopPropagation?.();
+    return true;
+  }, []);
   const pinnedTarget = useMemo(() => {
     if (!pinnedPeriod || !data) return { id: null, notice: null };
     try {
@@ -383,7 +404,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     tabs: TABS,
     activeValue: tab,
     onSelect: setTab,
-    focused: focused && !selectedPeriod,
+    focused: focused && !detailOpen,
   });
   const tabRows = tabsInHeader ? 0 : 1;
   if (!symbol) return <EmptyState title="Select a ticker." />;
@@ -406,7 +427,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
           tabs={TABS}
           activeValue={tab}
           onSelect={setTab}
-          focused={focused && !selectedPeriod}
+          focused={focused && !detailOpen}
           dense
         />
       )}
@@ -524,6 +545,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         {data && tab === "guidance" ? (
           <Box width={width} height={bodyHeight} flexDirection="column">
             <ScrollBox
+              ref={guidanceScrollRef}
               flexGrow={1}
               flexBasis={0}
               minHeight={3}
@@ -568,6 +590,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
                   setOpen(row.id);
                   setTab("revisions");
                 }}
+                onRootKeyDown={pageGuidance}
                 sortColumnId={sort.column}
                 sortDirection={sort.direction}
                 onHeaderClick={(column) =>

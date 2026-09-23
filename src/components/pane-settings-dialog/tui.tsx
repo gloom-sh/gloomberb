@@ -3,8 +3,47 @@ import { t } from "../../i18n";
 import { TextAttributes } from "../../ui";
 import type { PaneSettingField } from "../../types/plugin";
 import { colors } from "../../theme/colors";
+import { useViewport } from "../../react/input";
 import { DialogFrame, ListView } from "../ui";
-import { summarizePaneSettingValue } from "./value";
+import type { ListViewProps } from "../ui/list-view";
+import { isPaneSettingDisabled, summarizePaneSettingValue } from "./value";
+
+/** Terminal rows a settings dialog spends around its list: edge, frame, title, description. */
+const TUI_DIALOG_LIST_CHROME_ROWS = 11;
+
+/** The most list rows a terminal settings dialog shows before the list scrolls. */
+export function useTuiDialogListRows(): number {
+  return Math.max(3, useViewport().height - TUI_DIALOG_LIST_CHROME_ROWS);
+}
+
+/**
+ * A list in a terminal settings dialog. Past the rows the terminal has room
+ * for it scrolls to the cursor instead of running under the dialog's edge,
+ * and the highlighted row's description sits under it.
+ */
+export function TuiDialogList(props: ListViewProps) {
+  const maxRows = useTuiDialogListRows();
+  const scrollable = props.items.length > maxRows;
+  const description = props.selectedIndex >= 0 ? props.items[props.selectedIndex]?.description : undefined;
+  return (
+    <>
+      <ListView
+        {...props}
+        scrollable={scrollable}
+        height={scrollable ? maxRows : undefined}
+        showSelectedDescription={false}
+      />
+      {description && (
+        <>
+          <Box height={1} />
+          <Box>
+            <Text fg={colors.textDim}>{"    "}{t(description)}</Text>
+          </Box>
+        </>
+      )}
+    </>
+  );
+}
 
 export function TuiUnavailablePaneSettingsDialog() {
   return (
@@ -31,17 +70,16 @@ export function TuiPaneSettingsDialogBody({
 }) {
   return (
     <DialogFrame title={t(title)}>
-      <ListView
+      <TuiDialogList
         items={fields.map((field) => ({
           id: field.key,
           label: t(field.label),
           description: field.description ? t(field.description) : field.description,
           detail: summarizePaneSettingValue(field, settings[field.key]),
-          disabled: field.type === "action" && field.disabled,
+          disabled: isPaneSettingDisabled(field),
         }))}
         selectedIndex={selectedIndex}
         bgColor={colors.commandBg}
-        showSelectedDescription
         onSelect={onSelect}
         onActivate={(_, index) => {
           onActivate(fields[index]);
@@ -50,7 +88,7 @@ export function TuiPaneSettingsDialogBody({
           <Box flexDirection="row" justifyContent="space-between" width="100%">
             <Box flexDirection="row">
               <Text fg={rowState.selected ? colors.selectedText : colors.textDim}>
-                {rowState.selected ? "\u25b8 " : "  "}
+                {rowState.selected ? "▸ " : "  "}
               </Text>
               <Text
                 fg={rowState.disabled ? colors.textMuted : rowState.selected ? colors.text : colors.textDim}

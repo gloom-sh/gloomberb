@@ -1,3 +1,4 @@
+import { CLOUD_PLAN_KEY } from "../../shared/cloud-upgrade";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, type ScrollBoxRenderable, useRendererHost } from "../../../../ui";
 import {
@@ -10,8 +11,10 @@ import {
   type DataTableKeyEvent,
   type PaneHint,
 } from "../../../../components";
+import { ChoiceDialog } from "../../../../components/ui";
 import type { PaneProps } from "../../../../types/plugin";
-import { useShortcut } from "../../../../react/input";
+import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
+import { isPlainKey } from "../../../../utils/keyboard";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickerQuoteFact, useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
@@ -39,17 +42,16 @@ import {
   favoriteApiPath,
   favoriteKey,
   rowKey,
+  rowOpenTargets,
   rowStarred,
   rowTickerSymbols,
   rowTitle,
   rowWithFavorite,
   sortRows,
   tabs,
+  type BuildoutOpenTarget,
 } from "../table-model";
-import {
-  tickerSearchText,
-  tickerSymbol,
-} from "../format";
+import { tickerSearchText, tickerSymbol } from "../format";
 import { BuildoutPaneHeader } from "./header";
 import {
   activeBuildoutPage,
@@ -80,6 +82,7 @@ function collectTickerTexts(value: unknown, out: string[], depth: number): void 
 }
 export function BuildoutPane({ focused, width, height }: PaneProps) {
   const rendererHost = useRendererHost();
+  const dialog = useOptionalDialog();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const favoriteBusyKeysRef = useRef<Set<string>>(new Set());
   const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "companies");
@@ -130,14 +133,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       });
   }, [rendererHost, upgradeBusy]);
 
-  useShortcut((event) => {
-    const key = (event.name ?? event.key ?? "").toLowerCase();
-    if (!focused || key !== "u" || state.status !== "ready" || state.access === "pro") return;
-    event.preventDefault();
-    event.stopPropagation();
-    startUpgrade();
-  }, { scope: "buildout-upgrade" });
-
   useEffect(() => {
     setSelectedIndex(0);
     setDetailRow(null);
@@ -182,12 +177,38 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     detailCompanyTicker ? tickerCatalog[detailCompanyTicker]?.ticker ?? null : null,
     (quote) => (detailCompany ? liveCompanyFreshness(detailCompany, quote) : null),
   );
-  const openDetailTicker = useCallback(() => {
-    if (!detailCompanyTicker) return;
-    openTicker(detailCompanyTicker);
-  }, [detailCompanyTicker, openTicker]);
+  // `o` opens what the row or the open detail links to: straight away when it
+  // is one ticker, from a list when there are several or a source link.
+  const openTargets = useMemo(
+    () => rowOpenTargets(detailRow ?? selectedRow, detailRow ? "detail" : "row"),
+    [detailRow, selectedRow],
+  );
+  const openTarget = useCallback((target: BuildoutOpenTarget) => {
+    if (target.kind === "ticker") openTicker(target.symbol);
+    else void rendererHost.openExternal(target.url);
+  }, [openTicker, rendererHost]);
+  const chooseOpenTarget = useCallback(async () => {
+    const [first] = openTargets;
+    if (!first) return;
+    if (openTargets.length === 1 || !dialog) {
+      openTarget(first);
+      return;
+    }
+    const chosen = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title="Open"
+          choices={openTargets.map((target) => ({ id: target.id, label: target.label, detail: target.detail }))}
+        />
+      ),
+    }).catch(() => undefined);
+    const target = openTargets.find((entry) => entry.id === chosen);
+    if (target) openTarget(target);
+  }, [dialog, openTarget, openTargets]);
 
-  // The free tier sees the head of a list; the footer says so, the `u` hint
+  // The free tier sees the head of a list; the footer says so, the `$` hint
   // is the way out, and no count of what is hidden is drawn.
   const partialList = state.status === "ready"
     && activeTab === "companies"
@@ -281,23 +302,26 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const favoriteTargetKey = canFavorite && favoriteTarget ? favoriteKey(favoriteTarget) : null;
   const footerHints = useMemo<PaneHint[]>(() => {
     const hints: PaneHint[] = [];
+    // The key every Pro prompt uses; `u` is the app's install-update key.
     if (state.status === "ready" && state.access !== "pro") {
-      hints.push({ id: "upgrade", key: "u", label: "pgrade", onPress: startUpgrade });
+      hints.push({ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade", onPress: startUpgrade });
     }
     if (favoriteTarget && favoriteTargetKey) {
+      const starred = rowStarred(favoriteTarget);
       hints.push({
         id: "favorite",
         key: "s",
-        label: rowStarred(favoriteTarget) ? " unstar" : "tar",
+        label: starred ? " unstar" : "tar",
+        title: starred ? "Unstar" : undefined,
         onPress: () => { toggleFavoriteRow(favoriteTarget); },
         disabled: favoriteBusyKey === favoriteTargetKey,
       });
     }
-    if (detailCompanyTicker) {
-      hints.push({ id: "open-ticker", key: "o", label: "pen", onPress: openDetailTicker });
+    if (openTargets.length > 0) {
+      hints.push({ id: "open", key: "o", label: "pen", onPress: () => { void chooseOpenTarget(); } });
     }
     return hints;
-  }, [detailCompanyTicker, favoriteBusyKey, favoriteTarget, favoriteTargetKey, openDetailTicker, startUpgrade, state, toggleFavoriteRow]);
+  }, [chooseOpenTarget, favoriteBusyKey, favoriteTarget, favoriteTargetKey, openTargets.length, startUpgrade, state, toggleFavoriteRow]);
 
   usePaneFooter("buildout", () => ({
     info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
@@ -327,19 +351,16 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     LOAD_MORE_THRESHOLD,
   );
 
+  // Upgrade ($), star (s) and open (o) are footer hints, which bind their keys;
+  // the table adds only `f`, the older name for star, and refresh. Plain keys
+  // only: Cmd+Shift+S shares the pane and Cmd+Shift+R resizes it.
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "u" && state.status === "ready" && state.access !== "pro") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      void startUpgrade();
-      return true;
-    }
-    if ((event.name === "s" || event.name === "f") && toggleFavoriteRow(selectedRow)) {
+    if (isPlainKey(event, "f") && toggleFavoriteRow(selectedRow)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       return true;
     }
-    if (event.name === "r") {
+    if (isPlainKey(event, "r")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       refresh();
@@ -347,26 +368,14 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     }
     // Esc and Backspace close an open list through the stack below.
     return false;
-  }, [refresh, selectedRow, startUpgrade, state, toggleFavoriteRow]);
+  }, [refresh, selectedRow, toggleFavoriteRow]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "u" && state.status === "ready" && state.access !== "pro") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      void startUpgrade();
-      return true;
-    }
-    if ((event.name === "s" || event.name === "f") && toggleFavoriteRow(detailRow)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      return true;
-    }
-    if (event.name !== "o" || !detailCompanyTicker) return false;
+    if (!isPlainKey(event, "f") || !toggleFavoriteRow(detailRow)) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
-    openDetailTicker();
     return true;
-  }, [detailCompanyTicker, detailRow, openDetailTicker, startUpgrade, state, toggleFavoriteRow]);
+  }, [detailRow, toggleFavoriteRow]);
 
   const renderCell = useCallback((
     row: BuildoutRow,
@@ -421,6 +430,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
         onChange: (index) => setSelectedIndex(index),
       }}
       onActivate={activateRow}
+      // The lists start unsorted, and every table sorts by its headers.
+      sortable
       sortColumnId={sortColumnId}
       sortDirection={sortDirection}
       onHeaderClick={handleHeaderClick}

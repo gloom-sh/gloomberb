@@ -90,7 +90,9 @@ for (const entry of [
 ]) {
   test(`keyboard submission retains the actual ${entry.field} input`, async () => {
     await mount({});
-    for (let i = 0; i < entry.tabs; i++) await emitKeypress(setup, { name: "tab", sequence: "\t" });
+    // e edits the first field; Tab walks on from there.
+    await emitKeypress(setup, { name: "e", sequence: "e" });
+    for (let i = 1; i < entry.tabs; i++) await emitKeypress(setup, { name: "tab", sequence: "\t" });
     await act(async () => { await setup.mockInput.typeText(entry.input); setup.mockInput.pressEnter(); await setup.renderOnce(); });
     await act(async () => setup.renderOnce());
     const frame = capture(`edit-${entry.field}`);

@@ -12,9 +12,9 @@ export const formatPrice = (value: number | null | undefined) => value == null |
 export const expiryLabel = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
 const point = (x: number, y: number): ProjectedChartPoint => ({ date: new Date(Math.round(x * 1_000_000)), open: y, high: y, low: y, close: y, volume: 0 });
 
-export function SmileChart({ snapshot, expiry, overlay, axis, width, height }: {
+export function SmileChart({ snapshot, expiry, overlay, axis, width, height, focused = false }: {
   snapshot: SurfaceSnapshot; expiry: SurfaceExpiry | null; overlay: boolean;
-  axis: string; width: number; height: number;
+  axis: string; width: number; height: number; focused?: boolean;
 }) {
   const colors = useThemeColors();
   const palette = resolveChartPalette(colors);
@@ -73,11 +73,12 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height }: {
     </Box>
     <StaticChartSurface points={model.points} overlays={model.overlays} calendarSpaced width={width} height={Math.max(3, height - 1)}
       colors={palette} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
-      xAxisTicks={model.ticks} formatXAxisCursorValue={(ratio) => `${axisLabel} ${(model.left + ratio * (model.right - model.left)).toFixed(2)}`} />
+      xAxisTicks={model.ticks} formatXAxisCursorValue={(ratio) => `${axisLabel} ${(model.left + ratio * (model.right - model.left)).toFixed(2)}`}
+      focused={focused} />
   </Box>;
 }
 
-export function TermChart({ snapshot, width, height }: { snapshot: SurfaceSnapshot; width: number; height: number }) {
+export function TermChart({ snapshot, width, height, focused = false }: { snapshot: SurfaceSnapshot; width: number; height: number; focused?: boolean }) {
   const colors = useThemeColors();
   const rows = snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years);
   if (!rows.length) return <EmptyState title="Term structure unavailable." hint="No clean ATM observations." />;
@@ -102,7 +103,7 @@ export function TermChart({ snapshot, width, height }: { snapshot: SurfaceSnapsh
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced width={width} height={Math.max(3, height - moveHeight - 1)}
       colors={resolveChartPalette(colors)} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
       xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: dayLabel(i / 4) }))}
-      formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} />
+      formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} focused={focused} />
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} scrollY focusable={false}>
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}

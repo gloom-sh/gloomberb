@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -8,6 +8,7 @@ import { usePaneSettingValue, usePluginAppActions } from "../../../public/react"
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { IvHistoryChart } from "./charts";
@@ -68,23 +69,22 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   const cycleLookback = () => setLookback(lookback === "1Y" ? "2Y" : lookback === "2Y" ? "ALL" : "1Y");
   const toggleHv = () => setHvWindow(String(hvWindow === 20 ? 30 : 20));
   const openSurface = () => { if (symbol) createPaneFromTemplate("vol-surface-pane", { symbol, ticker, instrument: instrument?.instrument }); };
-  const handleKey = (event: DataTableKeyEvent): boolean => {
-    if (event.ctrl || event.alt || event.meta) return false;
-    if (event.name === "r") void resource.reload();
-    else if (event.name === "l") cycleLookback();
-    else if (event.name === "h") toggleHv();
-    else if (event.name === "s" && symbol) openSurface();
-    else return false;
-    event.preventDefault?.(); event.stopPropagation?.(); return true;
-  };
-  // The statistics table owns keys once it renders; before that the pane does.
-  useShortcut((event) => { if (focused && !model) handleKey(event); });
+  // These answer in every state, including while the history backfills and
+  // no table is on screen; the footer hints bind their own keys.
+  useShortcut((event) => {
+    if (event.defaultPrevented) return;
+    if (isPlainKey(event, "r")) void resource.reload();
+    else if (isPlainKey(event, "y")) cycleLookback();
+    else if (isPlainKey(event, "w")) toggleHv();
+    else return;
+    event.preventDefault(); event.stopPropagation();
+  }, { enabled: focused });
   usePaneFooter("iv-history", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
     ...(model?.since ? [{ id: "since", parts: [{ text: `trade closes since ${model.since}`, tone: "muted" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf, tone: "muted" as const }] }] : []),
   ], hints: [
-    // Lookback (l) and realized window (h) keep their keys; the query bar shows them.
+    // Lookback (y) and realized window (w) keep their keys; the query bar shows them.
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
   ] }), [resource.loading, model?.since, model?.asOf, lookback, hvWindow, symbol]);
 
@@ -118,8 +118,8 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
           selection={{ kind: "id", selectedId: statSelection, getId: (row) => row.id, onChange: (id) => setStatSelection(id) }}
           getExportMetadata={() => [["symbol", model.symbol], ["as of", model.asOf], ["history since", model.since],
             ["IV", "ATM, constant maturity, annualized"], ["HV", `${hvWindow}-session close-to-close`], ["warnings", ...notices]]}
-          onRootKeyDown={handleKey} renderCell={(row, column) => statCell(row, column.id)} />
-        <IvHistoryChart model={model} width={width} height={Math.max(6, height - 1 - statsHeight)} hvLabel={`HV ${hvWindow}`} />
+          renderCell={(row, column) => statCell(row, column.id)} />
+        <IvHistoryChart model={model} width={width} height={Math.max(6, height - 1 - statsHeight)} hvLabel={`HV ${hvWindow}`} focused={focused} />
       </> : null}
     </PaneStatusBody>}
   </Box>;

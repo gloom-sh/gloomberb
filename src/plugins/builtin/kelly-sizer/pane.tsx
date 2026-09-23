@@ -21,6 +21,7 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency, formatCurrency } from "../../../utils/format";
+import { isPlainKey } from "../../../utils/keyboard";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import {
   useAppDispatch,
@@ -298,8 +299,12 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       onClear: () => setCurrentValueOverride(null),
     },
   ], [bankroll, config.baseCurrency, currentValue, setBankrollOverride, setCurrentValueOverride]);
-  const editableFields = useMemo(() => [...commonFields, ...fields], [commonFields, fields]);
-  const safeSelectedFieldIndex = Math.min(selectedFieldIndex, Math.max(0, editableFields.length - 1));
+  // Every input in the order the grid draws it: the keyboard walks this ring.
+  const gridFields = useMemo(
+    () => [...contextFields, ...commonFields, ...fields],
+    [commonFields, contextFields, fields],
+  );
+  const selectedField = gridFields[Math.min(selectedFieldIndex, Math.max(0, gridFields.length - 1))] ?? null;
   const result = useMemo(
     () => calculateKellySizing({
       mode,
@@ -372,6 +377,10 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     setShowSensitivity((current) => !current);
   }, [setShowSensitivity]);
 
+  const editSelectedField = useCallback(() => {
+    if (selectedField) activateInput(selectedField.id);
+  }, [activateInput, selectedField]);
+
   useShortcut((event) => {
     if (!focused) return;
     if (commandBarOpen || event.defaultPrevented || event.propagationStopped) return;
@@ -389,12 +398,43 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       focusTickerSearch();
       return;
     }
-    if (isPlainShortcut(event, "e")) {
+    // With no ticker there is no form on screen to edit.
+    if (ticker && !activeInputId && isPlainShortcut(event, "e", "return", "enter")) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      activateInput(editableFields[safeSelectedFieldIndex]?.id ?? null);
+      editSelectedField();
     }
   }, { enabled: focused });
+
+  // While a cell is active, Tab and Shift+Tab walk the cells and let go past
+  // either end, so the next Tab moves to the next pane; Esc leaves. Enter in a
+  // cell commits in place. Every cell is an input; the Side switch lives in the
+  // query bar, which the pane menu reaches.
+  useShortcut((event) => {
+    if (event.defaultPrevented || event.propagationStopped) return;
+    const activeIndex = gridFields.findIndex((field) => field.id === activeInputId);
+    if (activeIndex < 0) return;
+    const consume = () => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    if (event.name === "tab" && !event.ctrl && !event.meta && !event.super && !event.alt) {
+      consume();
+      const nextIndex = activeIndex + (event.shift ? -1 : 1);
+      if (nextIndex < 0 || nextIndex >= gridFields.length) activateInput(null);
+      else activateInput(gridFields[nextIndex]!.id, nextIndex);
+      return;
+    }
+    if (isPlainKey(event, "escape", "esc")) {
+      consume();
+      activateInput(null);
+    }
+  }, {
+    allowEditable: true,
+    enabled: focused && !commandBarOpen && activeInputId !== null && !!ticker,
+    phase: "before",
+    scope: "kelly-sizer:fields",
+  });
 
   usePaneFooter(KELLY_PANE_ID, () => ({
     info: bankroll <= 0 && ticker
@@ -406,10 +446,12 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           ? [{ id: "clip", parts: [{ text: `clip ${result.clipReasons.join(", ")}`, tone: "muted" as const }] }]
           : [],
     hints: [
+      // Names the cell Enter or `e` edits, which the grid does not mark.
+      ...(ticker && !activeInputId && selectedField ? [{ id: "edit", key: "e", label: `dit ${selectedField.label}`, onPress: editSelectedField }] : []),
       { id: "search", key: "/", label: "search", onPress: focusTickerSearch },
       ...(viewInBar ? [] : [{ id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity }]),
     ],
-  }), [bankroll, focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, ticker, toggleSensitivity, viewInBar]);
+  }), [activeInputId, bankroll, editSelectedField, focusTickerSearch, result.clipReasons, result.warnings, selectedField?.id, selectedField?.label, showSensitivity, ticker, toggleSensitivity, viewInBar]);
 
   const portfolioTabs = useMemo(
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
@@ -428,7 +470,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     focused: focused && !activeInputId,
   });
   const tabRows = tabsInHeader ? 0 : 1;
-  const gridFields = [...contextFields, ...editableFields];
   const gridColumns = fieldGridColumns(width);
   const gridRows = fieldGridRows(gridFields, gridColumns);
   const resultItems = buildKellyResultItems({
@@ -544,7 +585,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         width={width}
         focused={focused}
         onActivate={(id) => {
-          const index = editableFields.findIndex((field) => field.id === id);
+          const index = gridFields.findIndex((field) => field.id === id);
           activateInput(id, index >= 0 ? index : undefined);
         }}
         onDeactivate={() => activateInput(null)}
@@ -560,6 +601,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           xAxisLabels={curveXAxisLabels}
           curveMaxFraction={curveMaxFraction}
           markers={curveMarkers}
+          focused={focused && !activeInputId}
         />
       )}
 

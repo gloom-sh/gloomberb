@@ -44,6 +44,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     [settlement, maturity, coupon, yieldInput, price, frequency, dayCount, endOfMonth]);
   const [draft, setDraft] = usePaneStateValue<BondDraft>("draft", seed);
   const [activeField, setActiveField] = useState<(typeof FIELDS)[number] | null>(null);
+  const [flowRow, setFlowRow] = useState(0);
   const frequencyControl = useRef<SelectControl>(null);
   const conventionControl = useRef<SelectControl>(null);
   const { data, loading, error, updatedAt, load } = useAsyncResource(loadBenchmark);
@@ -73,12 +74,15 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
-    if (event.name === "tab" && tab === "valuation") {
+    if (event.name === "tab") {
+      // Tab walks the fields once one is being edited and leaves them past
+      // either end; with no field active it moves to the next pane as usual.
+      if (tab !== "valuation" || !activeField) return;
       consume();
-      const index = activeField ? FIELDS.indexOf(activeField) : event.shift ? 0 : -1;
-      setActiveField(FIELDS[(index + (event.shift ? -1 : 1) + FIELDS.length) % FIELDS.length]!);
+      setActiveField(FIELDS[FIELDS.indexOf(activeField) + (event.shift ? -1 : 1)] ?? null);
     } else if (event.name === "escape" && activeField) { consume(); setActiveField(null); }
-    else if (event.targetEditable) return;
+    // Shifted letters are global chords (Shift+R refreshes everything).
+    else if (event.targetEditable || event.shift) return;
     else if (event.name === "e") { consume(); setTab("valuation"); setActiveField("settlement"); }
     else if (event.name === "r") { consume(); void load(); }
     else if ((event.name === "j" || event.name === "k") && tab === "valuation") {
@@ -151,7 +155,9 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
         </Box> : null}
       </ScrollBox>
     </> : evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <>
-      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - tabRows)} sortColumnId={null} sortDirection="asc"
+      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date}
+        // A read-only cursor, so j/k and the page keys reach every payment.
+        selection={{ kind: "index", selectedIndex: flowRow, onChange: setFlowRow }} focused={focused} rootHeight={Math.max(1, height - tabRows)} sortColumnId={null} sortDirection="asc"
         renderCell={(row, column) => ({ text: column.id === "date" ? row.date : fixed(row[column.id as "amount" | "presentValue"]) })} />
         : <DataTableView emptyStateTitle="No yield scenarios" columns={SHOCK_COLUMNS} items={result.sensitivity} getItemKey={(row) => String(row.shiftBps)} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - tabRows)} sortColumnId={null} sortDirection="asc"
           renderCell={(row, column) => { const value = row[column.id as keyof typeof row]; return { text: column.id === "shiftBps" ? `${value! > 0 ? "+" : ""}${value}` : fixed(value), color: column.id === "priceChange" && value != null ? value > 0 ? colors.positive : value < 0 ? colors.negative : colors.text : undefined }; }} />}

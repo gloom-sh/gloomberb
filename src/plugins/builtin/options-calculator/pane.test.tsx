@@ -139,7 +139,7 @@ test("a chain-seeded calculator follows the contract and underlying until the us
   expect(expected).toBeCloseTo(24, 1);
 
   // A typed spot is the user's: later underlying ticks no longer move it.
-  await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await emitKeypress(testSetup!, { name: "e", sequence: "e" });
   await act(async () => { await testSetup!.mockInput.typeText("905"); testSetup!.mockInput.pressEnter(); });
   await act(async () => { await testSetup!.renderOnce(); });
   await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" });
@@ -165,7 +165,7 @@ test("narrow results keep contract context reachable while scrolling Greeks and 
   expect(bottom).toMatch(/Rho\s+[+\d.]+\s+per rate pt/);
 
   // Inputs stay reachable while the researcher reads the bottom of the results.
-  await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await emitKeypress(testSetup!, { name: "e", sequence: "e" });
   await act(async () => { await testSetup!.mockInput.typeText("910"); testSetup!.mockInput.pressEnter(); });
   await act(async () => { await testSetup!.renderOnce(); });
   expect(testSetup!.captureCharFrame()).toMatch(/Spot\s+910/);
@@ -209,26 +209,40 @@ test("displays fractional strikes and spot prices without rounding them to whole
   expect(frame).toContain("per unit");
 });
 
-test("tabs into fields and edits them from the keyboard", async () => {
-  await render();
-
-  await act(async () => {
-    testSetup!.mockInput.pressTab();
-    await testSetup!.renderOnce();
-  });
-  await act(async () => {
+test("Tab stays the pane key until a field is edited, and the fields let go of it at either end", async () => {
+  const press = (event: { name: string; sequence: string; shift?: boolean }) =>
+    emitKeypress(testSetup!, event, { trackPropagation: true, afterCommit: true });
+  const settleFocus = () => act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
   });
+  // "m" toggles the model only while no field owns the keyboard; American adds a Steps field.
+  await render();
+  expect(testSetup!.captureCharFrame()).not.toContain("Steps");
+  await press({ name: "tab", sequence: "\t" });
+  await press({ name: "m", sequence: "m" });
+  expect(testSetup!.captureCharFrame()).toContain("Steps");
+
+  // e edits Spot, Enter commits it, Esc leaves the fields.
+  await press({ name: "e", sequence: "e" });
+  await settleFocus();
   await act(async () => {
     await testSetup!.mockInput.typeText("120");
     testSetup!.mockInput.pressEnter();
     await testSetup!.renderOnce();
     await testSetup!.renderOnce();
   });
-
   expect(testSetup!.captureCharFrame()).toMatch(/Spot\s+120/);
+  await press({ name: "escape", sequence: "\u001B" });
+  await press({ name: "m", sequence: "m" });
+  expect(testSetup!.captureCharFrame()).not.toContain("Steps");
+
+  // Shift+Tab on the first field leaves instead of wrapping to the last one.
+  await press({ name: "e", sequence: "e" });
+  await settleFocus();
+  await press({ name: "tab", sequence: "\t", shift: true });
+  await press({ name: "m", sequence: "m" });
+  expect(testSetup!.captureCharFrame()).toContain("Steps");
 });
 
 test("model switching restores the cash schedule and reprices under the selected exercise rule", async () => {
@@ -245,7 +259,8 @@ test("model switching restores the cash schedule and reprices under the selected
   expect(testSetup!.captureCharFrame()).toContain("30:1;120:1");
 
   // Moving expiry ahead of a stored payment invalidates the American schedule.
-  for (let i = 0; i < 3; i++) await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await emitKeypress(testSetup!, { name: "e", sequence: "e" });
+  for (let i = 0; i < 2; i++) await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
   await act(async () => { await testSetup!.mockInput.typeText("10"); testSetup!.mockInput.pressEnter(); });
   await act(async () => { await testSetup!.renderOnce(); });
   expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);

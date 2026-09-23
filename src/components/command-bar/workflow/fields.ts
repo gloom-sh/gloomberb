@@ -33,11 +33,11 @@ function normalizeWorkflowCopy(value?: string): string {
   return (value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-export function getWorkflowFieldDescription(field: CommandBarWorkflowField, active: boolean): string | null {
+export function getWorkflowFieldDescription(field: CommandBarWorkflowField): string | null {
   const description = field.description?.trim();
   if (!description) return null;
   if (normalizeWorkflowCopy(description) === normalizeWorkflowCopy(field.placeholder)) return null;
-  return field.type === "textarea" && active ? `${description} Ctrl+S submits.` : description;
+  return description;
 }
 
 export function estimateWorkflowBodyRows(route: CommandBarWorkflowRoute): number {
@@ -46,9 +46,8 @@ export function estimateWorkflowBodyRows(route: CommandBarWorkflowRoute): number
     + (route.description?.length ?? 0)
     + (route.subtitle || (route.description?.length ?? 0) > 0 ? 1 : 0);
   const fieldRows = visibleFields.reduce((total, field, index) => {
-    const active = field.id === route.activeFieldId;
     const controlRows = field.type === "textarea" ? 6 : 1;
-    const descriptionRows = getWorkflowFieldDescription(field, active) ? 1 : 0;
+    const descriptionRows = getWorkflowFieldDescription(field) ? 1 : 0;
     const gapRows = index === visibleFields.length - 1 ? 0 : 1;
     return total + 1 + controlRows + descriptionRows + gapRows;
   }, 0);

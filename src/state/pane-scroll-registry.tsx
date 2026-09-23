@@ -22,6 +22,7 @@ interface PaneScrollKeyEvent {
   meta?: boolean;
   alt?: boolean;
   option?: boolean;
+  shift?: boolean;
   defaultPrevented?: boolean;
   propagationStopped?: boolean;
   preventDefault?: () => void;
@@ -75,8 +76,11 @@ function arrowScrollLines(scrollBox: ScrollBoxRenderable): number {
 
 function resolveKeyScrollAction(event: PaneScrollKeyEvent): PaneScrollAction | null {
   if (event.ctrl || event.meta || event.alt || event.option) return null;
+  // j and k scroll a plain body as the arrows do; a list that moves a cursor
+  // on them has already used the key by the time this runs.
+  const name = !event.shift && event.name === "j" ? "down" : !event.shift && event.name === "k" ? "up" : event.name;
 
-  switch (event.name) {
+  switch (name) {
     case "down":
       return {
         direction: "down",

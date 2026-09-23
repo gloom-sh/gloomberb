@@ -19,6 +19,7 @@ import type { ResolvedSeries } from "../../../../time-series/types";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { formatNumber } from "../../../../utils/format";
+import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginPaneState } from "../../../runtime";
 import { useBoundTicker } from "../../shared/ticker-request";
 import { useRelationshipHistories } from "./history";
@@ -217,8 +218,24 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     });
   }, [analysis]);
 
+  /**
+   * Home/End jump the shared crosshair to the ends. Left/Right step it through
+   * the chart, which holds the keyboard and moves every panel and the scatter.
+   */
+  const jumpCursor = useCallback((name: string | undefined): boolean => {
+    const next = name === "home" ? alignedDates[0] : name === "end" ? alignedDates.at(-1) : undefined;
+    if (!next) return false;
+    setCursorDateMs(next.getTime());
+    return true;
+  }, [alignedDates]);
+
   useShortcut((event) => {
     if (!focused) return;
+    if (isPlainKey(event, "home", "end") && jumpCursor(event.name)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const shortcut = resolveRelationshipGraphShortcut(event);
     if (!shortcut) return;
     event.preventDefault();
@@ -308,6 +325,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
           height={layout.chartRows}
           cursorDate={cursorDate}
           onCursorDateChange={selectCursorDate}
+          focused={focused}
           navigable={false}
           showTimeAxis
           formatAxisValue={formatAxisValue}

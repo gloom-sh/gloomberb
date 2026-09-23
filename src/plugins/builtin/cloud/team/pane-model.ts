@@ -90,7 +90,8 @@ export function draftChanges(team: TeamSummary, draft: TeamDraft): {
 /**
  * The keyboard walks a ring of field ids per section. Buttons, inputs, the
  * accent picker, and the checkbox all take part, in reading order, so Tab and
- * the arrows reach everything a mouse can.
+ * the arrows reach everything a mouse can. Invitations addressed to me sit in
+ * banners above every section, so their answers lead the ring.
  */
 export function sectionFieldIds(input: {
   section: TeamPaneSection | "create";
@@ -100,7 +101,13 @@ export function sectionFieldIds(input: {
   linkTokens: readonly string[];
   channelIds: readonly string[];
   selfUserId: string | null;
+  receivedInvitationIds?: readonly string[];
 }): string[] {
+  const banners = (input.receivedInvitationIds ?? []).flatMap((id) => [`accept:${id}`, `decline:${id}`]);
+  return [...banners, ...sectionControlIds(input)];
+}
+
+function sectionControlIds(input: Parameters<typeof sectionFieldIds>[0]): string[] {
   const { section, team } = input;
   if (section === "create") {
     return ["name", "shortName", "accent", "create"];
@@ -126,11 +133,12 @@ export function sectionFieldIds(input: {
     return ids;
   }
   if (section === "channels") {
-    const ids: string[] = ["channel-name", "channel-create"];
+    const ids: string[] = [];
     for (const channelId of input.channelIds) {
       ids.push(`open-channel:${channelId}`);
       if (manage && channelId !== teamChannelId(team.id)) ids.push(`delete-channel:${channelId}`);
     }
+    ids.push("channel-name", "channel-create");
     return ids;
   }
   // settings
@@ -138,6 +146,34 @@ export function sectionFieldIds(input: {
   if (manage) ids.push("name", "shortName", "accent", "allowMemberInvites", "save");
   ids.push(team.role === "owner" ? "delete" : "leave");
   return ids;
+}
+
+const TEXT_FIELD_IDS = new Set(["name", "shortName", "invite-username", "channel-name"]);
+
+/** A text input takes every typed letter while it holds the ring. */
+export function isTextFieldId(id: string | null): boolean {
+  return id !== null && TEXT_FIELD_IDS.has(id);
+}
+
+/**
+ * Where the ring rests on arrival. A text input there would swallow the pane's
+ * letter keys before the person chose to type, so a ring that opens on one
+ * rests nowhere until Tab or j reaches it. The create form is for typing and
+ * starts in its name.
+ */
+export function restingFieldId(ids: readonly string[], creating: boolean): string | null {
+  const first = ids[0] ?? null;
+  return creating || !isTextFieldId(first) ? first : null;
+}
+
+/** The first control after `current` that is not a text input, where Esc leaves a field for. */
+export function nextNonTextFieldId(ids: readonly string[], current: string | null): string | null {
+  const start = current ? ids.indexOf(current) : -1;
+  for (let offset = 1; offset <= ids.length; offset += 1) {
+    const candidate = ids[(start + offset) % ids.length];
+    if (candidate && !isTextFieldId(candidate)) return candidate;
+  }
+  return null;
 }
 
 export function nextFieldId(ids: readonly string[], current: string | null, delta: number): string | null {

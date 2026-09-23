@@ -154,6 +154,10 @@ export function PriceSelectorDialog({
               }))}
               selectedIndex={mode === "list" ? index : -1}
               bgColor={colors.bg}
+              // Hover picks the preset Enter takes, as the footer says. Not
+              // while typing a custom price: passing over the list must not
+              // pull focus from the field.
+              selectOnHover={mode === "list"}
               onSelect={(nextIndex) => {
                 setMode("list");
                 setIndex(nextIndex);

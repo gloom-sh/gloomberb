@@ -1,13 +1,15 @@
 import { useEffect, useRef, type Dispatch } from "react";
 import { useShortcut } from "../react/input";
-import { useNativeRenderer, useRendererHost } from "../ui";
+import { useNativeRenderer, useRendererHost, useUiHost } from "../ui";
 import { useDialogState } from "../ui/dialog";
+import { useToastHost } from "../ui/toast";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
 import type { TickerRecord } from "../types/ticker";
 import type { ReleaseInfo } from "../updater";
 import { canSelfUpdate } from "../updater";
 import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order";
+import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
 import {
   copyActiveSelection,
   isCopyShortcut,
@@ -26,6 +28,20 @@ import {
 
 /** Long enough to read a few conflicts and choose Review. */
 const KEYBINDING_NOTICE_DURATION_MS = 15_000;
+
+/**
+ * Whether the install-update key has something to do: a release this build
+ * can install itself whose last attempt failed. A fresh one downloads on its
+ * own, and a manual or managed one names its own command.
+ */
+export function canRetryUpdate(
+  state: Pick<AppState, "updateAvailable" | "updateProgress" | "updateCheckInProgress">,
+): boolean {
+  return !!state.updateAvailable
+    && state.updateProgress?.phase === "error"
+    && !state.updateCheckInProgress
+    && canSelfUpdate(state.updateAvailable);
+}
 
 /**
  * Tells the user once per launch when `config.json` holds a binding that does
@@ -87,6 +103,8 @@ export function useAppGlobalShortcuts({
   const dialogOpen = useDialogState((s) => s.isOpen);
   const nativeRenderer = useNativeRenderer();
   const rendererHost = useRendererHost();
+  const uiKind = useUiHost().kind;
+  const toastHost = useToastHost();
   useKeybindingIssueNotice(keybindings, pluginRegistry, state.initialized);
 
   useShortcut((event) => {
@@ -122,9 +140,24 @@ export function useAppGlobalShortcuts({
       return;
     }
 
+    // Toasts float above everything, so their keys work over a dialog too.
+    if (action === "notification-action" || action === "notification-dismiss") {
+      const handled = action === "notification-action"
+        ? toastHost.activateNewest?.() === true
+        : toastHost.dismissNewest?.() === true;
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+
     if (dialogOpen) return;
 
     if (!isDetachedWindow && action === "command-bar") {
+      // Ctrl+P and Ctrl+N move the open bar's selection, so a bar chord that
+      // is one of them only opens it; Esc and the bar's other chords close it.
+      if (state.commandBarOpen && (isMoveUpShortcut(event) || isMoveDownShortcut(event))) return;
       event.preventDefault();
       event.stopPropagation();
       dispatch({ type: "TOGGLE_COMMAND_BAR" });
@@ -184,7 +217,7 @@ export function useAppGlobalShortcuts({
     }
 
     if (!isDetachedWindow && action === "quit") {
-      rendererHost.requestExit();
+      if (uiKind === "opentui") rendererHost.requestExit();
     } else if (action === "refresh-ticker") {
       if (focusedTickerSymbol) {
         const ticker = state.tickers.get(focusedTickerSymbol);
@@ -195,8 +228,12 @@ export function useAppGlobalShortcuts({
         refreshTicker(ticker.metadata.ticker, ticker.metadata.exchange, ticker, 1);
       }
     } else if (action === "install-update") {
-      if (state.updateAvailable && !state.updateProgress && !state.updateCheckInProgress && canSelfUpdate(state.updateAvailable)) {
-        startUpdate(state.updateAvailable);
+      // A release that can install itself starts on its own, so the key is
+      // for the one that failed: it tries again.
+      if (canRetryUpdate(state)) {
+        event.preventDefault();
+        event.stopPropagation();
+        startUpdate(state.updateAvailable!);
       }
     } else if (!action) {
       const disabledPlugins = new Set(state.config.disabledPlugins || []);

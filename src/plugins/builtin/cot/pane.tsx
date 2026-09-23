@@ -79,18 +79,22 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     });
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
+  // The class, scope and search controls live in the board's query bar, so
+  // their keys only work once the board is on screen.
+  const boardShown = !!data && !open;
   useShortcut((event) => {
-    if (!focused || open || event.targetEditable || event.ctrl || event.meta) return;
+    if (!focused || open || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
     if (event.name === "r") { event.preventDefault(); void resource.reload(); }
+    if (!boardShown) return;
     if (event.name === "c") { event.preventDefault(); control.current?.open(); }
     if (event.name === "s") { event.preventDefault(); scopeControl.current?.open(); }
     if (event.name === "/") { event.preventDefault(); setSearching(true); setSearchFocus((value) => value + 1); }
   });
-  usePaneFooter("cot:actions", () => ({ hints: open ? [] : [
+  usePaneFooter("cot:actions", () => ({ hints: boardShown ? [
     { id: "class", key: "c", label: "class", onPress: () => control.current?.open() },
     { id: "scope", key: "s", label: "cope", onPress: () => scopeControl.current?.open() },
     { id: "search", key: "/", label: "search", onPress: () => { setSearching(true); setSearchFocus((value) => value + 1); } },
-  ] }), [open]);
+  ] : [] }), [boardShown]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
     info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] },
@@ -99,7 +103,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     rootWidth={width} rootHeight={height} selection={{ kind: "id", selectedId: selected, getId: (row) => row.contractCode, onChange: setSelected }}
     getItemKey={(row) => row.contractCode} onActivate={(row) => setOpen(row.contractCode)} freezeFirstColumn
-    sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "desc" ? "asc" : "desc" }))}
+    sortable sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "desc" ? "asc" : "desc" }))}
     renderCell={(row, column) => {
       if (column.id === "name") return { text: cotMarketName(row.marketName) };
       if (column.id === "code") return { text: row.contractCode, color: colors.textMuted };
@@ -139,7 +143,11 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   }) : [];
   const chartHeight = Math.max(6, Math.floor((height - 1) * 0.65));
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && !event.targetEditable && event.name === "r") { event.preventDefault(); void resource.reload(); } });
+  useShortcut((event) => {
+    if (focused && !event.targetEditable && !event.ctrl && !event.meta && !event.alt && !event.super && event.name === "r") {
+      event.preventDefault(); void resource.reload();
+    }
+  });
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] },
@@ -147,7 +155,7 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <Box width={width} height={height} flexDirection="column">
       <CompositeChart series={series} panels={data.price.length ? [{ id: "price", height: 2 }, { id: "net", height: 1 }] : [{ id: "net" }]}
-        width={width} height={chartHeight} showLegend showTimeAxis navigable={false} formatValue={cotLegendValue} remoteKind="cot-history" />
+        width={width} height={chartHeight} focused={focused} showLegend showTimeAxis navigable={false} formatValue={cotLegendValue} remoteKind="cot-history" />
       <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={Math.max(3, height - chartHeight)}
         selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
         onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc"

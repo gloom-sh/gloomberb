@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -18,6 +19,7 @@ import {
   type PaneHint,
 } from "./model";
 import { useAppLanguage } from "../../../../i18n/react";
+import type { ContextMenuItem } from "../../../../types/context-menu";
 
 const usePaneFooterRegistrationEffect =
   typeof document === "undefined" ? useEffect : useLayoutEffect;
@@ -44,7 +46,7 @@ export function PaneFooterProvider({
   const register = useCallback((registrationId: string, registration: PaneFooterRegistration | null) => {
     setRegistrations((current) => {
       const next = new Map(current);
-      if (registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0)) {
+      if (registration && ((registration.info?.length ?? 0) > 0 || (registration.hints?.length ?? 0) > 0 || (registration.menu?.length ?? 0) > 0 || (registration.keys?.length ?? 0) > 0)) {
         next.set(registrationId, registration);
       } else {
         next.delete(registrationId);
@@ -65,11 +67,48 @@ export function PaneFooterProvider({
   const value = useMemo(() => ({ register, unregister }), [register, unregister]);
   const footer = useMemo(() => combinePaneFooterRegistrations(registrations), [registrations]);
 
+  const [arrowClaims, setArrowClaims] = useState<ReadonlySet<string>>(() => new Set());
+  const setArrowClaim = useCallback((id: string, claimed: boolean) => {
+    setArrowClaims((current) => {
+      if (current.has(id) === claimed) return current;
+      const next = new Set(current);
+      if (claimed) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const arrowValue = useMemo(() => ({ claimed: arrowClaims.size > 0, setArrowClaim }), [arrowClaims, setArrowClaim]);
+
   return (
     <PaneFooterContext.Provider value={value}>
-      {children(footer)}
+      <PaneArrowContext.Provider value={arrowValue}>
+        {children(footer)}
+      </PaneArrowContext.Provider>
     </PaneFooterContext.Provider>
   );
+}
+
+const PaneArrowContext = createContext<{ claimed: boolean; setArrowClaim(id: string, claimed: boolean): void } | null>(null);
+
+/**
+ * A focused tab strip owns Left and Right in its pane. It claims them here, so
+ * a read-only chart in the same pane leaves them to the strip and the arrows
+ * keep walking the tabs.
+ */
+export function usePaneArrowClaim(claimed: boolean) {
+  const context = useContext(PaneArrowContext);
+  const id = useId();
+  const setArrowClaim = context?.setArrowClaim;
+  useEffect(() => {
+    if (!setArrowClaim) return;
+    setArrowClaim(id, claimed);
+    return () => setArrowClaim(id, false);
+  }, [claimed, id, setArrowClaim]);
+}
+
+/** Whether a tab strip in this pane owns Left and Right. */
+export function usePaneArrowsClaimed(): boolean {
+  return useContext(PaneArrowContext)?.claimed ?? false;
 }
 
 export function PaneFooterScope({
@@ -134,9 +173,64 @@ export function usePaneFooter(
           if (!current?.disabled) current?.onPress?.(event);
         } : undefined,
       })),
+      keys: nextRegistration.keys?.map((key) => ({
+        ...key,
+        onPress: key.onPress ? (event) => {
+          if (lifetime !== lifetimeRef.current) return;
+          const current = currentRegistrationRef.current?.keys?.find((item) => item.id === key.id);
+          if (!current?.disabled) current?.onPress?.(event);
+        } : undefined,
+      })),
+      menu: nextRegistration.menu
+        ? latestMenuItems(nextRegistration.menu, () => (
+          lifetime === lifetimeRef.current ? currentRegistrationRef.current?.menu : undefined
+        ))
+        : undefined,
     } : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, language, registrationId, ...deps]);
+}
+
+/** Menu items call whatever the newest registration holds under the same id. */
+function latestMenuItems(items: ContextMenuItem[], current: () => ContextMenuItem[] | undefined): ContextMenuItem[] {
+  const find = (list: ContextMenuItem[] | undefined, id: string): ContextMenuItem | undefined => {
+    for (const item of list ?? []) {
+      if (item.type === "divider") continue;
+      if (item.id === id) return item;
+      const nested = find(item.submenu, id);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  return items.map((item) => {
+    if (item.type === "divider" || item.type === "role") return item;
+    return {
+      ...item,
+      submenu: item.submenu ? latestMenuItems(item.submenu, current) : undefined,
+      onSelect: item.onSelect ? () => {
+        const latest = find(current(), item.id);
+        if (latest && latest.type !== "divider" && latest.type !== "role" && latest.enabled !== false) {
+          return latest.onSelect?.();
+        }
+      } : undefined,
+    };
+  });
+}
+
+/**
+ * Adds entries to the pane menu for actions that have no footer key: a kit
+ * table's sort, a query bar filter, a tab's close. Follows the same scoping as
+ * the footer, so an inactive tab's items drop out with its hints.
+ */
+export function usePaneMenuItems(
+  registrationId: string,
+  factory: () => ContextMenuItem[] | null | undefined,
+  deps: DependencyList,
+) {
+  usePaneFooter(registrationId, () => {
+    const menu = factory();
+    return menu && menu.length > 0 ? { menu } : null;
+  }, deps);
 }
 
 export function usePaneHints(

@@ -59,6 +59,11 @@ export type KeybindingMatch =
 export interface ResolveKeybindingsOptions {
   /** Plugin shortcuts to fold into the table, for listing and conflict checks. */
   pluginShortcuts?: Iterable<KeyboardShortcut>;
+  /**
+   * The host the table is for. Actions the host does not have (quit on the
+   * desktop, pop-out in the terminal) then neither match nor conflict.
+   */
+  host?: "terminal" | "desktop";
 }
 
 export function pluginShortcutDefaultChord(shortcut: KeyboardShortcut): KeyChord {
@@ -172,7 +177,10 @@ export function resolveKeybindings(
 ): ResolvedKeybindings {
   const issues: KeybindingIssue[] = [];
   const overrides = config?.actions ?? {};
-  const actions: ResolvedKeybindingAction[] = KEYBINDING_ACTIONS.map((def) => resolveAction(
+  const hostActions = KEYBINDING_ACTIONS.filter((def) => (
+    options.host === "desktop" ? !def.terminalOnly : options.host === "terminal" ? !def.desktopOnly : true
+  ));
+  const actions: ResolvedKeybindingAction[] = hostActions.map((def) => resolveAction(
     def,
     undefined,
     def.id,

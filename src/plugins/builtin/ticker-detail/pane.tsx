@@ -17,7 +17,8 @@ import {
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getCollectionName, getCollectionTickerCount } from "../../../state/selectors";
 import { getSharedRegistry } from "../../registry";
-import { EmptyState, NestedPaneTabs, PaneFooterScope, Tabs, usePaneFooter, usePaneHeaderTabs } from "../../../components";
+import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems } from "../../../components";
+import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
 import {
@@ -32,6 +33,7 @@ import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";
+import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 
@@ -184,12 +186,41 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     () => allTabs.map((tab) => ({ label: t(tab.name), value: tab.id })),
     [tabItemsKey],
   );
+  // A tab's detail that moves with h/l itself (a 13F fund's sections) takes
+  // those keys while it is open; Esc gives them back to the strip.
+  const researchTabKeys = useResearchTabKeysHost();
+  const stripFocused = focused && !pluginCaptured && !researchTabKeys.claimed;
   const tabsInHeader = usePaneHeaderTabs(!paneSettings.hideTabs && ticker ? {
     tabs: tabItems,
     activeValue: resolvedTabId,
     onSelect: setActiveTabId,
-    focused: focused && !pluginCaptured,
+    focused: stripFocused,
   } : null);
+  // h/l step one tab at a time; with twenty tabs the pane menu jumps straight to one.
+  const dialog = useOptionalDialog();
+  const showTabs = !paneSettings.hideTabs && !!ticker;
+  usePaneMenuItems("ticker-research:go-to-tab", () => {
+    if (!showTabs || !dialog || tabItems.length < 2) return null;
+    return [{
+      id: "go-to-tab",
+      label: t("Go to Tab…"),
+      onSelect: () => {
+        void dialog.prompt<string>({
+          closeOnClickOutside: true,
+          content: (context: PromptContext<string>) => (
+            <ChoiceDialog
+              {...context}
+              title={t("Go to Tab")}
+              selectedChoiceId={resolvedTabId}
+              choices={tabItems.map((tab) => ({ id: tab.value, label: tab.label }))}
+            />
+          ),
+        }).then((tabId) => {
+          if (tabId) setActiveTabId(tabId);
+        }).catch(() => {});
+      },
+    }];
+  }, [dialog, resolvedTabId, setActiveTabId, showTabs, tabItems]);
   const tabBarHeight = paneSettings.hideTabs || tabsInHeader ? 0 : 1;
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
@@ -248,38 +279,40 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
           tabs={tabItems}
           activeValue={resolvedTabId}
           onSelect={setActiveTabId}
-          focused={focused && !pluginCaptured}
+          focused={stripFocused}
         />
       )}
 
       <Box height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
-        {tickerResearchTabs.map((tab) => {
-          if (!renderedTabIds.has(tab.id) || !visibleTabIds.has(tab.id)) return null;
-          const TickerResearchTab = tab.component;
-          const isActive = resolvedTabId === tab.id;
-          return (
-            <Box
-              key={tab.id}
-              visible={isActive}
-              flexDirection="column"
-              flexGrow={1}
-              flexBasis={0}
-              height={contentHeight}
-              overflow="hidden"
-            >
-              <PaneFooterScope active={isActive}>
-                <NestedPaneTabs>
-                  <TickerResearchTab
-                    width={width}
-                    height={contentHeight}
-                    focused={focused && isActive}
-                    onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
-                  />
-                </NestedPaneTabs>
-              </PaneFooterScope>
-            </Box>
-          );
-        })}
+        <ResearchTabKeysProvider value={showTabs ? researchTabKeys.value : null}>
+          {tickerResearchTabs.map((tab) => {
+            if (!renderedTabIds.has(tab.id) || !visibleTabIds.has(tab.id)) return null;
+            const TickerResearchTab = tab.component;
+            const isActive = resolvedTabId === tab.id;
+            return (
+              <Box
+                key={tab.id}
+                visible={isActive}
+                flexDirection="column"
+                flexGrow={1}
+                flexBasis={0}
+                height={contentHeight}
+                overflow="hidden"
+              >
+                <PaneFooterScope active={isActive}>
+                  <NestedPaneTabs>
+                    <TickerResearchTab
+                      width={width}
+                      height={contentHeight}
+                      focused={focused && isActive}
+                      onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
+                    />
+                  </NestedPaneTabs>
+                </PaneFooterScope>
+              </Box>
+            );
+          })}
+        </ResearchTabKeysProvider>
       </Box>
     </Box>
   );

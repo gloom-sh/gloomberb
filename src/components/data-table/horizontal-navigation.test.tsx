@@ -5,15 +5,18 @@ import { testRender, emitKeypress, type TestKeyEvent } from "../../renderers/ope
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { Input } from "../../ui";
+import { Tabs } from "../ui/tabs";
 import { DataTableView } from "./view";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let update: (options: Partial<Options>) => void;
-interface Options { focused: boolean; keyboardNavigation: boolean; scroll: boolean; compact: boolean; editing: boolean; manyRows: boolean }
+interface Options { focused: boolean; keyboardNavigation: boolean; scroll: boolean; compact: boolean; editing: boolean; manyRows: boolean; tabs: boolean }
 const rows = [{ id: "ALPH", value: "$100M", weight: "66.7%" }];
+let selectedTab = "a";
+let withTabs = false;
 
 function Harness() {
-  const [options, setOptions] = useState<Options>({ focused: true, keyboardNavigation: true, scroll: true, compact: false, editing: false, manyRows: false });
+  const [options, setOptions] = useState<Options>({ focused: true, keyboardNavigation: true, scroll: true, compact: false, editing: false, manyRows: false, tabs: withTabs });
   update = (next) => setOptions((current) => ({ ...current, ...next }));
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-horizontal"));
   return <AppContext value={{ state, dispatch: () => {} }}>
@@ -22,7 +25,11 @@ function Harness() {
         focused={options.focused}
         keyboardNavigation={options.keyboardNavigation}
         showHorizontalScrollbar={options.scroll}
-        rootBefore={options.editing ? <Input focused value="alpha beta gamma" /> : undefined}
+        rootBefore={options.editing
+          ? <Input focused value="alpha beta gamma" />
+          : options.tabs
+            ? <Tabs focused tabs={[{ label: "A", value: "a" }, { label: "B", value: "b" }]} activeValue={selectedTab} onSelect={(value) => { selectedTab = value; }} />
+            : undefined}
         selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
         columns={options.compact ? [{ id: "id", label: "TICKER", width: 8 }] : [
           { id: "id", label: "TICKER", width: 30 },
@@ -46,6 +53,8 @@ function Harness() {
 afterEach(async () => {
   if (setup) await act(async () => setup!.renderer.destroy());
   setup = undefined;
+  selectedTab = "a";
+  withTabs = false;
 });
 
 async function settle() {
@@ -122,6 +131,24 @@ test("horizontal shortcuts preserve editing, other modifiers, disabled focus and
     expect(table("body").scrollLeft).toBe(0);
   }
   expect(table("body").horizontalScrollBar.visible).toBe(false);
+});
+
+test("Shift+arrows scroll a wide table ahead of a focused tab strip, which keeps plain arrows", async () => {
+  // Mounted with the table, the strip's key handler registers first.
+  withTabs = true;
+  await act(async () => { setup = await testRender(<Harness />, { width: 40, height: 8 }); });
+  await settle();
+  // macOS keeps Ctrl+arrows for Spaces, so Shift+arrows are the columns key everywhere.
+  expect((await key({ name: "right", shift: true })).defaultPrevented).toBe(true);
+  expect(table("body").scrollLeft).toBe(20);
+  expect(table("header").scrollLeft).toBe(20);
+  // At the edge the key still belongs to the table instead of switching tabs.
+  for (let i = 0; i < 4; i++) await key({ name: "right", shift: true });
+  expect(selectedTab).toBe("a");
+  await key({ name: "left", shift: true });
+  expect(table("body").scrollLeft).toBeLessThan(table("body").scrollWidth - table("body").viewport.width);
+  await key({ name: "right" });
+  expect(selectedTab).toBe("b");
 });
 
 test("the last columns stay aligned when vertical overflow changes the body viewport", async () => {

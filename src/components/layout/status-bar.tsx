@@ -5,6 +5,7 @@ import {
   useContextMenu,
   useRendererHost,
   useUiCapabilities,
+  useUiHost,
 } from "../../ui";
 import { useDialog, type PromptContext } from "../../ui/dialog";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
@@ -19,6 +20,19 @@ import {
   selectStatusBarVisible,
 } from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
+import {
+  advertisedChord,
+  formatKeyChord,
+  primaryModifierFor,
+  useKeybindings,
+  type KeyChord,
+} from "../../app/keybindings";
+import {
+  detectShortcutPlatform,
+  getShortcutDisplayMode,
+  type ShortcutDisplayMode,
+  type ShortcutPlatform,
+} from "../../utils/shortcut-labels";
 import { getCurrentPluginTarget } from "../../plugins/current-target";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
@@ -43,8 +57,6 @@ type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => voi
 type HoveredControl = string | null;
 type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) => void;
 
-/** Rendered width of the Tidy Windows control, including its leading gap. */
-const TIDY_WINDOWS_COLUMNS = 15;
 /** Space held back for the `status:widget` plugin slot, which sizes itself. */
 const STATUS_WIDGET_COLUMNS = 20;
 /**
@@ -62,6 +74,8 @@ type LayoutTabItem = {
 
 type StatusBarViewProps = {
   activeLayoutIdx: number;
+  /** The tidy-windows key as the bar spells keys, or empty when unbound. */
+  tidyWindowsKey: string;
   activeLayoutValue: string;
   handleLayoutReorder: (fromValue: string, toValue: string) => void;
   handleLayoutSelect: (value: string) => void;
@@ -76,6 +90,33 @@ type StatusBarViewProps = {
   setHoveredControl: SetHoveredControl;
   showTidyWindows: boolean;
 };
+
+/**
+ * A chord as short as a tab label allows: `^2`, `^⇧F`, and on the Mac desktop
+ * `⌘2` or `⇧⌘F`, in the order its menus write them. A digit chord names the
+ * one digit given.
+ */
+export function compactChordLabel(
+  chord: KeyChord,
+  mode: ShortcutDisplayMode,
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+  digit?: number,
+): string {
+  const mac = mode === "platform" && platform === "darwin";
+  const primaryIsCmd = primaryModifierFor(mode, platform) === "cmd";
+  const ctrl = chord.ctrl || (chord.primary && !primaryIsCmd);
+  const cmd = chord.cmd || (chord.primary && primaryIsCmd);
+  const key = chord.key === "digit" && digit !== undefined
+    ? String(digit)
+    : formatKeyChord({ key: chord.key, ctrl: false, cmd: false, primary: false, alt: false, shift: false }, { primaryModifier: "ctrl" });
+  return [
+    ctrl ? "^" : "",
+    chord.alt ? (mac ? "⌥" : "Alt+") : "",
+    chord.shift ? "⇧" : "",
+    cmd ? (mac ? "⌘" : "Super+") : "",
+    key,
+  ].join("");
+}
 
 function truncate(text: string, width: number): string {
   if (width <= 0) return "";
@@ -97,6 +138,18 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   const layout = useAppSelector(selectLayout);
   const { transientLayout } = useTransientLayout();
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const keybindings = useKeybindings();
+  const shortcutMode = getShortcutDisplayMode(useUiHost().kind);
+  const actionKey = (actionId: string): string => {
+    const chord = advertisedChord(keybindings, actionId, shortcutMode);
+    return chord ? compactChordLabel(chord, shortcutMode) : "";
+  };
+  // Tabs name the digit that switches to them, as bound on this host. Past
+  // nine there is no digit, and a rebinding off the digits has none either.
+  const switchChord = advertisedChord(keybindings, "switch-layout", shortcutMode);
+  const tabKey = (index: number): string => (
+    switchChord?.key === "digit" && index < 9 ? `${compactChordLabel(switchChord, shortcutMode, undefined, index + 1)} ` : ""
+  );
 
   const hasMultipleLayouts = layouts.length > 1 || !!transientLayout;
   const showTidyWindows = useMemo(() => shouldShowTidyWindows(layout), [layout])
@@ -121,14 +174,14 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       ? linkedLayoutMarker(linkedLayoutStatus(layout, registry.panes, remoteRevisions.get(layout.origin.layoutId)))
       : "";
     return {
-      label: `^${index + 1} ${truncate(layout.name, 14)}${marker}`,
+      label: `${tabKey(index)}${truncate(layout.name, 14)}${marker}`,
       value: String(index),
       reorderable: true,
     };
   };
   // Tabs grouped by owner: personal first, then one marker per team in its
   // accent followed by that team's tabs. A collapsed group keeps its marker
-  // with the tab count. Ctrl+1-9 stays positional through the index labels.
+  // with the tab count. The digit keys stay positional through the index labels.
   const savedLayoutTabs = tabGroups.length <= 1
     ? layouts.map((_, index) => layoutTab(index))
     : tabGroups.flatMap((group) => {
@@ -151,7 +204,9 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     ? [
       ...savedLayoutTabs,
       {
-        label: transientLayout.label,
+        label: [transientLayout.shortcutActionId ? actionKey(transientLayout.shortcutActionId) : "", transientLayout.label]
+          .filter(Boolean)
+          .join(" "),
         value: transientLayout.id,
         reorderable: false,
       },
@@ -336,9 +391,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
 
   if (!statusBarVisible) return null;
 
+  const tidyWindowsKey = actionKey("tidy-windows");
   const leftWidth = 1
     + (hasMultipleLayouts ? layoutTabsWidth : 0)
-    + (showTidyWindows ? TIDY_WINDOWS_COLUMNS : 0);
+    + (showTidyWindows ? terminalTidyWindowsLabel(tidyWindowsKey).length + 1 : 0);
 
   const viewProps: StatusBarViewProps = {
     activeLayoutIdx,
@@ -355,6 +411,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     rightAvailableWidth: Math.max(0, termWidth - leftWidth - STATUS_WIDGET_COLUMNS),
     setHoveredControl,
     showTidyWindows,
+    tidyWindowsKey,
   };
 
   if (nativePaneChrome) {
@@ -495,7 +552,8 @@ function StatusBarSummary({
         onPress={openChangelog}
         role="button"
         setHoveredControl={setHoveredControl}
-        title={openChangelog ? tf("Open changelog for {version}", { version: versionLabel }) : undefined}
+        // CHG opens the same notes from the command bar, where the keyboard can reach them.
+        title={openChangelog ? `${tf("Open changelog for {version}", { version: versionLabel })} (CHG)` : undefined}
       />
       {showDownload && (
         <StatusBarChip
@@ -572,20 +630,33 @@ function StatusBarChip({
   );
 }
 
-function NativeTidyWindows({ handleTidyWindows }: Pick<StatusBarViewProps, "handleTidyWindows">) {
+function NativeTidyWindows({ handleTidyWindows, tidyWindowsKey }: Pick<StatusBarViewProps, "handleTidyWindows" | "tidyWindowsKey">) {
   return (
     <Box paddingLeft={2} flexShrink={0} flexDirection="row" alignItems="center">
       {/* Active keeps it as prominent as the old accent label beside the layout tabs. */}
-      <Button variant="plain" compact active label="Tidy Windows" onPress={() => handleTidyWindows()} />
+      <Button
+        variant="plain"
+        compact
+        active
+        label="Tidy Windows"
+        shortcut={tidyWindowsKey || undefined}
+        onPress={() => handleTidyWindows()}
+      />
     </Box>
   );
+}
+
+/** The terminal control's text, key first like the layout tabs beside it. */
+function terminalTidyWindowsLabel(key: string): string {
+  return ` ${key ? `${key} ` : ""}${t("Tidy Windows")} `;
 }
 
 function TerminalTidyWindows({
   handleTidyWindows,
   hoveredControl,
   setHoveredControl,
-}: Pick<StatusBarViewProps, "handleTidyWindows" | "hoveredControl" | "setHoveredControl">) {
+  tidyWindowsKey,
+}: Pick<StatusBarViewProps, "handleTidyWindows" | "hoveredControl" | "setHoveredControl" | "tidyWindowsKey">) {
   const colors = useThemeColors();
   const hovered = hoveredControl === "tidy-windows";
   return (
@@ -595,7 +666,7 @@ function TerminalTidyWindows({
         onMouseOver={() => setHoveredControl((current) => (current === "tidy-windows" ? current : "tidy-windows"))}
         onMouseDown={handleTidyWindows}
       >
-        <Text fg={colors.headerText}> {t("Tidy Windows")} </Text>
+        <Text fg={colors.headerText}>{terminalTidyWindowsLabel(tidyWindowsKey)}</Text>
       </Box>
     </Box>
   );

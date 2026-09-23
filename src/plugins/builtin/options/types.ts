@@ -39,7 +39,12 @@ export type OptionsViewProps = {
   width: number;
   height: number;
   focused: boolean;
-  onCapture?: (capturing: boolean) => void;
+  /**
+   * Set inside a tab strip that owns h/l and the arrows (the ticker research
+   * Options tab). The chain then steps expiries with [ and ] only; a pane of
+   * its own also takes h/l and the arrows for its expiry strip.
+   */
+  nestedInTabs?: boolean;
   /** Show IV rank from Cloud IV history; the registered panes opt in, isolated renders stay offline. */
   ivRank?: boolean;
 };

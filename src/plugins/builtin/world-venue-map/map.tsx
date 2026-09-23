@@ -6,10 +6,13 @@ import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../../comp
 import { drawCircle, drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import type { NativeChartBitmap } from "../../../components/chart/native/chart-rasterizer";
 import { getLocalPlotPointer, type ChartMouseEvent } from "../../../components/chart/core/pointer";
+import { usePaneFooter } from "../../../components/layout/pane/footer";
 import {
+  clampWorldMapViewport,
   closestWorldVenueCluster,
   clusterWorldVenues,
   DEFAULT_WORLD_MAP_VIEWPORT,
+  MAX_WORLD_MAP_ZOOM,
   panWorldMapViewport,
   projectWorldPoint,
   zoomWorldMapViewport,
@@ -245,6 +248,8 @@ const DESKTOP_MAP_ASPECT = 2.12;
 const MAP_PAN_THRESHOLD_PX = 4;
 const MAP_CLICK_HIT_PX = 14;
 const MAP_DOUBLE_CLICK_ZOOM = 1.8;
+/** Share of the plot a selected venue may sit inside before the map pans to it. */
+const MAP_FOLLOW_MARGIN = 0.06;
 
 function wheelZoomFactor(event: WheelEvent): number {
   const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
@@ -324,6 +329,52 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     const cluster = closestWorldVenueCluster(clusters, point.x, point.y, Math.max(1.6, hit));
     if (cluster) props.onSelect(clusterVenue(cluster, props.selectedMic));
   }, [clusters, plotHeight, props]);
+
+  const selectedVenue = props.venues.find((venue) => venue.mic === props.selectedMic) ?? null;
+  const selectedVenueRef = useRef(selectedVenue);
+  selectedVenueRef.current = selectedVenue;
+  const insidePlot = useCallback((point: WorldMapPoint) => {
+    const marginX = props.width * MAP_FOLLOW_MARGIN;
+    const marginY = plotHeight * MAP_FOLLOW_MARGIN;
+    return point.x >= marginX && point.x <= props.width - marginX && point.y >= marginY && point.y <= plotHeight - marginY;
+  }, [plotHeight, props.width]);
+
+  // Keyboard zoom holds the selected venue in place, or the middle of the map
+  // when the venue is out of view, so the table's cursor stays on the map.
+  const zoomBy = useCallback((factor: number) => {
+    setViewport((current) => {
+      const venue = selectedVenueRef.current;
+      const anchor = venue ? projectWorldPoint(venue.longitude, venue.latitude, props.width, plotHeight, 1, current) : null;
+      const point = anchor && insidePlot(anchor) ? anchor : { x: props.width / 2, y: plotHeight / 2 };
+      return zoomWorldMapViewport(current, props.width, plotHeight, point, factor);
+    });
+  }, [insidePlot, plotHeight, props.width]);
+
+  // A venue picked in the table pans a zoomed map to it when it is out of view.
+  // Only a new selection moves the map, so a drag away from it stays put.
+  useEffect(() => {
+    const venue = selectedVenueRef.current;
+    if (!venue) return;
+    setViewport((current) => {
+      if (current.zoom <= 1) return current;
+      const point = projectWorldPoint(venue.longitude, venue.latitude, props.width, plotHeight, 1, current);
+      if (insidePlot(point)) return current;
+      return clampWorldMapViewport({ ...current, centerLongitude: venue.longitude, centerLatitude: venue.latitude }, props.width, plotHeight);
+    });
+  }, [props.selectedMic]);
+
+  const atMaxZoom = viewport.zoom >= MAX_WORLD_MAP_ZOOM;
+  usePaneFooter("world-venue-map:zoom", () => ({
+    hints: [
+      { id: "zoom-in", key: "+", label: " zoom in", title: "Zoom In", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM), disabled: atMaxZoom },
+      ...(zoomed ? [
+        { id: "zoom-out", key: "-", label: " zoom out", title: "Zoom Out", onPress: () => zoomBy(1 / MAP_DOUBLE_CLICK_ZOOM) },
+        { id: "zoom-reset", key: "0", label: " reset zoom", title: "Reset Zoom", onPress: () => setViewport(DEFAULT_WORLD_MAP_VIEWPORT) },
+      ] : []),
+    ],
+    // "=" is "+" without Shift, as it is for charts.
+    keys: [{ id: "zoom-in-equals", key: "=", label: "", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM) }],
+  }), [atMaxZoom, zoomBy, zoomed]);
 
   useEffect(() => {
     const element = surfaceRef.current;
@@ -432,18 +483,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
             const venue = clusterVenue(cluster, props.selectedMic);
             const radius = Math.max(0.55, Math.min(1.5, 0.45 + Math.sqrt(cluster.venues.length) * 0.22));
             return (
-              <g
-                key={cluster.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`${cluster.venues.length} venues near ${venue.city}`}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    props.onSelect(venue);
-                  }
-                }}
-              >
+              <g key={cluster.id}>
                 <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
                 <circle
                   cx={cluster.x}

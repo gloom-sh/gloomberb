@@ -7,6 +7,7 @@ import { Box } from "../../../../ui";
 import { MenuPopover } from "../../../../components/ui/menu";
 import type { SelectFieldHandle, SelectFieldProps } from "../../../../components/ui/select-field";
 import { WebIcon } from "./icons";
+import { isInsideDialogSurface } from "../host/focus-scope";
 
 const UNSET_VALUE = "\u0000unset";
 
@@ -27,6 +28,7 @@ export function WebSelectField({
   height,
   variant = "field",
   includeUnsetOption = false,
+  restoreFocus = true,
   disabled = false,
   selectRef,
   controlRef,
@@ -70,7 +72,6 @@ export function WebSelectField({
     cursor: disabled ? "default" : "pointer",
     font: "inherit",
     textAlign: "left",
-    outline: "none",
     boxSizing: "border-box",
   };
 
@@ -120,7 +121,11 @@ export function WebSelectField({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next) queueMicrotask(() => buttonRef.current?.focus({ preventScroll: true }));
+          // Back to the trigger inside a dialog, where Tab walks the fields. In a
+          // pane the trigger would keep taking Enter from the rows around it.
+          if (!next && restoreFocus && isInsideDialogSurface(buttonRef.current)) {
+            queueMicrotask(() => buttonRef.current?.focus({ preventScroll: true }));
+          }
         }}
         trigger={trigger}
         label={label}

@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useId, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
+import { t } from "../../../i18n";
+import { usePaneFooter } from "./footer/registration";
 import { getPaneSidebarWidthRange } from "./sidebar-metrics";
 
 // The width and visibility maths live in a module with no React in it, so a
@@ -16,6 +18,10 @@ export {
 const PANE_SIDEBAR_MOUSE_HANDLED = "__gloomberbPaneSidebarHandled";
 /** Pixels of grab area around the divider; the divider itself stays 1px. */
 const DESKTOP_RESIZE_HANDLE_PADDING_PX = 3;
+/** Cells one press of `<` or `>` moves the divider. */
+const KEYBOARD_RESIZE_STEP = 2;
+const NARROW_KEY = "<";
+const WIDEN_KEY = ">";
 
 export interface PaneSidebarRenderState {
   backgroundColor: string;
@@ -110,6 +116,27 @@ export function PaneSidebar({
     (resize?.onResizeEnd ?? resize?.onResize)?.(next);
   }, [resize, resolveDragWidth]);
 
+  // The keyboard moves the divider too: `<` and `>` while the pane is focused,
+  // listed in the pane menu. Each press is a finished resize, so it persists.
+  const resizeRegistrationId = `pane-sidebar-resize:${useId()}`;
+  const canNarrow = !!resize && width > resize.min;
+  const canWiden = !!resize && width < resize.max;
+  const stepResize = (delta: number) => {
+    if (!resize) return;
+    const next = Math.min(resize.max, Math.max(resize.min, width + delta));
+    if (next !== width) (resize.onResizeEnd ?? resize.onResize)(next);
+  };
+  usePaneFooter(resizeRegistrationId, () => (resize ? {
+    keys: [
+      { id: "sidebar-narrow", key: NARROW_KEY, label: "", onPress: () => stepResize(-KEYBOARD_RESIZE_STEP), disabled: !canNarrow },
+      { id: "sidebar-widen", key: WIDEN_KEY, label: "", onPress: () => stepResize(KEYBOARD_RESIZE_STEP), disabled: !canWiden },
+    ],
+    menu: [
+      ...(canNarrow ? [{ id: "sidebar-narrow", label: t("Narrow Sidebar"), accelerator: NARROW_KEY, onSelect: () => stepResize(-KEYBOARD_RESIZE_STEP) }] : []),
+      ...(canWiden ? [{ id: "sidebar-widen", label: t("Widen Sidebar"), accelerator: WIDEN_KEY, onSelect: () => stepResize(KEYBOARD_RESIZE_STEP) }] : []),
+    ],
+  } : null), [!!resize, canNarrow, canWiden, width]);
+
   const borderWidth = nativePaneChrome ? 0 : width > 1 ? 1 : 0;
   const listWidth = Math.max(width - borderWidth, 1);
   const dividerColor = focused ? colors.borderFocused : colors.border;
@@ -188,6 +215,7 @@ export function PaneSidebar({
             width={1}
             height={sidebarLayoutHeight}
             {...resizeHandlers}
+            title={`${t("Resize sidebar")} (${NARROW_KEY} ${WIDEN_KEY})`}
             style={{
               width: 1 + DESKTOP_RESIZE_HANDLE_PADDING_PX * 2,
               right: -DESKTOP_RESIZE_HANDLE_PADDING_PX,

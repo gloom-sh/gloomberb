@@ -4,6 +4,7 @@ import {
   SpinnerMark,
   Text,
   TextAttributes,
+  useActionShortcut,
   useCommandBarShortcut,
   useRendererHost,
   useUiCapabilities,
@@ -32,6 +33,7 @@ import {
   selectUpdateProgress,
 } from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
+import { canRetryUpdate } from "../../app/global-shortcuts";
 import { t, tf } from "../../i18n";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
@@ -251,6 +253,7 @@ function UpdateStatus() {
   const updateProgress = useAppSelector(selectUpdateProgress);
   const updateCheckInProgress = useAppSelector(selectUpdateCheckInProgress);
   const updateNotice = useAppSelector(selectUpdateNotice);
+  const retryKey = useActionShortcut("install-update");
 
   useEffect(() => {
     if (!updateNotice || updateAvailable || updateProgress || updateCheckInProgress) return;
@@ -286,7 +289,13 @@ function UpdateStatus() {
       return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update installed, restart to apply")}</Text>;
     }
     if (updateProgress.phase === "error") {
-      return <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>;
+      const retry = retryKey && canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress });
+      return (
+        <Box flexDirection="row">
+          <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>
+          {retry ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{`  ${retryKey} ${t("retry")}`}</Text> : null}
+        </Box>
+      );
     }
   }
 

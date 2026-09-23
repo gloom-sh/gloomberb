@@ -940,6 +940,30 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
   });
 
+  test("keeps the grid's arrows on its tiles and leaves h and l to the collection tabs", async () => {
+    const portfolioId = "broker:ibkr-flex:DU12345";
+    const config = createPortfolioConfig(portfolioId, [createBrokerInstance("flex")]);
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID);
+    if (instance) instance.settings = { ...(instance.settings ?? {}), viewMode: "grid" };
+    testSetup = await testRender(<PortfolioHarness config={config} collectionId={portfolioId} />, { width: 100, height: 12 });
+    await flushFrame();
+    const collection = () => harnessState?.paneState[TEST_PANE_ID]?.collectionId;
+    expect(collection()).toBe(portfolioId);
+
+    // The tabs mount first and would take left and right for themselves.
+    await act(async () => {
+      testSetup!.mockInput.pressArrow("right");
+      await testSetup!.renderOnce();
+    });
+    expect(collection()).toBe(portfolioId);
+
+    await act(async () => {
+      testSetup!.mockInput.pressKey("l");
+      await testSetup!.renderOnce();
+    });
+    expect(collection()).not.toBe(portfolioId);
+  });
+
   test("keeps watchlists in table view when grid is saved on the pane", async () => {
     const config = createManualCollectionConfig("watchlist");
     const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID);

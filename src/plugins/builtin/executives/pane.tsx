@@ -13,6 +13,7 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
+  type PaneHint,
   type QueryBarFilter,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -296,25 +297,32 @@ function figuresOf(statement: CloudProxyStatementPayload) {
 export function ExecutivesPane({
   focused,
   width,
+  nested = false,
 }: {
   focused: boolean;
   width: number;
   height: number;
+  /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
+  nested?: boolean;
 }) {
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
   if (!ticker) return <EmptyState title="Pick a ticker to see its executives." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} />;
+  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} />;
 }
 
-function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused: boolean; width: number }) {
+export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
+  return <ExecutivesPane {...props} nested />;
+}
+
+function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string; focused: boolean; width: number; nested: boolean }) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
   const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: discardProxyData });
-  const years = list.data?.data?.proxies ?? [];
+  const years = useMemo(() => list.data?.data?.proxies ?? [], [list.data]);
   const year = years.some(entry => entry.proxyYear === selectedYear)
     ? selectedYear : years[0]?.proxyYear ?? null;
   const loadStatement = useCallback((force: boolean) => loadProxyStatement(ticker, year!, { force }), [ticker, year]);
@@ -347,6 +355,12 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
     if (statement?.docUrl) void rendererHost.openExternal(statement.docUrl);
   }, [rendererHost, statement]);
 
+  const nextYear = useCallback(() => {
+    if (years.length < 2) return;
+    const index = years.findIndex((entry) => entry.proxyYear === year);
+    setYear(years[(index + 1) % years.length]!.proxyYear);
+  }, [setYear, year, years]);
+
   const scrollBy = useCallback((delta: number) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox?.viewport) return;
@@ -360,12 +374,17 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
   useShortcut(
     (event) => {
       if (isPlainKey(event, "o")) {
+        event.preventDefault();
         openFiling();
       } else if (isPlainKey(event, "r")) {
         refresh();
       } else if (isPlainKey(event, "j", "down")) {
+        // One line per press; marked handled so the pane scroll keys, which
+        // page this statement, do not scroll it again.
+        event.preventDefault();
         scrollBy(1);
       } else if (isPlainKey(event, "k", "up")) {
+        event.preventDefault();
         scrollBy(-1);
       }
     },
@@ -385,9 +404,12 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
       });
     }
     // `r` refreshes every pane, so it gets no hint here.
-    const hints = statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : [];
+    const hints: PaneHint[] = statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : [];
+    // The year strip answers h/l only where it is the pane's own strip; `y`
+    // steps it everywhere, including under Ticker Research's strip.
+    if (years.length > 1) hints.push({ id: "year", key: "y", label: "ear", onPress: nextYear });
     return { info, hints };
-  }, [loading, statement, openFiling]);
+  }, [loading, statement, openFiling, years.length, nextYear]);
 
   const figures = useMemo(
     () => (statement ? figuresOf(statement) : []),
@@ -457,6 +479,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
             compact
             variant="bare"
             focused={focused}
+            keyboardNavigation={!nested}
           />
         </Box>
       )}
@@ -467,6 +490,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
         flexShrink={1}
         flexBasis={0}
         minHeight={0}
+        scrollY
         paddingX={1}
       >
         {statement ? (

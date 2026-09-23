@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
+  type DataTableColumn, type StatItem } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
@@ -120,14 +121,13 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
   const cycleTab = () => setTab(TABS[(TABS.findIndex((entry) => entry.value === tab) + 1) % TABS.length]!.value);
-  const handleKey = (event: DataTableKeyEvent) => {
-    if (event.ctrl || event.alt || event.meta) return false;
-    if (event.name === "v") cycleTab();
-    else if (event.name === "r" && !resource.loading) void resource.reload();
-    else return false;
-    event.preventDefault?.(); event.stopPropagation?.(); return true;
-  };
-  useShortcut((event) => { if (focused && tab === "history") handleKey(event); });
+  // One binding for every tab and for the loading and failed bodies, where no
+  // table is mounted; the footer binds the `v` hint.
+  useShortcut((event) => {
+    if (!isPlainKey(event, "r")) return;
+    event.preventDefault();
+    if (!resource.loading) void resource.reload();
+  }, { enabled: focused });
   const asOf = tab === "history" ? data?.fred.termDate : tab === "board" ? selected?.date : data?.curve.date;
   // A level from the stream is labelled intraday with its time; closes keep their date.
   const intraday = (id: VolatilityIndexId | undefined, date: string | null | undefined) => {
@@ -167,21 +167,22 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
       {data && tab === "curve" && <>
         <StatGrid items={curveStats} width={width} />
-        <VolatilityCurveChart curve={data.curve} width={width} height={Math.max(4, contentHeight - curveTableHeight - statGridRows(curveStats, width))} />
+        <VolatilityCurveChart curve={data.curve} width={width} height={Math.max(4, contentHeight - curveTableHeight - statGridRows(curveStats, width))} focused={focused} />
         <DataTableView focused={focused} columns={CURVE_COLUMNS} items={data.curve.points} rootWidth={width} rootHeight={curveTableHeight}
           emptyStateTitle="VIX curve unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: setSelectedId }}
-          onActivate={(row) => { setSelectedId(row.id); setTab("board"); }} onRootKeyDown={handleKey}
+          onActivate={(row) => { setSelectedId(row.id); setTab("board"); }}
           sortColumnId={null} sortDirection="asc"
           getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source], ["units", "IV percent"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "value" ? number(row.value) : String(row.tenor),
             color: row.value == null ? colors.textMuted : column.id === "value" ? colors.warning : colors.text })} />
       </>}
-      {data && tab === "history" && <VolatilityHistoryChart fred={data.fred} width={width} height={contentHeight} />}
+      {data && tab === "history" && <VolatilityHistoryChart fred={data.fred} width={width} height={contentHeight} focused={focused} />}
       {data && tab === "board" && <>
         <DataTableView<VolatilityBoardRow> focused={focused} columns={BOARD_COLUMNS} items={rows} rootWidth={width} rootHeight={boardHeight}
           emptyStateTitle="Volatility indices unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}
-          onActivate={(row) => setSelectedId(row.id)} onRootKeyDown={handleKey}
+          onActivate={(row) => setSelectedId(row.id)} sortable
           sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort(id === sort.id && sort.direction === "desc" ? { id: null, direction: "asc" } : { id, direction: id === sort.id ? "desc" : "asc" })}
+          onSortChange={(id, direction) => setSort({ id, direction })}
           getExportMetadata={() => [["basis", "daily history; sparse observations retain their timestamp"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "id" ? row.id.toUpperCase()
             : column.id === "label" ? row.label
@@ -193,7 +194,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
           <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>
-          <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} />
+          <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} focused={focused} />
         </>}
       </>}
     </PaneStatusBody>

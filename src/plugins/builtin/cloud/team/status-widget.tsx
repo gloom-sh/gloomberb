@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "../../../../components/ui/button";
 import { colors } from "../../../../theme/colors";
-import { Box, Span, Text, TextAttributes } from "../../../../ui";
+import { Box, Span, Text, TextAttributes, useCommandBarShortcut } from "../../../../ui";
 import { usePluginAppActions } from "../../../runtime";
 import { chatController } from "../../chat/controller";
 import { countTeamUpdates, teamAccentHex, teamIdFromChannelId } from "./model";
@@ -16,6 +16,8 @@ import { teamStore } from "./store";
  */
 export function TeamStatusWidget() {
   const { createPaneFromTemplate } = usePluginAppActions();
+  // The status bar takes no keyboard focus; each chip names the command instead.
+  const commandBarKey = useCommandBarShortcut();
   const snapshot = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
     () => teamStore.getSnapshot(),
@@ -54,6 +56,7 @@ export function TeamStatusWidget() {
           <Button
             key={team.id}
             label={`${team.name}: open team`}
+            title={`Open ${team.name} (${commandBarKey}, then TEAM ${team.shortName})`}
             variant="plain"
             compact
             stopPropagation

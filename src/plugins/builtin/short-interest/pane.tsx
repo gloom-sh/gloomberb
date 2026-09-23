@@ -173,6 +173,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
             timeAxisColor={colors.textDim}
             yAxisColor={colors.textDim}
             formatYAxisValue={(value: number) => formatCompact(value)}
+            focused={focused}
           />
         </Box>
       ) : null}

@@ -61,6 +61,11 @@ test("DOM table handles expose horizontal extent to shared keyboard navigation",
   expect(body.scrollLeft).toBe(40 * WEB_CELL_WIDTH);
   await press("ArrowRight", { shiftKey: true });
   expect(body.scrollLeft).toBe(40 * WEB_CELL_WIDTH);
+  // Shift+arrows scroll too: macOS takes Ctrl+arrows for Spaces.
+  expect(await press("ArrowLeft", { ctrlKey: false, shiftKey: true })).toBe(true);
+  expect(body.scrollLeft).toBe(20 * WEB_CELL_WIDTH);
+  await press("ArrowRight", { ctrlKey: false, shiftKey: true });
+  expect(body.scrollLeft).toBe(40 * WEB_CELL_WIDTH);
   const input = testWindow.document.createElement("input") as unknown as HTMLInputElement;
   container.appendChild(input);
   expect(await press("ArrowRight", { target: input })).toBe(false);

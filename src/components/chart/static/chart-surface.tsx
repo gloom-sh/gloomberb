@@ -49,6 +49,8 @@ export interface StaticChartSurfaceProps {
   yAxisLabel?: string;
   yAxisColor?: string;
   formatYAxisValue?: (value: number) => string;
+  /** Left/Right step the cursor through the observations and Esc clears it, as the pointer's hover does. */
+  focused?: boolean;
 }
 
 const STYLE_BY_MODE: Record<ChartRenderMode | "step", ResolvedSeries["style"]> = {
@@ -109,6 +111,7 @@ export function StaticChartSurface({
   yAxisLabel,
   yAxisColor,
   formatYAxisValue,
+  focused = false,
 }: StaticChartSurfaceProps) {
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -149,6 +152,7 @@ export function StaticChartSurface({
         width={totalWidth}
         height={Math.max(1, totalHeight - labelRows)}
         colors={chartColors}
+        focused={focused}
         navigable={false}
         showLegend={false}
         showTimeAxis={showTimeAxis || (xAxisLabels?.length ?? 0) > 0 || (xAxisTicks?.length ?? 0) > 0}

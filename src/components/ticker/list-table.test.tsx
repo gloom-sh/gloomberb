@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useRef, useState, type ReactNode } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { emitKeypress, testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import type { ColumnConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import type { ScrollBoxRenderable } from "../../ui";
+import { PaneFooterProvider, type CombinedPaneFooter } from "../layout/pane/footer";
 import { TickerListTableView, type TickerTableCell } from "./list-table-view";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -234,5 +235,47 @@ describe("TickerListTableView", () => {
     });
 
     expect(tableScrollRef?.scrollTop).toBe(20);
+  });
+
+  test("the pane menu offers the cursor row's right-click actions while the table is focused", async () => {
+    let footer: CombinedPaneFooter | null = null;
+    let setFocused: (focused: boolean) => void = () => {};
+    function Harness() {
+      const [cursorSymbol, setCursorSymbol] = useState("T0");
+      const [focused, updateFocused] = useState(true);
+      setFocused = updateFocused;
+      return (
+        <TickerTableTestProviders>
+          <PaneFooterProvider>
+            {(current) => {
+              footer = current;
+              return (
+                <TickerListTableView
+                  focused={focused}
+                  columns={columns}
+                  tickers={manyTickers.slice(0, 5)}
+                  cursorSymbol={cursorSymbol}
+                  setCursorSymbol={setCursorSymbol}
+                  resolveCell={resolveCell}
+                  financialsMap={financialsMap}
+                />
+              );
+            }}
+          </PaneFooterProvider>
+        </TickerTableTestProviders>
+      );
+    }
+    const labels = () => footer!.menu.flatMap((item) => (item.type === "divider" ? [] : [item.label]));
+    testSetup = await testRender(<Harness />, { width: 20, height: 8 });
+    await act(async () => { await testSetup!.renderOnce(); });
+    expect(labels()).toContain("Open T0 Ticker Research");
+
+    await emitKeypress(testSetup, { name: "j" });
+    await act(async () => { await testSetup!.renderOnce(); });
+    expect(labels()).toContain("Open T1 Ticker Research");
+    expect(labels()).not.toContain("Open T0 Ticker Research");
+
+    await act(async () => { setFocused(false); await testSetup!.renderOnce(); });
+    expect(labels()).not.toContain("Open T1 Ticker Research");
   });
 });

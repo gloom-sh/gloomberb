@@ -86,7 +86,9 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   });
 
   const selectCategory = (value: string) => setCategory(value as SectorNewsSelection);
-  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: category, onSelect: selectCategory, focused });
+  // An open story owns h/l and the arrows; the sector strip must not switch under it.
+  const tabsFocused = focused && !detailArticle;
+  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: category, onSelect: selectCategory, focused: tabsFocused });
   const rootBefore = tabsInHeader ? undefined : (
     <Box height={1} flexShrink={0} overflow="hidden">
       <Tabs
@@ -95,7 +97,7 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
         onSelect={selectCategory}
         compact
         variant="bare"
-        focused={focused}
+        focused={tabsFocused}
       />
     </Box>
   );

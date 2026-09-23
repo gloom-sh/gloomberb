@@ -5,9 +5,23 @@ import {
 import {
   DEFAULT_LAYOUT,
   cloneLayout,
+  type SavedLayout,
 } from "../../../types/config";
+import { groupIdFor } from "../../layout/status-bar-groups";
 import type { ResultItem } from "../list/model";
 import type { LayoutItemsContext } from "./types";
+
+/**
+ * The saved layouts drawn in the same run of status bar tabs as `index`, in tab
+ * order. The bar groups tabs by owner (personal, then each team), so moving a
+ * tab only ever trades places inside its own group.
+ */
+function layoutTabGroupIndexes(layouts: readonly SavedLayout[], index: number): number[] {
+  const layout = layouts[index];
+  if (!layout) return [];
+  const groupId = groupIdFor(layout);
+  return layouts.flatMap((entry, entryIndex) => (groupIdFor(entry) === groupId ? [entryIndex] : []));
+}
 
 export function buildCurrentLayoutItems({
   closeAll,
@@ -24,6 +38,30 @@ export function buildCurrentLayoutItems({
   const layoutHistory = state.layoutHistory[state.config.activeLayoutIndex];
   const floatingPaneCount = currentLayout.floating.length;
   const floatingPaneLabel = floatingPaneCount === 1 ? "floating pane" : "floating panes";
+  const activeLayoutIndex = state.config.activeLayoutIndex;
+  const tabGroup = layoutTabGroupIndexes(state.config.layouts, activeLayoutIndex);
+  const tabPosition = tabGroup.indexOf(activeLayoutIndex);
+  // The bar stays open so Enter can move the tab again; the position on the
+  // right is the feedback when the status bar is hidden.
+  const moveLayoutTab = (direction: -1 | 1): ResultItem => {
+    const toIndex = tabPosition < 0 ? undefined : tabGroup[tabPosition + direction];
+    const side = direction < 0 ? "left" : "right";
+    return {
+      id: `layout-move-${side}`,
+      label: direction < 0 ? "Move Layout Left" : "Move Layout Right",
+      detail: toIndex === undefined
+        ? direction < 0 ? "Already the first layout tab" : "Already the last layout tab"
+        : `Trade places with the layout tab to the ${side}`,
+      category: "Current Layout",
+      kind: "action",
+      right: tabPosition < 0 ? undefined : `${tabPosition + 1}/${tabGroup.length}`,
+      disabled: toIndex === undefined,
+      action: () => {
+        if (toIndex === undefined) return;
+        dispatch({ type: "REORDER_LAYOUT", fromIndex: activeLayoutIndex, toIndex });
+      },
+    };
+  };
 
   return [
     {
@@ -134,6 +172,8 @@ export function buildCurrentLayoutItems({
       kind: "action",
       action: () => openBuiltInWorkflow("rename-layout"),
     },
+    moveLayoutTab(-1),
+    moveLayoutTab(1),
     {
       id: "layout-duplicate-layout",
       label: "Duplicate Layout",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { isPlainKey } from "../../../utils/keyboard";
 import type { TickerResearchTabProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
@@ -156,15 +157,15 @@ export function createNotesTab(registry: NotesStoreRegistry) {
     }, [tickerSymbol, applyNoteText, getCurrentNoteText, saveNotesFor, notesFiles, ownerKey]);
 
     useShortcut((event) => {
-      if (!focused || loadError) return;
-      const isEnter = event.name === "enter" || event.name === "return";
-      if (isEnter && !notesFocused && !notesFiles.readOnly) {
+      if (!focused || loadError || !tickerSymbol) return;
+      if (isPlainKey(event, "enter", "return") && !notesFocused && !notesFiles.readOnly) {
+        event.preventDefault();
         setNotesFocusedAndCapture(true);
         return;
       }
-      if (event.name === "escape" && notesFocused) {
+      if (isPlainKey(event, "escape") && notesFocused) {
+        event.preventDefault();
         setNotesFocusedAndCapture(false);
-        return;
       }
     }, { allowEditable: true });
 

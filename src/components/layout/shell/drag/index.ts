@@ -18,7 +18,7 @@ export interface HoverOverlay {
   cells: Array<{ position: "top" | "left" | "center" | "right" | "bottom"; rect: LayoutBounds }>;
 }
 
-type SnapGuidePosition =
+export type SnapGuidePosition =
   | "left"
   | "right"
   | "top"

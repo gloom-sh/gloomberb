@@ -14,6 +14,7 @@ import {
 } from "../../../components";
 import { TextFieldDialog } from "../../../components/pane-settings-dialog/field-dialogs";
 import { colors } from "../../../theme/colors";
+import { isPlainKey } from "../../../utils/keyboard";
 import { TextAttributes } from "../../../ui";
 import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
@@ -109,7 +110,7 @@ export function AlertsPane(props: PaneProps) {
   );
 }
 
-function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
+function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<string>(ALERTS_KEY, "[]");
   const { openPluginCommandWorkflow } = usePluginAppActions();
   const dialog = useDialog();
@@ -255,7 +256,7 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
         disabled: rows.length === 0,
       },
       ...(rows[selectedIdx]?.status === "triggered"
-        ? [{ id: "rearm", key: "m", label: "re-arm", onPress: rearmSelectedAlert }]
+        ? [{ id: "rearm", key: "m", label: "re-arm", title: "Re-arm", onPress: rearmSelectedAlert }]
         : []),
     ],
   }), [
@@ -275,33 +276,28 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
   }, [rows.length]);
 
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "d") {
+    if (isPlainKey(event, "d")) {
       event.preventDefault?.();
       deleteSelectedAlert();
       return true;
     }
-    if (event.name === "a" || event.name === "n") {
+    if (isPlainKey(event, "a", "n")) {
       event.preventDefault?.();
       startAddAlert();
       return true;
     }
-    if (event.name === "e") {
+    if (isPlainKey(event, "e")) {
       event.preventDefault?.();
       editSelectedAlert();
       return true;
     }
-    if (event.name === "m") {
+    if (isPlainKey(event, "m")) {
       event.preventDefault?.();
       rearmSelectedAlert();
       return true;
     }
-    if (event.name === "escape") {
-      event.preventDefault?.();
-      close?.();
-      return true;
-    }
     return false;
-  }, [close, deleteSelectedAlert, editSelectedAlert, rearmSelectedAlert, startAddAlert]);
+  }, [deleteSelectedAlert, editSelectedAlert, rearmSelectedAlert, startAddAlert]);
 
   const renderCell = useCallback((
     alert: AlertRule,

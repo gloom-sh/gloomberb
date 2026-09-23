@@ -4,6 +4,13 @@ import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { CongressTab, DetailMode } from "./model";
 
+/** The key that picks each tab, in strip order. */
+export const CONGRESS_TAB_KEYS: ReadonlyArray<{ key: string; value: CongressTab; label: string }> = [
+  { key: "1", value: "trades", label: "Trades" },
+  { key: "2", value: "members", label: "Members" },
+  { key: "3", value: "tickers", label: "Tickers" },
+];
+
 export function useCongressTradesKeyboard({
   activeTab,
   detailMode,
@@ -93,21 +100,14 @@ export function useCongressTradesKeyboard({
     return false;
   }, [activeTab, load, loadMore, loadPreviousYear, openSelectedTicker, openSelectedTradeMember, openSelectedTradeSource]);
 
+  // 1, 2 and 3 pick a tab; the pane menu lists them with these keys.
   useShortcut((event) => {
-    if (!focused || detailMode || event.targetEditable) return;
-    if (event.name === "1") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      selectTab("trades");
-    } else if (event.name === "2") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      selectTab("members");
-    } else if (event.name === "3") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      selectTab("tickers");
-    }
+    if (!focused || detailMode || event.targetEditable || event.defaultPrevented) return;
+    const tab = CONGRESS_TAB_KEYS.find((entry) => isPlainKey(event, entry.key));
+    if (!tab) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    selectTab(tab.value);
   });
 
   return { handleDetailKeyDown, handleRootKeyDown };

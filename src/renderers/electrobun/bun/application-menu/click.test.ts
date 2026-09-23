@@ -1,15 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { ELECTROBUN_APPLICATION_MENU_ACTION } from "./index";
+import type { ApplicationMenuItemConfig } from "electrobun/bun";
+import { buildDesktopApplicationMenu, ELECTROBUN_APPLICATION_MENU_ACTION } from "./index";
 import { applicationMenuCommand } from "./click";
 
+function menuCommands(items: ApplicationMenuItemConfig[]): unknown[] {
+  return items.flatMap((item) => {
+    const entry = item as { action?: string; data?: unknown; submenu?: ApplicationMenuItemConfig[] };
+    return [
+      ...(entry.action === ELECTROBUN_APPLICATION_MENU_ACTION ? [entry.data] : []),
+      ...(entry.submenu ? menuCommands(entry.submenu) : []),
+    ];
+  });
+}
+
 describe("applicationMenuCommand", () => {
-  test("parses a valid open command bar event", () => {
-    expect(applicationMenuCommand({
-      data: {
-        action: ELECTROBUN_APPLICATION_MENU_ACTION,
-        data: { type: "open-command-bar", query: "DES " },
-      },
-    })).toEqual({ type: "open-command-bar", query: "DES " });
+  // A menu item whose command the click handler drops does nothing, by mouse
+  // or by keyboard menu navigation.
+  test("passes through every command the menu bar sends", () => {
+    const commands = menuCommands(buildDesktopApplicationMenu("darwin"));
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      expect(applicationMenuCommand({
+        data: { action: ELECTROBUN_APPLICATION_MENU_ACTION, data: command },
+      })).toEqual(command as never);
+    }
   });
 
   test("ignores events for other actions", () => {
@@ -19,24 +33,6 @@ describe("applicationMenuCommand", () => {
         data: { type: "open-command-bar", query: "DES " },
       },
     })).toBeNull();
-  });
-
-  test("parses the native devtools command", () => {
-    expect(applicationMenuCommand({
-      data: {
-        action: ELECTROBUN_APPLICATION_MENU_ACTION,
-        data: { type: "open-devtools" },
-      },
-    })).toEqual({ type: "open-devtools" });
-  });
-
-  test("parses the native quit command", () => {
-    expect(applicationMenuCommand({
-      data: {
-        action: ELECTROBUN_APPLICATION_MENU_ACTION,
-        data: { type: "quit" },
-      },
-    })).toEqual({ type: "quit" });
   });
 
   test("ignores unknown command types", () => {

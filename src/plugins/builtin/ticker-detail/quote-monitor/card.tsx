@@ -58,6 +58,8 @@ export function QuoteMonitorCard({
   showBottomDivider,
   chartPeriod,
   valueFlashingEnabled,
+  selected = false,
+  onSelect,
   onOpen,
 }: {
   symbol: string;
@@ -71,6 +73,9 @@ export function QuoteMonitorCard({
   showBottomDivider: boolean;
   chartPeriod: PriceSparklinePeriod;
   valueFlashingEnabled: boolean;
+  /** The board's keyboard cursor is on this card. */
+  selected?: boolean;
+  onSelect?: (symbol: string) => void;
   onOpen: (symbol: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -135,8 +140,12 @@ export function QuoteMonitorCard({
     : undefined;
 
   const handleMouseDown = useDoubleClickActivation<string>({
+    onSelect,
     onActivate: onOpen,
   });
+  // The terminal marks the cursor on the symbol; the desktop rings the card.
+  const symbolFg = selected && !nativePaneChrome ? colors.selectedText : colors.textBright;
+  const symbolBg = selected && !nativePaneChrome ? colors.selected : undefined;
 
   return (
     <Box
@@ -163,6 +172,8 @@ export function QuoteMonitorCard({
         paddingBottom: 4,
         borderRight: showRightDivider ? `1px solid ${colors.border}` : undefined,
         borderBottom: showBottomDivider ? `1px solid ${colors.border}` : undefined,
+        outline: selected ? `1px solid ${colors.borderFocused}` : undefined,
+        outlineOffset: selected ? -1 : undefined,
       } : undefined}
     >
       {nativePaneChrome && display && (
@@ -170,7 +181,7 @@ export function QuoteMonitorCard({
       )}
       {!display ? (
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
-          <Text attributes={TextAttributes.BOLD} fg={colors.textBright} style={desktopSymbolStyle}>
+          <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
             {symbol}
           </Text>
           <Text fg={quoteStatus.failed ? colors.negative : colors.textDim}>{quoteStatus.text}</Text>
@@ -200,7 +211,7 @@ export function QuoteMonitorCard({
               overflow: "hidden",
             }}
           >
-            <Text attributes={TextAttributes.BOLD} fg={colors.textBright} style={desktopSymbolStyle}>
+            <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
               {symbol}
             </Text>
             {quoteFailed && (
@@ -276,7 +287,7 @@ export function QuoteMonitorCard({
         <Box flexDirection="column" flexGrow={1} justifyContent="flex-start">
           {stacked ? (
             <Box flexDirection="column">
-              <Text attributes={TextAttributes.BOLD} fg={colors.textBright} style={desktopSymbolStyle}>
+              <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
                 {symbol}
               </Text>
               <Box flexDirection="column">
@@ -297,7 +308,7 @@ export function QuoteMonitorCard({
               gap={1}
             >
               <Box flexDirection="column" flexGrow={1} minWidth={0}>
-                <Text attributes={TextAttributes.BOLD} fg={colors.textBright} style={desktopSymbolStyle}>
+                <Text attributes={TextAttributes.BOLD} fg={symbolFg} bg={symbolBg} style={desktopSymbolStyle}>
                   {symbol}
                 </Text>
                 {nativePaneChrome && ticker?.metadata.name && width >= 36 && (

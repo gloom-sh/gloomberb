@@ -144,8 +144,8 @@ export function KeybindingsEditor({
 
   const pluginShortcuts = useMemo(() => pluginShortcutsFromRegistry(disabledPlugins), [disabledPlugins]);
   const resolved = useMemo(
-    () => resolveKeybindings(keybindingsConfig, { pluginShortcuts }),
-    [keybindingsConfig, pluginShortcuts],
+    () => resolveKeybindings(keybindingsConfig, { pluginShortcuts, host: isDesktop ? "desktop" : "terminal" }),
+    [isDesktop, keybindingsConfig, pluginShortcuts],
   );
 
   const describeTarget = useCallback((target: string): string => {
@@ -173,7 +173,8 @@ export function KeybindingsEditor({
         action,
       };
     };
-    const core = resolved.actions.filter((action) => action.def && (isDesktop || !action.def.desktopOnly));
+    const core = resolved.actions.filter((action) => action.def
+      && (isDesktop ? !action.def.terminalOnly : !action.def.desktopOnly));
     const plugin = resolved.actions.filter((action) => action.pluginShortcut);
     const commandRows = resolved.commands.map((command): BindableRow => {
       const conflict = conflictNote(resolved, `command:${command.text}`, describeTarget);
@@ -339,7 +340,8 @@ export function KeybindingsEditor({
       ? [{ id: "cancel", key: "Esc", label: "cancel", onPress: () => setCapture(null) }]
       : [
         { id: "rebind", key: "Enter", label: "rebind", onPress: () => selectedRow && startCapture({ kind: "row", row: selectedRow }), disabled: !selectedRow },
-        { id: "unbind", key: "Backspace", label: "unbind", onPress: unbindSelected, disabled: !selectedRow },
+        // Not Backspace: that is the back key, and unbinding takes no confirmation.
+        { id: "unbind", key: "x", label: "unbind", title: "Unbind", onPress: unbindSelected, disabled: !selectedRow },
         { id: "default", key: "0", label: "default", onPress: resetSelected, disabled: !canReset },
         { id: "bind-command", key: "n", label: "ew command key", onPress: bindNewCommand },
       ],
@@ -347,7 +349,7 @@ export function KeybindingsEditor({
 
   const handleRootKey = useCallback((event: DataTableKeyEvent): boolean | void => {
     if (capture) return;
-    if (isPlainKey(event, "backspace", "delete")) {
+    if (isPlainKey(event, "x", "delete")) {
       unbindSelected();
     } else if (isPlainKey(event, "0")) {
       resetSelected();

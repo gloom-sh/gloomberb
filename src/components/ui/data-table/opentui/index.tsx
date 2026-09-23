@@ -107,13 +107,15 @@ function OpenTuiDataTableRowInner<
   const sectionHeader = renderSectionHeader?.(item, index) ?? null;
 
   if (sectionHeader) {
+    // A header the cursor can land on (a collapsible group) shows it like a row.
+    const headerColor = sectionHeader.color ?? (selected ? colors.selectedText : colors.textBright);
     return (
       <Box
         flexDirection="row"
         height={1}
         {...tableContentWidthProps(contentWidth)}
         paddingX={horizontalPadding}
-        backgroundColor={sectionHeader.backgroundColor ?? colors.bg}
+        backgroundColor={selected ? colors.selected : sectionHeader.backgroundColor ?? colors.bg}
         onMouseDown={(event: any) => {
           focusPane();
           onTableMouseDown?.(event);
@@ -122,11 +124,11 @@ function OpenTuiDataTableRowInner<
         }}
       >
         {sectionHeader.expanded !== undefined && (
-          <Text fg={sectionHeader.color ?? colors.textBright}>{sectionHeader.expanded ? "\u25be " : "\u25b8 "}</Text>
+          <Text fg={headerColor}>{sectionHeader.expanded ? "\u25be " : "\u25b8 "}</Text>
         )}
         <Text
           attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
-          fg={sectionHeader.color ?? colors.textBright}
+          fg={headerColor}
         >
           {sectionHeader.text}
         </Text>

@@ -32,7 +32,14 @@ export interface ShortcutOptions {
    * scope receives the rest of the dispatch.
    */
   scope?: string;
-  phase?: "before" | "normal" | "after";
+  /**
+   * `capture` is for a modal surface that owns every key while it is open (a
+   * menu, window mode): it runs before everything, whatever mounted later.
+   * `before`, `normal` and `after` are the usual order. `idle` runs last and
+   * only for a key nothing else used, for fallbacks such as the pane menu
+   * key or arming double Esc.
+   */
+  phase?: "capture" | "before" | "normal" | "after" | "idle";
   allowEditable?: boolean;
 }
 
@@ -54,9 +61,11 @@ export interface ShortcutRegistry {
 }
 
 const SHORTCUT_PHASES: ReadonlyArray<ShortcutEntry["phase"]> = [
+  "capture",
   "before",
   "normal",
   "after",
+  "idle",
 ];
 
 function normalizeShortcutScope(scope: string | undefined): string | undefined {
@@ -104,7 +113,7 @@ export function createShortcutRegistry(): ShortcutRegistry {
       let claimedScope: string | undefined;
 
       for (const phase of SHORTCUT_PHASES) {
-        if (phase === "after" && (event.defaultPrevented || event.propagationStopped)) return;
+        if ((phase === "after" || phase === "idle") && (event.defaultPrevented || event.propagationStopped)) return;
         for (const entry of eligible) {
           if (entry.phase !== phase) continue;
           if (claimedScope && entry.scope !== claimedScope) continue;

@@ -53,6 +53,17 @@ export function buildFocusedPaneLayoutItems({
         closeAll({ revertThemePreview: false });
       },
     },
+    {
+      id: "layout-fullscreen",
+      label: "Fullscreen Pane",
+      detail: "Fill the window with the focused pane, or restore it",
+      category: "Focused Pane",
+      kind: "action",
+      action: () => {
+        closeAll({ revertThemePreview: false });
+        pluginRegistry.togglePaneFullscreenFn(focusedPane.instanceId);
+      },
+    },
     ...WINDOW_MODE_COMMAND_OPTIONS.map((option) => ({
       id: `layout-window-mode:${option.mode}`,
       label: option.label,

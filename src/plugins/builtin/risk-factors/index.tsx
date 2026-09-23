@@ -8,7 +8,7 @@ import { riskFactorsHeadless } from "./headless";
 
 export { riskFactorsHeadless } from "./headless";
 
-import { RISK_FACTORS_PANE_ID, RiskFactorsPane } from "./pane";
+import { RISK_FACTORS_PANE_ID, RiskFactorsPane, RiskFactorsResearchTab } from "./pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
@@ -21,7 +21,7 @@ export const riskFactorsModule: PluginModule = {
       id: "risk-factors",
       name: "Risks",
       order: 36,
-      component: RiskFactorsPane,
+      component: RiskFactorsResearchTab,
       instruments: ["equity"],
       isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });

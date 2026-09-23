@@ -310,8 +310,9 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     else if (isPlainKey(event, "s")) void cycleStatus();
     else if (isPlainKey(event, "d")) void remove();
     else if (isPlainKey(event, "c")) void challengeSelected();
-    // r stays the app-wide refresh.
+    // r refreshes, as everywhere; the paid AI review is its own key.
     else if (isPlainKey(event, "v")) void review();
+    else if (isPlainKey(event, "r")) void reloadSignals();
     else if (isPlainKey(event, "e")) void editMenu();
     else if (isPlainKey(event, "o")) openSource();
     else return;
@@ -334,7 +335,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     }
     list.push({ id: "add", key: "n", label: "ew", onPress: () => void addToSection(sectionOf) });
     if (isTeam) list.push({ id: "challenge", key: "c", label: "hallenge", onPress: () => void challengeSelected() });
-    list.push({ id: "review", key: "v", label: plan.hasProAccess ? " review" : " review (Pro)", onPress: () => void review() });
+    list.push({ id: "review", key: "v", label: plan.hasProAccess ? " review" : " review (Pro)", title: "Review", onPress: () => void review() });
     list.push({ id: "edit", key: "e", label: "dit", onPress: () => void editMenu() });
     return list;
   }, [addToSection, challengeSelected, cycleStatus, editMenu, isTeam, openSource, plan.hasProAccess, remove, review, sectionOf, selectedRow]);

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { usePaneArrowClaim, usePaneMenuItems } from "../layout/pane/footer/registration";
+import type { ContextMenuItem } from "../../types/context-menu";
 import { useShortcut } from "../../react/input";
 import { Box, ScrollBox, Text, useNativeRenderer, useUiHost } from "../../ui";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../ui";
@@ -43,6 +45,11 @@ export interface TabsProps {
   onReorder?: (fromValue: string, toValue: string) => void;
   focused?: boolean;
   keyboardNavigation?: boolean;
+  /**
+   * Lists New/Close/Move Tab in the pane menu while focused. Turn it off when
+   * the pane already offers the same actions as footer hints.
+   */
+  paneMenu?: boolean;
   scrollable?: boolean;
   scrollId?: string;
 }
@@ -62,6 +69,7 @@ export function Tabs({
   onReorder,
   focused = false,
   keyboardNavigation = true,
+  paneMenu = true,
   scrollable = true,
   scrollId,
 }: TabsProps) {
@@ -127,6 +135,53 @@ export function Tabs({
     },
   });
 
+  // Adding, closing and moving tabs by pointer have pane menu entries while the
+  // strip is focused, so a keyboard reaches them without per-pane keys. The
+  // entries read the handlers and neighbours when chosen, never a stale copy.
+  const menuRegistrationId = `tabs:${useId()}`;
+  const latestTabs = useRef({ tabs, activeValue, onAdd, onReorder });
+  latestTabs.current = { tabs, activeValue, onAdd, onReorder };
+  const activeTab = tabs.find((tab) => tab.value === activeValue);
+  const activeIndex = activeTab ? tabs.indexOf(activeTab) : -1;
+  const canMove = (offset: -1 | 1) => {
+    const neighbour = tabs[activeIndex + offset];
+    return !!onReorder && !!activeTab && activeTab.reorderable !== false && !!neighbour && neighbour.reorderable !== false;
+  };
+  const moveActive = (offset: -1 | 1) => {
+    const current = latestTabs.current;
+    const index = current.tabs.findIndex((tab) => tab.value === current.activeValue);
+    const neighbour = current.tabs[index + offset];
+    if (index >= 0 && neighbour) current.onReorder?.(current.tabs[index]!.value, neighbour.value);
+  };
+  const canMoveLeft = canMove(-1);
+  const canMoveRight = canMove(1);
+  const canClose = !!activeTab?.onClose && !activeTab.disabled;
+  usePaneMenuItems(menuRegistrationId, () => {
+    if (!focused || !paneMenu) return null;
+    const items: ContextMenuItem[] = [];
+    if (onAdd) {
+      items.push({
+        id: "tab-add",
+        label: addLabel && addLabel !== "+" ? addLabel : t("New Tab"),
+        onSelect: () => latestTabs.current.onAdd?.(),
+      });
+    }
+    if (canClose) {
+      items.push({
+        id: "tab-close",
+        label: t("Close Tab"),
+        onSelect: () => {
+          const current = latestTabs.current;
+          const tab = current.tabs.find((entry) => entry.value === current.activeValue);
+          if (tab && !tab.disabled) tab.onClose?.(tab.value);
+        },
+      });
+    }
+    if (canMoveLeft) items.push({ id: "tab-move-left", label: t("Move Tab Left"), onSelect: () => moveActive(-1) });
+    if (canMoveRight) items.push({ id: "tab-move-right", label: t("Move Tab Right"), onSelect: () => moveActive(1) });
+    return items;
+  }, [addLabel, canClose, canMoveLeft, canMoveRight, focused, paneMenu, !!onAdd]);
+
   const selectAdjacentTab = useCallback((direction: -1 | 1) => {
     const enabledTabs = tabs.filter((tab) => !tab.disabled);
     if (enabledTabs.length === 0) return;
@@ -144,7 +199,8 @@ export function Tabs({
   }, [activeValue, handleSelect, tabs]);
 
   useShortcut((event) => {
-    if (event.ctrl || event.meta || event.alt || event.targetEditable) return;
+    // Shift+arrows scroll a wide table's columns; they never switch tabs.
+    if (event.ctrl || event.meta || event.alt || event.shift || event.targetEditable) return;
 
     if (event.name === "h" || event.name === "left") {
       event.preventDefault();
@@ -158,6 +214,7 @@ export function Tabs({
       selectAdjacentTab(1);
     }
   }, { enabled: focused && keyboardNavigation });
+  usePaneArrowClaim(focused && keyboardNavigation);
 
   if (NativeTabs) {
     return (

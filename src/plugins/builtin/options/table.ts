@@ -285,8 +285,13 @@ export function renderOptionCell(
   row: OptionTableRow,
   column: OptionColumn,
   _index: number,
-  rowState: { selected: boolean },
+  cursorState: { selected: boolean },
+  /** The contract the cursor row has picked: only its half and the strike take the highlight. */
+  activeSide?: OptionSide | null,
 ): DataTableCell {
+  const rowState = cursorState.selected && column.side && activeSide && column.side !== activeSide
+    ? { selected: false }
+    : cursorState;
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   const rowSurface = rowState.selected ? colors.selected : colors.bg;
 

@@ -4,6 +4,7 @@ import {
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../components";
+import { useDataTableSortMenu } from "../../../components/data-table/sort-menu";
 import { followLiveSparklinePrice } from "../../../components/price-sparkline/model";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
@@ -15,6 +16,7 @@ import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
 import { portfolioPnlLabel } from "./position-metrics";
+import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 
 export type { QuoteFlashDirection };
 
@@ -142,6 +144,16 @@ export function PortfolioTickerTable({
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column), [columns, hasNonShareQuantity, pnlLabel]);
+  // The table offers "Sort by…" while it has a sort column. A watchlist starts
+  // unsorted and a third header click turns sorting off, so the unsorted state
+  // needs its own entry until TickerListTableView takes `sortable`.
+  useDataTableSortMenu({
+    enabled: !!focused && sortColumnId === null,
+    columns: displayColumns,
+    sortColumnId: null,
+    sortDirection,
+    onHeaderClick,
+  });
 
   return (
     <TickerListTableView
@@ -162,6 +174,7 @@ export function PortfolioTickerTable({
       visibleRangeBuffer={visibleRangeBuffer}
       resetScrollKey={resetScrollKey}
       onRowActivate={onRowActivate}
+      rowMenuAccelerators={PORTFOLIO_ROW_MENU_KEYS}
       rootHeight={rootHeight}
     />
   );

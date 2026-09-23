@@ -7,6 +7,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
 import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
@@ -14,7 +15,7 @@ import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLev
 const PANELS = [{ id: "main" }];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 
-function PolicyDetail({ row, width, height }: { row: CentralBankRow; width: number; height: number }) {
+function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; width: number; height: number; focused: boolean }) {
   const history = useMemo(() => policyHistory(row), [row]);
   const series = useMemo(() => [staticSeries(history.map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
     { id: row.id, label: row.instrument, color: colors.positive, calendarSpaced: true, style: "step" })], [row, history]);
@@ -39,7 +40,7 @@ function PolicyDetail({ row, width, height }: { row: CentralBankRow; width: numb
     <StatGrid items={items} width={width} />
     <PaneStatusBody empty={!history.some((point) => point.value != null)} subject="policy history" emptyTitle="No policy history available.">
       <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - summaryHeight)} showLegend={false}
-        navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />
+        focused={focused} navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />
     </PaneStatusBody>
   </Box>;
 }
@@ -55,7 +56,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); } });
+  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
@@ -71,7 +72,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
       empty={!resource.loading && !resource.error && !data} subject="central bank rates">
       {data ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        valueWidth={14} changeLabel="LAST MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} />} /> : null}
+        valueWidth={14} changeLabel="LAST MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

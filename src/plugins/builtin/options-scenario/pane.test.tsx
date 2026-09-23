@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
@@ -46,6 +46,7 @@ function Harness({ config }: { config: AppConfig }) {
     <PaneKeyboardScrollController paneId={ID} focused />
     <PluginRenderProvider pluginId={PLUGIN} runtime={runtime}><RemoteUiRegistryProvider registry={registry}>
       <PaneFooterProvider>{(footer) => <Box width={WIDTH} height={HEIGHT} flexDirection="column">
+        <PaneFooterKeys paneId={ID} footer={footer} focused />
         <OptionsScenarioPane paneId={ID} paneType="options-scenario" focused width={WIDTH} height={HEIGHT - 1} />
         <PaneFooterBar footer={footer} focused width={WIDTH} />
       </Box>}</PaneFooterProvider>
@@ -133,6 +134,21 @@ test("an OMON handoff appends once to existing legs and remains consumed after r
   expect((paneState().position as ScenarioPosition).legs).toEqual(legs);
   expect(paneState().consumedSeed).toBe(raw);
   expect(registry.snapshot().some((node) => node.role === "text-field" && node.label === "Strike")).toBe(false);
+});
+
+test("Tab leaves the pane and the vol shift field opens from its own key", async () => {
+  await mount();
+  const tab = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  expect(tab.defaultPrevented).toBe(false);
+  expect(tab.propagationStopped).toBe(false);
+  await shortcut("v");
+  await shortcut("5");
+  const commit = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  await frame();
+  expect(commit.defaultPrevented).toBe(true);
+  expect(evidence().scenario!.controls.volShift).toBeCloseTo(0.05);
+  const next = await emitKeypress(setup!, { name: "tab", sequence: "\t" }, { trackPropagation: true });
+  expect(next.defaultPrevented).toBe(false);
 });
 
 test("invalid assumptions cannot produce a priced position through the empty builder", async () => {

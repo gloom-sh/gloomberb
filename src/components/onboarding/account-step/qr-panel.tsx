@@ -35,15 +35,16 @@ export function AccountQrPanel({
     };
   }, [controller]);
 
-  // The wizard's global handler ignores enter while this panel is open, so a
-  // denial can be retried here without also advancing the step.
+  // The wizard's card holds every key it does not use, so the retry runs in a
+  // scope of its own that registers after the card's and answers first.
   useShortcut((event) => {
-    if ((event.name === "enter" || event.name === "return") && snapshot.phase === "denied") {
-      controller.start();
-    } else if (isPlainKey(event, "r") && snapshot.phase !== "approved") {
-      controller.start();
-    }
-  });
+    const retry = (isPlainKey(event, "enter", "return") && snapshot.phase === "denied")
+      || (isPlainKey(event, "r") && snapshot.phase !== "approved");
+    if (!retry) return;
+    event.preventDefault();
+    event.stopPropagation();
+    controller.start();
+  }, { scope: "onboarding:qr", phase: "before" });
 
   useEffect(() => {
     if (snapshot.phase !== "approved" || !snapshot.user) return;

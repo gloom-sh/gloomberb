@@ -14,8 +14,8 @@ export function PortfolioStep(props: PortfolioStepProps) {
         state={props.positions}
         inputRef={props.positionsInputRef}
         editing={props.positionsEditing}
+        selectedSymbol={props.selectedPositionSymbol}
         shortcut={props.commandBarShortcut}
-        hasBrokers={props.choices.length > 0}
       />
     );
   }

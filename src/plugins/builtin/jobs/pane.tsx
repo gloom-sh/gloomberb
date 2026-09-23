@@ -148,7 +148,7 @@ function CompanyHeader({ summary, width }: { summary: CloudJobsSummaryPayload; w
  * the backlog by posting age, which is the one thing a first read can say
  * honestly about time.
  */
-function Chart({ summary, width, height }: { summary: CloudJobsSummaryPayload; width: number; height: number }) {
+function Chart({ summary, width, height, focused = false }: { summary: CloudJobsSummaryPayload; width: number; height: number; focused?: boolean }) {
   const points = useMemo(() => historyChartPoints(summary), [summary]);
   const ageRows = useMemo(() => buildAgeBars(summary), [summary]);
   if (points) {
@@ -176,6 +176,7 @@ function Chart({ summary, width, height }: { summary: CloudJobsSummaryPayload; w
           timeAxisColor={colors.textDim}
           yAxisColor={colors.textDim}
           formatYAxisValue={(value: number) => formatCompact(Math.round(value))}
+          focused={focused}
         />
       </Box>
     );
@@ -249,6 +250,13 @@ function SalaryPanel({ summary, width }: { summary: CloudJobsSummaryPayload; wid
   );
 }
 
+const DETAIL_TABS: Array<{ label: string; value: DetailTab }> = [
+  { label: "Roles", value: "roles" },
+  { label: "Locations", value: "locations" },
+  { label: "Seniority", value: "seniority" },
+  { label: "Pay", value: "salary" },
+];
+
 function CompanyView({
   summary,
   width,
@@ -256,8 +264,8 @@ function CompanyView({
   focused,
   loading,
   error,
-  reload,
   registrationId,
+  embedded,
 }: {
   summary: CloudJobsSummaryPayload;
   width: number;
@@ -265,8 +273,9 @@ function CompanyView({
   focused: boolean;
   loading: boolean;
   error: string | null;
-  reload: () => void;
   registrationId: string;
+  /** Inside Ticker Research, whose own tab strip owns h/l and the arrows. */
+  embedded: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const rendererHost = useRendererHost();
@@ -303,13 +312,14 @@ function CompanyView({
     if (selected?.posting.url) void rendererHost.openExternal(selected.posting.url);
   }, [rendererHost, selected]);
 
+  const cycleTab = useCallback(() => {
+    const index = DETAIL_TABS.findIndex((entry) => entry.value === tab);
+    setTab(DETAIL_TABS[(index + 1) % DETAIL_TABS.length]!.value);
+  }, [setTab, tab]);
+
   useShortcut((event) => {
     if (!focused) return;
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      reload();
-    } else if (isPlainKey(event, "o") && tab === "roles") {
+    if (isPlainKey(event, "o") && tab === "roles") {
       event.preventDefault?.();
       event.stopPropagation?.();
       openSelected();
@@ -317,6 +327,11 @@ function CompanyView({
       event.preventDefault?.();
       event.stopPropagation?.();
       void rendererHost.openExternal(summary.coverage.careersUrl);
+    } else if (isPlainKey(event, "1", "2", "3", "4")) {
+      // The research pane's strip keeps h/l, so the sections have their own keys.
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      setTab(DETAIL_TABS[Number(event.name) - 1]!.value);
     }
   });
 
@@ -339,9 +354,11 @@ function CompanyView({
       ...(summary.coverage.careersUrl
         ? [{ id: "careers", key: "c", label: "areers site", onPress: () => void rendererHost.openExternal(summary.coverage.careersUrl!) }]
         : []),
+      // The key is a range, so it is bound above; a click steps to the next section.
+      ...(embedded ? [{ id: "section", key: "1-4", label: "section", title: "Next Section", onPress: cycleTab }] : []),
     ];
     return { info, hints };
-  }, [loading, more.loadingMore, error, summary, tab, selected, openSelected, rendererHost]);
+  }, [loading, more.loadingMore, error, summary, tab, selected, openSelected, rendererHost, embedded, cycleTab]);
 
   // Unstable dates are a limitation of every age on screen, so they sit
   // behind the footer notice rather than a standing line under the chart.
@@ -377,18 +394,11 @@ function CompanyView({
   const chartWidth = wide ? Math.floor(width * 0.58) : width;
   const barsWidth = wide ? width - chartWidth - 1 : width;
 
-  const tabs = [
-    { label: "Roles", value: "roles" },
-    { label: "Locations", value: "locations" },
-    { label: "Seniority", value: "seniority" },
-    { label: "Pay", value: "salary" },
-  ];
-
   return (
     <Box flexDirection="column" width={width} height={height}>
       <CompanyHeader summary={summary} width={width} />
       <Box flexDirection="row" height={upperHeight} flexShrink={0} marginTop={1}>
-        <Chart summary={summary} width={chartWidth} height={upperHeight} />
+        <Chart summary={summary} width={chartWidth} height={upperHeight} focused={focused} />
         {wide ? (
           <Box flexDirection="column" width={barsWidth} paddingX={1}>
             <SectionHeading title="By function" />
@@ -398,7 +408,15 @@ function CompanyView({
       </Box>
       {signalsHeight ? <Signals summary={summary} /> : null}
       <Box height={1} paddingX={1} marginTop={1}>
-        <Tabs tabs={tabs} activeValue={tab} onSelect={(value) => setTab(value as DetailTab)} compact variant="underline" focused={focused} />
+        <Tabs
+          tabs={DETAIL_TABS}
+          activeValue={tab}
+          onSelect={(value) => setTab(value as DetailTab)}
+          compact
+          variant="underline"
+          focused={focused}
+          keyboardNavigation={!embedded}
+        />
       </Box>
       <Box flexGrow={1} height={lowerHeight}>
         {tab === "roles" ? (
@@ -456,6 +474,7 @@ function CompanyPanel({
   height,
   focused,
   registrationId,
+  embedded = false,
 }: {
   symbol: string;
   companyName: string | null;
@@ -463,6 +482,7 @@ function CompanyPanel({
   height: number;
   focused: boolean;
   registrationId: string;
+  embedded?: boolean;
 }) {
   const request = useCallback(
     (force: boolean) => fetchJobs(symbol, { name: companyName, force }),
@@ -470,6 +490,14 @@ function CompanyPanel({
   );
   const resource = useAsyncResource<JobsCompanyState>(request);
   const { data, status, error, reload } = resource;
+
+  // `r` asks again in every state, including a failed or uncovered company.
+  useShortcut((event) => {
+    if (!focused || !isPlainKey(event, "r")) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    reload();
+  });
 
   // While the server is looking for the company, ask again on a timer.
   useEffect(() => {
@@ -515,8 +543,8 @@ function CompanyPanel({
       focused={focused}
       loading={status === "loading"}
       error={status === "error" ? error : null}
-      reload={reload}
       registrationId={registrationId}
+      embedded={embedded}
     />
   );
 }
@@ -566,7 +594,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
 
   useShortcut((event) => {
     if (!focused) return;
-    if (isPlainKey(event, "r")) {
+    // With a company open, `r` belongs to that company's panel, once it is on screen.
+    if (isPlainKey(event, "r") && !(open && data)) {
       event.preventDefault?.();
       event.stopPropagation?.();
       reload();
@@ -579,7 +608,9 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
     }
   });
 
-  usePaneFooter(registrationId, () => ({
+  // Its own id: the open company's panel registers beside it, and unmounting
+  // either must not take the other's hints with it.
+  usePaneFooter(`${registrationId}:list`, () => ({
     info: detailOpen
       ? []
       : [
@@ -615,7 +646,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   }, []);
 
   if (status === "loading" && !data) return <PaneStatusBody loading align="center" loadingLabel="Loading hiring data..." />;
-  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." />;
+  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." actions={<Button label="Try again" onPress={reload} />} />;
 
   const tableHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
   return (
@@ -634,7 +665,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
             width={width}
             height={Math.max(4, height - 1)}
             focused={focused}
-            registrationId={registrationId}
+            registrationId={`${registrationId}:company`}
           />
         ) : null}
         selection={{ kind: "index", selectedIndex: rows.length ? selectedIdx : -1, onChange: (_index, row) => setSelectedKey(row.key) }}
@@ -688,6 +719,7 @@ export function JobsView({ width, height, focused, companyOnly = false }: JobsVi
       height={height}
       focused={focused}
       registrationId={registrationId}
+      embedded={companyOnly}
     />
   );
 }

@@ -37,12 +37,18 @@ function targetHasClosest(target: KeyboardTargetLike, selector: string): boolean
   }
 }
 
+/** Inputs that take no typing: a checkbox or a slider holding focus must not swallow pane keys. */
+const NON_TEXT_INPUT_TYPES = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file", "image"]);
+
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   const element = getKeyboardTarget(target);
   if (!element) return false;
 
   const tagName = getTargetTagName(element);
-  if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") {
+  if (tagName === "INPUT") {
+    return !NON_TEXT_INPUT_TYPES.has((element.getAttribute?.("type") ?? "text").toLowerCase());
+  }
+  if (tagName === "TEXTAREA" || tagName === "SELECT") {
     return true;
   }
   if (element.isContentEditable === true) return true;
@@ -130,4 +136,49 @@ export function webKeySequence(event: KeyboardEvent): string {
     default:
       return event.key;
   }
+}
+
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "a[href]",
+  "input:not([disabled]):not([type=hidden])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+  "[contenteditable='true']",
+].join(", ");
+
+interface FocusTrapDocument {
+  activeElement: Element | null;
+  querySelectorAll(selector: string): ArrayLike<Element>;
+}
+
+function isShownFocusable(element: Element): boolean {
+  const html = element as HTMLElement;
+  if (html.getAttribute?.("aria-hidden") === "true") return false;
+  return typeof html.getClientRects !== "function" || html.getClientRects().length > 0;
+}
+
+/**
+ * Tab and Shift+Tab walk the controls of the open dialog and wrap inside it,
+ * the way every modal on the platform does. The app claims Tab for pane focus
+ * everywhere else, so a dialog that handles Tab itself (a form ring) keeps it:
+ * this only runs for a Tab no handler took.
+ */
+export function moveDialogFocus(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey" | "defaultPrevented">,
+  doc: FocusTrapDocument | undefined = (globalThis as { document?: FocusTrapDocument }).document,
+): boolean {
+  if (event.key !== "Tab" || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || !doc) return false;
+  const dialogs = doc.querySelectorAll(".gloom-dialog");
+  const dialog = dialogs[dialogs.length - 1] as (Element & { focus?: (options?: FocusOptions) => void }) | undefined;
+  if (!dialog) return false;
+  const focusables = Array.from(dialog.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isShownFocusable) as HTMLElement[];
+  if (focusables.length === 0) return true;
+  const current = focusables.indexOf(doc.activeElement as HTMLElement);
+  const next = current < 0
+    ? (event.shiftKey ? focusables.length - 1 : 0)
+    : (current + (event.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
+  focusables[next]!.focus({ preventScroll: false });
+  return true;
 }

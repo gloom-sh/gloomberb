@@ -25,11 +25,13 @@ import {
   type TwitterFeed,
   type TwitterFeedLaunchRequest,
 } from "./model";
-import { TweetSearchTable } from "./table";
+import { TweetSearchTable, tweetDetailStateKey } from "./table";
 import { TwitterFeedSearchBar } from "./search-bar";
 import { useTwitterFeedFooter } from "./footer";
 import { useTwitterFeedKeyboard } from "./keyboard";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+
+const FEED_TABLE_ID = "twitter-feed-search";
 
 export function TwitterTickerTab({ focused, width, height }: TickerResearchTabProps) {
   const { symbol } = usePaneTickerIdentity();
@@ -223,15 +225,24 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     setActiveFeedId(feeds[nextIndex]!.id);
   }, [activeFeed, feeds, setActiveFeedId]);
 
+  // The search bar sits above the list, so searching from an open tweet goes
+  // back to the list first rather than focusing a bar that is not drawn.
+  const [tweetOpen, setTweetOpen] = usePluginPaneState(tweetDetailStateKey(FEED_TABLE_ID), false);
+  const searchFeed = useCallback(() => {
+    setTweetOpen(false);
+    focusSearch();
+  }, [focusSearch, setTweetOpen]);
+
   useTwitterFeedKeyboard({
     activeFeed,
     addFeed,
     blurSearch,
     cycleFeeds,
-    focusSearch,
+    focusSearch: searchFeed,
     focused,
     removeFeed,
     searchFocused,
+    tweetOpen,
   });
 
   const activeFeedIdValue = activeFeed?.id ?? null;
@@ -270,16 +281,17 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
   useTwitterFeedFooter({
     activeFeed,
     addFeed: addEmptyFeed,
-    focusSearch,
+    focusSearch: searchFeed,
     removeFeed,
+    tweetOpen,
   });
 
   const feedTabs = useMemo(() => feeds.map((feed) => ({
     label: truncateWithEllipsis(feed.title, 18),
     value: feed.id,
     onClose: removeFeed,
-    onDoubleClick: focusSearch,
-  })), [feeds, focusSearch, removeFeed]);
+    onDoubleClick: searchFeed,
+  })), [feeds, removeFeed, searchFeed]);
   const tabsInHeader = usePaneHeaderTabs({
     tabs: feedTabs,
     activeValue: activeFeed?.id ?? null,
@@ -332,7 +344,7 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
           width={width}
           height={Math.max(1, height - tabRows)}
           requestKey={`feed:${activeFeed.id}:${activeFeed.query}:${activeFeed.queryType}`}
-          footerId="twitter-feed-search"
+          footerId={FEED_TABLE_ID}
           rootBefore={searchBar}
           enabled={searchEnabled}
           load={loadActiveFeed}

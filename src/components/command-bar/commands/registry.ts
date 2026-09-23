@@ -163,6 +163,22 @@ export const commands: Command[] = [
     argPlaceholder: "move|resize",
     category: "Config",
   },
+  // The keyboard's way to the title bar buttons the desktop draws for itself
+  // on Windows; the command bar lists these only on that host.
+  {
+    id: "minimize-window",
+    prefix: "",
+    label: "Minimize Window",
+    description: "Minimize the app window",
+    category: "Config",
+  },
+  {
+    id: "maximize-window",
+    prefix: "",
+    label: "Maximize Window",
+    description: "Maximize the app window, or restore it when maximized",
+    category: "Config",
+  },
   {
     id: "toggle-status-bar",
     prefix: "SB",

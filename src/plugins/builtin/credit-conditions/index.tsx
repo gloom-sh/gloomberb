@@ -17,6 +17,7 @@ import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../shared/auto-refresh";
@@ -47,15 +48,15 @@ function boardRow(row: CreditConditionRow): CreditBoardRow {
   };
 }
 
-function SpreadChart({ row, width, height }: { row: CreditConditionRow; width: number; height: number }) {
+function SpreadChart({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
   const series = useMemo(() => [staticSeries(row.history.map((point) => ({
     date: new Date(point.date), observedAt: new Date(point.date), value: point.valueBp,
   })), { id: row.seriesId, label: row.label, color: colors.positive, calendarSpaced: true })], [row]);
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} showLegend={false}
+  return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
     navigable={false} showTimeAxis formatAxisValue={(value) => formatBp(value)} remoteKind="credit-spread-history" />;
 }
 
-function SpreadDetail({ row, width, height }: { row: CreditConditionRow; width: number; height: number }) {
+function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
   // The chart shows the year the rank and range come from.
   const items: StatItem[] = [
     { id: "oas", label: "OAS", value: formatBp(row.oasBp),
@@ -69,7 +70,7 @@ function SpreadDetail({ row, width, height }: { row: CreditConditionRow; width: 
     <Box flexDirection="column" width={width} height={height}>
       <StatGrid items={items} width={width} />
       <PaneStatusBody empty={row.history.length < 2} subject="spread history" emptyTitle="No spread history available.">
-        <SpreadChart row={row} width={width} height={Math.max(3, height - statRows)} />
+        <SpreadChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
       </PaneStatusBody>
     </Box>
   );
@@ -91,7 +92,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   useAutoRefresh(lastUpdated, refresh);
 
   useShortcut((event) => {
-    if (!focused || event.name !== "r" || loading) return;
+    if (!focused || !isPlainKey(event, "r") || loading) return;
     reload();
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -124,13 +125,14 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   const selected = boardRows.find((row) => row.id === selectedId) ?? boardRows[0];
   const boardHeight = Math.max(3, Math.min(boardRows.length + 2, Math.floor(height * 0.45)));
   const chartHeight = height - boardHeight;
+  const detailOpen = boardRows.some((row) => row.id === openId);
   return (
     <MarketBoardStack rows={boardRows} width={width} height={height} focused={focused}
       rootBefore={selected && selected.spread.history.length >= 2 && chartHeight >= 8
-        ? <SpreadChart row={selected.spread} width={width} height={chartHeight} /> : undefined}
+        ? <SpreadChart row={selected.spread} width={width} height={chartHeight} focused={focused && !detailOpen} /> : undefined}
       selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={10} valueLabel="OAS" valueWidth={10}
-      renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} />} />
+      renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
   );
 }
 

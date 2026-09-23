@@ -8,8 +8,9 @@
  * `InlineAuthActions` is the other shape: a row of actions sitting inside a
  * surface that still works signed out, such as the chat composer.
  */
+import { useId } from "react";
 import { Box, Text } from "../../../ui";
-import { Button, EmptyState } from "../../../components";
+import { Button, EmptyState, usePaneMenuItems } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
@@ -39,6 +40,12 @@ export function InlineAuthActions({ showSignup = true, variant = "buttons" }: In
   const { openCommandBar } = usePluginAppActions();
   const logIn = () => openAuth(openCommandBar, "login");
   const signUp = () => openAuth(openCommandBar, "signup");
+  // Inside a pane (the chat composer) the pane menu lists them, so they need
+  // no mouse; the status bar copy has the Log In command instead.
+  usePaneMenuItems(`inline-auth:${useId()}`, () => [
+    { id: "log-in", label: t("Log in"), onSelect: logIn },
+    ...(showSignup ? [{ id: "sign-up", label: t("Sign up free"), onSelect: signUp }] : []),
+  ], [openCommandBar, showSignup]);
   if (variant === "plain") {
     return (
       <Box flexDirection="row">

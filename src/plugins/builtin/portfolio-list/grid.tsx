@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useId, useMemo, useRef } from "react";
 import {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,
   MetricTreemapSurface,
+  useTickerRowPaneMenu,
   type MetricTreemapDirection,
   type MetricTreemapItem,
 } from "../../../components";
@@ -17,6 +18,7 @@ import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay } from "./position-metrics";
+import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
 import { useThrottledMemo } from "./use-throttled-memo";
 
@@ -141,7 +143,7 @@ export function PortfolioGrid({
   cursorSymbol,
   setCursorSymbol,
   onRowActivate,
-  onToggleViewMode,
+  onOpenInNewPane,
   focused,
   width,
   height,
@@ -153,7 +155,7 @@ export function PortfolioGrid({
   cursorSymbol: string | null;
   setCursorSymbol: (symbol: string) => void;
   onRowActivate: (ticker: TickerRecord) => void;
-  onToggleViewMode: () => void;
+  onOpenInNewPane: (ticker: TickerRecord) => void;
   focused?: boolean;
   width: number;
   height: number;
@@ -199,13 +201,28 @@ export function PortfolioGrid({
     const target = findMetricTreemapNeighbor(navigationTiles, cursorSymbol, direction);
     if (target) setCursorSymbol(target.item.data.metadata.ticker);
   }, [cursorSymbol, navigationTiles, setCursorSymbol]);
+  const scopeId = useId();
 
+  // The tile under the cursor gets the ticker table's row menu in the pane menu.
+  const activeTicker = sortedTickers[activeIdx] ?? null;
+  useTickerRowPaneMenu({
+    ticker: activeTicker,
+    financials: activeTicker ? financialsMap.get(activeTicker.metadata.ticker) ?? null : null,
+    enabled: !!focused,
+    accelerators: PORTFOLIO_ROW_MENU_KEYS,
+  });
+
+  // Arrows move between tiles by position and j/k by size order; h/l are left
+  // to the collection tabs. The scope puts the arrows ahead of the tabs, which
+  // would otherwise take left and right as well.
   useShortcut((event) => {
     if (!focused) return;
-    if (isPlainKey(event, "s")) {
+    if (isPlainKey(event, "home", "end", "pageup", "pagedown")) {
+      if (sortedTickers.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
-      onToggleViewMode();
+      // Every tile is on screen, so a page is the whole map, as in a list that fits.
+      selectIndex(event.name === "home" || event.name === "pageup" ? 0 : sortedTickers.length - 1);
       return;
     }
     if (isPlainKey(event, "j")) {
@@ -220,13 +237,13 @@ export function PortfolioGrid({
       selectIndex(Math.max((activeIdx >= 0 ? activeIdx : 0) - 1, 0));
       return;
     }
-    if (isPlainKey(event, "left", "h")) {
+    if (isPlainKey(event, "left")) {
       event.preventDefault();
       event.stopPropagation();
       selectNeighbor("left");
       return;
     }
-    if (isPlainKey(event, "right", "l")) {
+    if (isPlainKey(event, "right")) {
       event.preventDefault();
       event.stopPropagation();
       selectNeighbor("right");
@@ -244,14 +261,16 @@ export function PortfolioGrid({
       selectNeighbor("down");
       return;
     }
-    if (isPlainKey(event, "enter", "return")) {
+    // Enter opens the tile, Shift+Enter in a new floating pane, as in the table.
+    if ((event.name === "enter" || event.name === "return") && !event.ctrl && !event.meta && !event.super && !event.alt) {
       const ticker = sortedTickers[activeIdx];
       if (!ticker) return;
       event.preventDefault();
       event.stopPropagation();
-      onRowActivate(ticker);
+      if (event.shift) onOpenInNewPane(ticker);
+      else onRowActivate(ticker);
     }
-  }, { enabled: focused });
+  }, { enabled: focused, scope: `portfolio-grid:${scopeId}` });
 
   return (
     <MetricTreemapSurface

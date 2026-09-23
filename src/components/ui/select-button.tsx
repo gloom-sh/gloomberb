@@ -42,6 +42,11 @@ export interface SelectButtonProps<T extends string = string> {
   variant?: "inline" | "field";
   width?: number;
   onFocus?: () => void;
+  /**
+   * Opens the choices from the keyboard. Outside a QueryBar (whose filters are
+   * in the pane menu) the trigger has no key of its own, so a pane gives it a
+   * footer hint or form key that calls `open()`.
+   */
   controlRef?: Ref<SelectControl>;
 }
 

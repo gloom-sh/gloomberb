@@ -10,7 +10,6 @@ import {
   fitSummarySegments,
   layoutPortfolioSummaryHeader,
 } from "./summary";
-import { shouldToggleCashMarginDrawer } from ".";
 import { needsVisibleQuoteWatchdogRefresh, selectQuoteWarmupTickers, selectStreamTickers } from "./pane/data";
 import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings } from "./settings";
 import { getLanguage, setLanguage } from "../../../i18n";
@@ -129,15 +128,6 @@ describe("buildPortfolioSummarySegments", () => {
     });
 
     expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
-  });
-
-  test("treats only a bare c as the cash drawer shortcut", () => {
-    expect(shouldToggleCashMarginDrawer({ name: "c" }, true)).toBe(true);
-    expect(shouldToggleCashMarginDrawer({ name: "c" }, false)).toBe(false);
-    expect(shouldToggleCashMarginDrawer({ name: "j" }, true)).toBe(false);
-    // Cmd+Shift+C copies a pane screenshot.
-    expect(shouldToggleCashMarginDrawer({ name: "c", meta: true, shift: true }, true)).toBe(false);
-    expect(shouldToggleCashMarginDrawer({ name: "c", super: true, shift: true }, true)).toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import {
   DataTableStackView,
   PaneStatusBody,
@@ -78,10 +79,12 @@ function RotationDetail({
   row,
   width,
   height,
+  focused = false,
 }: {
   row: RotationRow;
   width: number;
   height: number;
+  focused?: boolean;
 }) {
   const colors = useThemeColors();
   const series = useMemo(
@@ -123,6 +126,7 @@ function RotationDetail({
         panels={PANELS}
         width={width}
         height={Math.max(4, height - statRows)}
+        focused={focused}
         navigable={false}
         showTimeAxis
         formatAxisValue={(value) => value.toFixed(1)}
@@ -283,7 +287,7 @@ function RotationView({
   usePaneTitle(`RRG vs ${benchmark.symbol}`);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
-    if (focused && event.name === "r" && !event.targetEditable) {
+    if (focused && isPlainKey(event, "r") && !event.targetEditable) {
       event.preventDefault();
       void resource.reload();
     }
@@ -366,6 +370,7 @@ function RotationView({
                     row={selected}
                     width={width}
                     height={Math.max(5, height - 2)}
+                    focused={focused}
                   />
                 ) : null
               }

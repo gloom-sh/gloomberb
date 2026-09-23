@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   getPaneSidebarWidthRange,
   PaneSidebar,
@@ -50,6 +50,23 @@ export function ASKGConversationSidebar({
   );
   const widthRange = getPaneSidebarWidthRange(paneWidth);
 
+  // More conversations than rows: show a window of them that follows the row
+  // the keyboard is on, and scrolls with the wheel.
+  const conversations = snapshot.conversations;
+  const statusRow = !!snapshot.error || (snapshot.loading && focused);
+  const capacity = Math.max(1, height - 1 - (statusRow ? 1 : 0));
+  const maxStart = Math.max(0, conversations.length - capacity);
+  const activeIndex = conversations.findIndex((conversation) => conversation.id === activeConversationId);
+  const [scrollStart, setScrollStart] = useState(0);
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    setScrollStart((start) => (
+      activeIndex < start ? activeIndex : activeIndex >= start + capacity ? activeIndex - capacity + 1 : start
+    ));
+  }, [activeIndex, capacity]);
+  const start = Math.min(Math.max(0, scrollStart), maxStart);
+  const visibleConversations = conversations.slice(start, start + capacity);
+
   return (
     <PaneSidebar
       width={width}
@@ -89,7 +106,16 @@ export function ASKGConversationSidebar({
                 )}
               </PaneSidebarAction>
             </Box>
-            {snapshot.conversations.map((conversation) => {
+            <Box
+              flexDirection="column"
+              width={listWidth}
+              onMouseScroll={(event: { scroll?: { direction?: string } }) => {
+                const direction = event.scroll?.direction;
+                if (direction !== "up" && direction !== "down") return;
+                setScrollStart(Math.min(Math.max(0, start + (direction === "up" ? -3 : 3)), maxStart));
+              }}
+            >
+            {visibleConversations.map((conversation) => {
               const active = conversation.id === activeConversationId;
               const label = askgConversationLabel(conversation);
               return (
@@ -137,6 +163,7 @@ export function ASKGConversationSidebar({
                 </PaneSidebarRow>
               );
             })}
+            </Box>
             <Box flexGrow={1} />
             {snapshot.error ? (
               <Box height={1} width={listWidth}>

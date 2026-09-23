@@ -11,14 +11,15 @@ import {
 } from "../../../components";
 import { Box, Span, Text, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { blendHex, colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
-import type { ChatChannel, TeamSummary } from "../../../api-client";
+import type { ChatChannel } from "../../../api-client";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
-import { sortTeamChannels, teamAccentHex, teamPrefix } from "../cloud/team/model";
+import { teamAccentHex, teamPrefix } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import type { ChatController } from "./controller";
 import { chatSidebarStore } from "./sidebar-store";
+import { buildChatSidebarRows } from "./sidebar-rows";
 import {
   channelPrefix,
   formatChannelLabel,
@@ -115,6 +116,7 @@ export function ChannelSidebar({
   channels,
   channelStates,
   activeChannelId,
+  cursorHeaderKey = null,
   width,
   paneWidth,
   height,
@@ -134,6 +136,8 @@ export function ChannelSidebar({
   channels: ChatChannel[];
   channelStates: ReturnType<ChatController["getSnapshot"]>["channelStates"];
   activeChannelId: string;
+  /** The section header the keyboard cursor rests on, if it is on one. */
+  cursorHeaderKey?: string | null;
   width: number;
   /** Width of the whole chat pane, which caps how far the sidebar can grow. */
   paneWidth: number;
@@ -154,8 +158,6 @@ export function ChannelSidebar({
   const { nativePaneChrome } = useUiCapabilities();
   const notificationWidth = canManageNotifications ? (nativePaneChrome ? DESKTOP_NOTIFICATION_ICON_WIDTH : 2) : 0;
   const channelStateById = useMemo(() => new Map(channelStates.map((state) => [state.channelId, state])), [channelStates]);
-  const publicChannels = useMemo(() => channels.filter((channel) => (channel.kind ?? "public") === "public"), [channels]);
-  const conversationChannels = useMemo(() => channels.filter((channel) => channel.kind === "direct" || channel.kind === "group"), [channels]);
   const hasUnread = (section: ChatChannel[]) => section.some((channel) => (channelStateById.get(channel.id)?.unreadCount ?? 0) > 0);
   const teamSnapshot = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
@@ -165,36 +167,13 @@ export function ChannelSidebar({
     (onChange) => chatSidebarStore.subscribe(onChange),
     () => chatSidebarStore.getSnapshot(),
   );
-  const publicExpanded = !sidebarSnapshot.collapsedSections.has("public");
-  const directExpanded = !sidebarSnapshot.collapsedSections.has("direct");
-  // Team channels sit between the public channels and DMs, one section per
-  // team in the team's accent. A channel whose team is not loaded yet still
-  // shows, under its own id, so nothing disappears while the store refreshes.
-  const teamSections = useMemo(() => {
-    const byTeam = new Map<string, { team: TeamSummary | null; channels: ChatChannel[] }>();
-    for (const channel of channels) {
-      if (channel.kind !== "team") continue;
-      const teamId = channel.teamId ?? channel.id;
-      const entry = byTeam.get(teamId) ?? { team: teamStore.getTeam(channel.teamId) ?? null, channels: [] };
-      entry.channels.push(channel);
-      byTeam.set(teamId, entry);
-    }
-    return [...byTeam.entries()]
-      .map(([teamId, entry]) => ({ teamId, ...entry, channels: sortTeamChannels(entry.channels) }))
-      .sort((a, b) => (a.team?.name ?? "").localeCompare(b.team?.name ?? ""));
-  }, [channels, teamSnapshot.teams]);
-  const sidebarRows = useMemo(() => [
-    ...(publicChannels.length > 0 ? [{ kind: "public-header" as const, channels: publicChannels }] : []),
-    ...(publicExpanded ? publicChannels.map((channel) => ({ kind: "channel" as const, channel })) : []),
-    ...teamSections.flatMap((section) => [
-      { kind: "team-header" as const, teamId: section.teamId, team: section.team, channels: section.channels },
-      ...(teamSnapshot.collapsedTeams.has(section.teamId)
-        ? []
-        : section.channels.map((channel) => ({ kind: "channel" as const, channel }))),
-    ]),
-    ...(conversationChannels.length > 0 || canCreateConversation ? [{ kind: "direct-header" as const, channels: conversationChannels }] : []),
-    ...(directExpanded ? conversationChannels.map((channel) => ({ kind: "channel" as const, channel })) : []),
-  ], [canCreateConversation, conversationChannels, directExpanded, publicChannels, publicExpanded, teamSections, teamSnapshot.collapsedTeams]);
+  const sidebarRows = useMemo(() => buildChatSidebarRows({
+    channels,
+    collapsedSections: sidebarSnapshot.collapsedSections,
+    collapsedTeams: teamSnapshot.collapsedTeams,
+    canCreateConversation,
+    getTeam: (teamId) => teamStore.getTeam(teamId),
+  }), [canCreateConversation, channels, sidebarSnapshot.collapsedSections, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
   const widthRange = getPaneSidebarWidthRange(paneWidth);
 
   return (
@@ -212,6 +191,8 @@ export function ChannelSidebar({
     >
       {({ backgroundColor: sidebarBg, listWidth }) => {
         const labelWidth = Math.max(listWidth - CHANNEL_ROW_INDENT - notificationWidth, 1);
+        // The fill a keyboard-focused sidebar gives the row under its cursor.
+        const cursorBackground = blendHex(colors.selected, colors.borderFocused, 0.32);
         // Every section reads the same: a caret, a label, and an optional
         // trailing action, so their channels can all share one indent.
         const sectionHeader = ({ key, label, fg, unread, expanded, onToggle, action }: {
@@ -230,7 +211,7 @@ export function ChannelSidebar({
               height={1}
               width={listWidth}
               flexDirection="row"
-              backgroundColor={sidebarBg}
+              backgroundColor={keyboardFocused && cursorHeaderKey === key ? cursorBackground : sidebarBg}
             >
               <ActionRow
                 label={truncateWithEllipsis(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
@@ -259,21 +240,21 @@ export function ChannelSidebar({
             {sidebarRows.map((row) => {
               if (row.kind === "public-header") {
                 return sectionHeader({
-                  key: "public-header",
+                  key: row.key,
                   label: "Channels",
                   unread: hasUnread(row.channels),
-                  expanded: publicExpanded,
+                  expanded: row.expanded,
                   onToggle: () => chatSidebarStore.toggleSectionCollapsed("public"),
                 });
               }
               if (row.kind === "team-header") {
                 const canAddChannel = !!row.team && !!onCreateTeamChannel;
                 return sectionHeader({
-                  key: `team-header:${row.teamId}`,
+                  key: row.key,
                   label: row.team ? `${teamPrefix(row.team)} ${row.team.name}` : "Team",
                   fg: row.team ? teamAccentHex(row.team.accentColor) : colors.textDim,
                   unread: hasUnread(row.channels),
-                  expanded: !teamSnapshot.collapsedTeams.has(row.teamId),
+                  expanded: row.expanded,
                   onToggle: () => teamStore.toggleTeamCollapsed(row.teamId),
                   action: canAddChannel
                     ? {
@@ -285,10 +266,10 @@ export function ChannelSidebar({
               }
               if (row.kind === "direct-header") {
                 return sectionHeader({
-                  key: "direct-header",
+                  key: row.key,
                   label: "DMs",
                   unread: hasUnread(row.channels),
-                  expanded: directExpanded,
+                  expanded: row.expanded,
                   onToggle: () => chatSidebarStore.toggleSectionCollapsed("direct"),
                   action: canCreateConversation
                     ? { ariaLabel: "New DM", onPress: () => onCreateConversation?.() }

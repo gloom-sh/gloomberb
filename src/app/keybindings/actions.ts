@@ -13,7 +13,10 @@ export type CoreKeybindingActionId =
   | "refresh-ticker"
   | "refresh-all"
   | "install-update"
+  | "notification-action"
+  | "notification-dismiss"
   | "quit"
+  | "pane-menu"
   | "pane-close"
   | "close-floating-panes"
   | "pane-settings"
@@ -38,9 +41,12 @@ export interface KeybindingActionDef {
   defaults: readonly string[];
   /** Only the desktop app has this action; the terminal hides the row. */
   desktopOnly?: boolean;
+  /** Only the terminal has this action; the desktop app hides the row. */
+  terminalOnly?: boolean;
 }
 
 export const PANE_ACTION_IDS = new Set<CoreKeybindingActionId>([
+  "pane-menu",
   "pane-close",
   "close-floating-panes",
   "pane-settings",
@@ -119,10 +125,34 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     defaults: ["U"],
   },
   {
+    id: "notification-action",
+    category: "Global Keys",
+    description: "Run the newest notification's action, such as Review or Revert.",
+    // Alt+Enter reaches every terminal; the desktop app advertises its own.
+    defaults: ["Alt+Enter", "CmdOrCtrl+Shift+Enter"],
+  },
+  {
+    id: "notification-dismiss",
+    category: "Global Keys",
+    description: "Dismiss the newest notification.",
+    defaults: ["Alt+Backspace", "CmdOrCtrl+Shift+Backspace"],
+  },
+  {
     id: "quit",
     category: "Global Keys",
     description: "Quit the terminal app.",
     defaults: ["Q"],
+    // The desktop app quits from its menu (Cmd+Q, Alt+F4); a bare letter
+    // there would close the window on a stray keystroke.
+    terminalOnly: true,
+  },
+  {
+    id: "pane-menu",
+    category: "Pane Management",
+    description: "Open the focused pane's menu: settings, toggles, layout and window actions.",
+    // "." stands for the pane's "..." button. Shift+F10 and the Menu key are
+    // the platform keys for a context menu, and this is the pane's.
+    defaults: [".", "Shift+F10", "ContextMenu"],
   },
   {
     id: "pane-close",

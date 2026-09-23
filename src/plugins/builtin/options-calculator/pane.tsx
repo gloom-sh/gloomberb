@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { useAsyncResource, useInputCapture } from "../../../public/react";
 import { useShortcut } from "../../../react/input";
-import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance, usePaneStateValue } from "../../../state/app/context";
+import { selectCommandBarOpen } from "../../../state/selectors-ui";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox } from "../../../ui";
@@ -61,6 +62,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const draft = useMemo(() => reconcileOptionCalcDraft(storedDraft, seed), [storedDraft, seed]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+  const commandBarOpen = useAppSelector(selectCommandBarOpen);
   const american = draft.pricingModel === "american";
   const surfaceSource = draft.volSource === "surface";
   const [dividendText, setDividendText] = usePaneStateValue("dividendText", seedResult.dividendText);
@@ -208,58 +210,71 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
 
   const setSide = useCallback((side: OptionSide) => updateDraft({ side }), [updateDraft]);
-  const moveFieldFocus = useCallback((offset: -1 | 1) => {
-    const nextIndex = activeFieldId
-      ? (selectedIndex + offset + fields.length) % fields.length
-      : offset > 0 ? 0 : fields.length - 1;
-    setSelectedIndex(nextIndex);
-    setActiveFieldId(fields[nextIndex]?.id ?? null);
-  }, [activeFieldId, fields, selectedIndex]);
+  const selectedField = fields[Math.min(selectedIndex, fields.length - 1)] ?? null;
+  const editSelectedField = useCallback(() => setActiveFieldId(selectedField?.id ?? null), [selectedField?.id]);
+  const editSymbol = useCallback(() => { setSymbolText(draft.symbol); setActiveFieldId("symbol"); }, [draft.symbol]);
 
+  // Tab walks the fields only while one is being edited, and past either end
+  // it leaves them, so the next Tab moves to the next pane as everywhere else.
+  // Enter or `e` starts editing, Enter in a cell commits and keeps the exact
+  // number in view, and Esc stops.
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
+    const consume = () => { event.preventDefault(); event.stopPropagation(); };
     const plainTab = event.name === "tab"
       && !event.ctrl && !event.meta && !event.super && !event.alt;
-    if (plainTab && (activeFieldId === "dividends" || activeFieldId === "symbol")) {
-      event.preventDefault(); event.stopPropagation();
-      if (activeFieldId === "symbol") commitSymbol(symbolText); else setActiveFieldId(null);
+    if (activeFieldId === "dividends" || activeFieldId === "symbol") {
+      // Enter reaches the text field itself, which submits and leaves.
+      if (plainTab || isPlainKey(event, "escape", "esc")) {
+        consume();
+        if (activeFieldId === "symbol") commitSymbol(symbolText); else setActiveFieldId(null);
+      }
       return;
     }
-    if (plainTab) {
-      event.preventDefault();
-      event.stopPropagation();
-      moveFieldFocus(event.shift ? -1 : 1);
-      return;
-    }
-    if (event.targetEditable) {
-      if (activeFieldId && isPlainKey(event, "escape", "esc")) {
-        event.preventDefault();
-        event.stopPropagation();
+    const ringIndex = activeFieldId ? fields.findIndex((field) => field.id === activeFieldId) : -1;
+    if (ringIndex >= 0) {
+      if (plainTab) {
+        consume();
+        const nextIndex = ringIndex + (event.shift ? -1 : 1);
+        if (nextIndex < 0 || nextIndex >= fields.length) {
+          setActiveFieldId(null);
+          return;
+        }
+        setSelectedIndex(nextIndex);
+        setActiveFieldId(fields[nextIndex]!.id);
+      } else if (isPlainKey(event, "escape", "esc")) {
+        // Leaving the cell commits what was typed.
+        consume();
         setActiveFieldId(null);
       }
       return;
     }
-    if (!activeFieldId && isPlainKey(event, "m", "v", "d", "u", "r")) {
-      event.preventDefault(); event.stopPropagation();
-      if (event.name === "m") setModel(american ? "european" : "american");
-      if (event.name === "v") setVolSource(surfaceSource ? "input" : "surface");
-      if (event.name === "d" && american) setActiveFieldId("dividends");
-      if (event.name === "u") { setSymbolText(draft.symbol); setActiveFieldId("symbol"); }
-      if (event.name === "r" && surfaceSource) void surfaceResource.reload();
-      return;
-    }
-    if (!activeFieldId && isPlainKey(event, "left", "right")) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (event.targetEditable) return;
+    if (isPlainKey(event, "left", "right")) {
+      consume();
       setSide(event.name === "left" ? "call" : "put");
     } else if (isPlainKey(event, "enter", "return", "e")) {
-      event.preventDefault();
-      event.stopPropagation();
-      setActiveFieldId(fields[selectedIndex]?.id ?? null);
+      consume();
+      editSelectedField();
+    } else if (isPlainKey(event, "m")) {
+      consume();
+      setModel(american ? "european" : "american");
+    } else if (isPlainKey(event, "v")) {
+      consume();
+      setVolSource(surfaceSource ? "input" : "surface");
+    } else if (isPlainKey(event, "t")) {
+      consume();
+      editSymbol();
+    } else if (american && isPlainKey(event, "d")) {
+      consume();
+      setActiveFieldId("dividends");
+    } else if (surfaceSource && isPlainKey(event, "r")) {
+      consume();
+      void surfaceResource.reload();
     }
   }, {
     allowEditable: true,
-    enabled: focused,
+    enabled: focused && !commandBarOpen,
     phase: "before",
     scope: "options-calculator:fields",
   });
@@ -274,13 +289,16 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       ...(liveInputs ? [{ id: "market", parts: [{ text: liveInputs.delayed ? "delayed market" : "real-time market", tone: "muted" as const }] }] : []),
     ],
     hints: activeFieldId ? [] : [
+      // Names the cell Enter or `e` edits, which the grid does not mark.
+      ...(selectedField ? [{ id: "edit", key: "e", label: `dit ${selectedField.label}`, onPress: editSelectedField }] : []),
       { id: "model", key: "m", label: "odel", onPress: () => setModel(american ? "european" : "american") },
       { id: "vol-source", key: "v", label: "ol source", onPress: () => setVolSource(surfaceSource ? "input" : "surface") },
-      { id: "underlying", key: "u", label: "nderlying", onPress: () => { setSymbolText(draft.symbol); setActiveFieldId("symbol"); } },
+      // Not `u`: that installs an app update.
+      { id: "underlying", key: "t", label: "icker", title: "Edit Underlying", onPress: editSymbol },
       ...(american ? [{ id: "dividends", key: "d", label: "ividends", onPress: () => setActiveFieldId("dividends") }] : []),
       ...(surfaceSource ? [{ id: "refresh", key: "r", label: "efresh", onPress: () => { void surfaceResource.reload(); } }] : []),
     ],
-  }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps, liveInputs?.delayed, !!liveInputs]);
+  }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps, liveInputs?.delayed, !!liveInputs, selectedField?.id, selectedField?.label, editSelectedField, editSymbol]);
 
   const gridFields: GridField[] = [
     { id: "symbol", kind: "text", label: "Underlying", valueText: symbolText, placeholder: "ticker",

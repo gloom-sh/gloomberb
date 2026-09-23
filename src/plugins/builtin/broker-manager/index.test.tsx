@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useReducer } from "react";
 import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { testBroker } from "../../../brokers/test-broker";
@@ -46,33 +46,36 @@ function Harness({
   calls: string[];
   paneHeight?: number;
 }) {
-  const config = {
-    ...createDefaultConfig("/tmp/gloomberb-broker-manager-pane"),
-    brokerInstances: instance ? [instance] : [],
-  };
-  const state = createInitialState(config);
-  if (instance) {
-    state.brokerAccounts = {
-      [instance.id]: [{
-        accountId: "DU12345",
-        name: "DU12345",
-        currency: "USD",
-        netLiquidation: 125000,
-        buyingPower: 50000,
-      }],
-    };
-  }
+  // Pane state (the open profile) lives in the app state, so it needs a real reducer.
+  const [state, dispatch] = useReducer(appReducer, instance, (instance) => {
+    const initial = createInitialState({
+      ...createDefaultConfig("/tmp/gloomberb-broker-manager-pane"),
+      brokerInstances: instance ? [instance] : [],
+    });
+    if (instance) {
+      initial.brokerAccounts = {
+        [instance.id]: [{
+          accountId: "DU12345",
+          name: "DU12345",
+          currency: "USD",
+          netLiquidation: 125000,
+          buyingPower: 50000,
+        }],
+      };
+    }
+    return initial;
+  });
   const runtime = createTestPluginRuntime({
     getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? testBroker : null,
     openCommandBar: (query) => calls.push(`command:${query ?? ""}`),
     showPane: (paneId) => calls.push(`pane:${paneId}`),
     connectBrokerInstance: async (instanceId) => { calls.push(`connect:${instanceId}`); },
     syncBrokerInstance: async (instanceId) => { calls.push(`sync:${instanceId}`); },
-    updateBrokerInstance: async (instanceId) => { calls.push(`update:${instanceId}`); },
+    updateBrokerInstance: async (instanceId, config) => { calls.push(`update:${instanceId}:${String(config.connectionMode)}`); },
   });
 
   return (
-    <TestPaneProvider state={state} paneId="brokers:test" pluginId="broker" runtime={runtime}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId="brokers:test" pluginId="broker" runtime={runtime}>
       <BrokersPane focused width={92} height={paneHeight} />
     </TestPaneProvider>
   );
@@ -92,19 +95,22 @@ function FooterHarness({
         <Box width={92} height={height} flexDirection="column">
           <Harness {...props} paneHeight={height - 1} />
           <PaneFooterBar footer={footer} focused width={92} />
+          <PaneFooterKeys paneId="brokers:test" footer={footer} focused />
         </Box>
       )}
     </PaneFooterProvider>
   );
 }
 
-async function pressKey(key: string) {
+async function pressKey(key: Parameters<NonNullable<typeof testSetup>["mockInput"]["pressKey"]>[0]) {
   await act(async () => {
     testSetup!.mockInput.pressKey(key);
     await Promise.resolve();
     await testSetup!.renderOnce();
     await testSetup!.renderOnce();
   });
+  // The key's update can commit as act exits, after the frames above.
+  await testSetup!.renderOnce();
 }
 
 describe("BrokersPane", () => {
@@ -129,5 +135,39 @@ describe("BrokersPane", () => {
     await pressKey("o");
 
     expect(calls).toEqual(["connect:ibkr-paper", "sync:ibkr-paper", "pane:ibkr-trading"]);
+  });
+
+  test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
+    const calls: string[] = [];
+    const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "A1" } } };
+    testSetup = await testRender(<FooterHarness calls={calls} instance={instance} height={35} />, { width: 92, height: 35 });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    await pressKey("e");
+    expect(testSetup.captureCharFrame()).toContain("> Profile Label");
+
+    await pressKey("TAB");
+    await pressKey("TAB");
+    expect(testSetup.captureCharFrame()).toContain("> Connection");
+
+    // Esc on a row without a text field would otherwise close the profile.
+    await emitKeypress(testSetup, { name: "escape", sequence: "\u001b" }, { frames: 2, trackPropagation: true, afterCommit: true });
+    const frame = testSetup.captureCharFrame();
+    expect(frame).not.toContain("EDIT PROFILE");
+    expect(frame).toContain("ACCOUNTS");
+
+    await pressKey("e");
+    await pressKey("TAB");
+    await pressKey("TAB");
+    await act(async () => {
+      testSetup!.mockInput.pressArrow("right");
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    await pressKey("RETURN");
+    expect(calls).toEqual(["update:ibkr-paper:local"]);
   });
 });

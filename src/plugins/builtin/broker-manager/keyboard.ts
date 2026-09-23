@@ -1,104 +1,82 @@
-import { useShortcut } from "../../../react/input";
+import { useShortcut, type KeyEventLike } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { BrokerEditKey } from "./detail";
 
+/**
+ * The edit form's field ring. The list and detail actions (a, e, c, s, o, d)
+ * are footer hints, which bind their own keys, and the table opens a row on
+ * Enter, so only editing needs keys of its own.
+ *
+ * It runs before the app's Tab (next pane) and the stack's Esc (back), and
+ * while a text field has the keyboard, so Tab walks every field, Esc cancels
+ * the edit instead of closing the profile, and Enter saves from any row.
+ */
 export function useBrokerManagerKeyboard({
   activeEditKey,
-  canOpenSelectedAction,
-  canRemoveSelected,
-  canUseSelectedBroker,
-  connectSelected,
-  detailOpen,
   editing,
   editKeys,
   focused,
-  hasSelectedRow,
+  scope,
+  selectKeys,
   onActiveEditKeyChange,
   onCancelEdit,
-  onOpenDetail,
-  openAddBroker,
-  openProfileAction,
-  removeSelected,
+  onCycleSelect,
   saveEdit,
-  startEdit,
-  syncSelected,
 }: {
   activeEditKey: BrokerEditKey;
-  canOpenSelectedAction: boolean;
-  canRemoveSelected: boolean;
-  canUseSelectedBroker: boolean;
-  connectSelected: () => Promise<void>;
-  detailOpen: boolean;
   editing: boolean;
   editKeys: BrokerEditKey[];
   focused: boolean;
-  hasSelectedRow: boolean;
+  /** Shared with the form's segmented controls so the two take turns on left and right. */
+  scope: string;
+  /** Rows edited with left and right: the enabled switch and select-type broker fields. */
+  selectKeys: ReadonlySet<BrokerEditKey>;
   onActiveEditKeyChange: (key: BrokerEditKey) => void;
   onCancelEdit: () => void;
-  onOpenDetail: () => void;
-  openAddBroker: () => void;
-  openProfileAction: () => void;
-  removeSelected: () => Promise<void>;
+  onCycleSelect: (key: BrokerEditKey, direction: -1 | 1) => void;
   saveEdit: () => Promise<void>;
-  startEdit: () => void;
-  syncSelected: () => Promise<void>;
 }) {
   useShortcut((event) => {
-    if (!focused) return;
+    if (event.defaultPrevented || event.propagationStopped) return;
+    const consume = (event: KeyEventLike) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const move = (delta: number) => {
+      const index = Math.max(0, editKeys.indexOf(activeEditKey));
+      const next = editKeys[(index + delta + editKeys.length) % editKeys.length];
+      if (next) onActiveEditKeyChange(next);
+    };
+    const onSelectRow = !event.targetEditable && selectKeys.has(activeEditKey);
 
-    if (editing) {
-      if (event.name === "escape") {
-        event.stopPropagation();
-        onCancelEdit();
-        return;
-      }
-      if (event.name === "enter" || event.name === "return") {
-        event.stopPropagation();
-        saveEdit().catch(() => {});
-        return;
-      }
-      if (isPlainKey(event, "up", "k")) {
-        event.stopPropagation();
-        const index = editKeys.indexOf(activeEditKey);
-        onActiveEditKeyChange(editKeys[Math.max(0, index - 1)] ?? "label");
-        return;
-      }
-      if (isPlainKey(event, "down", "j", "tab")) {
-        event.stopPropagation();
-        const index = editKeys.indexOf(activeEditKey);
-        onActiveEditKeyChange(editKeys[Math.min(editKeys.length - 1, index + 1)] ?? "label");
-        return;
-      }
+    if (isPlainKey(event, "escape") || (!event.targetEditable && isPlainKey(event, "backspace"))) {
+      consume(event);
+      onCancelEdit();
       return;
     }
-
-    switch (event.name) {
-      case "a":
-        openAddBroker();
-        break;
-      case "enter":
-      case "return":
-        if (!detailOpen && hasSelectedRow) {
-          event.stopPropagation();
-          event.preventDefault?.();
-          onOpenDetail();
-        }
-        break;
-      case "e":
-        if (canUseSelectedBroker) startEdit();
-        break;
-      case "c":
-        if (canUseSelectedBroker) connectSelected().catch(() => {});
-        break;
-      case "s":
-        if (canUseSelectedBroker) syncSelected().catch(() => {});
-        break;
-      case "o":
-        if (canOpenSelectedAction) openProfileAction();
-        break;
-      case "d":
-        if (canRemoveSelected) removeSelected().catch(() => {});
-        break;
+    if (isPlainKey(event, "enter", "return")) {
+      consume(event);
+      saveEdit().catch(() => {});
+      return;
     }
-  });
+    if (event.name === "tab" && !event.ctrl && !event.alt && !event.meta && !event.super) {
+      consume(event);
+      move(event.shift ? -1 : 1);
+      return;
+    }
+    if (!event.targetEditable && isPlainKey(event, "up", "k")) {
+      consume(event);
+      move(-1);
+      return;
+    }
+    if (!event.targetEditable && isPlainKey(event, "down", "j")) {
+      consume(event);
+      move(1);
+      return;
+    }
+    if (onSelectRow && isPlainKey(event, "left", "h", "right", "l", "space")) {
+      consume(event);
+      onCycleSelect(activeEditKey, isPlainKey(event, "left", "h") ? -1 : 1);
+    }
+  }, { enabled: focused && editing, phase: "before", scope, allowEditable: true });
 }

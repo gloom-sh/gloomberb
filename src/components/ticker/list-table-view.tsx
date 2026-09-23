@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   type ReactNode,
@@ -18,6 +19,8 @@ import {
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { getSharedRegistry } from "../../plugins/registry";
+import { withPluginContextMenuItems } from "../../ui/context-menu";
+import type { ContextMenuItem } from "../../types/context-menu";
 import type { ColumnConfig } from "../../types/config";
 import type { TickerFinancials, PricePoint } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
@@ -25,6 +28,7 @@ import { PRICE_SPARKLINE_COLUMN_ID, PriceSparkline } from "../price-sparkline/vi
 import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "../data-table/view";
 import type { QuoteFlashDirection } from "../quote-flash";
 import { objectVersion } from "../../utils/object-version";
+import { usePaneFooter } from "../layout/pane/footer";
 
 export interface TickerTableCell {
   text: string;
@@ -75,6 +79,8 @@ export interface TickerListTableViewProps {
   sortDirection?: "asc" | "desc";
   onHeaderClick?: (columnId: string) => void;
   onRowActivate?: (ticker: TickerRecord) => void;
+  /** The pane's own keys for row menu actions, by item id, shown beside them in the pane menu. */
+  rowMenuAccelerators?: Readonly<Record<string, string>>;
   emptyTitle?: string;
   emptyHint?: string;
   virtualize?: boolean;
@@ -119,6 +125,53 @@ function getTickerKey(ticker: TickerRecord): string {
   return ticker.metadata.ticker;
 }
 
+/** What right-clicking the row offers, plugin additions included. */
+function tickerRowMenuItems(
+  ticker: TickerRecord,
+  financials: TickerFinancials | null,
+  copyText: (text: string) => Promise<void>,
+): ContextMenuItem[] {
+  const registry = getSharedRegistry() ?? null;
+  return withPluginContextMenuItems(
+    { kind: "ticker", symbol: ticker.metadata.ticker, ticker, financials },
+    tickerContextMenuItems({ ticker, financials, registry, copyText }),
+    registry,
+  );
+}
+
+/**
+ * A ticker's right-click menu, for the keyboard: the pane menu (".", Shift+F10,
+ * the Menu key) lists it first while `enabled`. The ticker table registers its
+ * cursor row; a surface with a cursor of its own (a treemap) registers that.
+ */
+export function useTickerRowPaneMenu({
+  ticker,
+  financials,
+  enabled,
+  accelerators,
+}: {
+  ticker: TickerRecord | null;
+  financials: TickerFinancials | null;
+  enabled: boolean;
+  /** The pane's own keys for these actions, by item id, shown beside them. */
+  accelerators?: Readonly<Record<string, string>>;
+}): void {
+  const renderer = useRendererHost();
+  const registrationId = `ticker-row-menu:${useId()}`;
+  usePaneFooter(registrationId, () => {
+    if (!enabled || !ticker) return null;
+    const items = tickerRowMenuItems(ticker, financials, renderer.copyText.bind(renderer));
+    return {
+      order: -1,
+      menu: accelerators
+        ? items.map((item) => (item.type === "divider" || item.type === "role" || !accelerators[item.id]
+          ? item
+          : { ...item, accelerator: accelerators[item.id] }))
+        : items,
+    };
+  }, [accelerators, enabled, financials, renderer, ticker]);
+}
+
 export function TickerListTableView({
   focused = false,
   rootBefore,
@@ -147,6 +200,7 @@ export function TickerListTableView({
   sortDirection = "asc",
   onHeaderClick,
   onRowActivate,
+  rowMenuAccelerators,
   emptyTitle = t("No tickers."),
   emptyHint,
   virtualize = true,
@@ -286,6 +340,16 @@ export function TickerListTableView({
   const handleRowContextMenu = useCallback((ticker: TickerRecord, _index: number, event: TableMouseEvent) => {
     showTickerContextMenu(ticker, event);
   }, [showTickerContextMenu]);
+
+  // The cursor row's right-click menu, for the keyboard, while the table is focused.
+  const cursorTicker = selectedIndex >= 0 ? tickers[selectedIndex] ?? null : null;
+  const cursorFinancials = cursorTicker ? financialsMap.get(cursorTicker.metadata.ticker) ?? null : null;
+  useTickerRowPaneMenu({
+    ticker: cursorTicker,
+    financials: cursorFinancials,
+    enabled: focused && keyboardNavigation,
+    accelerators: rowMenuAccelerators,
+  });
 
   return (
     <DataTableView<TickerRecord, ColumnConfig>

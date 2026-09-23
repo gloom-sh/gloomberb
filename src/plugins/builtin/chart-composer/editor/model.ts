@@ -264,6 +264,7 @@ export function buildSeriesEditorActions({
       id: "move-up",
       label: "Move Up",
       group: "series",
+      shortcut: "[",
       disabled: selectedIndex <= 0,
       onPress: handlers.moveUp,
     },
@@ -271,6 +272,7 @@ export function buildSeriesEditorActions({
       id: "move-down",
       label: "Move Down",
       group: "series",
+      shortcut: "]",
       disabled: selectedIndex < 0 || selectedIndex >= draft.series.length - 1,
       onPress: handlers.moveDown,
     },
@@ -286,6 +288,7 @@ export function buildSeriesEditorActions({
       label: "Save",
       group: "confirm",
       variant: "primary",
+      shortcut: "Enter",
       onPress: handlers.save,
     },
   ];

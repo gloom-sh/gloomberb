@@ -19,7 +19,7 @@ export function activeBuildoutPage(
 /**
  * Only what changes: the free tier's delay on intel, a list the free tier
  * cannot see the end of, loading and failures. "pro access" was fixed text,
- * and the upgrade pitch is the `u` hint.
+ * and the upgrade pitch is the `$` hint.
  */
 export function updateBuildoutFooterInfo(
   state: BuildoutLoadState,

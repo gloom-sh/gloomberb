@@ -7,6 +7,7 @@ export function useAccountManagementKeyboard({
   cycleField,
   cyclePortfolio,
   draftRef,
+  fieldOrder,
   focused,
   openPasswordDialog,
   openPortfolioDialog,
@@ -20,6 +21,8 @@ export function useAccountManagementKeyboard({
   cycleField: (delta: number) => void;
   cyclePortfolio: (delta: number) => void;
   draftRef: { current: AccountDraft };
+  /** The active tab's ring, in reading order. */
+  fieldOrder: readonly AccountFieldKey[];
   focused: boolean;
   openPasswordDialog: () => void;
   openPortfolioDialog: () => Promise<void>;
@@ -30,8 +33,6 @@ export function useAccountManagementKeyboard({
   turnOffEmailAlerts: () => Promise<void>;
 }) {
   useShortcut((event) => {
-    if (!focused) return;
-
     if (event.ctrl && event.name === "s") {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -39,7 +40,18 @@ export function useAccountManagementKeyboard({
       return;
     }
 
-    if (isPlainKey(event, "tab") || (!event.targetEditable && isPlainKey(event, "down", "j"))) {
+    if (event.name === "tab" && !event.ctrl && !event.meta && !event.alt) {
+      // Tab and Shift+Tab walk the fields; past either end they move on to the
+      // next pane like everywhere else, so the pane never traps the keyboard.
+      const index = fieldOrder.indexOf(activeField);
+      const next = event.shift ? (index > 0 ? fieldOrder[index - 1] : undefined) : fieldOrder[index + 1];
+      if (!next) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      cycleField(event.shift ? -1 : 1);
+      return;
+    }
+    if (!event.targetEditable && isPlainKey(event, "down", "j")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       cycleField(1);
@@ -122,5 +134,6 @@ export function useAccountManagementKeyboard({
       event.stopPropagation?.();
       void turnOffEmailAlerts();
     }
-  }, { allowEditable: true });
+    // Scoped in "before", so the fields see Tab ahead of the app's pane cycling.
+  }, { allowEditable: true, phase: "before", scope: "account-management:fields", enabled: focused });
 }

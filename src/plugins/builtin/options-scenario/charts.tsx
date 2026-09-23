@@ -5,8 +5,8 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { buildScenario } from "./model";
 
-export function ScenarioPayoffChart({ scenario, width, height }: {
-  scenario: ReturnType<typeof buildScenario>; width: number; height: number;
+export function ScenarioPayoffChart({ scenario, width, height, focused = false }: {
+  scenario: ReturnType<typeof buildScenario>; width: number; height: number; focused?: boolean;
 }) {
   const colors = useThemeColors();
   const { points, overlays, ticks, first, span } = useMemo(() => {
@@ -33,6 +33,6 @@ export function ScenarioPayoffChart({ scenario, width, height }: {
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced
       width={width} height={Math.max(2, height - 1)} colors={{ ...resolveChartPalette(colors), lineColor: colors.warning }}
       xAxisTicks={ticks} formatXAxisCursorValue={(ratio) => `Spot ${(first + ratio * span).toFixed(2)}`}
-      formatYAxisValue={(value) => value.toFixed(0)} />
+      formatYAxisValue={(value) => value.toFixed(0)} focused={focused} />
   </Box>;
 }

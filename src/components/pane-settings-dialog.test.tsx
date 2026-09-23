@@ -178,6 +178,49 @@ describe("pane settings action rows", () => {
     expect(activated).toEqual([enabled.key]);
   });
 
+  test("scrolls a long TUI settings list to the cursor and steps over disabled rows", async () => {
+    const toggles: PaneSettingField[] = Array.from({ length: 14 }, (_, index) => ({
+      key: `field-${index + 1}`,
+      label: `Setting ${index + 1}`,
+      description: `About setting ${index + 1}`,
+      type: "toggle",
+    }));
+    const disabled = makeField({ key: "unavailable", label: "Unavailable Account", disabled: true });
+    const registry = {
+      ...makeRegistry(makeField()),
+      resolvePaneSettings: () => ({
+        paneId: context.paneId,
+        pane: { title: "AI", paneId: "test-pane" },
+        paneDef: { name: "AI" },
+        settingsDef: { title: "AI Settings", fields: [...toggles, disabled] },
+        context,
+      }),
+    } as unknown as PluginRegistry;
+    testSetup = await testRender(
+      <TestDialogProvider>
+        <PaneSettingsDialogContent
+          dismiss={() => {}}
+          paneId={context.paneId}
+          pluginRegistry={registry}
+          applyFieldValue={async () => {}}
+        />
+      </TestDialogProvider>,
+      { width: 72, height: 18 },
+    );
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).not.toContain("Setting 14");
+
+    await act(async () => {
+      testSetup!.mockInput.pressKey("END");
+      await Promise.resolve();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("▸ Setting 14");
+    expect(frame).toContain("About setting 14");
+  });
+
   test("routes keyboard input to a nested select instead of the parent settings list", async () => {
     const applied: unknown[] = [];
     const field: PaneSettingField = {

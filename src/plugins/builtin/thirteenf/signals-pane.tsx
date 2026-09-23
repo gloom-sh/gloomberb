@@ -166,7 +166,7 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
     <DataTableView<CrowdingRow, DataTableColumn> focused={focused} columns={columns} items={rows} getItemKey={row => row.id}
       selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}
       onActivate={row => { if (row.ticker && row.ticker !== row.cusip) pinTicker(row.ticker, { floating: true }); }}
-      onHeaderClick={rankByHeader} sortColumnId={ranking === "decreases" ? "weightChange" : ranking} sortDirection={ranking === "decreases" ? "asc" : "desc"}
+      onHeaderClick={rankByHeader} isColumnSortable={column => column.id === "newCount" || column.id === "exitCount" || column.id === "weightChange"} sortColumnId={ranking === "decreases" ? "weightChange" : ranking} sortDirection={ranking === "decreases" ? "asc" : "desc"}
       renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "totalValue" ? formatMoneyCompact(row.totalValue) : column.id === "weightChange" ? row.weightChange == null ? "--" : `${row.weightChange > 0 ? "+" : ""}${(row.weightChange * 100).toFixed(2)}` : String(row[column.id as keyof CrowdingRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
       emptyStateTitle={loading ? "Loading 13F crowding..." : error ? "13F crowding unavailable." : "No comparable positions."}
     />

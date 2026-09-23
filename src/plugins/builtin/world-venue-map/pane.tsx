@@ -145,10 +145,14 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   }, []);
   const blurSearch = useCallback(() => setSearchFocused(false), []);
   const refresh = useCallback(() => void load(), [load]);
+  // The search field only exists once venues have loaded; before that `/` has
+  // nothing to focus and must not leave the pane waiting on a missing field.
+  const searchable = !!data;
+  const searchOpen = searchable && searchFocused;
 
   useShortcut((event) => {
-    if (searchFocused || event.targetEditable) return;
-    if (isPlainKey(event, "/")) {
+    if (searchOpen || event.targetEditable) return;
+    if (searchable && isPlainKey(event, "/")) {
       event.preventDefault();
       event.stopPropagation();
       focusSearch();
@@ -183,9 +187,9 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
-      { id: "search", key: "/", label: "search", onPress: focusSearch },
+      ...(searchable ? [{ id: "search", key: "/", label: "search", onPress: focusSearch }] : []),
     ],
-  }), [data, error, focusSearch, loading]);
+  }), [data, error, focusSearch, loading, searchable]);
 
   const { nativePaneChrome } = useUiCapabilities();
   const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);

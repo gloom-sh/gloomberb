@@ -19,7 +19,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -109,6 +109,7 @@ function DividendSummary({
   height,
   chartPoints,
   scrollRef,
+  focused = false,
 }: {
   metrics: DividendMetrics;
   currency: string;
@@ -117,6 +118,7 @@ function DividendSummary({
   height: number;
   chartPoints: ProjectedChartPoint[];
   scrollRef: RefObject<ScrollBoxRenderable | null>;
+  focused?: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   // Up to three columns, and in the terminal no more than the labels can
@@ -149,6 +151,7 @@ function DividendSummary({
             yAxisLabel="TTM cash/share"
             yAxisColor={colors.textDim}
             formatYAxisValue={(value) => formatCurrency(value, currency, axisDigits)}
+            focused={focused}
           />
         </Box>
       )}
@@ -270,7 +273,8 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
         return true;
       }
     }
-    return handleRefreshKey(event, refresh, { stopPropagation: true });
+    // Only a bare r refreshes; Cmd/Ctrl+Shift+R belongs to the window.
+    return isPlainKey(event, "r") && handleRefreshKey(event, refresh, { stopPropagation: true });
   }, [refresh]);
 
   const emptyTitle = !symbol
@@ -302,6 +306,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
           height={height}
           chartPoints={chartPoints}
           scrollRef={summaryScrollRef}
+          focused={focused}
         />
       ) : undefined}
       columns={columns}

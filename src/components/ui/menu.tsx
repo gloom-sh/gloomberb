@@ -56,6 +56,8 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
     const key = event.name;
     if (key === "down" || key === "j") setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
     else if (key === "up" || key === "k") setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
+    else if (key === "home" || key === "pageup") setHighlighted(enabled[0]?.id ?? null);
+    else if (key === "end" || key === "pagedown") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
     else if ((key === "return" || key === "enter" || key === "space") && highlighted) choose(highlighted);
     else if (key === "escape") onClose?.();
     else return;
@@ -70,7 +72,8 @@ function TerminalMenu({ items, onSelect, selection = "none", title, onClose }: M
         if (item.kind === "divider") return <Box key={item.id} height={1} />;
         if (item.kind === "heading") return <Text key={item.id} fg={colors.textMuted}>{item.label}</Text>;
         const active = item.id === highlighted;
-        const marker = selection === "multi" ? (item.checked ? "[x] " : "[ ] ") : selection === "single" ? (item.selected ? "✓ " : "  ") : "";
+        const toggle = selection === "none" && item.checked !== undefined;
+        const marker = selection === "multi" || toggle ? (item.checked ? "[x] " : "[ ] ") : selection === "single" ? (item.selected ? "✓ " : "  ") : "";
         return (
           <Box
             key={item.id}

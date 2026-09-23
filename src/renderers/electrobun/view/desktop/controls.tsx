@@ -15,6 +15,7 @@ import type { DialogFrameProps } from "../../../../components/ui/frame";
 import type { MessageComposerProps } from "../../../../components/ui/message-composer";
 import type { PageStackViewProps } from "../../../../components/ui/page-stack-view";
 import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
+import { releasePointerFocus } from "../host/focus-scope";
 import { WebIcon, WebIconButton } from "./icons";
 import { NestedPaneTabs } from "../../../../components/layout/pane/header-tabs";
 import type { SegmentedControlProps } from "../../../../components/ui/toggle";
@@ -66,6 +67,7 @@ export function WebButton({
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         if (!disabled) onPress?.();
+        releasePointerFocus(event.currentTarget, event.detail);
       }}
       onKeyDown={(event) => {
         if (disabled || (event.key !== "Enter" && event.key !== " ")) return;
@@ -220,6 +222,7 @@ export function WebCheckbox({
           onChange={(event) => {
             if (!disabled) onChange?.(event.currentTarget.checked);
           }}
+          onClick={(event) => releasePointerFocus(event.currentTarget, event.detail)}
           onKeyDown={(event) => {
             // Space activates the native input. Keep it out of pane shortcuts
             // without cancelling the browser's checked-state transition.
@@ -486,6 +489,9 @@ export function WebSegmentedControl({
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}
+            // A clicked option would otherwise keep taking the arrows and Enter
+            // after the keyboard has moved on to another pane.
+            onClick={(event: { currentTarget: unknown; detail: number }) => releasePointerFocus(event.currentTarget, event.detail)}
             data-gloom-interactive={option.disabled ? undefined : "true"}
             role="radio"
             aria-checked={active}

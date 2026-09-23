@@ -4,8 +4,9 @@ import {
 } from "../../../components/chart/static/series";
 import { loadPortfolioOptionBook } from "./risk-options";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
-import { useCallback, useMemo, useState } from "react";
-import { Box, ScrollBox, useRendererHost } from "../../../ui";
+import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
+import { Box, ScrollBox, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import {
   Button,
   CompositeChart,
@@ -21,6 +22,7 @@ import {
   usePaneFooter,
   usePaneNoticeFooter,
   type DataTableColumn,
+  type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
 import {
@@ -115,10 +117,14 @@ function RiskDetail({
   row,
   width,
   height,
+  scrollRef,
+  focused = false,
 }: {
   row: RiskDisplayRow;
   width: number;
   height: number;
+  scrollRef: RefObject<ScrollBoxRenderable | null>;
+  focused?: boolean;
 }) {
   // Resolved per render so the chart follows the active theme.
   const themeColors = useThemeColors();
@@ -145,7 +151,7 @@ function RiskDetail({
     volume: 0,
   }));
   return (
-    <ScrollBox width={width} height={height} scrollY>
+    <ScrollBox ref={scrollRef} width={width} height={height} scrollY>
       <StatGrid items={items} width={width} />
       {points.filter((row) => Number.isFinite(row.close)).length > 1 && (
         <Box paddingX={1}>
@@ -158,6 +164,7 @@ function RiskDetail({
             showTimeAxis
             colors={chartColors}
             yAxisLabel={row.unit}
+            focused={focused}
           />
         </Box>
       )}
@@ -364,6 +371,18 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     return [];
   }, [model, view]);
   const openRow = rows.find((row) => row.id === open);
+  // j/k scroll an open metric the way they move the table, as in other details.
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
+    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+    const scrollBox = detailScrollRef.current;
+    if (!delta || !scrollBox?.viewport) return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
+    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
+    return true;
+  }, []);
   // Columns that say the same thing on every row belong in the footer, not repeated per row.
   const showPercentile = rows.some((row) => row.percentile != null);
   const sharedDate =
@@ -626,6 +645,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
                 panels={PANELS}
                 width={width}
                 height={chartHeight}
+                focused={focused && !openRow}
                 showLegend
                 showTimeAxis
                 navigable={false}
@@ -672,9 +692,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         onBack={() => setOpen(null)}
         detailContent={
           openRow ? (
-            <RiskDetail row={openRow} width={width} height={Math.max(3, height - tabRows - 1)} />
+            <RiskDetail
+              row={openRow}
+              width={width}
+              height={Math.max(3, height - tabRows - 1)}
+              scrollRef={detailScrollRef}
+              focused={focused}
+            />
           ) : null
         }
+        onDetailKeyDown={handleDetailKeyDown}
         emptyContent={
           evidenceMissing ? (
             <Box paddingX={1} paddingY={1}>

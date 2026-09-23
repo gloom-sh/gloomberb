@@ -2,6 +2,8 @@ import { Box, Text, TextAttributes } from "../../../ui";
 import { useState } from "react";
 import { InlineTickerBadge } from "./index";
 import { ExternalLinkText, openUrl } from "../../ui";
+import { usePaneLinkMenuEntry } from "../../ui/external-link";
+import { tf } from "../../../i18n";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { splitLongTextSegmentByDisplayWidth } from "../../../utils/text-wrap";
@@ -34,6 +36,7 @@ function UsernameBadge({
     ? blendHex(colors.bg, colors.borderFocused, 0.34)
     : blendHex(colors.bg, colors.borderFocused, 0.16);
   const color = hovered ? colors.textBright : colors.borderFocused;
+  usePaneLinkMenuEntry(`user:${username}`, tf("Open {label}", { label: `@${username}` }), () => onOpen(username));
 
   return (
     <Box paddingRight={1} flexShrink={0}>

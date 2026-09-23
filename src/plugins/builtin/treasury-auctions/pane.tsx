@@ -6,11 +6,13 @@ import {
   PaneStatusBody, QueryBar, Tabs,
   usePaneFooter,
   usePaneHeaderTabs,
+  usePaneMenuItems,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type PaneFooterSegment
 } from "../../../components";
+import { useShortcut } from "../../../react/input";
 import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -255,12 +257,14 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     });
   }, []);
 
+  // Refresh answers in every state, including the failed load that mounts no table.
+  useShortcut((event) => {
+    if (!isPlainKey(event, "r")) return;
+    event.preventDefault();
+    load(true);
+  }, { enabled: focused && !searchFocused });
+
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "r")) {
-      stopSearchFocusNavigation(event);
-      load(true);
-      return true;
-    }
     if (isPlainKey(event, "f")) {
       stopSearchFocusNavigation(event);
       cycleFilter();
@@ -272,7 +276,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
       return true;
     }
     return false;
-  }, [cycleFilter, cycleSort, load]);
+  }, [cycleFilter, cycleSort]);
 
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
@@ -320,6 +324,12 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     stale,
     status,
   ]);
+
+  // The pane menu names the sort keys; "Sort by…" there picks a column directly.
+  usePaneMenuItems("treasury-auctions:sort-keys", () => detailOpen || auctions.length === 0 ? null : [
+    { id: "sort-next", label: "Next Sort Column", accelerator: "]", onSelect: () => cycleSort(1) },
+    { id: "sort-previous", label: "Previous Sort Column", accelerator: "[", onSelect: () => cycleSort(-1) },
+  ], [auctions.length, cycleSort, detailOpen]);
 
   const filterTabs = useMemo(
     () => AUCTION_FILTERS.map((entry) => ({ label: entry.label, value: entry.value })),

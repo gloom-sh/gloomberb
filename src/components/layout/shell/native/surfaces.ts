@@ -22,6 +22,7 @@ interface ShellNativeSurfaceMenuState {
   y: number;
   width: number;
   items: Array<unknown>;
+  maxRows?: number;
 }
 
 interface UseShellNativeSurfaceWindowStateOptions {
@@ -75,7 +76,7 @@ export function useShellNativeSurfaceWindowState({
           x: menuState.x,
           y: menuState.y,
           width: menuState.width,
-          itemCount: menuState.items.length,
+          itemCount: Math.min(menuState.items.length, menuState.maxRows ?? menuState.items.length),
         }
       : null,
     nativeWindowModePanelRect,

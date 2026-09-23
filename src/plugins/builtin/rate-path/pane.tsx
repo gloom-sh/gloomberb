@@ -6,6 +6,7 @@ import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../publ
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -53,6 +54,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const [tab, setTab] = usePluginPaneState("tab", "path");
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
   const [sort, setSort] = useState({ id: "date", direction: "asc" as "asc" | "desc" });
+  const [contract, setContract] = useState<string | null>(null);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
   const data = resource.data;
@@ -96,7 +98,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   // minute while Globex trades and on the research cadence otherwise.
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
   useShortcut((event) => {
-    if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); }
+    if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); }
   });
   usePaneNoticeFooter({ registrationId: "rate-path:notices", focused, notices: [
     ...(data?.gaps ?? []), ...(selectedMeeting?.reason ? [selectedMeeting.reason] : []),
@@ -133,7 +135,9 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
             return { text: probability == null ? "--" : `${(probability * 100).toFixed(1)}%`,
               backgroundColor: probability == null ? undefined : blendHex(colors.bg, colors.positive, probability * 0.7),
               color: probability != null && probability > 0.65 ? colors.bg : colors.text };
-          }} /> : tab === "contracts" ? <DataTableView columns={CONTRACT_COLUMNS} items={[...data.fedFunds, ...data.sofr]} selection={{ kind: "none" }} focused={focused} sortColumnId={null} sortDirection="asc" getItemKey={(row) => row.symbol} renderCell={contractCell} rootHeight={Math.max(3, height - statRows - tabRows)} emptyStateTitle="Futures strip unavailable" />
+          }} /> : tab === "contracts" ? <DataTableView columns={CONTRACT_COLUMNS} items={[...data.fedFunds, ...data.sofr]}
+            // A read-only cursor, so j/k and the page keys reach every contract.
+            selection={{ kind: "id", selectedId: contract, getId: (row) => row.symbol, onChange: setContract }} focused={focused} sortColumnId={null} sortDirection="asc" getItemKey={(row) => row.symbol} renderCell={contractCell} rootHeight={Math.max(3, height - statRows - tabRows)} emptyStateTitle="Futures strip unavailable" />
           : <DataTableView columns={[
             { id: "year", label: "YEAR END", width: 14, align: "left" },
             { id: "rate", label: "SEP MEDIAN", width: 14, align: "right" },

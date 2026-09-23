@@ -5,6 +5,7 @@ import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { useScopedButtonAction } from "./action-scope";
 
 /**
  * `ghost` is the quiet button in a row of buttons: it keeps the border so it
@@ -84,6 +85,8 @@ export function Button({
 }: ButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
+  const scopedShortcut = useScopedButtonAction(label, onPress, disabled);
+  shortcut = shortcut ?? scopedShortcut;
   useRemoteUiNode({
     role: "button",
     label,

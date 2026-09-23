@@ -16,6 +16,7 @@ export {
   StyledText,
   TextAttributes,
   UiHostProvider,
+  useActionShortcut,
   useCommandBarShortcut,
   useNativeRenderer,
   useRendererHost,

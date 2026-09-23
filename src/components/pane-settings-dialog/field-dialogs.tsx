@@ -7,9 +7,10 @@ import type {
   PaneSettingTextField,
 } from "../../types/plugin";
 import { colors } from "../../theme/colors";
-import { isPlainKey } from "../../utils/keyboard";
-import { Button, DialogFrame, ListView, MultiSelectDialogContent, TextField } from "../ui";
+import { Button, DialogFrame, MultiSelectDialogContent, TextField } from "../ui";
+import { listCursorMove } from "../ui/list-view";
 import { DesktopDialogSurface, desktopText } from "./desktop";
+import { TuiDialogList, useTuiDialogListRows } from "./tui";
 import { coerceSelectedPaneSettingValues, isSpaceKey } from "./value";
 
 type SelectPaneSettingField = Extract<PaneSettingField, { type: "select" }>;
@@ -35,6 +36,7 @@ function useSelectFieldDialogController({
 }: SelectFieldDialogProps) {
   const initialIndex = Math.max(0, field.options.findIndex((option) => option.value === currentValue));
   const [selectedIndex, setSelectedIndex] = useState(initialIndex);
+  const pageSize = useTuiDialogListRows() - 1;
 
   const applyOption = (value: string) => {
     void onApply(value).then(() => dismiss()).catch(() => {});
@@ -42,8 +44,8 @@ function useSelectFieldDialogController({
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) setSelectedIndex((index) => Math.max(0, index - 1));
-    else if (isPlainKey(event, "down", "j")) setSelectedIndex((index) => Math.min(field.options.length - 1, index + 1));
+    const move = listCursorMove(event, pageSize);
+    if (move) setSelectedIndex((index) => move(field.options, index));
     else if (event.name === "escape") dismiss();
     else if (event.name === "enter" || event.name === "return" || isSpaceKey(event)) {
       const option = field.options[selectedIndex];
@@ -63,7 +65,7 @@ export function TuiSelectFieldDialog(props: SelectFieldDialogProps) {
     <DialogFrame
       title={field.label}
     >
-      <ListView
+      <TuiDialogList
         items={field.options.map((option) => ({
           id: option.value,
           label: option.label,
@@ -71,7 +73,6 @@ export function TuiSelectFieldDialog(props: SelectFieldDialogProps) {
         }))}
         selectedIndex={selectedIndex}
         bgColor={colors.commandBg}
-        showSelectedDescription
         onSelect={setSelectedIndex}
         onActivate={(item) => {
           applyOption(item.id);

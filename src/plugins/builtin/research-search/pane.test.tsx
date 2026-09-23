@@ -144,14 +144,14 @@ function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
   );
 }
 
-async function pressKey(name: string) {
+async function pressKey(name: string, shift = false) {
   await act(async () => {
     testSetup!.renderer.keyInput.emit("keypress", {
       name,
       ctrl: false,
       meta: false,
       option: false,
-      shift: false,
+      shift,
       eventType: "press",
       repeated: false,
       preventDefault: () => {},
@@ -211,6 +211,30 @@ describe("ResearchSearchPane", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Tim Cook");
     expect(frame).toContain("to expand next quarter");
+  });
+
+  // A field owns the keyboard, so Tab has to be claimed ahead of the app's
+  // pane cycle to reach the other field instead of leaving the pane.
+  test("Tab and Shift+Tab move between the query and tickers fields", async () => {
+    installTransport();
+    signIn();
+
+    testSetup = await testRender(<Harness />, { width: 110, height: 20 });
+    await renderFrames();
+
+    // Esc clears whichever field is active, which shows where Tab landed.
+    await pressKey("/");
+    await pressKey("tab");
+    await pressKey("escape");
+    await renderFrames();
+    expect(testSetup.captureCharFrame()).toContain("Apple FQ2 2026 Earnings Call");
+
+    await pressKey("/");
+    await pressKey("tab");
+    await pressKey("tab", true);
+    await pressKey("escape");
+    await renderFrames();
+    expect(testSetup.captureCharFrame()).toContain("Type a query to search");
   });
 
   test("flips a saved-search alert and persists it", async () => {

@@ -14,7 +14,13 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import type { CommandBarPanelProps } from "./types";
 import { useCommandBarKeyboardShortcuts } from "../keyboard-shortcuts";
 import { useCommandBarListNavigation } from "../list/navigation";
-import type { ListScreenState, ResultItem } from "../list/model";
+import {
+  resolveListPageTarget,
+  type CommandBarListRow,
+  type ListJump,
+  type ListScreenState,
+  type ResultItem,
+} from "../list/model";
 import { useCommandBarMultiSelectRuntime } from "../multi-select-runtime";
 import { useCommandBarPanelState } from "./state";
 import type { ThemePickerHandle } from "../theme-picker";
@@ -156,6 +162,21 @@ export function useCommandBarPanelRuntime({
     visibleListStateRef,
   });
 
+  // The laid-out list, filled in below once the panel has measured it. Page
+  // keys only read it when pressed, by which time it matches the screen.
+  const listViewportRef = useRef<{ rows: readonly CommandBarListRow[]; lines: number }>({ rows: [], lines: 1 });
+  const jumpListSelection = useCallback((target: ListJump) => {
+    const listState = visibleListStateRef.current;
+    if (!listState || listState.results.length === 0) return;
+    const { rows, lines } = listViewportRef.current;
+    const nextIndex = target === "first"
+      ? 0
+      : target === "last"
+        ? listState.results.length - 1
+        : resolveListPageTarget(rows, listState.selectedIdx, lines, target === "page-down" ? 1 : -1);
+    moveListSelection(nextIndex - listState.selectedIdx);
+  }, [moveListSelection, visibleListStateRef]);
+
   const {
     commitMultiSelectPicker,
     handleMultiSelectMove,
@@ -185,6 +206,7 @@ export function useCommandBarPanelRuntime({
     getWorkflowFieldStringValue,
     handleMultiSelectMove,
     handleMultiSelectToggle,
+    jumpListSelection,
     moveListSelection,
     moveWorkflowFocus,
     nativePaneChrome,
@@ -225,6 +247,7 @@ export function useCommandBarPanelRuntime({
     updateTopRoute,
     visibleListStateRef,
   });
+  listViewportRef.current = { rows: nativeListRows, lines: panelLayout.listBodyHeight };
 
   const handleThemeCommit = useCallback((themeId: string) => {
     const nextConfig = {

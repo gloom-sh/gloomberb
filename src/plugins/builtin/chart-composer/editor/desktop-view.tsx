@@ -85,7 +85,7 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
                   onChange={field.onChange}
                 />
               </Box>
-              <Button label="New Panel" onPress={field.onAddPanel} />
+              <Button label="New Panel" shortcut="N" onPress={field.onAddPanel} />
             </Box>
           ) : (
             <SelectField
@@ -111,6 +111,7 @@ export function DesktopSeriesEditorActions({ actions }: { actions: SeriesEditorA
           <Button
             key={action.id}
             label={action.label}
+            shortcut={action.shortcut}
             variant={action.variant}
             disabled={action.disabled}
             onPress={action.onPress}
@@ -123,6 +124,7 @@ export function DesktopSeriesEditorActions({ actions }: { actions: SeriesEditorA
           <Button
             key={action.id}
             label={action.label}
+            shortcut={action.shortcut}
             variant={action.variant}
             disabled={action.disabled}
             onPress={action.onPress}

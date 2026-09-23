@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -230,7 +231,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   }, [setSortPreference]);
 
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "r") {
+    if (isPlainKey(event, "r")) {
       event.preventDefault?.();
       fetchAll();
       return true;

@@ -14,6 +14,7 @@ import type { DataTableColumn } from "../../../components/ui/data-table/types";
 import { Button, PaneStatusBody, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
+import { isPlainKey } from "../../../utils/keyboard";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -317,7 +318,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     if (event.name === "r" && !event.ctrl && !event.meta) {
       event.preventDefault?.();
       void reload();
-    } else if (event.name === "t" && !event.ctrl && !event.meta && spec) {
+    } else if (isPlainKey(event, "t") && spec) {
       event.preventDefault?.();
       void publishToTeam();
     }
@@ -369,6 +370,8 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
       items={rows}
       sortColumnId={activeSort?.by ?? null}
       sortDirection={activeSort?.direction ?? "desc"}
+      // A view can start unsorted; the pane menu still offers Sort by.
+      sortable
       onHeaderClick={(id) => setSort((current) => {
         const active = current === undefined ? spec.projection.sort ?? null : current;
         return active?.by === id

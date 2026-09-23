@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { blendHex, colors, priceColor } from "../../theme/colors";
 import { blendForContrast, higherContrast } from "../../theme/color-utils";
@@ -20,6 +20,26 @@ export {
 } from "./layout";
 
 type PreventableMouseEvent = { preventDefault(): void };
+type PointerMoveEvent = { x?: number; y?: number; pixelX?: number; pixelY?: number };
+
+/**
+ * Hover selects the tile under the pointer, but only when the pointer really
+ * moved. The terminal re-sends "over" when tiles relayout under a resting
+ * pointer, and a browser can replay a move after layout or scroll; either
+ * would silently take the selection the keyboard just made.
+ */
+function usePointerMoved(): (event: PointerMoveEvent | undefined) => boolean {
+  const lastRef = useRef<string | null>(null);
+  return useCallback((event) => {
+    const x = event?.pixelX ?? event?.x;
+    const y = event?.pixelY ?? event?.y;
+    if (typeof x !== "number" || typeof y !== "number") return true;
+    const position = `${x}:${y}`;
+    if (lastRef.current === position) return false;
+    lastRef.current = position;
+    return true;
+  }, []);
+}
 
 export interface MetricTreemapSurfaceProps<T> {
   items: MetricTreemapItem<T>[];
@@ -65,11 +85,12 @@ function visibleLines(item: MetricTreemapItem): string[] {
   ].filter((line): line is string => !!line);
 }
 
-function Tile<T>({ tile, selected, onSelect, onActivate }: {
+function Tile<T>({ tile, selected, onSelect, onActivate, pointerMoved }: {
   tile: MetricTreemapTile<T>;
   selected: boolean;
   onSelect: () => void;
   onActivate?: () => void;
+  pointerMoved: (event: PointerMoveEvent | undefined) => boolean;
 }) {
   const renderWidth = Math.max(1, tile.width - (tile.width > 2 ? 1 : 0));
   const renderHeight = Math.max(1, tile.height - (tile.height > 2 ? 1 : 0));
@@ -91,8 +112,14 @@ function Tile<T>({ tile, selected, onSelect, onActivate }: {
         event.preventDefault();
         onSelect();
       }}
-      onMouseOver={onSelect}
-      onMouseMove={onSelect}
+      onMouseMove={(event: PointerMoveEvent) => {
+        if (pointerMoved(event)) onSelect();
+      }}
+      // A held button sends no moves here, only "over" from the press it
+      // started; a relayout's "over" has no source.
+      onMouseOver={(event: PointerMoveEvent & { source?: unknown }) => {
+        if (event.source && pointerMoved(event)) onSelect();
+      }}
       onDoubleClick={onActivate}
     >
       {lines.slice(0, renderHeight).map((line, index) => (
@@ -108,7 +135,7 @@ function pct(value: number, total: number): string {
   return `${total > 0 ? value / total * 100 : 0}%`;
 }
 
-function DesktopTile<T>({ tile, chartWidth, chartHeight, selected, hovered, onSelect, onActivate, onHover }: {
+function DesktopTile<T>({ tile, chartWidth, chartHeight, selected, hovered, onSelect, onActivate, onHover, pointerMoved }: {
   tile: FloatMetricTreemapTile<T>;
   chartWidth: number;
   chartHeight: number;
@@ -117,6 +144,7 @@ function DesktopTile<T>({ tile, chartWidth, chartHeight, selected, hovered, onSe
   onSelect: () => void;
   onActivate?: () => void;
   onHover: (hovered: boolean) => void;
+  pointerMoved: (event: PointerMoveEvent | undefined) => boolean;
 }) {
   const lines = visibleLines(tile.item);
   const canShowDetails = tile.width >= 7 && tile.height >= 3;
@@ -168,9 +196,9 @@ function DesktopTile<T>({ tile, chartWidth, chartHeight, selected, hovered, onSe
     letterSpacing: 0,
     textShadow: `0 1px 1px ${blendHex(backgroundColor, colors.bg, 0.35)}`,
   };
-  const startHover = () => {
+  const moveHover = (event: PointerMoveEvent) => {
     onHover(true);
-    onSelect();
+    if (pointerMoved(event)) onSelect();
   };
 
   return (
@@ -182,8 +210,8 @@ function DesktopTile<T>({ tile, chartWidth, chartHeight, selected, hovered, onSe
         onSelect();
       }}
       onDoubleClick={onActivate}
-      onMouseOver={startHover}
-      onMouseMove={startHover}
+      onMouseOver={() => onHover(true)}
+      onMouseMove={moveHover}
       onMouseOut={() => onHover(false)}
     >
       {canShowLabel && (
@@ -212,6 +240,7 @@ function DesktopMetricTreemapSurface<T>({ items, width, height, selectedId, onSe
   cellAspect: number;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const pointerMoved = usePointerMoved();
   const chartWidth = Math.max(1, width - 2);
   const tiles = useMemo(() => buildMetricTreemapRects(items, chartWidth, height, cellAspect), [cellAspect, chartWidth, height, items]);
 
@@ -256,6 +285,7 @@ function DesktopMetricTreemapSurface<T>({ items, width, height, selectedId, onSe
             onSelect={() => onSelect(tile.item)}
             onActivate={onActivate ? () => onActivate(tile.item) : undefined}
             onHover={(isHovered) => setHoveredId((current) => (isHovered ? tile.item.id : current === tile.item.id ? null : current))}
+            pointerMoved={pointerMoved}
           />
         ))}
       </Box>
@@ -276,6 +306,7 @@ export function MetricTreemapSurface<T>({
   const chartWidth = Math.max(1, width - 2);
   const cellAspect = Math.max(0.5, Math.min(4, cellHeightPx / Math.max(1, cellWidthPx)));
   const tiles = useMemo(() => buildMetricTreemap(items, chartWidth, height, cellAspect), [cellAspect, chartWidth, height, items]);
+  const pointerMoved = usePointerMoved();
 
   if (nativePaneChrome) {
     return (
@@ -310,6 +341,7 @@ export function MetricTreemapSurface<T>({
             selected={tile.item.id === selectedId}
             onSelect={() => onSelect(tile.item)}
             onActivate={onActivate ? () => onActivate(tile.item) : undefined}
+            pointerMoved={pointerMoved}
           />
         ))}
       </Box>

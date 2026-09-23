@@ -980,7 +980,7 @@ describe("Shell", () => {
     );
 
     await emitKeypress({ name: "m", ctrl: true, shift: true });
-    expect(testSetup.captureCharFrame()).toContain("d dock/float");
+    expect(testSetup.captureCharFrame()).toContain("d float");
 
     await emitKeypress({ name: "d" });
     await emitKeypress({ name: "enter" });
@@ -1070,7 +1070,7 @@ describe("Shell", () => {
       const frame = testSetup.captureCharFrame();
       expect(frame).toContain("WINDOW MOVE");
       expect(frame).toContain("WINDOW MOVE · Main Portfolio");
-      expect(frame).toContain("Tab/w window");
+      expect(frame).toContain("Tab window");
     } finally {
       openTuiUiHost.capabilities = previousCapabilities;
     }

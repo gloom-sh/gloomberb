@@ -6,7 +6,7 @@ import {
   getVisibleWorkflowFields,
   isWorkflowTextField,
 } from "./helpers";
-import type { ListScreenState } from "./list/model";
+import type { ListJump, ListScreenState } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
 import type {
   CommandBarFieldValue,
@@ -32,6 +32,35 @@ export function isMoveDownShortcut(event: KeyEventLike): boolean {
 
 export function isCommitShortcut(event: KeyEventLike): boolean {
   return event.name === "return" || event.name === "enter";
+}
+
+/** Tab or Shift+Tab with no other modifier: the key that walks fields and lists. */
+export function isPlainTab(event: KeyEventLike): boolean {
+  return event.name === "tab" && !event.ctrl && !event.meta && !event.alt;
+}
+
+/**
+ * Ctrl+S (Cmd+S on a Mac desktop) submits a workflow from any field. Not
+ * Ctrl+Enter: a desktop text field already submits or moves on for any Enter
+ * before this handler sees the key, so the form would be sent twice. Shift
+ * stays out of it: Cmd/Ctrl+Shift+S shares the focused pane.
+ */
+export function isWorkflowSubmitShortcut(event: KeyEventLike): boolean {
+  return (event.ctrl || event.meta) && !event.alt && !event.shift && event.name === "s";
+}
+
+/**
+ * Page keys page through a list. Home and End belong to the caret in the query
+ * input, so the first and last rows take Ctrl (or Cmd) with them.
+ */
+export function resolveListJump(event: KeyEventLike): ListJump | null {
+  if (event.alt || event.shift) return null;
+  const modified = event.ctrl || event.meta;
+  if (!modified && event.name === "pageup") return "page-up";
+  if (!modified && event.name === "pagedown") return "page-down";
+  if (modified && event.name === "home") return "first";
+  if (modified && event.name === "end") return "last";
+  return null;
 }
 
 export function handleConfirmRouteShortcut({
@@ -60,7 +89,11 @@ export function handleConfirmRouteShortcut({
   if (event.name === "n") {
     consumeShortcutEvent(event);
     popRoute();
+    return true;
   }
+  // One action and no fields: Tab has nowhere to go, and on the desktop it
+  // must not carry focus out of the bar.
+  if (event.name === "tab") consumeShortcutEvent(event);
   return true;
 }
 
@@ -123,6 +156,14 @@ export function handleWorkflowRouteShortcut({
   const activeField = visibleFields.find((field) => field.id === currentRoute.activeFieldId) ?? visibleFields[0];
   const activeTextarea = activeField?.type === "textarea";
 
+  // From any field, so a form that ends in a select or a toggle, where Enter
+  // opens the picker, can still be sent without the mouse.
+  if (isWorkflowSubmitShortcut(event)) {
+    consumeShortcutEvent(event);
+    if (!currentRoute.pending) void submitWorkflowRoute(currentRoute);
+    return true;
+  }
+
   if (isPlainBackspace(event)) {
     const activeValue = activeField
       ? getWorkflowFieldStringValue(activeField, currentRoute.values[activeField.id])
@@ -137,12 +178,6 @@ export function handleWorkflowRouteShortcut({
   if (event.name === "tab") {
     consumeShortcutEvent(event);
     moveWorkflowFocus(event.shift ? -1 : 1);
-    return true;
-  }
-
-  if (activeTextarea && event.ctrl && event.name === "s") {
-    consumeShortcutEvent(event);
-    void submitWorkflowRoute(currentRoute);
     return true;
   }
 

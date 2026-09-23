@@ -132,6 +132,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
   openPaneSettingsFn: ((paneId?: string) => void) = () => {};
   sharePaneFn: ((paneId?: string) => void) = () => {};
   openWindowModeFn: ((paneId?: string, mode?: WindowEditMode) => void) = () => {};
+  /** The shell's fullscreen toggle for a pane; false when there is nothing to fill the window with. */
+  togglePaneFullscreenFn: ((paneId: string) => boolean) = () => false;
   showPaneFn: ((paneId: string) => void) = () => {};
   createPaneFromTemplateFn: ((templateId: string, options?: PaneTemplateCreateOptions) => void) = () => {};
   createPaneFromTemplateAsyncFn: ((templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>) = async () => {};

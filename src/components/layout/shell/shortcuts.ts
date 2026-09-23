@@ -9,6 +9,7 @@ import {
 } from "../../../app/keybindings";
 
 export type PaneManagementShortcut =
+  | "menu"
   | "settings"
   | "toggle-fullscreen"
   | "toggle-floating"
@@ -24,6 +25,7 @@ export type PaneManagementShortcut =
   | "window-resize-mode";
 
 const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManagementShortcut>> = {
+  "pane-menu": "menu",
   "pane-settings": "settings",
   "pane-fullscreen": "toggle-fullscreen",
   "pane-float": "toggle-floating",
@@ -40,7 +42,7 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
 };
 
 export type PaneManagementAccelerators = Record<
-  "settings" | "fullscreen" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "close"
+  "menu" | "settings" | "fullscreen" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "close"
   | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode",
   string | undefined
 >;
@@ -48,6 +50,7 @@ export type PaneManagementAccelerators = Record<
 /** Menu accelerators for the pane actions, read from the same table the keys are. */
 export function paneManagementAccelerators(keybindings: ResolvedKeybindings): PaneManagementAccelerators {
   return {
+    menu: menuAcceleratorFor(keybindings, "pane-menu"),
     settings: menuAcceleratorFor(keybindings, "pane-settings"),
     fullscreen: menuAcceleratorFor(keybindings, "pane-fullscreen"),
     toggleFloating: menuAcceleratorFor(keybindings, "pane-float"),
@@ -73,6 +76,19 @@ export function resolvePaneManagementShortcut(
   const match = matchKeybinding(keybindings, event);
   if (!match || match.kind !== "action" || !isPaneKeybindingAction(match.id)) return null;
   return PANE_ACTION_TO_SHORTCUT[match.id as CoreKeybindingActionId] ?? null;
+}
+
+/**
+ * Whether a modal surface (the pane menu, window mode) keeps a key from the
+ * app behind it: every unmodified key, and a modified chord only when it is one
+ * of the app's own bindings, so platform chords (Cmd+Q, copy) still work.
+ */
+export function modalSurfaceOwnsKey(
+  event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "meta" | "super" | "shift" | "alt">,
+  keybindings: ResolvedKeybindings = getDefaultKeybindings(),
+): boolean {
+  if (!event.ctrl && !event.meta && !event.super && !event.alt) return true;
+  return matchKeybinding(keybindings, event) !== null;
 }
 
 export function inputCaptureAllowsPaneManagementShortcut(

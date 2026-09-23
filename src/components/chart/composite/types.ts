@@ -174,9 +174,14 @@ export interface CompositeChartProps {
   panels: ChartPanelSpec[];
   width: number;
   height: number;
+  /**
+   * The chart takes its keys: Left/Right move the cursor and Esc clears it,
+   * [ ] and Space reach the legend, and a navigable chart adds pan, zoom and
+   * the tools.
+   */
   focused?: boolean;
   interactive?: boolean;
-  /** False keeps the hover cursor but removes pan, zoom, tools, and navigation keys. */
+  /** False keeps the hover and keyboard cursor but removes pan, zoom, tools, and their keys. */
   navigable?: boolean;
   /** Overrides the unit-derived tick and cursor labels on both value axes. */
   formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;

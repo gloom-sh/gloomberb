@@ -5,6 +5,7 @@ import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useAppActive } from "../../../state/app/activity";
 import { useAppSelector } from "../../../state/app/context";
+import { useCommandBarShortcut } from "../../../ui";
 import { useToastHost } from "../../../ui/toast";
 import { usePlanAccess } from "../shared/plan-access";
 
@@ -24,6 +25,8 @@ export function CloudVerificationStatusWidget() {
   const access = usePlanAccess();
   const appActive = useAppActive();
   const toast = useToastHost();
+  // The status bar takes no keyboard focus; the chip names the command instead.
+  const commandBarKey = useCommandBarShortcut();
   const [sending, setSending] = useState(false);
   const [sentAt, setSentAt] = useState<number | null>(null);
   const pending = !cloudPluginDisabled && access.signedIn && !access.emailVerified;
@@ -62,6 +65,7 @@ export function CloudVerificationStatusWidget() {
   return (
     <Button
       label={sentAt !== null ? t("verification email sent") : t("verify your email")}
+      title={tf("Resend the verification email ({key}, then {command})", { key: commandBarKey, command: "Resend Verification Email" })}
       variant="plain"
       compact
       stopPropagation

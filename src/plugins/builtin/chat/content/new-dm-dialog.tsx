@@ -16,7 +16,11 @@ import {
 const MAX_RECENT_USERS = 6;
 const MIN_DIALOG_WIDTH = 32;
 const MAX_DIALOG_WIDTH = 52;
-const DIALOG_HEIGHT = 11;
+const DIALOG_HEIGHT = 13;
+/** Rows around the list: border, title, field, label, action row. */
+const DIALOG_CHROME_ROWS = 7;
+/** The key line under the dialog, with its spacer. */
+const DIALOG_KEYS_ROWS = 2;
 
 interface DmUserCandidate {
   username: string;
@@ -86,6 +90,8 @@ export function NewDmDialog({
   const left = Math.max(0, Math.floor((width - dialogWidth) / 2));
   const top = Math.max(0, Math.floor((height - dialogHeight) / 2));
   const contentWidth = Math.max(1, dialogWidth - 4);
+  // A short terminal pane keeps the list and drops the key line.
+  const showKeys = nativePaneChrome || dialogHeight - DIALOG_CHROME_ROWS - DIALOG_KEYS_ROWS >= 2;
   const selectedUsernames = useMemo(() => parseDmUsernames(value), [value]);
   const selectedUsernameSet = useMemo(() => new Set(selectedUsernames), [selectedUsernames]);
   const allCandidates = useMemo(() => candidateUsers(userByUsername, currentUserId), [currentUserId, userByUsername]);
@@ -124,7 +130,14 @@ export function NewDmDialog({
   };
 
   const submit = async () => {
-    const submittedValue = valueRef.current;
+    let submittedValue = valueRef.current;
+    // Nothing typed yet: Enter starts with the highlighted user, as Tab would
+    // have picked them.
+    const highlighted = items[selectedIndex];
+    if (highlighted && parseDmUsernames(submittedValue).length === 0 && currentTokenQuery(submittedValue) === "") {
+      submittedValue = setUsernameSelected(submittedValue, highlighted.id, true);
+      updateValue(submittedValue);
+    }
     const submittedUsernames = parseDmUsernames(submittedValue);
     if (!hasOnlyDmUsernameArgs(submittedValue) || submittedUsernames.length === 0 || submitting) {
       setError(t("Enter at least one @username."));
@@ -188,7 +201,11 @@ export function NewDmDialog({
         ? { ...modalSurfaceStyle(colors, { padding: 0, width: `calc(${dialogWidth} * var(--cell-w))` }), zIndex: 8 }
         : { zIndex: 8 }}
     >
-      <DialogFrame title="New DM" onClose={onCancel}>
+      <DialogFrame
+        title="New DM"
+        onClose={onCancel}
+        footer={showKeys ? items.length > 0 ? "Tab add · Enter start" : "Enter start" : undefined}
+      >
         <TextField
           inputRef={inputRef}
           value={value}
@@ -210,7 +227,7 @@ export function NewDmDialog({
         <ListView
           items={items}
           selectedIndex={items.length > 0 ? selectedIndex : -1}
-          height={Math.max(1, dialogHeight - 7)}
+          height={Math.max(1, dialogHeight - DIALOG_CHROME_ROWS - (showKeys ? DIALOG_KEYS_ROWS : 0))}
           bgColor={colors.bg}
           selectedBgColor={colors.selected}
           hoverBgColor={hoverBg()}

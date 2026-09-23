@@ -10,6 +10,7 @@ import type {
   AppState,
 } from "../../../../state/app/context";
 import { normalizeTickerInput } from "../../../../tickers/search";
+import { useRendererHost } from "../../../../ui";
 import type { ThemePickerHandle } from "../../theme-picker";
 import type { Command } from "../registry";
 import type { CollectionCommandId } from "../collection";
@@ -78,6 +79,7 @@ export function useCommandBarDirectCommandRuntime({
   stateRef,
   themePickerRef,
 }: UseCommandBarDirectCommandRuntimeOptions) {
+  const rendererHost = useRendererHost();
   const runSecurityDescriptionShortcut = useCallback(async (query?: string) => {
     const trimmed = query?.trim() || "";
     if (!trimmed) {
@@ -124,6 +126,9 @@ export function useCommandBarDirectCommandRuntime({
       cancelThemePreview: () => themePickerRef.current?.cancelPreview(),
       closeAll,
       command,
+      controlWindow: (action) => {
+        void rendererHost.controlWindow?.(action);
+      },
       dispatch,
       executeCollectionCommand,
       getState: () => stateRef.current,
@@ -159,6 +164,7 @@ export function useCommandBarDirectCommandRuntime({
     pluginRegistry,
     pushRoute,
     quitApp,
+    rendererHost,
     rootThemeBaseIdRef,
     runSecurityDescriptionShortcut,
     setRootQuery,

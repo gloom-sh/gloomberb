@@ -85,7 +85,7 @@ for (const plan of ["free", "pro"] as const) for (const width of [48, 80, 120]) 
     expect(stale).toContain("Stale quote");
     expect(footer.info.filter((segment) => segment.parts.some((part) => part.text.includes("Stale quote")))).toHaveLength(1);
     if (plan === "pro" || width >= 80) expect(stale).toContain("2026-09-11 08:08Z");
-    expect(stale.match(/\[u\]pgrade/g)?.length ?? 0).toBe(plan === "free" ? 1 : 0);
+    expect(stale.match(/\[\$\]upgrade/g)?.length ?? 0).toBe(plan === "free" ? 1 : 0);
     if (plan === "free") expect(footer.info.find((segment) => segment.id === "ticker-research-access")?.onPress).toBeFunction();
 
     expect(await replaceQuote(quote("9988", false))).not.toContain("Stale quote");

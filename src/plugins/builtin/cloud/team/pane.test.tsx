@@ -40,6 +40,7 @@ function respond(path: string, method: string): unknown {
   if (path === "/teams/org-1/invite-links") return { links: [{ token: "a".repeat(32), url: "https://gloom.sh/teams/invite/aaaaaaaa", teamId: "org-1", createdBy: "u0", expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString(), maxUses: null, uses: 3, createdAt: "2026-09-14T00:00:00.000Z" }] };
   if (path === "/teams") return { teams: teamsOnServer };
   if (path === "/teams/invitations") return { invitations: receivedInvitations };
+  if (path === "/teams/invitations/inv-9/accept") return { ...macroDesk, id: "org-2", name: "Rates Desk", shortName: "RD", channelId: "team:org-2", role: "member" };
   if (path === "/teams/notifications") return { notifications: [] };
   if (path === "/chat/channels") return [];
   if (path === "/chat/state") return { channels: [], onlineCount: 0, channelStates: [], notifications: [] };
@@ -211,5 +212,23 @@ describe("TeamPane", () => {
     expect(frame).toContain("@ann invited you");
     expect(frame).toContain("Accept");
     expect(frame).toContain("Decline");
+
+    // The keyboard lands on Accept, so joining needs no mouse.
+    await act(async () => {
+      setup!.renderer.keyInput.emit("keypress", {
+        name: "return",
+        sequence: "\r",
+        ctrl: false,
+        meta: false,
+        option: false,
+        shift: false,
+        eventType: "press",
+        repeated: false,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any);
+    });
+    await flush();
+    expect(requests).toContain("POST /teams/invitations/inv-9/accept");
   });
 });

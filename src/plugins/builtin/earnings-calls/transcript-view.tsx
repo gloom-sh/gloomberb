@@ -27,10 +27,11 @@ import { splitParagraphs, splitSentences } from "./prose";
 
 export type ReaderTab = "summary" | "transcript" | "qa";
 
-export const READER_TABS: Array<{ label: string; value: ReaderTab }> = [
-  { label: "Summary", value: "summary" },
-  { label: "Transcript", value: "transcript" },
-  { label: "Q&A", value: "qa" },
+/** `hint` is the key that jumps to the section, shown on its chip. */
+export const READER_TABS: Array<{ label: string; value: ReaderTab; hint: string }> = [
+  { label: "Summary", value: "summary", hint: "s" },
+  { label: "Transcript", value: "transcript", hint: "t" },
+  { label: "Q&A", value: "qa", hint: "q" },
 ];
 
 /**
@@ -204,9 +205,13 @@ export function TranscriptView({
   const readerTabs = READER_TABS.map((entry) => ({
     label: entry.label,
     value: entry.value,
+    hint: entry.hint,
     disabled: entry.value === "qa" && !hasQa,
   }));
 
+  // Scoped: inside a ticker research tab the tab strip also answers h/l and
+  // registered first. A scoped handler runs ahead of unscoped ones in its
+  // phase, so an open call keeps h/l for its sections.
   useShortcut((event) => {
     if (!tabsFocused || !transcript) return;
     const direction = isPlainKey(event, "h", "left") ? -1 : isPlainKey(event, "l", "right") ? 1 : 0;
@@ -219,7 +224,7 @@ export function TranscriptView({
       ? enabled[direction > 0 ? 0 : enabled.length - 1]
       : enabled[Math.max(0, Math.min(enabled.length - 1, index + direction))];
     if (next && next.value !== tab) onTabChange(next.value);
-  });
+  }, { enabled: tabsFocused && !!transcript, scope: "earnings-calls:reader" });
 
   if (loading && !transcript) {
     return (

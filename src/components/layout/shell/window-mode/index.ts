@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShortcut } from "../../../../react/input";
+import { useKeybindings } from "../../../../app/keybindings";
+import { modalSurfaceOwnsKey } from "../shortcuts";
 import {
   dockPane,
   floatPane,
@@ -21,9 +23,12 @@ import {
   resolveWindowEditCommitLayout,
   setWindowEditMode,
   setWindowEditPane,
+  snapPositionFromWindowEditKey,
+  snapWindowEditPane,
   windowEditHasPendingCommit,
   type WindowEditState,
 } from "../../window-edit/mode";
+import { makeSnapGuides } from "../drag";
 import { resolveWindowEditDockMovePreview } from "../../window-edit/presentation";
 import { resolveNativeWindowEditPanelRect } from "../../window-edit/status";
 
@@ -172,11 +177,17 @@ export function useShellWindowMode({
     });
   }, [bounds, dockGeometryOptions]);
 
+  const keybindings = useKeybindings();
   useShortcut((event) => {
     if (!windowMode) return;
+    // Window mode is modal: a key it does not use must not reach the pane or
+    // the app behind the preview (a pane letter, q, ?, Cmd+W on the real
+    // layout). Platform chords such as Cmd+Q still go through.
+    if (!modalSurfaceOwnsKey(event, keybindings)) return;
+    event.preventDefault();
+    event.stopPropagation();
     if (event.ctrl || event.meta || event.super || event.alt) return;
     const name = (event.name ?? event.key ?? "").toLowerCase();
-    let handled = true;
 
     if (name === "escape" || name === "esc") {
       cancelWindowMode();
@@ -191,9 +202,7 @@ export function useShellWindowMode({
         ? setWindowEditMode(current, "resize", bounds, dockGeometryOptions)
         : current);
     } else if (name === "d") {
-      if (windowMode.mode !== "move") {
-        handled = false;
-      } else {
+      if (windowMode.mode === "move") {
         setWindowMode((current) => {
           if (!current || current.mode !== "move") return current;
           const paneInstance = current.previewLayout.instances.find((entry) => entry.instanceId === current.paneId);
@@ -237,22 +246,25 @@ export function useShellWindowMode({
               ),
             }
         : current);
+    } else if (windowMode.mode === "move" && snapPositionFromWindowEditKey(event)) {
+      // The same half or quarter a drag to that edge or corner snaps to.
+      const position = snapPositionFromWindowEditKey(event);
+      const guide = makeSnapGuides(bounds.width, bounds.height).find((entry) => entry.position === position);
+      if (guide) {
+        const rect = { ...guide.previewRect, x: bounds.x + guide.previewRect.x, y: bounds.y + guide.previewRect.y };
+        setWindowMode((current) => current
+          ? snapWindowEditPane(current, rect, bounds, dockGeometryOptions)
+          : current);
+      }
     } else {
       const direction = directionFromWindowEditKey(event);
       if (direction) {
         setWindowMode((current) => current
           ? applyWindowEditDirection(current, direction, event.shift, bounds, dockGeometryOptions)
           : current);
-      } else {
-        handled = false;
       }
     }
-
-    if (handled) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, { phase: "before", enabled: !!windowMode });
+  }, { phase: "capture", scope: "window-mode", allowEditable: true, enabled: !!windowMode });
 
   return {
     activeLayout,

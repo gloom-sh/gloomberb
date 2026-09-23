@@ -105,3 +105,21 @@ test("obsolete company response cannot overwrite a newer company or restore its 
     await emitKeypress(setup, { name: "o", sequence: "o" });
     expect(opened.at(-1)).toContain("/THIRD/");
 });
+test("page keys move the selection a screen at a time and Enter opens it", async () => {
+    transport(ticker => Response.json({ ticker, events: Array.from({ length: 12 }, (_, index) => event(ticker, `f${index}`)) }));
+    await mount();
+    const openSelected = async () => { await emitKeypress(setup, { name: "return" }); return Number(/f(\d+)\.htm$/.exec(opened.at(-1) ?? "")?.[1]); };
+    const end = await emitKeypress(setup, { name: "end" }, { trackPropagation: true });
+    expect(end.defaultPrevented).toBe(true);
+    expect(await openSelected()).toBe(11);
+    await emitKeypress(setup, { name: "home" });
+    expect(await openSelected()).toBe(0);
+    await emitKeypress(setup, { name: "pagedown" });
+    const paged = await openSelected();
+    expect(paged).toBeGreaterThan(1);
+    await emitKeypress(setup, { name: "pageup" });
+    expect(await openSelected()).toBe(0);
+    // With nothing further to select, the key is left to scroll the feed.
+    const top = await emitKeypress(setup, { name: "k" }, { trackPropagation: true });
+    expect(top.defaultPrevented).toBe(false);
+});

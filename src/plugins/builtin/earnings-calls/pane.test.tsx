@@ -16,12 +16,16 @@ let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setSymbol: (symbol: string | null) => void;
 const runtime = createTestPluginRuntime();
 const restorers: Array<() => void> = [];
-function Harness({ width = 80, initialSymbol = "FIRST" }: { width?: number; initialSymbol?: string | null }) {
+function Harness({ width = 80, initialSymbol = "FIRST", initialPaneState = {} }: {
+  width?: number;
+  initialSymbol?: string | null;
+  initialPaneState?: AppState["paneState"];
+}) {
   const [symbol, set] = useState<string | null>(initialSymbol);
   setSymbol = set;
   // The selected call, the reader tab, and whether it is open are pane state,
   // so the harness needs a reducer.
-  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+  const [paneState, setPaneState] = useState<AppState["paneState"]>(initialPaneState);
   const config = createTestPaneConfig("/tmp/gloom-transcript-pane-test/unused-data", {
     instanceId: "calls:test", paneId: "earnings-calls", binding: symbol ? { kind: "fixed", symbol } : { kind: "none" },
   });
@@ -54,8 +58,10 @@ async function frames() {
 async function framesUntil(done: () => boolean, limit = 200) {
   for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
 }
-async function mount(width = 80, initialSymbol: string | null = "FIRST") {
-  await act(async () => { setup = await testRender(<Harness width={width} initialSymbol={initialSymbol} />, { width, height: 21 }); });
+async function mount(width = 80, initialSymbol: string | null = "FIRST", initialPaneState?: AppState["paneState"]) {
+  await act(async () => {
+    setup = await testRender(<Harness width={width} initialSymbol={initialSymbol} initialPaneState={initialPaneState} />, { width, height: 21 });
+  });
   await frames();
 }
 async function destroy() {
@@ -336,6 +342,22 @@ test("opening another quarter never displays the previous quarter's transcript",
   await frames();
   expect(setup!.captureCharFrame()).toContain("Q1 NEW SUMMARY");
   expect(setup!.captureCharFrame()).not.toContain("Q2 ONLY OLD SUMMARY");
+});
+
+test("a restored call missing from the reloaded shelf closes the reader instead of reopening on a cursor move", async () => {
+  signIn();
+  setCloudApiFetchTransport(async (url) => new URL(String(url)).pathname.includes("-call")
+    ? Response.json(transcript("THIRD"))
+    : Response.json({ calls: [call("OTHER"), { ...call("THIRD"), callAt: "2026-07-01T20:00:00Z" }] }));
+  // Opened from a company lookup last session: the shelf alone does not list it.
+  await mount(80, null, { "calls:test": { pluginState: { research: { detailOpen: true, selectedId: "GONE-call" } } } });
+  expect(setup!.captureCharFrame()).toContain("[/]search");
+  await press("j");
+  await act(async () => { await Bun.sleep(200); });
+  await frames();
+  const frame = setup!.captureCharFrame();
+  expect(frame).toContain("OTHER CORP");
+  expect(frame).not.toContain("THIRD CONTROLLED SUMMARY");
 });
 
 async function findInPane(query: string) {

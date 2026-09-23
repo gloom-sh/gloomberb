@@ -4,6 +4,7 @@ import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useAppSelector } from "../../../state/app/context";
 import { Button } from "../../../components/ui/button";
+import { useCommandBarShortcut } from "../../../ui";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../shared/plan-access";
@@ -22,6 +23,8 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
   const cloudPluginDisabled = useAppSelector((state) => state.config.disabledPlugins).includes("gloomberb-cloud");
   const openUpgrade = useCloudUpgradeAction();
   const openPlan = useCloudPlanAction();
+  // The status bar takes no keyboard focus; the chip names the command instead.
+  const commandBarKey = useCommandBarShortcut();
   const [access, setAccess] = useState(() => resolvePlanAccess(apiClient.getCurrentUser()));
 
   useEffect(
@@ -37,5 +40,8 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
     ? tf("Pro trial {days}d", { days: access.trialDaysLeft })
     : t("delayed data · upgrade");
 
-  return <Button label={label} variant="plain" compact stopPropagation onPress={trial ? openPlan : openUpgrade} />;
+  const title = trial
+    ? tf("Your plan ({key}, then {command})", { key: commandBarKey, command: "ACM" })
+    : tf("Upgrade to Pro ({key}, then {command})", { key: commandBarKey, command: "UPGRADE" });
+  return <Button label={label} title={title} variant="plain" compact stopPropagation onPress={trial ? openPlan : openUpgrade} />;
 }

@@ -3,6 +3,7 @@ import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text } from "../../ui";
 import { Spinner } from "./loading";
+import { ButtonActionScope } from "./action-scope";
 
 export interface EmptyStateProps {
   title: string;
@@ -20,7 +21,7 @@ export function EmptyState({ title, message, hint, actions, status = "empty" }: 
       <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
       {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
       {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}
-      {actions && <Box flexDirection="row" gap={1} marginTop={1}>{actions}</Box>}
+      {actions && <Box flexDirection="row" gap={1} marginTop={1}><ButtonActionScope>{actions}</ButtonActionScope></Box>}
     </Box>
   );
 }

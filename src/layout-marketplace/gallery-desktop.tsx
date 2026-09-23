@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getPaneSidebarWidth,
   PaneSidebar,
@@ -27,6 +27,25 @@ import {
 
 const PREVIEW = { width: 640, height: 320 };
 const ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
+/** Rows PageUp and PageDown skip. */
+const PAGE_STEP = 10;
+
+type ScrollableRow = { matches?(selector: string): boolean; scrollIntoView?(options: { block: "nearest" }): void };
+type RowKeyEvent = { key?: string; preventDefault?: () => void; stopPropagation?: () => void };
+
+/**
+ * The cursor row scrolls into view when the keyboard moves it. A row the
+ * pointer highlighted stays put, so hovering never slides the list.
+ */
+function useCursorRowInView(selected: boolean) {
+  const rowRef = useRef<ScrollableRow | null>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!selected || row?.matches?.(":hover")) return;
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
+  return rowRef;
+}
 
 /** A collapsible group header, the same row the chat sidebar uses. */
 function SidebarSection({
@@ -82,6 +101,7 @@ function EntryRow({
   selected: boolean;
 }) {
   const colors = useThemeColors();
+  const rowRef = useCursorRowInView(selected);
   const panes = summarizeLayoutPanes(entry.layout, controller.panes);
   const missing = panes.filter((pane) => pane.missing).length;
   const select = () => controller.select(entry.id);
@@ -99,6 +119,7 @@ function EntryRow({
     >
       {({ foregroundColor, listWidth, onMouseDown }) => (
         <Box
+          ref={rowRef}
           width={listWidth}
           height={1}
           minWidth={0}
@@ -113,8 +134,9 @@ function EntryRow({
           onMouseOver={select}
           onFocus={select}
           onMouseDown={onMouseDown}
-          onKeyDown={(event: { key?: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
+          onKeyDown={(event: RowKeyEvent) => {
+            // Off the cursor, Enter belongs to the row the cursor is on.
+            if (!selected || (event.key !== "Enter" && event.key !== " ")) return;
             event.preventDefault?.();
             event.stopPropagation?.();
             activate();
@@ -320,16 +342,32 @@ export function LayoutGalleryDesktop({
     ...(collapsed.has("discover") ? [] : controller.community),
   ], [collapsed, controller.community, controller.owned, controller.teamSections]);
 
+  const focusSearch = search?.focus ?? (() => setLocalSearchActive(true));
+
+  // Unscoped on purpose: a scoped handler would outrank the pane menu opened
+  // over the gallery, and j/k belong to that menu while it is open.
   useShortcut((event) => {
-    if (event.targetEditable || searchActive) return;
-    const delta = isPlainKey(event, "down", "j") ? 1 : isPlainKey(event, "up", "k") ? -1 : 0;
-    if (!delta || visibleEntries.length === 0) return;
+    if (event.targetEditable || searchActive || visibleEntries.length === 0) return;
+    const index = visibleEntries.findIndex((entry) => entry.id === selected?.id);
+    const step = (delta: number) => (index < 0 ? 0 : index + delta);
+    const target = isPlainKey(event, "down", "j") ? step(1)
+      : isPlainKey(event, "up", "k") ? step(-1)
+      : isPlainKey(event, "home") ? 0
+      : isPlainKey(event, "end") ? visibleEntries.length - 1
+      : isPlainKey(event, "pageup") ? step(-PAGE_STEP)
+      : isPlainKey(event, "pagedown") ? step(PAGE_STEP)
+      : null;
+    if (target === null) return;
     event.preventDefault();
     event.stopPropagation();
-    const index = visibleEntries.findIndex((entry) => entry.id === selected?.id);
-    const next = visibleEntries[Math.max(0, Math.min(visibleEntries.length - 1, index < 0 ? 0 : index + delta))];
+    // Up from the first row goes back to the search above the list.
+    if (event.name === "up" && index === 0) {
+      focusSearch();
+      return;
+    }
+    const next = visibleEntries[Math.max(0, Math.min(visibleEntries.length - 1, target))];
     if (next) controller.select(next.id);
-  }, { enabled: focused, phase: "before", scope: "layout-gallery" });
+  }, { enabled: focused, phase: "before" });
 
   const section = (id: string, title: string, count: number, listWidth: number) => (
     <SidebarSection

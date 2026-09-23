@@ -468,6 +468,17 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   );
   const selectedCallId = selected?.id ?? null;
   const selectedHasTranscript = selected?.hasTranscript ?? false;
+  // The reader shows only a call the pane can find. A restored call that is not
+  // on the reloaded shelf (a lookup result, or one that aged off) closes once
+  // the shelf has loaded, rather than leave the keys pointing at a reader that
+  // is not on screen.
+  const readerOpen = detailOpen && !!selected;
+  useEffect(() => {
+    // A `quarter` setting still waiting to open its call wins over closing.
+    const pendingQuarter = openQuarter.trim();
+    if (pendingQuarter && openedQuarter.current !== pendingQuarter) return;
+    if (detailOpen && !selected && listStatus === "loaded") setDetailOpen(false);
+  }, [detailOpen, listStatus, openQuarter, selected, setDetailOpen]);
   const selectedTranscript = transcript?.id === selectedCallId ? transcript : null;
 
   // Marks a call as transcribed in whichever list holds it, once it is.
@@ -613,15 +624,23 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       setReaderTab("qa");
     },
     {
-      enabled: focused && detailOpen && !searchFocused,
+      enabled: focused && readerOpen && !searchFocused,
       phase: "before",
       scope: "earnings-calls:reader",
     },
   );
 
+  // Only a loaded transcript has a find field; a wall, an upsell or a first
+  // load has no list or reader for the search keys to reach.
+  const readerSearchable = readerOpen && !!selectedTranscript && !transcriptProRequired;
+  // Mirrors the bodies below: the list renders unless a wall, an upsell, or an
+  // empty shelf's loading, failed or research-tab state takes its place.
+  const listShown = !signInRequired && !verificationRequired && !proRequired
+    && !(calls.length === 0 && (listStatus === "loading" || listStatus === "error" || !!ticker));
+
   const handleDetailKey = useCallback(
     (event: DataTableKeyEvent) => {
-      if (isPlainKey(event, "/")) {
+      if (readerSearchable && isPlainKey(event, "/")) {
         stopSearchFocusNavigation(event);
         focusSearch();
         return true;
@@ -658,7 +677,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       }
       return false;
     },
-    [focusSearch, scrollTranscriptBy, openSource],
+    [focusSearch, readerSearchable, scrollTranscriptBy, openSource],
   );
 
   usePaneFooter(
@@ -704,14 +723,16 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         info.push({ id: "pro", parts: [{ text: "pro required", tone: "warning" }] });
       }
 
-      const hints = detailOpen
-        ? [
-            ...(selected?.webcastUrl
-              ? [{ id: "open", key: "o", label: "pen source", onPress: openSource }]
-              : []),
-            { id: "find", key: "/", label: "find", onPress: focusSearch },
-          ]
-        : [{ id: "search", key: "/", label: "search", onPress: focusSearch }];
+      const hints = !listShown
+        ? []
+        : readerOpen
+          ? [
+              ...(selected?.webcastUrl
+                ? [{ id: "open", key: "o", label: "pen source", onPress: openSource }]
+                : []),
+              ...(readerSearchable ? [{ id: "find", key: "/", label: "find", onPress: focusSearch }] : []),
+            ]
+          : [{ id: "search", key: "/", label: "search", onPress: focusSearch }];
 
       return { info, hints };
     },
@@ -729,6 +750,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       proRequired,
       transcriptProRequired,
       detailOpen,
+      listShown,
+      readerOpen,
+      readerSearchable,
       selected,
       focusSearch,
       openSource,
@@ -813,7 +837,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
           value: searchQuery,
           onChange: changeTranscriptQuery,
           placeholder: "find in transcript",
-          focused: focused && detailOpen,
+          focused: focused && readerOpen,
           active: searchFocused,
           onActiveChange: (active) => active ? focusSearch() : blurSearch(),
           focusToken: searchFocusToken,
@@ -826,7 +850,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         error={transcriptError?.message ?? null}
         tab={readerTab}
         onTabChange={setReaderTab}
-        tabsFocused={focused && detailOpen && !searchFocused}
+        tabsFocused={focused && readerOpen && !searchFocused}
         query={searchQuery}
         width={width}
         scrollRef={transcriptScrollRef}
@@ -837,7 +861,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   return (
     <DataTableStackView<CloudEarningsCallPayload, CallColumn>
       focused={focused && !searchFocused}
-      detailOpen={detailOpen && !!selected}
+      detailOpen={readerOpen}
       onBack={() => {
         setDetailOpen(false);
         setReaderTab("summary");
@@ -853,7 +877,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
             value: searchQuery,
             onChange: setSearchQuery,
             placeholder: "ticker, company, or period",
-            focused: focused && !detailOpen,
+            focused: focused && !readerOpen,
             active: searchFocused,
             onActiveChange: (active) => active ? focusSearch() : blurSearch(),
             focusToken: searchFocusToken,

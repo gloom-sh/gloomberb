@@ -4,7 +4,7 @@ import type { HostMenuItem, HostMenuProps } from "../../../../ui/host";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
 
-const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "j", "k"]);
+const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End", "PageUp", "PageDown", "Enter", " ", "j", "k"]);
 
 function selectable(item: HostMenuItem): boolean {
   return item.kind !== "divider" && item.kind !== "heading" && !item.disabled;
@@ -42,8 +42,8 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
       const index = enabled.findIndex((item) => item.id === highlighted);
       if (event.key === "ArrowDown" || event.key === "j") setHighlighted(enabled[Math.min(enabled.length - 1, index + 1)]?.id ?? null);
       else if (event.key === "ArrowUp" || event.key === "k") setHighlighted(enabled[Math.max(0, index - 1)]?.id ?? null);
-      else if (event.key === "Home") setHighlighted(enabled[0]?.id ?? null);
-      else if (event.key === "End") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
+      else if (event.key === "Home" || event.key === "PageUp") setHighlighted(enabled[0]?.id ?? null);
+      else if (event.key === "End" || event.key === "PageDown") setHighlighted(enabled[enabled.length - 1]?.id ?? null);
       else if (highlighted) choose(highlighted);
     };
     document.addEventListener("keydown", handleKeyDown, true);
@@ -68,11 +68,14 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
       {items.map((item) => {
         if (item.kind === "divider") return <div key={item.id} className="gloom-menu-divider" role="separator" />;
         if (item.kind === "heading") return <div key={item.id} className="gloom-menu-title">{item.label}</div>;
-        const role = selection === "none" ? "menuitem" : "option";
+        // A plain menu item with a `checked` state is a toggle, like a native menu's.
+        const toggle = selection === "none" && item.checked !== undefined;
+        const role = selection === "none" ? (toggle ? "menuitemcheckbox" : "menuitem") : "option";
         return (
           <div
             key={item.id}
             role={role}
+            aria-checked={toggle ? !!item.checked : undefined}
             aria-selected={selection === "none" ? undefined : selection === "multi" ? !!item.checked : !!item.selected}
             aria-disabled={item.disabled || undefined}
             className="gloom-menu-item"
@@ -86,7 +89,7 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
               if (!item.disabled) choose(item.id);
             }}
           >
-            {selection === "multi" && (
+            {(selection === "multi" || toggle) && (
               <CheckboxBox checked={!!item.checked} />
             )}
             <span className="gloom-menu-label">

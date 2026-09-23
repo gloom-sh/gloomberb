@@ -7,6 +7,7 @@ import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../s
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { useAssetData, usePluginAppActions, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useUiCapabilities } from "../../../ui";
+import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { EarningsDetailView } from "./detail-view";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import type {
@@ -153,6 +154,8 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   const openAnalysts = useCallback((symbol: string) => createPaneFromTemplate("analyst-research-pane", { symbol }), [createPaneFromTemplate]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
+    // Plain letters only: Cmd+C must still copy and Ctrl+A select, Shift+R refreshes everything.
+    if (!isPlainKeyboardEvent(event)) return false;
     const symbol = openEvent?.symbol ?? selectedEvent?.symbol ?? null;
     if (event.name === "r") {
       event.preventDefault?.();

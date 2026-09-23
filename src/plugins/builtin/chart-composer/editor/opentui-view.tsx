@@ -93,8 +93,9 @@ export function OpenTuiSeriesEditorFields({
 }
 
 export function OpenTuiSeriesEditorActions({ actions }: { actions: SeriesEditorActionModel[] }) {
+  // A narrow terminal wraps the row instead of clipping Save off its end.
   return (
-    <Box flexDirection="row" gap={1} width="100%">
+    <Box flexDirection="row" flexWrap="wrap" gap={1} width="100%">
       {actions.map((action) => (
         <Button
           key={action.id}

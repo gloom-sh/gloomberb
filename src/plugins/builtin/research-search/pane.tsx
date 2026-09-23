@@ -18,6 +18,8 @@ import {
   type PaneHint,
 } from "../../../components";
 import { TickerBadgeList } from "../../../components/ticker/badge/list";
+import { useShortcut } from "../../../react/input";
+import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
@@ -93,6 +95,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const access = usePlanAccess();
   const openPlan = useCloudPlanAction();
   const dialog = useDialog();
+  const openTicker = useInlineTickerOpener();
 
   const [seedQuery] = usePaneSettingValue("query", "");
   const [mode, setMode] = usePluginPaneState<PaneMode>("mode", "results");
@@ -416,18 +419,24 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       focusField("query");
       return true;
     }
-    if (isPlainKey(event, "t")) {
-      stopSearchFocusNavigation(event);
-      focusField("tickers");
-      return true;
-    }
-    if (event.ctrl && event.name === "s") {
-      stopSearchFocusNavigation(event);
-      saveCurrentSearch();
-      return true;
-    }
+    // Ctrl+S and [t]icker are footer hints: the footer binds them across the
+    // pane, Ctrl+S also while a field has focus.
     return false;
-  }, [focusField, saveCurrentSearch]);
+  }, [focusField]);
+
+  // Tab and Shift+Tab move between the query and the tickers field. The app's
+  // pane cycle never sees Tab from a field, so the ring only has to claim it
+  // from the webview's own focus order.
+  useShortcut((event) => {
+    if (event.name !== "tab" || event.ctrl || event.meta || event.alt || event.super) return;
+    event.preventDefault();
+    event.stopPropagation();
+    focusField(activeField === "query" ? "tickers" : "query");
+  }, {
+    allowEditable: true,
+    enabled: focused && activeField !== null && !openHit && mode === "results",
+    scope: "research-search:fields",
+  });
 
   // Search is free and uncapped, so nothing is gated up front: the upsell only
   // appears if the server itself refuses the query.
@@ -469,7 +478,14 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     status,
   ]);
 
+  // The ticker a badge click would open: the open document's, else the cursor
+  // row's (the table's cursor rests on the first row until one is chosen).
+  const hintTicker = mode === "results"
+    ? (openHit ?? hits.find((hit) => hit.id === selectedHitId) ?? hits[0])?.ticker || null
+    : null;
   const footerHints = useMemo<PaneHint[]>(() => {
+    // A wall or upsell replaces the results, so nothing there can be saved or opened.
+    if (signInRequired || verificationRequired || proRequired) return [];
     if (mode === "saved") {
       const selected = saved.find((entry) => entry.id === savedSelectedId);
       if (!selected) return [];
@@ -478,17 +494,24 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         { id: "delete", key: "d", label: "elete", onPress: () => { void removeSaved(selected); } },
       ];
     }
-    if (openHit || !trimmedQuery) return [];
-    return [{ id: "save", key: "Ctrl+S", label: "save search", onPress: saveCurrentSearch }];
+    return [
+      ...(hintTicker ? [{ id: "ticker", key: "t", label: "icker", onPress: () => openTicker(hintTicker) }] : []),
+      ...(!openHit && trimmedQuery ? [{ id: "save", key: "Ctrl+S", label: "save search", onPress: saveCurrentSearch }] : []),
+    ];
   }, [
+    hintTicker,
     mode,
     openHit,
+    openTicker,
+    proRequired,
     removeSaved,
     saved,
     savedSelectedId,
     saveCurrentSearch,
+    signInRequired,
     toggleAlert,
     trimmedQuery,
+    verificationRequired,
   ]);
 
   // The stack title already names the open document, so the footer carries what
@@ -670,6 +693,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
               ? "This document is part of Gloom Cloud Pro."
               : documentFailure?.message ?? null}
             width={width}
+            focused={focused && activeField === null && !typePickerOpen}
           />
         ) : (
           <Box flexGrow={1} />

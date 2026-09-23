@@ -13,6 +13,7 @@ import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/t
 import { Box, Text, TextAttributes } from "../../ui";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
+import type { ListJump } from "./list/model";
 import { useCommandBarPalette } from "./panel/palette";
 import { truncateText } from "./view-model";
 
@@ -71,6 +72,8 @@ interface ThemePickerProps {
 
 export interface ThemePickerHandle {
   move: (delta: number) => boolean;
+  /** Pages through the themes, or goes to the first or last one. */
+  jump: (target: ListJump) => boolean;
   commit: () => boolean;
   cancelPreview: () => void;
 }
@@ -104,6 +107,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   ));
   const themesRef = useRef(themes);
   const selectedIndexRef = useRef(selectedIndex);
+  const heightRef = useRef(height);
   const items = useMemo<ListViewItem[]>(() => themes.map((theme) => {
     const current = theme.id === committedThemeId;
     return {
@@ -119,6 +123,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
 
   themesRef.current = themes;
   selectedIndexRef.current = selectedIndex;
+  heightRef.current = height;
   committedThemeIdRef.current = committedThemeId;
   onPreviewRef.current = onPreview;
   onCommitRef.current = onCommit;
@@ -156,6 +161,18 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     return true;
   }, [requestPreview]);
 
+  // One theme per line, so a page is the list's height less the row being left.
+  const jump = useCallback((target: ListJump): boolean => {
+    const count = themesRef.current.length;
+    const page = Math.max(1, heightRef.current - 1);
+    switch (target) {
+      case "first": return move(-count);
+      case "last": return move(count);
+      case "page-up": return move(-page);
+      case "page-down": return move(page);
+    }
+  }, [move]);
+
   const commit = useCallback((): boolean => {
     const selected = themesRef.current[selectedIndexRef.current];
     if (!selected) return false;
@@ -166,9 +183,10 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
 
   useImperativeHandle(ref, () => ({
     move,
+    jump,
     commit,
     cancelPreview,
-  }), [cancelPreview, commit, move]);
+  }), [cancelPreview, commit, jump, move]);
 
   useEffect(() => {
     const preferredIndex = themes.findIndex((theme) => theme.id === committedThemeId);

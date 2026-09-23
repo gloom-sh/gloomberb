@@ -15,6 +15,7 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { optionMid } from "../shared/volatility";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { isPlainKey } from "../../../utils/keyboard";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { daysToExpiryFrom } from "../options-calculator/model";
@@ -179,6 +180,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [volActive, setVolActive] = useState(false);
   useInputCapture(focused && volActive);
   useEffect(() => { if (!volActive) setVolText(String((controls?.volShift ?? 0) * 100)); }, [controls?.volShift, volActive]);
+  // The vol field lives in the root bar; a detail hides it, so it must not keep the keyboard.
+  useEffect(() => { if (detail) setVolActive(false); }, [detail]);
   const shiftVol = (text: string) => {
     if (!text.trim() || !Number.isFinite(Number(text)) || !scenario) return;
     setControls({ ...scenario.controls, volShift: Number(text) / 100 });
@@ -190,8 +193,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "chain", key: "c", label: "hain", onPress: () => setDetail("chain") },
     { id: "inputs", key: "i", label: "nputs", onPress: () => setDetail("inputs") },
     ...(selected && tab === "legs" ? [{ id: "edit", key: "e", label: "dit", onPress: () => edit(selected) },
-      { id: "remove", key: "x", label: "remove", onPress: () => void remove() }] : []),
-    ...(scenario ? [{ id: "date", key: "d", label: "ate", onPress: () => dateControl.current?.open() }, { id: "save", key: "s", label: "ave", onPress: () => setDetail("save") }] : []),
+      { id: "remove", key: "x", label: "remove", title: "Remove", onPress: () => void remove() }] : []),
+    ...(scenario ? [{ id: "date", key: "d", label: "ate", onPress: () => dateControl.current?.open() },
+      { id: "vol", key: "v", label: "ol shift", onPress: () => setVolActive(true) },
+      { id: "save", key: "s", label: "ave", onPress: () => setDetail("save") }] : []),
     { id: "load", key: "b", label: "rowse saved", onPress: () => void loadSaved() },
     ...(live ? [{ id: "follow", key: "f", label: "reeze", onPress: freeze }]
       : follow || frozen || frozenMarket || !storedPosition ? [] : [{ id: "follow", key: "f", label: "ollow market", onPress: () => setFollow(true) }]),
@@ -207,6 +212,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.
   const dialogOpen = useDialogState((state) => state.isOpen);
+  // The footer binds the hint keys. While the vol field is open, Enter, Esc and
+  // Tab commit it instead of reaching the pane stack or the next pane.
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || dialogOpen) return;
     if (volActive) {
@@ -215,15 +222,12 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       }
       return;
     }
-    if (detail && detail !== "chain" || event.targetEditable || event.ctrl || event.alt || event.meta) return;
-    if (event.name === "tab" && scenario) {
-      event.preventDefault(); event.stopPropagation(); setVolActive(true); return;
-    }
-    const hint = hints.find((hint) => hint.key === event.name);
-    if (hint) { event.preventDefault(); event.stopPropagation(); hint.onPress(); }
-    else if (event.name === "r") void resource.reload();
+    if (detail && detail !== "chain" || event.targetEditable) return;
+    if (isPlainKey(event, "r")) void resource.reload();
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: focused && !volActive });
+  // A detail covers the tabs, so they stop answering h/l until it closes.
+  const tabsFocused = focused && !volActive && !detail;
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused });
   const tabRows = tabsInHeader ? 0 : 1;
   const risk = scenario?.expiryRisk;
   const stats: StatItem[] = scenario ? [
@@ -246,7 +250,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / unit", width: 13, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
-  const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} />
+  const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
       rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.id === "spot" ? row.spot : gridSort.id === "move" ? row.move ?? 0 : row.values[Number(gridSort.id)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
       sortColumnId={gridSort.id} sortDirection={gridSort.direction} onHeaderClick={(id) => {
@@ -279,7 +283,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         : column.id === "price" || column.id === "strike" ? money(leg[column.id])
         : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
   const root = <>
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused && !volActive} />}
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={tabsFocused} />}
     {scenario && <>
       <QueryBar
         width={width}

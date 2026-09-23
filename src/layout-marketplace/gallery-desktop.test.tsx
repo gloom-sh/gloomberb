@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState, type ReactNode } from "react";
 import { cloneLayout, createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
@@ -79,6 +79,8 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
     duplicateLayout: () => {},
     deleteLayout: () => {},
     canDelete: true,
+    layoutCount: 2,
+    moveLayout: () => {},
     close: () => {},
     panes,
     missingPaneIds: () => [],
@@ -87,15 +89,18 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
   return { controller, activated, installed, selections, copied };
 }
 
-async function renderGallery(controller: LayoutGalleryController) {
-  const container = await renderDom(
+function renderInApp(node: ReactNode) {
+  return renderDom(
     <WebInputHostProvider>
       <AppContext value={{ state: createInitialState(createDefaultConfig("/tmp/gloomberb-gallery-desktop-app")), dispatch: () => {} }}>
-        <LayoutGalleryDesktop controller={controller} />
+        {node}
       </AppContext>
     </WebInputHostProvider>,
   );
-  return container;
+}
+
+function renderGallery(controller: LayoutGalleryController) {
+  return renderInApp(<LayoutGalleryDesktop controller={controller} />);
 }
 
 function rows(container: Element) {
@@ -184,4 +189,28 @@ test("an empty gallery keeps a preview placeholder instead of a blank pane", asy
   const empty = container.querySelector('[data-gloom-role="layout-gallery-preview-empty"]')!;
   expect(empty.textContent).toContain("No layout selected.");
   expect(container.querySelector('[data-gloom-role="layout-gallery-preview"]')).toBeNull();
+});
+
+test("the keyboard moves the cursor through the rows and the preview follows it", async () => {
+  function Harness() {
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const { controller } = createController({ selectedId, select: setSelectedId });
+    return <LayoutGalleryDesktop controller={controller} />;
+  }
+  const container = await renderInApp(<Harness />);
+  const press = (key: string) => act(async () => {
+    testWindow.document.body.dispatchEvent(new testWindow.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }) as unknown as Event);
+  });
+  const preview = () => container.querySelector('[data-gloom-role="layout-gallery-preview"]')!;
+
+  // The cursor starts on the layout in use.
+  expect(rows(container)[1]!.getAttribute("aria-current")).toBe("true");
+
+  await press("k");
+  expect(rows(container)[0]!.getAttribute("aria-current")).toBe("true");
+  expect(preview().textContent).toContain("Monitor");
+
+  await press("End");
+  expect(rows(container)[1]!.getAttribute("aria-current")).toBe("true");
+  expect(preview().textContent).toContain("Research Desk");
 });

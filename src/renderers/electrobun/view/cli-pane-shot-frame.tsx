@@ -14,7 +14,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   children: (frame: ReturnType<typeof resolvePaneBodyFrame>) => ReactNode;
 }) {
   return <PaneFooterProvider>{(registeredFooter) => {
-    const footer = { info: registeredFooter.info.filter((segment) => preserveStatus || segment.icon === "warning"), hints: [] };
+    const footer = { info: registeredFooter.info.filter((segment) => preserveStatus || segment.icon === "warning"), hints: [], menu: [], keys: [] };
     const bodyFrame = resolvePaneBodyFrame({
       width,
       height,

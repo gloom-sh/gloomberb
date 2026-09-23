@@ -13,6 +13,10 @@ const PANELS = [{ id: "main" }];
 const MIN_CHART_ROWS = 8;
 const SOURCE_ROWS = 1;
 
+export function fredSeriesUrl(seriesId: string): string {
+  return `https://fred.stlouisfed.org/series/${seriesId}`;
+}
+
 function seriesFor(
   stat: StatDef,
   id: string,
@@ -132,7 +136,7 @@ export function StatDetail({
       )}
       <Box flexDirection="row" flexWrap="wrap" paddingX={1} flexShrink={0}>
         <ExternalLinkText
-          url={`https://fred.stlouisfed.org/series/${stat.seriesId}`}
+          url={fredSeriesUrl(stat.seriesId)}
           label={`FRED ${stat.seriesId}`}
           color={colors.text}
         />

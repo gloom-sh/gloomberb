@@ -3,6 +3,7 @@ import { useTerminalDimensions } from "@opentui/react";
 import { useSyncExternalStore } from "react";
 import { colors } from "../../theme/colors";
 import type { ToastHost, ToastOptions } from "../../ui/toast";
+import { useActionShortcut } from "../../ui";
 
 type ToastTone = "success" | "error" | "info";
 
@@ -58,6 +59,25 @@ function addToast(tone: ToastTone, body: string, options?: ToastOptions): number
   return id;
 }
 
+function visibleToasts(): ToastRecord[] {
+  return toasts.slice(-MAX_VISIBLE_TOASTS);
+}
+
+function activateNewestToast(): boolean {
+  const toast = visibleToasts().reverse().find((entry) => entry.options?.action);
+  if (!toast?.options?.action) return false;
+  toast.options.action.onClick();
+  dismissToast(toast.id);
+  return true;
+}
+
+function dismissNewestToast(): boolean {
+  const toast = visibleToasts().at(-1);
+  if (!toast) return false;
+  dismissToast(toast.id);
+  return true;
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -81,7 +101,8 @@ function toneIcon(tone: ToastTone): string {
 
 function ToastViewport({ position = "bottom-right" }: { position?: string }) {
   const dimensions = useTerminalDimensions();
-  const visibleToasts = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const shownToasts = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const actionShortcut = useActionShortcut("notification-action");
   const maxWidth = Math.max(1, Math.min(60, dimensions.width - 4));
   const placement = position.startsWith("top") ? { top: 1 } : { bottom: 1 };
   const horizontal = position.endsWith("left")
@@ -90,7 +111,8 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
       ? { left: Math.max(0, Math.floor((dimensions.width - maxWidth) / 2)) }
       : { right: 2 };
 
-  if (visibleToasts.length === 0) return null;
+  if (shownToasts.length === 0) return null;
+  const newestActionId = shownToasts.slice(-MAX_VISIBLE_TOASTS).reverse().find((toast) => toast.options?.action)?.id;
 
   return (
     <box
@@ -102,7 +124,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
       flexDirection="column"
       gap={1}
     >
-      {visibleToasts.slice(-MAX_VISIBLE_TOASTS).map((toast) => (
+      {shownToasts.slice(-MAX_VISIBLE_TOASTS).map((toast) => (
         <box
           key={toast.id}
           width="100%"
@@ -125,7 +147,9 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
                 toast.options?.action?.onClick();
               }}
             >
-              {`[${toast.options.action.label}]`}
+              {toast.id === newestActionId && actionShortcut
+                ? `[${toast.options.action.label} ${actionShortcut}]`
+                : `[${toast.options.action.label}]`}
             </text>
           )}
           {toast.options?.secondaryAction && (
@@ -160,4 +184,6 @@ export const openTuiToastHost: ToastHost = {
   error: (body, options) => addToast("error", body, options),
   info: (body, options) => addToast("info", body, options),
   dismiss: dismissToast,
+  activateNewest: activateNewestToast,
+  dismissNewest: dismissNewestToast,
 };

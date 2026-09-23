@@ -1,4 +1,4 @@
-import type { GloomPluginContext } from "../../../../../types/plugin";
+import type { CommandDef, GloomPluginContext } from "../../../../../types/plugin";
 import type { MarketNewsItem, NewsQueryState } from "../../../../../types/news-source";
 import { NEWS_QUERY_PRESETS } from "../news/query-presets";
 import {
@@ -47,26 +47,52 @@ function notificationSubtitle(article: MarketNewsItem): string {
   return tickers ? `${article.source} ${tickers}` : article.source;
 }
 
+type BreakingNewsContext = Pick<GloomPluginContext, "configState" | "persistence" | "notify">;
+
+function breakingNewsEnabled(ctx: BreakingNewsContext): boolean {
+  return ctx.configState.get<boolean>(BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY) === true;
+}
+
+// Snooze is intentionally local: it is short-lived and must not race the
+// cloud sync snapshot across devices.
+function breakingNewsSnoozed(ctx: BreakingNewsContext): boolean {
+  return (ctx.persistence.getState<number>(SNOOZE_STATE_KEY) ?? 0) > Date.now();
+}
+
+function snoozeBreakingNews(ctx: BreakingNewsContext): void {
+  ctx.persistence.setState(SNOOZE_STATE_KEY, Date.now() + SNOOZE_DURATION_MS);
+  ctx.notify({
+    body: "Breaking news snoozed for 1 hour.",
+    type: "info",
+    desktop: "never",
+  });
+}
+
+/**
+ * The toast's "Snooze 1h" from the command bar, for anyone who cannot click
+ * it: toast keys only reach the primary action.
+ */
+export function breakingNewsSnoozeCommand(ctx: BreakingNewsContext): CommandDef {
+  return {
+    id: "snooze-breaking-news",
+    label: "Snooze Breaking News for 1 Hour",
+    keywords: ["breaking", "news", "snooze", "mute", "notifications", "first"],
+    category: "config",
+    description: "Pause breaking news notifications for an hour",
+    hidden: () => !breakingNewsEnabled(ctx) || breakingNewsSnoozed(ctx),
+    execute: () => snoozeBreakingNews(ctx),
+  };
+}
+
 export function setupBreakingNewsNotifications(ctx: GloomPluginContext): () => void {
   let disposeWatch: (() => void) | null = null;
   let primed = false;
   let seenArticleIds = new Set<string>();
   let watchedSymbols = new Set<string>();
 
-  const enabled = () => ctx.configState.get<boolean>(BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY) === true;
-
-  // Snooze is intentionally local: it is short-lived and must not race the
-  // cloud sync snapshot across devices.
-  const snoozedUntil = () => ctx.persistence.getState<number>(SNOOZE_STATE_KEY) ?? 0;
-  const isSnoozed = () => snoozedUntil() > Date.now();
-  const snooze = () => {
-    ctx.persistence.setState(SNOOZE_STATE_KEY, Date.now() + SNOOZE_DURATION_MS);
-    ctx.notify({
-      body: "Breaking news snoozed for 1 hour.",
-      type: "info",
-      desktop: "never",
-    });
-  };
+  const enabled = () => breakingNewsEnabled(ctx);
+  const isSnoozed = () => breakingNewsSnoozed(ctx);
+  const snooze = () => snoozeBreakingNews(ctx);
 
   const refreshWatchedSymbols = async () => {
     try {

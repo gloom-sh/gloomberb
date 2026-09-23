@@ -20,6 +20,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 |-----|--------|
 | `Ctrl+P` | Open command mode |
 | `` ` `` | Open ticker search |
+| `.` | Open the focused pane's menu (also `Shift+F10` or the Menu key) |
 | `Ctrl+,` | Open focused pane settings |
 | `Ctrl+W` | Close focused pane (unless it is locked) |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
@@ -29,18 +30,25 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+G` | Tidy windows |
 | `Tab` | Switch panes |
 | `j` / `k` | Navigate lists |
+| `Home` / `End`, `PageUp` / `PageDown` | Jump through lists and tables |
+| `Enter` / `Esc` | Open the selected row / go back |
+| `/` | Search in the focused pane |
 | `h` / `l` | Switch tabs |
 | `Ctrl+Left` / `Ctrl+Right` | Scroll a focused table horizontally |
 | `m` | Cycle chart mode |
-| `q` | Quit |
+| `Alt+Enter` | Run the newest notification's action, such as Revert or Review |
+| `Alt+Backspace` | Dismiss the newest notification |
+| `q` | Quit (terminal) |
 
-Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, and `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot.
+Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot, and `Cmd/Ctrl+Shift+Enter` / `Cmd/Ctrl+Shift+Backspace` for notifications.
+
+The focused pane's footer shows its actions with their keys, such as `[a]dd`, and every one of them works from the keyboard. The pane menu (`.`, or the `...` button) lists them all, including any a narrow footer cuts off, followed by what the pane's table, filters and tabs offer (sort by a column, change a filter, close a tab), its quick toggles, and the pane and window actions. A retry or sign-in button in an empty pane answers `Enter`. In dialogs, `Enter` confirms and `Esc` closes; on the desktop `Tab` moves between a dialog's controls. In pane settings the arrows move between settings, `Left` / `Right` change a choice or a toggle in place, and `Enter` opens a field's editor.
 
 Wide tables retain their columns in narrow panes. Use their horizontal scrollbar or horizontal wheel/trackpad scrolling to reach additional fields; `Ctrl+Left` / `Ctrl+Right` moves by half a table viewport. Plain arrows keep their existing navigation behavior, and text-field shortcuts remain with the editor.
 
 ### Custom keybindings
 
-Every global and pane management key can be moved, and any command bar text can be put on a key. On a layout where the backtick is a dead key, the command bar already searches symbols for anything you type after `Ctrl+P`; a dedicated ticker search key is one rebind away. Open `HELP`, pick the Shortcuts tab, and press Enter on a row (or double-click it) to capture the next chord; Backspace unbinds, `0` restores the default, and `N` starts a command binding. The Functions tab lists every typed prefix the same way, and Enter there opens the command bar on that prefix. Typing a command in the command bar, such as `DES AAPL` or `CN`, offers a `Bind a key` row as well. Capture shows exactly what your terminal delivered for the combination, which matters on terminals that fold `Ctrl+Shift+F` into `Ctrl+F`.
+Every global and pane management key can be moved, and any command bar text can be put on a key. On a layout where the backtick is a dead key, the command bar already searches symbols for anything you type after `Ctrl+P`; a dedicated ticker search key is one rebind away. Open `HELP`, pick the Shortcuts tab, and press Enter on a row (or double-click it) to capture the next chord; `x` unbinds, `0` restores the default, and `N` starts a command binding. The Functions tab lists every typed prefix the same way, and Enter there opens the command bar on that prefix. Typing a command in the command bar, such as `DES AAPL` or `CN`, offers a `Bind a key` row as well. Capture shows exactly what your terminal delivered for the combination, which matters on terminals that fold `Ctrl+Shift+F` into `Ctrl+F`.
 
 The same table lives in `config.json` under `keybindings` and through the CLI:
 
@@ -205,7 +213,7 @@ The same feed is available through `gloomberb fn CG AAPL --year 2026 --json`.
 Use `--filingOffset` and `--offset` with the returned pagination metadata to read
 additional windows and trades.
 
-`YAS` opens a reactive bond form. Enter settlement, maturity, annual coupon and either yield percent or clean price per 100 face. Tab and Shift+Tab move through fields; Enter opens a selected convention or frequency, and Escape leaves editing. The Cash flows and Sensitivity tabs retain the same terms. The end-of-month control is an explicit schedule choice and requires a month-end maturity.
+`YAS` opens a reactive bond form. Enter settlement, maturity, annual coupon and either yield percent or clean price per 100 face. `e` starts editing at Settlement; Tab and Shift+Tab then move through the fields and leave them past either end, and Escape stops editing. `m`, `f`, `d` and `n` switch the mode, frequency, day count and end-of-month schedule. The Cash flows and Sensitivity tabs retain the same terms. The end-of-month control is an explicit schedule choice and requires a month-end maturity.
 
 `gloomberb fn YAS --settlement 2026-09-22 --maturity 2031-09-15 --coupon 5 --yield 4.25 --json` returns valuation, cash flows and yield shocks. Use `--price 103.333937` instead of `--yield` to solve yield, `--frequency 1|2|4`, `--day-count act-act-icma|30-360-us`, and `--end-of-month` as needed. `gloomberb shot YAS --tab valuation|cashflows|sensitivity` accepts the same inputs. Treasury data is optional; all local calculations still work when it is unavailable.
 
@@ -350,7 +358,7 @@ Open it with `PL` in the command bar. It lists what you have installed, what the
 | Key | Action |
 |-----|--------|
 | `i` | Install the selected plugin, after a confirmation that names its source and declared hosts |
-| `u` | Update it, or reload one that failed to load |
+| `g` | Get its update, or reload one that failed to load |
 | `x` | Remove it |
 | `e` | Enable or disable it |
 | `s` | Open its setup form |
@@ -396,7 +404,7 @@ Use `gloomberb fn DDIS MSFT --json` for the source amounts, complete filing hist
 
 A thesis is why you hold something, written so it can be checked: the instruments it holds, the pillars that must stay true, the kill conditions that would make you sell, and dated catalysts. Every ticker has a Thesis tab next to Notes, and a portfolio or watchlist row's context menu has a Thesis entry; `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions that have no thesis yet, biggest first. `THESIS NVDA AMD` starts one on a basket or a pair; the ticker prompt takes several symbols separated by spaces or commas. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.
 
-Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team; teammates can challenge a pillar. Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision. Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`r`), need Pro.
+Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team; teammates can challenge a pillar. Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision. Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`v`), need Pro.
 
 ## Localized interface
 
@@ -437,7 +445,7 @@ Congress Trades includes returns since the transaction and filing close; Members
 
 ## Options scenarios
 
-Open `OSA AAPL`, choose **Add leg** to enter a call or put, or **Chain** to select a quoted contract. In OMON, select the call or put cell and use **Add to OSA** (`a`). Each handoff opens the leg editor in the ticker's existing OSA pane; saving appends the leg to its position. Set buy/sell, contracts, entry premium per unit, annualized IV and units per contract. The default multiplier is 100 and can be changed for a known deliverable.
+Open `OSA AAPL`, choose **Add leg** to enter a call or put, or **Chain** to select a quoted contract. In OMON, select the call or put cell and use **Add to OSA** (`a`); from the keyboard, `x` switches the cursor row between its call and put, and `[` / `]` step the expiry. Each handoff opens the leg editor in the ticker's existing OSA pane; saving appends the leg to its position. Set buy/sell, contracts, entry premium per unit, annualized IV and units per contract. The default multiplier is 100 and can be changed for a known deliverable.
 
 The Payoff and P&L grid tabs share the scenario-date (`d`) and parallel vol-shift controls. **Inputs** (`i`) edits spot, rate, dividend yield, currency, valuation timestamp and spot range. **Save** (`s`) stores a named snapshot; **Browse saved** (`b`) restores one for the same ticker and listing. The current draft, selected date, vol shift and selected leg also resume with the layout. In Legs, Enter or **Edit** (`e`) edits the selection and **Remove** (`x`) asks before removing it. Named snapshots preserve their original valuation timestamp.
 
@@ -526,7 +534,7 @@ gloomberb fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field
 ## Backtest
 
 `BT AAPL` (or `BTST AAPL`) tests a long-only rule on the ticker's daily history
-against buy-and-hold. **Strategy** picks a preset: golden cross (50/200), above
+against buy-and-hold. **Strategy** (`s`) picks a preset: golden cross (50/200), above
 the 200-day average, RSI 30/50 reversion, MACD signal cross, Bollinger
 reversion, or a 55/20-day breakout. `e` opens the rules, where **Custom rules**
 takes an entry and an exit written as `<operand> <comparison> <operand>`,

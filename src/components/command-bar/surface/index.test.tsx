@@ -1154,4 +1154,55 @@ describe("CommandBar", () => {
 
     expect(submitted).toEqual([{ name: "Research" }]);
   });
+
+  // Enter on a select opens its picker, and picking pops back without sending,
+  // so a form that ends in a select is only sendable by the chord.
+  test("sends a form whose last field is a select with Ctrl+S", async () => {
+    const submitted: Array<Record<string, string> | undefined> = [];
+
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="event alert"
+        live
+        configurePluginRegistry={(pluginRegistry) => {
+          (pluginRegistry.commands as Map<string, any>).set("event-alert", {
+            id: "event-alert",
+            label: "Event Alert",
+            description: "Alert on an event",
+            keywords: ["event", "alert"],
+            category: "data",
+            wizardLayout: "form",
+            wizard: [{
+              key: "event",
+              label: "Event",
+              type: "select",
+              options: [
+                { label: "Filing", value: "filing" },
+                { label: "Insider Trade", value: "insider" },
+              ],
+            }],
+            execute: async (values?: Record<string, string>) => {
+              submitted.push(values);
+            },
+          } as any);
+        }}
+      />,
+      { width: 80, height: 24 },
+    );
+
+    await testSetup.renderOnce();
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
+    await waitForFrameToContain("Insider Trade");
+    await emitKeypress(testSetup, [{ name: "down" }, { name: "return", sequence: "\r" }], { frames: 2 });
+    expect(submitted).toEqual([]);
+
+    await emitKeypress(testSetup, { name: "s", ctrl: true, sequence: "\x13" }, { frames: 2 });
+    await act(async () => {
+      await Bun.sleep(0);
+      await testSetup!.renderOnce();
+    });
+
+    expect(submitted).toEqual([{ event: "insider" }]);
+  });
 });

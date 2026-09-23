@@ -24,6 +24,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { PaneProps } from "../../../types/plugin";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
+import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -208,7 +209,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   }), [data, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name !== "r") return false;
+    if (!isPlainKey(event, "r")) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
     void resource.reload();
@@ -241,9 +242,12 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           resetScrollKey={activeTab}
           columns={columns}
           items={rows}
+          sortable
           sortColumnId={sort.columnId}
           sortDirection={sort.direction}
           onHeaderClick={(columnId) => setSort((current) => nextCryptoSort(current, columnId))}
+          onSortChange={(columnId, direction) => setSort((current) => ({ ...current, columnId: columnId as CryptoSortPreference["columnId"], direction }))}
+          isColumnSortable={(column) => column.id !== "trend"}
           getItemKey={(row) => row.id}
           onActivate={(row) => pinTicker(cryptoTickerKey(row), {
             floating: true,

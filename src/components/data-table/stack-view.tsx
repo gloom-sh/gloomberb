@@ -50,7 +50,7 @@ export function DataTableStackView<
 }: DataTableStackViewProps<T, C>) {
   useShortcut((event) => {
     if (!focused || !detailOpen || !keyboardNavigation) return;
-    onDetailKeyDown?.(event);
+    if (onDetailKeyDown?.(event) === true) event.preventDefault();
   });
 
   const prefetchRef = useRef(prefetchDetail);

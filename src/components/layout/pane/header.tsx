@@ -1,4 +1,4 @@
-import { Box, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
+import { Box, Text, useActionShortcut, useNativeRenderer, useUiCapabilities } from "../../../ui";
 import { useCallback, useRef } from "react";
 import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
@@ -105,6 +105,8 @@ export function PaneHeader({
 }: PaneHeaderProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
+  const menuShortcut = useActionShortcut("pane-menu");
+  const closeShortcut = useActionShortcut("pane-close");
   const terminalHeaderRef = useRef<unknown>(null);
   const visuallyFocused = focused || windowModeSelected;
   const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
@@ -211,6 +213,7 @@ export function PaneHeader({
               addLabel={tabs.addLabel}
               onReorder={tabs.onReorder}
               closeMode={tabs.closeMode}
+              paneMenu={tabs.paneMenu}
             />
           </Box>
         )}
@@ -235,6 +238,7 @@ export function PaneHeader({
             <IconButton
               icon="more"
               label="Pane actions"
+              shortcut={menuShortcut || undefined}
               hasPopup="menu"
               onPress={onActionMouseDown ? (event) => onActionMouseDown(event) : undefined}
             />
@@ -245,6 +249,7 @@ export function PaneHeader({
             <IconButton
               icon="close"
               label="Close pane"
+              shortcut={closeShortcut || undefined}
               onPress={onCloseMouseDown ? (event) => onCloseMouseDown(event) : undefined}
             />
           </Box>

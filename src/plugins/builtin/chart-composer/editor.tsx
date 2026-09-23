@@ -45,6 +45,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
     items,
     keyboardFocus,
     moveKeyboardFocus,
+    moveQuickAddSelection,
     quickAddActive,
     quickAddItems,
     quickAddLoading,
@@ -70,13 +71,21 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
   const fieldLabel = (field: SeriesEditorFocus, label: string) => (
     keyboardFocus === field ? `› ${label}` : label
   );
+  // The keys with no button of their own; the buttons show theirs.
+  const seriesKeys = selected ? ["E source", "P panel", "L log scale"] : [];
+  // A narrow terminal drops the navigation keys first: nothing else shows the action keys.
+  const navigationKeys = ["Tab field", "←→ change", "↑↓ series"];
+  while (navigationKeys.length > 0 && [...navigationKeys, ...seriesKeys].join(" · ").length > tuiContentWidth) {
+    navigationKeys.pop();
+  }
+  const footer = isDesktop
+    ? seriesKeys.join(" · ") || undefined
+    : [...navigationKeys, ...seriesKeys].join(" · ");
 
   return (
     <DialogFrame
       title="Chart Series"
-      footer={isDesktop
-        ? undefined
-        : "Tab/Shift+Tab field · ←→ change · ↑↓ series"}
+      footer={footer}
     >
       <Box
         flexDirection="column"
@@ -94,6 +103,16 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
           width={isDesktop ? undefined : tuiContentWidth}
           inputRef={quickAddRef}
           onMouseDown={() => beginQuickAdd()}
+          onKeyDown={(event) => {
+            // The terminal's dialog keys see arrows first; a desktop field keeps
+            // them unless the suggestion highlight takes them here.
+            if (event.defaultPrevented || !isDesktop || !quickAddActive || quickAddItems.length === 0) return;
+            const direction = event.name === "up" ? -1 : event.name === "down" ? 1 : 0;
+            if (!direction || event.shift) return;
+            event.preventDefault();
+            event.stopPropagation();
+            moveQuickAddSelection(direction);
+          }}
           onChange={(value) => {
             setQuickAddQuery(value);
             if (value.trim()) activateQuickAdd();
@@ -176,13 +195,19 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                   event.stopPropagation();
                   event.preventDefault();
                   if (commitExpression()) moveKeyboardFocus(1);
-                } else if (event.name === "tab") {
-                  event.stopPropagation();
-                  event.preventDefault();
-                  if (commitExpression()) moveKeyboardFocus(event.shift ? -1 : 1);
+                }
+                // Tab is left to the dialog: the terminal's ring commits and moves,
+                // and the desktop walks its controls, committing as the field blurs.
+              }}
+              onChange={(value) => {
+                setExpression(value);
+                // Tab reaches the field on the desktop without a click, so typing
+                // is what marks it as being edited and committed on blur.
+                if (isDesktop && !editingExpression) {
+                  updateKeyboardFocus("source");
+                  setEditingExpression(true);
                 }
               }}
-              onChange={setExpression}
               onSubmit={() => { commitExpression(); }}
               onBlur={() => {
                 if (!editingExpression) return;

@@ -129,11 +129,13 @@ function TargetHistoryChart({
   currency,
   width,
   height,
+  focused = false,
 }: {
   history: AnalystTargetHistoryPoint[];
   currency: string | undefined;
   width: number;
   height: number;
+  focused?: boolean;
 }) {
   const points = useMemo(() => targetHistoryPoints(history), [history]);
   const first = history[0]?.average;
@@ -156,6 +158,7 @@ function TargetHistoryChart({
         timeAxisColor={colors.textDim}
         yAxisColor={colors.textDim}
         formatYAxisValue={(value) => formatPriceTarget(value, currency)}
+        focused={focused}
       />
     </Box>
   );
@@ -300,6 +303,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
                 currency={ratingCurrency}
                 width={width}
                 height={chartHeight}
+                focused={focused}
               />
             ) : null}
           </>

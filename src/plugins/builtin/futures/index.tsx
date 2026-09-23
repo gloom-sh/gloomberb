@@ -3,6 +3,7 @@ import {
   DataTableView,
   QueryBar,
   usePaneFooter,
+  usePaneMenuItems,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type DataTableVisibleRange,
@@ -155,6 +156,11 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       { allowUnsorted: true },
     ));
   }, [visibleColumnIds]);
+  // [ and ] step through the sort orders; the pane menu is where they show.
+  usePaneMenuItems(`${FUTURES_PANE_ID}:sort-keys`, () => [
+    { id: "sort-next", label: "Next Sort", accelerator: "]", onSelect: () => cycleSort(1) },
+    { id: "sort-previous", label: "Previous Sort", accelerator: "[", onSelect: () => cycleSort(-1) },
+  ], [cycleSort]);
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -236,9 +242,11 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       rootHeight={height}
       columns={columns}
       items={dataProvider ? rows : []}
+      sortable
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={(columnId) => setSortPreference((current) => nextFuturesSort(current, columnId))}
+      onSortChange={(columnId, direction) => setSortPreference((current) => ({ ...current, columnId: columnId as FuturesSortPreference["columnId"], direction }))}
       getItemKey={futuresRowId}
       visibleRangeKey={windowSymbols.join(",")}
       onVisibleRangeChange={setVisibleRange}

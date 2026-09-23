@@ -4,6 +4,7 @@ import {
   DataTableView,
   PaneStatusBody,
   QueryBar,
+  Tabs,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -21,6 +22,11 @@ import { HiloBars } from "./hilo-bars";
 import { filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type Side = "lows" | "highs";
+
+const SIDE_TABS: Array<{ label: string; value: Side }> = [
+  { label: "Lows", value: "lows" },
+  { label: "Highs", value: "highs" },
+];
 
 function rowKey(row: ScannerHiloExtreme, index: number): string {
   return `${row.symbol}:${row.at}:${index}`;
@@ -123,7 +129,9 @@ function HiloPane({ focused, width, height }: PaneProps) {
   const showBars = height >= BARS_MIN_HEIGHT;
   // One cell of gutter keeps the two cursors from reading as a single wide row.
   const tableWidth = split ? Math.max(12, Math.floor((width - 1) / 2)) : Math.max(12, width);
-  const tableHeight = Math.max(2, height - QUERY_BAR_HEIGHT - (showBars ? BARS_HEIGHT : 0));
+  // A single table gets a strip naming its side, so the other side is visibly there.
+  const sideStripRows = split ? 0 : 1;
+  const tableHeight = Math.max(2, height - QUERY_BAR_HEIGHT - (showBars ? BARS_HEIGHT : 0) - sideStripRows);
   const columns = useMemo(() => ({ lows: buildColumns(tableWidth, "lows"), highs: buildColumns(tableWidth, "highs") }), [tableWidth]);
 
   const handleSelect = useCallback((side: Side, row: ScannerHiloExtreme, index: number) => {
@@ -181,6 +189,19 @@ function HiloPane({ focused, width, height }: PaneProps) {
         ]}
       />
       {showBars && <HiloBars windows={feed.payload?.windows} width={width} />}
+      {!split && (
+        // Left and right (and h/l) switch sides, as they do between the split tables.
+        <Box height={1} paddingX={1} flexShrink={0}>
+          <Tabs
+            tabs={SIDE_TABS}
+            activeValue={activeSide}
+            onSelect={(value) => setActiveSide(value as Side)}
+            compact
+            dense
+            focused={focused}
+          />
+        </Box>
+      )}
       <Box flexDirection="row" flexGrow={1} overflow="hidden">
         {split ? (
           <>

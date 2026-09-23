@@ -14,6 +14,7 @@ import {
 import {
   hasWebCtrlModifier,
   isEditableKeyboardTarget,
+  moveDialogFocus,
   normalizeWebKeyName,
   shouldConsumeWebAppKeyDown,
   webKeySequence,
@@ -97,13 +98,38 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
   const shortcutRegistry = useMemo(() => createShortcutRegistry(), []);
 
   useEffect(() => {
+    // Windows fires the Menu key's contextmenu on keyup. When the app used the
+    // keydown (it opens the pane menu), the native menu must not follow.
+    let menuKeyUsedAt = 0;
     const onKeyDown = (event: KeyboardEvent) => {
       const shortcutEvent = toKeyEventLike(event);
       shortcutRegistry.dispatch(shortcutEvent);
+      if (event.key === "ContextMenu" && event.defaultPrevented) menuKeyUsedAt = Date.now();
+      if (moveDialogFocus(event)) {
+        event.preventDefault();
+        return;
+      }
       if (shouldConsumeWebAppKeyDown(event)) event.preventDefault();
     };
+    const recentlyUsedMenuKey = () => Date.now() - menuKeyUsedAt < 1000;
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "ContextMenu" && recentlyUsedMenuKey()) event.preventDefault();
+    };
+    const onContextMenu = (event: MouseEvent) => {
+      // A right click (button 2) is the pointer's own menu; the key's has none.
+      if (!recentlyUsedMenuKey() || event.button === 2) return;
+      menuKeyUsedAt = 0;
+      event.preventDefault();
+      event.stopPropagation();
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+    };
   }, [shortcutRegistry]);
 
   useEffect(() => {

@@ -240,25 +240,14 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     setNameFilter(null);
     setSelectedIdx(0);
   }, [setNameFilter, setSelectedIdx]);
+  // The [f]ilter hint is the binding, so the key works over an open
+  // transaction and an empty filtered list, and always does what a click does.
   const filterActionRef = useRef<() => void>(() => {});
   filterActionRef.current = () => {
     if (nameFilter) clearNameFilter();
     else if (selectedFilterName) toggleNameFilter(selectedFilterName);
   };
   const handleFilterPress = useCallback(() => filterActionRef.current(), []);
-
-  const handleRootKeyDown = useCallback((event: {
-    name?: string;
-    preventDefault?: () => void;
-    stopPropagation?: () => void;
-  }) => {
-    if (event.name !== "f") return false;
-    if (!selectedFilterName) return false;
-    event.stopPropagation?.();
-    event.preventDefault?.();
-    toggleNameFilter(selectedFilterName);
-    return true;
-  }, [selectedFilterName, toggleNameFilter]);
 
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
@@ -282,6 +271,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
           id: "filter",
           key: "f",
           label: "ilter",
+          title: nameFilter ? "Clear Filter" : "Filter by Insider",
           onPress: handleFilterPress,
         }]
       : []
@@ -317,7 +307,6 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       onSelect={setSelectedIdx}
       openItemId={openItemId}
       onOpenItemIdChange={setOpenItemId}
-      onRootKeyDown={handleRootKeyDown}
       rootBefore={<>
         <QueryBar
           width={width}

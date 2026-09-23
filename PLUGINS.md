@@ -1350,12 +1350,26 @@ export default {
 } satisfies GloomPlugin;
 ```
 
+## Keyboard
+
+Every pane has to work with no mouse, in the terminal and on the desktop. Most of it comes from the kit, as long as the pane uses it:
+
+- **Footer hints are key bindings.** `usePaneFooter("my-pane", () => ({ hints: [{ id: "add", key: "a", label: "dd", onPress: add }] }), [add])` both draws `[a]dd` and binds `a` while the pane is focused and no field owns the keyboard. A pane does not bind a hinted key a second time. If it must (the key does something slightly different in one mode), its handler calls `event.preventDefault()` when it acts, or the footer fires the hint again. Keys use the keybinding grammar: `a`, `!`, `/`, `Enter`, `Ctrl+S`.
+- **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the zap quick settings as toggles, then Settings, Fullscreen, Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
+- **Actions without a key** go in the pane menu with `usePaneMenuItems(id, () => items, deps)`. The items follow `PaneFooterScope` like hints, so an inactive tab's items drop out.
+- **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), and moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
+- An inline action that has to stay a body button (a Retry beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
+- `onRootKeyDown` and `onDetailKeyDown` return `true` for a key they handled; the table marks it handled.
+- **Dialogs**: `useDialogKeyboard` for keys, Enter submits, Esc closes. Dialogs stack on both hosts, so a field editor opened from a dialog returns to it. On the desktop, Tab and Shift+Tab walk a dialog's controls unless the dialog handles Tab itself (a settings list or form ring moves its own cursor), and a focused control shows a ring.
+- `useActionShortcut("pane-menu")` from `gloomberb/ui` returns the key the host advertises for an action (or `plugin:<id>`), for a tooltip or a `Button`/`IconButton` `shortcut`. Desktop `IconButton` tooltips show the shortcut.
+- Reserved keys: `j`/`k`/arrows move, `Enter` opens, `Esc`/`Backspace` back, `Tab`/`Shift+Tab` next pane or field, `h`/`l` tabs, `r` refresh, `Shift+R` refresh all, `!` warnings, `o` open source, `/` search, `.` pane menu, `?` help, `` ` `` ticker search, `q` quit (terminal), `u` install update, `$` Pro upgrade, `Ctrl+P` command bar. `q`, `u`, `r`, `Shift+R`, `?` and `` ` `` reach the app before any pane. Pane keys are other single unmodified letters.
+
 ## UI guidelines for plugins
 
 The full set of pane conventions (anatomy, where actions and status go, table + detail stacks, load-more lists, tabs, forms, density, and a checklist) is in [`.agents/skills/pane-conventions/SKILL.md`](.agents/skills/pane-conventions/SKILL.md). The short version:
 
 - Basic UI must use the shared components listed above. Extend the kit for a missing reusable pattern.
-- Support both mouse and keyboard for anything interactive.
+- Support both mouse and keyboard for anything interactive. See [Keyboard](#keyboard) for what the kit already does for you.
 - Put changing pane status in `usePaneFooter()`. Keep keyboard hints on their shared controls; do not add fixed footer labels, row counts, or generic hints.
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.

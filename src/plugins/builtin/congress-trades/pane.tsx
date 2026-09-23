@@ -7,6 +7,7 @@ import {
   usePaneNoticeFooter,
   usePaneFooter,
   usePaneHeaderTabs,
+  usePaneMenuItems,
   ChoiceDialog,
   useTableLoadMore,
 } from "../../../components";
@@ -60,7 +61,7 @@ import {
 } from "./model";
 import { MemberTradesDetail, TradeDetail } from "./detail";
 import { useCongressTradesFooter } from "./footer";
-import { useCongressTradesKeyboard } from "./keyboard";
+import { CONGRESS_TAB_KEYS, useCongressTradesKeyboard } from "./keyboard";
 import {
   renderCongressMemberCell,
   renderCongressTradeCell,
@@ -322,6 +323,14 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     openSelectedTradeSource,
     selectTab: tickerFilter ? () => {} : selectTab,
   });
+  usePaneMenuItems(`${CONGRESS_TRADES_PANE_ID}:tabs`, () => (tickerFilter || detailMode ? null
+    : CONGRESS_TAB_KEYS.map((tab) => ({
+      id: `tab-${tab.value}`,
+      label: `Show ${tab.label}`,
+      accelerator: tab.key,
+      checked: activeTab === tab.value,
+      onSelect: () => selectTab(tab.value),
+    }))), [activeTab, detailMode, selectTab, tickerFilter]);
 
   // Filings the scan has not read yet are a gap in the window on screen, so
   // they sit behind the footer's warning indicator rather than beside status.
@@ -371,7 +380,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   };
   usePaneFooter(`${CONGRESS_TRADES_PANE_ID}:${tickerFilter ?? "all"}:filters`, () => ({ hints: !detailMode ? [
     { id: "filters", key: "f", label: "ilters", onPress: () => { void openFilters(); } },
-    { id: "mine", key: "i", label: mine ? "all tickers" : "mine", onPress: () => setMine(!mine) },
+    { id: "mine", key: "i", label: mine ? "all tickers" : "mine", title: mine ? "All Tickers" : "Mine Only", onPress: () => setMine(!mine) },
   ] : [] }), [detailMode, mine, setMine, openFilters]);
   const filterBar = <CongressFilterBar filters={filters} onChange={setFilters} mine={mine} onMine={setMine} width={width}
     controls={{ chamber: chamberControl, side: sideControl, owner: ownerControl, assetType: assetControl, minAmount: amountControl }} />;

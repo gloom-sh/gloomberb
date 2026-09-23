@@ -35,7 +35,8 @@ describe("StatusBar", () => {
     useEffect(() => {
       setTransientLayout({
         id: "pane-focus",
-        label: "^F Focus",
+        label: "Focus",
+        shortcutActionId: "pane-fullscreen",
         active,
         onActivate: () => {
           onActivate?.();
@@ -118,7 +119,7 @@ describe("StatusBar", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("^1 Default");
     expect(frame).toContain("^2 Monitor");
-    expect(frame).toContain("^F Focus");
+    expect(frame).toContain("^⇧F Focus");
 
     const monitorX = frame.split("\n")[0]?.indexOf("^2 Monitor") ?? -1;
     expect(monitorX).toBeGreaterThanOrEqual(0);
@@ -132,9 +133,9 @@ describe("StatusBar", () => {
     expect(actions).toContainEqual({ type: "SWITCH_LAYOUT", index: 1 });
 
     const afterSwitchFrame = testSetup.captureCharFrame();
-    expect(afterSwitchFrame).toContain("^F Focus");
+    expect(afterSwitchFrame).toContain("^⇧F Focus");
 
-    const focusX = afterSwitchFrame.split("\n")[0]?.indexOf("^F Focus") ?? -1;
+    const focusX = afterSwitchFrame.split("\n")[0]?.indexOf("^⇧F Focus") ?? -1;
     expect(focusX).toBeGreaterThanOrEqual(0);
 
     await testSetup.mockMouse.click(focusX + 1, 0);
@@ -143,7 +144,7 @@ describe("StatusBar", () => {
     expect(activateCount).toBe(1);
 
     const activeFocusFrame = testSetup.captureCharFrame();
-    const activeFocusX = activeFocusFrame.split("\n")[0]?.indexOf("^F Focus") ?? -1;
+    const activeFocusX = activeFocusFrame.split("\n")[0]?.indexOf("^⇧F Focus") ?? -1;
     expect(activeFocusX).toBeGreaterThanOrEqual(0);
 
     await testSetup.mockMouse.click(activeFocusX + 1, 0);

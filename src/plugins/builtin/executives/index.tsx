@@ -4,7 +4,7 @@ import {
   attachExecutivesPersistence,
   resetExecutivesPersistence,
 } from "./data";
-import { EXECUTIVES_PANE_ID, ExecutivesPane } from "./pane";
+import { EXECUTIVES_PANE_ID, ExecutivesPane, ExecutivesResearchTab } from "./pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
@@ -17,7 +17,7 @@ export const executivesModule: PluginModule = {
       id: "executives",
       name: "Exec",
       order: 35,
-      component: ExecutivesPane,
+      component: ExecutivesResearchTab,
       instruments: ["equity"],
       isVisible: ({ ticker }) => !isKnownNonUsListing(ticker),
     });

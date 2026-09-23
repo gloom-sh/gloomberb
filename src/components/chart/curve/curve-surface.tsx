@@ -128,8 +128,9 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
         {` · ${slope.percentile == null ? "--" : slope.percentile.toFixed(0)} pctl${slope.window ? ` ${slope.window}` : ""}`}
         {slope.asOf ? ` · ${sourceTime(slope.asOf)}` : ""}</Text>
     </Box> : null}
+    {/* Left/Right step the tenors above, so the chart takes no keys of its own. */}
     {showChart ? <CompositeChart series={chart.series} panels={PANELS} width={totalWidth} height={chartHeight}
-      focused={focused && !showTable} navigable={false} showLegend={false} showTimeAxis xAxis={xAxis}
+      navigable={false} showLegend={false} showTimeAxis xAxis={xAxis}
       formatAxisValue={formatAxisValue ?? formatValue} cursorDate={cursorDate} onCursorDateChange={onCursorDateChange} remoteKind="curve-chart" /> : null}
     {showChart ? <Box height={1} flexShrink={0} paddingX={1}>
       <Text fg={colors.textMuted}>{cursorRow ? `${cursorRow.label} · ${series.map((entry) => {

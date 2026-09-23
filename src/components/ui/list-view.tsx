@@ -6,6 +6,7 @@ import { hoverBg } from "../../theme/colors";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { resolveRemoteItemIndex } from "../../remote/semantic-helpers";
+import { isPlainKey, type KeyboardModifierEventLike } from "../../utils/keyboard";
 
 export interface ListViewItem {
   id: string;
@@ -47,6 +48,12 @@ export interface ListViewProps {
   scrollable?: boolean;
   selectOnHover?: boolean;
   autoScrollToIndex?: boolean;
+  /**
+   * The rows are checkboxes (ToggleList). A focused desktop row toggles on
+   * Space and leaves Enter to the surface around the list, the way a checkbox
+   * leaves Enter to its dialog's default button.
+   */
+  checkboxRows?: boolean;
   onMouseScroll?: (event: any) => void;
   remoteRole?: string;
   remoteLabel?: string;
@@ -54,6 +61,62 @@ export interface ListViewProps {
   remoteItemKind?: string;
   remoteItemCategory?: string;
   remoteMetadata?: Record<string, unknown>;
+}
+
+/** Any row object; one with `disabled: true` is stepped over. */
+type ListCursorItem = object;
+
+function isDisabledRow(item: ListCursorItem | undefined): boolean {
+  return !!item && "disabled" in item && item.disabled === true;
+}
+
+/**
+ * The row `steps` enabled rows away in `direction`, or the last enabled row
+ * before the end. With `wrap`, a step past one end continues from the other.
+ * Disabled rows are never landed on.
+ */
+export function stepListCursor(
+  items: readonly ListCursorItem[],
+  index: number,
+  direction: -1 | 1,
+  steps = 1,
+  wrap = false,
+): number {
+  let found = index;
+  let remaining = steps;
+  let next = index;
+  for (let visited = 0; visited < items.length && remaining > 0; visited += 1) {
+    next += direction;
+    if (next < 0 || next >= items.length) {
+      if (!wrap) break;
+      next = next < 0 ? items.length - 1 : 0;
+    }
+    if (isDisabledRow(items[next])) continue;
+    found = next;
+    remaining -= 1;
+  }
+  return found;
+}
+
+export type ListCursorMove = (items: readonly ListCursorItem[], index: number) => number;
+
+/**
+ * How a key moves a list cursor: up/down and k/j one row, PageUp/PageDown a
+ * page, Home/End to the first or last row, always skipping disabled rows.
+ * Null for any other key, so the caller handles it.
+ */
+export function listCursorMove(event: KeyboardModifierEventLike, pageSize: number): ListCursorMove | null {
+  const page = Math.max(1, Math.floor(pageSize));
+  const move = (direction: -1 | 1, steps?: number): ListCursorMove => (items, index) => (
+    stepListCursor(items, index, direction, steps ?? items.length)
+  );
+  if (isPlainKey(event, "up", "k")) return move(-1, 1);
+  if (isPlainKey(event, "down", "j")) return move(1, 1);
+  if (isPlainKey(event, "pageup")) return move(-1, page);
+  if (isPlainKey(event, "pagedown")) return move(1, page);
+  if (isPlainKey(event, "home")) return move(-1);
+  if (isPlainKey(event, "end")) return move(1);
+  return null;
 }
 
 function DefaultRow({
@@ -113,6 +176,7 @@ export function ListView({
   scrollable = false,
   selectOnHover = false,
   autoScrollToIndex = true,
+  checkboxRows,
   onMouseScroll,
   remoteRole = "list",
   remoteLabel,
@@ -181,6 +245,7 @@ export function ListView({
         scrollable={scrollable}
         selectOnHover={selectOnHover}
         autoScrollToIndex={autoScrollToIndex}
+        checkboxRows={checkboxRows}
         onMouseScroll={onMouseScroll}
         remoteRole={remoteRole}
         remoteLabel={remoteLabel}

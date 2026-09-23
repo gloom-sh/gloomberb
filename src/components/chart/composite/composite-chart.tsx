@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePaneArrowsClaimed } from "../../layout/pane/footer/registration";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   AsciiText,
   Box,
@@ -13,6 +14,9 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { usePaneFooter } from "../../layout/pane/footer/registration";
+import type { PaneHint } from "../../layout/pane/footer/model";
+import type { ContextMenuItem } from "../../../types/context-menu";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -80,6 +84,8 @@ import {
   resolveChartToolKind,
   resolveMeasureAxisDomain,
   resolveMeasureDirection,
+  resolveMeasureValueAt,
+  resolveZoomTimeRange,
   hitTestDrawings,
   isDrawingTool,
   nextDrawingColor,
@@ -88,14 +94,17 @@ import {
   resolveZoomBoxRange,
   shiftDrawing,
   summarizeMeasure,
+  summarizeZoomRange,
   summarizeZoomSelection,
   type ChartDrawing,
+  type ChartDrawingPoint,
   type ChartToolDrag,
   type ChartToolKind,
 } from "./tools";
 import {
   COMPOSITE_RIGHT_OFFSET_RATIO,
   compositeRightOffsetRatio,
+  projectCompositeTimestamp,
   unprojectCompositeTimestamp,
 } from "./time-scale";
 import {
@@ -456,7 +465,54 @@ const CHART_TOOLS: ReadonlyArray<{
 interface ChartToolSpan {
   startXRatio: number;
   endXRatio: number;
+  /** The anchor's own time, which can sit outside the view once it pans. */
+  startTime: number;
   color: string;
+}
+
+/** Pane menu names for the tools, with the keys that pick them. */
+const CHART_TOOL_MENU: ReadonlyArray<{ kind: ChartToolKind; label: string; accelerator: string }> = [
+  { kind: "measure", label: "Ruler", accelerator: "Shift+M" },
+  { kind: "zoom", label: "Zoom to Range", accelerator: "Shift+Z" },
+  { kind: "line", label: "Trend Line", accelerator: "Shift+D" },
+  { kind: "pencil", label: "Freehand", accelerator: "Shift+P" },
+];
+
+/** What Enter does next with a tool in hand, for the footer and the pane menu. */
+const KEYBOARD_TOOL_HINTS: Record<ChartToolKind, {
+  start: string;
+  startTitle: string;
+  finish: string;
+  finishTitle: string;
+}> = {
+  measure: { start: "measure", startTitle: "Start Measure", finish: "done", finishTitle: "Finish Measure" },
+  zoom: { start: "select", startTitle: "Select Range", finish: "zoom", finishTitle: "Zoom to Range" },
+  line: { start: "draw", startTitle: "Draw Line", finish: "place", finishTitle: "Place Line" },
+  pencil: { start: "draw", startTitle: "Draw Freehand", finish: "place", finishTitle: "Place Drawing" },
+};
+
+/**
+ * A tool placed from the keyboard: Enter anchors it at the cursor, the arrows
+ * move its end and Enter finishes it. Held in data, so a pan, a zoom or a new
+ * bar leaves it on the observations it was placed on.
+ */
+interface KeyboardToolPlacement {
+  kind: ChartToolKind;
+  panelId: string;
+  start: ChartDrawingPoint;
+  end: ChartDrawingPoint;
+  /** Every step the end took: the freehand tool's trail. */
+  path: ChartDrawingPoint[];
+  /** Up or Down set the end's level, so Left and Right stop following the series. */
+  freeValue: boolean;
+}
+
+/** A keyboard placement projected into the plot of the panel that holds it. */
+interface KeyboardToolDrag {
+  panelId: string;
+  drag: ChartToolDrag;
+  start: ChartDrawingPoint;
+  end: ChartDrawingPoint;
 }
 
 const ARMED_TOOL_BY_INTERACTION = {
@@ -729,6 +785,10 @@ interface CompositePanelSurfaceProps {
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
   onToolSpanChange: (span: ChartToolSpan | null) => void;
+  /** The tool being placed from the keyboard, when it lives in this panel. */
+  keyboardToolDrag: KeyboardToolDrag | null;
+  /** A press on the plot: the pointer takes over from a keyboard placement. */
+  onPointerPress: () => void;
   showTextFallback: boolean;
 }
 
@@ -759,6 +819,8 @@ function CompositePanelSurface({
   onZoomViewport,
   onSetViewport,
   onToolSpanChange,
+  keyboardToolDrag,
+  onPointerPress,
   showTextFallback,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
@@ -766,13 +828,21 @@ function CompositePanelSurface({
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
   const [cursorYRatio, setCursorYRatio] = useState<number | null>(null);
+  const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
+  // A pointer drag owns the plot while it lasts; otherwise a tool placed from
+  // the keyboard draws and reads out exactly like one.
+  const keyboardDrag = toolDrag ? null : keyboardToolDrag;
+  const activeDrag = toolDrag ?? keyboardDrag?.drag ?? null;
+  // A keyboard placement's end sits at the level the user put it, so it
+  // draws a level line where otherwise only the pointer would.
+  const heldCursorYRatio = keyboardDrag ? keyboardDrag.drag.endYRatio : cursorYRatio;
   const seriesCursorYRatio = useMemo(
     () => resolveSeriesCursorYRatio(panel, scene),
     [panel, scene],
   );
   const activeCursorYRatio = scene.cursorXRatio === null
     ? null
-    : cursorYRatio ?? seriesCursorYRatio;
+    : heldCursorYRatio ?? seriesCursorYRatio;
   const dragRef = useRef<
     | PanGesture
     | {
@@ -785,7 +855,6 @@ function CompositePanelSurface({
     | ChartToolDrag
     | null
   >(null);
-  const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   // The plot is wider than the viewport by the reserved right offset. Gestures
   // read the pointer in plot space, so they convert through this.
@@ -795,30 +864,38 @@ function CompositePanelSurface({
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   // The level line follows the pointer only. A keyboard or shared cursor knows
   // its column, and the series markers and axis readout already say the value.
-  const pointerCursorYRatio = scene.cursorXRatio === null ? null : cursorYRatio;
+  // A tool placed from the keyboard is the exception: its end is a level.
+  const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
   const crosshair = useMemo(
     () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, pointerCursorYRatio, colors.crosshair),
     [bitmap, colors.crosshair, columnLayout, panel, pointerCursorYRatio, scene.cursorXRatio],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {
-    if (!toolDrag) return null;
-    if (toolDrag.kind === "zoom") {
+    if (!activeDrag) return null;
+    // A keyboard placement knows its data points exactly, even off screen; a
+    // pointer drag reads them back from the plot.
+    const startTime = keyboardDrag?.start.time
+      ?? unprojectCompositeTimestamp(scene.timeScale, activeDrag.startXRatio);
+    const endTime = keyboardDrag?.end.time
+      ?? unprojectCompositeTimestamp(scene.timeScale, activeDrag.endXRatio);
+    if (activeDrag.kind === "zoom") {
       return {
         direction: "up" as const,
-        summary: summarizeZoomSelection(scene, toolDrag),
+        summary: keyboardDrag
+          ? summarizeZoomRange(scene, startTime, endTime)
+          : summarizeZoomSelection(scene, activeDrag),
+        startTime,
         startValueLabel: null,
         endValueLabel: null,
       };
     }
-    const startValue = measureDomain
-      ? unprojectCompositeValue(toolDrag.startYRatio, measureDomain)
-      : null;
-    const endValue = measureDomain
-      ? unprojectCompositeValue(toolDrag.endYRatio, measureDomain)
-      : null;
-    const startTime = unprojectCompositeTimestamp(scene.timeScale, toolDrag.startXRatio);
-    const endTime = unprojectCompositeTimestamp(scene.timeScale, toolDrag.endXRatio);
+    const startValue = keyboardDrag
+      ? keyboardDrag.start.value
+      : measureDomain ? unprojectCompositeValue(activeDrag.startYRatio, measureDomain) : null;
+    const endValue = keyboardDrag
+      ? keyboardDrag.end.value
+      : measureDomain ? unprojectCompositeValue(activeDrag.endYRatio, measureDomain) : null;
     return {
       direction: resolveMeasureDirection(startValue, endValue),
       summary: summarizeMeasure({
@@ -833,6 +910,7 @@ function CompositePanelSurface({
           : scene.dates, startTime, endTime),
         domain: measureDomain,
       }),
+      startTime,
       startValueLabel: measureDomain && startValue !== null
         ? formatCompositeCursorValue(startValue, measureDomain)
         : null,
@@ -840,18 +918,20 @@ function CompositePanelSurface({
         ? formatCompositeCursorValue(endValue, measureDomain)
         : null,
     };
-  }, [measureDomain, scene, toolDrag]);
+  }, [activeDrag, keyboardDrag, measureDomain, scene]);
   const toolSummary = toolReadout?.summary ?? null;
+  const toolStartTime = toolReadout?.startTime ?? null;
   const toolSpan = useMemo(() => {
-    if (!toolDrag || !toolSummary) return null;
+    if (!activeDrag || !toolSummary || toolStartTime === null) return null;
     return {
-      startXRatio: toolDrag.startXRatio,
-      endXRatio: toolDrag.endXRatio,
-      color: toolDrag.kind === "zoom"
+      startXRatio: activeDrag.startXRatio,
+      endXRatio: activeDrag.endXRatio,
+      startTime: toolStartTime,
+      color: activeDrag.kind === "zoom"
         ? colors.crosshair
         : toolReadout?.direction === "down" ? colors.negative : themeColors.positive,
     };
-  }, [colors.crosshair, colors.negative, toolDrag, toolReadout?.direction, toolSummary]);
+  }, [activeDrag, colors.crosshair, colors.negative, toolReadout?.direction, toolStartTime, toolSummary]);
   useEffect(() => {
     onToolSpanChange(toolSpan);
   }, [onToolSpanChange, toolSpan]);
@@ -864,10 +944,10 @@ function CompositePanelSurface({
     // The desktop composites overlays as vectors, so the plot raster stays put
     // while a tool drags. Copying and reblending it per frame is what made the
     // ruler feel heavy.
-    if (isDesktopWeb || (!toolDrag && panelDrawings.length === 0)) return [bitmap];
+    if (isDesktopWeb || (!activeDrag && panelDrawings.length === 0)) return [bitmap];
     return [drawChartToolOverlay(
       bitmap,
-      toolDrag,
+      activeDrag,
       {
         positive: themeColors.positive,
         negative: colors.negative,
@@ -878,6 +958,7 @@ function CompositePanelSurface({
       { scene, panel, items: panelDrawings, selectedId: selectedDrawingId },
     )];
   }, [
+    activeDrag,
     bitmap,
     colors.crosshair,
     colors.negative,
@@ -887,7 +968,6 @@ function CompositePanelSurface({
     panelDrawings,
     scene,
     selectedDrawingId,
-    toolDrag,
     toolReadout?.direction,
   ]);
   const vectors = useMemo<ChartSurfaceProps["vectors"]>(() => {
@@ -897,7 +977,7 @@ function CompositePanelSurface({
       panel,
       drawings: panelDrawings,
       selectedId: selectedDrawingId,
-      drag: toolDrag,
+      drag: activeDrag,
       colors: {
         positive: themeColors.positive,
         negative: colors.negative,
@@ -908,6 +988,7 @@ function CompositePanelSurface({
     });
     return shapes.length > 0 ? shapes : null;
   }, [
+    activeDrag,
     colors.crosshair,
     colors.negative,
     drawColor,
@@ -916,7 +997,6 @@ function CompositePanelSurface({
     panelDrawings,
     scene,
     selectedDrawingId,
-    toolDrag,
     toolReadout?.direction,
   ]);
   const textLines = useMemo(
@@ -954,17 +1034,17 @@ function CompositePanelSurface({
   const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio, formatAxisValue);
   const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio, formatAxisValue);
   const measureReadout = useMemo(() => {
-    if (!toolDrag || !toolReadout?.summary) return null;
+    if (!activeDrag || !toolReadout?.summary) return null;
     const text = toolReadout.summary;
-    const centreX = (toolDrag.startXRatio + toolDrag.endXRatio) / 2;
-    const centreY = toolDrag.kind === "zoom"
+    const centreX = (activeDrag.startXRatio + activeDrag.endXRatio) / 2;
+    const centreY = activeDrag.kind === "zoom"
       ? 0.5
-      : (toolDrag.startYRatio + toolDrag.endYRatio) / 2;
+      : (activeDrag.startYRatio + activeDrag.endYRatio) / 2;
     const width = Math.min([...text].length, plotWidth);
     return {
       text,
       width,
-      color: toolDrag.kind === "zoom"
+      color: activeDrag.kind === "zoom"
         ? colors.text
         : toolReadout.direction === "down" ? colors.negative : themeColors.positive,
       left: leftAxisWidth + (leftAxisWidth ? axisGap : 0)
@@ -972,26 +1052,27 @@ function CompositePanelSurface({
       top: Math.max(0, Math.min(panel.height - 1, Math.round(centreY * (panel.height - 1)))),
     };
   }, [
+    activeDrag,
     axisGap,
     colors.negative,
     colors.text,
     leftAxisWidth,
     panel.height,
     plotWidth,
-    toolDrag,
     toolReadout,
   ]);
   const axisMarkers = useMemo(() => {
     // The crosshair already marks the moving end, so the axes only need the
     // anchor the drag started from.
-    if (!toolDrag || toolDrag.kind === "zoom" || !toolReadout?.startValueLabel) return null;
+    if (!activeDrag || activeDrag.kind === "zoom" || !toolReadout?.startValueLabel) return null;
     return {
       side: null,
-      yRatio: toolDrag.startYRatio,
+      // A keyboard anchor can leave the value range once the view moves.
+      yRatio: Math.max(0, Math.min(1, activeDrag.startYRatio)),
       label: toolReadout.startValueLabel,
       color: toolReadout.direction === "down" ? colors.negative : themeColors.positive,
     };
-  }, [colors.negative, toolDrag, toolReadout]);
+  }, [activeDrag, colors.negative, toolReadout]);
   const lastPriceMarker = useMemo(() => {
     const marker = panel.lastPrice;
     const domain = marker ? panel.axes[marker.axis] : undefined;
@@ -1050,6 +1131,7 @@ function CompositePanelSurface({
   }, [onCursorDateChange]);
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
+    onPointerPress();
     // The plot consumes the press, so the browser never moves focus off a text
     // field for us. Hand it back, but only for a press that truly landed here:
     // a dialog over the plot must keep the focus it just took.
@@ -1104,6 +1186,7 @@ function CompositePanelSurface({
     drawings,
     frame,
     onActivate,
+    onPointerPress,
     onSelectDrawing,
     panel,
     plotAspect,
@@ -1739,6 +1822,8 @@ export function CompositeChart({
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
+  const [keyboardPlacement, setKeyboardPlacement] = useState<KeyboardToolPlacement | null>(null);
+  const keyboardId = `composite-chart:${useId()}`;
   const paneInstanceId = useOptionalPaneInstanceId();
   const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
@@ -1912,8 +1997,10 @@ export function CompositeChart({
   // one-shot tool would blink off before the user could see it.
   const armTool = useCallback((tool: ChartToolKind | null) => {
     setArmedTool((current) => current === tool ? null : tool);
+    setKeyboardPlacement(null);
     if (tool === null) setSelectedDrawingId(null);
   }, []);
+  const cancelKeyboardPlacement = useCallback(() => setKeyboardPlacement(null), []);
   const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
     ? 1
     : 0;
@@ -2082,53 +2169,206 @@ export function CompositeChart({
     onCursorDateChange?.(date);
   }, [cursorDate, onCursorDateChange]);
 
+  // The cursor keys belong to every focused chart; pan, zoom, the tools and
+  // their keys only to one that navigates.
+  const arrowsClaimed = usePaneArrowsClaimed();
+  const keyboardActive = focused && interactive;
+  const toolsActive = keyboardActive && navigable;
+  useEffect(() => {
+    if (!toolsActive) setKeyboardPlacement(null);
+  }, [toolsActive]);
+  const legendKeysActive = keyboardActive && showLegend && visibleLegendSeries.length > 0;
+  const legendEntry = legendKeyboardIndex === null ? undefined : visibleLegendSeries[legendKeyboardIndex];
+  const legendEntryToggleable = !!legendEntry && !!onToggleSeries && (isSeriesToggleable?.(legendEntry) ?? true);
+  const anyLegendToggleable = legendKeysActive && !!onToggleSeries
+    && visibleLegendSeries.some((entry) => isSeriesToggleable?.(entry) ?? true);
+  // With a drawing tool in hand, [ and ] step through the drawings instead of
+  // the legend, the way a click with that tool picks one.
+  const drawingKeysActive = toolsActive && isDrawingTool(armedTool) && drawings.length > 0 && !keyboardPlacement;
+  // Backspace only deletes what the user is working on; otherwise it is the
+  // pane's back key.
+  const canDeleteDrawing = toolsActive && drawings.length > 0 && (!!selectedDrawingId || isDrawingTool(armedTool));
+  // An owner that holds the cursor decides when it goes, so Esc stays the pane's.
+  const clearableCursor = !!scene?.cursorDate && cursorDate === undefined;
+
+  const placementPanel = (panelId: string) => scene?.panels.find((panel) => panel.id === panelId) ?? null;
+  const startKeyboardPlacement = () => {
+    if (!scene || !armedTool) return;
+    const panel = scene.panels.find((entry) => resolveMeasureAxisDomain(entry) !== null);
+    const domain = panel ? resolveMeasureAxisDomain(panel) : null;
+    const date = keyboardCursorDateRef.current ?? resolveAdjacentCompositeCursorDate(scene, null, -1);
+    if (!panel || !domain || !date) return;
+    const time = date.getTime();
+    const value = resolveMeasureValueAt(panel, time) ?? unprojectCompositeValue(0.5, domain);
+    if (value === null) return;
+    const anchor = { time, value };
+    onActivate?.();
+    if (isDrawingTool(armedTool)) setSelectedDrawingId(null);
+    setKeyboardPlacement({ kind: armedTool, panelId: panel.id, start: anchor, end: anchor, path: [anchor], freeValue: false });
+    keyboardCursorDateRef.current = date;
+    updateCursor(date);
+  };
+  /** Moves the end to a new bar, following the series until Up or Down set a level. */
+  const moveKeyboardPlacement = (
+    placement: KeyboardToolPlacement,
+    move: { time: number } | { level: 1 | -1 },
+  ): KeyboardToolPlacement | null => {
+    const panel = placementPanel(placement.panelId);
+    const domain = panel ? resolveMeasureAxisDomain(panel) : null;
+    if (!panel || !domain) return null;
+    let { time, value } = placement.end;
+    let freeValue = placement.freeValue;
+    if ("level" in move) {
+      // Half a row per press: fine enough to reach a wick, quick enough to cross the plot.
+      const step = 1 / (2 * Math.max(panel.height - 1, 1));
+      const ratio = projectCompositeValue(value, domain) ?? 0.5;
+      value = unprojectCompositeValue(Math.max(0, Math.min(1, ratio - move.level * step)), domain) ?? value;
+      freeValue = true;
+    } else {
+      time = move.time;
+      if (!freeValue) value = resolveMeasureValueAt(panel, time) ?? value;
+    }
+    const end = { time, value };
+    return { ...placement, end, path: [...placement.path, end], freeValue };
+  };
+  const finishKeyboardPlacement = () => {
+    const placement = keyboardPlacement;
+    setKeyboardPlacement(null);
+    // A placement that never left its anchor spans nothing, like a click.
+    if (!placement || placement.start.time === placement.end.time) return;
+    if (placement.kind === "zoom") {
+      if (!navigationFrame) return;
+      const range = resolveZoomTimeRange(placement.start.time, placement.end.time, navigationFrame.minimumSpanMs);
+      if (range) setViewportRange(range);
+      return;
+    }
+    if (!isDrawingTool(placement.kind)) return;
+    const points = placement.kind === "pencil"
+      ? placement.path.filter((point, index, path) => (
+        index === 0 || point.time !== path[index - 1]!.time || point.value !== path[index - 1]!.value
+      ))
+      : [placement.start, placement.end];
+    if (points.length < 2) return;
+    addDrawing({ id: nextDrawingId(), panelId: placement.panelId, points, color: drawColor });
+  };
+  const stepLegend = (direction: -1 | 1) => {
+    onActivate?.();
+    setLegendKeyboardIndex((current) => (
+      current === null
+        ? direction > 0 ? 0 : visibleLegendSeries.length - 1
+        : (current + direction + visibleLegendSeries.length) % visibleLegendSeries.length
+    ));
+  };
+  const toggleLegendEntry = () => {
+    if (!legendEntry || !legendEntryToggleable) return;
+    onActivate?.();
+    onToggleSeries?.(legendEntry.id);
+  };
+  const stepDrawing = (direction: -1 | 1) => {
+    if (drawings.length === 0) return;
+    const index = drawings.findIndex((drawing) => drawing.id === selectedDrawingId);
+    const next = index < 0
+      ? direction > 0 ? 0 : drawings.length - 1
+      : (index + direction + drawings.length) % drawings.length;
+    setSelectedDrawingId(drawings[next]!.id);
+  };
+  const keyboardToolDrag = useMemo<KeyboardToolDrag | null>(() => {
+    if (!keyboardPlacement || !scene) return null;
+    const panel = scene.panels.find((entry) => entry.id === keyboardPlacement.panelId);
+    const domain = panel ? resolveMeasureAxisDomain(panel) : null;
+    if (!panel || !domain) return null;
+    const project = (point: ChartDrawingPoint) => {
+      const xRatio = projectCompositeTimestamp(scene.timeScale, point.time)?.ratio;
+      const yRatio = projectCompositeValue(point.value, domain);
+      return typeof xRatio === "number" && yRatio !== null ? { xRatio, yRatio } : null;
+    };
+    const start = project(keyboardPlacement.start);
+    const end = project(keyboardPlacement.end);
+    if (!start || !end) return null;
+    return {
+      panelId: panel.id,
+      start: keyboardPlacement.start,
+      end: keyboardPlacement.end,
+      drag: {
+        kind: keyboardPlacement.kind,
+        startXRatio: start.xRatio,
+        startYRatio: start.yRatio,
+        endXRatio: end.xRatio,
+        endYRatio: end.yRatio,
+        path: keyboardPlacement.path.flatMap((point) => {
+          const projected = project(point);
+          return projected ? [projected] : [];
+        }),
+      },
+    };
+  }, [keyboardPlacement, scene]);
+
+  // Scoped, so the chart sees its keys before an older pane or stack handler
+  // (Backspace back, Esc close) whichever mounted first; a dialog opened over
+  // it is a newer scope and still comes first.
   useShortcut((event) => {
-    if (!focused || !interactive || !navigable) return;
-    if (isPlainKey(event, "[", "]") && visibleLegendSeries.length > 0) {
+    if (!keyboardActive) return;
+    const consume = () => {
       event.preventDefault();
       event.stopPropagation();
+    };
+    if (toolsActive && armedTool && isPlainKey(event, "return", "enter") && scene) {
+      consume();
+      if (keyboardPlacement) finishKeyboardPlacement();
+      else startKeyboardPlacement();
+      return;
+    }
+    if (keyboardPlacement && (isPlainKey(event, "escape") || isPlainKey(event, "backspace"))) {
+      consume();
+      setKeyboardPlacement(null);
+      return;
+    }
+    if (keyboardPlacement && keyboardPlacement.kind !== "zoom" && isPlainKey(event, "up", "down")) {
+      consume();
+      const level = event.name === "up" ? 1 : -1;
+      setKeyboardPlacement((current) => current && moveKeyboardPlacement(current, { level }));
+      return;
+    }
+    if (isPlainKey(event, "[", "]") && (drawingKeysActive || legendKeysActive)) {
+      consume();
       const direction = event.name === "[" ? -1 : 1;
-      setLegendKeyboardIndex((current) => (
-        current === null
-          ? direction > 0 ? 0 : visibleLegendSeries.length - 1
-          : (current + direction + visibleLegendSeries.length) % visibleLegendSeries.length
-      ));
-      onActivate?.();
+      if (drawingKeysActive) stepDrawing(direction);
+      else stepLegend(direction);
       return;
     }
-    if (isPlainKey(event, "space") && legendKeyboardIndex !== null) {
-      const entry = visibleLegendSeries[legendKeyboardIndex];
-      if (!entry || !onToggleSeries || !(isSeriesToggleable?.(entry) ?? true)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onActivate?.();
-      onToggleSeries(entry.id);
+    if (isPlainKey(event, "space") && legendKeysActive && legendEntryToggleable) {
+      consume();
+      toggleLegendEntry();
       return;
     }
-    if (isPlainKey(event, "escape") && (armedTool || selectedDrawingId)) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (isPlainKey(event, "escape") && toolsActive && (armedTool || selectedDrawingId)) {
+      consume();
       setArmedTool(null);
       setSelectedDrawingId(null);
       return;
     }
-    if (isPlainKey(event, "escape") && legendKeyboardIndex !== null && !scene?.cursorDate) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (isPlainKey(event, "escape") && legendKeysActive && legendKeyboardIndex !== null && !clearableCursor) {
+      consume();
       setLegendKeyboardIndex(null);
       return;
     }
     const interaction = resolveCompositeChartInteraction(event);
     if (!interaction) return;
+    const cursorInteraction = interaction === "cursor-left"
+      || interaction === "cursor-right"
+      || interaction === "clear-cursor";
+    if (!cursorInteraction && !toolsActive) return;
     if (
-      (interaction === "clear-cursor" && !scene?.cursorDate)
+      (interaction === "clear-cursor" && !clearableCursor)
       || ((interaction === "arm-measure"
         || interaction === "arm-zoom"
         || interaction === "arm-line"
         || interaction === "arm-pencil") && !scene)
-      || (interaction === "delete-drawing" && drawings.length === 0)
+      || (interaction === "delete-drawing" && !canDeleteDrawing)
       || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
-      || ((interaction === "cursor-left" || interaction === "cursor-right") && !scene)
+      // A read-only chart leaves the arrows to a focused tab strip in its pane;
+      // a chart you pan and draw on keeps them, with h/l for the tabs.
+      || ((interaction === "cursor-left" || interaction === "cursor-right") && (!scene || (arrowsClaimed && !navigable)))
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
         || interaction === "pan-left"
@@ -2136,8 +2376,7 @@ export function CompositeChart({
     ) {
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
+    consume();
     switch (interaction) {
       case "arm-measure":
       case "arm-zoom":
@@ -2165,6 +2404,10 @@ export function CompositeChart({
         );
         keyboardCursorDateRef.current = nextDate;
         updateCursor(nextDate);
+        if (nextDate && keyboardPlacement) {
+          const time = nextDate.getTime();
+          setKeyboardPlacement((current) => current && moveKeyboardPlacement(current, { time }));
+        }
         return;
       }
       case "pan-left":
@@ -2182,7 +2425,96 @@ export function CompositeChart({
       case "zoom-out":
         zoomViewport(1 / COMPOSITE_ZOOM_STEP_FACTOR);
     }
-  }, { enabled: focused && interactive && navigable });
+  }, { enabled: keyboardActive, scope: keyboardId });
+
+  // The keys a mode adds show where they act: Enter with a tool in hand, Space
+  // on a legend entry. Everything else the chart answers is in the pane menu.
+  // Footer and menu entries outlive the render that registered them, so they
+  // call through to this render's actions.
+  const chartActions = {
+    start: startKeyboardPlacement,
+    finish: finishKeyboardPlacement,
+    toggleLegend: toggleLegendEntry,
+    stepLegend,
+    stepDrawing,
+    removeDrawing,
+    cycleColour: () => pickDrawColor(nextDrawingColor(drawColor)),
+    reset: resetViewport,
+    arm: (tool: ChartToolKind) => {
+      onActivate?.();
+      armTool(tool);
+    },
+  };
+  const chartActionsRef = useRef(chartActions);
+  chartActionsRef.current = chartActions;
+  const armedHints = armedTool ? KEYBOARD_TOOL_HINTS[armedTool] : null;
+  const placing = !!keyboardPlacement;
+  const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
+  const resettable = !!activeUserViewport;
+  usePaneFooter(keyboardId, () => {
+    if (!keyboardActive || !scene) return null;
+    const hints: PaneHint[] = [];
+    if (toolsActive && armedHints) {
+      hints.push(placing
+        ? { id: "chart-tool", key: "Enter", label: armedHints.finish, title: armedHints.finishTitle, onPress: () => chartActionsRef.current.finish() }
+        : { id: "chart-tool", key: "Enter", label: armedHints.start, title: armedHints.startTitle, onPress: () => chartActionsRef.current.start() });
+    }
+    if (legendKeysActive && legendEntryToggleable) {
+      hints.push({
+        id: "chart-series",
+        key: "Space",
+        label: legendEntryVisible ? "hide" : "show",
+        title: legendEntryVisible ? "Hide Series" : "Show Series",
+        onPress: () => chartActionsRef.current.toggleLegend(),
+      });
+    }
+    const menu: ContextMenuItem[] = [];
+    if (toolsActive) {
+      for (const tool of CHART_TOOL_MENU) {
+        menu.push({
+          id: `chart-tool-${tool.kind}`,
+          label: tool.label,
+          accelerator: tool.accelerator,
+          checked: armedTool === tool.kind,
+          onSelect: () => chartActionsRef.current.arm(tool.kind),
+        });
+      }
+      if (drawingKeysActive) {
+        menu.push({ id: "chart-drawing-next", label: "Next Drawing", accelerator: "]", onSelect: () => chartActionsRef.current.stepDrawing(1) });
+      }
+      if (canDeleteDrawing) {
+        menu.push({ id: "chart-drawing-delete", label: "Delete Drawing", accelerator: "Backspace", onSelect: () => chartActionsRef.current.removeDrawing() });
+      }
+      if (isDrawingTool(armedTool) || selectedDrawingId) {
+        menu.push({
+          id: "chart-drawing-colour",
+          label: "Drawing Colour",
+          accelerator: "c",
+          onSelect: () => chartActionsRef.current.cycleColour(),
+        });
+      }
+      if (resettable) menu.push({ id: "chart-reset", label: "Reset Zoom", accelerator: "0", onSelect: () => chartActionsRef.current.reset() });
+    }
+    if (legendKeysActive && anyLegendToggleable && !drawingKeysActive) {
+      menu.push({ id: "chart-series-next", label: "Next Series", accelerator: "]", onSelect: () => chartActionsRef.current.stepLegend(1) });
+    }
+    return { order: 10, hints, menu };
+  }, [
+    armedHints,
+    anyLegendToggleable,
+    armedTool,
+    canDeleteDrawing,
+    drawingKeysActive,
+    keyboardActive,
+    legendEntryToggleable,
+    legendEntryVisible,
+    legendKeysActive,
+    placing,
+    resettable,
+    !!scene,
+    selectedDrawingId,
+    toolsActive,
+  ]);
 
   const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
   const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
@@ -2270,7 +2602,7 @@ export function CompositeChart({
     ? [{
       ratio: toolSpan.startXRatio,
       label: formatCompositeTimeAxisDate(
-        new Date(unprojectCompositeTimestamp(scene.timeScale, toolSpan.startXRatio)),
+        new Date(toolSpan.startTime),
         scene.startTime,
         scene.endTime,
       ),
@@ -2357,6 +2689,8 @@ export function CompositeChart({
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}
           onToolSpanChange={setToolSpan}
+          keyboardToolDrag={keyboardToolDrag?.panelId === panel.id ? keyboardToolDrag : null}
+          onPointerPress={cancelKeyboardPlacement}
           showTextFallback={showTextFallback}
         />
       ))}

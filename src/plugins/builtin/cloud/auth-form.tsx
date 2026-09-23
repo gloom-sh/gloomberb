@@ -5,11 +5,12 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
+import { matchesKeyChord, parseKeyChord } from "../../../app/keybindings";
 import { Button, Spinner, TextField } from "../../../components";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { useDialogKeyboard } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import {
@@ -27,6 +28,18 @@ export const AUTH_FIELD_WIDTH = 42;
 type AuthField = "email" | "password";
 
 type ResetState = "idle" | "sending" | "sent";
+
+/**
+ * The form's secondary actions. A field always has the keyboard here, so each
+ * takes a Control chord that no field uses for editing, shown on its button.
+ * Control on every host, like the other in-form chords (Ctrl+S save).
+ */
+const SWITCH_MODE_KEY = "Ctrl+L";
+const RESET_PASSWORD_KEY = "Ctrl+R";
+const REVEAL_PASSWORD_KEY = "Ctrl+O";
+const SWITCH_MODE_CHORD = parseKeyChord(SWITCH_MODE_KEY)!;
+const RESET_PASSWORD_CHORD = parseKeyChord(RESET_PASSWORD_KEY)!;
+const REVEAL_PASSWORD_CHORD = parseKeyChord(REVEAL_PASSWORD_KEY)!;
 
 export interface AuthFormProps {
   initialMode: AccountMode;
@@ -64,6 +77,18 @@ export function AuthForm({
   const [submitError, setSubmitError] = useState<AccountSubmitError | null>(null);
   const [resetState, setResetState] = useState<ResetState>("idle");
   const attemptRef = useRef(0);
+  const emailInputRef = useRef<InputRenderable>(null);
+  const passwordInputRef = useRef<InputRenderable>(null);
+
+  /**
+   * Moves the keyboard to a field. Focusing directly as well as through the
+   * `focused` prop brings it back when a clicked button holds the focus and
+   * the field is already the active one.
+   */
+  const focusField = useCallback((field: AuthField) => {
+    setActiveField(field);
+    if (!submitting) (field === "email" ? emailInputRef : passwordInputRef).current?.focus?.();
+  }, [submitting]);
 
   const clearErrors = useCallback(() => {
     setValidationError(null);
@@ -139,6 +164,11 @@ export function AuthForm({
   }, [clearErrors, email, mode, onSignedIn, password, submitting]);
 
   const submitField = useCallback(() => {
+    // The email already has an account: Enter carries it over to log in.
+    if (submitError?.kind === "switch-to-login" && !submitting) {
+      switchMode("login");
+      return;
+    }
     const advance = advanceAccountField({
       mode,
       email: email.trim(),
@@ -155,7 +185,7 @@ export function AuthForm({
       return;
     }
     submit();
-  }, [activeField, email, mode, password, submit]);
+  }, [activeField, email, mode, password, submit, submitError, submitting, switchMode]);
 
   useDialogKeyboard((event) => {
     if (event.name === "escape") {
@@ -164,12 +194,31 @@ export function AuthForm({
       onEscape();
       return;
     }
-    const forward = isPlainKey(event, "tab") || (!event.targetEditable && isPlainKey(event, "down", "j"));
-    const backward = !event.targetEditable && isPlainKey(event, "up", "k");
-    if (forward || backward) {
+    const consume = () => {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setActiveField(forward ? "password" : "email");
+    };
+    if (matchesKeyChord(SWITCH_MODE_CHORD, event)) {
+      consume();
+      if (!submitting) switchMode(mode === "login" ? "signup" : "login");
+      return;
+    }
+    if (matchesKeyChord(RESET_PASSWORD_CHORD, event) && mode === "login") {
+      consume();
+      requestReset();
+      return;
+    }
+    if (matchesKeyChord(REVEAL_PASSWORD_CHORD, event)) {
+      consume();
+      setShowPassword((current) => !current);
+      return;
+    }
+    const shiftTab = event.name === "tab" && event.shift && !event.ctrl && !event.alt && !event.meta && !event.super;
+    const forward = isPlainKey(event, "tab") || (!event.targetEditable && isPlainKey(event, "down", "j"));
+    const backward = shiftTab || (!event.targetEditable && isPlainKey(event, "up", "k"));
+    if (forward || backward) {
+      consume();
+      focusField(forward ? "password" : "email");
     }
   }, {
     allowEditable: true,
@@ -186,6 +235,7 @@ export function AuthForm({
         label={t("Email")}
         value={email}
         placeholder="email@example.com"
+        inputRef={emailInputRef}
         focused={activeField === "email" && !submitting}
         width={AUTH_FIELD_WIDTH}
         type="email"
@@ -206,9 +256,18 @@ export function AuthForm({
           >
             {t("Password")}
           </Text>
-          <Button stopPropagation label={showPassword ? t("Hide password") : t("Show password")} displayLabel={showPassword ? t("hide") : t("show")} variant="plain" compact onPress={() => setShowPassword((current) => !current)} />
+          <Button
+            stopPropagation
+            label={showPassword ? t("Hide password") : t("Show password")}
+            displayLabel={showPassword ? t("hide") : t("show")}
+            variant="plain"
+            compact
+            shortcut={REVEAL_PASSWORD_KEY}
+            onPress={() => setShowPassword((current) => !current)}
+          />
         </Box>
         <TextField
+          inputRef={passwordInputRef}
           value={password}
           placeholder={mode === "signup" ? t("At least 8 characters") : t("Your password")}
           focused={activeField === "password" && !submitting}
@@ -229,7 +288,10 @@ export function AuthForm({
         ) : resetState === "sending" ? (
           <Spinner label={t("Sending reset link...")} />
         ) : error ? (
-          <Text fg={colors.negative} wrapText>{error}</Text>
+          <>
+            <Text fg={colors.negative} wrapText>{error}</Text>
+            {switchToLogin ? <Text fg={colors.textMuted} wrapText>{t("Press enter to log in with this email.")}</Text> : null}
+          </>
         ) : resetState === "sent" ? (
           <Text fg={colors.positive} wrapText>
             {tf("Reset link sent to {email}. Check your inbox.", { email: email.trim() })}
@@ -243,6 +305,7 @@ export function AuthForm({
           label={switchToLogin || mode === "signup" ? t("Log in instead") : t("Sign up instead")}
           variant="ghost"
           disabled={submitting}
+          shortcut={SWITCH_MODE_KEY}
           onPress={() => switchMode(mode === "login" ? "signup" : "login")}
         />
         <Button stopPropagation
@@ -258,6 +321,7 @@ export function AuthForm({
             label={t("Forgot password?")}
             variant="plain"
             disabled={submitting || resetState === "sending"}
+            shortcut={RESET_PASSWORD_KEY}
             onPress={requestReset}
           />
         </Box>

@@ -7,7 +7,6 @@ import type {
   ConnectionHealthState,
   ConnectionHealthStatus,
 } from "../../../core/connection-health";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
@@ -179,12 +178,7 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
     });
   }, []);
 
-  useShortcut((event) => {
-    if (!focused || detailOpen || event.name !== "s") return;
-    event.stopPropagation();
-    cycleSort();
-  });
-
+  // The [s]ort hint is the binding: plain s only, and gone while a detail is open.
   usePaneFooter("connections", () => ({
     info: [
       ...(issues > 0 ? [{ id: "issues", parts: [{ text: `${issues} issue${issues === 1 ? "" : "s"}`, tone: "warning" as const }] }] : []),

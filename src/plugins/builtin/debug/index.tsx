@@ -185,18 +185,18 @@ function DebugPane({ focused, width, height }: PaneProps) {
     setSearchFocus((value) => value + 1);
   }, []);
 
+  // e/c/a are footer hints, which bind them exactly (no modifiers), so a copy
+  // chord never clears the log.
   useShortcut((event) => {
-    if (!focused || openId || searching || event.targetEditable || event.ctrl || event.meta) return;
+    if (!focused || openId || searching || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
     if (event.name === "l") { event.preventDefault?.(); levelControl.current?.open(); return; }
     if (event.name === "s") { event.preventDefault?.(); sourceControl.current?.open(); return; }
     // Plain `/` only: Shift+/ is `?`, which opens Help.
     if (isPlainKey(event, "/")) { event.preventDefault?.(); focusSearch(); return; }
-    if (event.name === "e") { exportLogs(); return; }
-    if (event.name === "c") { clearLogs(); return; }
-    if (event.name === "a") { toggleAutoScroll(); return; }
-    // Top and end of the log; G also resumes following new entries.
-    if (event.name === "g" && !event.shift) { jumpTop(); return; }
-    if (event.name === "g" && event.shift) { setAutoScroll(true); return; }
+    // Top and end of the log; G also resumes following new entries. Some
+    // terminals report Shift+G as an uppercase name.
+    if (event.name === "g" && !event.shift) { event.preventDefault?.(); jumpTop(); return; }
+    if (event.name === "G" || (event.name === "g" && event.shift)) { event.preventDefault?.(); setAutoScroll(true); }
   });
 
   usePaneFooter("debug-log", () => ({

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, type InputRenderable, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { isPlainKey } from "../../../utils/keyboard";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
@@ -330,55 +331,54 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       setRenaming(false);
     }, [activeTabId, renameValue, saveQuickNotesIndex]);
 
+    const deleteActiveNote = useCallback(() => {
+      if (activeTabId) void requestRemoveTab(activeTabId);
+    }, [activeTabId, requestRemoveTab]);
+
+    // n, t and d are footer hints, which bind them without modifiers, so the
+    // shell's Ctrl+W or Cmd+N never adds or deletes a note.
     useShortcut((event) => {
       if (!focused) return;
 
       if (renaming) {
-        if (event.name === "enter" || event.name === "return") {
+        if (isPlainKey(event, "enter", "return")) {
+          event.preventDefault();
           commitRename();
           return;
         }
-        if (event.name === "escape") {
+        if (isPlainKey(event, "escape")) {
+          event.preventDefault();
           setRenaming(false);
-          return;
         }
         return;
       }
 
-      const isEnter = event.name === "enter" || event.name === "return";
-      if (isEnter && !editing) {
+      // A note that failed to load stays read-only, as it does for a click.
+      if (isPlainKey(event, "enter", "return") && !editing && !loadError) {
+        event.preventDefault();
         setEditing(true);
         return;
       }
-      if (event.name === "escape" && editing) {
+      if (isPlainKey(event, "escape") && editing) {
+        event.preventDefault();
         setEditing(false);
         return;
       }
-      if (!editing) {
-        if (event.name === "n") {
-          void addTab();
-          return;
-        }
-        if (event.name === "w" && tabs.length > 0) {
-          if (activeTabId) void requestRemoveTab(activeTabId);
-          return;
-        }
-        // Not `r`: that is the app-wide refresh key.
-        if (event.name === "t") {
-          startRename();
-          return;
-        }
-        if ((event.name === "[" || event.name === "]") && tabs.length > 1) {
-          const idx = tabs.findIndex((t) => t.id === activeTabId);
-          if (idx < 0) return;
-          const next = event.name === "]"
-            ? (idx + 1) % tabs.length
-            : (idx - 1 + tabs.length) % tabs.length;
-          saveTab(activeTabId);
-          setActiveTabId(tabs[next]!.id);
-        }
+      if (!editing && isPlainKey(event, "[", "]") && tabs.length > 1) {
+        const idx = tabs.findIndex((t) => t.id === activeTabId);
+        if (idx < 0) return;
+        event.preventDefault();
+        const next = event.name === "]"
+          ? (idx + 1) % tabs.length
+          : (idx - 1 + tabs.length) % tabs.length;
+        saveTab(activeTabId);
+        setActiveTabId(tabs[next]!.id);
       }
     }, { allowEditable: true });
+
+    // Deleting the only note when it is empty just swaps in another empty one,
+    // and a note that failed to load reads as empty, so it would go unconfirmed.
+    const canDelete = !!activeTabId && !loadError && (tabs.length > 1 || noteText.trim().length > 0);
 
     usePaneFooter("quick-notes", () => ({
       info: loadError
@@ -389,10 +389,12 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       hints: editing || renaming
         ? []
         : [
-            { id: "new", key: "n", label: "ew", onPress: () => { void addTab(); } },
-            { id: "title", key: "t", label: "itle", onPress: startRename, disabled: !activeTabId },
+            { id: "new", key: "n", label: "ew", title: "New Note", onPress: () => { void addTab(); } },
+            // Not `r`: that is the app-wide refresh key.
+            { id: "title", key: "t", label: "itle", title: "Rename Note", onPress: startRename, disabled: !activeTabId },
+            { id: "delete", key: "d", label: "elete", title: "Delete Note", onPress: deleteActiveNote, disabled: !canDelete },
           ],
-    }), [activeTab, activeTabId, addTab, editing, loadError, renaming, startRename]);
+    }), [activeTab, activeTabId, addTab, canDelete, deleteActiveNote, editing, loadError, renaming, startRename]);
 
     const noteTabs = tabs.map((tab) => ({
       label: tab.owner.kind === "team" ? `${ownerLabel(tab.owner, teams)} ${tab.title}` : tab.title,
@@ -414,6 +416,8 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       focused: focused && !editing && !renaming,
       closeMode: "active",
       onAdd: () => { void addTab(); },
+      // New, Rename and Delete Note are footer hints, so already in the pane menu.
+      paneMenu: false,
     });
 
     return (
@@ -428,6 +432,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
               variant="pill"
               closeMode="active"
               onAdd={() => { void addTab(); }}
+              paneMenu={false}
               focused={focused && !editing && !renaming}
             />
           </Box>

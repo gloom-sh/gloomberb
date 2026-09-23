@@ -5,6 +5,7 @@ import type { PaneSettingField } from "../types/plugin";
 import type { PluginRegistry } from "../plugins/registry";
 import { isPlainKey } from "../utils/keyboard";
 import { openSelectField, type SelectFieldHandle } from "./ui/select-field";
+import { listCursorMove, stepListCursor } from "./ui/list-view";
 import {
   DesktopPaneSettingsDialogBody,
   DesktopUnavailablePaneSettingsDialog,
@@ -18,7 +19,7 @@ import {
   TuiPaneSettingsDialogBody,
   TuiUnavailablePaneSettingsDialog,
 } from "./pane-settings-dialog/tui";
-import { isSpaceKey } from "./pane-settings-dialog/value";
+import { isPaneSettingDisabled, isSpaceKey, stepPaneSettingSelect } from "./pane-settings-dialog/value";
 
 interface PaneSettingsDialogContentProps extends AlertContext {
   paneId: string;
@@ -35,17 +36,17 @@ export function PaneSettingsDialogContent({
   const dialog = useDialog();
   const isDesktop = useUiHost().kind === "desktop-web";
   const descriptor = pluginRegistry.resolvePaneSettings(paneId);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [hoveredFieldKey, setHoveredFieldKey] = useState<string | null>(null);
+  const fields = descriptor?.settingsDef.fields ?? [];
+  // The cursor steps over action rows that cannot run, as the mouse does.
+  const rows = fields.map((field) => ({ disabled: isPaneSettingDisabled(field) }));
+  const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, stepListCursor(rows, -1, 1)));
   const [, setSettingsRevision] = useState(0);
   const desktopSelectRefs = useRef(new Map<string, SelectFieldHandle>());
 
-  const fields = descriptor?.settingsDef.fields ?? [];
-
   useEffect(() => {
-    if (selectedIndex >= fields.length) {
-      setSelectedIndex(Math.max(0, fields.length - 1));
-    }
+    if (selectedIndex < fields.length) return;
+    const lastEnabled = stepListCursor(rows, fields.length, -1);
+    setSelectedIndex(lastEnabled < fields.length ? lastEnabled : Math.max(0, fields.length - 1));
   }, [fields.length, selectedIndex]);
 
   const applyAndRefresh = async (field: PaneSettingField, value: unknown) => {
@@ -135,12 +136,36 @@ export function PaneSettingsDialogContent({
     });
   };
 
+  /** Left and right change a toggle or step a select in place, the way a settings list does. */
+  const stepField = (field: PaneSettingField | undefined, direction: -1 | 1) => {
+    if (!field || !descriptor) return;
+    const currentValue = descriptor.context.settings[field.key];
+    if (field.type === "toggle") {
+      void applyAndRefresh(field, currentValue !== true).catch(() => {});
+      return;
+    }
+    if (field.type !== "select") return;
+    const value = stepPaneSettingSelect(field, currentValue, direction);
+    if (value !== null) void applyAndRefresh(field, value).catch(() => {});
+  };
+
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) setSelectedIndex((index) => Math.max(0, index - 1));
-    else if (isPlainKey(event, "down", "j")) setSelectedIndex((index) => Math.min(fields.length - 1, index + 1));
-    else if (event.name === "escape") dismiss();
+    const plain = !event.ctrl && !event.meta && !event.alt;
+    // The dialog grows to fit its fields, so a page is the whole list.
+    const move = listCursorMove(event, fields.length);
+    if (move) {
+      event.preventDefault();
+      setSelectedIndex((index) => move(rows, index));
+    } else if (plain && event.name === "tab") {
+      event.preventDefault();
+      setSelectedIndex((index) => stepListCursor(rows, index, event.shift ? -1 : 1, 1, true));
+    } else if (isPlainKey(event, "left", "h", "right", "l")) {
+      event.preventDefault();
+      stepField(fields[selectedIndex], event.name === "left" || event.name === "h" ? -1 : 1);
+    } else if (event.name === "escape") dismiss();
     else if (event.name === "enter" || event.name === "return" || isSpaceKey(event)) {
+      event.preventDefault();
       void openFieldEditor(fields[selectedIndex]).catch(() => {});
     }
   });
@@ -159,12 +184,8 @@ export function PaneSettingsDialogContent({
       dismiss={dismiss}
       fields={fields}
       selectedIndex={selectedIndex}
-      hoveredFieldKey={hoveredFieldKey}
       settings={descriptor.context.settings}
-      onHover={(field, index) => {
-        setSelectedIndex(index);
-        setHoveredFieldKey(field.key);
-      }}
+      onHover={(_field, index) => setSelectedIndex(index)}
       onSelectRef={setDesktopSelectRef}
       onEdit={(field, index) => {
         setSelectedIndex(index);

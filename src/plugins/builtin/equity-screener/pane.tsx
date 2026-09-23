@@ -426,6 +426,7 @@ function EquityScreenView({
     }
   };
   useAutoRefresh(results.updatedAt, results.load);
+  const openQueryControl = () => queryControl.current?.open();
   const hints =
     saveForm || editing !== null
       ? []
@@ -438,6 +439,9 @@ function EquityScreenView({
               onPress: () => setEditing(-1),
               disabled: !fields.data || definition.criteria.length >= 20,
             },
+            ...(fields.data
+              ? [{ id: "currency", key: "c", label: "urrency", onPress: openQueryControl }]
+              : []),
             {
               id: "remove",
               key: "d",
@@ -465,11 +469,16 @@ function EquityScreenView({
               },
             ]
           : [
+              // The ranking metric's menu; the query bar hides while a row is open.
+              ...(data && !opened
+                ? [{ id: "metric", key: "m", label: "etric", onPress: openQueryControl }]
+                : []),
               { id: "save", key: "s", label: "ave screen", onPress: startSave },
               {
                 id: "export",
                 key: "x",
                 label: "port all",
+                title: "Export All",
                 onPress: () => {
                   void exportAll();
                 },
@@ -607,18 +616,14 @@ function EquityScreenView({
       }
       return;
     }
-    if (event.name === "tab" && mode !== "saved" && !opened) {
-      event.preventDefault();
-      queryControl.current?.open();
-      return;
-    }
     if (event.name === "r") {
       event.preventDefault();
       void results.load();
       if (mode === "saved") void saved.reload();
       return;
     }
-    const hint = hints.find(
+    // Hint keys are single unmodified letters.
+    const hint = event.shift || event.alt || event.super ? undefined : hints.find(
       (hint) => hint.key === event.name && !hint.disabled,
     );
     if (hint) {

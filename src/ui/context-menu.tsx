@@ -12,6 +12,7 @@ import {
 import type { TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import { useRendererHost, useUiCapabilities } from "./host";
+import { menuAcceleratorFor, useKeybindings } from "../app/keybindings";
 
 interface ContextMenuEventLike {
   preventDefault?: () => void;
@@ -179,11 +180,15 @@ export function linkContextMenuItems({
   ];
 }
 
-function appContextMenuItems(registry: Pick<PluginRegistry, "openCommandBar"> | null): ContextMenuItem[] {
+function appContextMenuItems(
+  registry: Pick<PluginRegistry, "openCommandBar"> | null,
+  commandBarAccelerator?: string,
+): ContextMenuItem[] {
   return [
     {
       id: "app:command-bar",
       label: "Command Bar",
+      accelerator: commandBarAccelerator,
       onSelect: () => registry?.openCommandBar(),
     },
     {
@@ -285,6 +290,23 @@ export function tickerContextMenuItems({
   return items;
 }
 
+/**
+ * A context's own items, then what plugins add for it: the menu a right-click
+ * shows, for a surface that lists it somewhere else too (the pane menu).
+ */
+export function withPluginContextMenuItems(
+  context: ContextMenuContext,
+  localItems: ContextMenuItem[],
+  registry: Pick<PluginRegistry, "getContextMenuItems"> | null,
+): ContextMenuItem[] {
+  const pluginItems = registry?.getContextMenuItems(context) ?? [];
+  return compactContextMenuItems([
+    ...localItems,
+    ...(localItems.length > 0 && pluginItems.length > 0 ? [contextMenuDivider(`${context.kind}:plugin-divider`)] : []),
+    ...pluginItems,
+  ]);
+}
+
 function translateContextMenuItems(items: ContextMenuItem[]): ContextMenuItem[] {
   return items.map((item) => {
     if (item.type === "divider" || item.type === "role") return item;
@@ -307,6 +329,8 @@ export function ContextMenuProvider({
   const capabilities = useUiCapabilities();
   const rightClickSelectionRef = useRef<RightClickSelectionGesture | null>(null);
   const registry = pluginRegistry ?? getSharedRegistry() ?? null;
+  const keybindings = useKeybindings();
+  const commandBarAccelerator = menuAcceleratorFor(keybindings, "command-bar");
   const nativeSupported = capabilities.nativeContextMenu === true && typeof renderer.showContextMenu === "function";
 
   const handleActionError = useCallback((error: unknown) => {
@@ -317,12 +341,7 @@ export function ContextMenuProvider({
   const showContextMenu = useCallback<ContextMenuController["showContextMenu"]>(async (context, localItems, event) => {
     if (!nativeSupported || !renderer.showContextMenu) return false;
 
-    const pluginItems = registry?.getContextMenuItems(context) ?? [];
-    const items = compactContextMenuItems([
-      ...localItems,
-      ...(localItems.length > 0 && pluginItems.length > 0 ? [contextMenuDivider(`${context.kind}:plugin-divider`)] : []),
-      ...pluginItems,
-    ]);
+    const items = withPluginContextMenuItems(context, localItems, registry);
     if (!hasRunnableContextMenuItem(items)) return false;
 
     event?.preventDefault?.();
@@ -374,7 +393,7 @@ export function ContextMenuProvider({
       if (!selected) {
         void showContextMenu(
           { kind: "app" },
-          appContextMenuItems(registry),
+          appContextMenuItems(registry, commandBarAccelerator),
           event,
         );
         return;
@@ -395,7 +414,7 @@ export function ContextMenuProvider({
       document.removeEventListener("selectstart", handleDocumentSelectStart, true);
       document.removeEventListener("contextmenu", handleDocumentContextMenu, true);
     };
-  }, [nativeSupported, registry, renderer, showContextMenu]);
+  }, [commandBarAccelerator, nativeSupported, registry, renderer, showContextMenu]);
 
   const value = useMemo(() => ({ showContextMenu }), [showContextMenu]);
   return (

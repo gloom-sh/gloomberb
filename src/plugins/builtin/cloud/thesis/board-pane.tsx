@@ -256,12 +256,18 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     if (next) setScopeId(next.collectionId);
   }, [exposure.scope.collectionId, exposure.scopes, setScopeId]);
 
+  // The search bar belongs to the board; weights mode has none to focus.
+  const searchable = mode === "board" && !openId;
+  useEffect(() => {
+    if (searchFocused && !searchable) blurSearch();
+  }, [blurSearch, searchFocused, searchable]);
+
   useShortcut((event) => {
     if (!focused || openId || busy || searchFocused) return;
     if (isPlainKey(event, "n")) void startFor();
     else if (isPlainKey(event, "w")) setMode(mode === "board" ? "weights" : "board");
     else if (isPlainKey(event, "p")) cycleScope(1);
-    else if (isPlainKey(event, "/")) {
+    else if (searchable && isPlainKey(event, "/")) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return;
@@ -375,7 +381,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     ? boardItems.find((item): item is Extract<BoardItem, { kind: "untracked" }> => item.kind === "untracked" && item.id === selectedId)
     : undefined;
   const hints = useMemo<PaneHint[]>(() => [
-    { id: "search", key: "/", label: "search", onPress: focusSearch },
+    ...(mode === "board" ? [{ id: "search", key: "/", label: "search", onPress: focusSearch }] : []),
     { id: "new", key: "n", label: "ew", onPress: () => void startFor() },
     ...(selectedUntracked
       ? [{ id: "start", key: "Enter", label: " start thesis", onPress: () => void startFor(selectedUntracked.row.symbol) }]

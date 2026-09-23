@@ -1,6 +1,6 @@
 import { Box, Text, useUiHost } from "../../../ui";
 import { TextAttributes } from "../../../ui";
-import { useShortcut } from "../../../react/input";
+import { useShortcut, useViewport } from "../../../react/input";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../../../ui/dialog";
 import {
   forwardRef,
@@ -15,9 +15,10 @@ import {
 } from "react";
 import { colors } from "../../../theme/colors";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
-import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { ToggleList } from "../../toggle-list";
 import { Button } from "../button";
+import { listCursorMove } from "../list-view";
 import { Checkbox } from "../checkbox";
 import { DialogFrame } from "../frame";
 import { Popover } from "../popover";
@@ -90,6 +91,24 @@ function isSpaceKey(event: { name?: string; sequence?: string }): boolean {
 function stopMouseEvent(event?: DialogTriggerEvent) {
   event?.stopPropagation?.();
   event?.preventDefault?.();
+}
+
+/** Desktop list rows are this many cells tall. */
+const DESKTOP_ROW_HEIGHT = 1.35;
+/** Terminal rows the dialog spends around its list: frame, title, buttons. */
+const TERMINAL_DIALOG_CHROME_ROWS = 10;
+
+type FocusedNode = { blur?(): void; closest?(selector: string): unknown };
+
+/**
+ * The highlight moved from the keyboard, so Space, Enter and [ ] act on the
+ * list again: a button a click or Tab left focused in the dialog lets go. A
+ * focused row follows the highlight by itself.
+ */
+function releaseFocusOutsideList() {
+  const doc = (globalThis as { document?: { activeElement: FocusedNode | null } }).document;
+  const active = doc?.activeElement;
+  if (active?.closest?.(".gloom-dialog") && !active.closest?.('[role="listbox"]')) active.blur?.();
 }
 
 function matchesShortcut(
@@ -222,9 +241,13 @@ export function MultiSelectDialogContent({
       description: [option.description, orderDescription].filter((entry): entry is string => !!entry).join(" "),
     };
   });
+  const viewport = useViewport();
+  // A short terminal would clip rows under the dialog's edge: the list scrolls
+  // in whatever height is left.
   const listHeight = isDesktopWeb
-    ? Math.min(12, Math.max(5, displayOptions.length * 1.35))
-    : Math.min(12, Math.max(6, toggleItems.length));
+    ? Math.min(12, Math.max(5, displayOptions.length * DESKTOP_ROW_HEIGHT))
+    : Math.max(3, Math.min(12, Math.max(6, toggleItems.length), viewport.height - TERMINAL_DIALOG_CHROME_ROWS));
+  const pageSize = Math.floor(listHeight / (isDesktopWeb ? DESKTOP_ROW_HEIGHT : 1)) - 1;
 
   const applySelectedValues = async (nextValues: string[], nextDisplayValues = displayValues) => {
     const previousValues = selectedValues;
@@ -257,12 +280,10 @@ export function MultiSelectDialogContent({
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) {
-      const nextIndex = Math.max(0, selectedIndex - 1);
-      setSelectedOptionId(displayOptions[nextIndex]?.value ?? selectedOptionId);
-    } else if (isPlainKey(event, "down", "j")) {
-      const nextIndex = Math.min(displayOptions.length - 1, selectedIndex + 1);
-      setSelectedOptionId(displayOptions[nextIndex]?.value ?? selectedOptionId);
+    const move = listCursorMove(event, pageSize);
+    if (move) {
+      if (isDesktopWeb) releaseFocusOutsideList();
+      setSelectedOptionId(displayOptions[move(displayOptions, selectedIndex)]?.value ?? selectedOptionId);
     } else if (isSpaceKey(event)) {
       void toggleOption(selectedOption).catch(() => {});
     } else if (event.name === "[" && ordered) {
@@ -290,7 +311,7 @@ export function MultiSelectDialogContent({
           showSelectedDescription={false}
           rowIdPrefix={idPrefix ? `${idPrefix}:option` : undefined}
           rowGap={isDesktopWeb ? 0 : undefined}
-          rowHeight={isDesktopWeb ? 1.35 : undefined}
+          rowHeight={isDesktopWeb ? DESKTOP_ROW_HEIGHT : undefined}
           surface={isDesktopWeb ? "plain" : undefined}
           onSelect={(index) => setSelectedOptionId(displayOptions[index]?.value ?? selectedOptionId)}
           onToggle={(id) => {
@@ -306,11 +327,11 @@ export function MultiSelectDialogContent({
         >
           {ordered && (
             <>
-              <Button label="Move Up" variant="ghost" disabled={!canMoveUp} onPress={() => { void moveOption("up").catch(() => {}); }} />
-              <Button label="Move Down" variant="ghost" disabled={!canMoveDown} onPress={() => { void moveOption("down").catch(() => {}); }} />
+              <Button label="Move Up" shortcut="[" variant="ghost" disabled={!canMoveUp} onPress={() => { void moveOption("up").catch(() => {}); }} />
+              <Button label="Move Down" shortcut="]" variant="ghost" disabled={!canMoveDown} onPress={() => { void moveOption("down").catch(() => {}); }} />
             </>
           )}
-          <Button label="Done" variant="primary" onPress={dismiss} />
+          <Button label="Done" shortcut="Enter" variant="primary" onPress={dismiss} />
         </Box>
       </Box>
     </DialogFrame>

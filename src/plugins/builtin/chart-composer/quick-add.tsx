@@ -8,9 +8,11 @@ import {
   type InputRenderable,
 } from "../../../ui";
 import { InlineQuickAddRow, ListView, MenuPopover, type ListViewItem } from "../../../components/ui";
+import { usePaneMenuItems } from "../../../components";
 import { getNativeSurfaceManager } from "../../../components/chart/native/surface/manager";
 import { getRenderableCellRect } from "../../../components/chart/native/surface/visibility";
 import { useShortcut } from "../../../react/input";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useAppInputCapture } from "../../../state/app/input-capture";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -300,14 +302,7 @@ export function ChartSeriesQuickAdd({
   useShortcut((event) => {
     if (!focused) return;
     if (!active) {
-      if (
-        event.name === "n"
-        && event.targetEditable !== true
-        && !event.ctrl
-        && !event.meta
-        && !event.super
-        && !event.alt
-      ) {
+      if (isPlainKey(event, "n") && event.targetEditable !== true) {
         event.preventDefault?.();
         event.stopPropagation?.();
         focusInput();
@@ -332,6 +327,13 @@ export function ChartSeriesQuickAdd({
     allowEditable: true,
     enabled: focused && !shortcutBlocked && (shortcutEnabled || active),
   });
+
+  // The legend row shows only its placeholder, so the pane menu is where `n` shows.
+  usePaneMenuItems(`chart-series-quick-add:${quickAddId}`, () => (
+    shortcutEnabled && !active
+      ? [{ id: "add-series", label: "Add Series", accelerator: "n", onSelect: focusInput }]
+      : null
+  ), [active, focusInput, shortcutEnabled]);
 
   const desktop = ui.kind === "desktop-web";
   const quickAddRow = (

@@ -220,9 +220,8 @@ describe("ASKGPane failures", () => {
     expect(frame).toContain("[r]etry");
     expect(requests.filter((entry) => entry === "POST /askg/session")).toHaveLength(1);
 
-    // Escape hands the keyboard back to the pane; `r` inside the composer is
-    // a letter the user is typing.
-    await emitKeypress(setup!, { name: "escape" });
+    // Sending leaves the composer, so the answer's keys work straight away
+    // instead of being typed into the next question.
     await emitKeypress(setup!, { name: "r" });
     await flush();
 

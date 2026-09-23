@@ -1,4 +1,4 @@
-import { Box, ContextMenuProvider, useNativeRenderer, useRendererHost } from "./ui";
+import { Box, ContextMenuProvider, useNativeRenderer, useRendererHost, useUiHost } from "./ui";
 import { ToastViewport, useToastHost } from "./ui/toast";
 import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import {
@@ -383,7 +383,8 @@ function AppInner({
     }
   }, [focusedTickerSymbol]);
 
-  const keybindings = useResolvedKeybindings(state.config.keybindings);
+  const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
+  const keybindings = useResolvedKeybindings(state.config.keybindings, keybindingHost);
   useAppGlobalShortcuts({
     dispatch,
     focusedTickerSymbol,

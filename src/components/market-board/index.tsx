@@ -147,6 +147,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     focused={focused} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: onSelectedIdChange }}
     onActivate={(row) => onOpenIdChange(row.id)} detailOpen={!!open} onBack={() => onOpenIdChange(null)}
     detailTitle={open?.label} detailContent={open ? renderDetail(open) : null}
+    sortable isColumnSortable={(column) => column.id !== "history"}
     sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => {
       if (id !== "history") setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }));
     }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={rootBefore}

@@ -12,9 +12,11 @@ import {
   isCommitShortcut,
   isMoveDownShortcut,
   isMoveUpShortcut,
+  isPlainTab,
+  resolveListJump,
   type RefLike,
 } from "./keyboard-handlers";
-import type { ListScreenState } from "./list/model";
+import type { ListJump, ListScreenState } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
 import type {
   CommandBarFieldValue,
@@ -37,6 +39,7 @@ interface CommandBarKeyboardShortcutArgs {
   ) => string;
   handleMultiSelectMove: (direction: "up" | "down") => void;
   handleMultiSelectToggle: (optionId: string) => void;
+  jumpListSelection: (target: ListJump) => void;
   moveListSelection: (delta: number) => void;
   moveWorkflowFocus: (delta: number) => void;
   nativePaneChrome: boolean;
@@ -72,6 +75,11 @@ export function isTickerSearchToggle(event: KeyEventLike, keybindings: ResolvedK
   ));
 }
 
+/** Screens that type into the header prompt and pick from a list under it. */
+function isListScreenRoute(route: CommandBarRoute | null): boolean {
+  return !route || route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings";
+}
+
 export function useCommandBarKeyboardShortcuts({
   acceptRootShortcutTab,
   acceptSelectedShortcutTab,
@@ -83,6 +91,7 @@ export function useCommandBarKeyboardShortcuts({
   getWorkflowFieldStringValue,
   handleMultiSelectMove,
   handleMultiSelectToggle,
+  jumpListSelection,
   moveListSelection,
   moveWorkflowFocus,
   nativePaneChrome,
@@ -107,6 +116,28 @@ export function useCommandBarKeyboardShortcuts({
       if (event.name === "escape" && !currentRoute && resetAssist()) return;
       dismissCommandBar();
       return;
+    }
+
+    if (isListScreenRoute(currentRoute)) {
+      const jump = resolveListJump(event);
+      if (jump) {
+        consumeShortcutEvent(event);
+        if (themePickerActive) themePickerRef.current?.jump(jump);
+        else jumpListSelection(jump);
+        return;
+      }
+      // The query input keeps the keyboard: Tab completes a command prefix on
+      // the root and walks the list on nested screens, but never moves focus
+      // out of the bar.
+      if (isPlainTab(event)) {
+        consumeShortcutEvent(event);
+        if (currentRoute) {
+          moveListSelection(event.shift ? -1 : 1);
+        } else if (visibleListStateRef.current && !acceptRootShortcutTab()) {
+          acceptSelectedShortcutTab();
+        }
+        return;
+      }
     }
 
     if (handleConfirmRouteShortcut({
@@ -169,13 +200,6 @@ export function useCommandBarKeyboardShortcuts({
 
     const activeListState = visibleListStateRef.current;
     if (!activeListState) return;
-
-    if (!currentRoute && event.name === "tab") {
-      if (acceptRootShortcutTab() || acceptSelectedShortcutTab()) {
-        consumeShortcutEvent(event);
-        return;
-      }
-    }
 
     if (isMoveDownShortcut(event)) {
       consumeShortcutEvent(event);

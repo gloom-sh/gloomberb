@@ -4,6 +4,7 @@ import type { PluginModule } from "../../plugin-module";
 import { BreakingPane } from "./breaking/pane";
 import {
   BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,
+  breakingNewsSnoozeCommand,
   setupBreakingNewsNotifications,
 } from "./breaking/notifications";
 import {
@@ -123,6 +124,7 @@ export const browserNewsWireModule: PluginModule = {
   panes: newsWirePanes,
   paneTemplates: newsWirePaneTemplates,
   setup(ctx) {
+    ctx.registerCommand(breakingNewsSnoozeCommand(ctx));
     disposeBreakingNewsNotifications = setupBreakingNewsNotifications(ctx);
   },
   dispose() {
@@ -177,6 +179,7 @@ export const newsWireModule: PluginModule = {
       },
     });
 
+    ctx.registerCommand(breakingNewsSnoozeCommand(ctx));
     disposeBreakingNewsNotifications = setupBreakingNewsNotifications(ctx);
   },
   dispose() {

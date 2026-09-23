@@ -62,9 +62,9 @@ export function CommandBarWorkflowFieldRow({
   const borderColor = active ? palette.selectedBg : palette.bg;
   const fieldBg = nativePaneChrome ? "transparent" : active ? palette.inputBg : palette.panelBg;
   const useSelectField = nativePaneChrome && field.type === "select";
-  const fieldDescription = getWorkflowFieldDescription(field, active);
+  const fieldDescription = getWorkflowFieldDescription(field);
   const fieldLabel = t(field.label);
-  const translatedFieldDescription = translateWorkflowFieldDescription(fieldDescription);
+  const translatedFieldDescription = fieldDescription ? t(fieldDescription) : null;
   const submitOrMoveNext = () => {
     if (isLastField) {
       void onSubmit(route);
@@ -220,14 +220,6 @@ export function CommandBarWorkflowFieldRow({
       )}
     </Box>
   );
-}
-
-function translateWorkflowFieldDescription(description: string | null): string | null {
-  if (!description) return null;
-  const submitSuffix = " Ctrl+S submits.";
-  return description.endsWith(submitSuffix)
-    ? `${t(description.slice(0, -submitSuffix.length))} ${t(submitSuffix.trim())}`
-    : t(description);
 }
 
 function buildTextareaPreviewLines(value: string, placeholder: string | undefined, queryDisplayWidth: number): string[] {

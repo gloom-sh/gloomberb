@@ -7,6 +7,8 @@ import {
   draftProblem,
   emptyTeamDraft,
   nextFieldId,
+  nextNonTextFieldId,
+  restingFieldId,
   sectionFieldIds,
   setDraftName,
   setDraftShortName,
@@ -75,7 +77,7 @@ describe("keyboard ring", () => {
       "invite-username", "invite-send", "cancel-invitation:inv-1", "new-link", "copy-link:tok", "revoke-link:tok",
     ]);
     expect(sectionFieldIds({ ...base, section: "channels" })).toEqual([
-      "channel-name", "channel-create", "open-channel:team:org-1", "open-channel:team:org-1:trades", "delete-channel:team:org-1:trades",
+      "open-channel:team:org-1", "open-channel:team:org-1:trades", "delete-channel:team:org-1:trades", "channel-name", "channel-create",
     ]);
     expect(sectionFieldIds({ ...base, section: "settings" })).toEqual(["name", "shortName", "accent", "allowMemberInvites", "save", "delete"]);
 
@@ -87,6 +89,18 @@ describe("keyboard ring", () => {
     ]);
     expect(sectionFieldIds({ ...member, section: "settings" })).toEqual(["leave"]);
     expect(sectionFieldIds({ ...base, section: "create", team: null })).toEqual(["name", "shortName", "accent", "create"]);
+  });
+
+  test("an invitation's answers lead the ring, which never rests in a text field outside the create form", () => {
+    const invited = sectionFieldIds({ ...base, section: "create", team: null, receivedInvitationIds: ["inv-9"] });
+    expect(invited.slice(0, 3)).toEqual(["accept:inv-9", "decline:inv-9", "name"]);
+    expect(restingFieldId(invited, true)).toBe("accept:inv-9");
+    expect(restingFieldId(sectionFieldIds({ ...base, section: "create", team: null }), true)).toBe("name");
+    expect(restingFieldId(sectionFieldIds({ ...base, section: "invites" }), false)).toBeNull();
+    expect(restingFieldId(sectionFieldIds({ ...base, section: "members" }), false)).toBe("role:m-2");
+    const settings = sectionFieldIds({ ...base, section: "settings" });
+    expect(nextNonTextFieldId(settings, "name")).toBe("accent");
+    expect(nextNonTextFieldId(settings, "shortName")).toBe("accent");
   });
 
   test("walks the ring in both directions and wraps", () => {

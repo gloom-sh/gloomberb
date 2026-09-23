@@ -4,6 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { useShortcut } from "../../../react/input";
 import { Box, Text } from "../../../ui";
 import { colors } from "../../../theme/colors";
+import { isPlainKey } from "../../../utils/keyboard";
 
 /** Shared continuation after email signup in the terminal and browser. */
 export function CloudVerificationPanel({ onVerified, onContinueFree }: {
@@ -35,22 +36,28 @@ export function CloudVerificationPanel({ onVerified, onContinueFree }: {
     const timer = setTimeout(() => setCooldown(false), 60_000);
     return () => clearTimeout(timer);
   }, [cooldown]);
+  const resend = useCallback(() => {
+    if (sending || cooldown) return;
+    setSending(true);
+    void apiClient.sendVerification().then(() => {
+      setCooldown(true); setStatus("Confirmation link sent. Check your inbox and spam folder.");
+    }).catch((error) => setStatus(error instanceof Error ? error.message : "Couldn't send email. Try again."))
+      .finally(() => setSending(false));
+  }, [cooldown, sending]);
+  // Each button has a key, shown beside its label.
   useShortcut((event) => {
-    if (event.name !== "enter" && event.name !== "return") return;
-    event.preventDefault(); event.stopPropagation(); void check();
+    if (isPlainKey(event, "enter", "return")) void check();
+    else if (isPlainKey(event, "r")) resend();
+    else if (isPlainKey(event, "c")) onContinueFree();
+    else return;
+    event.preventDefault(); event.stopPropagation();
   }, { scope: "cloud-email-verification" });
   return <Box flexDirection="column" gap={1}>
     <Text fg={colors.textDim} wrapText>{status}</Text>
     <Box flexDirection="row" gap={1}>
-      <Button label="I've confirmed" variant="primary" onPress={() => { void check(); }} />
-      <Button label={cooldown ? "Email sent" : "Resend email"} disabled={sending || cooldown} onPress={() => {
-        setSending(true);
-        void apiClient.sendVerification().then(() => {
-          setCooldown(true); setStatus("Confirmation link sent. Check your inbox and spam folder.");
-        }).catch((error) => setStatus(error instanceof Error ? error.message : "Couldn't send email. Try again."))
-          .finally(() => setSending(false));
-      }} />
+      <Button label="I've confirmed" variant="primary" shortcut="Enter" onPress={() => { void check(); }} />
+      <Button label={cooldown ? "Email sent" : "Resend email"} shortcut="r" disabled={sending || cooldown} onPress={resend} />
     </Box>
-    <Button label="Keep using the terminal" variant="ghost" onPress={onContinueFree} />
+    <Button label="Keep using the terminal" variant="ghost" shortcut="c" onPress={onContinueFree} />
   </Box>;
 }

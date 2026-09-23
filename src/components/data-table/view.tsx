@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,7 @@ import type { ScrollBoxRenderable } from "../../ui";
 import { useShortcut } from "../../react/input";
 import { isPlainKeyboardEvent } from "../../utils/keyboard";
 import { DataTable, type DataTableColumn, type DataTableProps } from "../ui";
+import { useDataTableSortMenu } from "./sort-menu";
 import {
   isNextTableRowKey,
   isPreviousTableRowKey,
@@ -26,6 +28,15 @@ import {
 export type DataTableKeyEvent = TableViewKeyEvent;
 
 const DATA_TABLE_SELECTION_COMMIT_DELAY_MS = 150;
+
+/** Shift+Left/Right or Ctrl+Left/Right, with no other modifier. */
+function horizontalScrollDirection(event: DataTableKeyEvent): -1 | 0 | 1 {
+  if (event.name !== "left" && event.name !== "right") return 0;
+  const shiftOnly = event.shift === true && isPlainKeyboardEvent({ ...event, shift: false });
+  const ctrlOnly = event.ctrl === true && isPlainKeyboardEvent({ ...event, ctrl: false });
+  if (!shiftOnly && !ctrlOnly) return 0;
+  return event.name === "left" ? -1 : 1;
+}
 
 export interface DataTableRootKeyContext {
   selectedIndex: number;
@@ -102,12 +113,27 @@ export interface DataTableViewProps<
   syncHeaderScroll?: () => void;
   onBodyScrollActivity?: DataTableProps<T, C>["onBodyScrollActivity"];
   keyboardNavigation?: boolean;
+  /**
+   * Offers "Sort by…" in the pane menu while the table is focused. On by
+   * default for a table whose headers sort (it has `onHeaderClick`); pass
+   * false to leave it out.
+   */
+  sortable?: boolean;
+  /** Leaves columns a header click does not sort (a sparkline) out of "Sort by…". */
+  isColumnSortable?: (column: C) => boolean;
+  /**
+   * Sets the sort outright. Pass it when a header click cycles through an
+   * unsorted state, so "Reverse Sort" flips the direction instead.
+   */
+  onSortChange?: (columnId: string, direction: "asc" | "desc") => void;
   onRootKeyDown?: (
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => boolean | void;
   resetScrollKey?: unknown;
 }
+
+function ignoreHeaderClick(): void {}
 
 export function DataTableView<
   T,
@@ -128,12 +154,24 @@ export function DataTableView<
   syncHeaderScroll,
   onBodyScrollActivity,
   keyboardNavigation = true,
+  sortable,
+  isColumnSortable,
+  onSortChange,
   onRootKeyDown,
   resetScrollKey,
   scrollToIndex,
   scrollToIndexVersion = 0,
   ...tableProps
 }: DataTableViewProps<T, C>) {
+  const onHeaderClick = tableProps.onHeaderClick;
+  useDataTableSortMenu({
+    enabled: focused && keyboardNavigation && !!onHeaderClick && (sortable ?? true),
+    columns: isColumnSortable ? tableProps.columns.filter(isColumnSortable) : tableProps.columns,
+    sortColumnId: tableProps.sortColumnId ?? null,
+    sortDirection: tableProps.sortDirection ?? "asc",
+    onHeaderClick: onHeaderClick ?? ignoreHeaderClick,
+    onSortChange,
+  });
   const {
     effectiveHeaderScrollRef,
     effectiveScrollRef,
@@ -469,10 +507,16 @@ export function DataTableView<
     if (isNavigable && !isNavigable(item, index)) return;
     updateCursorIndex(index, { commit: "none", reason: "activation" });
     commitIndexImmediately(index, "activation");
+    // Enter on a collapsible group header does what clicking it does.
+    const header = tableProps.renderSectionHeader?.(item, index);
+    if (header?.expanded !== undefined && header.onMouseDown) {
+      header.onMouseDown({ preventDefault: () => {}, stopPropagation: () => {} });
+      return;
+    }
     onActivate?.(item, index);
-  }, [commitIndexImmediately, isNavigable, onActivate, tableProps.items, updateCursorIndex]);
+  }, [commitIndexImmediately, isNavigable, onActivate, tableProps.items, tableProps.renderSectionHeader, updateCursorIndex]);
 
-  const selectByOffset = useCallback((offset: -1 | 1) => {
+  const selectByOffset = useCallback((offset: number) => {
     if (!navigableIndices) {
       if (tableProps.items.length === 0) return;
       const selectedIndex = effectiveSelectedIndexRef.current;
@@ -498,6 +542,21 @@ export function DataTableView<
       updateCursorIndex(nextIndex, { commit: "deferred" });
     }
   }, [navigableIndices, tableProps.items.length, updateCursorIndex]);
+
+  /** Home and End jump to the ends, PageUp and PageDown by one screen of rows. */
+  const selectByJump = useCallback((name: string | undefined): boolean => {
+    const total = navigableIndices?.length ?? tableProps.items.length;
+    if (total === 0) return false;
+    if (name === "home" || name === "end") {
+      const edge = name === "home" ? 0 : total - 1;
+      updateCursorIndex(navigableIndices ? navigableIndices[edge]! : edge, { commit: "deferred" });
+      return true;
+    }
+    if (name !== "pageup" && name !== "pagedown") return false;
+    const page = Math.max(1, Math.floor(effectiveScrollRef.current?.viewport?.height ?? 10) - 1);
+    selectByOffset(name === "pageup" ? -page : page);
+    return true;
+  }, [effectiveScrollRef, navigableIndices, selectByOffset, tableProps.items.length, updateCursorIndex]);
 
   const activateSelection = useCallback(() => {
     if (!navigableIndices) {
@@ -542,6 +601,33 @@ export function DataTableView<
     tableProps.onRowContextMenu?.(item, index, event);
   }, [tableProps.onRowContextMenu, updateCursorIndex]);
 
+  // Wide tables scroll their columns on Shift+Left/Right, the way a chart pans,
+  // and on Ctrl+Left/Right where the OS leaves those alone (macOS takes them to
+  // switch Spaces). Plain arrows stay with tabs. Scoped so it runs before a tab
+  // strip in the same pane, which would otherwise read Shift+Left as Left.
+  const horizontalScrollScope = `data-table-columns:${useId()}`;
+  useShortcut((event) => {
+    if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
+    const direction = horizontalScrollDirection(event);
+    if (!direction || tableProps.items.length === 0) return;
+    const body = effectiveScrollRef.current;
+    const viewportWidth = body?.viewport?.width ?? 0;
+    const currentLeft = body?.scrollLeft ?? 0;
+    const maxLeft = Math.max(0, (body?.scrollWidth ?? 0) - viewportWidth);
+    if (!body || viewportWidth <= 0 || maxLeft <= 0) return;
+    // At either edge the key is still the table's, so it never falls through
+    // to switch a tab.
+    stopTableKey(event);
+    const nextLeft = Math.max(0, Math.min(maxLeft,
+      currentLeft + direction * Math.max(1, Math.floor(viewportWidth / 2))));
+    if (nextLeft === currentLeft) return;
+    body.scrollLeft = nextLeft;
+    effectiveSyncHeaderScroll();
+  }, {
+    enabled: focused && keyboardNavigation && tableProps.showHorizontalScrollbar !== false,
+    scope: horizontalScrollScope,
+  });
+
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
     if (!focused || !keyboardNavigation) return;
@@ -549,29 +635,12 @@ export function DataTableView<
     if (onRootKeyDown?.(event, {
       selectedIndex: effectiveSelectedIndexRef.current,
       itemCount: tableProps.items.length,
-    })) return;
-    if (tableProps.items.length === 0) return;
-
-    // Leave plain arrows to tabs and modified text-selection keys to editors.
-    if (event.ctrl && isPlainKeyboardEvent({ ...event, ctrl: false })
-      && !event.targetEditable && tableProps.showHorizontalScrollbar !== false
-      && (event.name === "left" || event.name === "right")) {
-      const body = effectiveScrollRef.current;
-      const viewportWidth = body?.viewport?.width ?? 0;
-      const currentLeft = body?.scrollLeft ?? 0;
-      const maxLeft = Math.max(0, (body?.scrollWidth ?? 0) - viewportWidth);
-      if (body && viewportWidth > 0 && maxLeft > 0) {
-        const direction = event.name === "left" ? -1 : 1;
-        const nextLeft = Math.max(0, Math.min(maxLeft,
-          currentLeft + direction * Math.max(1, Math.floor(viewportWidth / 2))));
-        if (nextLeft !== currentLeft) {
-          body.scrollLeft = nextLeft;
-          effectiveSyncHeaderScroll();
-          stopTableKey(event);
-        }
-      }
+    })) {
+      // Handled: nothing later, such as the footer's hint keys, acts on it again.
+      event.preventDefault();
       return;
     }
+    if (tableProps.items.length === 0) return;
 
     if (isNextTableRowKey(event)) {
       stopTableKey(event);
@@ -588,6 +657,11 @@ export function DataTableView<
     if (isTableActivationKey(event.name)) {
       stopTableKey(event);
       activateSelection();
+      return;
+    }
+
+    if (isPlainKeyboardEvent(event) && !event.targetEditable && selectByJump(event.name)) {
+      stopTableKey(event);
     }
   });
 

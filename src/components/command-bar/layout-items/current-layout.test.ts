@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
+import { cloneLayout, createDefaultConfig, type LayoutConfig, type SavedLayout } from "../../../types/config";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { CommandBarRoute } from "../workflow/types";
 import type { LayoutItemsContext } from "./types";
@@ -111,5 +111,55 @@ describe("buildCurrentLayoutItems", () => {
 
     expect(layouts).toHaveLength(1);
     expect(layouts[0]?.floating).toEqual([]);
+  });
+});
+
+describe("moving the layout tab", () => {
+  // The status bar draws personal tabs together and each team's after them,
+  // so "left" and "right" mean the neighbour in the same group, not in the
+  // saved order.
+  function moveFrom(activeLayoutIndex: number, itemId: "layout-move-left" | "layout-move-right") {
+    const config = createDefaultConfig("/tmp/gloomberb-layout-move-test");
+    const saved = (name: string, teamId?: string): SavedLayout => ({
+      name,
+      layout: cloneLayout(config.layout),
+      ...(teamId
+        ? { origin: { kind: "team" as const, teamId, layoutId: name, revision: 1, contentHash: "", syncedAt: "" } }
+        : {}),
+    });
+    const state = createInitialState({
+      ...config,
+      layouts: [saved("A"), saved("Team", "team-1"), saved("B"), saved("C")],
+      activeLayoutIndex,
+    });
+    const actions: AppAction[] = [];
+    const context: LayoutItemsContext = {
+      ...createLayoutItemsContext({ layouts: [], confirmations: [] }),
+      currentLayout: state.config.layout,
+      dispatch: (action) => { actions.push(action); },
+      state,
+    };
+    const item = buildCurrentLayoutItems(context).find((entry) => entry.id === itemId)!;
+    item.action();
+    const next = actions.reduce(appReducer, state);
+    return { item, names: next.config.layouts.map((layout) => layout.name), active: next.config.activeLayoutIndex };
+  }
+
+  test("trades places with the neighbouring tab of the same group", () => {
+    const left = moveFrom(2, "layout-move-left");
+    expect(left.item).toMatchObject({ disabled: false, right: "2/3" });
+    expect(left.names).toEqual(["B", "A", "Team", "C"]);
+    expect(left.active).toBe(0);
+
+    const right = moveFrom(2, "layout-move-right");
+    expect(right.names).toEqual(["A", "Team", "C", "B"]);
+    expect(right.active).toBe(3);
+  });
+
+  test("stops at the ends of the group", () => {
+    const first = moveFrom(0, "layout-move-left");
+    expect(first.item.disabled).toBe(true);
+    expect(first.names).toEqual(["A", "Team", "B", "C"]);
+    expect(moveFrom(1, "layout-move-right").item.disabled).toBe(true);
   });
 });

@@ -146,6 +146,42 @@ export function sourceDomains(sources: readonly BuildoutSource[] | null | undefi
   ]));
 }
 
+export interface SourceDetailEntry {
+  url: string | null;
+  domain: string | null;
+  title: string | null | undefined;
+  note: string | null | undefined;
+  tier: string | null | undefined;
+}
+
+/** The source lines a site detail draws, each with its link when it has one. */
+export function sourceDetailEntries(sources: readonly BuildoutSource[] | undefined, maxItems: number): SourceDetailEntry[] {
+  return (sources ?? [])
+    .flatMap((source) => {
+      const flatUrl = source.url;
+      const flatTitle = source.title ?? source.snippet ?? source.reasoning;
+      const flat = flatUrl || flatTitle
+        ? [{
+          url: flatUrl ?? null,
+          domain: source.domain ?? domainFromUrl(flatUrl) ?? null,
+          title: flatTitle,
+          note: source.reasoning ?? source.snippet,
+          tier: source.tier,
+        }]
+        : [];
+      const citations = (source.citations ?? []).map((citation) => ({
+        url: citation.url ?? null,
+        domain: domainFromUrl(citation.url) ?? null,
+        title: citation.title ?? citation.excerpts?.[0] ?? null,
+        note: citation.excerpts?.[0] ?? null,
+        tier: source.tier,
+      }));
+      return [...flat, ...citations];
+    })
+    .filter((entry) => textOrNull(entry.domain ?? entry.title ?? entry.note) != null)
+    .slice(0, maxItems);
+}
+
 export function intelSourceDomains(update: BuildoutUpdate) {
   return uniqueStrings([
     ...sourceDomains(update.contextSources),

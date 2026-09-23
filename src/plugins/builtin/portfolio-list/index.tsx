@@ -1,7 +1,6 @@
 import type { PaneTemplateContext, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { PortfolioListPane } from "./pane";
-import { shouldToggleCashMarginDrawer } from "./header";
 import {
   buildPortfolioPaneSettingsDef,
   getPortfolioPaneSettings,
@@ -13,8 +12,6 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../shared/live-streaming";
-
-export { shouldToggleCashMarginDrawer };
 
 function resolveCollectionIdForKind(context: PaneTemplateContext, kind: "portfolio" | "watchlist"): string | null {
   if (context.activeCollectionId) {

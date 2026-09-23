@@ -4,6 +4,35 @@ import { t, tf } from "../../../i18n";
 import { ExternalLink, type ListViewItem } from "../../ui";
 import { getBrokerLabel } from "./utils";
 
+/** Opens the setup link below the steps; the wizard binds it. */
+export const BROKER_GUIDE_KEY = "o";
+
+const IBKR_FLEX_GUIDE_URL = "https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm";
+const IBKR_GATEWAY_DOWNLOAD_URL = "https://www.interactivebrokers.com/en/trading/ibgateway-stable.php";
+
+/** The link the setup step shows for this broker and connection mode, if any. */
+export function brokerSetupGuideUrl(
+  brokerId: string,
+  brokerValues: Record<string, Record<string, string>>,
+): string | null {
+  if (brokerId !== "ibkr") return null;
+  return brokerValues[brokerId]?.connectionMode === "gateway" ? IBKR_GATEWAY_DOWNLOAD_URL : IBKR_FLEX_GUIDE_URL;
+}
+
+/** The link with its key after it, the way a button shows its shortcut. */
+function GuideLink({ url }: { url: string }) {
+  return (
+    <Box flexDirection="row" minWidth={0}>
+      <Box flexShrink={1} minWidth={0} overflow="hidden">
+        <ExternalLink url={url} />
+      </Box>
+      <Box flexShrink={0} height={1}>
+        <Text fg={colors.textMuted}>{` ${BROKER_GUIDE_KEY}`}</Text>
+      </Box>
+    </Box>
+  );
+}
+
 export function BrokerSetupPanel({
   choices,
   selectedBrokerId,
@@ -39,7 +68,7 @@ export function BrokerSetupPanel({
             <Text fg={colors.textDim}>{t("4. Under ")}<Underline><Span fg={colors.text}>{t("Reports > Settings")}</Span></Underline>{t(", generate a ")}<Strong><Span fg={colors.text}>{t("Flex Web Service Token")}</Span></Strong></Text>
           </Box>
           <Box height={desktop ? 2 : 1} />
-          <ExternalLink url="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" />
+          <GuideLink url={IBKR_FLEX_GUIDE_URL} />
         </>
       )}
 
@@ -71,7 +100,7 @@ export function BrokerSetupPanel({
             <Text fg={colors.textDim}>{t("4. Keep it running while using Gloomberb")}</Text>
           </Box>
           <Box height={desktop ? 2 : 1} />
-          <ExternalLink url="https://www.interactivebrokers.com/en/trading/ibgateway-stable.php" />
+          <GuideLink url={IBKR_GATEWAY_DOWNLOAD_URL} />
         </>
       )}
 

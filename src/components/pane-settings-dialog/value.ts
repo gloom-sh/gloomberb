@@ -5,6 +5,11 @@ export function isSpaceKey(event: { name?: string; sequence?: string }): boolean
   return event.name === "space" || event.name === " " || event.sequence === " ";
 }
 
+/** An action row that cannot run now: the mouse ignores it and the cursor steps over it. */
+export function isPaneSettingDisabled(field: PaneSettingField): boolean {
+  return field.type === "action" && field.disabled === true;
+}
+
 export function summarizePaneSettingValue(field: PaneSettingField, value: unknown): string {
   switch (field.type) {
     case "action":
@@ -36,4 +41,21 @@ export function coerceSelectedPaneSettingValues(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
+}
+
+/**
+ * The option one step from the current value, wrapping at the ends. An unset
+ * value steps onto the first or last option.
+ */
+export function stepPaneSettingSelect(
+  field: Extract<PaneSettingField, { type: "select" }>,
+  value: unknown,
+  direction: -1 | 1,
+): string | null {
+  const options = field.options;
+  if (options.length === 0) return null;
+  const index = options.findIndex((option) => option.value === value);
+  if (index < 0) return (direction > 0 ? options[0] : options[options.length - 1])!.value;
+  const next = options[(index + direction + options.length) % options.length]!;
+  return next.value === value ? null : next.value;
 }

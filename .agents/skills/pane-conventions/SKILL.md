@@ -273,11 +273,22 @@ more of what is loaded" uses the same helper.
   `renderCell` stable (read data through refs) and pass `getRowVersion`, so
   one symbol's tick redraws one row.
 - Everything interactive works by mouse and keyboard through the kit.
-  Pane-local keys are single unmodified letters declared as hints. Reserved:
-  `j`/`k`/arrows move, Enter opens, Esc/Backspace back, `r` refresh, `!`
-  warnings, `o` open source, Tab next field, `h`/`l` tabs, Ctrl+P command
-  bar. Table keys go through `onRootKeyDown` and `onDetailKeyDown`; global
-  shortcuts through `registerShortcut` so Help lists them.
+  Pane-local keys are single unmodified letters declared as hints, and a
+  hint is the binding: the footer presses it while the pane is focused, so
+  do not bind a hinted key again (if a handler must, it calls
+  `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
+  opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
+  warnings, `o` open source, `/` search, `.` pane menu, Tab next pane or
+  field, `h`/`l` tabs, `?` help, `` ` `` ticker search, `q` quit (terminal),
+  `u` install update, `$` Pro upgrade, Ctrl+P command bar. Table keys go through `onRootKeyDown` and
+  `onDetailKeyDown` (return `true` when handled); global shortcuts through
+  `registerShortcut` so Help lists them.
+- The pane menu (`.`, Shift+F10, the `...` button) is where the keyboard
+  finds everything: it lists the footer hints with their keys, what kit
+  controls add (table sort, query-bar filters, tab add/close/move, empty-state
+  actions), quick settings and the pane actions. An action with no key of its
+  own goes there with `usePaneMenuItems`, never in a body button row. Set a
+  hint's `title` when its key is not the action's first letter.
 - One component renders in the terminal, the desktop app and the web. Import
   only `gloomberb/ui`, `gloomberb/components`, `gloomberb/react`; detect the
   target with `getCurrentPluginTarget()`, not `window` or `location`. Never
@@ -291,7 +302,7 @@ more of what is loaded" uses the same helper.
 ## 9. Checklist for a new pane or tab
 
 1. The title is the only place the pane names itself; the body starts with the header zone (query bar, figures) or content.
-2. Every pane action is a footer hint with a key and works by mouse; no button row in the body.
+2. Every pane action is a footer hint with a key (or a `usePaneMenuItems` entry) and works by mouse; no button row in the body; nothing is mouse-only.
 3. Footer info is changing state only: no labels, counts, generic hints, `r`.
 4. Warnings via `usePaneNoticeFooter`; blocking states via `PaneStatusBody`/`EmptyState`; refresh failures keep the last data.
 5. Lists use the kit tables; details open in the stack, keyed by a stable id, persisted with `usePluginPaneState`.

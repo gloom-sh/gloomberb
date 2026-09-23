@@ -5,7 +5,7 @@ import { ExternalLinkText } from "../../../../components/ui/external-link";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
-import { domainFromUrl, text, textOrNull, tickerSymbol, truncate } from "../format";
+import { sourceDetailEntries, text, textOrNull, tickerSymbol, truncate } from "../format";
 import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
 
 export type InlineTickerCatalog = Record<string, InlineTickerCatalogEntry>;
@@ -127,31 +127,7 @@ export function SourceDetailLines({
   width: number;
   maxItems?: number;
 }) {
-  const entries = (sources ?? [])
-    .flatMap((source) => {
-      const flatUrl = source.url;
-      const flatTitle = source.title ?? source.snippet ?? source.reasoning;
-      const flat = flatUrl || flatTitle
-        ? [{
-          url: flatUrl ?? null,
-          domain: source.domain ?? domainFromUrl(flatUrl) ?? null,
-          title: flatTitle,
-          note: source.reasoning ?? source.snippet,
-          tier: source.tier,
-        }]
-        : [];
-      const citations = (source.citations ?? []).map((citation) => ({
-        url: citation.url ?? null,
-        domain: domainFromUrl(citation.url) ?? null,
-        title: citation.title ?? citation.excerpts?.[0] ?? null,
-        note: citation.excerpts?.[0] ?? null,
-        tier: source.tier,
-      }));
-      return [...flat, ...citations];
-    })
-    .filter((entry) => textOrNull(entry.domain ?? entry.title ?? entry.note) != null)
-    .slice(0, maxItems);
-
+  const entries = sourceDetailEntries(sources, maxItems);
   if (entries.length === 0) return null;
   return (
     <Box marginTop={1} flexDirection="column" width={width}>

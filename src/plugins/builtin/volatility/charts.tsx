@@ -10,7 +10,7 @@ import type { FredVolatilityHistory, VolatilityBoardRow, VolatilityCurve } from 
 
 interface ChartSize { width: number; height: number }
 
-export function VolatilityCurveChart({ curve, width, height }: ChartSize & { curve: VolatilityCurve }) {
+export function VolatilityCurveChart({ curve, width, height, focused = false }: ChartSize & { curve: VolatilityCurve; focused?: boolean }) {
   const colors = useThemeColors();
   const model = useMemo(() => volatilityCurveChartModel(curve.points), [curve.points]);
   const palette = resolveChartPalette(colors);
@@ -22,13 +22,13 @@ export function VolatilityCurveChart({ curve, width, height }: ChartSize & { cur
   return <StaticChartSurface points={model.points} overlays={observations} calendarSpaced
     width={width} height={height} colors={{ ...palette, lineColor }}
     yAxisLabel="IV %" yAxisColor={colors.textDim} formatYAxisValue={(value) => value.toFixed(1)}
-    xAxisTicks={model.ticks} formatXAxisCursorValue={model.formatCursor} />;
+    xAxisTicks={model.ticks} formatXAxisCursorValue={model.formatCursor} focused={focused} />;
 }
 
 const HISTORY_PANELS = [{ id: "vol", height: 2 }, { id: "ratio", height: 1 }];
 
 /** VIX 30D and 3M over the 3M/30D ratio on one date axis, with the flat line at 1.00. */
-export function VolatilityHistoryChart({ fred, width, height }: ChartSize & { fred: FredVolatilityHistory }) {
+export function VolatilityHistoryChart({ fred, width, height, focused = false }: ChartSize & { fred: FredVolatilityHistory; focused?: boolean }) {
   const colors = useThemeColors();
   const palette = resolveChartPalette(colors);
   const ratioColor = fred.termState === "inverted" ? colors.warning : palette.lineColor;
@@ -41,17 +41,17 @@ export function VolatilityHistoryChart({ fred, width, height }: ChartSize & { fr
     return <EmptyState title="VIX history unavailable." />;
   }
   return <CompositeChart series={series} legendSeries={legendSeries} panels={HISTORY_PANELS} width={width} height={height}
-    navigable={false} showLegend showTimeAxis remoteKind="vix-history"
+    focused={focused} navigable={false} showLegend showTimeAxis remoteKind="vix-history"
     formatValue={(value, entry) => entry.unitGroup === "ratio" ? value.toFixed(2) : formatCompositeSeriesValue(value, entry)}
     formatAxisValue={(value, domain) => domain.unitGroup === "ratio" ? value.toFixed(2) : `${value.toFixed(0)}%`}
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
       textDim: palette.axisColor, negative: colors.negative }} />;
 }
 
-export function VolatilityIndexHistoryChart({ row, width, height }: ChartSize & { row: VolatilityBoardRow }) {
+export function VolatilityIndexHistoryChart({ row, width, height, focused = false }: ChartSize & { row: VolatilityBoardRow; focused?: boolean }) {
   const colors = useThemeColors();
   const points = useMemo(() => volatilityIndexHistoryPoints(row.history, row.missingDates), [row.history, row.missingDates]);
   if (!points.some((point) => Number.isFinite(point.close))) return <EmptyState title="Index history unavailable." />;
   return <StaticChartSurface points={points} calendarSpaced showTimeAxis width={width} height={height}
-    colors={resolveChartPalette(colors, "neutral")} formatYAxisValue={(value) => value.toFixed(1)} />;
+    colors={resolveChartPalette(colors, "neutral")} formatYAxisValue={(value) => value.toFixed(1)} focused={focused} />;
 }

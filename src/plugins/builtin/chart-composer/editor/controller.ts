@@ -328,6 +328,10 @@ export function useSeriesEditorController({
     setError(null);
   };
 
+  const moveQuickAddSelection = (delta: -1 | 1) => {
+    setQuickAddSelection((current) => clampIndex(current + delta, quickAddSuggestions.length));
+  };
+
   const submitQuickAdd = () => {
     addCatalogSuggestion(quickAddSuggestions[clampIndex(quickAddSelection, quickAddSuggestions.length)]);
   };
@@ -480,11 +484,11 @@ export function useSeriesEditorController({
       if (isPlainKey(event, "up")) {
         event.stopPropagation();
         event.preventDefault();
-        setQuickAddSelection((current) => clampIndex(current - 1, quickAddSuggestions.length));
+        moveQuickAddSelection(-1);
       } else if (isPlainKey(event, "down")) {
         event.stopPropagation();
         event.preventDefault();
-        setQuickAddSelection((current) => clampIndex(current + 1, quickAddSuggestions.length));
+        moveQuickAddSelection(1);
       } else if (event.name === "enter" || event.name === "return") {
         event.stopPropagation();
         event.preventDefault();
@@ -629,6 +633,7 @@ export function useSeriesEditorController({
     items,
     keyboardFocus,
     moveKeyboardFocus,
+    moveQuickAddSelection,
     quickAddActive,
     quickAddItems,
     quickAddLoading,

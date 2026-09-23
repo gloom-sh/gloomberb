@@ -18,6 +18,7 @@ import { clipToDisplayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
+import { useInResearchTab } from "../ticker-detail/research-tab-keys";
 import {
   displayDate,
   formatHolderOwnershipPercent,
@@ -305,6 +306,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   const tabsInHeader = usePaneHeaderTabs({ tabs: VIEW_TABS, activeValue: viewMode, onSelect: selectView, focused });
+  // As a research tab, h/l move between research tabs; `s` switches the view.
+  const inResearchTab = useInResearchTab();
 
   // Both views share one status; the treemap must not claim "no chartable
   // values" while the request is still in flight or the pane has no ticker.
@@ -330,6 +333,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
             compact
             variant="bare"
             focused={focused}
+            keyboardNavigation={!inResearchTab}
           />
         </Box>
       )}

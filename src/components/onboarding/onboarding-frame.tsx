@@ -141,7 +141,8 @@ export function OnboardingCoach({
         top={2}
         right={2}
         zIndex={90}
-        width="min(392px, calc(100vw - 32px))"
+        // Wide enough for the primary action and its key on one line.
+        width="min(432px, calc(100vw - 32px))"
         flexDirection="column"
         backgroundColor={blendHex(colors.panel, colors.bg, 0.12)}
         style={{
@@ -299,6 +300,7 @@ export function OnboardingHeader({
   available,
   onNavigate,
   onDismiss,
+  dismissShortcut,
   dismissing = false,
   dismissDisabled = false,
   showDismiss = true,
@@ -307,6 +309,8 @@ export function OnboardingHeader({
   available?: Partial<Record<OnboardingSectionId, boolean>>;
   onNavigate?: (section: OnboardingSectionId) => void;
   onDismiss: () => void;
+  /** The key the wizard binds to Skip setup, shown on the button. */
+  dismissShortcut?: string;
   dismissing?: boolean;
   dismissDisabled?: boolean;
   showDismiss?: boolean;
@@ -328,7 +332,7 @@ export function OnboardingHeader({
             label={dismissing ? "Closing..." : "Skip setup"}
             variant="ghost"
             disabled={dismissing || dismissDisabled}
-            shortcut="F10"
+            shortcut={dismissShortcut}
             onPress={onDismiss}
           />
         ) : null}
@@ -362,6 +366,8 @@ export function OnboardingHeader({
               flexGrow={1}
               minWidth={0}
               data-gloom-interactive={clickable ? "true" : undefined}
+              // The wizard jumps to a section on its digit too.
+              title={clickable ? `${section.label} (${index + 1})` : undefined}
               onMouseDown={clickable ? () => onNavigate?.(section.id) : undefined}
               style={{ gap: 6, cursor: clickable ? "pointer" : "default" }}
             >
@@ -380,6 +386,7 @@ export function OnboardingHeader({
             variant="plain"
             height={1}
             disabled={dismissing || dismissDisabled}
+            shortcut={dismissShortcut}
             onPress={onDismiss}
           />
         </Box>

@@ -267,16 +267,27 @@ describe("ChatContent channel sidebar", () => {
     expect(folded).not.toContain("equities");
     expect(folded).toContain("@bob");
 
-    // Keyboard navigation walks the same list the sidebar draws, so arrows
-    // must never land on a row inside a folded section.
-    await emitKeypress({ name: "left", sequence: "[D" });
-    await emitKeypress({ name: "down", sequence: "[B" });
-    await emitKeypress({ name: "up", sequence: "[A" });
+    // Keyboard navigation walks the same list the sidebar draws, headers
+    // included, so arrows must never land on a row inside a folded section.
+    // The open channel is folded away, so the cursor starts on its header.
+    await emitKeypress({ name: "left", sequence: "\u001b[D" });
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "j", sequence: "j" });
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
       await setup().renderOnce();
     });
     expect(selected.length).toBeGreaterThan(0);
+    expect(selected.every((channelId) => channelId.startsWith("dm:"))).toBe(true);
+
+    // Back up to the folded header, where Enter unfolds it in place.
+    await emitKeypress({ name: "k", sequence: "k" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await flushFrame();
+    const unfolded = setup().captureCharFrame();
+    expect(unfolded).toContain("▾ Channels");
+    expect(unfolded).toContain("equities");
     expect(selected.every((channelId) => channelId.startsWith("dm:"))).toBe(true);
   });
 

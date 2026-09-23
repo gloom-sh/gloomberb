@@ -5,10 +5,12 @@ import {
   Box,
   ScrollBox,
   Text,
+  useUiHost,
   type InputRenderable,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
+import { formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { Button, Spinner } from "../../ui";
 import type { SelectFieldHandle } from "../../ui/select-field";
 import {
@@ -58,6 +60,8 @@ export function CommandBarWorkflowBody({
 }: CommandBarWorkflowBodyProps) {
   const palette = useCommandBarPalette(nativePaneChrome);
   const visibleFields = getVisibleWorkflowFields(route.fields, route.values);
+  // Submits from any field (keyboard-handlers.ts), so it sits on the button.
+  const submitShortcut = formatPrimaryShortcut("S", undefined, getShortcutDisplayMode(useUiHost().kind));
 
   useEffect(() => {
     if (!nativePaneChrome) return;
@@ -122,7 +126,13 @@ export function CommandBarWorkflowBody({
       )}
       {!nativePaneChrome && <Box flexGrow={1} />}
       <Box flexDirection="row" gap={1} justifyContent={visibleFields.some((field) => field.type === "textarea") ? "flex-end" : "flex-start"}>
-        <Button label={t(route.submitLabel)} variant="primary" onPress={() => { void onSubmit(route); }} disabled={route.pending} />
+        <Button
+          label={t(route.submitLabel)}
+          variant="primary"
+          shortcut={submitShortcut}
+          onPress={() => { void onSubmit(route); }}
+          disabled={route.pending}
+        />
       </Box>
     </>
   );

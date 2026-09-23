@@ -577,9 +577,10 @@ function ChartComposerSurface({
   });
 
   // Footer registrations compare presentation, so their callbacks must read current actions.
-  const currentActionsRef = useRef({ openSeriesEditor, shareChart });
-  currentActionsRef.current = { openSeriesEditor, shareChart };
+  const currentActionsRef = useRef({ openSeriesEditor, openResolutionPicker, shareChart });
+  currentActionsRef.current = { openSeriesEditor, openResolutionPicker, shareChart };
   const footerSeries = useCallback(() => { void currentActionsRef.current.openSeriesEditor(); }, []);
+  const footerResolution = useCallback(() => { void currentActionsRef.current.openResolutionPicker(); }, []);
   const footerShare = useCallback(() => { currentActionsRef.current.shareChart(); }, []);
   const openIndicators = useCallback((event?: PaneFooterPressEvent) => {
     indicatorsDialogRef.current?.open(footerAnchorPoint(event));
@@ -596,9 +597,10 @@ function ChartComposerSurface({
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
+      { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       ...(publicSharing ? [{ id: "share", key: "y", label: " share", onPress: footerShare }] : []),
     ],
-  }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, publicSharing, footerShare]);
+  }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, publicSharing, footerShare]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {

@@ -9,15 +9,25 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { Button, QueryBar, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
+import { QueryBar, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems, type PaneFooterSegment, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../../ui";
+import {
+  Box,
+  ScrollBox,
+  Text,
+  TextAttributes,
+  useRendererHost,
+  useUiCapabilities,
+  type BoxRenderable,
+  type ScrollBoxRenderable,
+} from "../../../../ui";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { chatController } from "../../chat/controller";
 import { SignInWall } from "../auth-actions";
+import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../shared/plan-access";
 import {
@@ -40,7 +50,10 @@ import {
   draftFromTeam,
   draftProblem,
   emptyTeamDraft,
+  isTextFieldId,
   nextFieldId,
+  nextNonTextFieldId,
+  restingFieldId,
   sectionFieldIds,
   type TeamDraft,
 } from "./pane-model";
@@ -58,7 +71,7 @@ import {
   MembersSection,
   SettingsSection,
 } from "./pane-sections";
-import { Muted, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
+import { Muted, PaneButton, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
 import { teamStore } from "./store";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
@@ -161,8 +174,9 @@ function InvitationBanner({
         {`${userHandle(invitation.inviter)} invited you · ${describeMemberCount(invitation.team.memberCount)} · ${describeExpiry(invitation.expiresAt)}`}
       </Text>
       <Box flexGrow={1} />
-      <Button label={busy ? "Joining…" : "Accept"} variant="primary" compact disabled={busy} stopPropagation onPress={onAccept} />
-      <Button label="Decline" variant="ghost" compact disabled={busy} stopPropagation onPress={onDecline} />
+      {/* In the keyboard ring, ahead of the section below. */}
+      <PaneButton id={`accept:${invitation.id}`} label={busy ? "Joining…" : "Accept"} variant="primary" compact disabled={busy} onPress={onAccept} />
+      <PaneButton id={`decline:${invitation.id}`} label="Decline" variant="ghost" compact disabled={busy} onPress={onDecline} />
     </Box>
   );
 }
@@ -272,11 +286,13 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     linkTokens: details.links.map((entry) => entry.token),
     channelIds: channels.map((entry) => entry.id),
     selfUserId,
-  }), [channels, details.invitations, details.links, details.members, section, selfUserId, showCreate, team]);
+    receivedInvitationIds: snapshot.invitations.map((entry) => entry.id),
+  }), [channels, details.invitations, details.links, details.members, section, selfUserId, showCreate, snapshot.invitations, team]);
   useEffect(() => {
-    if (activeField && !fieldIds.includes(activeField)) setActiveFieldState(fieldIds[0] ?? null);
-    if (!activeField && fieldIds.length > 0) setActiveFieldState(fieldIds[0]!);
-  }, [activeField, fieldIds]);
+    if (activeField && fieldIds.includes(activeField)) return;
+    const resting = restingFieldId(fieldIds, showCreate);
+    if (resting !== activeField) setActiveFieldState(resting);
+  }, [activeField, fieldIds, showCreate]);
   const setActiveField = useCallback((id: string) => setActiveFieldState(id), []);
   const register = useCallback((id: string, action: (() => void) | null) => {
     if (action) actions.current.set(id, action);
@@ -285,10 +301,22 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       if (actions.current.get(id) === action) actions.current.delete(id);
     };
   }, []);
+  const nodes = useRef(new Map<string, BoxRenderable>());
+  const registerNode = useCallback((id: string, node: BoxRenderable | null) => {
+    if (node) nodes.current.set(id, node);
+    else nodes.current.delete(id);
+  }, []);
   const focus = useMemo<TeamPaneFocus>(
-    () => ({ activeField, setActiveField, focused, register }),
-    [activeField, focused, register, setActiveField],
+    () => ({ activeField, setActiveField, focused, register, registerNode }),
+    [activeField, focused, register, registerNode, setActiveField],
   );
+  // The ring can walk past the rows on screen in a larger team. The invitation
+  // banners sit above the scrolling body, so they never move it.
+  const bodyScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  useEffect(() => {
+    if (!activeField || activeField.startsWith("accept:") || activeField.startsWith("decline:")) return;
+    return afterLayout(() => revealInScrollBox(bodyScrollRef.current, nodes.current.get(activeField) ?? null));
+  }, [activeField]);
 
   // Each result is a toast, and the last one stays in the footer until the
   // next action or view change.
@@ -421,29 +449,66 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     return { tone: "info", text: `Declined ${invitation.team.name}.` };
   }), [run]);
 
+  // The team strip is a row of tabs no key reaches (1-4 pick the section), so
+  // [ and ] step through teams, from the create form too.
+  const cycleTeam = useCallback((delta: number) => {
+    const teams = snapshot.teams;
+    if (teams.length === 0) return;
+    const index = showCreate ? -1 : teams.findIndex((entry) => entry.id === team?.id);
+    const next = index < 0
+      ? teams[delta > 0 ? 0 : teams.length - 1]
+      : teams[(index + delta + teams.length) % teams.length];
+    if (!next || (next.id === team?.id && !showCreate)) return;
+    setCreating(false);
+    setTeamId(next.id);
+    setMessage(null);
+  }, [showCreate, snapshot.teams, team?.id]);
+  const canCycleTeams = snapshot.teams.length > (showCreate ? 0 : 1);
+
   useShortcut((event) => {
-    if (!focused) return;
-    if (event.ctrl && event.name === "s" && !showCreate && section === "settings") {
+    const consume = () => {
       event.preventDefault?.();
       event.stopPropagation?.();
+    };
+    if (event.ctrl && event.name === "s" && !showCreate && section === "settings") {
+      consume();
       saveSettings();
       return;
     }
-    if (isPlainKey(event, "tab") || (!event.targetEditable && isPlainKey(event, "down", "j"))) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
+    if (isPlainKey(event, "escape")) {
+      if (showCreate && snapshot.teams.length > 0) {
+        consume();
+        setCreating(false);
+      } else if (isTextFieldId(activeField)) {
+        // Leaves the field for the control after it, so letters are keys again.
+        consume();
+        setActiveFieldState(nextNonTextFieldId(fieldIds, activeField));
+      }
+      return;
+    }
+    const tab = event.name === "tab" && !event.ctrl && !event.meta && !event.alt;
+    if (tab) {
+      // Tab walks the ring and, past either end, moves on to the next pane as
+      // it does everywhere else, so the pane never traps the keyboard.
+      const index = activeField ? fieldIds.indexOf(activeField) : -1;
+      const next = event.shift ? (index > 0 ? fieldIds[index - 1] : undefined) : fieldIds[index + 1];
+      if (!next) return;
+      consume();
+      setActiveFieldState(next);
+      return;
+    }
+    if (!event.targetEditable && isPlainKey(event, "down", "j")) {
+      consume();
       setActiveFieldState((current) => nextFieldId(fieldIds, current, 1));
       return;
     }
-    if ((event.shift && event.name === "tab") || (!event.targetEditable && isPlainKey(event, "up", "k"))) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
+    if (!event.targetEditable && isPlainKey(event, "up", "k")) {
+      consume();
       setActiveFieldState((current) => nextFieldId(fieldIds, current, -1));
       return;
     }
     if (activeField === "accent" && isPlainKey(event, "left", "right", "h", "l")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
+      consume();
       const delta = event.name === "left" || event.name === "h" ? -1 : 1;
       if (showCreate) setCreateDraft((current) => ({ ...current, accentColor: cycleAccent(current.accentColor, delta) }));
       else setDraft((current) => ({ ...current, accentColor: cycleAccent(current.accentColor, delta) }));
@@ -452,23 +517,30 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (!event.targetEditable && activeField && isPlainKey(event, "enter", "return", "space")) {
       const action = actions.current.get(activeField);
       if (action) {
-        event.preventDefault?.();
-        event.stopPropagation?.();
+        consume();
         action();
       }
+      return;
+    }
+    if (!event.targetEditable && canCycleTeams && isPlainKey(event, "[", "]")) {
+      consume();
+      cycleTeam(event.name === "[" ? -1 : 1);
       return;
     }
     if (!event.targetEditable && !showCreate && isPlainKey(event, "1", "2", "3", "4")) {
       const target = TEAM_PANE_SECTIONS[Number(event.name) - 1];
       if (target) {
-        event.preventDefault?.();
-        event.stopPropagation?.();
+        consume();
         setSection(target.value);
       }
     }
-    // "before": the app cycles panes on Tab in the normal phase; inside this
-    // pane Tab walks the ring instead, like the composer and quick-add do.
-  }, { allowEditable: true, phase: "before" });
+    // Scoped in "before", so the ring sees Tab ahead of the app's pane cycling.
+  }, { allowEditable: true, phase: "before", scope: "team-pane:ring", enabled: focused });
+
+  usePaneMenuItems("team-pane:teams", () => (canCycleTeams ? [
+    { id: "team-previous", label: "Previous Team", accelerator: "[", onSelect: () => cycleTeam(-1) },
+    { id: "team-next", label: "Next Team", accelerator: "]", onSelect: () => cycleTeam(1) },
+  ] : null), [canCycleTeams, cycleTeam]);
 
   const hints = useMemo<PaneHint[]>(() => {
     if (!signedIn) return [];
@@ -505,14 +577,6 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     ],
     hints,
   }), [busy, details.loading, hints, result]);
-
-  useShortcut((event) => {
-    if (!focused || !showCreate || snapshot.teams.length === 0) return;
-    if (isPlainKey(event, "escape")) {
-      event.preventDefault?.();
-      setCreating(false);
-    }
-  }, { allowEditable: true });
 
   const teamTabs = useMemo(() => [
     ...snapshot.teams.map((entry) => ({
@@ -610,6 +674,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
 
         {/* The desktop section bar is taller than a cell, so the body takes what is left. */}
         <ScrollBox
+          ref={bodyScrollRef}
           {...(nativePaneChrome ? { flexGrow: 1, flexBasis: 0, minHeight: 0 } : { height: bodyHeight })}
           scrollY
           focusable={false}

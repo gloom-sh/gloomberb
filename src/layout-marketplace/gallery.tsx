@@ -71,6 +71,10 @@ export interface LayoutGalleryController {
   duplicateLayout: (entry: GalleryEntry) => void;
   deleteLayout: (entry: GalleryEntry) => void;
   canDelete: boolean;
+  /** Saved layouts in total, filtered or not, so a move knows the last position. */
+  layoutCount: number;
+  /** Moves an owned layout one place, which is also its tab and its Cmd/Ctrl+digit. */
+  moveLayout: (entry: GalleryEntry, delta: -1 | 1) => void;
   close: () => void;
   panes: PluginRegistry["panes"];
   missingPaneIds: (layout: LayoutConfig) => string[];
@@ -141,6 +145,13 @@ export function LayoutMarketplaceGallery({
     if (onClose) onClose();
     else pluginRegistry.hidePane("layout-marketplace");
   }, [onClose, pluginRegistry]);
+
+  // A new search puts the cursor back on its best match.
+  const changeQuery = useCallback((next: string) => {
+    if (next === query) return;
+    setQuery(next);
+    setSelectedId(null);
+  }, [query]);
 
   const activate = useCallback((entry: GalleryEntry) => {
     if (entry.kind === "community" || (entry.kind === "team" && entry.index === null)) {
@@ -446,6 +457,15 @@ export function LayoutMarketplaceGallery({
     pluginRegistry.notify({ body: `Layout "${entry.name}" deleted`, type: "success" });
   }, [dialog, dispatch, layouts.length, pluginRegistry]);
 
+  const moveLayout = useCallback((entry: GalleryEntry, delta: -1 | 1) => {
+    if (entry.index === null) return;
+    const toIndex = entry.index + delta;
+    if (toIndex < 0 || toIndex >= layouts.length) return;
+    dispatch({ type: "REORDER_LAYOUT", fromIndex: entry.index, toIndex });
+    // Owned ids follow the position, so the cursor moves with the layout.
+    setSelectedId(`owned:${toIndex}`);
+  }, [dispatch, layouts.length]);
+
   const copyLink = useCallback((entry: GalleryEntry) => {
     if (!entry.marketplaceId) return;
     void renderer.copyText(publicMarketplaceLayoutUrl(entry.marketplaceId)).then(() => {
@@ -503,19 +523,24 @@ export function LayoutMarketplaceGallery({
   }, [activeIndex, currentLayout, currentPaneState, dialog, discover, layouts, panes, pluginRegistry, renderer, requestSignIn, signedIn]);
 
   const search = useGallerySearch();
+  // Unscoped, like the view's keys: the pane menu opened over the gallery
+  // takes Esc first and closes itself, not the gallery.
   useShortcut((event) => {
     if (event.name !== "escape") return;
     event.preventDefault();
     event.stopPropagation();
-    // Leaving the search field is the first Escape; the gallery closes on the next.
-    if (search.active) search.blur();
-    else if (detailId) setDetailId(null);
+    // Leaving the search field is the first Escape, and it clears the search
+    // as the kit search does; the gallery closes on the next.
+    if (search.active) {
+      changeQuery("");
+      search.blur();
+    } else if (detailId) setDetailId(null);
     else close();
-  }, { enabled: focused && !dialogOpen, phase: "before", allowEditable: true, scope: "layout-gallery" });
+  }, { enabled: focused && !dialogOpen, phase: "before", allowEditable: true });
 
   const controller: LayoutGalleryController = {
     query,
-    setQuery,
+    setQuery: changeQuery,
     owned,
     community,
     entries,
@@ -547,6 +572,8 @@ export function LayoutMarketplaceGallery({
     duplicateLayout,
     deleteLayout,
     canDelete: layouts.length > 1,
+    layoutCount: layouts.length,
+    moveLayout,
     close,
     panes,
     missingPaneIds: (layout) => missingPaneIds(layout, panes),
@@ -609,9 +636,10 @@ function useGallerySearch(): GallerySearchState {
 
 /**
  * The gallery's actions, as footer hints and single keys, for both renderers.
- * They follow the selected entry: your own layouts open, rename, copy, delete
- * and sync with a team; a team layout opens as a linked tab; a community
- * layout is added as a copy or its link copied.
+ * They follow the selected entry: your own layouts open, rename, copy, delete,
+ * move and sync with a team; a team layout opens as a linked tab; a community
+ * layout is added as a copy or its link copied. The footer binds each hint's
+ * key, and the pane menu lists them by their titles.
  */
 function useLayoutGalleryActions({
   controller,
@@ -660,72 +688,95 @@ function useLayoutGalleryActions({
   const unlink = useMemo(() => withSelected((entry, gallery) => {
     if (entry.kind === "owned" && entry.linked) gallery.unlink(entry);
   }), [withSelected]);
+  const moveUp = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned") gallery.moveLayout(entry, -1);
+  }), [withSelected]);
+  const moveDown = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned") gallery.moveLayout(entry, 1);
+  }), [withSelected]);
 
-  const { canDelete, newLayout, publishCurrent, publishing } = controller;
+  const { canDelete, layoutCount, newLayout, publishCurrent, publishing } = controller;
   const teamsAvailable = controller.teamSections.length > 0;
   const kind = selected?.kind ?? null;
   const linked = selected?.kind === "owned" ? selected.linked ?? null : null;
   const openTab = selected?.kind === "team" && selected.index !== null;
+  const ownedIndex = selected?.kind === "owned" ? selected.index : null;
 
   usePaneFooter("layout-marketplace", () => {
     const hints: PaneHint[] = [
-      { id: "search", key: "/", label: "search", onPress: focusSearch },
-      { id: "new", key: "n", label: "ew", onPress: newLayout },
+      { id: "search", key: "/", label: "search", title: "Search Layouts", onPress: focusSearch },
+      { id: "new", key: "n", label: "ew", title: "New Layout", onPress: newLayout },
     ];
     if (kind === "owned") {
       hints.push(
-        { id: "open", key: "o", label: "pen", onPress: open },
+        { id: "open", key: "o", label: "pen", title: "Use Layout", onPress: open },
         // `r` refreshes every pane, so rename takes `e`.
-        { id: "rename", key: "e", label: " rename", onPress: rename },
-        { id: "copy", key: "c", label: "opy", onPress: copy },
-        { id: "delete", key: "d", label: "elete", onPress: remove, disabled: !canDelete },
+        { id: "rename", key: "e", label: " rename", title: "Rename", onPress: rename },
+        { id: "copy", key: "c", label: "opy", title: "Duplicate", onPress: copy },
+        { id: "delete", key: "d", label: "elete", title: "Delete", onPress: remove, disabled: !canDelete },
       );
       if (teamsAvailable) {
-        hints.push({ id: "team", key: "t", label: linked ? "eam publish" : "eam", onPress: publishTeam, disabled: publishing });
+        hints.push({
+          id: "team",
+          key: "t",
+          label: linked ? "eam publish" : "eam",
+          title: linked ? "Publish to Team" : "Publish to Team…",
+          onPress: publishTeam,
+          disabled: publishing,
+        });
       }
       if (linked) {
+        // `u` retries a failed app update, so pulling takes `g`.
         hints.push(
-          { id: "pull", key: "u", label: "pdate", onPress: pull, disabled: publishing || !linked.updateAvailable },
-          { id: "unlink", key: "x", label: " unlink", onPress: unlink },
+          {
+            id: "pull",
+            key: "g",
+            label: linked.updateAvailable ? `et r${linked.updateAvailable}` : "et update",
+            title: linked.updateAvailable ? `Pull r${linked.updateAvailable}` : "Pull",
+            onPress: pull,
+            disabled: publishing || !linked.updateAvailable,
+          },
+          { id: "unlink", key: "x", label: " unlink", title: "Unlink", onPress: unlink },
         );
       }
     } else if (kind === "team") {
-      hints.push({ id: "open-team", key: "a", label: openTab ? " open" : "dd linked tab", onPress: open });
+      hints.push({
+        id: "open-team",
+        key: "a",
+        label: openTab ? " open" : "dd linked tab",
+        title: openTab ? "Open Tab" : "Open as Linked Tab",
+        onPress: open,
+      });
     } else if (kind === "community") {
       hints.push(
-        { id: "add", key: "a", label: "dd layout", onPress: open },
-        { id: "copy-link", key: "c", label: "opy link", onPress: copy },
+        { id: "add", key: "a", label: "dd layout", title: "Add Layout", onPress: open },
+        { id: "copy-link", key: "c", label: "opy link", title: "Copy Link", onPress: copy },
       );
     }
-    hints.push({ id: "publish", key: "p", label: "ublish", onPress: publishCurrent, disabled: publishing });
+    hints.push({ id: "publish", key: "p", label: "ublish", title: "Publish Current", onPress: publishCurrent, disabled: publishing });
+    // Moving a layout moves its tab and its Cmd/Ctrl+digit. The keys are bound
+    // and the pane menu lists them, but the footer is crowded already.
+    const moves = ownedIndex === null ? [] : [
+      { id: "move-up", key: "Shift+K", title: "Move Up", onPress: moveUp, disabled: ownedIndex <= 0 },
+      { id: "move-down", key: "Shift+J", title: "Move Down", onPress: moveDown, disabled: ownedIndex >= layoutCount - 1 },
+    ];
     return {
       info: publishing ? [{ id: "publishing", parts: [{ text: "publishing", tone: "muted" as const }] }] : [],
       hints,
+      keys: moves.map((move): PaneHint => ({ ...move, label: "" })),
+      menu: moves
+        .filter((move) => !move.disabled)
+        .map((move) => ({ id: `layout-gallery:${move.id}`, label: move.title, accelerator: move.key, onSelect: move.onPress })),
     };
-  }, [canDelete, copy, focusSearch, kind, linked, newLayout, open, openTab, publishCurrent, publishTeam, publishing, pull, remove, rename, teamsAvailable, unlink]);
+  }, [canDelete, copy, focusSearch, kind, layoutCount, linked, moveDown, moveUp, newLayout, open, openTab, ownedIndex, publishCurrent, publishTeam, publishing, pull, remove, rename, teamsAvailable, unlink]);
 
+  // The footer binds every hint's key; Enter, which has no hint, opens the entry.
+  // Unscoped, so the pane menu opened over the gallery keeps its own Enter.
   useShortcut((event) => {
     if (event.targetEditable || searchActive) return;
-    const entry = selectedRef.current;
-    const entryKind = entry?.kind ?? null;
-    const entryLinked = entry?.kind === "owned" ? entry.linked ?? null : null;
-    const gallery = controllerRef.current;
-    const run = (action: () => void) => {
-      event.preventDefault();
-      event.stopPropagation();
-      action();
-    };
-    if (isPlainKey(event, "enter", "return") && entry) run(open);
-    else if (isPlainKey(event, "/")) run(focusSearch);
-    else if (isPlainKey(event, "n")) run(gallery.newLayout);
-    else if (isPlainKey(event, "p") && !gallery.publishing) run(gallery.publishCurrent);
-    else if (isPlainKey(event, "o") && entryKind === "owned") run(open);
-    else if (isPlainKey(event, "a") && (entryKind === "community" || entryKind === "team")) run(open);
-    else if (isPlainKey(event, "t") && entryKind === "owned" && gallery.teamSections.length > 0 && !gallery.publishing) run(publishTeam);
-    else if (isPlainKey(event, "u") && entryLinked?.updateAvailable && !gallery.publishing) run(pull);
-    else if (isPlainKey(event, "x") && entryLinked) run(unlink);
-    else if (isPlainKey(event, "e") && entryKind === "owned") run(rename);
-    else if (isPlainKey(event, "c") && (entryKind === "owned" || entryKind === "community")) run(copy);
-    else if (isPlainKey(event, "d") && entryKind === "owned" && gallery.canDelete) run(remove);
-  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
+    if (!isPlainKey(event, "enter", "return") || !selectedRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    open();
+  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before" });
 }

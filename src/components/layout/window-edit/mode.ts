@@ -1,6 +1,7 @@
 import {
   applyDrop,
   bringToFront,
+  floatAtRect,
   getDockLeafLayouts,
   getDockResizeTargets,
   moveFloatingPane,
@@ -10,11 +11,13 @@ import {
   type DockLeafLayout,
   type DockResizeTarget,
   type DropTarget,
+  type FloatingRect,
   type FloatingResizeCorner,
   type LayoutBounds,
 } from "../../../plugins/pane-manager";
 import type { WindowEditMode } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
+import type { SnapGuidePosition } from "../shell/drag";
 
 export type WindowEditDockMovePosition = "left" | "right" | "above" | "below";
 
@@ -38,6 +41,45 @@ export type WindowEditDirection = "left" | "right" | "up" | "down";
 const FLOATING_RESIZE_CORNERS: FloatingResizeCorner[] = ["top-left", "bottom-right"];
 const WINDOW_EDIT_MOVE_STEP = { x: 2, y: 1 };
 const WINDOW_EDIT_FAST_STEP = { x: 10, y: 5 };
+
+/**
+ * What 1-8 snap a window to in move mode, the same places dragging it to an
+ * edge or corner does: the quarters in reading order, then the halves.
+ */
+const WINDOW_EDIT_SNAP_POSITIONS: readonly SnapGuidePosition[] = [
+  "top-left",
+  "top-right",
+  "bottom-left",
+  "bottom-right",
+  "left",
+  "right",
+  "top",
+  "bottom",
+];
+
+export function snapPositionFromWindowEditKey(event: { name?: string; key?: string }): SnapGuidePosition | null {
+  const name = event.name ?? event.key ?? "";
+  return /^[1-8]$/.test(name) ? WINDOW_EDIT_SNAP_POSITIONS[Number(name) - 1] ?? null : null;
+}
+
+/** Floats the window at a snap rect, docked or not, keeping its place in the stack. */
+export function snapWindowEditPane(
+  state: WindowEditState,
+  rect: FloatingRect,
+  bounds: LayoutBounds,
+  dockGeometryOptions: DockGeometryOptions,
+): WindowEditState {
+  if (state.mode !== "move") return state;
+  const floating = state.previewLayout.floating.find((entry) => entry.instanceId === state.paneId);
+  const previewLayout = floatAtRect(state.previewLayout, state.paneId, { ...rect, zIndex: floating?.zIndex });
+  return {
+    ...state,
+    previewLayout,
+    focus: normalizeWindowEditFocus({ kind: "move" }, previewLayout, state.paneId, state.mode, bounds, dockGeometryOptions),
+    dirty: state.dirty || previewLayout !== state.previewLayout,
+    notice: undefined,
+  };
+}
 
 export function directionFromWindowEditKey(event: { name?: string; key?: string }): WindowEditDirection | null {
   const name = (event.name ?? event.key ?? "").toLowerCase();

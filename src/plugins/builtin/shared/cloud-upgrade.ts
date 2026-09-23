@@ -3,9 +3,8 @@ import { apiClient } from "../../../api-client";
 import { recordResearchActivity, researchUpgradeUrl } from "../../../api-client/research-activity";
 import { getCurrentPluginTarget } from "../../current-target";
 import type { PaneFooterSegment, PaneHint } from "../../../components";
-import { tf } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import { useShortcut } from "../../../react/input";
 import { useRendererHost } from "../../../ui";
 import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
@@ -97,11 +96,21 @@ export function useCloudPlanAction(): () => void {
   }, []);
 }
 
+/**
+ * The key for the Pro call to action. Not `u`: that is the app's install-update
+ * key, and one press must not both update and open checkout.
+ */
+export const CLOUD_PLAN_KEY = "$";
+
 export interface CloudAccessFooterOptions {
   /** Compact delay the free tier gets on this pane's data, e.g. "15m" or "12h". */
   delayLabel: string;
   focused: boolean;
-  /** Pane-unique shortcut scope. Omit to render the CTA without a `u` binding. */
+  /**
+   * Set when the pane renders the returned `hint`: the call to action then
+   * takes the {@link CLOUD_PLAN_KEY} key, which the pane footer binds. Omit to
+   * keep the pitch inside `segment` with no key.
+   */
   shortcutScope?: string;
   /** Set false while the pane happens to show data that is not cloud-delayed. */
   degraded?: boolean;
@@ -114,7 +123,7 @@ export interface CloudAccessFooter {
   segment: PaneFooterSegment | null;
   /**
    * The call to action, for the pane to render beside its own shortcuts. Null
-   * whenever no `u` is bound, which leaves the pitch inside `segment`.
+   * without a `shortcutScope`, which leaves the pitch inside `segment`.
    */
   hint: PaneHint | null;
   openUpgrade: () => void;
@@ -129,7 +138,6 @@ export interface CloudAccessFooter {
 export function useCloudAccessFooter({
   delayLabel,
   degraded = true,
-  focused,
   segmentId = "cloud-access",
   shortcutScope,
 }: CloudAccessFooterOptions): CloudAccessFooter {
@@ -140,24 +148,15 @@ export function useCloudAccessFooter({
 
   const showTrial = access.isTrialActive;
   const showUpgrade = !showTrial && !access.hasProAccess && degraded;
-  const bindsShortcut = !!shortcutScope && showUpgrade && focused;
-
-  useShortcut(
-    (event) => {
-      const key = (event.name ?? event.key ?? "").toLowerCase();
-      if (!bindsShortcut || key !== "u") return;
-      event.stopPropagation();
-      event.preventDefault();
-      openUpgrade();
-    },
-    { scope: shortcutScope ?? "cloud-access:upgrade", enabled: bindsShortcut },
-  );
 
   const segment = useMemo<PaneFooterSegment | null>(() => {
     if (showTrial) {
+      const label = t("Manage Pro plan");
       return {
         id: segmentId,
         onPress: openPlan,
+        // The footer binds the key, and the pane menu lists the segment by its label.
+        ...(shortcutScope ? { shortcut: CLOUD_PLAN_KEY, label, title: `${label} (${CLOUD_PLAN_KEY})` } : {}),
         parts: [{
           text: tf("Pro trial · {days}d left", { days: access.trialDaysLeft }),
           tone: "positive",
@@ -169,9 +168,9 @@ export function useCloudAccessFooter({
       id: segmentId,
       onPress: openUpgrade,
       parts: [{
-        // With a `u` bound the pitch is the [u]pgrade hint, so the status says
-        // only what is true of the data. Without one there is nowhere else for
-        // it to go.
+        // With a key the pitch is the upgrade hint, so the status says only
+        // what is true of the data. Without one there is nowhere else for it
+        // to go.
         text: shortcutScope
           ? tf("{delay} delayed", { delay: delayLabel })
           : tf("{delay} delayed · try Pro live", { delay: delayLabel }),
@@ -192,9 +191,9 @@ export function useCloudAccessFooter({
 
   const hint = useMemo<PaneHint | null>(
     () => (shortcutScope && showUpgrade
-      ? { id: `${segmentId}-upgrade`, key: "u", label: "pgrade", onPress: openUpgrade }
+      ? { id: `${segmentId}-upgrade`, key: CLOUD_PLAN_KEY, label: t("upgrade"), title: t("Upgrade to Pro"), onPress: openUpgrade }
       : null),
-    [openUpgrade, segmentId, shortcutScope, showUpgrade],
+    [language, openUpgrade, segmentId, shortcutScope, showUpgrade],
   );
 
   return { access, hint, openUpgrade, segment };

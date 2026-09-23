@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
 import { Notice, Section, SectionHeading, Tabs, usePaneFooter, usePaneHeaderTabs, type PaneHint, type TableSection } from "../../../components";
-import { t } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -49,6 +49,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const actionBadges = (actionId: string) => formatActionChords(keybindings, actionId, shortcutDisplayMode, shortcutPlatform);
   const commandBarBadges = actionBadges("command-bar");
   const tickerSearchBadges = actionBadges("ticker-search");
+  const windowMoveBadges = actionBadges("window-move-mode");
+  const windowResizeBadges = actionBadges("window-resize-mode");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
@@ -84,15 +86,15 @@ function HelpPane({ focused, width, height }: PaneProps) {
   // Each tab's actions. `l` moves between tabs, so layout actions take `a`.
   const tabHints = useMemo<PaneHint[]>(() => {
     if (activeTabId === "basics") {
-      return [{ id: "layout-actions", key: "a", label: " layout actions", onPress: openLayoutActions }];
+      return [{ id: "layout-actions", key: "a", label: " layout actions", title: "Layout Actions", onPress: openLayoutActions }];
     }
     if (activeTabId === "functions") {
-      return [{ id: "plugins", key: "p", label: "lugins", onPress: openPluginManager }];
+      return [{ id: "plugins", key: "p", label: "lugins", title: "Manage Plugins", onPress: openPluginManager }];
     }
     if (activeTabId === "issues") {
       return [
-        { id: "debug-log", key: "d", label: "ebug log", onPress: openDebugLog },
-        { id: "issues", key: "o", label: "pen GitHub issues", onPress: openIssues },
+        { id: "debug-log", key: "d", label: "ebug log", title: "Open Debug Log", onPress: openDebugLog },
+        { id: "issues", key: "o", label: "pen GitHub issues", title: "Open GitHub Issues", onPress: openIssues },
       ];
     }
     return [];
@@ -122,6 +124,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
       entry("upgrade", ["UPGRADE"], "Go Pro for real-time data at gloom.sh/cloud, free for 7 days."),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
+      entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
       entry("run", ["Enter", "Shift+Enter"], "Run the selected result or its secondary action."),
       entry("accept-arg", ["Tab"], "Accept a suggested command argument when one is available."),
       entry("close", ["Esc", ...tickerSearchBadges.filter((badge) => badge === "`" || badge.includes("+"))], "Close the command bar."),
@@ -130,7 +133,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       entry("back", ["Backspace"], "Go back from a nested command screen when the query is empty."),
       entry("toggle", ["Space"], "Toggle command-bar plugin rows, toggles, and multi-select choices."),
       entry("reorder", ["[", "]"], "Reorder ordered multi-select choices."),
-      entry("submit", ["Ctrl+S"], "Submit multiline command forms."),
+      entry("submit", shortcutDisplayMode === "terminal" ? ["Ctrl+S"] : [platformShortcut("S")], "Submit command bar forms from any field."),
     ],
   }], [commandBarBadges, tickerSearchBadges]);
 
@@ -142,23 +145,33 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("activate", ["Enter"], "Open or activate the selected row."),
         entry("tabs", ["Left/Right", "h/l"], "Switch tabs when a tab bar is focused."),
         entry("back", ["Esc", "Backspace"], "Go back from a detail view."),
+        entry("pane-menu", actionBadges("pane-menu"), "Open the focused pane's menu: every action in the pane with its key, sorting, filters, tabs, toggles and the pane actions."),
+        entry("search", ["/"], "Search in the focused pane."),
+        entry("warnings", ["!"], "Open the focused pane's data warnings."),
+        entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
       ],
     },
     {
       label: "Scrolling",
       items: [
-        entry("page", ["PageUp/PageDown"], "Scroll focused pane content by page."),
-        entry("ends", ["Home/End"], "Scroll focused pane content to the start or end."),
+        entry("page", ["PageUp/PageDown"], "Move a table or list a page at a time, or scroll the focused pane."),
+        entry("ends", ["Home/End"], "Jump to the first or last row, or the start or end of the pane."),
+        entry("columns", ["Shift+Left/Right"], "Scroll a wide table's columns."),
       ],
     },
     {
       label: "Charts",
       items: [
         entry("pan", ["Drag", "Scroll"], "Pan the chart through time."),
+        entry("pan-keys", ["a/d", "Shift+Left/Right"], "Pan the focused chart through time."),
+        entry("cursor", ["Left/Right", "Esc"], "Step the focused chart's cursor through its dates, or clear it."),
+        entry("legend", ["[", "]", "Space"], "Pick a legend series and show or hide it."),
         entry("zoom-tool", ["Shift+Z", "Shift+Drag"], "Pick the zoom tool, then drag a time range."),
         entry("ruler", ["Shift+M", "Alt+Drag"], "Pick the ruler, then drag to measure a move."),
         entry("draw", ["Shift+D", "Shift+P"], "Draw a trend line or a freehand shape."),
-        entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the selection."),
+        entry("place", ["Enter", "Arrows"], "With a tool picked, Enter starts it at the cursor, the arrows move its end, and Enter finishes it."),
+        entry("drawings", ["[", "]"], "With a drawing tool picked, pick a drawing."),
+        entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the picked drawing (the last one while a drawing tool is picked)."),
         entry("zoom-pointer", ["Ctrl+Scroll"], "Zoom around the pointer."),
         entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it."),
       ],
@@ -180,6 +193,12 @@ function HelpPane({ focused, width, height }: PaneProps) {
     {
       label: "Window Mode",
       items: [
+        ...(windowMoveBadges.length > 0
+          ? [entry("enter-move", windowMoveBadges, "Enter window mode to move the focused window.")]
+          : []),
+        ...(windowResizeBadges.length > 0
+          ? [entry("enter-resize", windowResizeBadges, "Enter window mode to resize the focused window.")]
+          : []),
         entry("mode", ["m", "r"], "Switch between move and resize."),
         entry("dock", ["d"], "Dock or float the selected window."),
         entry("move", ["Arrows", "h/j/k/l"], "Move, resize, or choose a dock target."),
@@ -188,7 +207,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, pasteBadges]);
+  ], [copyBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {
@@ -227,6 +246,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
             <Section title="Layout Basics">
               <Text fg={colors.text}>{t("Docked panes stay in the saved layout.")}</Text>
               <Text fg={colors.text} wrapText>{t("Floating panes can be dragged by the title bar and resized from the lower-right corner.")}</Text>
+              {windowMoveBadges[0] && windowResizeBadges[0] && (
+                <Text fg={colors.text} wrapText>{tf("From the keyboard, {move} moves the focused window and {resize} resizes it.", { move: windowMoveBadges[0], resize: windowResizeBadges[0] })}</Text>
+              )}
               <Text fg={colors.text} wrapText>{t("Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.")}</Text>
             </Section>
           </>

@@ -20,6 +20,10 @@ export interface ToastHost {
   error(body: string, options?: ToastOptions): string | number | undefined;
   info(body: string, options?: ToastOptions): string | number | undefined;
   dismiss(id: string | number): void;
+  /** Runs the newest visible toast's action, for the keyboard. False when no toast has one. */
+  activateNewest?(): boolean;
+  /** Dismisses the newest visible toast, for the keyboard. False when none is showing. */
+  dismissNewest?(): boolean;
 }
 
 const ToastContext = createContext<ToastHost | null>(null);

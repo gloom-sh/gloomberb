@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { releasePointerFocus } from "../host/focus-scope";
 import type { ReactNode } from "react";
 import type { IconButtonProps, IconName, IconProps } from "../../../../components/ui/icon";
 
@@ -139,7 +140,7 @@ export function WebIconButton({
       aria-pressed={pressed}
       aria-keyshortcuts={shortcut}
       aria-haspopup={hasPopup}
-      title={title ?? label}
+      title={title ?? (shortcut ? `${label} (${shortcut})` : label)}
       disabled={disabled || !onPress}
       data-gloom-interactive={onPress && !disabled ? "true" : undefined}
       data-gloom-role="icon-button"
@@ -150,7 +151,9 @@ export function WebIconButton({
       onClick={(event) => {
         if (stopPropagation) event.stopPropagation();
         if (disabled) return;
-        onPress?.(pressEventFrom(event.currentTarget, event.clientX, event.clientY, event));
+        const target = event.currentTarget;
+        onPress?.(pressEventFrom(target, event.clientX, event.clientY, event));
+        releasePointerFocus(target, event.detail);
       }}
       onKeyDown={(event) => {
         // Same activation as the kit Button: the key is consumed here so a

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type {
   CloudSearchDocType,
   CloudSearchDocument,
@@ -7,6 +7,7 @@ import type {
 } from "../../../api-client";
 import { Button, PaneStatusBody } from "../../../components";
 import { openUrl } from "../../../components/ui/external-link";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
   Box,
@@ -17,6 +18,7 @@ import {
   useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { chunkAttribution, documentBodyWidth } from "./model";
 import { highlightTerms, snippetMatchTerms, type SnippetSegment } from "./snippet";
@@ -172,12 +174,15 @@ export function SearchDocumentView({
   loading,
   error,
   width,
+  focused = false,
 }: {
   hit: CloudSearchHit;
   document: CloudSearchDocument | null;
   loading: boolean;
   error: string | null;
   width: number;
+  /** j and k scroll a line, as in every other reader. */
+  focused?: boolean;
 }) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const { nativePaneChrome } = useUiCapabilities();
@@ -199,6 +204,22 @@ export function SearchDocumentView({
       : layout.matchLine;
     scrollBox.scrollTo(Math.max(0, target - 2));
   }, [layout, nativePaneChrome]);
+
+  const scrollBy = useCallback((delta: number) => {
+    const scrollBox = scrollRef.current;
+    if (!scrollBox?.viewport) return;
+    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
+    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
+  }, []);
+
+  useShortcut((event) => {
+    if (event.defaultPrevented || event.targetEditable) return;
+    const delta = isPlainKey(event, "j") ? 1 : isPlainKey(event, "k") ? -1 : 0;
+    if (!delta) return;
+    event.preventDefault();
+    event.stopPropagation();
+    scrollBy(delta);
+  }, { enabled: focused && !!layout });
 
   if (loading && !document) {
     return (

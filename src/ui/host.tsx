@@ -585,8 +585,19 @@ export function useUiCapabilities(): NonNullable<UiHost["capabilities"]> {
  * hardcoded, so a hint never quotes a key the header does not.
  */
 export function useCommandBarShortcut(): string {
+  return useActionShortcut("command-bar");
+}
+
+/**
+ * The key this host advertises for a keybinding action (`pane-menu`,
+ * `pane-close`, `plugin:<id>`), for tooltips and menus. Empty when unbound.
+ */
+export function useActionShortcut(actionId: string): string {
   const keybindings = useKeybindings();
-  return formatAdvertisedChord(keybindings, "command-bar", getShortcutDisplayMode(useUiHost().kind));
+  // Display only, so a surface rendered outside the host (a toast in a test)
+  // still gets a label rather than an error.
+  const kind = useContext(UiHostContext)?.ui.kind;
+  return formatAdvertisedChord(keybindings, actionId, getShortcutDisplayMode(kind));
 }
 
 export function useRendererHost(): RendererHost {

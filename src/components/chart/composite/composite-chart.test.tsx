@@ -1389,6 +1389,82 @@ describe("CompositeChart", () => {
     expect(Buffer.from(reshaped!.pixels).equals(Buffer.from(drawn!.pixels))).toBe(false);
   });
 
+  test("places a trend line from the keyboard and leaves Backspace to the pane when nothing is picked", async () => {
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    const bitmap = () => Buffer.from((capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array }).pixels);
+    const press = async (name: string, shift = false) => {
+      const event = keyEvent(name, shift);
+      await act(async () => chartShortcut?.(event));
+      await act(async () => testSetup!.renderOnce());
+      return event;
+    };
+    const base = bitmap();
+
+    await press("d", true);
+    // Enter anchors at the newest bar; Left walks the end back along the price.
+    expect((await press("return")).defaultPrevented).toBe(true);
+    await press("left");
+    await press("left");
+    await press("left");
+    expect(testSetup.captureCharFrame()).toContain("Δ -$3.00");
+    await press("return");
+    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    const drawn = bitmap();
+    expect(drawn.equals(base)).toBe(false);
+
+    // Nothing picked and no tool in hand: Backspace is the pane's back key.
+    await press("escape");
+    expect((await press("backspace")).defaultPrevented).toBeFalsy();
+    expect(bitmap().equals(base)).toBe(false);
+
+    // With the line tool, ] picks the drawing and Backspace deletes it.
+    await press("d", true);
+    await press("]");
+    expect((await press("backspace")).defaultPrevented).toBe(true);
+    expect(bitmap().equals(base)).toBe(true);
+  });
+
+  test("steps the cursor of a focused chart that does not navigate", async () => {
+    const cursorChanges: Array<string | null> = [];
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CompositeChart
+          width={60}
+          height={12}
+          focused
+          navigable={false}
+          series={[series("price", "main", "left", "USD", [100, 103, 101])]}
+          panels={[{ id: "main" }]}
+          onCursorDateChange={(date) => cursorChanges.push(date?.toISOString() ?? null)}
+        />
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => chartShortcut?.(keyEvent("left")));
+    expect(cursorChanges).toEqual(["2025-01-03T00:00:00.000Z"]);
+    // Panning stays with charts that navigate, so the key is left alone.
+    const pan = keyEvent("a");
+    await act(async () => chartShortcut?.(pan));
+    expect(pan.defaultPrevented).toBe(false);
+  });
+
   test("disarms a chart tool with escape", async () => {
     testSetup = await testRender(
       <InputHostProvider host={chartInputHost}>

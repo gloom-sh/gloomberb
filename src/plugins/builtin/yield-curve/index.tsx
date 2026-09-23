@@ -5,6 +5,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
@@ -67,16 +68,11 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     setDateFocusToken((token) => token + 1);
   };
 
+  // The [d]ate and [c]urrent hints bind their own keys; Esc in the date field
+  // is the query bar's.
   useShortcut((ev) => {
-    if (!focused || dateActive) return;
-    if (ev.name === "d") {
-      ev.preventDefault();
-      editDate();
-    } else if (ev.name === "r") {
-      void load();
-    } else if (ev.name === "l") {
-      selectDate("");
-    }
+    if (!focused || dateActive || !isPlainKey(ev, "r")) return;
+    void load();
   });
 
   const bp = spreadBasisPoints(points);
@@ -107,7 +103,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     info: error || sourceError ? [] : yieldStatus,
     hints: [
       { id: "date", key: "d", label: "ate", onPress: editDate },
-      ...(requestedDate ? [{ id: "latest", key: "l", label: "atest", onPress: () => selectDate("") }] : []),
+      ...(requestedDate ? [{ id: "latest", key: "c", label: "urrent", title: "Current Curve", onPress: () => selectDate("") }] : []),
     ],
   });
 

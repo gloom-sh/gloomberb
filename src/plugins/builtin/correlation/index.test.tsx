@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, type ReactElement } from "react";
+import { act, useReducer, type ReactElement } from "react";
 import { Box } from "../../../ui";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -30,12 +30,15 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
       symbolsText: "AAPL, MSFT",
     },
   });
-  const state = createInitialState(config);
-  state.focusedPaneId = TEST_PANE_ID;
-  state.tickers = new Map([
-    ["AAPL", makeTicker("AAPL")],
-    ["MSFT", makeTicker("MSFT")],
-  ]);
+  const [state, dispatch] = useReducer(appReducer, undefined, () => {
+    const initial = createInitialState(config);
+    initial.focusedPaneId = TEST_PANE_ID;
+    initial.tickers = new Map([
+      ["AAPL", makeTicker("AAPL")],
+      ["MSFT", makeTicker("MSFT")],
+    ]);
+    return initial;
+  });
 
   const CorrelationPane = correlationModule.panes?.[0]?.component as (props: {
     paneId: string;
@@ -46,7 +49,7 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
   }) => ReactElement;
 
   return (
-    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="market-overview" runtime={runtime}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="market-overview" runtime={runtime}>
       <Box width={60} height={8}>
         <CorrelationPane
           paneId={TEST_PANE_ID}
@@ -120,5 +123,33 @@ describe("correlationModule", () => {
       { symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } },
       { symbol: "MSFT", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } },
     ]);
+  });
+
+  test("Esc puts the ticker list back after an edit instead of emptying it to the defaults", async () => {
+    const wait = (ms: number) => act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      await testSetup!.renderOnce();
+    });
+    await act(async () => {
+      testSetup = await testRender(<CorrelationHarness runtime={createTestPluginRuntime()} />, { width: 60, height: 8 });
+    });
+    await wait(0);
+
+    await emitKeypress(testSetup!, { name: "/", sequence: "/" }, { trackPropagation: true, afterCommit: true });
+    await wait(20);
+    await act(async () => {
+      await testSetup!.mockInput.typeText("X");
+      await testSetup!.renderOnce();
+    });
+    // The field shows the draft, applied once typing pauses.
+    await wait(600);
+    expect(testSetup!.captureCharFrame()).toMatch(/XAAPL|MSFTX/);
+
+    await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" }, { trackPropagation: true, afterCommit: true });
+    await wait(600);
+    const frame = testSetup!.captureCharFrame();
+    expect(frame).toContain("AAPL, MSFT");
+    expect(frame).not.toMatch(/XAAPL|MSFTX/);
+    expect(frame).not.toContain("NVDA");
   });
 });

@@ -68,11 +68,11 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   await openShortcutsTab();
   let text = setup!.captureCharFrame();
   // Sections carry their count, and the actions live in the pane footer.
-  expect(text).toContain("Global Keys (10)");
+  expect(text).toContain("Global Keys (12)");
   expect(text).toContain("KEY");
   expect(text).toContain("Open ticker search directly.");
   expect(text).toContain("[Enter]rebind");
-  expect(text).toContain("[Backspace]unbind");
+  expect(text).toContain("[x]unbind");
 
   // Down to ticker search, then capture.
   await emitKeypress(setup!, { name: "j" });
@@ -99,7 +99,7 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   await frame();
   expect(latestState?.config.keybindings).toBeUndefined();
 
-  await emitKeypress(setup!, { name: "backspace" });
+  await emitKeypress(setup!, { name: "x" });
   await frame();
   expect(latestState?.config.keybindings).toEqual({ actions: { "ticker-search": null } });
   expect(setup!.captureCharFrame()).toContain("unbound");

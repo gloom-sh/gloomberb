@@ -190,22 +190,8 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     }
   }, { enabled: focused && !searchFocused && !!selectedRow });
 
-  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (event.name === "/") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      focusSearch();
-      return true;
-    }
-    if (event.name === "g" && selectedRow) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      chartSelected(selectedRow);
-      return true;
-    }
-    return false;
-  }, [chartSelected, focusSearch, selectedRow]);
-
+  // `/` and `g` are the pane's own plain-key shortcuts above; the table only
+  // hands the cursor up into the search from its first row.
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
@@ -215,8 +201,8 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       focusSearch();
       return true;
     }
-    return handleTableKeyDown(event);
-  }, [focusSearch, handleTableKeyDown]);
+    return false;
+  }, [focusSearch]);
 
   const renderCell = useCallback((
     row: CatalogSeriesRow,

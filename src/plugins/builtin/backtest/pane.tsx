@@ -12,7 +12,6 @@ import {
   usePaneNoticeFooter,
   usePaneTicker,
   type DataTableColumn,
-  type DataTableKeyEvent,
   type SelectControl,
 } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -23,6 +22,7 @@ import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginP
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -115,18 +115,15 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
 
   const edit = () => openPaneSettings(paneId);
   const cycleView = () => setView(view === "summary" ? "trades" : "summary");
-  const handleKey = (event: DataTableKeyEvent | { name?: string; ctrl?: boolean; alt?: boolean; meta?: boolean; preventDefault?: () => void; stopPropagation?: () => void }) => {
-    if (event.ctrl || event.alt || event.meta) return false;
-    if (event.name === "r") void history.reload();
-    else if (event.name === "e") edit();
-    else if (event.name === "v") cycleView();
-    else if (event.name === "tab") strategyControl.current?.open();
-    else return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    return true;
-  };
-  useShortcut((event) => { if (focused && view === "summary") handleKey(event); });
+  const chooseStrategy = () => strategyControl.current?.open();
+  // The footer hints bind e, v and s in both views and every load state; only
+  // the reload is the pane's own key.
+  useShortcut((event) => {
+    if (event.defaultPrevented || !isPlainKey(event, "r")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void history.reload();
+  }, { enabled: focused });
 
   const notices = [identityError, history.error, rules.error, run.error, ...(result?.warnings ?? [])]
     .filter((value): value is string => !!value);
@@ -139,8 +136,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     hints: [
       { id: "edit", key: "e", label: "dit rules", onPress: edit },
       { id: "view", key: "v", label: "iew", onPress: cycleView },
+      ...(symbol ? [{ id: "strategy", key: "s", label: "trategy", onPress: chooseStrategy }] : []),
     ],
-  }), [history.loading, result, view, paneId]);
+  }), [history.loading, result, view, paneId, symbol]);
 
   const tabsInHeader = usePaneHeaderTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused } : null);
   if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
@@ -227,7 +225,6 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             items={[...result.trades].reverse()}
             getItemKey={(trade) => trade.entryDate}
             selection={{ kind: "index", selectedIndex: selectedTrade, onChange: setSelectedTrade }}
-            onRootKeyDown={handleKey}
             sortColumnId={null}
             sortDirection="desc"
             renderCell={(trade, column) => ({

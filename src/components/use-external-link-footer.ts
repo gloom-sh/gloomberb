@@ -1,3 +1,4 @@
+import { isPlainKey } from "../utils/keyboard";
 import { useCallback, useMemo } from "react";
 import { useShortcut } from "../react/input";
 import { useRendererHost } from "../ui";
@@ -46,8 +47,8 @@ export function useExternalLinkFooter({
   }, [rendererHost, url]);
 
   useShortcut((event) => {
-    const key = (event.name ?? event.key ?? "").toLowerCase();
-    if (!focused || !url || key !== "o") return;
+    // A plain `o` only: Cmd/Ctrl+Shift+O pops the pane out.
+    if (!focused || !url || event.targetEditable || !isPlainKey(event, "o")) return;
     event.stopPropagation?.();
     event.preventDefault?.();
     openUrl();

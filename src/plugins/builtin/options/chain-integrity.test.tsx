@@ -3,7 +3,7 @@ import { act } from "react";
 const source = process.env.CHAIN_SOURCE ?? new URL("../../../../", import.meta.url).pathname.replace(/\/$/, "");
 const out = process.env.CHAIN_OUT;
 const { Box } = await import(`${source}/src/ui`);
-const { PaneFooterBar, PaneFooterProvider } = await import(`${source}/src/components/layout/pane/footer`);
+const { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } = await import(`${source}/src/components/layout/pane/footer`);
 const { testRender, takeSavedTextFile } = await import(`${source}/src/renderers/opentui/test-utils`);
 const { exportPaneTable } = await import(`${source}/src/state/pane-table-export-registry`);
 const { MarketDataCoordinator, setSharedMarketDataCoordinator } = await import(`${source}/src/market-data/coordinator`);
@@ -82,7 +82,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     await act(async () => {
         setup = await testRender(<TestPaneProvider state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime}><PaneFooterProvider>{footer => {
             footerParts = footer.info.flatMap(segment => segment.parts);
-            return <Box width={width} height={22} flexDirection="column"><Box height={21}><OptionsView width={width} height={21} focused/></Box><PaneFooterBar footer={footer} focused width={width}/></Box>;
+            return <Box width={width} height={22} flexDirection="column"><Box height={21}><OptionsView width={width} height={21} focused/></Box><PaneFooterBar footer={footer} focused width={width}/><PaneFooterKeys paneId={PANE} footer={footer} focused/></Box>;
         }}</PaneFooterProvider></TestPaneProvider>, { width, height: 22 });
     });
     await settle();
@@ -203,6 +203,16 @@ test("preserves call identity across partial chains, and permits an explicit put
     f.setCalls(true);
     await f.refresh([100]);
     expect((await f.capture("put-after-recovery")).launch.side).toBe("put");
+});
+test("x picks the other contract at the cursor, and moving keeps that side", async () => {
+    const f = await fixture([100, 101, 102]);
+    await f.key("x");
+    const put = await f.capture("keyboard-put");
+    expect(put.launch).toMatchObject({ side: "put", strike: 100 });
+    await f.key("down");
+    expect((await f.capture("keyboard-put-moved")).launch).toMatchObject({ side: "put", strike: 101 });
+    await f.key("x");
+    expect((await f.capture("keyboard-call")).launch).toMatchObject({ side: "call", strike: 101 });
 });
 test("keyboard choice and transient failure retain the same contract through recovery", async () => {
     const f = await fixture([100, 101, 102]);

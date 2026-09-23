@@ -3,11 +3,13 @@ import {
   DataTableStackView,
   DataTableView,
   EmptyState, PaneStatusBody, StatGrid,
+  usePaneMenuItems,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
@@ -227,13 +229,14 @@ export function CdsPane({
     });
   }, []);
 
+  // Refresh answers in every state, including the failed load that mounts no table.
+  useShortcut((event) => {
+    if (!isPlainKey(event, "r")) return;
+    event.preventDefault();
+    load();
+  }, { enabled: focused });
+
   const handleKey = useCallback((event: DataTableKeyEvent, cycle: (step: 1 | -1) => void): boolean => {
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      load();
-      return true;
-    }
     if (isPlainKey(event, "]", "[")) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -241,7 +244,7 @@ export function CdsPane({
       return true;
     }
     return false;
-  }, [load]);
+  }, []);
   const handleIssuerKey = useCallback(
     (event: DataTableKeyEvent) => handleKey(event, cycleIssuerSort),
     [cycleIssuerSort, handleKey],
@@ -250,6 +253,15 @@ export function CdsPane({
     (event: DataTableKeyEvent) => handleKey(event, cycleTradeSort),
     [cycleTradeSort, handleKey],
   );
+  // The pane menu names the sort keys for whichever table is in front.
+  const tradesInFront = !!issuerQuery || (detailOpen && !!selectedSummary);
+  const hasActivity = !!activity;
+  usePaneMenuItems("cds:sort-keys", () => !hasActivity ? null : [
+    { id: "sort-next", label: "Next Sort Column", accelerator: "]",
+      onSelect: () => (tradesInFront ? cycleTradeSort : cycleIssuerSort)(1) },
+    { id: "sort-previous", label: "Previous Sort Column", accelerator: "[",
+      onSelect: () => (tradesInFront ? cycleTradeSort : cycleIssuerSort)(-1) },
+  ], [cycleIssuerSort, cycleTradeSort, hasActivity, tradesInFront]);
 
   const asOfLabel = formatAsOf(activity?.asOf ?? null);
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [

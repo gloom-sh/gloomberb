@@ -3,6 +3,7 @@ import { useEffect } from "react";
 // plugins, and importing the barrel back would make a cycle.
 import type { DataTableKeyEvent } from "../../../components/data-table/view";
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { isPlainKey } from "../../../utils/keyboard";
 
 export function loadingErrorFooterInfo(loading: boolean, error: string | null | undefined): PaneFooterSegment[] {
   return [
@@ -12,7 +13,8 @@ export function loadingErrorFooterInfo(loading: boolean, error: string | null | 
 }
 
 export function handleRefreshKey(event: DataTableKeyEvent, reload: () => void, options: { stopPropagation?: boolean } = {}): boolean {
-  if (event.name !== "r") return false;
+  // A modified r (Shift+R refresh all, CmdOrCtrl+Shift+R resize) belongs to the app.
+  if (!isPlainKey(event, "r")) return false;
   event.preventDefault?.();
   if (options.stopPropagation) event.stopPropagation?.();
   reload();

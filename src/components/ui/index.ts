@@ -54,7 +54,8 @@ export type { BadgeProps, DividerProps, KeyValueRowProps, ProseProps, SectionPro
 export { InlineQuickAddRow } from "./inline-quick-add";
 export type { InlineQuickAddRowProps } from "./inline-quick-add";
 
-export { ExternalLink, ExternalLinkText, openUrl } from "./external-link";
+export { ExternalLink, ExternalLinkText, openUrl, PaneLinkMenu, usePaneLinkMenuEntry } from "./external-link";
+export { ButtonActionScope } from "./action-scope";
 export { RemoteImage } from "./remote-image";
 export { PageStackView } from "./page-stack-view";
 

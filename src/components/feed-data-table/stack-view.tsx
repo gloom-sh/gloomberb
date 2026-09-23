@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { displayWidth, formatTimeAgo } from "../../utils/format";
@@ -8,6 +8,7 @@ import { colors } from "../../theme/colors";
 import { isPlainKey } from "../../utils/keyboard";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
+import { usePaneFooter } from "../layout/pane/footer";
 import type { DataTableRootKeyContext } from "../data-table/view";
 import {
   activeStackIndex,
@@ -16,6 +17,7 @@ import {
   type StackSortPreference,
 } from "../feed-stack-controller";
 import { ExternalLink, type DataTableCell, type DataTableColumn } from "../ui";
+import { PaneLinkMenu } from "../ui/external-link";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { tableColumnWidth } from "../ui/table-layout";
 
@@ -212,7 +214,26 @@ export function FeedDataTableStackView({
     if (!row) return;
     onOpenItem?.(row.item, row.itemIndex);
     setOpenItemId(row.item.id);
-  }, [onOpenItem]);
+  }, [onOpenItem, setOpenItemId]);
+
+  // Reading on: the next or previous item opens in place, and the list cursor
+  // follows it so Back lands on the last one read.
+  const openRowIndex = openItem ? sortedRows.findIndex((row) => row.item.id === openItem.id) : -1;
+  const openAdjacent = useCallback((step: 1 | -1) => {
+    const row = openRowIndex >= 0 ? sortedRows[openRowIndex + step] : undefined;
+    if (!row) return;
+    onSelect(row.itemIndex);
+    openRow(row);
+  }, [onSelect, openRow, openRowIndex, sortedRows]);
+  const detailFooterId = `feed-detail:${useId()}`;
+  usePaneFooter(detailFooterId, () => (focused && openRowIndex >= 0 ? {
+    // After the pane's own hints.
+    order: 1,
+    hints: [
+      { id: "feed-next", key: "n", label: "ext", title: "Next Item", disabled: openRowIndex >= sortedRows.length - 1, onPress: () => openAdjacent(1) },
+      { id: "feed-previous", key: "p", label: "rev", title: "Previous Item", disabled: openRowIndex <= 0, onPress: () => openAdjacent(-1) },
+    ],
+  } : null), [focused, openAdjacent, openRowIndex, sortedRows.length]);
 
   useEffect(() => {
     // A controlled id may name an item that is still loading; the owner
@@ -355,7 +376,7 @@ export function FeedDataTableStackView({
       focused={focused}
       detailOpen={!!openItem}
       onBack={() => setOpenItemId(null)}
-      detailContent={detailContent}
+      detailContent={<PaneLinkMenu>{detailContent}</PaneLinkMenu>}
       detailTitle={openItem ? openItem.detailTitle ?? openItem.title : undefined}
       selection={{
         kind: "index",

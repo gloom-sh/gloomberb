@@ -285,6 +285,27 @@ export function resolveMeasureAxisDomain(
   return panel.axes.left ?? panel.axes.right ?? null;
 }
 
+/**
+ * Value of the series the measure reads, at a time: its last observation at or
+ * before it. A tool placed from the keyboard starts and follows the price here.
+ */
+export function resolveMeasureValueAt(
+  panel: CompositePanelScene,
+  timestamp: number,
+): number | null {
+  const series = panel.series.find((entry) => panel.axes[entry.source.axis]);
+  const points = series?.points ?? [];
+  let low = 0;
+  let high = points.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (points[middle]!.timestamp <= timestamp) low = middle + 1;
+    else high = middle;
+  }
+  const value = points[low - 1]?.value;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export function formatMeasureSpan(spanMs: number): string {
   const span = Math.max(0, Math.round(spanMs));
   if (span < MINUTE_MS) return `${Math.round(span / 1000)}s`;
@@ -356,8 +377,19 @@ export function summarizeZoomSelection(
   drag: ChartToolDrag,
 ): string | null {
   if (!isMeaningfulToolDrag(drag)) return null;
-  const first = unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio);
-  const second = unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio);
+  return summarizeZoomRange(
+    scene,
+    unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio),
+    unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio),
+  );
+}
+
+/** The same preview for two times, in either order. */
+export function summarizeZoomRange(
+  scene: Pick<CompositeChartScene, "startTime" | "endTime">,
+  first: number,
+  second: number,
+): string | null {
   if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
   const start = Math.min(first, second);
   const end = Math.max(first, second);
@@ -387,8 +419,19 @@ export function resolveZoomBoxRange(
   minimumSpanMs: number,
 ): { start: Date; end: Date } | null {
   if (!isMeaningfulToolDrag(drag)) return null;
-  const first = unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio);
-  const second = unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio);
+  return resolveZoomTimeRange(
+    unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio),
+    unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio),
+    minimumSpanMs,
+  );
+}
+
+/** The range between two times, in either order, widened about its centre to the zoom floor. */
+export function resolveZoomTimeRange(
+  first: number,
+  second: number,
+  minimumSpanMs: number,
+): { start: Date; end: Date } | null {
   if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
   const start = Math.min(first, second);
   const end = Math.max(first, second);

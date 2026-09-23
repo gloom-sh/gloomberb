@@ -16,17 +16,20 @@ import {
 } from "./model";
 
 export {
+  paneHintTitle,
   hasPaneFooterContent,
   type CombinedPaneFooter,
   type PaneFooterPressEvent,
   type PaneFooterSegment,
   type PaneHint,
 } from "./model";
+export { getPaneFooter, PaneFooterKeys } from "./keyboard";
 export {
   PaneFooterProvider,
   PaneFooterScope,
   usePaneFooter,
   usePaneHints,
+  usePaneMenuItems,
 } from "./registration";
 
 function footerToneColor(part: PaneFooterPart): string {
@@ -53,9 +56,27 @@ function stopMouseEvent(event?: { stopPropagation?: () => void; preventDefault?:
   event?.preventDefault?.();
 }
 
-function SegmentView({ segment }: { segment: PaneFooterSegment }) {
+/**
+ * The key the terminal draws after an icon segment while its pane is focused
+ * (`⚠[!]`), since a glyph has no tooltip there. The desktop shows it in the
+ * icon's tooltip instead.
+ */
+function terminalSegmentKey(segment: PaneFooterSegment, focused: boolean): string {
+  return focused && segment.icon && segment.shortcut && segment.onPress && !segment.disabled
+    ? `[${segment.shortcut}]`
+    : "";
+}
+
+/** Columns an icon segment keeps when hints crowd the footer. */
+function iconSegmentReserve(segment: PaneFooterSegment, focused: boolean, nativePaneChrome: boolean): number {
+  if (!segment.icon) return 0;
+  return nativePaneChrome ? 3 : Math.max(3, 1 + terminalSegmentKey(segment, focused).length);
+}
+
+function SegmentView({ segment, focused }: { segment: PaneFooterSegment; focused: boolean }) {
   const { nativePaneChrome } = useUiCapabilities();
   const interactive = !!segment.onPress && !segment.disabled;
+  const keyText = nativePaneChrome ? "" : terminalSegmentKey(segment, focused);
   const label = segment.label ?? segment.parts.map((part) => part.text).join(" ");
   useRemoteUiNode(interactive ? {
     role: "pane-footer-segment",
@@ -106,15 +127,20 @@ function SegmentView({ segment }: { segment: PaneFooterSegment }) {
       onMouseUp={interactive ? finishSegmentPress : undefined}
       {...(interactive ? { "data-gloom-interactive": "true" } : {})}
     >
-      {segment.parts.map((part, index) => (
-        <Span
-          key={`${segment.id}:part:${index}`}
-          fg={segment.disabled ? colors.textMuted : footerToneColor(part)}
-          attributes={part.bold ? TextAttributes.BOLD : 0}
-        >
-          {index > 0 ? " " : ""}{part.text}
-        </Span>
-      ))}
+      {[
+        ...segment.parts.map((part, index) => (
+          <Span
+            key={`${segment.id}:part:${index}`}
+            fg={segment.disabled ? colors.textMuted : footerToneColor(part)}
+            attributes={part.bold ? TextAttributes.BOLD : 0}
+          >
+            {index > 0 ? " " : ""}{part.text}
+          </Span>
+        )),
+        ...(keyText
+          ? [<Span key={`${segment.id}:key`} fg={colors.textBright} attributes={TextAttributes.BOLD}>{keyText}</Span>]
+          : []),
+      ]}
     </Text>
   );
 }
@@ -158,11 +184,13 @@ function FooterContent({
   focused,
   width,
   showBackground = true,
+  nativePaneChrome = false,
 }: {
   footer: CombinedPaneFooter;
   focused: boolean;
   width?: number;
   showBackground?: boolean;
+  nativePaneChrome?: boolean;
 }) {
   const hasInfo = footer.info.length > 0;
   const visibleHints = focused ? footer.hints.filter((hint) => !hint.disabled) : [];
@@ -170,7 +198,7 @@ function FooterContent({
   const dividerColor = focused ? colors.borderFocused : colors.border;
   const backgroundColor = showBackground ? blendHex(colors.bg, dividerColor, focused ? 0.12 : 0.06) : undefined;
   const availableWidth = width && width > 0 ? Math.floor(width) : null;
-  const iconReserve = footer.info.filter((segment) => segment.icon).length * 3;
+  const iconReserve = footer.info.reduce((total, segment) => total + iconSegmentReserve(segment, focused, nativePaneChrome), 0);
   const hintsWidth = hasHints
     ? Math.min(availableWidth === null ? totalHintsWidth(visibleHints) : Math.max(0, availableWidth - iconReserve), totalHintsWidth(visibleHints))
     : 0;
@@ -200,7 +228,7 @@ function FooterContent({
         >
           {footer.info.map((segment, index) => (
             <Box key={segment.id} flexDirection="row" marginRight={index === footer.info.length - 1 ? 0 : 1}>
-              <SegmentView segment={segment} />
+              <SegmentView segment={segment} focused={focused} />
             </Box>
           ))}
         </Box>
@@ -276,6 +304,7 @@ export function PaneFooterBar({
           focused={focused}
           width={width > 0 ? Math.max(0, Math.floor(width) - rightPadding - 1) : undefined}
           showBackground={false}
+          nativePaneChrome
         />
       </Box>
     );

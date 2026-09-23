@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildListRows,
   getListRowsHeight,
+  resolveListPageTarget,
   resolveSelectedScrollLine,
   type ListScreenState,
   type ResultItem,
@@ -99,5 +100,30 @@ describe("variable-height list rows", () => {
     const rows = buildListRows(makeListState([makeItem("only", "Documents", 1)]));
     expect(resolveSelectedScrollLine(rows, -1, false)).toBe(-1);
     expect(resolveSelectedScrollLine(rows, rows.length, true)).toBe(-1);
+  });
+});
+
+describe("page keys", () => {
+  // Lines: heading, a, b, c, spacer, heading, d (3 lines), e.
+  const rows = buildListRows(makeListState([
+    makeItem("a", "Commands"),
+    makeItem("b", "Commands"),
+    makeItem("c", "Commands"),
+    makeItem("d", "Documents", 2),
+    makeItem("e", "Documents"),
+  ]));
+
+  test("pages by lines, so headings and snippets shorten a page", () => {
+    // A 5-line viewport pages 4 lines: b, c, spacer, heading, and d would
+    // overrun it, so the page stops on c.
+    expect(resolveListPageTarget(rows, 0, 5, 1)).toBe(2);
+    expect(resolveListPageTarget(rows, 4, 5, -1)).toBe(3);
+    expect(resolveListPageTarget(rows, 2, 20, 1)).toBe(4);
+    expect(resolveListPageTarget(rows, 4, 20, -1)).toBe(0);
+  });
+
+  test("moves at least one result even when the next row is taller than the page", () => {
+    expect(resolveListPageTarget(rows, 2, 2, 1)).toBe(3);
+    expect(resolveListPageTarget(rows, 0, 1, -1)).toBe(0);
   });
 });

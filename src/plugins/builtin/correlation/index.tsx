@@ -1,4 +1,4 @@
-import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -12,6 +12,7 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { useShortcut } from "../../../react/input";
 import { buildChartKey } from "../../../market-data/selectors";
 import { formatTickerListInput } from "../../../tickers/list";
+import { isPlainKey } from "../../../utils/keyboard";
 import { formatCorrelation } from "./compute";
 import {
   CORRELATION_RANGE_OPTIONS,
@@ -55,6 +56,12 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const [symbolsEditing, setSymbolsEditing] = useState(false);
   const [symbolsFocusToken, setSymbolsFocusToken] = useState(0);
   const symbolsInputRef = useRef<InputRenderable | null>(null);
+  // The list as it was when editing began, for Esc to put back. The field
+  // applies drafts as they are typed, so the saved value is not it.
+  const symbolsBeforeEditRef = useRef(symbolsText);
+  // Remounts the query bar so the field drops the draft Esc threw away.
+  const [queryBarRevision, setQueryBarRevision] = useState(0);
+  const matrixScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const instruments = useMemo(() => {
     if (settings.symbolsError) return [];
@@ -112,11 +119,61 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     const coordinator = getSharedMarketDataCoordinator();
     for (const request of chartRequests) void coordinator?.loadChart(request, { forceRefresh: true });
   }, [chartRequests]);
+
+  const openSymbol = useCallback((symbol: string) => {
+    if (tickers.has(symbol)) {
+      pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
+      return;
+    }
+    navigateTicker(symbol);
+  }, [navigateTicker, pinTicker, tickers]);
+
+  /** The row cursor shares the hover highlight, so mouse and keys point at one symbol. */
+  const moveSymbolCursor = useCallback((offset: -1 | 1) => {
+    if (symbols.length === 0) return;
+    const index = hoveredSymbol ? symbols.indexOf(hoveredSymbol) : -1;
+    const next = index < 0
+      ? (offset > 0 ? 0 : symbols.length - 1)
+      : Math.max(0, Math.min(symbols.length - 1, index + offset));
+    setHoveredSymbol(symbols[next]!);
+    const scroll = matrixScrollRef.current;
+    if (!scroll) return;
+    const viewportHeight = Math.max(1, scroll.viewport?.height ?? 1);
+    if (next < scroll.scrollTop) scroll.scrollTo(next);
+    else if (next + 1 > scroll.scrollTop + viewportHeight) scroll.scrollTo(next + 1 - viewportHeight);
+  }, [hoveredSymbol, symbolsKey]);
+
   useShortcut((event) => {
-    if (!focused || symbolsEditing || event.ctrl || event.alt || event.meta || event.super || event.shift || event.name !== "r") return;
+    if (!focused || symbolsEditing || event.defaultPrevented) return;
+    if (isPlainKey(event, "r")) {
+      event.preventDefault();
+      event.stopPropagation();
+      refresh();
+    } else if (isPlainKey(event, "j", "down", "k", "up")) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveSymbolCursor(event.name === "j" || event.name === "down" ? 1 : -1);
+    } else if (isPlainKey(event, "return", "enter") && hoveredSymbol && symbols.includes(hoveredSymbol)) {
+      event.preventDefault();
+      event.stopPropagation();
+      openSymbol(hoveredSymbol);
+    }
+  });
+
+  // Esc cancels an edit of the list instead of clearing it: the field's own
+  // Esc empties the draft, which would fall back to the default tickers.
+  useShortcut((event) => {
+    if (!isPlainKey(event, "escape", "esc")) return;
     event.preventDefault();
     event.stopPropagation();
-    refresh();
+    if (symbolsText !== symbolsBeforeEditRef.current) setSymbolsText(symbolsBeforeEditRef.current);
+    setSymbolsEditing(false);
+    setQueryBarRevision((revision) => revision + 1);
+  }, {
+    allowEditable: true,
+    enabled: focused && symbolsEditing,
+    phase: "before",
+    scope: "correlation:tickers",
   });
   usePaneNoticeFooter({
     registrationId: "correlation-warnings", focused,
@@ -132,14 +189,6 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
       : [],
   }), [settings.symbolsError, statusSummary, symbols.length]);
-
-  const openSymbol = useCallback((symbol: string) => {
-    if (tickers.has(symbol)) {
-      pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
-      return;
-    }
-    navigateTicker(symbol);
-  }, [navigateTicker, pinTicker, tickers]);
 
   const clearHoveredSymbol = useCallback((symbol: string) => {
     setHoveredSymbol((current) => (current === symbol ? null : current));
@@ -165,6 +214,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   return (
     <Box flexDirection="column" width={width} height={height}>
       <QueryBar
+        key={queryBarRevision}
         width={width}
         search={{
           value: symbolsText,
@@ -177,6 +227,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
               setSymbolsEditing(false);
               return;
             }
+            if (!symbolsEditing) symbolsBeforeEditRef.current = symbolsText;
             setSymbolsEditing(true);
             setSymbolsFocusToken((token) => token + 1);
           },
@@ -213,7 +264,7 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
           </Box>
 
           {/* Matrix rows */}
-          <ScrollBox flexGrow={1} scrollY scrollX focusable={false}>
+          <ScrollBox ref={matrixScrollRef} flexGrow={1} scrollY scrollX focusable={false}>
             <Box flexDirection="column">
               {symbols.map((rowSym, rowIndex) => (
                 <Box key={rowSym} flexDirection="row" paddingLeft={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>

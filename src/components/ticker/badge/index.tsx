@@ -5,6 +5,8 @@ import { getSharedRegistry } from "../../../plugins/registry";
 import type { Quote } from "../../../types/financials";
 import { useInlineTickerQuote, type InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { getTickerBadgeText, type TickerBadgeStatus } from "./format";
+import { tf } from "../../../i18n";
+import { usePaneLinkMenuEntry } from "../../ui/external-link";
 
 export interface TickerBadgeProps {
   symbol: string;
@@ -55,6 +57,7 @@ export function TickerBadge({
     : blendHex(colors.bg, tone, 0.18);
   // An ambiguous symbol is worth opening: that is how the listing gets picked.
   const interactive = status !== "loading";
+  usePaneLinkMenuEntry(interactive ? `ticker:${symbol}` : null, tf("Open {ticker}", { ticker: symbol }), () => onOpen(symbol));
 
   return (
     <Box paddingRight={trailingGap ? 1 : 0} flexShrink={0} justifyContent={nativePaneChrome ? "center" : undefined}>

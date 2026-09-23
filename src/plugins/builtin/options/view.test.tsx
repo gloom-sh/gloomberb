@@ -83,7 +83,7 @@ function OptionsHarness({
   showFooter = false,
   width = 122,
   height = 14,
-  onCapture = () => { },
+  nestedInTabs = false,
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
@@ -92,7 +92,7 @@ function OptionsHarness({
   showFooter?: boolean;
   width?: number;
   height?: number;
-  onCapture?: (capturing: boolean) => void;
+  nestedInTabs?: boolean;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
     instanceId: TEST_PANE_ID,
@@ -117,9 +117,9 @@ function OptionsHarness({
   return (
     <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
       {showFooter ? <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
-        <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused onCapture={onCapture} /></Box>
+        <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused nestedInTabs={nestedInTabs} /></Box>
         <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider> : <OptionsView width={width} height={height} focused onCapture={onCapture} />}
+      </Box>}</PaneFooterProvider> : <OptionsView width={width} height={height} focused nestedInTabs={nestedInTabs} />}
     </TestPaneProvider>
   );
 }
@@ -418,11 +418,10 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
     },
   });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
-  const captures: boolean[] = [];
 
   await act(async () => {
     testSetup = await testRender(
-      <OptionsHarness ticker={makeTicker("AAPL")} width={54} onCapture={(capturing) => captures.push(capturing)} />,
+      <OptionsHarness ticker={makeTicker("AAPL")} width={54} />,
       {
         width: 56,
         height: 16,
@@ -434,14 +433,6 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
   const bodyScroll = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable | undefined;
   expect(bodyScroll?.horizontalScrollBar.visible).toBe(true);
   expect(testSetup!.captureCharFrame()).not.toContain(formatExpDate(expirationDates.at(-1)!));
-
-  await act(async () => {
-    testSetup!.mockInput.pressEnter();
-    await testSetup!.renderOnce();
-  });
-  await renderSettled();
-  expect(captures).toContain(true);
-  expect(captures.at(-1)).toBe(true);
 
   for (let index = 1; index < expirationDates.length; index += 1) {
     await act(async () => {
@@ -457,7 +448,7 @@ test("keeps expiration tabs independently scrollable from a narrow strike table"
   expect(testSetup!.captureCharFrame()).toContain(formatExpDate(expirationDates.at(-1)!));
 });
 
-test("clicking the option table focuses expiration tabs for arrow navigation", async () => {
+test("in a research tab the arrows stay with the tab strip and [ ] step the expiry", async () => {
   const expirationDates = Array.from({ length: 3 }, (_, index) => (
     Math.floor(Date.UTC(2026, index, 20) / 1000)
   ));
@@ -469,33 +460,22 @@ test("clicking the option table focuses expiration tabs for arrow navigation", a
     },
   });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
-  const captures: boolean[] = [];
-
   await act(async () => {
-    testSetup = await testRender(
-      <OptionsHarness ticker={makeTicker("AAPL")} width={80} onCapture={(capturing) => captures.push(capturing)} />,
-      {
-        width: 82,
-        height: 16,
-      },
-    );
-  });
-
-  await renderSettled();
-
-  await act(async () => {
-    await testSetup!.mockMouse.click(8, 4);
-    await testSetup!.renderOnce();
-  });
-  await renderSettled();
-  expect(captures.at(-1)).toBe(true);
-
-  await act(async () => {
-    testSetup!.mockInput.pressArrow("right");
-    await testSetup!.renderOnce();
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} width={80} nestedInTabs />, { width: 82, height: 16 });
   });
   await renderSettled();
 
+  // A click on the chain no longer changes what h/l and the arrows do.
+  await act(async () => { await testSetup!.mockMouse.click(8, 4); });
+  await renderSettled();
+  for (const press of [() => testSetup!.mockInput.pressArrow("right"), () => testSetup!.mockInput.pressKey("l")]) {
+    await act(async () => { press(); });
+    await renderSettled();
+  }
+  expect(requestedExpirations).not.toContain(expirationDates[1]);
+
+  await act(async () => { testSetup!.mockInput.pressKey("]"); });
+  await renderSettled();
   expect(requestedExpirations).toContain(expirationDates[1]);
 });
 

@@ -150,3 +150,33 @@ describe("shortcut registry", () => {
     expect(calls).toEqual(["stop"]);
   });
 });
+
+describe("modal and fallback phases", () => {
+  test("a capture handler runs before a scoped handler that registered after it", () => {
+    const registry = createShortcutRegistry();
+    const calls: string[] = [];
+    registerShortcut(registry, (event) => {
+      calls.push("menu");
+      event.preventDefault();
+      event.stopPropagation();
+    }, { phase: "capture", scope: "pane-menu" });
+    registerShortcut(registry, () => calls.push("late pane"), { phase: "before", scope: "late-pane" });
+
+    registry.dispatch(keyEvent());
+    expect(calls).toEqual(["menu"]);
+  });
+
+  test("an idle handler sees only keys nothing else used, after every after handler", () => {
+    const registry = createShortcutRegistry();
+    const calls: string[] = [];
+    registerShortcut(registry, () => calls.push("idle"), { phase: "idle" });
+    registerShortcut(registry, () => calls.push("after"), { phase: "after" });
+    registerShortcut(registry, (event) => {
+      if (event.name === "x") event.preventDefault();
+    });
+
+    registry.dispatch(keyEvent({ name: "k" }));
+    registry.dispatch(keyEvent({ name: "x" }));
+    expect(calls).toEqual(["after", "idle"]);
+  });
+});

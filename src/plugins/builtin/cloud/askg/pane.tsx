@@ -1,3 +1,4 @@
+import { CLOUD_PLAN_KEY } from "../../shared/cloud-upgrade";
 import { ActionRow } from "../../../../components/ui/action-row";
 import { getCurrentPluginTarget } from "../../../current-target";
 import {
@@ -15,11 +16,13 @@ import {
   Text,
   TextAttributes,
   useUiCapabilities,
+  type BoxRenderable,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../../ui";
 import {
   Button,
+  ChoiceDialog,
   DataTableView,
   EmptyState,
   getPaneSidebarWidth,
@@ -31,6 +34,7 @@ import {
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
+  type PaneHint,
 } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { useShortcut } from "../../../../react/input";
@@ -43,10 +47,13 @@ import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
+import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
+import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { usePlanAccess } from "../../shared/plan-access";
 import { SignInWall } from "../auth-actions";
+import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
   createASKGRendererToolExecutor,
@@ -121,11 +128,22 @@ function previewLines(preview: JsonValue | undefined): string[] {
   return Object.entries(preview).map(([key, value]) => `${key}: ${formatCellValue(value)}`);
 }
 
+/** Undo a write; not `u`, which installs an app update whenever one is waiting. */
+const UNDO_KEY = "z";
+
+/** Upgrade from a Pro-only answer, on the key every Pro prompt uses. */
+const UPGRADE_KEY = CLOUD_PLAN_KEY;
+
+function canUndo(row: ASKGToolRow): boolean {
+  return !!row.undoToken && (!row.undo || row.undo.status === "available");
+}
+
 function ToolTimelineRow({
   row,
   width,
   selected,
   expanded,
+  selectedRowRef,
   onSelect,
   onToggle,
   onUndo,
@@ -134,6 +152,8 @@ function ToolTimelineRow({
   width: number;
   selected: boolean;
   expanded: boolean;
+  /** Takes the row while it is selected, so the transcript can scroll to it. */
+  selectedRowRef: (node: BoxRenderable | null) => void;
   onSelect: () => void;
   onToggle: () => void;
   onUndo: () => void;
@@ -158,7 +178,7 @@ function ToolTimelineRow({
   );
 
   return (
-    <Box flexDirection="column">
+    <Box ref={selected ? selectedRowRef : undefined} flexDirection="column">
       <ActionRow
         label={row.name}
         expanded={hasRows ? expanded : undefined}
@@ -180,7 +200,14 @@ function ToolTimelineRow({
       </ActionRow>
       {undoLabel ? (
         <Box flexDirection="row" height={1} paddingLeft={2}>
-          <Button label={undoLabel} variant={row.undo?.status === "failed" ? "danger" : "ghost"} compact disabled={!!row.undo && row.undo.status !== "available"} onPress={onUndo} />
+          <Button
+            label={undoLabel}
+            variant={row.undo?.status === "failed" ? "danger" : "ghost"}
+            compact
+            disabled={!!row.undo && row.undo.status !== "available"}
+            shortcut={selected && canUndo(row) ? UNDO_KEY : undefined}
+            onPress={onUndo}
+          />
           {row.undo?.note ? <Text fg={colors.textMuted}>{`  ${row.undo.note}`}</Text> : null}
         </Box>
       ) : null}
@@ -250,21 +277,28 @@ function ToolResultDetail({
   width,
   height,
   focused,
+  openPaneShortcut,
   onOpenSymbol,
   onOpenPane,
 }: {
   row: ASKGToolRow;
   width: number;
   height: number;
+  /** The rows have the keyboard: j/k walk them and Enter opens one. */
   focused: boolean;
+  openPaneShortcut?: string;
   onOpenSymbol: (symbol: string) => void;
   onOpenPane: () => void;
 }) {
   const tables = useMemo<ASKGResultTable[]>(() => toolResultTables(row.result), [row.result]);
   const [tableIndex, setTableIndex] = useState(0);
+  const [rowIndex, setRowIndex] = useState(0);
   useEffect(() => {
     setTableIndex(0);
   }, [row.toolCallId]);
+  useEffect(() => {
+    setRowIndex(0);
+  }, [row.toolCallId, tableIndex]);
   const table = tables[Math.min(tableIndex, tables.length - 1)] ?? null;
   const paneTarget = useMemo(() => resolveToolPaneTarget(row.name), [row.name]);
 
@@ -309,7 +343,7 @@ function ToolResultDetail({
         </Text>
         <Box flexGrow={1} />
         {paneTarget ? (
-          <Button label="Open pane" variant="ghost" compact onPress={onOpenPane} />
+          <Button label="Open pane" variant="ghost" compact shortcut={openPaneShortcut} onPress={onOpenPane} />
         ) : null}
       </Box>
       {tables.length > 1 ? (
@@ -331,7 +365,11 @@ function ToolResultDetail({
       {table && table.rows.length > 0 ? (
         <DataTableView<Record<string, JsonValue>>
           focused={focused}
-          selection={{ kind: "none" }}
+          // A row cursor only while the rows have the keyboard; the pointer
+          // opens a row as it always has.
+          selection={focused
+            ? { kind: "index", selectedIndex: rowIndex, onChange: (index) => setRowIndex(index) }
+            : { kind: "none" }}
           rootWidth={width}
           rootHeight={Math.max(3, height - headerHeight)}
           columns={columns}
@@ -361,6 +399,8 @@ function TurnView({
   width,
   selectedToolCallId,
   expandedToolCallId,
+  selectedRowRef,
+  latest,
   catalog,
   openTicker,
   onSelectTool,
@@ -373,6 +413,9 @@ function TurnView({
   width: number;
   selectedToolCallId: string | null;
   expandedToolCallId: string | null;
+  selectedRowRef: (node: BoxRenderable | null) => void;
+  /** The last turn: its Retry and Upgrade answer the pane's keys. */
+  latest: boolean;
   catalog: ReturnType<typeof useInlineTickers>["catalog"];
   openTicker: (symbol: string) => void;
   onSelectTool: (toolCallId: string) => void;
@@ -399,6 +442,7 @@ function TurnView({
               width={width}
               selected={row.toolCallId === selectedToolCallId}
               expanded={row.toolCallId === expandedToolCallId}
+              selectedRowRef={selectedRowRef}
               onSelect={() => onSelectTool(row.toolCallId)}
               onToggle={() => onToggleTool(row.toolCallId)}
               onUndo={() => onUndo(row.toolCallId)}
@@ -431,11 +475,11 @@ function TurnView({
           />
           {turn.error.code === "tier_required" ? (
             <Box paddingTop={1}>
-              <Button label="Upgrade to Pro" variant="primary" onPress={onUpgrade} />
+              <Button label="Upgrade to Pro" variant="primary" shortcut={latest ? UPGRADE_KEY : undefined} onPress={onUpgrade} />
             </Box>
           ) : canRetryASKGError(turn.error) ? (
             <Box paddingTop={1}>
-              <Button label="Retry" variant="primary" shortcut="r" onPress={onRetry} />
+              <Button label="Retry" variant="primary" shortcut={latest ? "r" : undefined} onPress={onRetry} />
             </Box>
           ) : null}
         </Box>
@@ -504,6 +548,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   // The row the keyboard is on while the sidebar has focus. Arrows move it and
   // Enter opens it, so walking the list does not load a transcript per keypress.
   const [sidebarCursorId, setSidebarCursorId] = useState<string | null>(null);
+  // The expanded result's rows have the keyboard: j/k walk them and Enter
+  // opens one. x moves in, Esc comes back to the timeline.
+  const [resultFocused, setResultFocused] = useState(false);
 
   const conversations = useSyncExternalStore(
     useCallback((listener) => askgConversationListStore.subscribe(listener), []),
@@ -545,6 +592,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!turn || turn.status !== "error" || !turn.error) return null;
     return canRetryASKGError(turn.error) ? turn : null;
   }, [state]);
+  const needsUpgrade = useMemo(() => {
+    const turn = activeTurn(state);
+    return turn?.status === "error" && turn.error?.code === "tier_required";
+  }, [state]);
 
   const ask = useCallback((question: string) => {
     const trimmed = question.trim();
@@ -572,7 +623,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   }, [controller]);
 
   // A transcript has no undo, so it is never one click from gone.
-  const deleteConversation = useCallback(async (conversationId: string) => {
+  const deleteConversation = useCallback(async (conversationId: string): Promise<boolean> => {
     const row = conversations.conversations.find(
       (conversation) => conversation.id === conversationId,
     );
@@ -589,9 +640,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         />
       ),
     }).catch(() => false);
-    if (confirmed !== true) return;
+    if (confirmed !== true) return false;
     if (conversationId === state.conversationId) controller.startConversation();
     void askgConversationListStore.delete(conversationId);
+    return true;
   }, [controller, conversations.conversations, dialog, state.conversationId]);
 
   const focusInput = useCallback(() => {
@@ -659,18 +711,24 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     }
   }, [showSidebar, sidebarFocused]);
 
+  // The answer that follows a question owns the keyboard (cancel, the tool
+  // rows, retry), so sending leaves the composer; Enter comes back to it.
   const submitInput = useCallback(() => {
     const value = inputRef.current?.editBuffer.getText() ?? inputValue;
     const trimmed = value.trim();
     if (!trimmed) return;
     setInputValue("");
     inputRef.current?.editBuffer.setText?.("");
+    blurInput();
     ask(trimmed);
-  }, [ask, inputValue]);
+  }, [ask, blurInput, inputValue]);
 
   const toggleExpanded = useCallback((toolCallId: string) => {
     setExpandedToolCallId((current) => (current === toolCallId ? null : toolCallId));
   }, []);
+  useEffect(() => {
+    if (!expandedToolCallId) setResultFocused(false);
+  }, [expandedToolCallId]);
 
   const moveSelection = useCallback((direction: -1 | 1) => {
     if (timelineRows.length === 0) return;
@@ -681,6 +739,16 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       : (index + direction + timelineRows.length) % timelineRows.length;
     setSelectedToolCallId(timelineRows[nextIndex]?.toolCallId ?? null);
   }, [selectedToolCallId, timelineRows]);
+
+  // The selected row follows the keyboard into view in a long conversation.
+  const selectedRowNodeRef = useRef<BoxRenderable | null>(null);
+  const selectedRowRef = useCallback((node: BoxRenderable | null) => {
+    selectedRowNodeRef.current = node;
+  }, []);
+  useEffect(() => {
+    if (!selectedToolCallId) return;
+    return afterLayout(() => revealInScrollBox(scrollRef.current, selectedRowNodeRef.current));
+  }, [selectedToolCallId]);
 
   const openPaneForTool = useCallback((row: ASKGToolRow) => {
     const target = resolveToolPaneTarget(row.name);
@@ -719,14 +787,94 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     setSidebarCursorId(rows[nextIndex]?.id ?? null);
   }, [conversations.conversations, sidebarCursorId]);
 
+  const focusSidebar = useCallback(() => {
+    setResultFocused(false);
+    setSidebarFocused(true);
+    setSidebarCursorId(state.conversationId);
+  }, [state.conversationId]);
+
+  // The row the sidebar's keyboard is on, or the open conversation.
+  const sidebarTargetId = sidebarCursorId ?? state.conversationId;
+  const deleteSidebarConversation = useCallback(() => {
+    const rows = conversations.conversations;
+    const index = rows.findIndex((row) => row.id === sidebarTargetId);
+    if (index < 0 || !sidebarTargetId) return;
+    // The cursor stays on the list: the row after, or the one before the last.
+    const neighbor = rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
+    void deleteConversation(sidebarTargetId).then((deleted) => {
+      if (deleted) setSidebarCursorId(neighbor);
+    });
+  }, [conversations.conversations, deleteConversation, sidebarTargetId]);
+
+
+  const answerTexts = useMemo(
+    () => state.turns.map((turn) => turn.answer).filter(Boolean),
+    [state.turns],
+  );
+  const { catalog, openTicker } = useInlineTickers(answerTexts, { badgeQuotes: true });
+  // Ticker badges in the answer open on click; `t` lists the latest answer's.
+  const answerTickers = useMemo(() => {
+    const latest = [...state.turns].reverse().find((turn) => turn.answer)?.answer;
+    return latest
+      ? collectUniqueTickerSymbols([latest]).filter((symbol) => catalog[symbol]?.status !== "missing")
+      : [];
+  }, [catalog, state.turns]);
+  const chooseAnswerTicker = useCallback(async () => {
+    if (answerTickers.length === 0) return;
+    const symbol = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: unknown) => (
+        <ChoiceDialog
+          {...(context as PromptContext<string>)}
+          title="Tickers in the answer"
+          choices={answerTickers.map((entry) => ({
+            id: entry,
+            label: entry,
+            description: catalog[entry]?.ticker?.metadata.name,
+          }))}
+        />
+      ),
+    }).catch(() => undefined);
+    if (symbol) openTicker(symbol);
+  }, [answerTickers, catalog, dialog, openTicker]);
+
+  const upgrade = useCallback(() => openCommandBar("Upgrade to Pro"), [openCommandBar]);
+
+  const selectedRow = timelineRows.find((row) => row.toolCallId === selectedToolCallId) ?? null;
+  const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
+  const composerHeight = nativePaneChrome ? 3 : 2;
+  // The conversation keeps a readable slice no matter what else is open.
+  const detailBudget = height - composerHeight - confirmationHeight - 6;
+  const detailHeight = expandedRow && detailBudget >= MIN_DETAIL_HEIGHT
+    ? Math.min(Math.floor(height / 2), detailBudget)
+    : 0;
+  const resultActive = resultFocused && !!expandedRow && detailHeight > 0 && !inputFocused && !(sidebarFocused && showSidebar);
+  // `o` opens the pane of the result the rows belong to, else the selected row's.
+  const paneRow = resultActive ? expandedRow : selectedRow;
+  const canOpenPane = !!paneRow && !!resolveToolPaneTarget(paneRow.name);
+  const expandTarget = resultActive ? expandedRow : selectedRow;
+
+  const toggleResult = useCallback((row: ASKGToolRow) => {
+    const expanding = expandedToolCallId !== row.toolCallId;
+    toggleExpanded(row.toolCallId);
+    setResultFocused(expanding && toolResultTables(row.result).some((table) => table.rows.length > 0));
+  }, [expandedToolCallId, toggleExpanded]);
+
   useShortcut((event) => {
-    if (!focused) return;
+    // Behind the sign-in wall the keys are the wall's (Enter logs in).
+    if (!focused || !planAccess.emailVerified) return;
+    const consume = () => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
     if (confirmation) {
-      if (event.name === "y") {
+      if (isPlainKey(event, "y")) {
+        consume();
         controller.resolveConfirmation(confirmation.toolCallId, true);
         return;
       }
-      if (event.name === "n" || event.name === "escape") {
+      if (isPlainKey(event, "n", "escape")) {
+        consume();
         controller.resolveConfirmation(confirmation.toolCallId, false);
         return;
       }
@@ -734,77 +882,171 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     // The sidebar owns the keyboard while it has focus, so the same arrows
     // that walk the tool timeline walk the conversation list instead.
     if (sidebarFocused && showSidebar) {
-      if (event.name === "escape" || event.name === "right") {
+      if (isPlainKey(event, "escape", "right")) {
+        consume();
         leaveSidebar();
-        return;
-      }
-      if (event.name === "enter" || event.name === "return") {
-        const target = sidebarCursorId ?? state.conversationId;
+      } else if (isPlainKey(event, "enter", "return")) {
+        consume();
+        const target = sidebarTargetId;
         leaveSidebar();
         if (target) void openConversation(target);
-        return;
-      }
-      if (event.name === "j" || event.name === "down") {
+      } else if (isPlainKey(event, "j", "down")) {
+        consume();
         moveSidebarCursor(1);
-        return;
-      }
-      if (event.name === "k" || event.name === "up") {
+      } else if (isPlainKey(event, "k", "up")) {
+        consume();
         moveSidebarCursor(-1);
-        return;
-      }
-      if (event.name === "n") {
+      } else if (isPlainKey(event, "n")) {
+        consume();
         leaveSidebar();
         newConversation();
-        return;
+      } else if (isPlainKey(event, "d", "delete")) {
+        consume();
+        deleteSidebarConversation();
       }
+      // `<` and `>` fall through to the sidebar kit, which resizes it.
       return;
     }
     if (inputFocused) {
-      if (event.name === "escape") blurInput();
+      if (isPlainKey(event, "escape")) {
+        consume();
+        blurInput();
+      }
       return;
     }
-    if (event.name === "left" && showSidebar) {
-      setSidebarFocused(true);
-      setSidebarCursorId(state.conversationId);
+    if (resultActive) {
+      if (isPlainKey(event, "escape")) {
+        consume();
+        setResultFocused(false);
+        return;
+      }
+      // The result table walks and opens its own rows.
+      if (isPlainKey(event, "j", "k", "up", "down", "enter", "return", "home", "end", "pageup", "pagedown")) return;
+    }
+    if (isPlainKey(event, "left") && showSidebar) {
+      consume();
+      focusSidebar();
       return;
     }
-    if (event.name === "enter" || event.name === "return") {
+    if (isPlainKey(event, "enter", "return")) {
+      consume();
       focusInput();
       return;
     }
-    if (event.name === "j" || event.name === "down") {
+    // With tool rows the arrows walk them; without, they scroll the answer.
+    if (isPlainKey(event, "j", "down") && timelineRows.length > 0) {
+      consume();
       moveSelection(1);
       return;
     }
-    if (event.name === "k" || event.name === "up") {
+    if (isPlainKey(event, "k", "up") && timelineRows.length > 0) {
+      consume();
       moveSelection(-1);
       return;
     }
-    const selected = timelineRows.find((row) => row.toolCallId === selectedToolCallId) ?? null;
-    if (event.name === "x" && selected) {
-      toggleExpanded(selected.toolCallId);
+    if (isPlainKey(event, "x") && expandTarget) {
+      consume();
+      toggleResult(expandTarget);
       return;
     }
-    if (event.name === "o" && selected) {
-      openPaneForTool(selected);
+    if (isPlainKey(event, "o") && paneRow && canOpenPane) {
+      consume();
+      openPaneForTool(paneRow);
       return;
     }
-    if (event.name === "u" && selected?.undoToken) {
-      void controller.undo(selected.toolCallId);
+    if (isPlainKey(event, UNDO_KEY) && selectedRow && canUndo(selectedRow)) {
+      consume();
+      void controller.undo(selectedRow.toolCallId);
       return;
     }
-    if (event.name === "r" && retryableTurn) {
+    if (isPlainKey(event, "t") && answerTickers.length > 0) {
+      consume();
+      void chooseAnswerTicker();
+      return;
+    }
+    if (event.name === UPGRADE_KEY && !event.ctrl && !event.meta && !event.alt && needsUpgrade) {
+      consume();
+      upgrade();
+      return;
+    }
+    if (isPlainKey(event, "r") && retryableTurn) {
+      consume();
       void controller.retryTurn(retryableTurn.id);
       return;
     }
-    if (event.name === "c" && running) controller.cancel();
+    if (isPlainKey(event, "c") && running) {
+      consume();
+      controller.cancel();
+    }
   }, { allowEditable: true });
 
-  const answerTexts = useMemo(
-    () => state.turns.map((turn) => turn.answer).filter(Boolean),
-    [state.turns],
-  );
-  const { catalog, openTicker } = useInlineTickers(answerTexts, { badgeQuotes: true });
+
+  // Hints name only what the current focus takes: the composer takes letters,
+  // the sidebar its own list keys, and the timeline everything else.
+  const hints = useMemo<PaneHint[]>(() => {
+    const list: PaneHint[] = [];
+    if (!planAccess.emailVerified) return list;
+    if (confirmation) {
+      list.push(
+        { id: "approve", key: "y", label: "es approve", title: "Approve", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, true) },
+        { id: "decline", key: "n", label: "o decline", title: "Decline", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
+      );
+    }
+    if (inputFocused) return list;
+    if (showSidebar && sidebarFocused) {
+      // While a write waits, n answers it.
+      if (!confirmation) list.push({ id: "new", key: "n", label: "ew conversation", onPress: () => { leaveSidebar(); newConversation(); } });
+      if (sidebarTargetId) list.push({ id: "delete", key: "d", label: "elete", onPress: deleteSidebarConversation });
+      return list;
+    }
+    if (running) list.push({ id: "cancel", key: "c", label: "ancel", onPress: () => controller.cancel() });
+    if (retryableTurn) list.push({ id: "retry", key: "r", label: "etry", onPress: () => void controller.retryTurn(retryableTurn.id) });
+    if (needsUpgrade) list.push({ id: "upgrade", key: UPGRADE_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade });
+    if (resultActive) list.push({ id: "result-back", key: "Esc", label: "timeline", title: "Back to Timeline", onPress: () => setResultFocused(false) });
+    if (expandTarget) {
+      const expanded = expandTarget.toolCallId === expandedToolCallId;
+      list.push({
+        id: "expand",
+        key: "x",
+        label: expanded ? " collapse" : "pand rows",
+        title: expanded ? "Collapse Rows" : "Expand Rows",
+        onPress: () => toggleResult(expandTarget),
+      });
+    }
+    if (paneRow && canOpenPane) list.push({ id: "open-pane", key: "o", label: "pen pane", onPress: () => openPaneForTool(paneRow) });
+    if (selectedRow && canUndo(selectedRow)) {
+      list.push({ id: "undo", key: UNDO_KEY, label: " undo", title: "Undo", onPress: () => void controller.undo(selectedRow.toolCallId) });
+    }
+    if (answerTickers.length > 0) list.push({ id: "tickers", key: "t", label: "ickers", onPress: () => void chooseAnswerTicker() });
+    if (showSidebar) list.push({ id: "conversations", key: "←", label: " conversations", onPress: focusSidebar });
+    return list;
+  }, [
+    planAccess.emailVerified,
+    answerTickers.length,
+    canOpenPane,
+    chooseAnswerTicker,
+    confirmation,
+    controller,
+    deleteSidebarConversation,
+    expandTarget,
+    expandedToolCallId,
+    focusSidebar,
+    inputFocused,
+    leaveSidebar,
+    needsUpgrade,
+    newConversation,
+    openPaneForTool,
+    paneRow,
+    resultActive,
+    retryableTurn,
+    running,
+    selectedRow,
+    showSidebar,
+    sidebarFocused,
+    sidebarTargetId,
+    toggleResult,
+    upgrade,
+  ]);
 
   usePaneFooter(`askg:${paneId}`, () => ({
     info: [
@@ -824,38 +1066,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         }]
         : []),
     ],
-    hints: [
-      ...(confirmation
-        ? [
-          { id: "approve", key: "y", label: "es approve", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, true) },
-          { id: "decline", key: "n", label: "o decline", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
-        ]
-        : []),
-      ...(running
-        ? [{ id: "cancel", key: "c", label: "ancel", onPress: () => controller.cancel() }]
-        : []),
-      ...(retryableTurn
-        ? [{ id: "retry", key: "r", label: "etry", onPress: () => void controller.retryTurn(retryableTurn.id) }]
-        : []),
-      ...(selectedToolCallId
-        ? [{ id: "expand", key: "x", label: "pand rows", onPress: () => toggleExpanded(selectedToolCallId) }]
-        : []),
-      ...(showSidebar && !sidebarFocused
-        ? [{
-          id: "conversations",
-          key: "←",
-          label: " conversations",
-          onPress: () => {
-            setSidebarFocused(true);
-            setSidebarCursorId(state.conversationId);
-          },
-        }]
-        : []),
-      ...(showSidebar && sidebarFocused
-        ? [{ id: "new", key: "n", label: "ew conversation", onPress: newConversation }]
-        : []),
-    ],
-  }), [confirmation, controller, newConversation, retryableTurn, running, selectedToolCallId, showSidebar, sidebarFocused, state.conversationId, state.limits, toggleExpanded]);
+    hints,
+  }), [confirmation, hints, running, state.limits]);
 
   if (!planAccess.emailVerified) {
     return (
@@ -868,13 +1080,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const bodyWidth = Math.max(24, width - sidebarWidth);
   const contentWidth = Math.max(24, bodyWidth - (nativePaneChrome ? 2 : 4));
-  const composerHeight = nativePaneChrome ? 3 : 2;
-  const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
-  // The conversation keeps a readable slice no matter what else is open.
-  const detailBudget = height - composerHeight - confirmationHeight - 6;
-  const detailHeight = expandedRow && detailBudget >= MIN_DETAIL_HEIGHT
-    ? Math.min(Math.floor(height / 2), detailBudget)
-    : 0;
+  const lastTurnId = activeTurn(state)?.id ?? null;
 
   return (
     <Box
@@ -896,6 +1102,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           onSelect={(conversationId) => void openConversation(conversationId)}
           onFocusRequest={() => {
             if (inputFocused) blurInput();
+            setResultFocused(false);
             setSidebarFocused(true);
           }}
           onNewConversation={newConversation}
@@ -925,13 +1132,15 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             width={contentWidth}
             selectedToolCallId={selectedToolCallId}
             expandedToolCallId={expandedToolCallId}
+            selectedRowRef={selectedRowRef}
+            latest={turn.id === lastTurnId}
             catalog={catalog}
             openTicker={openTicker}
             onSelectTool={setSelectedToolCallId}
             onToggleTool={toggleExpanded}
             onUndo={(toolCallId) => void controller.undo(toolCallId)}
             onRetry={() => void controller.retryTurn(turn.id)}
-            onUpgrade={() => openCommandBar("Upgrade to Pro")}
+            onUpgrade={upgrade}
           />
         ))}
       </ScrollBox>
@@ -950,7 +1159,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
           row={expandedRow}
           width={nativePaneChrome ? width : width - 2}
           height={detailHeight}
-          focused={focused && !inputFocused}
+          focused={focused && resultActive}
+          openPaneShortcut={paneRow?.toolCallId === expandedRow.toolCallId && canOpenPane ? "o" : undefined}
           onOpenSymbol={openSymbol}
           onOpenPane={() => openPaneForTool(expandedRow)}
         />

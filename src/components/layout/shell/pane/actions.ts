@@ -10,6 +10,7 @@ import {
   type ResolvedPane,
 } from "../../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../../plugins/registry";
+import { notifyGridlockComplete } from "../../../../plugins/gridlock-notification";
 import type { LayoutConfig } from "../../../../types/config";
 import { isPaneLockedInLayout } from "../../../../pane-settings";
 import type { RendererHost } from "../../../../ui";
@@ -164,10 +165,17 @@ export function useShellPaneActions({
     return true;
   }, [desktopWindowBridge, focusedPaneId, visibleLayout]);
 
+  // The key does what the status bar button does: a layout that is already
+  // tidy stays put, and a change offers Revert.
   const gridlockVisiblePanes = useCallback(() => {
-    persistLayout(gridlockAllPanes(visibleLayout, { x: 0, y: 0, width, height: contentHeight }));
+    const nextLayout = gridlockAllPanes(visibleLayout, { x: 0, y: 0, width, height: contentHeight }, pluginRegistry.panes);
+    if (nextLayout === visibleLayout) return true;
+    persistLayout(nextLayout);
+    notifyGridlockComplete(pluginRegistry.notify.bind(pluginRegistry), () => {
+      pluginRegistry.updateLayoutFn(visibleLayout);
+    });
     return true;
-  }, [contentHeight, persistLayout, visibleLayout, width]);
+  }, [contentHeight, persistLayout, pluginRegistry, visibleLayout, width]);
 
   const handleFloatingClose = useCallback((paneId: string) => {
     const nextLayout = removePane(visibleLayout, paneId);

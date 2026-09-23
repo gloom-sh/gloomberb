@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex, priceColor } from "../../../theme/colors";
@@ -13,6 +13,12 @@ import {
   type OnboardingPositionsState,
   type PositionFieldId,
 } from "../wizard-positions";
+
+/** Removes the position under the keyboard cursor; the wizard binds it. */
+export const REMOVE_POSITION_KEY = "d";
+
+/** Rows the terminal card has room for. */
+const TUI_VISIBLE_ROWS = 4;
 
 const FIELD_LABELS: Record<PositionFieldId, string> = {
   ticker: "Ticker",
@@ -76,17 +82,33 @@ function positionSummary(row: OnboardingPositionRow): string {
   return `${shares}${cost}`;
 }
 
+type ScrollTarget = {
+  matches?(selector: string): boolean;
+  scrollIntoView?(options: { block: "nearest" }): void;
+};
+
 function DesktopPositionRow({
   row,
+  selected,
   onRemove,
 }: {
   row: OnboardingPositionRow;
+  /** Under the keyboard cursor: lit like a hovered row, with its Remove key shown. */
+  selected: boolean;
   onRemove: (symbol: string) => void;
 }) {
   const colors = useThemeColors();
   const [hovered, setHovered] = useState(false);
+  const rowRef = useRef<ScrollTarget | null>(null);
+  useEffect(() => {
+    // The pointer lit it: scrolling now would slide another row under it.
+    if (!selected || rowRef.current?.matches?.(":hover")) return;
+    rowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
+  const lit = hovered || selected;
   return (
     <Box
+      ref={rowRef}
       flexDirection="row"
       alignItems="center"
       minWidth={0}
@@ -96,7 +118,7 @@ function DesktopPositionRow({
         height: 32,
         padding: "0 10px",
         borderRadius: 6,
-        backgroundColor: hovered ? blendHex(colors.panel, colors.textBright, 0.05) : "transparent",
+        backgroundColor: lit ? blendHex(colors.panel, colors.textBright, 0.05) : "transparent",
       }}
       data-gloom-role="onboarding-position"
     >
@@ -115,8 +137,15 @@ function DesktopPositionRow({
         </Text>
       </Box>
       <Box flexShrink={0} justifyContent="flex-end" flexDirection="row" style={{ width: 64, marginLeft: 8 }}>
-        {hovered ? (
-          <Button label="Remove" variant="plain" compact stopPropagation onPress={() => onRemove(row.symbol)} />
+        {lit ? (
+          <Button
+            label="Remove"
+            variant="plain"
+            compact
+            stopPropagation
+            shortcut={selected ? REMOVE_POSITION_KEY : undefined}
+            onPress={() => onRemove(row.symbol)}
+          />
         ) : null}
       </Box>
     </Box>
@@ -127,6 +156,7 @@ function DesktopPositionsPanel({
   state,
   inputRef,
   editing,
+  selectedSymbol,
 }: PositionsPanelProps) {
   const colors = useThemeColors();
   const fieldProps = (field: PositionFieldId, index: number) => ({
@@ -170,7 +200,12 @@ function DesktopPositionsPanel({
       {state.positions.length > 0 ? (
         <Box flexDirection="column" style={{ marginTop: 16, maxHeight: 200, overflowY: "auto" }}>
           {state.positions.map((row) => (
-            <DesktopPositionRow key={row.symbol} row={row} onRemove={(symbol) => { void state.removePosition(symbol); }} />
+            <DesktopPositionRow
+              key={row.symbol}
+              row={row}
+              selected={row.symbol === selectedSymbol}
+              onRemove={(symbol) => { void state.removePosition(symbol); }}
+            />
           ))}
         </Box>
       ) : null}
@@ -227,9 +262,13 @@ function TuiFieldRow({
   );
 }
 
-function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: PositionsPanelProps) {
+function TuiPositionsPanel({ state, inputRef, editing, selectedSymbol, shortcut }: PositionsPanelProps) {
   const colors = useThemeColors();
-  const rows = state.positions.slice(-4);
+  // The newest rows, until the cursor climbs above them.
+  const selectedIndex = state.positions.findIndex((row) => row.symbol === selectedSymbol);
+  const lastWindowStart = Math.max(0, state.positions.length - TUI_VISIBLE_ROWS);
+  const windowStart = selectedIndex >= 0 ? Math.min(lastWindowStart, selectedIndex) : lastWindowStart;
+  const rows = state.positions.slice(windowStart, windowStart + TUI_VISIBLE_ROWS);
   return (
     <Box flexDirection="column" paddingX={2}>
       {POSITION_FIELDS.map((field, index) => (
@@ -245,7 +284,7 @@ function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: P
             {editing
               ? t("Enter: next field, then add.")
               : state.positions.length > 0
-                ? tf("Enter continues · a adds another{broker}", { broker: hasBrokers ? t(" · b connects a broker") : "" })
+                ? tf("Enter continues · a adds another{broker}", { broker: "" })
                 : t("Enter to add a ticker.")}
           </Text>
         )}
@@ -256,19 +295,39 @@ function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: P
           {tf("Positions ({count})", { count: state.positions.length })}
         </Text>
       </Box>
-      {rows.map((row) => (
-        <Box key={row.symbol} height={1} flexDirection="row" overflow="hidden">
-          <Box width={8} flexShrink={0}>
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{row.symbol}</Text>
+      {rows.map((row) => {
+        const selected = row.symbol === selectedSymbol;
+        return (
+          <Box
+            key={row.symbol}
+            height={1}
+            flexDirection="row"
+            overflow="hidden"
+            backgroundColor={selected ? colors.selected : undefined}
+          >
+            <Box width={8} flexShrink={0}>
+              <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{row.symbol}</Text>
+            </Box>
+            <Box width={18} flexShrink={0} overflow="hidden">
+              <Text fg={colors.text}>{positionSummary(row)}</Text>
+            </Box>
+            <Box flexGrow={1} minWidth={0} overflow="hidden">
+              <Text fg={colors.textDim}>{row.value === null ? row.name : formatWholeCurrency(row.value, row.currency)}</Text>
+            </Box>
+            {selected ? (
+              <Box flexShrink={0}>
+                <Button
+                  label="Remove"
+                  variant="plain"
+                  compact
+                  shortcut={REMOVE_POSITION_KEY}
+                  onPress={() => { void state.removePosition(row.symbol); }}
+                />
+              </Box>
+            ) : null}
           </Box>
-          <Box width={18} flexShrink={0} overflow="hidden">
-            <Text fg={colors.text}>{positionSummary(row)}</Text>
-          </Box>
-          <Box flexGrow={1} minWidth={0} overflow="hidden">
-            <Text fg={colors.textDim}>{row.value === null ? row.name : formatWholeCurrency(row.value, row.currency)}</Text>
-          </Box>
-        </Box>
-      ))}
+        );
+      })}
       <Box height={1} />
       <Box height={1} overflow="hidden">
         <Text fg={colors.textMuted}>{tf("Later: {shortcut}, then AP.", { shortcut })}</Text>
@@ -281,9 +340,10 @@ export interface PositionsPanelProps {
   state: OnboardingPositionsState;
   inputRef: RefObject<InputRenderable | null>;
   editing: boolean;
+  /** The row under the keyboard cursor; null while a field has the keyboard. */
+  selectedSymbol: string | null;
   /** Command bar shortcut in the host's notation, e.g. "Ctrl+K". */
   shortcut: string;
-  hasBrokers: boolean;
 }
 
 export function PositionsPanel(props: PositionsPanelProps) {

@@ -9,12 +9,13 @@ import type {
 } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { Button, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter } from "../../../components";
-import { ExternalLinkText } from "../../../components/ui";
+import { Button, ChoiceDialog, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter, usePaneMenuItems } from "../../../components";
+import { ExternalLinkText, PaneLinkMenu } from "../../../components/ui";
 import { t, tf } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
+import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
@@ -189,6 +190,38 @@ function sortFindings(findings: readonly CloudEquityDiagnosticFinding[]): CloudE
   ));
 }
 
+const FINDING_SECTION_ORDER: readonly CloudEquityDiagnosticFindingKind[] = ["red_flag", "anomaly", "green_flag"];
+
+interface CitedSource {
+  id: string;
+  label: string;
+  finding: string;
+  url: string;
+}
+
+/**
+ * The linked evidence behind the findings on screen, in reading order: the
+ * preview's one finding, or every section of the full report.
+ */
+function citedSources(report: CloudEquityDiagnosticResponse): CitedSource[] {
+  const evidenceById = new Map(report.evidence.map((evidence) => [evidence.id, evidence]));
+  const sorted = sortFindings(report.findings);
+  const findings = report.access === "preview"
+    ? report.findings.slice(0, 1)
+    : FINDING_SECTION_ORDER.flatMap((kind) => sorted.filter((finding) => finding.kind === kind));
+  const sources: CitedSource[] = [];
+  const seen = new Set<string>();
+  for (const finding of findings) {
+    for (const evidenceId of finding.evidenceIds) {
+      const evidence = evidenceById.get(evidenceId);
+      if (!evidence?.url || seen.has(evidence.id)) continue;
+      seen.add(evidence.id);
+      sources.push({ id: evidence.id, label: citationLabel(evidence), finding: finding.title, url: evidence.url });
+    }
+  }
+  return sources;
+}
+
 function Paragraph({ text: value, width, color, bold }: {
   text: string;
   width: number;
@@ -353,41 +386,45 @@ function ReportView({ report, width }: {
     tf("confidence {value}", { value: percent(report.confidence) }),
   ].filter(Boolean).join(" · ");
 
+  // Every citation is also a pane menu entry, so the report's sources open
+  // without a pointer.
   return (
-    <Box flexDirection="column" width={width} gap={1}>
-      <Box flexDirection="column" width={width}>
-        <Box height={1}>
-          <Text fg={verdictColor(report.verdict)} attributes={TextAttributes.BOLD}>
-            {verdictLabel(report.verdict)}
-          </Text>
-        </Box>
-        <Paragraph text={meta} width={width} color={colors.textMuted} />
-      </Box>
-
-      {report.status === "insufficient_data"
-        ? <EmptyState title="Not enough coverage to review this company yet." message={report.summary} />
-        : <Paragraph text={report.summary} width={width} color={colors.text} />}
-
-      <FindingSection heading="RED FLAGS" findings={byKind("red_flag")} evidenceById={evidenceById} width={width} />
-      <FindingSection heading="ANOMALIES" findings={byKind("anomaly")} evidenceById={evidenceById} width={width} />
-      <FindingSection heading="GREEN FLAGS" findings={byKind("green_flag")} evidenceById={evidenceById} width={width} />
-
-      {report.watchItems.length > 0 && (
+    <PaneLinkMenu>
+      <Box flexDirection="column" width={width} gap={1}>
         <Box flexDirection="column" width={width}>
-          <SectionHeading title="WATCH ITEMS" />
-          {report.watchItems.map((item, index) => (
-            <Box key={`${index}:${item.slice(0, 24)}`} flexDirection="row" width={width}>
-              <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{"· "}</Text></Box>
-              <Box flexDirection="column" flexGrow={1} minWidth={0}>
-                <Paragraph text={item} width={width - 2} color={colors.text} />
-              </Box>
-            </Box>
-          ))}
+          <Box height={1}>
+            <Text fg={verdictColor(report.verdict)} attributes={TextAttributes.BOLD}>
+              {verdictLabel(report.verdict)}
+            </Text>
+          </Box>
+          <Paragraph text={meta} width={width} color={colors.textMuted} />
         </Box>
-      )}
 
-      <CoverageSection coverage={report.coverage} width={width} />
-    </Box>
+        {report.status === "insufficient_data"
+          ? <EmptyState title="Not enough coverage to review this company yet." message={report.summary} />
+          : <Paragraph text={report.summary} width={width} color={colors.text} />}
+
+        <FindingSection heading="RED FLAGS" findings={byKind("red_flag")} evidenceById={evidenceById} width={width} />
+        <FindingSection heading="ANOMALIES" findings={byKind("anomaly")} evidenceById={evidenceById} width={width} />
+        <FindingSection heading="GREEN FLAGS" findings={byKind("green_flag")} evidenceById={evidenceById} width={width} />
+
+        {report.watchItems.length > 0 && (
+          <Box flexDirection="column" width={width}>
+            <SectionHeading title="WATCH ITEMS" />
+            {report.watchItems.map((item, index) => (
+              <Box key={`${index}:${item.slice(0, 24)}`} flexDirection="row" width={width}>
+                <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{"· "}</Text></Box>
+                <Box flexDirection="column" flexGrow={1} minWidth={0}>
+                  <Paragraph text={item} width={width - 2} color={colors.text} />
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        <CoverageSection coverage={report.coverage} width={width} />
+      </Box>
+    </PaneLinkMenu>
   );
 }
 
@@ -463,6 +500,42 @@ export function EquityDiagnosticView({ focused, width }: {
     refresh();
   }, { enabled: focused && canRefresh && !loading, scope: REFRESH_SCOPE });
 
+  // The report's citations are links a keyboard cannot focus, so `o` opens
+  // them: straight away for one, through a chooser for several.
+  const reportShown = !!symbol && !!report && !signInRequired && !verificationRequired && !proRequired;
+  const sources = useMemo(() => (reportShown && report ? citedSources(report) : []), [report, reportShown]);
+  const rendererHost = useRendererHost();
+  const dialog = useOptionalDialog();
+  const openSource = useCallback(() => {
+    const [only] = sources;
+    if (!only) return;
+    if (sources.length === 1 || !dialog) {
+      void rendererHost.openExternal(only.url);
+      return;
+    }
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: PromptContext<string>) => (
+        <ChoiceDialog
+          {...context}
+          title={t("Open Source")}
+          choices={sources.map((source) => ({ id: source.id, label: source.label, description: source.finding }))}
+        />
+      ),
+    }).then((sourceId) => {
+      const source = sources.find((entry) => entry.id === sourceId);
+      if (source) void rendererHost.openExternal(source.url);
+    }).catch(() => {});
+  }, [dialog, rendererHost, sources]);
+
+  // The preview's pitch sits in the body, not an empty state, so its buttons
+  // reach the keyboard through the pane menu instead of Enter.
+  const previewShown = reportShown && report?.access === "preview";
+  usePaneMenuItems("equity-diagnostic:upgrade", () => previewShown ? [
+    { id: "upgrade", label: t("Upgrade to Pro"), onSelect: () => openUpgrade() },
+    { id: "manage-account", label: t("Manage account"), onSelect: openPlan },
+  ] : null, [openPlan, openUpgrade, previewShown]);
+
   usePaneFooter(FOOTER_ID, () => ({
     info: [
       ...(loading ? [{ id: "loading", parts: [{ text: t("scanning"), tone: "muted" as const }] }] : []),
@@ -474,7 +547,10 @@ export function EquityDiagnosticView({ focused, width }: {
       ...(report?.cached && !report.stale ? [{ id: "cached", parts: [{ text: t("cached"), tone: "muted" as const }] }] : []),
       ...(report ? [{ id: "generated", parts: [{ text: tf("generated {age}", { age: formatTimeAgo(report.generatedAt) }), tone: "muted" as const }] }] : []),
     ],
-  }), [failure, loading, report]);
+    hints: sources.length > 0
+      ? [{ id: "source", key: "o", label: "pen source", title: sources.length > 1 ? "Open Source…" : "Open Source", onPress: openSource }]
+      : [],
+  }), [failure, loading, openSource, report, sources.length]);
 
   const contentWidth = Math.max(12, width - 2);
 
@@ -486,6 +562,7 @@ export function EquityDiagnosticView({ focused, width }: {
   if (signInRequired || verificationRequired) {
     return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
   }
+  // Buttons in an empty state's actions answer Enter and are in the pane menu.
   if (proRequired) {
     return (
       <PaneStatusBody

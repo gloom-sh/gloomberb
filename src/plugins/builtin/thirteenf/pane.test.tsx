@@ -3,10 +3,15 @@ import { act, useReducer } from "react";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { createDefaultConfig } from "../../../types/config";
+import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import type { TickerResearchTabDef } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
+import { TickerResearchPane } from "../ticker-detail/pane";
+import { TICKER_RESEARCH_BUILTIN_TABS } from "../ticker-detail/research-tabs";
 import { ThirteenFPane } from "./pane";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { ThirteenFTickerPane } from "./signals-pane";
+import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 
 const PANE_ID = "thirteenf-pane-test";
 
@@ -65,6 +70,16 @@ function installAlpha13FTransport(urls: string[] = []) {
       return json([
         { cik: "1", name: "Alpha Capital", period_of_report: "2026-03-31", pnl: null },
       ]);
+    }
+    if (path.endsWith("/ticker-holdings")) {
+      return json({
+        ticker: "AAPL", quarter: "2026Q1", period: "2026-03-31", previousPeriod: "2025-12-31", warnings: [], asOf: "2026-05-15",
+        rows: [{
+          id: "1:AAPL", cik: "0000000001", fund: "Alpha Capital", ticker: "AAPL", cusip: "037833100", issuer: "Apple Inc.", type: "COM",
+          value: 90, shares: 1000, weight: 0.75, previousWeight: null, weightChange: null, action: "new",
+        }],
+        holderCount: 1, newCount: 1, exitCount: 0, totalValue: 90, valueScope: "all funds", hasMore: false, nextOffset: 1,
+      });
     }
     if (path.endsWith("/forms")) {
       return json([
@@ -306,6 +321,80 @@ describe("ThirteenFPane", () => {
     expect(frame).toContain("Overlap");
     expect(frame).not.toContain("SECOND %");
   });
+
+  test("slash in a fund opened from a ticker query reaches the overlap search", async () => {
+    installAlpha13FTransport();
+    await act(async () => { testSetup = await testRender(<Harness />, { width: 110, height: 26 }); });
+    await renderFrames();
+    await emitKeypress({ name: "/", sequence: "/" });
+    await act(async () => { await testSetup!.mockInput.typeText("AAPL"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    await renderFrames(4);
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await renderFrames(2);
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+    expect(testSetup!.captureCharFrame()).toContain("Back Alpha Capital");
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "/", sequence: "/" });
+    await act(async () => { await testSetup!.mockInput.typeText("0000000009"); });
+    await renderFrames(2);
+    expect(testSetup!.captureCharFrame()).toContain("0000000009");
+  }, 20_000);
+
+  test("in the Research pane, h/l move an open fund's sections instead of the research tabs", async () => {
+    installAlpha13FTransport();
+    const researchPaneId = "ticker-research:13f-test";
+    const tabs = new Map<string, TickerResearchTabDef>(
+      [...TICKER_RESEARCH_BUILTIN_TABS, { id: "thirteenf", name: "13F", order: 39, component: ThirteenFTickerPane }]
+        .map((tab) => [tab.id, tab]),
+    );
+    setSharedRegistryForTests({ tickerResearchTabs: tabs } as unknown as PluginRegistry);
+    function ResearchHarness() {
+      const config = createTestPaneConfig("/tmp/gloomberb-thirteenf-research-test", {
+        instanceId: researchPaneId,
+        paneId: TICKER_RESEARCH_PANE_ID,
+        binding: { kind: "fixed", symbol: "AAPL" },
+      });
+      const initialState = createInitialState(config);
+      initialState.focusedPaneId = researchPaneId;
+      initialState.tickers = new Map([["AAPL", createTestTicker("AAPL")]]);
+      initialState.paneState[researchPaneId] = { activeTabId: "thirteenf" };
+      const [state, dispatch] = useReducer(appReducer, initialState);
+      latestState = state;
+      return (
+        <TestPaneProvider state={state} dispatch={dispatch} paneId={researchPaneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+          <TickerResearchPane paneId={researchPaneId} paneType={TICKER_RESEARCH_PANE_ID} focused width={100} height={24} />
+        </TestPaneProvider>
+      );
+    }
+    try {
+      await act(async () => { testSetup = await testRender(<ResearchHarness />, { width: 100, height: 26 }); });
+      await renderFrames(6);
+      await emitKeypress({ name: "enter", sequence: "\r" });
+      await renderFrames(6);
+      expect(testSetup!.captureCharFrame()).toContain("Back Alpha Capital");
+
+      await emitKeypress({ name: "l", sequence: "l" });
+      await renderFrames(2);
+      const filings = testSetup!.captureCharFrame();
+      expect(filings).toContain("PERIOD");
+      expect(latestState?.paneState[researchPaneId]?.activeTabId).toBe("thirteenf");
+
+      // Back on the holders list, the research strip has h/l again.
+      await emitKeypress({ name: "escape", sequence: "\u001B" });
+      await renderFrames(2);
+      await emitKeypress({ name: "h", sequence: "h" });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+      await renderFrames(2);
+      expect(latestState?.paneState[researchPaneId]?.activeTabId).toBe("overview");
+    } finally {
+      setSharedRegistryForTests(undefined);
+    }
+  }, 20_000);
 
 });
 

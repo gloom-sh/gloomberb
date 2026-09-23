@@ -38,12 +38,12 @@ export function ivHistorySeries(model: IvHistoryModel, colors: { iv30: string; i
   ];
 }
 
-export function IvHistoryChart({ model, width, height, hvLabel }: { model: IvHistoryModel; width: number; height: number; hvLabel: string }) {
+export function IvHistoryChart({ model, width, height, hvLabel, focused = false }: { model: IvHistoryModel; width: number; height: number; hvLabel: string; focused?: boolean }) {
   const colors = useThemeColors();
   const palette = resolveChartPalette(colors);
   const series = useMemo(() => ivHistorySeries(model, { iv30: colors.warning, iv90: IV90_COLOR, hv: colors.positive,
     quote: LIVE_COLOR, spread: colors.textDim }, hvLabel), [model, colors, hvLabel]);
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} navigable={false} showLegend showTimeAxis formatValue={formatLegendValue}
+  return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} navigable={false} showLegend showTimeAxis formatValue={formatLegendValue}
     remoteKind="implied-volatility-history"
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
       textDim: palette.axisColor, negative: colors.negative }} />;

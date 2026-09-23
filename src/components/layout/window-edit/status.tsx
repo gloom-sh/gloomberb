@@ -7,7 +7,7 @@ import {
   type WindowEditState,
 } from "./mode";
 import {
-  windowEditHelpText,
+  windowEditHelpItems,
   windowEditStatusLine,
 } from "./presentation";
 
@@ -48,6 +48,36 @@ function truncateStatusText(text: string, width: number): string {
   return `${text.slice(0, width - 3)}...`;
 }
 
+const HELP_SEPARATOR = "  ";
+const POINTER_HELP = "click a window to select it, drag to resize";
+
+/**
+ * Lays the key help over the panel's help lines in order, a whole item at a
+ * time. The pointer hint takes what room is left on the last line; keys that
+ * still do not fit are cut from the end, which holds the least used ones.
+ */
+export function wrapWindowEditHelp(items: readonly string[], width: number, lineCount: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const item of items) {
+    const next = current ? `${current}${HELP_SEPARATOR}${item}` : item;
+    if (next.length <= width || !current || lines.length === lineCount - 1) {
+      current = next;
+      continue;
+    }
+    lines.push(current);
+    current = item;
+  }
+  if (current) lines.push(current);
+  const last = lines.length - 1;
+  if (last >= 0 && lines.length < lineCount) {
+    lines.push(POINTER_HELP);
+  } else if (last >= 0 && `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`.length <= width) {
+    lines[last] = `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`;
+  }
+  return lines.slice(0, lineCount).map((line) => truncateStatusText(line, width));
+}
+
 export function NativeWindowEditStatus({
   mode,
   title,
@@ -67,8 +97,9 @@ export function NativeWindowEditStatus({
 }) {
   const lineWidth = Math.max(1, rect.width - 2);
   const status = windowEditStatusLine(mode, title, bounds, dockGeometryOptions, targetTitle);
-  const pending = windowEditHasPendingCommit(mode, bounds, dockGeometryOptions) ? " - pending" : "";
-  const help = windowEditHelpText(mode);
+  const hasPending = windowEditHasPendingCommit(mode, bounds, dockGeometryOptions);
+  const pending = hasPending ? " - pending" : "";
+  const help = wrapWindowEditHelp(windowEditHelpItems(mode, hasPending), lineWidth, Math.max(0, rect.height - 1));
   const textColor = higherContrast("#ffffff", "#000000", colors.borderFocused);
 
   return (
@@ -86,16 +117,11 @@ export function NativeWindowEditStatus({
       <Text fg={textColor} bold selectable={false} width={lineWidth}>
         {truncateStatusText(`${status}${pending}`, lineWidth)}
       </Text>
-      {rect.height > 1 && (
-        <Text fg={textColor} selectable={false} width={lineWidth}>
-          {truncateStatusText(help, lineWidth)}
+      {help.map((line, index) => (
+        <Text key={index} fg={textColor} selectable={false} width={lineWidth}>
+          {line}
         </Text>
-      )}
-      {rect.height > 2 && (
-        <Text fg={textColor} selectable={false} width={lineWidth}>
-          {truncateStatusText("Click a window to select it, drag dividers or handles to resize", lineWidth)}
-        </Text>
-      )}
+      ))}
     </Box>
   );
 }

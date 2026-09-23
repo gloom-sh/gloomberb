@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems,
+  usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
 import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -49,7 +49,15 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const target = resolveOptionsTarget(ticker);
   const underlyingFinancials = useTickerFinancials(target?.isOptionTicker ? target.effectiveTicker : null, null);
   const [activeTab, setActiveTab] = usePluginPaneState("activeTabId", "surface");
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab, focused: focused && activeTab !== "surface" });
+  // The 3D surface spends the arrows on the camera and the Table on its cell
+  // cursor, so the strip only takes keys on the other views; `v` and h/l
+  // (on the Table) still switch.
+  // Only while the table is on screen: loading, a failure or an empty chain
+  // leave the strip its keys.
+  const [tableOnScreen, setTableOnScreen] = useState(false);
+  const tabKeys = activeTab !== "table" || !tableOnScreen;
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab,
+    focused: focused && activeTab !== "surface", keyboardNavigation: tabKeys });
   const tabRows = tabsInHeader ? 0 : 1;
   const [axis] = usePaneSettingValue<Axis>("axis", "spot");
   const [tenors] = usePaneSettingValue<"listed" | "fixed">("tenors", "listed");
@@ -256,20 +264,38 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     const next = index + step;
     setHistoryDate(next < 0 ? null : storedDates[Math.min(storedDates.length - 1, next)] ?? historyDate);
   };
+  const stepTab = (direction: -1 | 1) => {
+    const index = TABS.findIndex((tab) => tab.value === activeTab);
+    const next = TABS[Math.max(0, Math.min(TABS.length - 1, index + direction))];
+    if (next && next.value !== activeTab) setActiveTab(next.value);
+  };
+  const surface3d = activeTab === "surface" && bitmapAvailable;
+  /** Moves the priced point across the 3D sheet's strikes or deltas, as a click on the sheet does. */
+  const stepSurfacePoint = (direction: -1 | 1) => {
+    const values = denseGrid?.moneyness ?? [];
+    if (!values.length) return;
+    const index = values.reduce((best, value, i) =>
+      Math.abs(value - surfaceCoordinate) < Math.abs(values[best]! - surfaceCoordinate) ? i : best, 0);
+    const next = values[Math.max(0, Math.min(values.length - 1, index + direction))];
+    if (next != null) setSurfaceCoordinate(next);
+  };
+  const zoomCamera = (factor: number) => setCamera((value) => zoomSurfaceCamera(value, factor));
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.meta || event.alt) return false;
     const key = event.name;
-    if (key === "r") { void active.reload(); void dates.reload(); }
+    // History steps with < and > (footer hints); "." stays the pane menu.
+    if (surface3d && event.shift && (key === "left" || key === "right")) stepSurfacePoint(key === "left" ? -1 : 1);
+    else if (key === "r") { void active.reload(); void dates.reload(); }
     else if (key === "v") cycleTab();
     else if (key === "t") toggleHistory();
-    else if ((key === "," || key === ".") && historyDate) stepHistory(key === "," ? 1 : -1);
     else if (key === "p") openPricer();
     else if (key === "m" && canLoadMore) loadMore();
     else if (key === "[") nextExpiry(-1);
     else if (key === "]") nextExpiry(1);
     else if (key === "c" && snapshot) openChain();
-    else if (key === "d" && activeTab === "surface" && bitmapAvailable) setSurfaceAxis(deltaSurface ? "moneyness" : "delta");
-    else if (activeTab === "surface" && bitmapAvailable && ["left", "right", "up", "down", "h", "j", "k", "l", "+", "=", "-", "0"].includes(key ?? "")) {
+    else if (key === "d" && surface3d) setSurfaceAxis(deltaSurface ? "moneyness" : "delta");
+    else if (activeTab === "table" && (key === "h" || key === "l")) stepTab(key === "h" ? -1 : 1);
+    else if (surface3d && ["left", "right", "up", "down", "h", "j", "k", "l", "+", "=", "-", "0"].includes(key ?? "")) {
       setCamera((value) => key === "0" ? DEFAULT_SURFACE_CAMERA : ["+", "=", "-"].includes(key!)
         ? zoomSurfaceCamera(value, key === "-" ? 1 / 1.08 : 1.08)
         : rotateSurfaceCamera(value, ["left", "h"].includes(key!) ? -0.1 : ["right", "l"].includes(key!) ? 0.1 : 0,
@@ -317,11 +343,32 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ...(selectedCell?.volatility ? [{ id: "pricer", key: "p", label: "rice", onPress: openPricer }] : []),
       ...(canLoadMore ? [{ id: "more", key: "m", label: "ore expiries", onPress: loadMore }] : []),
       ...(activeTab === "surface" && bitmapAvailable ? [
-        { id: "axis", key: "d", label: deltaSurface ? "moneyness axis" : "delta axis", onPress: () => setSurfaceAxis(deltaSurface ? "moneyness" : "delta") },
+        { id: "axis", key: "d", label: deltaSurface ? "moneyness axis" : "delta axis", title: deltaSurface ? "Moneyness Axis" : "Delta Axis", onPress: () => setSurfaceAxis(deltaSurface ? "moneyness" : "delta") },
         { id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
       ...(storedDates.length ? [{ id: "history", key: "t", label: historyDate ? " live" : " stored dates", onPress: toggleHistory }] : []),
+      // Dates run newest first, so older is a step forward in the list.
+      ...(historyDate ? [
+        { id: "older", key: "<", label: "older", title: "Older Stored Date", onPress: () => stepHistory(1) },
+        { id: "newer", key: ">", label: "newer", title: "Newer Stored Date", onPress: () => stepHistory(-1) }] : []),
     ],
   }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface]);
+  // Keys that move the selection without a footer hint of their own, listed in
+  // the pane menu with their keys.
+  const menuActions = useRef({ nextExpiry, stepSurfacePoint, zoomCamera });
+  menuActions.current = { nextExpiry, stepSurfacePoint, zoomCamera };
+  const expiryCount = snapshot?.expiries.length ?? 0;
+  usePaneMenuItems("ovdv-keys", () => [
+    ...(expiryCount > 1 ? [
+      { id: "expiry-previous", label: "Previous Expiry", accelerator: "[", onSelect: () => menuActions.current.nextExpiry(-1) },
+      { id: "expiry-next", label: "Next Expiry", accelerator: "]", onSelect: () => menuActions.current.nextExpiry(1) },
+    ] : []),
+    ...(surface3d && denseGrid?.moneyness.length ? [
+      { id: "point-left", label: "Move Selection Left", accelerator: "Shift+Left", onSelect: () => menuActions.current.stepSurfacePoint(-1) },
+      { id: "point-right", label: "Move Selection Right", accelerator: "Shift+Right", onSelect: () => menuActions.current.stepSurfacePoint(1) },
+      { id: "zoom-in", label: "Zoom In", accelerator: "+", onSelect: () => menuActions.current.zoomCamera(1.08) },
+      { id: "zoom-out", label: "Zoom Out", accelerator: "-", onSelect: () => menuActions.current.zoomCamera(1 / 1.08) },
+    ] : []),
+  ], [expiryCount, surface3d, !!denseGrid?.moneyness.length]);
   const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
     ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
@@ -360,13 +407,16 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       if (expiry) setExpiration(expiry.expiration);
       setSurfaceCoordinate(denseGrid.moneyness[selection.moneynessIndex] ?? (deltaSurface ? 0 : 1));
     }} fallback={table} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
-      overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} />
-      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} />
+      overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} focused={focused} />
+      : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} />
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}
         onSelect={(entry) => setExpiration(entry.expiration)} forwards={activeTab === "forwards"} width={width} height={tableHeight}
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
+  const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && liveEmpty);
+  useEffect(() => setTableOnScreen(tableShown), [tableShown]);
   return <Box flexDirection="column" width={width} height={height} overflow="hidden">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense focused={focused && activeTab !== "surface"} />}
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense
+      focused={focused && activeTab !== "surface"} keyboardNavigation={tabKeys} />}
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
       <QueryBar width={width}

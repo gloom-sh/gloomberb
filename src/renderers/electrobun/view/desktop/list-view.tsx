@@ -1,10 +1,12 @@
 /** @jsxImportSource react */
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../../components/ui/list-view";
 import { blendHex, hoverBg, type ThemeColors } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
+import { isInsideDialogSurface } from "../host/focus-scope";
+import { isEditableKeyboardTarget } from "../key-event";
 import {
   CONTROL_RADIUS,
   panelBorder,
@@ -90,12 +92,14 @@ export function WebListView({
   scrollable = false,
   selectOnHover = false,
   autoScrollToIndex = true,
+  checkboxRows = false,
   onMouseScroll,
   remoteLabel,
 }: ListViewProps) {
   const colors = useThemeColors();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const listDomId = `gloom-list-${useId()}`;
   const baseBg = bgColor ?? colors.bg;
   const activeBg = selectedBgColor ?? selectedPanelFill(colors);
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
@@ -143,6 +147,18 @@ export function WebListView({
     }
   }, [items.length, height, flexGrow, rowGap, rowStride, scrollable]);
 
+  // The dialog or pane around the list moves its cursor (j/k, Home/End). A row
+  // Tab or a press left focused follows it, or Space and Enter would act on the
+  // row the focus was left on instead of the highlighted one.
+  useEffect(() => {
+    if (selectedIndex < 0 || typeof document === "undefined") return;
+    const list = document.getElementById(listDomId);
+    const active = document.activeElement;
+    if (!list || !active || !list.contains(active) || isEditableKeyboardTarget(active)) return;
+    const row = list.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex];
+    if (row && !row.contains(active)) row.focus({ preventScroll: scrollable });
+  }, [listDomId, scrollable, selectedIndex]);
+
   const rows = items.length === 0
     ? (
       <Box height={1}>
@@ -170,6 +186,13 @@ export function WebListView({
               if (selectOnHover) onSelect?.(index);
             }
           }}
+          onMouseDownCapture={(event: { target?: unknown; preventDefault?: () => void }) => {
+            // Outside a dialog the keyboard belongs to the pane, not the DOM: a
+            // pressed row keeps no focus that would take Enter and the arrows
+            // from the pane's own cursor, the way a pressed button lets go.
+            if (isEditableKeyboardTarget(event.target as EventTarget | null) || isInsideDialogSurface(event.target)) return;
+            event.preventDefault?.();
+          }}
           onMouseDown={() => {
             if (disabled) return;
             onSelect?.(index);
@@ -182,7 +205,7 @@ export function WebListView({
           tabIndex={index === tabStopIndex ? 0 : -1}
           onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             if (disabled) return;
-            if (event.key === "Enter" || event.key === " ") {
+            if (event.key === " " || (event.key === "Enter" && !checkboxRows)) {
               event.preventDefault();
               event.stopPropagation();
               onSelect?.(index);
@@ -210,7 +233,7 @@ export function WebListView({
     });
 
   return (
-    <Box flexDirection="column" height={height} flexGrow={flexGrow} gap={1} role="listbox" aria-label={remoteLabel}>
+    <Box id={listDomId} flexDirection="column" height={height} flexGrow={flexGrow} gap={1} role="listbox" aria-label={remoteLabel}>
       {scrollable ? (
         <ScrollBox
           ref={scrollRef}

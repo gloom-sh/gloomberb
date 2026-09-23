@@ -10,6 +10,7 @@ import { summarizeMultiSelectValues, toggleMultiSelectValue, type MultiSelectOpt
 import { SelectButton, type SelectButtonOption, type SelectControl } from "./select-button";
 import { SegmentedControl } from "./toggle";
 import { Tabs } from "./tabs";
+import { useQueryBarKeys } from "./query-bar-keys";
 
 export interface QueryBarSearch {
   value: string;
@@ -225,6 +226,17 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
       label: view.options.find((option) => option.value === view.value)?.label ?? null,
     }] : []),
   ];
+
+  useQueryBarKeys({
+    search,
+    filters,
+    view,
+    narrowingCount,
+    resetAll,
+    // The search bar focuses its input once it is active. Focusing it here,
+    // mid-keypress, would let the terminal type the "/" into it.
+    focusSearch: () => search?.onActiveChange(true),
+  });
 
   useRemoteUiNode({
     role: "query-bar",

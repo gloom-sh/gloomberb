@@ -8,6 +8,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
 import { moneyMarketChange, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketRows, moneyMarketValue } from "./model";
@@ -24,15 +25,15 @@ function boardRow(row: MoneyMarketRow): BoardRow {
   };
 }
 
-function ObservationChart({ row, width, height }: { row: MoneyMarketRow; width: number; height: number }) {
+function ObservationChart({ row, width, height, focused = false }: { row: MoneyMarketRow; width: number; height: number; focused?: boolean }) {
   const series = useMemo(() => [staticSeries(moneyMarketHistory(row).map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
     { id: row.id, label: row.label, color: colors.positive, calendarSpaced: true })], [row]);
   if (row.history.every((point) => point.value == null)) return <Box width={width} height={height}><EmptyState title="No history available." /></Box>;
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} showLegend={false}
+  return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
     navigable={false} showTimeAxis formatAxisValue={(value) => moneyMarketValue(value, row.unit)} remoteKind="money-market-history" />;
 }
 
-function ObservationDetail({ row, width, height }: { row: MoneyMarketRow; width: number; height: number }) {
+function ObservationDetail({ row, width, height, focused = false }: { row: MoneyMarketRow; width: number; height: number; focused?: boolean }) {
   const p = row.percentile;
   // The chart below shows the 1Y window, so the range carries no sample count or window dates.
   const items: StatItem[] = [
@@ -46,7 +47,7 @@ function ObservationDetail({ row, width, height }: { row: MoneyMarketRow; width:
   return <Box flexDirection="column" width={width} height={height}>
     <StatGrid items={items} width={width} />
     <PaneStatusBody empty={row.history.every((point) => point.value == null)} subject="history" emptyTitle="No history available.">
-      <ObservationChart row={row} width={width} height={Math.max(3, height - statRows)} />
+      <ObservationChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
     </PaneStatusBody>
   </Box>;
 }
@@ -62,7 +63,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const data = resource.data?.payload;
   const rows = useMemo(() => data ? moneyMarketRows(data, tab).map(boardRow) : [], [data, tab]);
   const curves = useMemo(() => data ? moneyMarketCurves(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
-  const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
+  const openRow = rows.find((row) => row.id === openId);
+  const selected = openRow ?? rows.find((row) => row.id === selectedId);
   const slope = data?.billsCurve.slope;
   // The curve's slope is the Bills tab's summary figure; the legend dates the latest curve.
   const billsItems: StatItem[] = slope ? [{ id: "slope", label: "1Y-4W",
@@ -76,7 +78,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const boardHeight = Math.max(3, Math.min(rows.length + 2, Math.floor((height - tabRows) * 0.45)));
   const curveHeight = Math.max(8, height - tabRows - boardHeight);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); } });
+  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
     notices: [...(data ? moneyMarketNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: resource.loading, error: resource.error,
@@ -93,16 +95,16 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
       empty={!resource.loading && !resource.error && !data} subject="money markets">
       {data ? <MarketBoardStack rows={rows} width={width} height={Math.max(3, height - tabRows)} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, height - tabRows - 2)} />}
+        changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, height - tabRows - 2)} focused={focused} />}
         rootBefore={tab === "bills" ? <>
           <StatGrid items={billsItems} width={width} />
           <CurveSurface series={curves} width={width} height={Math.max(6, curveHeight - statGridRows(billsItems, width))} display="chart"
             selectedPointId={data.billsCurve.points.find((point) => point.seriesId === selected?.observation.seriesId)?.tenor ?? null}
             valueLabel="Discount yield (%)" formatValue={(value) => `${value.toFixed(2)}%`} formatX={(value) => `${(value * 12).toFixed(1)} months`} />
         </>
-          : tab === "liquidity" ? <ObservationChart row={data.netLiquidity} width={width} height={curveHeight} />
+          : tab === "liquidity" ? <ObservationChart row={data.netLiquidity} width={width} height={curveHeight} focused={focused && !openRow} />
           // Rates charts the selected funding rate's year, like Liquidity.
-          : rateChartRow ? <ObservationChart row={rateChartRow} width={width} height={curveHeight} /> : undefined} /> : null}
+          : rateChartRow ? <ObservationChart row={rateChartRow} width={width} height={curveHeight} focused={focused && !openRow} /> : undefined} /> : null}
     </PaneStatusBody>
   </Box>;
 }

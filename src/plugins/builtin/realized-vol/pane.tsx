@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
+  usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -9,6 +9,7 @@ import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "..
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useLiveSessionRefresh } from "../shared/volatility/live-session";
@@ -119,16 +120,14 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     ...(ticker ? { listing: { name: ticker.metadata.name, exchange: ticker.metadata.exchange,
       currency: ticker.metadata.currency, type: ticker.metadata.assetCategory ?? "STK" } } : {}),
     values: iv.data?.reference ? { expiration: String(iv.data.reference.expiration) } : {} }); };
-  const handleKey = (event: DataTableKeyEvent): boolean => {
-    if (event.ctrl || event.alt || event.meta) return false;
-    if (event.name === "r") { void history.reload(); if (showIv) void iv.reload(); }
-    else if (event.name === "v") cycleView();
-    else if (event.name === "i") setShowIv(!showIv);
-    else if (event.name === "s" && symbol) openSurface();
-    else return false;
-    event.preventDefault?.(); event.stopPropagation?.(); return true;
-  };
-  useShortcut((event) => { if (focused && view !== "cone") handleKey(event); });
+  // The footer hints bind v, i and s in every view and state; only the reload
+  // is the pane's own key.
+  useShortcut((event) => {
+    if (event.defaultPrevented || !isPlainKey(event, "r")) return;
+    event.preventDefault(); event.stopPropagation();
+    void history.reload();
+    if (showIv) void iv.reload();
+  }, { enabled: focused });
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
@@ -180,7 +179,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
           sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="Volatility cone unavailable."
           onHeaderClick={(id) => setSort({ id: id as keyof VolatilityConeStatistics, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
           selection={{ kind: "id", selectedId: String(selected), getId: (row) => String(row.window), onChange: (_id, row) => setSelected(row.window) }}
-          onActivate={(row) => setSelected(row.window)} onRootKeyDown={handleKey}
+          onActivate={(row) => setSelected(row.window)}
           getExportMetadata={() => [["symbol", model.symbol], ["estimator", model.estimator], ["lookback years", model.lookbackYears],
             ["as of", model.asOf?.toISOString()], ["source", history.data?.source], ["units", "annualized %"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "window" ? String(row.window)
@@ -190,8 +189,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
             color: column.id === "current" ? colors.warning : colors.text })} />
         {/* Desktop chrome runs a little taller than its rows; the spare row keeps the last window in view. */}
         <VolatilityConeChart evidence={evidence} rows={model.cone} width={width}
-          height={Math.max(3, contentHeight - coneTableHeight - (nativePaneChrome ? 1 : 0))} />
-      </> : chartInput && windows.length ? <RealizedVolGraph evidence={evidence} input={chartInput} width={width} height={contentHeight} />
+          height={Math.max(3, contentHeight - coneTableHeight - (nativePaneChrome ? 1 : 0))} focused={focused} />
+      </> : chartInput && windows.length ? <RealizedVolGraph evidence={evidence} input={chartInput} width={width} height={contentHeight} focused={focused} />
         : <EmptyState title="Select graph windows in pane settings." />}
     </PaneStatusBody>}
   </Box>;

@@ -9,7 +9,7 @@ import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { PluginRenderProvider } from "../../runtime";
 import { YieldCurvePane } from "./index";
 import { TREASURY_MATURITIES } from "./treasury-data";
-import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
+import { PaneFooterProvider, PaneFooterBar, PaneFooterKeys } from "../../../components/layout/pane/footer";
 import { Box } from "../../../ui";
 
 const id = "yield-curve:test";
@@ -36,6 +36,7 @@ function Harness() {
       <PaneFooterProvider>{(footer) => <Box width={70} height={30} flexDirection="column">
         <YieldCurvePane paneId={id} paneType="yield-curve" focused width={70} height={29} />
         <PaneFooterBar footer={footer} focused width={70} />
+        <PaneFooterKeys paneId={id} footer={footer} focused />
       </Box>}</PaneFooterProvider>
     </PluginRenderProvider>
   </PaneInstanceProvider></AppContext>;
@@ -83,7 +84,7 @@ test("date submission hides the previous curve while pending and keeps controls 
   await frame();
   expect(setup!.captureCharFrame()).toContain("Treasury curve unavailable");
   const controls = createTestControls(() => setup!);
-  await act(async () => { await controls.clickFrameText("[l]atest"); });
+  await act(async () => { await controls.clickFrameText("[c]urrent"); });
   await frame(); await frame();
   expect(setup!.captureCharFrame()).toContain("as of 2026-09-08");
 });

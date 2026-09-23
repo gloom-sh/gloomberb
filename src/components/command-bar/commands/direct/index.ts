@@ -38,6 +38,8 @@ export function runDirectCommandAction(options: {
   activeCollectionId: string | null;
   activeTickerSymbol: string | null;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
+  /** The window's own minimize and maximize, as its title bar buttons run them. */
+  controlWindow: (action: "minimize" | "toggle-maximize") => void;
   dispatch: Dispatch<AppAction>;
   executeCollectionCommand: (commandId: CollectionCommandId, rawInput?: string) => void;
   getState: () => AppState;
@@ -62,6 +64,7 @@ export function runDirectCommandAction(options: {
     arg,
     closeAll,
     command,
+    controlWindow,
     dispatch,
     executeCollectionCommand,
     getState,
@@ -97,6 +100,11 @@ export function runDirectCommandAction(options: {
     case "window-mode":
       closeAll({ revertThemePreview: false });
       pluginRegistry.openWindowMode(state.focusedPaneId ?? undefined, parseWindowModeCommandArg(arg) ?? "move");
+      return;
+    case "minimize-window":
+    case "maximize-window":
+      closeAll({ revertThemePreview: false });
+      controlWindow(command.id === "minimize-window" ? "minimize" : "toggle-maximize");
       return;
     case "add-broker-account":
     case "new-portfolio":

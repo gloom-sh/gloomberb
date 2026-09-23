@@ -12,6 +12,8 @@ export interface PortfolioStepProps {
   positions: OnboardingPositionsState;
   positionsInputRef: RefObject<InputRenderable | null>;
   positionsEditing: boolean;
+  /** The added position the keyboard acts on; null while a field has the keyboard. */
+  selectedPositionSymbol: string | null;
   commandBarShortcut: string;
   choices: ListViewItem[];
   optionIdx: number;

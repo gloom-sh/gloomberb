@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
 import { InputSearchBar } from "../components";
 import { ListView, type ListViewItem } from "../components/ui/list-view";
@@ -17,6 +17,8 @@ import {
 import { linkedLayoutMarker } from "./linked";
 
 const DETAILS_WIDTH = 42;
+/** Rows PageUp and PageDown skip. */
+const PAGE_STEP = 10;
 
 interface GalleryRow extends ListViewItem {
   entry: GalleryEntry | null;
@@ -75,13 +77,13 @@ export function LayoutGalleryTerminal({
   const detailsWidth = Math.min(DETAILS_WIDTH, Math.max(28, Math.floor(paneWidth * 0.42)));
   const inputRef = useRef<InputRenderable | null>(null);
   const searchFocused = search.active;
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const {
     activate: activateLayout,
     community,
     install: installLayout,
     owned,
     select,
+    selectedId,
     teamSections,
     teamLayouts,
   } = controller;
@@ -145,40 +147,38 @@ export function LayoutGalleryTerminal({
     return built;
   }, [community, discoverStatus, owned, teamLayouts.refresh, teamLayouts.state, teamSections]);
 
-  const selectableIndexes = useMemo(
-    () => rows.map((row, index) => (row.entry || row.action ? index : -1)).filter((index) => index >= 0),
-    [rows],
-  );
+  const selectableRows = useMemo(() => rows.filter((row) => row.entry || row.action), [rows]);
 
-  useEffect(() => {
-    if (selectableIndexes.length === 0) return;
-    if (!rows[selectedIndex]?.entry && !rows[selectedIndex]?.action) {
-      setSelectedIndex(selectableIndexes[0]!);
-    }
-  }, [rows, selectableIndexes, selectedIndex]);
-
-  const selectedRow = rows[selectedIndex] ?? null;
+  // The cursor is the gallery's selection, so it follows a layout moved with
+  // Shift+J/K and a new search puts it on the best match. With none it rests on
+  // the layout in use.
+  const searching = controller.query.trim().length > 0;
+  const selectedRow = selectableRows.find((row) => row.id === selectedId)
+    ?? (searching ? undefined : selectableRows.find((row) => row.entry?.kind === "owned" && row.entry.active))
+    ?? selectableRows[0]
+    ?? null;
+  const selectedIndex = selectedRow ? rows.indexOf(selectedRow) : -1;
   const selectedEntry = selectedRow?.entry ?? null;
+  const cursorPosition = selectedRow ? selectableRows.indexOf(selectedRow) : -1;
+  // The gallery's keys act on its selection, so it names the row under the cursor.
   useEffect(() => {
-    select(selectedEntry?.id ?? null);
-  }, [select, selectedEntry?.id]);
+    const id = selectedRow?.id ?? null;
+    if (id !== selectedId) select(id);
+  }, [select, selectedId, selectedRow?.id]);
 
-  const move = useCallback((delta: number) => {
-    if (selectableIndexes.length === 0) return;
-    const position = selectableIndexes.indexOf(selectedIndex);
-    const nextPosition = position < 0
-      ? 0
-      : Math.min(selectableIndexes.length - 1, Math.max(0, position + delta));
-    setSelectedIndex(selectableIndexes[nextPosition]!);
-  }, [selectableIndexes, selectedIndex]);
+  const moveTo = useCallback((position: number) => {
+    const next = selectableRows[Math.max(0, Math.min(selectableRows.length - 1, position))];
+    if (next) select(next.id);
+  }, [select, selectableRows]);
 
   const focusSearch = search.focus;
   const blurSearch = search.blur;
 
   // The details panel is always on screen here, so Enter runs the action it shows
   // instead of stepping through a separate detail state. Entry keys (Enter on a
-  // layout, o, a, e, c, d, t, u, x, n, p, /) are the gallery's; this list adds
-  // moving the cursor and the status rows (log in, retry).
+  // layout, o, a, e, c, d, t, g, x, Shift+J/K, n, p, /) and Esc are the
+  // gallery's; this list adds moving the cursor and the status rows (log in,
+  // retry).
   const activate = useCallback((row: GalleryRow | null) => {
     if (!row) return;
     if (row.action) {
@@ -190,30 +190,28 @@ export function LayoutGalleryTerminal({
     else activateLayout(row.entry);
   }, [activateLayout, installLayout]);
 
+  // Unscoped on purpose: a scoped handler would outrank the pane menu opened
+  // over the gallery, and j/k/Enter belong to that menu while it is open.
   useShortcut((event) => {
-    if (dialogOpen) return;
-    // Leaving the search field is the first Escape; the gallery closes on the next.
-    if (isPlainKey(event, "escape", "esc") && searchFocused) {
-      event.preventDefault();
-      event.stopPropagation();
-      blurSearch();
-      return;
-    }
-    if (event.targetEditable) return;
+    if (dialogOpen || event.targetEditable || searchFocused) return;
 
     const run = (action: () => void) => {
       event.preventDefault();
       event.stopPropagation();
       action();
     };
-    if (isPlainKey(event, "down", "j")) run(() => move(1));
+    if (isPlainKey(event, "down", "j")) run(() => moveTo(cursorPosition + 1));
     else if (isPlainKey(event, "up", "k")) {
       run(() => {
-        if (event.name === "up" && selectedIndex === selectableIndexes[0]) focusSearch();
-        else move(-1);
+        if (event.name === "up" && cursorPosition <= 0) focusSearch();
+        else moveTo(cursorPosition - 1);
       });
-    } else if (isPlainKey(event, "enter", "return") && selectedRow?.action) run(() => activate(selectedRow));
-  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
+    } else if (isPlainKey(event, "home")) run(() => moveTo(0));
+    else if (isPlainKey(event, "end")) run(() => moveTo(selectableRows.length - 1));
+    else if (isPlainKey(event, "pageup")) run(() => moveTo(cursorPosition - PAGE_STEP));
+    else if (isPlainKey(event, "pagedown")) run(() => moveTo(cursorPosition + PAGE_STEP));
+    else if (isPlainKey(event, "enter", "return") && selectedRow?.action) run(() => activate(selectedRow));
+  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before" });
 
   const bodyHeight = Math.max(4, paneHeight - 1);
 
@@ -242,7 +240,8 @@ export function LayoutGalleryTerminal({
             height={bodyHeight}
             scrollable
             onSelect={(index) => {
-              if (rows[index]?.entry || rows[index]?.action) setSelectedIndex(index);
+              const row = rows[index];
+              if (row?.entry || row?.action) select(row.id);
             }}
             onActivate={(_item, index) => activate(rows[index] ?? null)}
             renderRow={(item, state) => {
@@ -332,7 +331,7 @@ function LayoutDetails({
       {entry.linked && (
         <Text fg={entry.linked.updateAvailable ? colors.warning : entry.linked.dirty ? colors.text : colors.textDim}>
           {entry.linked.updateAvailable
-            ? tf("Team has r{revision}. u to pull.", { revision: String(entry.linked.updateAvailable) })
+            ? tf("Team has r{revision}. g to pull.", { revision: String(entry.linked.updateAvailable) })
             : entry.linked.dirty
               ? t("Edited since the last publish. t to publish.")
               : t("In sync with the team.")}

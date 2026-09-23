@@ -1,7 +1,7 @@
 import { AsciiText, Box, Text, compactContextMenuItems, useContextMenu, useUiHost, type BoxRenderable } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRendererHost, useUiCapabilities } from "../../../ui";
-import { useViewport } from "../../../react/input";
+import { useShortcut, useViewport } from "../../../react/input";
 import { useDialogState } from "../../../ui/dialog";
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import type { DesktopDockPreviewState, DesktopWindowBridge } from "../../../types/desktop-window";
@@ -33,12 +33,14 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { tf } from "../../../i18n";
 import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
+import { getPaneFooter } from "../pane/footer";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { formatAdvertisedChord, useKeybindings } from "../../../app/keybindings";
-import { paneManagementAccelerators } from "./shortcuts";
+import { modalSurfaceOwnsKey, paneManagementAccelerators } from "./shortcuts";
 import {
   actionMenuWidth,
   menuForPane,
+  paneFooterMenuItems,
   menuItemsForFallback,
 } from "./menu";
 import { tickerLinkMenuItems } from "./ticker-link-menu";
@@ -52,7 +54,7 @@ import { useShellWindowMode } from "./window-mode";
 import { useShellNativeSurfaceWindowState } from "./native/surfaces";
 import { ShellWindowModeOverlays } from "./window-mode/overlays";
 import { ShellPaneLayers } from "./pane/layers";
-import { ShellActionMenuOverlay, type ActionMenuState } from "./action-menu-overlay";
+import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./action-menu-overlay";
 import { ShellDragOverlays } from "./drag/overlays";
 import {
   useShellDragRuntimeState,
@@ -138,6 +140,8 @@ export function Shell({
   const transientFocusLayoutStateRef = useRef<TransientFocusLayoutState | null>(null);
   transientFocusLayoutStateRef.current = transientFocusLayoutState;
   const [hoveredMenuItemId, setHoveredMenuItemId] = useState<string | null>(null);
+  const hoveredMenuItemIdRef = useRef(hoveredMenuItemId);
+  hoveredMenuItemIdRef.current = hoveredMenuItemId;
   const menuStateRef = useRef(menuState);
   menuStateRef.current = menuState;
   // The desktop menu closes on the press outside it, which re-renders before
@@ -147,6 +151,9 @@ export function Shell({
   const closePaneMenu = useCallback(() => {
     const open = menuStateRef.current;
     if (open) lastMenuCloseRef.current = { paneId: open.paneId, at: Date.now() };
+    // Keys in the same burst must see the menu closed at once.
+    menuStateRef.current = null;
+    hoveredMenuItemIdRef.current = null;
     setMenuState(null);
     setHoveredMenuItemId(null);
   }, []);
@@ -323,7 +330,8 @@ export function Shell({
     }
     focusPane(current.paneId);
   }, [closePaneMenu, config.activeLayoutIndex, config.layouts, dispatch, focusPane, setTransientFocusLayout]);
-  const toggleFocusedPaneFullscreen = useCallback(() => {
+  /** Fullscreen for a given pane: the focused one from the key, the menu's own from its item. */
+  const togglePaneFullscreen = useCallback((paneId: string | null) => {
     const current = transientFocusLayoutStateRef.current;
     if (current?.active) {
       setTransientFocusLayout(null);
@@ -332,38 +340,47 @@ export function Shell({
 
     if (
       current
-      && current.paneId === focusedPaneId
+      && current.paneId === paneId
       && current.sourceLayoutIndex === config.activeLayoutIndex
     ) {
       activateTransientFocusState(current);
       return true;
     }
 
-    const nextLayout = resolvePaneFocusSourceLayout(visibleLayout, focusedPaneId);
-    if (!focusedPaneId || !nextLayout) {
+    const nextLayout = resolvePaneFocusSourceLayout(visibleLayout, paneId);
+    if (!paneId || !nextLayout) {
       pluginRegistry.notify({ body: "Focus a pane to make it fullscreen", type: "info" });
       return false;
     }
 
     closePaneMenu();
     setTransientFocusLayout({
-      paneId: focusedPaneId,
+      paneId,
       layout: nextLayout,
       sourceLayoutIndex: config.activeLayoutIndex,
       active: true,
     });
-    focusPane(focusedPaneId);
+    focusPane(paneId);
     return true;
   }, [
     activateTransientFocusState,
     closePaneMenu,
     config.activeLayoutIndex,
-    focusedPaneId,
     focusPane,
     pluginRegistry,
     setTransientFocusLayout,
     visibleLayout,
   ]);
+  const toggleFocusedPaneFullscreen = useCallback(
+    () => togglePaneFullscreen(focusedPaneId),
+    [focusedPaneId, togglePaneFullscreen],
+  );
+  useEffect(() => {
+    pluginRegistry.togglePaneFullscreenFn = togglePaneFullscreen;
+    return () => {
+      if (pluginRegistry.togglePaneFullscreenFn === togglePaneFullscreen) pluginRegistry.togglePaneFullscreenFn = () => false;
+    };
+  }, [pluginRegistry, togglePaneFullscreen]);
   const activateTransientFocusLayout = useCallback(() => {
     const current = transientFocusLayoutStateRef.current;
     if (!current) return;
@@ -380,12 +397,23 @@ export function Shell({
     setTransientFocusLayout(null);
   }, [closePaneMenu, setTransientFocusLayout]);
 
+  // Fullscreen shows one pane. When focus or the layout moves anywhere else
+  // (Tab, a layout switch, a pane opened from the command bar), leave it, so
+  // the keyboard never lands on a pane that is not on screen.
+  useEffect(() => {
+    const current = transientFocusLayoutStateRef.current;
+    if (!current?.active) return;
+    if (focusedPaneId && focusedPaneId !== current.paneId) setTransientFocusLayout(null);
+    else if (config.activeLayoutIndex !== current.sourceLayoutIndex) setTransientFocusLayout(null);
+  }, [config.activeLayoutIndex, focusedPaneId, setTransientFocusLayout]);
+
   useEffect(() => {
     setTransientLayout(
       transientFocusLayoutState
         ? {
           id: "pane-focus",
-          label: "^F Focus",
+          label: "Focus",
+          shortcutActionId: "pane-fullscreen",
           active: transientFocusActive,
           onActivate: activateTransientFocusLayout,
           onDeactivate: deactivateTransientFocusLayout,
@@ -504,6 +532,18 @@ export function Shell({
     };
   }, [pluginRegistry, sharePaneById, stateRef]);
 
+  const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
+  const openFocusedPaneMenu = useCallback(() => {
+    if (!focusedPaneId || windowMode) return false;
+    const rect = transientFocusActive && transientFocusPaneId === focusedPaneId
+      ? { x: 0, y: 0, width, height: contentHeight }
+      : dockLeafLayouts.find((leaf) => leaf.instanceId === focusedPaneId)?.rect
+        ?? visibleFloatingPanes.find(({ pane }) => pane.instance.instanceId === focusedPaneId)?.rect;
+    if (!rect || !openPaneMenuRef.current) return false;
+    openPaneMenuRef.current(focusedPaneId, rect, undefined, { keyboard: true });
+    return true;
+  }, [contentHeight, dockLeafLayouts, focusedPaneId, transientFocusActive, transientFocusPaneId, visibleFloatingPanes, width, windowMode]);
+
   useShellPaneManagementShortcuts({
     cancelActiveDrag,
     closeAllFloatingPanes,
@@ -514,6 +554,7 @@ export function Shell({
     gridlockVisiblePanes,
     hasActiveDrag,
     inputCaptured,
+    openFocusedPaneMenu,
     openFocusedPaneSettings,
     openLayoutGallery,
     overlayOpen,
@@ -524,7 +565,12 @@ export function Shell({
     toggleFocusedPaneFloating,
   });
 
-  const openPaneMenu = useCallback((paneId: string, rect: LayoutBounds, event?: { preventDefault?: () => void; stopPropagation?: () => void; target?: unknown; pixelX?: number; pixelY?: number }) => {
+  const openPaneMenu = useCallback((
+    paneId: string,
+    rect: LayoutBounds,
+    event?: { preventDefault?: () => void; stopPropagation?: () => void; target?: unknown; pixelX?: number; pixelY?: number },
+    options: { keyboard?: boolean } = {},
+  ) => {
     const pane = paneMap.get(paneId);
     if (!pane) return;
     // A second press on the same pane's menu button closes it.
@@ -572,9 +618,19 @@ export function Shell({
       }),
       canExportPaneCsv(paneId) ? exportPaneCsv : undefined,
       paneAccelerators,
+      (pluginRegistry.resolvePaneQuickSettings?.(paneId) ?? []).map((setting) => ({
+        key: setting.key,
+        label: setting.label,
+        active: setting.value,
+        toggle: () => handlePaneQuickSetting(paneId, setting.key, undefined),
+      })),
+      {
+        active: transientFocusLayoutStateRef.current?.active === true && transientFocusLayoutStateRef.current.paneId === paneId,
+        toggle: () => { togglePaneFullscreen(paneId); },
+      },
+      paneFooterMenuItems(getPaneFooter(paneId)),
     );
-    void showContextMenu(context, items, event).then((shown) => {
-      if (shown) return;
+    const showKitMenu = () => {
       const pluginItems = pluginRegistry.getContextMenuItems?.(context) ?? [];
       const fallbackSourceItems = compactContextMenuItems([
         ...items,
@@ -585,18 +641,92 @@ export function Shell({
       if (fallbackItems.length === 0) return;
       const menuWidth = actionMenuWidth(fallbackItems, width);
       const menuX = Math.max(0, Math.min(width - menuWidth, rect.x + Math.max(0, rect.width - menuWidth)));
-      const menuY = Math.max(0, Math.min(contentHeight - 1, rect.y + 1));
-      setHoveredMenuItemId(fallbackItems[0]?.id ?? null);
-      setMenuState({
+      // Under the pane's header, or higher when that leaves the menu no room.
+      const menuY = Math.max(0, Math.min(rect.y + 1, contentHeight - 2 - fallbackItems.length, contentHeight - 3));
+      const firstId = fallbackItems.find((item) => !item.divider)?.id ?? null;
+      const nextMenu: ActionMenuState = {
         paneId,
         x: menuX,
         y: menuY,
         width: menuWidth,
+        maxRows: Math.max(1, contentHeight - menuY - 2),
         items: fallbackItems,
-        anchor: nativePaneChrome ? paneMenuAnchor(event) : undefined,
-      });
+        anchor: nativePaneChrome
+          ? (options.keyboard ? paneMenuButtonAnchor(paneId) : paneMenuAnchor(event))
+          : undefined,
+      };
+      // Keys that arrive in the same burst as the one that opened it go to the menu.
+      menuStateRef.current = nextMenu;
+      hoveredMenuItemIdRef.current = firstId;
+      setHoveredMenuItemId(firstId);
+      setMenuState(nextMenu);
+    };
+    // A native menu opens at the pointer, which is nowhere near the pane when
+    // the keyboard asked for it; the kit menu opens under the pane's button.
+    if (options.keyboard) {
+      showKitMenu();
+      return;
+    }
+    void showContextMenu(context, items, event).then((shown) => {
+      if (!shown) showKitMenu();
     });
-  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneAccelerators, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneSettings, paneAccelerators, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  openPaneMenuRef.current = openPaneMenu;
+
+  // The open pane menu owns the keyboard, ahead of any pane however late it
+  // mounted, and over a text field it was opened from. The desktop kit menu
+  // moves and chooses on its own; the terminal menu is driven here.
+  useShortcut((event) => {
+    const menu = menuStateRef.current;
+    if (!menu || !modalSurfaceOwnsKey(event, keybindings)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (nativePaneChrome) return;
+    const name = event.name;
+    if (name === "escape") {
+      closePaneMenu();
+      return;
+    }
+    const choices = menu.items.filter((item) => !item.divider);
+    const index = Math.max(0, choices.findIndex((item) => item.id === hoveredMenuItemIdRef.current));
+    const last = choices.length - 1;
+    let next: number | null = null;
+    if (name === "down" || name === "j" || (name === "tab" && !event.shift)) next = index >= last ? 0 : index + 1;
+    else if (name === "up" || name === "k" || (name === "tab" && event.shift)) next = index <= 0 ? last : index - 1;
+    else if (name === "home" || name === "pageup") next = 0;
+    else if (name === "end" || name === "pagedown") next = last;
+    if (next !== null) {
+      const id = choices[next]?.id ?? null;
+      hoveredMenuItemIdRef.current = id;
+      setHoveredMenuItemId(id);
+      return;
+    }
+    if (name === "return" || name === "enter" || name === "space") {
+      const item = choices[index];
+      closePaneMenu();
+      item?.action();
+    }
+  }, { phase: "capture", scope: "pane-menu", allowEditable: true });
+
+  // A menu whose pane went away (closed from inside it, a layout switch) closes too.
+  useEffect(() => {
+    if (menuState && !paneMap.has(menuState.paneId)) closePaneMenu();
+  }, [closePaneMenu, menuState, paneMap]);
+
+  // In fullscreen the pointer only ever meets the one pane on screen: hit
+  // testing the tiled rects behind it would focus a pane nobody can see.
+  const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  const pointerDockLeafLayouts = useMemo(() => (
+    transientFocusActive
+      ? dockLeafLayouts.filter((leaf) => leaf.instanceId === transientFocusPaneId).map((leaf) => ({ ...leaf, rect: fullscreenRect }))
+      : dockLeafLayouts
+  ), [dockLeafLayouts, fullscreenRect, transientFocusActive, transientFocusPaneId]);
+  const pointerFloatingPanes = useMemo(() => (
+    transientFocusActive
+      ? visibleFloatingPanes.filter(({ pane }) => pane.instance.instanceId === transientFocusPaneId).map((entry) => ({ ...entry, rect: fullscreenRect }))
+      : visibleFloatingPanes
+  ), [fullscreenRect, transientFocusActive, transientFocusPaneId, visibleFloatingPanes]);
+  const pointerDividerLayouts = transientFocusActive ? [] : dockDividerLayouts;
 
   const {
     handleFloatingCloseMouseDown,
@@ -615,8 +745,8 @@ export function Shell({
     closePaneMenu,
     contentHeight,
     dockGeometryOptions,
-    dockDividerLayouts,
-    dockLeafLayouts,
+    dockDividerLayouts: pointerDividerLayouts,
+    dockLeafLayouts: pointerDockLeafLayouts,
     dragRuntime,
     focusPane,
     focusedPaneId,
@@ -633,7 +763,7 @@ export function Shell({
     snapGuides,
     transientFocusActive,
     updateWindowModePreviewLayout,
-    visibleFloatingPanes,
+    visibleFloatingPanes: pointerFloatingPanes,
     visibleLayout,
     width,
     windowMode,

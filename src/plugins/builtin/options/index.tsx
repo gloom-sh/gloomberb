@@ -1,4 +1,4 @@
-import type { PaneSettingsDef } from "../../../types/plugin";
+import type { PaneSettingsDef, TickerResearchTabProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import type { OptionsViewProps } from "./types";
@@ -7,6 +7,15 @@ import { OptionsView } from "./view";
 /** The registered chain shows IV rank; isolated view renders stay offline. */
 function OptionsPane(props: OptionsViewProps) {
   return <OptionsView {...props} ivRank />;
+}
+
+/**
+ * The research tab strip keeps h/l and the arrows, so the chain steps expiries
+ * with [ and ]. It never claims the app's input capture: every app and pane
+ * key keeps working while the chain has the cursor.
+ */
+function OptionsResearchTab({ width, height, focused }: TickerResearchTabProps) {
+  return <OptionsView width={width} height={height} focused={focused} ivRank nestedInTabs />;
 }
 import {
   LIVE_STREAMING_QUICK_SETTING,
@@ -83,7 +92,7 @@ export const optionsModule: PluginModule = {
       id: "options",
       name: "Options",
       order: 35,
-      component: OptionsPane,
+      component: OptionsResearchTab,
       instruments: ["equity", "fund", "index", "future", "option"],
       isVisible: ({ hasOptionsChain }) => hasOptionsChain,
     });

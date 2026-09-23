@@ -30,6 +30,8 @@ export interface StaticMultiLineChartSurfaceProps {
   yAxisColor?: string;
   formatYAxisValue?: (value: number) => string;
   onCursorDateChange?: (date: Date) => void;
+  /** Left/Right step the cursor through the observations, as the pointer's hover does. */
+  focused?: boolean;
 }
 
 const PANELS = [{ id: "main" }];
@@ -51,6 +53,7 @@ export function StaticMultiLineChartSurface({
   yAxisColor = colors.textDim,
   formatYAxisValue,
   onCursorDateChange,
+  focused = false,
 }: StaticMultiLineChartSurfaceProps) {
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -90,6 +93,7 @@ export function StaticMultiLineChartSurface({
         colors={compositeColors}
         cursorDate={cursorDate}
         onCursorDateChange={handleCursorDateChange}
+        focused={focused}
         navigable={false}
         showLegend={false}
         showTimeAxis={showTimeAxis}

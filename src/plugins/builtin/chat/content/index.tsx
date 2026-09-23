@@ -21,6 +21,7 @@ import {
 import { chatSidebarStore } from "../sidebar-store";
 import { useChatSnapshotState } from "./snapshot";
 import { useChatContentShortcuts } from "./shortcuts";
+import { useChatFooter } from "./footer";
 import type { ChatContentController } from "./types";
 import { useChatProfilePopover } from "../profile-popover";
 import { useChatChannelNavigation } from "./channel-navigation";
@@ -36,6 +37,7 @@ import type { ChatMessage } from "../../../../api-client";
 import { NewDmDialog } from "./new-dm-dialog";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../cloud/team/pane-request";
+import { teamStore } from "../../cloud/team/store";
 import { requestAccountManagementTab } from "../../account-management/navigation";
 import {
   CHAT_MESSAGE_EDIT_WINDOW_MS,
@@ -296,13 +298,18 @@ export function ChatContent({
     focusChannelSidebar,
     focusChatContent,
     moveSidebarChannelSelection,
+    moveSidebarToEdge,
     selectSidebarChannel,
     setSidebarFocused,
+    setSidebarSectionExpanded,
     sidebarCursorChannelId,
+    sidebarCursorRow,
     sidebarFocused,
     sidebarFocusedRef,
+    sidebarHeaderCursor,
   } = useChatChannelNavigation({
     blurInput,
+    canCreateConversation: canSend,
     channelId,
     channelIdRef,
     channels,
@@ -486,6 +493,7 @@ export function ChatContent({
     cancelEditMessage,
     commandBarOpen,
     clearReplyTarget,
+    closeProfilePopover,
     cycleChannel,
     focusChannelSidebar,
     focusChatContent,
@@ -502,8 +510,10 @@ export function ChatContent({
     commitMentionSelection,
     moveMessageSelection,
     moveSidebarChannelSelection,
+    moveSidebarToEdge,
     nativePaneChrome,
     editingMessage,
+    profilePopoverOpen: !!profilePopoverUser,
     replyTo,
     requestOlderMessages,
     requestOlderMessagesIfNeeded,
@@ -512,9 +522,57 @@ export function ChatContent({
     selectedIdx,
     setFollowMessages,
     setSelectedIdx,
+    setSidebarSectionExpanded,
     shouldLeaveComposerForSelection,
     showChannelSidebar,
+    sidebarCursorRow,
     sidebarFocusedRef,
+  });
+
+  const openTeamChannel = useCallback((teamId: string) => {
+    openTeamPane(createPaneFromTemplate, { teamId, section: "channels" });
+  }, [createPaneFromTemplate]);
+  // With the sidebar focused, keys act on the row under its cursor; otherwise
+  // on the open channel.
+  const cursorChannelId = sidebarFocused
+    ? sidebarCursorRow?.kind === "channel" ? sidebarCursorRow.channel.id : null
+    : channels.some((channel) => channel.id === channelId) ? channelId : null;
+  const cursorTeamId = sidebarFocused && sidebarCursorRow
+    ? sidebarCursorRow.kind === "team-header"
+      ? sidebarCursorRow.team ? sidebarCursorRow.teamId : null
+      : sidebarCursorRow.kind === "channel" && sidebarCursorRow.teamId && teamStore.getTeam(sidebarCursorRow.teamId)
+        ? sidebarCursorRow.teamId
+        : null
+    : null;
+  useChatFooter({
+    composing: inputFocused || newDmOpen,
+    canSend,
+    selectedIdx,
+    // While the sidebar has the keys, a message's reply and edit are not on offer.
+    selectedMessage: selectionActive && !sidebarFocused ? messages[selectedIdx] ?? null : null,
+    latestEditableMessageId,
+    beginEditMessage,
+    beginReplyTo,
+    focusComposer,
+    catalog,
+    openTicker,
+    currentUserId: user?.id,
+    profilePopoverUser,
+    showProfilePopover: showUserProfilePopover,
+    closeProfilePopover,
+    notificationChannelId: cursorChannelId,
+    notificationsEnabled: channelStates.find((state) => state.channelId === cursorChannelId)?.notificationsEnabled === true,
+    setChannelNotificationsEnabled: (nextChannelId, enabled) => controller.setChannelNotificationsEnabled(nextChannelId, enabled),
+    newChannelTeamId: cursorTeamId,
+    openNewDm: openNewDmDialog,
+    openTeamChannel,
+    canCycleChannels: channels.length > 1 && !!onChannelChange,
+    cycleChannel,
+    canFocusSidebar: showChannelSidebar && !sidebarFocused && !!onChannelChange,
+    focusChannelSidebar,
+    jumpToMessage,
+    needsProfileSetup: !!user?.id && ownProfileConfigured === false,
+    openProfileSetup,
   });
 
   const chatContentBg = focused && showChannelSidebar && !sidebarFocused
@@ -535,7 +593,8 @@ export function ChatContent({
         <ChannelSidebar
           channels={channels}
           channelStates={channelStates}
-          activeChannelId={sidebarFocused ? sidebarCursorChannelId : channelId}
+          activeChannelId={sidebarFocused ? (sidebarHeaderCursor ? "" : sidebarCursorChannelId) : channelId}
+          cursorHeaderKey={sidebarFocused ? sidebarHeaderCursor : null}
           width={channelSidebarWidth}
           paneWidth={width}
           height={height}
@@ -552,7 +611,7 @@ export function ChatContent({
           onToggleNotifications={(nextChannelId, enabled) => {
             controller.setChannelNotificationsEnabled(nextChannelId, enabled);
           }}
-          onCreateTeamChannel={(teamId) => openTeamPane(createPaneFromTemplate, { teamId, section: "channels" })}
+          onCreateTeamChannel={openTeamChannel}
         />
       )}
 

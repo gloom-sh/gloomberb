@@ -5,6 +5,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import { TestDialogProvider, createOpenTuiTestRoot as createRoot, emitKeypress as emitTuiKeypress, type TestKeyEvent } from "../renderers/opentui/test-utils";
 import { createInitialState, type AppAction, type AppState } from "../state/app/context";
 import { cloneLayout, createDefaultConfig, type KeybindingsConfig } from "../types/config";
+import type { ReleaseInfo } from "../updater";
 import { useAppGlobalShortcuts } from "./global-shortcuts";
 import { resolveKeybindings } from "./keybindings";
 
@@ -52,12 +53,14 @@ function ShortcutHarness({
   focusedTickerSymbol = null,
   pluginRegistry,
   refreshTicker = () => {},
+  startUpdate = () => {},
   state,
 }: {
   dispatch: (action: AppAction) => void;
   focusedTickerSymbol?: string | null;
   pluginRegistry: PluginRegistry;
   refreshTicker?: (symbol: string, exchange?: string, tickerOverride?: any, priority?: number) => void;
+  startUpdate?: (release: ReleaseInfo) => void;
   state: AppState;
 }) {
   useAppGlobalShortcuts({
@@ -67,7 +70,7 @@ function ShortcutHarness({
     keybindings: resolveKeybindings(state.config.keybindings),
     pluginRegistry,
     refreshTicker,
-    startUpdate: () => {},
+    startUpdate,
     state,
   });
   return <text>ready</text>;
@@ -86,6 +89,7 @@ async function renderHarness(
   options: {
     focusedTickerSymbol?: string | null;
     refreshTicker?: (symbol: string, exchange?: string, tickerOverride?: any, priority?: number) => void;
+    startUpdate?: (release: ReleaseInfo) => void;
   } = {},
 ) {
   testSetup = await createTestRenderer({ width: 40, height: 8 });
@@ -98,6 +102,7 @@ async function renderHarness(
           focusedTickerSymbol={options.focusedTickerSymbol}
           pluginRegistry={registry}
           refreshTicker={options.refreshTicker}
+          startUpdate={options.startUpdate}
           state={state}
         />
       </TestDialogProvider>,
@@ -141,6 +146,35 @@ describe("useAppGlobalShortcuts", () => {
     expect(actions).toEqual([{ type: "TOGGLE_COMMAND_BAR" }]);
     expect(event.defaultPrevented).toBe(true);
     expect(event.propagationStopped).toBe(true);
+  });
+
+  // The open bar moves its selection on Ctrl+P, so that chord must reach it.
+  test("leaves Ctrl-P to the open command bar and still closes it with Ctrl-K", async () => {
+    const actions: AppAction[] = [];
+    const state = { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-open-bar")), commandBarOpen: true };
+    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+
+    const up = await emitKeypress({ name: "p", ctrl: true });
+    expect(actions).toEqual([]);
+    expect(up.defaultPrevented).toBe(false);
+
+    await emitKeypress({ name: "k", ctrl: true });
+    expect(actions).toEqual([{ type: "TOGGLE_COMMAND_BAR" }]);
+  });
+
+  test("U retries a failed self-update", async () => {
+    const started: string[] = [];
+    const release = { version: "9.9.9", updateAction: { kind: "self" } } as unknown as ReleaseInfo;
+    const failed = {
+      ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-update")),
+      updateAvailable: release,
+      updateProgress: { phase: "error" as const, error: "network" },
+    };
+    await renderHarness(failed, createRegistry(), () => {}, { startUpdate: (next) => started.push(next.version) });
+
+    const retry = await emitKeypress({ name: "u" });
+    expect(started).toEqual(["9.9.9"]);
+    expect(retry.defaultPrevented).toBe(true);
   });
 
   test("opens ticker search with backtick", async () => {

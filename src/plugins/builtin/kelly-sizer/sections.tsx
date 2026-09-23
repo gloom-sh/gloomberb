@@ -93,6 +93,7 @@ export function KellyCurveSection({
   xAxisLabels,
   curveMaxFraction,
   markers,
+  focused = false,
 }: {
   width: number;
   height: number;
@@ -100,6 +101,7 @@ export function KellyCurveSection({
   xAxisLabels: string[];
   curveMaxFraction: number;
   markers: StaticChartXMarker[];
+  focused?: boolean;
 }) {
   // The curve takes the rest of the pane; the box absorbs any rounding so the
   // chart never pushes past the footer.
@@ -118,6 +120,7 @@ export function KellyCurveSection({
         xAxisColor={colors.textDim}
         formatXAxisCursorValue={(ratio) => formatPct(curveMaxFraction * ratio, 1)}
         xMarkers={markers}
+        focused={focused}
       />
     </Box>
   );

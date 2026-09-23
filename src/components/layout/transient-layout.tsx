@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 export interface TransientLayoutState {
   id: "pane-focus";
   label: string;
+  /** The keybinding action whose key the status bar puts before the label. */
+  shortcutActionId?: string;
   active: boolean;
   onActivate?: () => void;
   onDeactivate?: () => void;
@@ -29,6 +31,7 @@ function sameTransientLayout(
   if (!left || !right) return false;
   return left.id === right.id
     && left.label === right.label
+    && left.shortcutActionId === right.shortcutActionId
     && left.active === right.active
     && left.onActivate === right.onActivate
     && left.onDeactivate === right.onDeactivate

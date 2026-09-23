@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, type InputRenderable } from "../../../../ui";
+import { usePaneFooter } from "../../../../components";
 import { InlineQuickAddRow } from "../../../../components/ui";
 import { useShortcut } from "../../../../react/input";
+import { isPlainKey } from "../../../../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
 import { useAppInputCapture } from "../../../../state/app/input-capture";
 import { t, tf } from "../../../../i18n";
@@ -291,12 +293,18 @@ export function QuickAddTickerInput({
 
     if (event.targetEditable) return;
 
-    if ((event.name === "a" || event.name === "n") && !event.ctrl && !event.meta && !event.super) {
+    // `a` is the footer's hint below; `n` reaches the same row.
+    if (isPlainKey(event, "a", "n")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       focusInput();
     }
   }, { phase: "before", allowEditable: true });
+
+  // The row shows only its placeholder, so the footer says which key reaches it.
+  usePaneFooter("portfolio-list:quick-add", () => ({
+    hints: inputFocused ? [] : [{ id: "add", key: "a", label: "dd", onPress: focusInput }],
+  }), [focusInput, inputFocused]);
 
   return (
     <InlineQuickAddRow

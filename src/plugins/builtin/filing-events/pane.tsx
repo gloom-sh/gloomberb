@@ -154,19 +154,59 @@ export function FilingEventsPane({
     if (selected?.docUrl) void rendererHost.openExternal(selected.docUrl);
   }, [rendererHost, selected]);
 
-  const moveSelection = useCallback((delta: number) => {
+  /** Selects entry `next`; false when the selection stays, so the key can scroll a tall entry instead. */
+  const selectEntry = useCallback((next: number): boolean => {
     const entries = feed.entries;
-    if (entries.length === 0) return;
-    const next = Math.max(0, Math.min(entries.length - 1, selectedIndex + delta));
-    setSelectedId(entries[next]?.id ?? null);
+    if (entries.length === 0) return false;
+    const index = Math.max(0, Math.min(entries.length - 1, next));
+    if (index === selectedIndex) return false;
+    setSelectedId(entries[index]?.id ?? null);
+    return true;
+  }, [feed.entries, selectedIndex]);
+
+  /** The entry about one screen away, so PageUp and PageDown keep the selection on screen. */
+  const pageTarget = useCallback((direction: 1 | -1): number => {
+    const entries = feed.entries;
+    const current = entries[selectedIndex];
+    if (!current) return selectedIndex;
+    const page = Math.max(1, (scrollRef.current?.viewport?.height ?? 10) - 1);
+    const target = current.top + direction * page;
+    if (direction > 0) {
+      let index = selectedIndex + 1;
+      while (index + 1 < entries.length && entries[index + 1]!.top <= target) index += 1;
+      return index;
+    }
+    let index = selectedIndex - 1;
+    while (index - 1 >= 0 && entries[index - 1]!.top >= target) index -= 1;
+    return index;
   }, [feed.entries, selectedIndex]);
 
   useShortcut(
     (event) => {
-      if (isPlainKey(event, "r")) void reload();
-      else if (isPlainKey(event, "o")) openFiling();
-      else if (isPlainKey(event, "j", "down")) moveSelection(1);
-      else if (isPlainKey(event, "k", "up")) moveSelection(-1);
+      if (isPlainKey(event, "r")) {
+        void reload();
+        return;
+      }
+      if (isPlainKey(event, "o", "enter", "return")) {
+        event.preventDefault();
+        openFiling();
+        return;
+      }
+      if (isPlainKey(event, "home") && selectEntry(0)) {
+        // The top of the feed, so the first section heading shows too.
+        if (scrollRef.current) scrollRef.current.scrollTop = 0;
+        event.preventDefault();
+        return;
+      }
+      const moved = isPlainKey(event, "j", "down") ? selectEntry(selectedIndex + 1)
+        : isPlainKey(event, "k", "up") ? selectEntry(selectedIndex - 1)
+          : isPlainKey(event, "pagedown") ? selectEntry(pageTarget(1))
+            : isPlainKey(event, "pageup") ? selectEntry(pageTarget(-1))
+              : isPlainKey(event, "end") ? selectEntry(feed.entries.length - 1)
+                : false;
+      // A moved selection scrolls itself into view; the pane scroll keys must
+      // not scroll the feed a second time.
+      if (moved) event.preventDefault();
     },
     { enabled: focused, scope: FILING_EVENTS_PANE_ID },
   );

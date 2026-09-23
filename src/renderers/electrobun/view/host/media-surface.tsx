@@ -97,6 +97,32 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     },
   }), [muted, onMutedChange, onPlaybackStateChange, youtubeEmbed]);
 
+  // Keys typed into a cross-origin frame never reach the app, so a click on
+  // the player would take Tab, the command bar and every pane key with it.
+  // Its controls work by pointer without focus; hand the keyboard back.
+  useEffect(() => {
+    if (!youtubeEmbed) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const releaseFrameFocus = () => {
+      timer = null;
+      const frame = iframeRef.current;
+      if (!frame || document.activeElement !== frame) return;
+      frame.blur();
+      if (document.activeElement === frame) window.focus();
+    };
+    // The window blurs as the frame takes focus, on the press; the release
+    // waits a task so the frame's own focus handling has run.
+    const handleWindowBlur = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(releaseFrameFocus, 0);
+    };
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("blur", handleWindowBlur);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [youtubeEmbed]);
+
   useEffect(() => {
     youtubeMutedRef.current = muted;
     if (youtubeEmbed) {

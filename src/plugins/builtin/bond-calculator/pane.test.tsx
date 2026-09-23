@@ -62,3 +62,23 @@ test("switching input mode keeps the valuation and a failed refresh keeps dated 
   expect(setup!.captureCharFrame()).toContain("2026-09-18");
   expect(setup!.captureCharFrame()).toContain("Offline");
 });
+
+test("Tab walks the fields only while one is being edited, then leaves them", async () => {
+  loader = spyOn(apiClient, "getCloudYieldCurve").mockRejectedValue(new Error("HTTP 404"));
+  await mount();
+  const editing = () => registry!.snapshot().some((node) => node.role === "text-field" && node.metadata?.focused === true);
+  const tab = async () => (await emitKeypress(setup!, { name: "tab" }, { trackPropagation: true })).defaultPrevented;
+  // With no field active, Tab is left for moving to the next pane.
+  expect(await tab()).toBe(false);
+  expect(editing()).toBe(false);
+  await emitKeypress(setup!, { name: "e" }); await frame();
+  expect(editing()).toBe(true);
+  for (let field = 0; field < 3; field++) expect(await tab()).toBe(true);
+  await frame();
+  expect(editing()).toBe(true);
+  // Past the last field Tab leaves the form instead of wrapping to the first.
+  expect(await tab()).toBe(true);
+  await frame();
+  expect(editing()).toBe(false);
+  expect(await tab()).toBe(false);
+});

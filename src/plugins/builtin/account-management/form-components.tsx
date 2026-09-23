@@ -1,6 +1,6 @@
 import { type ReactNode, type Ref } from "react";
 import { Checkbox, SelectButton, TextField, type ChoiceDialogChoice } from "../../../components";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import type { SelectControl } from "../../../components/ui/select-button";
 import type { AccountFieldKey, ProfileAnalyticsPreview } from "./model";
@@ -16,6 +16,7 @@ export function AccountTextField({
   focused,
   width,
   type,
+  nodeRef,
   onFocus,
   onChange,
   onSubmit,
@@ -28,6 +29,8 @@ export function AccountTextField({
   focused: boolean;
   width: number;
   type?: "text" | "password";
+  /** The row, so the pane can scroll it into view. */
+  nodeRef?: Ref<BoxRenderable>;
   onFocus: (field: AccountFieldKey) => void;
   onChange: (value: string) => void;
   onSubmit?: () => void;
@@ -38,6 +41,7 @@ export function AccountTextField({
   const labelText = useFieldLabel()(label, active);
   return (
     <Box
+      ref={nodeRef}
       height={1}
       width={width}
       flexDirection="row"
@@ -100,6 +104,7 @@ export function CheckboxRow({
   active,
   description,
   width,
+  nodeRef,
   onFocus,
   onChange,
 }: {
@@ -108,10 +113,15 @@ export function CheckboxRow({
   active: boolean;
   description?: string;
   width: number;
+  nodeRef?: Ref<BoxRenderable>;
   onFocus: () => void;
   onChange: (checked: boolean) => void;
 }) {
-  return <Checkbox label={label} checked={checked} active={active} description={description} width={width} onChange={(next) => { onFocus(); onChange(next); }} />;
+  return (
+    <Box ref={nodeRef}>
+      <Checkbox label={label} checked={checked} active={active} description={description} width={width} onChange={(next) => { onFocus(); onChange(next); }} />
+    </Box>
+  );
 }
 
 function metricColor(tone: ProfileAnalyticsPreview["metrics"][number]["tone"]): string {
@@ -130,6 +140,7 @@ export function PublicAnalyticsGroup({
   width,
   disclaimer,
   controlRef,
+  nodeRef,
   onFocus,
   onSelect,
 }: {
@@ -141,6 +152,7 @@ export function PublicAnalyticsGroup({
   width: number;
   disclaimer?: string | null;
   controlRef?: Ref<SelectControl>;
+  nodeRef?: Ref<BoxRenderable>;
   onFocus: () => void;
   onSelect: (value: string) => void;
 }) {
@@ -160,6 +172,7 @@ export function PublicAnalyticsGroup({
   const detailWidth = Math.max(0, metricAreaWidth);
   return (
     <Box
+      ref={nodeRef}
       flexDirection="column"
       width={width}
       onMouseOver={onFocus}

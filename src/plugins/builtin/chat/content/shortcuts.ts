@@ -4,6 +4,7 @@ import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { scrollToBottom } from "../layout";
+import type { ChatSidebarRow } from "../sidebar-rows";
 
 export function useChatContentShortcuts({
   beginEditLatestMessage,
@@ -13,6 +14,7 @@ export function useChatContentShortcuts({
   cancelEditMessage,
   commandBarOpen,
   clearReplyTarget,
+  closeProfilePopover,
   cycleChannel,
   focusChannelSidebar,
   focusChatContent,
@@ -29,8 +31,10 @@ export function useChatContentShortcuts({
   commitMentionSelection,
   moveMessageSelection,
   moveSidebarChannelSelection,
+  moveSidebarToEdge,
   nativePaneChrome,
   editingMessage,
+  profilePopoverOpen,
   replyTo,
   requestOlderMessages,
   requestOlderMessagesIfNeeded,
@@ -39,8 +43,10 @@ export function useChatContentShortcuts({
   selectedIdx,
   setFollowMessages,
   setSelectedIdx,
+  setSidebarSectionExpanded,
   shouldLeaveComposerForSelection,
   showChannelSidebar,
+  sidebarCursorRow,
   sidebarFocusedRef,
 }: {
   beginEditLatestMessage: (options?: { deferFocus?: boolean }) => boolean;
@@ -50,6 +56,7 @@ export function useChatContentShortcuts({
   cancelEditMessage: () => void;
   commandBarOpen: boolean;
   clearReplyTarget: () => void;
+  closeProfilePopover: () => void;
   cycleChannel: (direction: 1 | -1) => boolean;
   focusChannelSidebar: () => boolean;
   focusChatContent: () => boolean;
@@ -66,8 +73,10 @@ export function useChatContentShortcuts({
   commitMentionSelection: () => boolean;
   moveMessageSelection: (direction: "up" | "down") => boolean;
   moveSidebarChannelSelection: (direction: "up" | "down") => boolean;
+  moveSidebarToEdge: (edge: "first" | "last") => boolean;
   nativePaneChrome?: boolean;
   editingMessage: ChatMessage | null;
+  profilePopoverOpen: boolean;
   replyTo: ChatMessage | null;
   requestOlderMessages: () => void;
   requestOlderMessagesIfNeeded: () => void;
@@ -76,8 +85,10 @@ export function useChatContentShortcuts({
   selectedIdx: number;
   setFollowMessages: (followMessages: boolean) => void;
   setSelectedIdx: (selectedIdx: number) => void;
+  setSidebarSectionExpanded: (expanded: boolean | "toggle") => boolean;
   shouldLeaveComposerForSelection: (direction: "up" | "down") => boolean;
   showChannelSidebar: boolean;
+  sidebarCursorRow: ChatSidebarRow | null;
   sidebarFocusedRef: MutableRefObject<boolean>;
 }) {
   useShortcut((event) => {
@@ -102,32 +113,41 @@ export function useChatContentShortcuts({
     const isEnterKey = event.name === "return" || event.name === "enter";
 
     if (sidebarFocusedRef.current && showChannelSidebar) {
+      // A section header folds and unfolds in place; a channel opens.
+      const headerRow = sidebarCursorRow && sidebarCursorRow.kind !== "channel" ? sidebarCursorRow : null;
       if (isEnterKey) {
         event.preventDefault?.();
         event.stopPropagation?.();
-        focusChatContent();
+        if (!setSidebarSectionExpanded("toggle")) focusChatContent();
         return;
       }
 
       if (isPlainKey(event, "left")) {
         event.preventDefault?.();
         event.stopPropagation?.();
+        setSidebarSectionExpanded(false);
         return;
       }
 
       if (isPlainKey(event, "right")) {
         event.preventDefault?.();
         event.stopPropagation?.();
-        focusChatContent();
+        if (headerRow && !headerRow.expanded) setSidebarSectionExpanded(true);
+        else focusChatContent();
         return;
       }
 
-      if (isPlainKey(event, "up", "down")) {
+      if (isPlainKey(event, "up", "down", "j", "k")) {
         event.preventDefault?.();
         event.stopPropagation?.();
-        if (event.name === "up" || event.name === "down") {
-          moveSidebarChannelSelection(event.name);
-        }
+        moveSidebarChannelSelection(event.name === "up" || event.name === "k" ? "up" : "down");
+        return;
+      }
+
+      if (isPlainKey(event, "home", "end")) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        moveSidebarToEdge(event.name === "home" ? "first" : "last");
         return;
       }
     }
@@ -228,6 +248,10 @@ export function useChatContentShortcuts({
     if (event.name === "escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
+      if (profilePopoverOpen) {
+        closeProfilePopover();
+        return;
+      }
       if (selectedIdx >= 0) {
         setSelectedIdx(-1);
         setFollowMessages(true);
@@ -253,13 +277,6 @@ export function useChatContentShortcuts({
         return;
       }
       moveMessageSelection("up");
-      return;
-    }
-
-    if (canSend && isPlainKey(event, "r") && selectedIdx >= 0 && selectedIdx < messages.length) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      beginReplyTo(selectedIdx, { deferFocus: true });
       return;
     }
 

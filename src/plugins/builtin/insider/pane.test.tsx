@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useReducer } from "react";
 import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -29,6 +29,7 @@ function Harness({ width }: { width: number }) {
     <PaneFooterProvider>{(footer) => <Box width={width} height={30} flexDirection="column">
       <Box width={width} height={29}><InsiderView paneId={paneId} paneType="insider" focused width={width} height={29} /></Box>
       <PaneFooterBar footer={footer} focused width={width} />
+      <PaneFooterKeys paneId={paneId} footer={footer} focused />
     </Box>}</PaneFooterProvider>
   </TestPaneProvider>;
 }

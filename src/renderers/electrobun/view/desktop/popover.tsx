@@ -120,11 +120,20 @@ export function WebPopover({
       onOpenChange(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Tab leaves a menu, as on every platform, and goes on to move focus.
+      if (event.key === "Tab") {
+        onOpenChange(false);
+        return;
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
       onOpenChange(false);
-      queueMicrotask(() => anchorRef.current?.focus({ preventScroll: true }));
+      // A trigger that took focus back itself (a select in a dialog) keeps it.
+      queueMicrotask(() => {
+        const anchor = anchorRef.current;
+        if (anchor && !anchor.contains(document.activeElement)) anchor.focus({ preventScroll: true });
+      });
     };
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     document.addEventListener("keydown", handleKeyDown, true);

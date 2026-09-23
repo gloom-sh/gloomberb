@@ -358,8 +358,14 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     [data, latest],
   );
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  // An open bucket or filing covers its tab; the tab keys wait until it closes.
+  const detailOpen =
+    tab === "maturities" ? !!openBucketRow : tab === "history" && !!openHistoryRow;
+  const tabsFocused = focused && !detailOpen;
   const tabsInHeader = usePaneHeaderTabs(
-    latest ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused } : null,
+    latest
+      ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused }
+      : null,
   );
   const tabRows = tabsInHeader ? 0 : 1;
   // The desktop footer is chrome outside the body; the terminal gives it a row.
@@ -520,7 +526,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                 activeValue={tab}
                 onSelect={setTab}
                 dense
-                focused={focused}
+                focused={tabsFocused}
               />
             )}
             {tab === "filing" ? (
@@ -550,6 +556,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                           panels={PANELS}
                           width={Math.max(1, width - 2)}
                           height={chartHeight}
+                          focused={focused && !openBucketRow}
                           showLegend={false}
                           navigable={false}
                           showTimeAxis
@@ -626,6 +633,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                           panels={PANELS}
                           width={Math.max(1, width - 2)}
                           height={historyChartHeight}
+                          focused={focused && !openHistoryRow}
                           showLegend={false}
                           navigable={false}
                           showTimeAxis

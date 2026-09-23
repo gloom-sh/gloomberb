@@ -43,6 +43,8 @@ export function shouldReleaseFocus(active: unknown, target: unknown): boolean {
   return !scope?.contains?.(target);
 }
 
+const POINTER_CONTROL_SELECTOR = "button, a[href], summary, [role='button'], [role='radio'], [role='option'], [role='tab'], [tabindex]";
+
 export function installFocusScopeRelease(): () => void {
   const doc = (globalThis as { document?: Document }).document;
   if (!doc) return () => {};
@@ -51,6 +53,43 @@ export function installFocusScopeRelease(): () => void {
     if (!shouldReleaseFocus(active, event.target)) return;
     asFocusable(active)?.blur?.();
   };
+  // Any control a pointer pressed (a chip, a segment, a list row) lets go of
+  // the focus once its own click has run, unless it sits in a dialog or menu.
+  // Seen in capture, since handlers often stop the click; released after it.
+  const handleClick = (event: MouseEvent) => {
+    const active = doc.activeElement;
+    if (!active || active === doc.body || isEditableTarget(active)) return;
+    const control = asFocusable(event.target)?.closest?.(POINTER_CONTROL_SELECTOR);
+    if (control !== active) return;
+    const detail = event.detail;
+    queueMicrotask(() => {
+      if (doc.activeElement === active) releasePointerFocus(active, detail);
+    });
+  };
   doc.addEventListener("mousedown", handleMouseDown, true);
-  return () => doc.removeEventListener("mousedown", handleMouseDown, true);
+  doc.addEventListener("click", handleClick, true);
+  return () => {
+    doc.removeEventListener("mousedown", handleMouseDown, true);
+    doc.removeEventListener("click", handleClick, true);
+  };
+}
+
+/**
+ * Keyboard focus lives in the app, not the DOM: Tab moves between panes, and a
+ * pane's rows and hints act on keys that reach the window. A button a pointer
+ * pressed keeps the DOM focus in Chromium, and it then takes every later Enter
+ * and Space for itself, so a control outside a dialog or menu lets go of the
+ * focus as soon as its click has run. Inside a dialog Tab walks the controls,
+ * and there a focused control is the point.
+ */
+export function releasePointerFocus(element: unknown, pointerDetail: number): void {
+  if (pointerDetail <= 0) return;
+  const node = asFocusable(element);
+  if (!node || node.closest?.(`${DIALOG_CLASS_SELECTOR}, .gloom-popover`)) return;
+  node.blur?.();
+}
+
+/** Whether a control sits in a dialog or popover, where it may keep focus. */
+export function isInsideDialogSurface(element: unknown): boolean {
+  return !!asFocusable(element)?.closest?.(`${DIALOG_CLASS_SELECTOR}, .gloom-popover`);
 }

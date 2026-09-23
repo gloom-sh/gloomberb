@@ -146,6 +146,35 @@ export function resolveSelectedScrollLine(
   return movedDown ? line + getListRowHeight(selectedRow) - 1 : line;
 }
 
+/** Where a page or edge key sends the selection in a list. */
+export type ListJump = "first" | "last" | "page-up" | "page-down";
+
+/**
+ * The result a page key lands on: the farthest one within a viewport of lines
+ * from the selection, less one line so the row being left stays in view.
+ * Headings and multi-line snippets spend lines too, so a page is counted in
+ * lines rather than results. Always moves at least one result when there is one.
+ */
+export function resolveListPageTarget(
+  rows: readonly CommandBarListRow[],
+  selectedIdx: number,
+  viewportLines: number,
+  direction: 1 | -1,
+): number {
+  const budget = Math.max(1, viewportLines - 1);
+  const start = rows.findIndex((row) => row.kind === "item" && row.globalIdx === selectedIdx);
+  if (start < 0) return selectedIdx + budget * direction;
+  let target = selectedIdx;
+  let lines = 0;
+  for (let index = start + direction; index >= 0 && index < rows.length; index += direction) {
+    const row = rows[index]!;
+    lines += getListRowHeight(row);
+    if (lines > budget && target !== selectedIdx) break;
+    if (row.kind === "item") target = row.globalIdx;
+  }
+  return target;
+}
+
 export function buildNativeListRows(listState: ListScreenState, rows: CommandBarListRow[]): CommandBarListRow[] {
   if (listState.searching && rows.length === 0) {
     return [{ kind: "spinner", id: "searching", label: "Searching…" }];

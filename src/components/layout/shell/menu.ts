@@ -9,6 +9,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { isPaneLocked, setPaneLocked } from "../../../pane-settings";
 import { contextMenuDivider, type ContextMenuItem } from "../../../types/context-menu";
+import { paneHintTitle, type CombinedPaneFooter } from "../pane/footer/model";
 import {
   formatPlatformShortcutLabel,
   type ShortcutDisplayMode,
@@ -21,6 +22,57 @@ const MENU_MIN_WIDTH = 18;
 const MENU_MAX_WIDTH = 44;
 
 export const MENU_Z_INDEX = 10_000;
+
+/** One row of the kit pane menu; a divider row is skipped by the keyboard. */
+export interface PaneMenuEntry {
+  id: string;
+  label: string;
+  accelerator?: string;
+  checked?: boolean;
+  divider?: boolean;
+  action: () => void;
+}
+
+/** A pane's header toggle (the zap), repeated in its menu so the keyboard reaches it. */
+export interface PaneMenuQuickSetting {
+  key: string;
+  label: string;
+  active: boolean;
+  toggle: () => void;
+}
+
+/**
+ * The pane's own actions at the top of its menu: every footer hint with its
+ * key, a footer shortcut such as `!`, then what the pane's kit controls add
+ * (sort, filters, tabs). So the menu is the full list of what the keyboard can
+ * do in this pane, even when a narrow footer cuts hints off.
+ */
+export function paneFooterMenuItems(footer: CombinedPaneFooter | undefined): ContextMenuItem[] {
+  if (!footer) return [];
+  const items: ContextMenuItem[] = [];
+  for (const hint of footer.hints) {
+    if (hint.disabled || !hint.onPress) continue;
+    const onPress = hint.onPress;
+    items.push({ id: `pane-hint:${hint.id}`, label: paneHintTitle(hint), accelerator: hint.key, onSelect: () => onPress() });
+  }
+  for (const segment of footer.info) {
+    if (segment.disabled || !segment.onPress || !segment.shortcut) continue;
+    items.push({
+      id: `pane-segment:${segment.id}`,
+      label: segment.label ?? segment.title ?? segment.parts.map((part) => part.text).join(" "),
+      accelerator: segment.shortcut,
+      onSelect: segment.onPress,
+    });
+  }
+  // A kit item for a key the pane already lists (its own "/ search") would repeat it.
+  const listedKeys = new Set(items.flatMap((item) => (item.type === "divider" || !item.accelerator ? [] : [item.accelerator])));
+  const kitItems = footer.menu.filter((item) => item.type === "divider" || !item.accelerator || !listedKeys.has(item.accelerator));
+  if (kitItems.some((item) => item.type !== "divider")) {
+    if (items.length > 0) items.push(contextMenuDivider("pane:footer-menu-divider"));
+    items.push(...kitItems);
+  }
+  return items;
+}
 
 export function menuForPane(
   pane: ResolvedPane,
@@ -37,8 +89,21 @@ export function menuForPane(
   linkItems: ContextMenuItem[] = [],
   exportPaneCsv?: (paneId: string) => void | Promise<void>,
   accelerators: PaneManagementAccelerators = PANE_MANAGEMENT_ACCELERATORS,
+  quickSettings: PaneMenuQuickSetting[] = [],
+  fullscreen?: { active: boolean; toggle: () => void },
+  paneItems: ContextMenuItem[] = [],
 ): ContextMenuItem[] {
-  const baseActions: ContextMenuItem[] = [];
+  const baseActions: ContextMenuItem[] = [...paneItems];
+  if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
+  for (const setting of quickSettings) {
+    baseActions.push({
+      id: `quick-setting:${setting.key}`,
+      label: setting.label,
+      checked: setting.active,
+      onSelect: setting.toggle,
+    });
+  }
+  if (quickSettings.length > 0) baseActions.push(contextMenuDivider("pane:quick-settings-divider"));
   if (pluginRegistry.hasPaneSettings(pane.instance.instanceId)) {
     baseActions.push({
       id: "settings",
@@ -69,6 +134,15 @@ export function menuForPane(
       label: "Export CSV",
       accelerator: accelerators.exportCsv,
       onSelect: () => exportPaneCsv(pane.instance.instanceId),
+    });
+  }
+
+  if (fullscreen) {
+    baseActions.push({
+      id: "toggle-fullscreen",
+      label: fullscreen.active ? "Exit Fullscreen" : "Fullscreen",
+      accelerator: accelerators.fullscreen,
+      onSelect: fullscreen.toggle,
     });
   }
 
@@ -146,13 +220,15 @@ export function menuForPane(
 export function menuItemsForFallback(
   items: ContextMenuItem[],
   shortcutDisplayMode: ShortcutDisplayMode,
-): Array<{ id: string; label: string; accelerator?: string; action: () => void }> {
-  return items.flatMap((item) => {
-    if (item.type === "divider" || item.type === "role" || item.enabled === false || item.hidden === true) return [];
+): PaneMenuEntry[] {
+  return items.flatMap((item, index): PaneMenuEntry[] => {
+    if (item.type === "divider") return [{ id: item.id ?? `divider:${index}`, label: "", divider: true, action: () => {} }];
+    if (item.type === "role" || item.enabled === false || item.hidden === true) return [];
     if (!item.onSelect) return [];
     return [{
       id: item.id,
       label: item.label,
+      checked: item.checked,
       accelerator: item.accelerator
         ? formatPlatformShortcutLabel(item.accelerator, undefined, shortcutDisplayMode)
         : undefined,
@@ -162,13 +238,14 @@ export function menuItemsForFallback(
 }
 
 export function actionMenuWidth(
-  items: Array<{ label: string; accelerator?: string }>,
+  items: Array<{ label: string; accelerator?: string; checked?: boolean; divider?: boolean }>,
   availableWidth: number,
 ): number {
   const requested = Math.max(
     MENU_MIN_WIDTH,
     ...items.map((item) => (
-      displayWidth(t(item.label))
+      (item.checked === undefined ? 0 : 4)
+      + displayWidth(t(item.label))
       + (item.accelerator ? displayWidth(item.accelerator) + 3 : 0)
       + 2
     )),

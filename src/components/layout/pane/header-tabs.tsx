@@ -22,7 +22,7 @@ const useRegistrationEffect = typeof document === "undefined" ? useEffect : useL
  */
 export type PaneHeaderTabsRegistration = Pick<
   TabsProps,
-  "tabs" | "activeValue" | "onSelect" | "focused" | "keyboardNavigation" | "onAdd" | "addLabel" | "onReorder" | "closeMode"
+  "tabs" | "activeValue" | "onSelect" | "focused" | "keyboardNavigation" | "paneMenu" | "onAdd" | "addLabel" | "onReorder" | "closeMode"
 >;
 
 export interface PaneHeaderTabsContextValue {
@@ -74,6 +74,7 @@ function registrationSignature(registration: PaneHeaderTabsRegistration | null):
     registration.addLabel ?? "",
     !!registration.onReorder,
     registration.closeMode ?? "",
+    registration.paneMenu !== false,
   ]);
 }
 

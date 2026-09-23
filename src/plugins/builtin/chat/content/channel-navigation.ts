@@ -2,9 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { MutableRefObject } from "react";
 import type { ChatChannel } from "../../../../api-client";
 import { useThrottledCommitValue } from "../../../../react/use-throttled-commit-value";
-import { teamIdFromChannelId } from "../../cloud/team/model";
 import { teamStore } from "../../cloud/team/store";
 import { chatSidebarStore } from "../sidebar-store";
+import {
+  buildChatSidebarRows,
+  chatSidebarHeaderKey,
+  isChatSidebarHeader,
+  type ChatSidebarHeaderRow,
+  type ChatSidebarRow,
+} from "../sidebar-rows";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
   normalizeChannelId,
@@ -16,8 +22,14 @@ function isConversationChannelId(channelId: string): boolean {
   return channelId.startsWith("dm:") || channelId.startsWith("grp:") || channelId.startsWith("group:");
 }
 
+function toggleSidebarSection(row: ChatSidebarHeaderRow): void {
+  if (row.kind === "team-header") teamStore.toggleTeamCollapsed(row.teamId);
+  else chatSidebarStore.toggleSectionCollapsed(row.kind === "public-header" ? "public" : "direct");
+}
+
 export function useChatChannelNavigation({
   blurInput,
+  canCreateConversation = false,
   channelId,
   channelIdRef,
   channels,
@@ -29,6 +41,8 @@ export function useChatChannelNavigation({
   showChannelSidebar,
 }: {
   blurInput: () => void;
+  /** Whether the sidebar draws a DMs header with no DMs under it yet. */
+  canCreateConversation?: boolean;
   channelId: string;
   channelIdRef: MutableRefObject<string>;
   channels: ChatChannel[];
@@ -44,11 +58,15 @@ export function useChatChannelNavigation({
   focusChannelSidebar: () => boolean;
   focusChatContent: () => boolean;
   moveSidebarChannelSelection: (direction: "up" | "down") => boolean;
+  moveSidebarToEdge: (edge: "first" | "last") => boolean;
   selectSidebarChannel: (channelId: string) => void;
   setSidebarFocused: (nextFocused: boolean) => void;
+  setSidebarSectionExpanded: (expanded: boolean | "toggle") => boolean;
   sidebarCursorChannelId: string;
+  sidebarCursorRow: ChatSidebarRow | null;
   sidebarFocused: boolean;
   sidebarFocusedRef: MutableRefObject<boolean>;
+  sidebarHeaderCursor: string | null;
 } {
   const [sidebarFocused, setSidebarFocusedState] = useState(false);
   const sidebarFocusedRef = useRef(false);
@@ -59,29 +77,31 @@ export function useChatChannelNavigation({
   const expandDirectSection = useCallback(() => {
     chatSidebarStore.setSectionCollapsed("direct", false);
   }, []);
-  const collapsedTeams = useSyncExternalStore(
+  const teamSnapshot = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
-    () => teamStore.getSnapshot().collapsedTeams,
+    () => teamStore.getSnapshot(),
   );
   const collapsedSections = useSyncExternalStore(
     (onChange) => chatSidebarStore.subscribe(onChange),
     () => chatSidebarStore.getSnapshot().collapsedSections,
   );
-  // Mirrors the sidebar's order: public unless folded, then each team's
-  // channels unless the team is folded, then DMs when expanded. Keyboard
-  // navigation has to skip whatever the sidebar is not drawing.
-  const sidebarNavigationChannels = useMemo(() => {
-    const publicChannels = collapsedSections.has("public")
-      ? []
-      : channels.filter((channel) => (channel.kind ?? "public") === "public");
-    const teamChannels = channels.filter((channel) =>
-      channel.kind === "team" && !collapsedTeams.has(teamIdFromChannelId(channel.id) ?? channel.id),
-    );
-    const conversationChannels = collapsedSections.has("direct")
-      ? []
-      : channels.filter((channel) => channel.kind === "direct" || channel.kind === "group");
-    return [...publicChannels, ...teamChannels, ...conversationChannels];
-  }, [channels, collapsedSections, collapsedTeams]);
+  // The sidebar's own rows, headers included, so keyboard navigation lands on
+  // exactly what is drawn and never inside a folded section.
+  const sidebarRows = useMemo(() => buildChatSidebarRows({
+    channels,
+    collapsedSections,
+    collapsedTeams: teamSnapshot.collapsedTeams,
+    canCreateConversation,
+    getTeam: (teamId) => teamStore.getTeam(teamId),
+  }), [canCreateConversation, channels, collapsedSections, teamSnapshot.collapsedTeams, teamSnapshot.teams]);
+  // Set while the cursor rests on a section header rather than a channel; the
+  // channel cursor keeps its place underneath.
+  const [sidebarHeaderCursor, setSidebarHeaderCursorState] = useState<string | null>(null);
+  const sidebarHeaderCursorRef = useRef<string | null>(null);
+  const setSidebarHeaderCursor = useCallback((key: string | null) => {
+    sidebarHeaderCursorRef.current = key;
+    setSidebarHeaderCursorState((current) => (current === key ? current : key));
+  }, []);
 
   const changeChannel = useCallback((nextChannelId: string) => {
     const normalized = normalizeChannelId(nextChannelId);
@@ -123,9 +143,10 @@ export function useChatChannelNavigation({
     const nextIndex = (currentIndex + direction + channels.length) % channels.length;
     const nextChannel = channels[nextIndex];
     if (!nextChannel) return false;
+    setSidebarHeaderCursor(null);
     setSidebarCursorChannelId(nextChannel.id, { immediate: true });
     return true;
-  }, [channelIdRef, channels, onChannelChange, setSidebarCursorChannelId]);
+  }, [channelIdRef, channels, onChannelChange, setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   const focusChannelSidebar = useCallback(() => {
     if (!showChannelSidebar || !onChannelChange) return false;
@@ -134,53 +155,104 @@ export function useChatChannelNavigation({
     }
     resetTranscriptSelection();
     replaceSidebarCursorChannelId(channelId);
+    // The open channel may sit in a folded section; the cursor then starts on
+    // that section's header, which is what the sidebar shows for it.
+    const channel = channels.find((entry) => entry.id === channelId);
+    const drawn = sidebarRows.some((row) => row.kind === "channel" && row.channel.id === channelId);
+    setSidebarHeaderCursor(channel && !drawn ? chatSidebarHeaderKey(channel) : null);
     setSidebarFocused(true);
     return true;
   }, [
     blurInput,
     channelId,
+    channels,
     inputFocused,
     onChannelChange,
     replaceSidebarCursorChannelId,
     resetTranscriptSelection,
     setSidebarFocused,
+    setSidebarHeaderCursor,
     showChannelSidebar,
+    sidebarRows,
   ]);
 
   const focusChatContent = useCallback(() => {
     if (!showChannelSidebar) return false;
     flushSidebarCursorChannelId(sidebarCursorChannelIdRef.current);
+    setSidebarHeaderCursor(null);
     setSidebarFocused(false);
     return true;
-  }, [flushSidebarCursorChannelId, setSidebarFocused, showChannelSidebar, sidebarCursorChannelIdRef]);
+  }, [flushSidebarCursorChannelId, setSidebarFocused, setSidebarHeaderCursor, showChannelSidebar, sidebarCursorChannelIdRef]);
+
+  const cursorRowIndex = useCallback(() => {
+    const headerKey = sidebarHeaderCursorRef.current;
+    return headerKey
+      ? sidebarRows.findIndex((row) => row.key === headerKey)
+      : sidebarRows.findIndex((row) => row.kind === "channel" && row.channel.id === sidebarCursorChannelIdRef.current);
+  }, [sidebarCursorChannelIdRef, sidebarRows]);
+
+  const moveSidebarCursorTo = useCallback((row: ChatSidebarRow) => {
+    if (row.kind === "channel") {
+      setSidebarHeaderCursor(null);
+      setSidebarCursorChannelId(row.channel.id);
+    } else {
+      setSidebarHeaderCursor(row.key);
+    }
+  }, [setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   const moveSidebarChannelSelection = useCallback((direction: "up" | "down") => {
-    if (!showChannelSidebar || sidebarNavigationChannels.length <= 1 || !onChannelChange) return false;
-    const currentIndex = sidebarNavigationChannels.findIndex((channel) => channel.id === sidebarCursorChannelIdRef.current);
+    if (!showChannelSidebar || sidebarRows.length <= 1 || !onChannelChange) return false;
+    const currentIndex = cursorRowIndex();
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
     const nextIndex = direction === "down"
-      ? Math.min(baseIndex + 1, sidebarNavigationChannels.length - 1)
+      ? Math.min(baseIndex + 1, sidebarRows.length - 1)
       : Math.max(baseIndex - 1, 0);
-    const nextChannel = sidebarNavigationChannels[nextIndex];
-    if (!nextChannel || nextIndex === baseIndex) return true;
-    setSidebarCursorChannelId(nextChannel.id);
+    const nextRow = sidebarRows[nextIndex];
+    if (!nextRow || nextIndex === baseIndex) return true;
+    moveSidebarCursorTo(nextRow);
     return true;
-  }, [
-    onChannelChange,
-    setSidebarCursorChannelId,
-    showChannelSidebar,
-    sidebarCursorChannelIdRef,
-    sidebarNavigationChannels,
-  ]);
+  }, [cursorRowIndex, moveSidebarCursorTo, onChannelChange, showChannelSidebar, sidebarRows]);
+
+  const moveSidebarToEdge = useCallback((edge: "first" | "last") => {
+    if (!showChannelSidebar || !onChannelChange) return false;
+    const channelRows = sidebarRows.filter((row) => row.kind === "channel");
+    const pool = channelRows.length > 0 ? channelRows : sidebarRows;
+    const target = edge === "first" ? pool[0] : pool[pool.length - 1];
+    if (target) moveSidebarCursorTo(target);
+    return true;
+  }, [moveSidebarCursorTo, onChannelChange, showChannelSidebar, sidebarRows]);
+
+  /** Folds or unfolds the section whose header has the cursor; false when a channel has it. */
+  const setSidebarSectionExpanded = useCallback((expanded: boolean | "toggle") => {
+    const row = sidebarRows.find((entry) => entry.key === sidebarHeaderCursorRef.current);
+    if (!row || !isChatSidebarHeader(row)) return false;
+    if (expanded === "toggle" || row.expanded !== expanded) toggleSidebarSection(row);
+    return true;
+  }, [sidebarRows]);
+
+  const sidebarCursorRow = useMemo(() => (
+    sidebarHeaderCursor
+      ? sidebarRows.find((row) => row.key === sidebarHeaderCursor) ?? null
+      : sidebarRows.find((row) => row.kind === "channel" && row.channel.id === sidebarCursorChannelId) ?? null
+  ), [sidebarCursorChannelId, sidebarHeaderCursor, sidebarRows]);
 
   const selectSidebarChannel = useCallback((nextChannelId: string) => {
+    setSidebarHeaderCursor(null);
     setSidebarCursorChannelId(nextChannelId, { immediate: true });
-  }, [setSidebarCursorChannelId]);
+  }, [setSidebarCursorChannelId, setSidebarHeaderCursor]);
 
   useEffect(() => {
     if (focused && showChannelSidebar) return;
     setSidebarFocused(false);
-  }, [focused, setSidebarFocused, showChannelSidebar]);
+    setSidebarHeaderCursor(null);
+  }, [focused, setSidebarFocused, setSidebarHeaderCursor, showChannelSidebar]);
+
+  // A header that stopped being drawn (its team left) cannot hold the cursor.
+  useEffect(() => {
+    if (sidebarHeaderCursor && !sidebarRows.some((row) => row.key === sidebarHeaderCursor)) {
+      setSidebarHeaderCursor(null);
+    }
+  }, [setSidebarHeaderCursor, sidebarHeaderCursor, sidebarRows]);
 
   return {
     cycleChannel,
@@ -188,10 +260,14 @@ export function useChatChannelNavigation({
     focusChannelSidebar,
     focusChatContent,
     moveSidebarChannelSelection,
+    moveSidebarToEdge,
     selectSidebarChannel,
     setSidebarFocused,
+    setSidebarSectionExpanded,
     sidebarCursorChannelId,
+    sidebarCursorRow,
     sidebarFocused,
     sidebarFocusedRef,
+    sidebarHeaderCursor,
   };
 }

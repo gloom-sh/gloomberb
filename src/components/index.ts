@@ -34,7 +34,7 @@ export {
 } from "./metric-treemap";
 export { SpeedometerGauge } from "./speedometer-gauge";
 export type { SpeedometerSegment } from "./speedometer-gauge";
-export { TickerListTableView } from "./ticker/list-table-view";
+export { TickerListTableView, useTickerRowPaneMenu } from "./ticker/list-table-view";
 export type { TickerListVisibleRange } from "./ticker/list-table-view";
 // What `TickerListTableView` puts in each configured column, and the value it
 // sorts on. A pane that shows the user's own column set has to read them the
@@ -75,7 +75,7 @@ export { FeedDataTableStackView } from "./feed-data-table/stack-view";
 export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";
 export type { StackSortPreference } from "./feed-stack-controller";
-export { PaneFooterScope, usePaneFooter } from "./layout/pane/footer";
+export { PaneFooterScope, usePaneFooter, usePaneMenuItems } from "./layout/pane/footer";
 export { NestedPaneTabs, usePaneHeaderTabs } from "./layout/pane/header-tabs";
 export type { PaneHeaderTabsRegistration } from "./layout/pane/header-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that

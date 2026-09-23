@@ -113,6 +113,7 @@ export function ToggleList({
       remoteScope={remoteScope}
       remoteMetadata={remoteMetadata}
       remoteItemKind="toggle"
+      checkboxRows
       onSelect={onSelect}
       onActivate={(item) => {
         onToggle?.(item.id);

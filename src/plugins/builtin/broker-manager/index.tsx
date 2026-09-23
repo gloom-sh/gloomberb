@@ -10,6 +10,7 @@ import {
   useAppDispatch,
   useAppSelector,
   usePaneAppConfig,
+  usePaneInstanceId,
 } from "../../../state/app/context";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
@@ -34,6 +35,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dispatch = useAppDispatch();
   const config = usePaneAppConfig();
+  const paneId = usePaneInstanceId();
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const { getBrokerAdapter } = usePluginBrokerActions();
   // The profile is remembered by id so a reload lands on the same row.
@@ -76,6 +78,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     () => ["label", "enabled", ...editFields.map((field) => field.key)],
     [editFields],
   );
+  const editSelectKeys = useMemo<ReadonlySet<BrokerEditKey>>(
+    () => new Set(["enabled", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
+    [editFields],
+  );
+  const editScope = `broker-edit:${paneId}`;
 
   useEffect(() => {
     if (rows.length === 0 && detailOpen) setDetailOpen(false);
@@ -124,10 +131,6 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const canOpenSelectedAction = selectedProfileActions.some((action) => !action.disabled && action.paneId);
   const canRemoveSelected = hasSelectedRow && !busy;
   const cancelEdit = useCallback(() => setEditDraft(null), []);
-  const openSelectedDetailFromKeyboard = useCallback(() => {
-    setEditDraft(null);
-    setDetailOpen(true);
-  }, [setDetailOpen]);
 
   useBrokerManagerFooter({
     busy,
@@ -147,26 +150,32 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     editing: !!editDraft,
   });
 
+  const cycleEditSelect = useCallback((key: BrokerEditKey, direction: -1 | 1) => {
+    if (key === "enabled") {
+      setEditDraft((current) => current ? { ...current, enabled: !current.enabled } : current);
+      return;
+    }
+    const options = editFields.find((field) => field.key === key)?.options ?? [];
+    if (options.length === 0) return;
+    setEditDraft((current) => {
+      if (!current) return current;
+      const index = options.findIndex((option) => option.value === current.values[key]);
+      const next = options[index < 0 ? 0 : (index + direction + options.length) % options.length];
+      return next ? { ...current, values: { ...current.values, [key]: next.value } } : current;
+    });
+  }, [editFields]);
+
   useBrokerManagerKeyboard({
     activeEditKey,
-    canOpenSelectedAction,
-    canRemoveSelected,
-    canUseSelectedBroker,
-    connectSelected,
-    detailOpen,
     editing: !!editDraft,
     editKeys,
     focused,
-    hasSelectedRow,
+    scope: editScope,
+    selectKeys: editSelectKeys,
     onActiveEditKeyChange: setActiveEditKey,
     onCancelEdit: cancelEdit,
-    onOpenDetail: openSelectedDetailFromKeyboard,
-    openAddBroker,
-    openProfileAction,
-    removeSelected,
+    onCycleSelect: cycleEditSelect,
     saveEdit,
-    startEdit,
-    syncSelected,
   });
 
   const bodyHeight = Math.max(5, height);
@@ -216,6 +225,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       busy={busy}
       message={message}
       width={detailContentWidth}
+      editScope={editScope}
+      paneFocused={focused}
       onActiveEditKeyChange={setActiveEditKey}
       onDraftLabelChange={updateDraftLabel}
       onDraftEnabledChange={updateDraftEnabled}

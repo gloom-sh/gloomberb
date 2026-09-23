@@ -127,9 +127,11 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       rootHeight={height}
       columns={columns}
       items={dataProvider ? flatRows : []}
+      sortable
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
+      onSortChange={(columnId, direction) => setSortPreference((current) => ({ ...current, columnId: columnId as WorldIndexSortPreference["columnId"], direction }))}
       getItemKey={worldIndexRowKey}
       visibleRangeKey={`${sortPreference.columnId}:${sortPreference.direction}`}
       onVisibleRangeChange={setVisibleRange}

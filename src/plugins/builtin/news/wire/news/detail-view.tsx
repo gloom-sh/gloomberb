@@ -1,11 +1,15 @@
-import { Box, ScrollBox, Text, useUiCapabilities } from "../../../../../ui";
+import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../../ui";
 import { useShortcut } from "../../../../../react/input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { InlineTickerBadge } from "../../../../../components/ticker/badge";
-import { ExternalLinkText } from "../../../../../components/ui";
+import { ChoiceDialog, ExternalLinkText } from "../../../../../components/ui";
+import { usePaneFooter } from "../../../../../components/layout/pane/footer";
+import { t } from "../../../../../i18n";
+import { useOptionalDialog, type PromptContext } from "../../../../../ui/dialog";
+import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { isPlainKey } from "../../../../../utils/keyboard";
@@ -240,6 +244,50 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
     storyItemDate(timelineItems[0]?.publishedAt ?? item.publishedAt).getTime(),
   ));
   const lastUpdatedStr = formatDetailDate(lastUpdatedAt);
+
+  // The badges and outlet links, for the keyboard: [t]icker opens a mentioned
+  // company, [s]ources picks another outlet's coverage to read.
+  const openTickerChoice = useOpenTickerChoice();
+  // The same symbols a click can open: plain text never named an instrument.
+  // Keyed by text, since the catalog is rebuilt on every quote.
+  const openableKey = tickers.filter((ticker) => catalog[ticker] && catalog[ticker].status !== "missing").join(" ");
+  const openableTickers = useMemo(() => (openableKey ? openableKey.split(" ") : []), [openableKey]);
+  const dialog = useOptionalDialog();
+  const rendererHost = useRendererHost();
+  const coverage = useMemo(() => timelineItems.filter((entry) => !!entry.url), [timelineItems]);
+  const hasOtherCoverage = coverage.some((entry) => entry.url !== item.url);
+  const chooseSource = useCallback(() => {
+    if (!dialog || coverage.length === 0) return;
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<string>) => (
+        <ChoiceDialog
+          {...ctx}
+          title={t("Coverage")}
+          choices={coverage.map((entry, index) => ({
+            id: String(index),
+            label: entry.sourceName || entry.sourceKey,
+            detail: formatDetailDate(storyItemDate(entry.publishedAt)),
+            description: entry.title,
+          }))}
+        />
+      ),
+    }).then((choice) => {
+      const url = choice ? coverage[Number(choice)]?.url : undefined;
+      if (url) void rendererHost.openExternal(url);
+    }).catch(() => {});
+  }, [coverage, dialog, rendererHost]);
+  usePaneFooter("news-detail:story", () => ({
+    order: -1,
+    hints: [
+      ...(openableTickers.length > 0
+        ? [{ id: "ticker", key: "t", label: "icker", onPress: () => openTickerChoice(openableTickers) }]
+        : []),
+      ...(hasOtherCoverage && dialog
+        ? [{ id: "sources", key: "s", label: "ources", onPress: chooseSource }]
+        : []),
+    ],
+  }), [chooseSource, dialog, hasOtherCoverage, openTickerChoice, openableTickers]);
 
   const scrollBy = useCallback((delta: number) => {
     const scrollBox = scrollRef.current;

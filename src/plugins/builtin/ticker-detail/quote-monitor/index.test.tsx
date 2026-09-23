@@ -236,20 +236,26 @@ describe("QuoteMonitorPane", () => {
     expect(frame).toMatch(/[⠁-⣿]/);
   });
 
-  test("opens pane settings when t is pressed", async () => {
-    const settingsCalls: Array<string | undefined> = [];
-    await renderHarness(createQuoteMonitorHarness({ settingsCalls }), {
+  test("moves a keyboard cursor across the grid and opens the card under it on Enter", async () => {
+    const pinCalls: PinTickerCall[] = [];
+    // Two columns: MSFT AAPL on the first row, GOOG alone on the second.
+    await renderHarness(createQuoteMonitorHarness({ pinCalls, symbols: ["MSFT", "AAPL", "GOOG"] }), {
       width: 72,
       height: 7,
     });
-
     await renderOnce();
 
     await act(async () => {
-      testSetup!.mockInput.pressKey("t");
+      testSetup!.mockInput.pressKey("l");
+      testSetup!.mockInput.pressKey("j");
+      testSetup!.mockInput.pressEnter();
       await testSetup!.renderOnce();
     });
 
-    expect(settingsCalls).toEqual(["quote-monitor:test"]);
+    // Down from the second column of a full row lands on the shorter row's last card.
+    expect(pinCalls).toEqual([{
+      symbol: "GOOG",
+      options: { paneType: TICKER_RESEARCH_PANE_ID, floating: true },
+    }]);
   });
 });

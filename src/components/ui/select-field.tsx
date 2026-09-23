@@ -27,6 +27,12 @@ export interface SelectFieldProps {
    */
   variant?: "field" | "inline";
   includeUnsetOption?: boolean;
+  /**
+   * Return focus to the trigger when the menu closes (inside a dialog). A list
+   * that moves its own highlight, such as pane settings, turns it off so the
+   * arrows keep moving the list.
+   */
+  restoreFocus?: boolean;
   selectRef?: (handle: SelectFieldHandle | null) => void;
   controlRef?: Ref<SelectFieldHandle>;
   onFocus?: () => void;

@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { apiClient } from "../../api-client";
 import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { EventBus } from "../../plugins/event-bus";
+import { useShortcut } from "../../react/input";
 import type { PluginRegistry } from "../../plugins/registry";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
@@ -97,16 +98,28 @@ function StateCapture() {
   return null;
 }
 
+/** Records the keys that reach it, like a pane or the shell beside the wizard. */
+function KeyProbe({ seen }: { seen: string[] }) {
+  useShortcut((event) => { seen.push(event.name ?? ""); }, { phase: "before", allowEditable: true });
+  return null;
+}
+
 function WizardHarness({
   config,
   pluginRegistry,
   importBrokerPositions,
   onComplete = () => {},
+  before,
+  after,
 }: {
   config: AppConfig;
   pluginRegistry: PluginRegistry;
   importBrokerPositions?: AppBrokerImportRuntime["importBrokerPositions"];
   onComplete?: (config: AppConfig) => void;
+  /** Mounted ahead of the wizard, the way the shell is. */
+  before?: ReactNode;
+  /** Mounted after the wizard, the way the command bar and new panes are. */
+  after?: ReactNode;
 }) {
   const importer = importBrokerPositions ?? ((instanceId, tickerMap, options) => syncBrokerInstance({
     config: options?.config ?? config,
@@ -121,11 +134,13 @@ function WizardHarness({
   return (
     <AppProvider config={config}>
       <StateCapture />
+      {before}
       <OnboardingWizard
         pluginRegistry={pluginRegistry}
         importBrokerPositions={importer}
         onComplete={onComplete}
       />
+      {after}
     </AppProvider>
   );
 }
@@ -1000,5 +1015,83 @@ describe("OnboardingWizard", () => {
 
     expect(completed?.onboardingComplete).toBe(true);
     expect(completed?.onboardingProgress).toBeUndefined();
+  });
+  test("the keyboard removes an added position once the fields let go", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-remove-"));
+    const tickerRepository = createTickerRepository();
+    testSetup = await testRender(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />,
+      { width: 100, height: 32 },
+    );
+    await testSetup.renderOnce();
+
+    await addManualPosition("NVDA");
+    await addManualPosition("AAPL");
+    await pressEscape();
+    // The cursor starts on the newest row; k moves it up to the first.
+    await waitForFrame("Remove d");
+    await emitKeypress({ name: "k", sequence: "k" });
+    await emitKeypress({ name: "d", sequence: "d" });
+
+    await waitForFrame("Positions (1)");
+    expect((await tickerRepository.loadTicker("NVDA"))?.metadata.portfolios).toEqual([]);
+    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.portfolios).toEqual(["main"]);
+  });
+
+  test("the card keeps the keys it does not use from the workspace behind it", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-modal-keys-"));
+    const reached: string[] = [];
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "upgrade" as const, accountStatus: "signed-in" as const },
+    };
+    testSetup = await testRender(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} before={<KeyProbe seen={reached} />} />,
+      { width: 100, height: 32 },
+    );
+    await testSetup.renderOnce();
+    await waitForFrame("Start 7-day free trial");
+
+    const press = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
+    await press({ name: "tab", sequence: "\t" });
+    await press({ name: "j", sequence: "j" });
+    await press({ name: "q", sequence: "q" });
+    await press({ name: "w", ctrl: true });
+    expect(reached).toEqual([]);
+
+    // Help is the way out: the card steps aside while it has focus.
+    await press({ name: "?", sequence: "?" });
+    expect(reached).toEqual(["?"]);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("upgrade");
+  });
+
+  test("the research coach leaves Enter to the workspace and takes the notification key", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-coach-keys-"));
+    const reached: string[] = [];
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: {
+        version: 1 as const,
+        stage: "research" as const,
+        path: "manual" as const,
+        portfolioId: "main",
+        tickerSymbol: "AAPL",
+      },
+    };
+    testSetup = await testRender(
+      <WizardHarness config={config} pluginRegistry={createPluginRegistry()} after={<KeyProbe seen={reached} />} />,
+      { width: 100, height: 32 },
+    );
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toMatch(/Connect free Cloud\s+Alt\+Enter/);
+
+    // The command bar and panes mount after the wizard and still get Enter.
+    await emitTuiKeypress(testSetup, { name: "return", sequence: "\r" }, { trackPropagation: true });
+    expect(reached).toEqual(["return"]);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
+
+    await emitTuiKeypress(testSetup, { name: "return", sequence: "\r", meta: true }, { trackPropagation: true });
+    await waitForFrame("Connect Gloom Cloud");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
   });
 });

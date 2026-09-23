@@ -14,7 +14,7 @@ import {
   windowEditHelpText,
   windowEditStatusLine,
 } from "../../window-edit/presentation";
-import type { WindowEditState } from "../../window-edit/mode";
+import { windowEditHasPendingCommit, type WindowEditState } from "../../window-edit/mode";
 import {
   NativeWindowEditStatus,
   resolveNativeFloatingResizeCornerRect,
@@ -157,7 +157,8 @@ export function ShellWindowModeOverlays({
         const title = pane ? getPaneTitle(pane) : "Window";
         const targetPane = windowMode.focus.kind === "dock-move" ? paneMap.get(windowMode.focus.targetId) : undefined;
         const targetTitle = targetPane ? getPaneTitle(targetPane) : undefined;
-        const text = `${windowEditStatusLine(windowMode, title, bounds, dockGeometryOptions, targetTitle)} · ${windowEditHelpText(windowMode)}`;
+        const pending = windowEditHasPendingCommit(windowMode, bounds, dockGeometryOptions);
+        const text = `${windowEditStatusLine(windowMode, title, bounds, dockGeometryOptions, targetTitle)} · ${windowEditHelpText(windowMode, pending)}`;
         const bannerWidth = Math.max(1, width);
         const bannerText = truncateMenuText(text, bannerWidth).padEnd(bannerWidth, " ");
         return (

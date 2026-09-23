@@ -26,7 +26,6 @@ import {
 import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
 import { summarizeFxRates, fxStatusLabel } from "../../../../utils/fx-status";
 import { convertCurrency } from "../../../../utils/format";
-import { isPlainKey } from "../../../../utils/keyboard";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
@@ -35,7 +34,6 @@ import { calculatePortfolioSummaryTotals, resolveCollectionSortPreference, type 
 import {
   cashMarginDrawerHeight,
   PortfolioCashMarginDrawer,
-  shouldToggleCashMarginDrawer,
 } from "../header";
 import {
   buildPortfolioFooterSegments,
@@ -311,8 +309,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     : null);
   const headerHeight = showCollectionTabs && !tabsInHeader ? 1 : 0;
   const summaryHeight = summaryLayout.row.length > 0 && height > headerHeight + 2 ? 1 : 0;
+  // The table keeps the paging keys, so the drawer shows its balances rather than
+  // scrolling them: it grows to fit, up to half the body once past six rows.
+  const bodyRows = height - (headerHeight + summaryHeight);
+  const drawerLimit = Math.max(1, Math.min(bodyRows - 2, Math.max(6, Math.floor(bodyRows / 2))));
   const drawerHeight = showCashDrawer && cashDrawerExpanded
-    ? Math.min(cashMarginDrawerHeight(accountState, summaryLayout.detail.length), Math.max(1, height - (headerHeight + summaryHeight + 2)))
+    ? Math.min(cashMarginDrawerHeight(accountState, summaryLayout.detail.length), drawerLimit)
     : 0;
 
   const handleVisibleRangeChange = useCallback(({ start, end }: TickerListVisibleRange) => {
@@ -358,50 +360,29 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     setCursorSymbol(symbol, { immediate: true });
   }, [setCursorSymbol]);
 
+  const openTickerInNewPane = useCallback((ticker: TickerRecord) => {
+    flushCursorSymbol(ticker.metadata.ticker);
+    openTickerFloating(ticker.metadata.ticker, { newPane: true });
+  }, [flushCursorSymbol, openTickerFloating]);
+
+  // `c` (cash) and `s` (table or grid) are footer hints, which bind their own
+  // keys in both views; the table only adds Shift+Enter.
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (!focused) return;
 
     const key = event.name;
     const isEnter = key === "enter" || key === "return";
 
-    if (isEnter && event.shift) {
+    if (isEnter && event.shift && !event.ctrl && !event.meta && !event.alt) {
       event.preventDefault?.();
       event.stopPropagation?.();
       const ticker = sortedTickers[safeSelectedIdx];
-      if (ticker) {
-        flushCursorSymbol(ticker.metadata.ticker);
-        openTickerFloating(ticker.metadata.ticker, { newPane: true });
-      }
-      return true;
-    }
-
-    if (shouldToggleCashMarginDrawer(event, showCashDrawer)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      setCashDrawerExpanded(!cashDrawerExpanded);
-      return true;
-    }
-
-    if (isPlainKey(event, "s") && isPortfolioTab) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      toggleViewMode();
+      if (ticker) openTickerInNewPane(ticker);
       return true;
     }
 
     return false;
-  }, [
-    cashDrawerExpanded,
-    flushCursorSymbol,
-    focused,
-    isPortfolioTab,
-    openTickerFloating,
-    safeSelectedIdx,
-    setCashDrawerExpanded,
-    showCashDrawer,
-    sortedTickers,
-    toggleViewMode,
-  ]);
+  }, [focused, openTickerInNewPane, safeSelectedIdx, sortedTickers]);
 
   useEffect(() => {
     if (activeCollectionId !== currentCollectionId) {
@@ -487,8 +468,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
             onPress: () => setCashDrawerExpanded(!cashDrawerExpanded),
           }]
         : []),
+      // Watchlists have no grid, so only a portfolio offers the switch.
       ...(isPortfolioTab
-        ? [{ id: "view", key: "s", label: viewMode === "table" ? " grid" : " table", onPress: toggleViewMode }]
+        ? [{
+            id: "view",
+            key: "s",
+            label: viewMode === "table" ? " grid" : " table",
+            title: viewMode === "table" ? "Grid View" : "Table View",
+            onPress: toggleViewMode,
+          }]
         : []),
     ],
   }), [cashDrawerExpanded, fxStatusText, fxWarning, isPortfolioTab, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo, toggleViewMode, viewMode]);
@@ -585,7 +573,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           cursorSymbol={cursorSymbol}
           setCursorSymbol={(symbol) => setCursorSymbol(symbol)}
           onRowActivate={handleRowActivate}
-          onToggleViewMode={toggleViewMode}
+          onOpenInNewPane={openTickerInNewPane}
           focused={focused && !quickAddFocused}
           width={width}
           height={contentHeight}

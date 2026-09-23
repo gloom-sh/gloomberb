@@ -100,7 +100,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
               detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },
           ]} />
           {chartHeight && data.history.some((point) => point.ratioPercent !== null) ? <Box paddingX={1} flexShrink={0}>
-            <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={chartHeight} showLegend={false} showTimeAxis navigable={false}
+            <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={chartHeight} focused={focused && !openRow} showLegend={false} showTimeAxis navigable={false}
               formatAxisValue={(value) => `${value.toFixed(0)}%`} remoteKind="short-volume-history" />
           </Box> : null}
         </Box>}

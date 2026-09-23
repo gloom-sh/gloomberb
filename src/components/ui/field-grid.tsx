@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Box, Text, useUiCapabilities, type InputRenderable } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { formatNumber } from "../../utils/format";
+import { isPlainKey } from "../../utils/keyboard";
+import { useShortcut } from "../../react/input";
 import { Button } from "./button";
 import { NumberField, TextField } from "./fields";
 
@@ -289,14 +291,21 @@ export function GridFieldView({
     }
   }, [active, commitEditText, displayValue, draft, text]);
 
+  // Only the focused pane's field takes the keyboard. The input follows
+  // `focused` itself when the pane comes back, keeping its caret.
+  const paneFocusedRef = useRef(focused);
+  paneFocusedRef.current = focused;
   useEffect(() => {
-    if (!active) return;
+    if (!active || !paneFocusedRef.current) return;
     let animationFrame: number | null = null;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const focusWhilePaneFocused = () => {
+      if (paneFocusedRef.current) focusInput();
+    };
     focusInput();
-    queueMicrotask(focusInput);
-    animationFrame = globalThis.requestAnimationFrame?.(focusInput) ?? null;
-    timeouts.push(setTimeout(focusInput, 0), setTimeout(focusInput, 32));
+    queueMicrotask(focusWhilePaneFocused);
+    animationFrame = globalThis.requestAnimationFrame?.(focusWhilePaneFocused) ?? null;
+    timeouts.push(setTimeout(focusWhilePaneFocused, 0), setTimeout(focusWhilePaneFocused, 32));
     return () => {
       if (animationFrame !== null) globalThis.cancelAnimationFrame?.(animationFrame);
       for (const timeout of timeouts) clearTimeout(timeout);
@@ -309,6 +318,17 @@ export function GridFieldView({
       commitLiveInputText();
     };
   }, [active, commitLiveInputText]);
+
+  // An action cell the pane has made active presses on Enter or Space, as it
+  // would on a click.
+  const actionCell = !!field.onPress && !field.onValue && !field.onText;
+  useShortcut((event) => {
+    if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
+    if (!isPlainKey(event, "return", "enter", "space")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    fieldRef.current.onPress?.();
+  }, { enabled: actionCell && active && focused });
 
   const labelNode = (
     <Text fg={active && !nativePaneChrome ? colors.selectedText : colors.textDim} data-gloom-role="field-grid-label">
@@ -325,7 +345,7 @@ export function GridFieldView({
     "data-gloom-field-id": field.id,
   };
 
-  if (field.onPress && !field.onValue && !field.onText) {
+  if (actionCell) {
     return (
       <Box {...cellProps} data-kind="action">
         <Button
@@ -368,7 +388,7 @@ export function GridFieldView({
   ) : (
     <NumberField
       inputRef={inputNodeRef}
-      focused={active}
+      focused={active && focused}
       value={draft}
       placeholder={displayValue}
       allowNegative={field.allowNegative}

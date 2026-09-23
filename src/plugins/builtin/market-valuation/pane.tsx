@@ -29,11 +29,13 @@ import {
   type IndicatorViewModel
 } from "./view";
 
-/** Below this the detail sits under the table instead of beside it. */
 const loadBundle = (force: boolean) => loadValuationBundle({ force });
 
+/** Below this the detail sits under the table instead of beside it. */
 const SPLIT_MIN_WIDTH = 108;
 const LIST_WIDTH = 46;
+/** The range strip names the key that picks each range. */
+const RANGE_VIEW_OPTIONS = RANGE_OPTIONS.map((option, index) => ({ ...option, hint: String(index + 1) }));
 
 type ColumnId = "name" | "value" | "zone" | "percentile" | "sigma";
 interface Column extends DataTableColumn { id: ColumnId }
@@ -152,10 +154,19 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   }, [focusSearch, refresh]);
 
   useShortcut((event) => {
-    if (!focused || searchFocused || event.name !== "r") return;
+    if (!focused || searchFocused || event.targetEditable || event.defaultPrevented) return;
+    if (isPlainKey(event, "r")) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      refresh();
+      return;
+    }
+    // 1, 2 and 3 pick the history range, as the chart's range keys do.
+    const picked = RANGE_VIEW_OPTIONS.find((option) => isPlainKey(event, option.hint));
+    if (!picked) return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    refresh();
+    setRange(picked.value);
   });
 
   const views = useMemo(
@@ -312,7 +323,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
           inputRef: searchInputRef,
           debounceMs: 80,
         }}
-        view={{ value: range, options: RANGE_OPTIONS, onChange: (value: string) => setRange(value as ValuationRangeId) }}
+        view={{ value: range, options: RANGE_VIEW_OPTIONS, onChange: (value: string) => setRange(value as ValuationRangeId) }}
       />
       <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
         {list}

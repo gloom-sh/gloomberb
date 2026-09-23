@@ -1,4 +1,5 @@
 import { Box } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, Tabs, usePaneFooter, usePaneHeaderTabs, type DataTableKeyEvent } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -186,9 +187,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    const key = event.name;
-
-    if (key === "r") {
+    if (isPlainKey(event, "r")) {
       event.preventDefault?.();
       event.stopPropagation?.();
       loadTab(activeTab, { forceRefresh: true });
@@ -254,6 +253,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         }}
         onRootKeyDown={handleTableKeyDown}
         resetScrollKey={activeTab}
+        sortable
         columns={columns}
         items={rows}
         sortColumnId={sortPreference.columnId}
