@@ -39,7 +39,7 @@ import {
 import type { AlertRule } from "./types";
 import { useQuoteEntries } from "../../../market-data/hooks";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
-import { alertInstrument, streamedAlertQuote } from "./live";
+import { alertInstrument, streamedAlertQuote, syncAlertQuoteStream } from "./live";
 import { quoteAlertFields } from "./quotes";
 
 type AlertColumnId =
@@ -140,6 +140,12 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
     return [...unique.values()];
   }, [rows]);
   const liveEntries = useQuoteEntries(liveInstruments);
+  // Re-arm, edit and delete write the store from here; the stream follows the
+  // new symbol set now rather than at the next check.
+  const liveSymbolsKey = liveInstruments.map((instrument) => buildQuoteKey(instrument)).sort().join("\u001f");
+  useEffect(() => {
+    syncAlertQuoteStream();
+  }, [liveSymbolsKey]);
   const displayRows = useMemo(() => rows.map((alert) => {
     if (alert.status !== "active") return alert;
     const quote = streamedAlertQuote(resolveEntryData(liveEntries.get(buildQuoteKey(alertInstrument(alert)))));

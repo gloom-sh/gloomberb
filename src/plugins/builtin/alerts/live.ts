@@ -53,6 +53,14 @@ export interface AlertQuoteStream {
   dispose(): void;
 }
 
+/** The stream the plugin runs, so edits made in the alerts pane reach it at once. */
+let runningStream: AlertQuoteStream | null = null;
+
+/** Follow the stored alerts' symbols now, after the pane re-armed, edited or deleted one. */
+export function syncAlertQuoteStream(): void {
+  runningStream?.sync();
+}
+
 /**
  * Keeps the active alerts' symbols on the shared quote feed and reports when
  * any of them moves. Like every stream it pauses while the app is hidden;
@@ -113,13 +121,16 @@ export function createAlertQuoteStream({
   const unsubscribeVisibility = subscribeAppVisibility(sync);
   sync();
 
-  return {
+  const stream: AlertQuoteStream = {
     sync,
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (runningStream === stream) runningStream = null;
       unsubscribeVisibility();
       teardown();
     },
   };
+  runningStream = stream;
+  return stream;
 }
