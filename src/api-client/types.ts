@@ -844,6 +844,8 @@ export interface CloudFilingEventPayload {
   filedAt: string;
   /** Verified SEC filing calendar date; filedAt may instead be an acceptance instant. */
   filingDate?: string | null;
+  /** "8-K", or "8-K/A" for an amendment. Older servers omit it. */
+  form?: string;
   docUrl: string;
   items: string[];
   labels: string[];
