@@ -11,7 +11,12 @@ import {
 const MAX_LIVE_QUOTE_TAIL_AGE_MS = 7 * 24 * 60 * 60_000;
 const MAX_LIVE_QUOTE_CLOCK_SKEW_MS = 5 * 60_000;
 const MAX_INTRADAY_BAR_INTERVAL_MS = 6 * 60 * 60_000;
-const MIN_LIVE_QUOTE_TAIL_GAP_MS = 5 * 60_000;
+export const MIN_LIVE_QUOTE_TAIL_GAP_MS = 5 * 60_000;
+/**
+ * A quote stamped slightly after the local clock is a clock difference, not a
+ * malformed observation. Dropping it froze the tail on machines running behind.
+ */
+export const LIVE_QUOTE_FUTURE_TOLERANCE_MS = 2_000;
 const DAY_MS = 24 * 60 * 60_000;
 // Closer daily points than this are intraday data, not calendar bars.
 const MIN_CALENDAR_BAR_INTERVAL_MS = 20 * 60 * 60_000;
@@ -54,31 +59,43 @@ function getActiveQuotePrice(quote: Quote): number {
   return quote.price;
 }
 
-function quoteBelongsToLatestBar(
+export function isCalendarResolution(resolution: ManualChartResolution): resolution is "1d" | "1wk" | "1mo" {
+  return resolution === "1d" || resolution === "1wk" || resolution === "1mo";
+}
+
+/**
+ * The calendar period a timestamp falls in, as the UTC date of its first day.
+ * Vendors use both UTC date labels and actual session-opening timestamps. A
+ * daily bar belongs to a calendar session, not the next rolling 24 hours.
+ */
+export function calendarBarStart(
+  timestamp: number,
+  resolution: "1d" | "1wk" | "1mo",
+  exchange?: string,
+  dateLabel = timestamp % DAY_MS === 0,
+): string {
+  const day = dateLabel ? new Date(timestamp).toISOString().slice(0, 10) :
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: resolveExchangeTimeZone(exchange) ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(timestamp));
+  if (resolution === "1mo") return `${day.slice(0, 7)}-01`;
+  if (resolution === "1wk") {
+    const monday = new Date(`${day}T00:00:00Z`);
+    monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+    return monday.toISOString().slice(0, 10);
+  }
+  return day;
+}
+
+export function quoteBelongsToLatestBar(
   latestTime: number,
   quoteTime: number,
   resolution: ManualChartResolution,
   exchange?: string,
 ): boolean {
   if (quoteTime < latestTime) return false;
-  if (resolution === "1d" || resolution === "1wk" || resolution === "1mo") {
-    const zone = resolveExchangeTimeZone(exchange) ?? "UTC";
-    // Vendors use both UTC date labels and actual session-opening timestamps.
-    // A daily bar belongs to a calendar session, not the next rolling 24 hours.
-    const key = (timestamp: number, dateLabel: boolean) => {
-      const day = dateLabel ? new Date(timestamp).toISOString().slice(0, 10) :
-        new Intl.DateTimeFormat("en-CA", {
-          timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
-        }).format(new Date(timestamp));
-      if (resolution === "1mo") return day.slice(0, 7);
-      if (resolution === "1wk") {
-        const monday = new Date(`${day}T00:00:00Z`);
-        monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
-        return monday.toISOString().slice(0, 10);
-      }
-      return day;
-    };
-    return key(latestTime, latestTime % 86_400_000 === 0) === key(quoteTime, false);
+  if (isCalendarResolution(resolution)) {
+    return calendarBarStart(latestTime, resolution, exchange) === calendarBarStart(quoteTime, resolution, exchange, false);
   }
   return quoteTime - latestTime < CHART_RESOLUTION_STEP_MS[resolution];
 }
@@ -102,15 +119,27 @@ function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number): PriceP
   };
 }
 
-export function appendLiveQuotePoint(
-  points: PricePoint[],
-  quote: Quote | null | undefined,
-  options: AppendLiveQuotePointOptions = {},
-): PricePoint[] {
-  const now = options.now ?? Date.now();
-  if (!quote || isQuoteStaleForCurrentSession(quote, now)) return points;
-  if (hasUnknownBondHistoryBasis(quote, options.assetCategory)) return points;
+/** The clock a quote is judged against, allowing a small local clock lag. */
+function quoteObservationNow(quote: Pick<Quote, "lastUpdated">, now: number): number {
+  const quoteTime = quote.lastUpdated;
+  return Number.isFinite(quoteTime) && quoteTime > now && quoteTime - now <= LIVE_QUOTE_FUTURE_TOLERANCE_MS
+    ? quoteTime
+    : now;
+}
 
+interface LiveQuoteObservation {
+  time: number;
+  price: number;
+}
+
+/** A current, well-formed quote price that may extend a price history, or null. */
+export function liveQuoteObservation(
+  quote: Quote | null | undefined,
+  now: number,
+  assetCategory?: string,
+): LiveQuoteObservation | null {
+  if (!quote || isQuoteStaleForCurrentSession(quote, quoteObservationNow(quote, now))) return null;
+  if (hasUnknownBondHistoryBasis(quote, assetCategory)) return null;
   const quoteTime = quote.lastUpdated;
   const quotePrice = getActiveQuotePrice(quote);
   if (
@@ -120,8 +149,20 @@ export function appendLiveQuotePoint(
     || quoteTime > now + MAX_LIVE_QUOTE_CLOCK_SKEW_MS
     || now - quoteTime > MAX_LIVE_QUOTE_TAIL_AGE_MS
   ) {
-    return points;
+    return null;
   }
+  return { time: quoteTime, price: quotePrice };
+}
+
+export function appendLiveQuotePoint(
+  points: PricePoint[],
+  quote: Quote | null | undefined,
+  options: AppendLiveQuotePointOptions = {},
+): PricePoint[] {
+  const now = options.now ?? Date.now();
+  const observation = liveQuoteObservation(quote, now, options.assetCategory);
+  if (!quote || !observation) return points;
+  const { time: quoteTime, price: quotePrice } = observation;
 
   const latest = points.at(-1);
   if (!latest) return points;

@@ -934,8 +934,9 @@ describe("resolveChartSpecData", () => {
 
     expect(result.errors).toEqual([]);
     expect(historyExchanges).toEqual(["XNAS"]);
+    // A formed bar is stamped at its opening, like the provider's bars.
     expect(result.series[0]?.points.at(-1)?.date.toISOString())
-      .toBe("2026-07-30T15:26:00.000Z");
+      .toBe("2026-07-30T15:25:00.000Z");
     expect(result.series[0]?.timeBasis).toMatchObject({
       kind: "market",
       timeZone: "America/New_York",
