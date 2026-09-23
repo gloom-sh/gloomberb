@@ -36,6 +36,7 @@ import {
   FX_LIVE_RATE_MAX_DEVIATION,
   FX_LIVE_RATE_MAX_OBSERVATION_AGE_MS,
   FX_LIVE_RATE_MIN_CHANGE,
+  FX_LIVE_RATE_MIN_INTERVAL_MS,
   FX_LIVE_RATE_REFRESH_MS,
   FX_LIVE_RATE_STALE_MS,
   fxLegForCurrency,
@@ -128,6 +129,8 @@ export class MarketDataCoordinator {
   /** The last pair quote each currency's leg received, as the stream sent it. */
   private readonly fxLegFrames = new Map<string, Quote>();
   private writingLiveFxRate = false;
+  /** Currencies whose latest pair frame waits out FX_LIVE_RATE_MIN_INTERVAL_MS. */
+  private readonly fxLegTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly fxLegsByQuoteKey = new Map<string, FxLeg>();
   private readonly fxLegsByCurrency = new Map<string, FxLeg>();
   private readonly fxStore = new QueryStore<number>(
@@ -532,6 +535,8 @@ export class MarketDataCoordinator {
     for (const { dispose } of this.cachedQueries.values()) dispose();
     this.cachedQueries.clear();
     this.streamQuoteBaselines.clear();
+    for (const timer of this.fxLegTimers.values()) clearTimeout(timer);
+    this.fxLegTimers.clear();
   }
 
   subscribeQuotes(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
@@ -576,6 +581,12 @@ export class MarketDataCoordinator {
     if (reference.asOf != null && reference.asOf > observedAt) return;
     const previous = this.liveFxRates.get(leg.currency);
     if (previous && Math.abs(rate / previous.rate - 1) < FX_LIVE_RATE_MIN_CHANGE && now - previous.receivedAt < FX_LIVE_RATE_REFRESH_MS) return;
+    // A clock set back counts as time up rather than freezing the rate.
+    const wait = previous && now >= previous.receivedAt ? previous.receivedAt + FX_LIVE_RATE_MIN_INTERVAL_MS - now : 0;
+    if (wait > 0) {
+      this.scheduleLiveFxLeg(leg, wait);
+      return;
+    }
     this.liveFxRates.set(leg.currency, { rate, observedAt, receivedAt: now });
     const key = buildFxKey(leg.currency);
     this.writingLiveFxRate = true;
@@ -584,6 +595,17 @@ export class MarketDataCoordinator {
     } finally {
       this.writingLiveFxRate = false;
     }
+  }
+
+  /** Applies the leg's latest frame once the interval since the last write is up. */
+  private scheduleLiveFxLeg(leg: FxLeg, delayMs: number): void {
+    if (this.destroyed || this.fxLegTimers.has(leg.currency)) return;
+    const timer = setTimeout(() => {
+      this.fxLegTimers.delete(leg.currency);
+      if (!this.destroyed) this.applyLiveFxLeg(leg, this.fxLegFrames.get(leg.currency));
+    }, delayMs);
+    (timer as { unref?: () => void }).unref?.();
+    this.fxLegTimers.set(leg.currency, timer);
   }
 
   private projectLiveFxRate(key: string, entry: QueryEntry<number>): QueryEntry<number> {

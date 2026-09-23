@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
@@ -156,5 +156,44 @@ test("a pair overrides the loaded rate only with a current observation of its ow
     expect(coordinator.getFxEntry("EUR").data).toBe(1.12);
   } finally {
     coordinator.destroy();
+  }
+});
+
+test("a pair a visible board streams every frame moves converted values about once a second", async () => {
+  const start = Date.now();
+  let now = start;
+  const clock = spyOn(Date, "now").mockImplementation(() => now);
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  const provider = createTestDataProvider({
+    getExchangeRate: async () => 1.1,
+    subscribeQuotes: (_targets, onQuote) => { emit = onQuote; return () => {}; },
+  });
+  const frames = createManualFrameDriver(0);
+  const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(frames.driver) });
+  const pair = (price: number) => {
+    emit!({ symbol: "EURUSD=X", exchange: "" }, { symbol: "EURUSD=X", currency: "USD", change: 0, changePercent: 0, lastUpdated: now, price });
+    frames.advance(100);
+  };
+  try {
+    await coordinator.loadFxRate("EUR");
+    // An open FX board makes the shared pair a foreground key.
+    coordinator.subscribeQuotes([{ instrument: { symbol: "EURUSD=X", exchange: "" }, priority: { visible: true, selected: false, weight: 70 } }]);
+    coordinator.subscribeFxRates(["EUR"]);
+    pair(1.1181);
+    expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
+
+    now = start + 980;
+    pair(1.119);
+    now = start + 990;
+    pair(1.1195);
+    expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
+
+    // The latest frame lands when the second is up, with no further tick.
+    now = start + 1_000;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1195, 6);
+  } finally {
+    coordinator.destroy();
+    clock.mockRestore();
   }
 });

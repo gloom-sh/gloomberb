@@ -18,6 +18,11 @@ const STREAMABLE_CURRENCIES = new Set([
 export const FX_LIVE_RATE_MAX_DEVIATION = 0.2;
 /** Smaller moves are not worth a re-render of every converted value. */
 export const FX_LIVE_RATE_MIN_CHANGE = 0.00002;
+/**
+ * Each rate write redraws every converted value, so a pair streams into them
+ * at the background cadence even while a visible FX board watches it every frame.
+ */
+export const FX_LIVE_RATE_MIN_INTERVAL_MS = 1_000;
 /** An unchanged rate still refreshes its observation time this often. */
 export const FX_LIVE_RATE_REFRESH_MS = 30_000;
 /** A pair quote observed longer ago than this (a delayed feed, a quiet market) is not a live rate. */
