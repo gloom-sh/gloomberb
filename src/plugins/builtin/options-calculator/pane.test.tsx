@@ -118,12 +118,16 @@ test("a chain-seeded calculator follows the contract and underlying until the us
       await testSetup!.renderOnce();
     });
   };
-  await act(async () => {
-    emit!(contract, quote(contract.symbol, { price: 24, bid: 23.9, ask: 24.1 }));
-    emit!(underlying, quote("COST", { price: 910 }));
-  });
+  // A streaming underlying alone never marks the saved contract price to it.
+  await act(async () => { emit!(underlying, quote("COST", { price: 910 })); });
   await settle();
   let frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Spot\s+900/);
+  expect(frame).toContain("Snapshot:");
+  expect(frame).not.toContain("real-time market");
+  await act(async () => { emit!(contract, quote(contract.symbol, { price: 24, bid: 23.9, ask: 24.1 })); });
+  await settle();
+  frame = testSetup!.captureCharFrame();
   expect(frame).toMatch(/Mid\s+24(?!\.)/);
   expect(frame).toMatch(/Spot\s+910/);
   // The contract context is the live quote now, not a saved snapshot.

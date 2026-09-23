@@ -104,15 +104,18 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     const spot = spotQuote && !spotQuote.stale && spotQuote.price > 0 && Number.isFinite(spotQuote.price) ? spotQuote.price : null;
     const quote = freshOptionQuote(liveEntries.get(buildOptionQuoteKey(reference.contractSymbol)),
       { now: Math.max(freshnessNow, Date.now()), subscriptionStartedAt });
-    if (spot == null && !quote) return null;
-    const mid = quote?.bid != null && quote.ask != null ? optionMid({ bid: quote.bid, ask: quote.ask }) : null;
-    const trade = quote?.lastTradePrice != null && quote.lastTradePrice > 0 && quote.lastTradeTime != null
+    // The link needs a fresh contract quote: a live spot against the saved
+    // option price would solve a wrong IV and present the snapshot as live.
+    // A known stale spot likewise keeps the whole calculator on the snapshot.
+    if (!quote || (spotQuote != null && spot == null)) return null;
+    const mid = quote.bid != null && quote.ask != null ? optionMid({ bid: quote.bid, ask: quote.ask }) : null;
+    const trade = quote.lastTradePrice != null && quote.lastTradePrice > 0 && quote.lastTradeTime != null
       && quote.lastTradeTime >= reference.lastTradeDate * 1000 ? { price: quote.lastTradePrice, time: quote.lastTradeTime } : null;
     const price = draft.marketPriceSource === "mid" ? mid : trade?.price ?? null;
-    return { spot, price, delayed: (spotQuote != null && spotQuote.dataSource !== "live") || (quote != null && quote.dataSource !== "live"),
-      reference: quote ? { ...reference, bid: quote.bid ?? reference.bid, ask: quote.ask ?? reference.ask,
+    return { spot, price, delayed: (spotQuote != null && spotQuote.dataSource !== "live") || quote.dataSource !== "live",
+      reference: { ...reference, bid: quote.bid ?? reference.bid, ask: quote.ask ?? reference.ask,
         lastPrice: trade?.price ?? reference.lastPrice, lastTradeDate: trade ? trade.time / 1000 : reference.lastTradeDate,
-        lastUpdated: quote.lastUpdated } : reference };
+        lastUpdated: quote.lastUpdated } };
   }, [priceLinked, spotLinked, reference, liveEntries, draft.symbol, draft.marketPriceSource, freshnessNow, subscriptionStartedAt]),
   draft.pricingModel === "american" ? 500 : 0, `${draft.symbol}|${reference?.contractSymbol ?? ""}`);
   const linkedDraft = useMemo(() => !liveInputs ? draft : { ...draft,
