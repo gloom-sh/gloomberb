@@ -42,7 +42,7 @@ export function buildColumns(width: number): HolderColumn[] {
   ];
 }
 
-function sortValue(row: HolderRow, columnId: HolderColumnId, marketCap?: number): string | number | null {
+function sortValue(row: HolderRow, columnId: HolderColumnId, marketCap?: number, sharesOutstanding?: number): string | number | null {
   switch (columnId) {
     case "holder":
       return row.name;
@@ -55,16 +55,16 @@ function sortValue(row: HolderRow, columnId: HolderColumnId, marketCap?: number)
     case "changePercent":
       return row.changePercent ?? null;
     case "percentHeld":
-      return resolveHolderOwnershipPercent(row, marketCap) ?? null;
+      return resolveHolderOwnershipPercent(row, marketCap, sharesOutstanding) ?? null;
     case "reportDate":
       return row.reportDate ?? null;
   }
 }
 
-export function sortRows(rows: HolderRow[], preference: SortPreference, marketCap?: number): HolderRow[] {
+export function sortRows(rows: HolderRow[], preference: SortPreference, marketCap?: number, sharesOutstanding?: number): HolderRow[] {
   return [...rows].sort((left, right) => compareSortValues(
-    sortValue(left, preference.columnId, marketCap),
-    sortValue(right, preference.columnId, marketCap),
+    sortValue(left, preference.columnId, marketCap, sharesOutstanding),
+    sortValue(right, preference.columnId, marketCap, sharesOutstanding),
     preference.direction,
   ));
 }

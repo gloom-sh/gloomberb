@@ -16,8 +16,21 @@ export function formatMaybePercent(value: number | undefined): string {
   return Math.abs(value) <= 1 ? formatPercent(value) : formatPercentRaw(value);
 }
 
-export function resolveHolderOwnershipPercent(row: Pick<HolderRecord, "percentHeld" | "value">, marketCap: number | undefined): number | undefined {
+/**
+ * The holder's stake. A reported percentage wins; otherwise shares over shares
+ * outstanding, which are both counts as of a report and do not drift with the
+ * price. The reported value over today's market cap is the last resort: it
+ * mixes the report date's price with today's.
+ */
+export function resolveHolderOwnershipPercent(
+  row: Pick<HolderRecord, "percentHeld" | "value" | "shares">,
+  marketCap: number | undefined,
+  sharesOutstanding?: number,
+): number | undefined {
   if (row.percentHeld != null) return row.percentHeld;
+  if (row.shares != null && row.shares >= 0 && sharesOutstanding != null && sharesOutstanding > 0) {
+    return row.shares / sharesOutstanding;
+  }
   if (row.value == null || row.value < 0 || marketCap == null || marketCap <= 0) return undefined;
   return row.value / marketCap;
 }
@@ -28,8 +41,8 @@ export function formatHolderOwnershipPercent(value: number | undefined): string 
   return `${percent.toFixed(2)}%`;
 }
 
-export function formatHolderOwnershipLine(row: HolderRow, marketCap: number | undefined): string | null {
-  const ownership = resolveHolderOwnershipPercent(row, marketCap);
+export function formatHolderOwnershipLine(row: HolderRow, marketCap: number | undefined, sharesOutstanding?: number): string | null {
+  const ownership = resolveHolderOwnershipPercent(row, marketCap, sharesOutstanding);
   return ownership == null ? null : `${formatHolderOwnershipPercent(ownership)} held`;
 }
 

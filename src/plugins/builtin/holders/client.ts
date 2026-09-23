@@ -15,7 +15,7 @@ export async function loadHolderSnapshot(
   provider: DataProvider,
   symbol: string,
   exchange = "",
-): Promise<{ data: HolderData; marketCap?: number }> {
+): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number }> {
   const [data, financials] = await Promise.all([
     loadHolderData(provider, symbol, exchange),
     provider.getTickerFinancials(symbol, exchange).catch(() => null),
@@ -25,5 +25,5 @@ export async function loadHolderSnapshot(
     && financials.quote.currency !== data.currency
     ? undefined
     : quoteMarketCap;
-  return { data, marketCap };
+  return { data, marketCap, sharesOutstanding: financials?.fundamentals?.sharesOutstanding };
 }

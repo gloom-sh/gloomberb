@@ -54,11 +54,19 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const fundMatchAbortRef = useRef<AbortController | null>(null);
 
   const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
+  const sharesOutstanding = financials?.fundamentals?.sharesOutstanding;
   const quoteMarketCap = financials?.quote?.marketCap;
-  const marketCap = financials?.quote?.currency && financials.quote.currency !== currency ? undefined : quoteMarketCap;
+  // Only the last-resort fallback reads the market cap; with share counts it
+  // is left out so a price tick does not re-sort the holders.
+  const hasShareCount = sharesOutstanding != null && sharesOutstanding > 0;
+  const otherCurrency = !!financials?.quote?.currency && financials.quote.currency !== currency;
+  const marketCap = hasShareCount || otherCurrency ? undefined : quoteMarketCap;
   const exchange = ticker?.metadata.exchange ?? "";
   const rows = useMemo(() => buildRows(data), [data]);
-  const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
+  const sortedRows = useMemo(
+    () => sortRows(rows, sortPreference, marketCap, sharesOutstanding),
+    [marketCap, rows, sharesOutstanding, sortPreference],
+  );
   const columns = useMemo(() => buildColumns(width), [width]);
   const selectedIdx = selectedId
     ? sortedRows.findIndex((row) => row.id === selectedId)
@@ -254,13 +262,13 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       case "percentHeld":
         return {
-          text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap)),
+          text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap, sharesOutstanding)),
           color: selectedColor ?? colors.textDim,
         };
       case "reportDate":
         return { text: displayDate(row.reportDate), color: selectedColor ?? colors.textDim };
     }
-  }, [currency, fundMatches, marketCap]);
+  }, [currency, fundMatches, marketCap, sharesOutstanding]);
 
   usePaneFooter("holders", () => {
     return {
@@ -339,6 +347,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onActivate={openFundDetail}
           currency={currency}
           marketCap={marketCap}
+          sharesOutstanding={sharesOutstanding}
         />
       )}
     </Box>
