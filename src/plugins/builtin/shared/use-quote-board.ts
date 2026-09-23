@@ -83,9 +83,10 @@ function finitePrice(quote: Quote | null): quote is Quote {
  * Whether the stream is keeping a symbol current: it delivered since this
  * subscription started (the server sends a snapshot on subscribe, so a quiet
  * closed market still counts), the connection has not marked it stale, and an
- * open market has not gone silent.
+ * open market has not gone silent. Only the feed stamps a receipt time, so a
+ * snapshot another pane loaded never counts.
  */
-function isStreamCarryingQuote(
+export function isStreamCarryingQuote(
   entry: QueryEntry<Quote> | undefined,
   subscriptionStartedAt: number,
   now: number,

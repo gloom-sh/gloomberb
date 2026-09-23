@@ -105,16 +105,78 @@ export function normalizeRowsForCollection(
   });
 }
 
+/**
+ * Apply an update to one collection's rows. An updater that returns the rows
+ * it was given leaves `rowsByCollection` itself, so the pane state is not
+ * rewritten for a reload that changed nothing.
+ */
 export function updateRowsForCollection(
   rowsByCollection: SectorRowsByCollection,
   collectionId: SectorCollectionId,
   items: readonly SectorDef[],
   updater: (rows: SectorRow[]) => SectorRow[],
 ): SectorRowsByCollection {
-  return {
-    ...rowsByCollection,
-    [collectionId]: updater(normalizeRowsForCollection(rowsByCollection, collectionId, items)),
-  };
+  const rows = normalizeRowsForCollection(rowsByCollection, collectionId, items);
+  const next = updater(rows);
+  return next === rows ? rowsByCollection : { ...rowsByCollection, [collectionId]: next };
+}
+
+/** What a fund the reload could not load shows: no value is better than another session's. */
+const UNAVAILABLE_SECTOR_ROW: Partial<SectorRow> = {
+  price: null,
+  changePercent: null,
+  return1M: null,
+  return1Y: null,
+  returnAsOfDate: null,
+  return1MStartDate: null,
+  return1YStartDate: null,
+  quoteUnavailable: true,
+  quoteSessionDate: null,
+  quoteIssue: "quote unavailable",
+  lastReportedPrice: null,
+  quoteUpdatedAt: null,
+  returnIntegrity: {},
+};
+
+function sameSectorRow(left: SectorRow, right: SectorRow): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)] as Array<keyof SectorRow>);
+  for (const key of keys) {
+    const a = left[key];
+    const b = right[key];
+    if (Object.is(a, b)) continue;
+    if (a && b && typeof a === "object" && typeof b === "object" && JSON.stringify(a) === JSON.stringify(b)) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The rows after a reload. A full reload replaces every row and clears the
+ * loading markers it set. A background reload leaves those markers alone,
+ * keeps a fund it could not load on its last row while that row belongs to
+ * the session the reload landed on, and returns `rows` itself when nothing
+ * changed, so an idle board is neither rewritten nor re-rendered.
+ */
+export function applySectorReload(
+  rows: SectorRow[],
+  loaded: ReadonlyMap<string, Partial<SectorRow> | null>,
+  background: boolean,
+): SectorRow[] {
+  if (!background) {
+    return rows.map((row) => ({ ...row, ...(loaded.get(row.etf) ?? UNAVAILABLE_SECTOR_ROW), loading: false }));
+  }
+  const session = [...loaded.values()].find((row) => row?.returnAsOfDate)?.returnAsOfDate;
+  if (!session) return rows;
+  let changed = false;
+  const next = rows.map((row) => {
+    const fields = loaded.get(row.etf) ?? (row.returnAsOfDate === session ? null : UNAVAILABLE_SECTOR_ROW);
+    if (!fields) return row;
+    const merged = { ...row, ...fields, loading: row.loading };
+    if (sameSectorRow(merged, row)) return row;
+    changed = true;
+    return merged;
+  });
+  return changed ? next : rows;
 }
 
 function getSortedHistory(history: readonly PricePoint[]): Array<{ point: PricePoint; timestamp: number }> {
@@ -318,11 +380,29 @@ export function sectorQuoteSessionDate(quote: Quote): string | null {
  * the board keeps ranking on one completed session. The 1M and 1Y returns
  * keep their baselines: the row's own return and price imply the start close.
  */
-export function isLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
+function isLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
   if (!quote || quote.stale === true || !finitePositive(quote.price)) return false;
   if (!finitePositive(row.price) || !row.returnAsOfDate) return false;
   if (row.quoteUpdatedAt != null && quote.lastUpdated < row.quoteUpdatedAt) return false;
   return sectorQuoteSessionDate(quote) === row.returnAsOfDate;
+}
+
+/**
+ * Whether the feed keeps a loaded row as current as a snapshot reload would,
+ * given a quote the feed is carrying. It does when the quote belongs to the
+ * row's session (the overlay extends it) or an older one (the fund has not
+ * printed since), and for a pre-market print of the next session, which the
+ * board leaves on the completed one until the open. A regular print of a
+ * newer session is what rolls the board forward, and only a reload can. A
+ * fund with no snapshot price is left to the research reload or a manual
+ * one: the feed cannot extend it, so it must not hold the whole board on a
+ * one-minute reload.
+ */
+export function sectorRowFollowsQuote(row: SectorRow, quote: Quote): boolean {
+  if (!finitePositive(row.price) || !row.returnAsOfDate) return true;
+  const session = sectorQuoteSessionDate(quote);
+  if (!session || session <= row.returnAsOfDate) return true;
+  return quote.marketState === "PRE" || quote.marketState === "PREPRE";
 }
 
 export function overlayLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): SectorRow {

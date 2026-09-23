@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
+import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -13,6 +13,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { isStreamCarryingQuote, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { SectorMoveBar } from "./move-bar";
 import {
   SECTOR_COLLECTIONS,
@@ -26,11 +27,12 @@ import {
   DEFAULT_SORT_PREFERENCE,
   INITIAL_REFRESH_BY_COLLECTION,
   INITIAL_ROWS_BY_COLLECTION,
+  applySectorReload,
   buildSectorColumns,
   nextSortPreference,
-  isLiveSectorQuote,
   normalizeRowsForCollection,
   overlayLiveSectorQuote,
+  sectorRowFollowsQuote,
   sectorRowIssues,
   sortRows,
   updateRowsForCollection,
@@ -50,10 +52,13 @@ const NO_SAVED_ETFS: string[] = [];
 
 /**
  * Prices, the day move and the returns stream; the year of history behind the
- * returns only reloads on the app's research cadence. When any fund is not
- * streaming inside the board's session, the snapshot reloads at this pace.
+ * returns only reloads on the app's research cadence. While the feed is not
+ * carrying a fund, the last load failed, or a fund printed in a session the
+ * board has not rolled to, the snapshot reloads quietly at this pace.
  */
 const SECTOR_FALLBACK_REFRESH_MS = 60_000;
+
+const sectorQuoteKey = (etf: string) => buildQuoteKey({ symbol: etf, exchange: "" });
 
 /** The value as printed (two decimals), so a move that rounds to zero is neither signed nor coloured. */
 const shownPercent = (value: number) => Math.round(value * 100) / 100 || 0;
@@ -98,34 +103,53 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     [activeCollection.id, activeItems, rowsByCollection],
   );
   const liveStreaming = useLiveStreamingSetting();
-  const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => activeItems.map((item) => ({
-    symbol: item.etf,
-    exchange: "",
-    surface: "screener",
-    visible: true,
-    selected: item.etf === selectedEtf,
-    weight: item.etf === selectedEtf ? 100 : 70,
-  })), [activeItems, selectedEtf]);
-  const { entries: liveEntries } = useLiveQuoteEntries(quoteTargets, {
+  // Funds on screen stream first when the plan caps how many symbols stream.
+  // A sort on a live column reorders rows as quotes tick, so the window is
+  // only known in the fixed orders; otherwise every fund counts as on screen.
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
+  const liveSort = sortPreference.columnId !== "name" && sortPreference.columnId !== "etf";
+  const windowSymbols = useMemo(
+    () => (liveSort ? [] : sortRows(rows, sortPreference).map((row) => row.etf)),
+    [liveSort, rows, sortPreference],
+  );
+  const visibleSymbols = useVisibleBoardSymbols(windowSymbols, liveSort ? null : visibleRange);
+  const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => activeItems.map((item) => {
+    const selected = item.etf === selectedEtf;
+    const visible = !visibleSymbols || visibleSymbols.has(item.etf) || selected;
+    return {
+      symbol: item.etf,
+      exchange: "",
+      surface: "screener",
+      visible,
+      selected,
+      weight: selected ? 100 : visible ? 70 : 20,
+    };
+  }), [activeItems, selectedEtf, visibleSymbols]);
+  const { entries: liveEntries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(quoteTargets, {
     freshnessScopeKey: `sectors:${activeCollection.id}`,
     liveStreaming,
   });
   // Live values stay out of the persisted rows: writing every tick would churn
   // pane persistence. Unchanged rows keep their object for the table's memo.
   const liveRowCache = useRef(new WeakMap<SectorRow, { quote: Quote | null; row: SectorRow }>());
-  const { liveRows, allLive } = useMemo(() => {
-    let covered = true;
-    const next = rows.map((row) => {
-      const quote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: row.etf, exchange: "" })));
-      if (!row.loading && !isLiveSectorQuote(row, quote)) covered = false;
-      const cached = liveRowCache.current.get(row);
-      if (cached && cached.quote === quote) return cached.row;
-      const live = overlayLiveSectorQuote(row, quote);
-      liveRowCache.current.set(row, { quote, row: live });
-      return live;
-    });
-    return { liveRows: next, allLive: covered };
-  }, [liveEntries, rows]);
+  const liveRows = useMemo(() => rows.map((row) => {
+    const quote = resolveEntryData(liveEntries.get(sectorQuoteKey(row.etf)));
+    const cached = liveRowCache.current.get(row);
+    if (cached && cached.quote === quote) return cached.row;
+    const live = overlayLiveSectorQuote(row, quote);
+    liveRowCache.current.set(row, { quote, row: live });
+    return live;
+  }), [liveEntries, rows]);
+  // With streaming off, the board's own quote poll is the feed.
+  const feedCoversBoard = useMemo(() => rows.every((row) => {
+    if (row.loading) return true;
+    const entry = liveEntries.get(sectorQuoteKey(row.etf));
+    const quote = resolveEntryData(entry);
+    const carried = liveStreaming
+      ? isStreamCarryingQuote(entry, subscriptionStartedAt, freshnessNow)
+      : !!quote && quote.stale !== true && (entry?.fetchedAt ?? 0) >= subscriptionStartedAt;
+    return carried && !!quote && sectorRowFollowsQuote(row, quote);
+  }), [freshnessNow, liveEntries, liveStreaming, rows, subscriptionStartedAt]);
   const sortedRows = useMemo(() => sortRows(liveRows, sortPreference), [liveRows, sortPreference]);
   const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
   const loading = rows.some((row) => row.loading);
@@ -133,30 +157,35 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     label: collection.label,
     value: collection.id,
   })), []);
-  const fetchAll = useCallback(() => {
-    fetchGenRef.current += 1;
+  /**
+   * A full load marks every row loading and replaces it. A background one,
+   * the automatic refresh, never flashes "loading", never cancels a full load
+   * in flight, and writes only the rows that changed.
+   */
+  const load = useCallback((background: boolean) => {
+    if (!background) fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
     const collectionId = activeCollection.id;
     const sectorDefs = activeItems;
+    const updateRows = (updater: (rows: SectorRow[]) => SectorRow[]) => {
+      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, updater));
+    };
+    const clearLoading = (rows: SectorRow[]) => (
+      rows.some((row) => row.loading) ? rows.map((row) => ({ ...row, loading: false })) : rows
+    );
 
     if (!dataProvider) {
       setLoadError("No market data provider connected.");
-      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, loading: false }))
-      )));
+      updateRows(clearLoading);
       return;
     }
 
-    setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-      rows.map((row) => ({ ...row, loading: true }))
-    )));
+    if (!background) updateRows((rows) => rows.map((row) => ({ ...row, loading: true })));
 
     loadSectorRows(sectorDefs, dataProvider).then((outcomes) => {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
-      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true, quoteSessionDate: null, quoteIssue: "quote unavailable", lastReportedPrice: null, quoteUpdatedAt: null, returnIntegrity: {} }), loading: false }))
-      )));
+      updateRows((rows) => applySectorReload(rows, loadedByEtf, background));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
       setLoadError(loadedCount === 0 ? "Sector data unavailable" : null);
@@ -166,17 +195,18 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     }).catch(() => {
       if (fetchGenRef.current !== gen) return;
       setLoadError("Sector data unavailable");
-      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, loading: false }))
-      )));
+      if (!background) updateRows(clearLoading);
     });
   }, [activeCollection.id, activeItems, dataProvider, setLastRefreshByCollection, setRowsByCollection]);
+  const fetchAll = useCallback(() => load(false), [load]);
+  const refreshInBackground = useCallback(() => load(true), [load]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
 
-  useAutoRefresh(lastRefreshMs, fetchAll, { intervalMs: allLive ? null : SECTOR_FALLBACK_REFRESH_MS });
+  const fallbackRefresh = !feedCoversBoard || loadError != null;
+  useAutoRefresh(lastRefreshMs, refreshInBackground, { intervalMs: fallbackRefresh ? SECTOR_FALLBACK_REFRESH_MS : null });
 
   useEffect(() => {
     if (activeCollectionId === activeCollection.id) return;
@@ -314,6 +344,8 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       resetScrollKey={activeCollection.id}
+      visibleRangeKey={`${activeCollection.id}:${sortPreference.columnId}:${sortPreference.direction}`}
+      onVisibleRangeChange={setVisibleRange}
       columns={columns}
       items={sortedRows}
       sortColumnId={sortPreference.columnId}

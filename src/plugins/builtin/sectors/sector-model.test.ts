@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint, Quote } from "../../../types/financials";
-import { computeTrailingReturn, overlayLiveSectorQuote, sectorReturnTargetDate, sortRows, type SectorRow } from "./sector-model";
+import {
+  applySectorReload,
+  computeTrailingReturn,
+  overlayLiveSectorQuote,
+  sectorReturnTargetDate,
+  sectorRowFollowsQuote,
+  sortRows,
+  type SectorRow,
+} from "./sector-model";
 
 const point = (date: string, close: number): PricePoint => ({ date: new Date(date), close });
 
@@ -80,5 +88,32 @@ describe("live sector quotes", () => {
     expect(overlayLiveSectorQuote(row, quote(215, "2026-09-11T12:00:00Z", { marketState: "PRE" }))).toBe(row);
     expect(overlayLiveSectorQuote(row, quote(199, "2026-09-10T14:00:00Z"))).toBe(row);
     expect(overlayLiveSectorQuote(row, quote(210, "2026-09-10T16:00:00Z", { stale: true }))).toBe(row);
+  });
+
+  test("the feed covers a board ranked on the completed session through pre-market, not past the open", () => {
+    // Pre-market prints are held back on purpose, so reloading for them would change nothing.
+    expect(sectorRowFollowsQuote(row, quote(215, "2026-09-11T12:00:00Z", { marketState: "PRE" }))).toBe(true);
+    // A regular print of the next session is what only a reload can roll the board to.
+    expect(sectorRowFollowsQuote(row, quote(215, "2026-09-11T14:00:00Z", { marketState: "REGULAR" }))).toBe(false);
+  });
+});
+
+describe("background sector reloads", () => {
+  const loaded = (price: number): Partial<SectorRow> => ({ price, returnAsOfDate: "2026-09-10", quoteIssue: null });
+  const rows = [
+    { etf: "XLK", name: "Technology", price: 200, loading: false, returnAsOfDate: "2026-09-10", quoteIssue: null, returnIntegrity: {} },
+    { etf: "XLE", name: "Energy", price: 90, loading: false, returnAsOfDate: "2026-09-10", quoteIssue: null, returnIntegrity: {} },
+  ] as SectorRow[];
+
+  test("a reload that changed nothing hands back the same rows so the board is not rewritten", () => {
+    expect(applySectorReload(rows, new Map([["XLK", loaded(200)], ["XLE", loaded(90)]]), true)).toBe(rows);
+  });
+
+  test("a fund the reload missed keeps its row in the same session, and only changed rows are replaced", () => {
+    const next = applySectorReload(rows, new Map([["XLK", loaded(201)], ["XLE", null]]), true);
+    expect(next[0]).toMatchObject({ price: 201, loading: false });
+    expect(next[1]).toBe(rows[1]);
+    const rolled = applySectorReload(rows, new Map([["XLK", { ...loaded(201), returnAsOfDate: "2026-09-11" }], ["XLE", null]]), true);
+    expect(rolled[1]).toMatchObject({ price: null, quoteUnavailable: true });
   });
 });
