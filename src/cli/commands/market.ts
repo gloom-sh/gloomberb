@@ -11,16 +11,26 @@ import type {
 } from "../../types/financials";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
-import { formatCompact, formatDistributionAmount } from "../../utils/format";
+import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
 import {
+  currencyMinorDigits,
   formatChangePercentCell,
   formatCountCell,
   formatFractionPercentCell,
 } from "../helpers";
-import { cliStyles } from "../../utils/cli-output";
+import { cliStyles, renderStats } from "../../utils/cli-output";
+import { formatPerShareNumber } from "../../utils/reported-money";
+import {
+  analystTargetCurrency,
+  formatAnalystPrice,
+  formatRatingLabel,
+  formatRecommendationMix,
+  recommendationTotal,
+  targetUpside,
+} from "../../plugins/builtin/research/analyst-model";
 import { renderFundamentalsReport } from "./ticker";
 import { historyPriceDecimals, historyRows } from "../history-rows";
 
@@ -94,14 +104,6 @@ function errorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : String(error);
 }
 
-function currencyMinorDigits(currency: string | undefined): number {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
-  }
-}
-
 function quoteRows(results: QuoteCliRecord[]) {
   return results.map((result) => {
     const quote = result.quote;
@@ -136,14 +138,18 @@ function quoteRows(results: QuoteCliRecord[]) {
 }
 
 function financialStatementRows(financials: FinancialsCliData) {
-  return financials.annualStatements.slice(0, 8).map((statement) => ({
+  return financials.annualStatements.map((statement) => ({
     date: statement.date,
     revenue: statement.totalRevenue ?? statement.operatingRevenue ?? null,
     grossProfit: statement.grossProfit ?? null,
     operatingIncome: statement.operatingIncome ?? null,
     netIncome: statement.netIncome ?? statement.netIncomeCommonStockholders ?? null,
     eps: statement.eps ?? statement.basicEps ?? null,
-  }));
+    currency: statement.currency?.trim() || financials.financialCurrency?.trim() || "",
+  }))
+    // A provider row holding only balance-sheet remnants has nothing for these columns.
+    .filter((row) => [row.revenue, row.grossProfit, row.operatingIncome, row.netIncome, row.eps].some((value) => value != null))
+    .slice(0, 8);
 }
 
 function newsRows(articles: NewsArticle[]) {
@@ -184,6 +190,26 @@ function holderRows(data: HolderData, ownerTypes?: Set<string>) {
   }));
 }
 
+function analystSummary(data: AnalystResearchData): string {
+  const target = data.priceTarget;
+  const currency = analystTargetCurrency(data);
+  const upside = targetUpside(target);
+  const analysts = recommendationTotal(data);
+  const mix = formatRecommendationMix(data);
+  const entries: Array<[string, string]> = [
+    ["Average Target", formatAnalystPrice(target?.average, currency)],
+    ["Upside", upside == null ? "-" : formatPercent(upside)],
+    ["Low / Median / High", target && [target.low, target.median, target.high].some((value) => value != null)
+      ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
+      : "-"],
+    ["Rating", formatRatingLabel(data.recommendationRating)],
+    ["Analysts", analysts == null ? "-" : String(analysts)],
+    ["Mix", mix],
+  ];
+  const populated = entries.filter(([, value]) => value !== "-");
+  return populated.length > 0 ? renderStats(populated) : "";
+}
+
 function analystRows(data: AnalystResearchData) {
   return data.ratings.map((rating) => ({
     date: rating.date,
@@ -202,14 +228,25 @@ function cleanDecimal(value: number | undefined): string {
 
 function corporateActionRows(data: CorporateActionsData) {
   const currency = /^[A-Z]{3}$/.test(data.currency ?? "") ? data.currency! : null;
+  // EPS is in the reporting currency, which can differ from the listing's dividends (Tencent: CNY vs HKD).
+  // An upcoming estimate carries no unit of its own; it shares the one every reported quarter states.
+  const reportedCurrencies = new Set(data.earnings.map((event) => event.currency?.trim()).filter(Boolean));
+  const earningsCurrency = reportedCurrencies.size === 1 ? [...reportedCurrencies][0] : undefined;
+  const eps = (value: number | undefined, unit: string | undefined) => (
+    value == null || !unit ? cleanDecimal(value)
+      : /^[A-Z]{3}$/.test(unit) ? formatDistributionAmount(value, unit) : `${cleanDecimal(value)} ${unit}`
+  );
   return [
-    ...data.earnings.map((event) => ({
-      type: "earnings",
-      date: event.date,
-      // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
-      detail: (event.epsActual == null ? `est ${cleanDecimal(event.epsEstimate)}` : `eps ${cleanDecimal(event.epsActual)}`)
-        + (event.dateType === "fiscal-period-end" ? " (period end)" : ""),
-    })),
+    ...data.earnings.map((event) => {
+      const unit = event.currency?.trim() || earningsCurrency;
+      return {
+        type: "earnings",
+        date: event.date,
+        // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
+        detail: (event.epsActual == null ? `est ${eps(event.epsEstimate, unit)}` : `eps ${eps(event.epsActual, unit)}`)
+          + (event.dateType === "fiscal-period-end" ? " (period end)" : ""),
+      };
+    }),
     ...data.dividends.map((event) => ({
       type: "dividend",
       date: event.exDate,
@@ -339,7 +376,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         { key: "grossProfit", header: "Gross", align: "right", value: (row) => row.grossProfit == null ? "" : formatCompact(Number(row.grossProfit)) },
         { key: "operatingIncome", header: "Op Inc", align: "right", value: (row) => row.operatingIncome == null ? "" : formatCompact(Number(row.operatingIncome)) },
         { key: "netIncome", header: "Net Inc", align: "right", value: (row) => row.netIncome == null ? "" : formatCompact(Number(row.netIncome)) },
-        { key: "eps", header: "EPS", align: "right" },
+        { key: "eps", header: "EPS", align: "right", format: (value) => value == null ? "" : formatPerShareNumber(Number(value)) },
+        { key: "currency", header: "Cur" },
       ],
     });
   });
@@ -431,6 +469,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       },
     }, {
       rows: analystRows,
+      summary: analystSummary,
       columns: [
         { key: "date", header: "Date" },
         { key: "firm", header: "Firm" },

@@ -41,3 +41,18 @@ test("statement units use compatible history, keep explicit overrides and exclud
   financials.annualStatements[0]!.eps = Number.NaN;
   expect(await report(financials)).not.toContain("NaN");
 });
+
+test("enterprise value is shown in the market cap's currency, converted or labelled", async () => {
+  const financials: TickerFinancials = { quote: { ...quote, currency: "CHF", marketCap: 200e9 }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 200e9, marketCapCurrency: "CHF", enterpriseValue: 255e9 },
+  };
+  const render = async (toBase: (value: number, currency: string) => Promise<number>) => (
+    await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials, config, toBase })
+  ).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  const converted = await render(async (value, currency) => currency === "CHF" ? value * 1.2 : value);
+  expect(converted).toContain("Market Cap 240B USD");
+  expect(converted).toContain("Enterprise Value 306B USD");
+  const unconverted = await render(async () => Number.NaN);
+  expect(unconverted).toContain("Market Cap 200B CHF");
+  expect(unconverted).toContain("Enterprise Value 255B CHF");
+});

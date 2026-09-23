@@ -68,6 +68,15 @@ export function formatStatusCell(value: unknown): string {
   return status;
 }
 
+/** Decimals the currency's minor unit has: two for GBP, none for JPY. */
+export function currencyMinorDigits(currency: string | undefined): number {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+}
+
 export function formatTimestamp(timestamp: number | undefined): string {
   if (!timestamp) return "—";
   return new Date(timestamp).toLocaleString("en-US", {

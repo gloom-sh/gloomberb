@@ -45,6 +45,8 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   layout?: "table" | "record";
   /** Text-mode message when there are no rows. */
   empty?: string;
+  /** Text-mode block printed above the rows, for figures that are not rows. */
+  summary?: (data: T) => string;
 }
 
 interface CliResultJsonEnvelope<T> extends CliResult<T> {
@@ -328,11 +330,21 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   if (renderOptions.text) {
     return renderOptions.text(result.data);
   }
+  const summary = renderOptions.summary?.(result.data) ?? "";
   if (rows.length === 0) {
-    return cliStyles.muted(renderOptions.empty ?? "No results.");
+    return summary || cliStyles.muted(renderOptions.empty ?? "No results.");
   }
+  const body = renderTextRows(rows as Row[], result.data, renderOptions);
+  return summary ? `${summary}\n\n${body}` : body;
+}
+
+function renderTextRows<T, Row extends Record<string, unknown>>(
+  rows: Row[],
+  data: T,
+  renderOptions: CliResultRenderOptions<T, Row>,
+): string {
   const layout = renderOptions.layout
-    ?? (!renderOptions.rows && isPlainObject(result.data) ? "record" : "table");
+    ?? (!renderOptions.rows && isPlainObject(data) ? "record" : "table");
   const columns = renderOptions.textColumns ?? renderOptions.columns;
   if (!renderOptions.layout && rows.length === 1 && !columns?.length && overflowsTerminal(rows as Row[])) {
     // One row that cannot fit as a table reads better as label/value lines than cut off.
