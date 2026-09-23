@@ -14,9 +14,10 @@ import {
 import type { PaneProps } from "../../../../types/plugin";
 import { useShortcut } from "../../../../react/input";
 import { usePaneStateValue } from "../../../../state/app/context";
-import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
+import { useInlineTickerQuoteFact, useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
 import { BuildoutDetail } from "../detail";
+import { liveCompanyFreshness } from "../detail/company";
 import type {
   BuildoutColumn,
   BuildoutColumnId,
@@ -174,7 +175,14 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     return [tickerSearchText([...symbols])];
   }, [detailRow, rows]);
   const { catalog: tickerCatalog, openTicker } = useInlineTickers(tickerTexts, { badgeQuotes: true });
-  const detailCompanyTicker = detailRow?.kind === "company" ? tickerSymbol(detailRow.item.ticker) : null;
+  const detailCompany = detailRow?.kind === "company" ? detailRow.item : null;
+  const detailCompanyTicker = detailCompany ? tickerSymbol(detailCompany.ticker) : null;
+  // The detail swaps in the streamed price; the status bar says what it is.
+  const detailQuoteFreshness = useInlineTickerQuoteFact(
+    detailCompanyTicker,
+    detailCompanyTicker ? tickerCatalog[detailCompanyTicker]?.ticker ?? null : null,
+    (quote) => (detailCompany ? liveCompanyFreshness(detailCompany, quote) : null),
+  );
   const openDetailTicker = useCallback(() => {
     if (!detailCompanyTicker) return;
     openTicker(detailCompanyTicker);
@@ -206,9 +214,10 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       upgradeMessage,
       partialList,
       onUpgrade: startUpgrade,
+      quoteFreshness: detailQuoteFreshness,
     }),
     hints: footerHints,
-  }), [activeTab, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
+  }), [activeTab, detailQuoteFreshness, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     const nextColumnId = columnId as BuildoutColumnId;

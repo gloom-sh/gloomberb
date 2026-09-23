@@ -206,6 +206,27 @@ export function useInlineTickerQuote(
   symbol: string | null,
   ticker: TickerRecord | null | undefined,
 ): Quote | null {
+  const { instrument, subscribe, keys } = useInlineQuoteSubscription(symbol, ticker);
+  const getSnapshot = useCallback(() => quoteKeysVersion(keys), [keys]);
+  const version = useSyncExternalStore(subscribe, getSnapshot, () => 0);
+  return useMemo(() => (instrument ? readQuote(instrument) : null), [instrument, version]);
+}
+
+/**
+ * One fact about a symbol's quote, such as whether it is real-time. The caller
+ * re-renders only when that fact changes, not on every tick of the price.
+ */
+export function useInlineTickerQuoteFact<T extends string | number | boolean | null>(
+  symbol: string | null,
+  ticker: TickerRecord | null | undefined,
+  select: (quote: Quote | null) => T,
+): T {
+  const { instrument, subscribe } = useInlineQuoteSubscription(symbol, ticker);
+  const getSnapshot = () => select(instrument ? readQuote(instrument) : null);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+function useInlineQuoteSubscription(symbol: string | null, ticker: TickerRecord | null | undefined) {
   const instrument = useMemo(
     () => (symbol ? instrumentFromTicker(ticker ?? null, symbol) : null),
     [symbol, ticker],
@@ -213,9 +234,7 @@ export function useInlineTickerQuote(
   const key = instrument ? buildQuoteKey(instrument) : null;
   const keys = useMemo(() => (key ? [key] : []), [key]);
   const subscribe = useCallback((listener: () => void) => subscribeQuoteKeys(keys, listener), [keys]);
-  const getSnapshot = useCallback(() => quoteKeysVersion(keys), [keys]);
-  const version = useSyncExternalStore(subscribe, getSnapshot, () => 0);
-  return useMemo(() => (instrument ? readQuote(instrument) : null), [instrument, version]);
+  return { instrument, keys, subscribe };
 }
 
 export function useInlineTickerOpener(): (symbol: string) => void {

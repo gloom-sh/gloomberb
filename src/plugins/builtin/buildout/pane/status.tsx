@@ -30,6 +30,8 @@ export function updateBuildoutFooterInfo(
     upgradeMessage: string | null;
     partialList: boolean;
     onUpgrade: () => void;
+    /** What the open company's live price is (`real-time`, `15m delayed`). */
+    quoteFreshness?: string | null;
   },
 ): PaneFooterSegment[] {
   if (state.status === "loading") {
@@ -41,6 +43,9 @@ export function updateBuildoutFooterInfo(
   }
 
   const info: PaneFooterSegment[] = [];
+  if (messages.quoteFreshness) {
+    info.push({ id: "quote", parts: [{ text: messages.quoteFreshness, tone: "muted" }] });
+  }
   if (state.access !== "pro" && activeTab === "intel") {
     info.push({ id: "access", onPress: messages.onUpgrade, parts: [{ text: "72h delayed", tone: "warning" }] });
   }

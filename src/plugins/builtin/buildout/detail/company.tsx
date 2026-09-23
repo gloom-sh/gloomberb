@@ -38,6 +38,17 @@ export function liveCompanyValues(company: BuildoutCompany, quote: Quote | null)
   };
 }
 
+/**
+ * What the detail's live price is, for the status bar: `real-time` or
+ * `15m delayed`. Null while the dataset's own price is shown.
+ */
+export function liveCompanyFreshness(company: BuildoutCompany, quote: Quote | null): string | null {
+  if (!liveCompanyValues(company, quote)) return null;
+  if (quote?.dataSource === "live") return "real-time";
+  if (quote?.dataSource === "delayed") return "15m delayed";
+  return null;
+}
+
 function useLiveCompanyValues(company: BuildoutCompany, ticker: TickerRecord | null, stream: boolean): LiveCompanyValues | null {
   const symbol = ticker ? tickerSymbol(company.ticker) : null;
   // The detail's own price: on screen, so it takes the fast lane.
