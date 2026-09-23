@@ -3,6 +3,7 @@ import { useRegularMarketSession } from "../../../test-support/market-session";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
+import { convertCurrency } from "../../../utils/format";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./metrics";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue, resolvePortfolioNetLiquidation } from "./account-metrics";
 
@@ -187,6 +188,27 @@ describe("broker-linked header totals", () => {
 
     // The next reload is a new snapshot with its own starting point.
     expect(resolvePortfolioNetLiquidation(latest, snapshot({ netLiquidation: 5_170 }))).toBe(5_170);
+  });
+
+  test("an FX move alone does not move a loaded snapshot twice", () => {
+    // A USD account shown in EUR: converting the snapshot at the current rate
+    // already moves every holding with FX.
+    const account = snapshot({ grossPositionValue: 1_000, netLiquidation: 1_000, dailyPnl: 0 });
+    const onlyAapl = [position("AAPL", 10, 90, 100)];
+    const inEur = (eurPerUsd: number) => {
+      const rates = new Map([["USD", 1], ["EUR", 1 / eurPerUsd]]);
+      return {
+        totals: calculatePortfolioSummaryTotals(onlyAapl, new Map([["AAPL", quote("AAPL", 100, 0, { dataSource: "delayed" })]]),
+          "EUR", rates, true, "ibkr:U1"),
+        convert: (value: number) => convertCurrency(value, "USD", "EUR", rates),
+      };
+    };
+    const atLoad = inEur(0.9);
+    expect(resolvePortfolioNetLiquidation(atLoad.totals, account, atLoad.convert, "loaded")).toBeCloseTo(900);
+    const later = inEur(0.95);
+    expect(resolvePortfolioNetLiquidation(later.totals, account, later.convert, "loaded")).toBeCloseTo(950);
+    expect(resolvePortfolioMarketValue(later.totals, account, later.convert, "loaded")).toBeCloseTo(950);
+    expect(resolvePortfolioAccountMetrics(later.totals, account, later.convert, "loaded").dailyPnl).toBeCloseTo(0);
   });
 
   test("keeps the broker's day P&L and its basis when every position turns live", () => {

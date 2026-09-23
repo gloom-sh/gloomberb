@@ -23,7 +23,10 @@ export interface PortfolioAccountMetrics {
  */
 export type BrokerSnapshotBasis = "marks" | "loaded";
 
-/** Quote values first seen with each loaded snapshot, by lot. A reload is a new object and starts over. */
+/**
+ * Quote values first seen with each loaded snapshot, by lot, in the account's
+ * currency. A reload is a new object and starts over.
+ */
 const loadedSnapshotBaselines = new WeakMap<BrokerAccount, Map<string, number>>();
 
 interface SnapshotDelta {
@@ -45,31 +48,47 @@ function percentChange(value: number, previousValue: number): number {
  * Broker account figures are one-shot snapshots. Carry them forward by the
  * move current quotes show since the snapshot, so the header follows the
  * stream while staying anchored to the broker's own numbers.
+ *
+ * The snapshot is in the account's currency and is converted at the current
+ * rate, which already moves every holding with FX. A loaded snapshot's
+ * baselines are therefore kept in the account's currency and converted at the
+ * same current rate, so only the quotes move the figure, never the FX rate twice.
  */
 function brokerSnapshotDelta(
   totals: PortfolioSummaryTotals,
   account: BrokerAccount,
   basis: BrokerSnapshotBasis,
+  convertAccountValue: (value: number) => number,
 ): SnapshotDelta {
   const delta = { gross: 0, net: 0 };
   const lots = totals.pricedLots;
   if (!lots?.length) return delta;
-  let baselines: Map<string, number> | undefined;
-  if (basis === "loaded") {
-    baselines = loadedSnapshotBaselines.get(account);
-    if (!baselines) {
-      baselines = new Map();
-      loadedSnapshotBaselines.set(account, baselines);
+  if (basis === "marks") {
+    // The marks and the quotes are both converted at the current rate.
+    for (const lot of lots) {
+      if (lot.brokerValue === null) continue;
+      const move = lot.value - lot.brokerValue;
+      delta.gross += move;
+      delta.net += lot.direction * move;
     }
+    return delta;
+  }
+  // Base currency per unit of the account's currency; conversion is linear.
+  const accountRate = convertAccountValue(1);
+  // Without the rate the account figures are unavailable, and a baseline taken now would be wrong later.
+  if (!Number.isFinite(accountRate) || accountRate <= 0) return delta;
+  let baselines = loadedSnapshotBaselines.get(account);
+  if (!baselines) {
+    baselines = new Map();
+    loadedSnapshotBaselines.set(account, baselines);
   }
   for (const lot of lots) {
-    let baseline = baselines ? baselines.get(lot.key) : lot.brokerValue;
-    if (baselines && baseline === undefined) {
-      baselines.set(lot.key, lot.value);
-      baseline = lot.value;
+    let baseline = baselines.get(lot.key);
+    if (baseline === undefined) {
+      baseline = lot.value / accountRate;
+      baselines.set(lot.key, baseline);
     }
-    if (baseline === null || baseline === undefined) continue;
-    const move = lot.value - baseline;
+    const move = lot.value - baseline * accountRate;
     delta.gross += move;
     delta.net += lot.direction * move;
   }
@@ -108,7 +127,7 @@ export function resolvePortfolioMarketValue(
   if (live != null) return live;
   const broker = resolveBrokerPortfolioMarketValue(account, convertAccountValue);
   return broker != null && account
-    ? broker + brokerSnapshotDelta(totals, account, basis).gross
+    ? broker + brokerSnapshotDelta(totals, account, basis, convertAccountValue).gross
     : totals.totalMktValue;
 }
 
@@ -120,7 +139,7 @@ export function resolvePortfolioNetLiquidation(
   basis: BrokerSnapshotBasis = "loaded",
 ): number | null {
   if (!account || !finiteNumber(account.netLiquidation)) return null;
-  return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis).net;
+  return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis, convertAccountValue).net;
 }
 
 export function resolvePortfolioAccountMetrics(
@@ -129,7 +148,7 @@ export function resolvePortfolioAccountMetrics(
   convertAccountValue: (value: number) => number = (value) => value,
   basis: BrokerSnapshotBasis = "loaded",
 ): PortfolioAccountMetrics {
-  const delta = account ? brokerSnapshotDelta(totals, account, basis) : { gross: 0, net: 0 };
+  const delta = account ? brokerSnapshotDelta(totals, account, basis, convertAccountValue) : { gross: 0, net: 0 };
 
   // The broker's day P&L includes trades closed today, lots opened at their
   // fill and fees, which quotes cannot see. It stays the anchor while it is
