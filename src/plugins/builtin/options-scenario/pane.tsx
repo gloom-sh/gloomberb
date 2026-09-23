@@ -258,7 +258,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         onActivate={(row) => edit({ id: crypto.randomUUID(), side: row.side, quantity: 1, strike: row.strike,
           expiration: row.expiration, price: optionMid(row) ?? (row.lastPrice > 0 ? row.lastPrice : 0),
           volatility: Number.isFinite(row.impliedVolatility) && row.impliedVolatility >= 0 ? row.impliedVolatility : 0, multiplier: 100 })}
-        renderCell={(row, column) => ({ text: column.id === "side" ? row.side : column.id === "iv" ? (row.impliedVolatility * 100).toFixed(2)
+        renderCell={(row, column) => ({ text: column.id === "side" ? row.side : column.id === "iv" ? (row.impliedVolatility > 0 ? (row.impliedVolatility * 100).toFixed(2) : "--")
           : column.id === "oi" ? String(row.openInterest ?? "--") : money(row[column.id as "strike" | "bid" | "ask"]) })} />
     </PaneStatusBody>
   </>;
