@@ -21,7 +21,7 @@ import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
-import { usePortfolioAccountState } from "../portfolio-list/header";
+import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
 import {
   buildPerformanceChartPoints,

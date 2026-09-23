@@ -30,7 +30,7 @@ import {
   usePaneAppConfig,
 } from "../../../state/app/context";
 import { selectCommandBarOpen } from "../../../state/selectors-ui";
-import { usePortfolioAccountState } from "../portfolio-list/header";
+import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
 import { getSharedRegistry } from "../../registry";
 import { resolveTickerOpenTarget } from "../../../tickers/open-target";
 import { calculatePortfolioSummaryTotals } from "../portfolio-list/metrics";

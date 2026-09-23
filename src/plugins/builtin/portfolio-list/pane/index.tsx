@@ -36,7 +36,6 @@ import {
   cashMarginDrawerHeight,
   PortfolioCashMarginDrawer,
   shouldToggleCashMarginDrawer,
-  usePortfolioAccountState,
 } from "../header";
 import {
   buildPortfolioFooterSegments,
@@ -45,6 +44,7 @@ import {
   layoutPortfolioSummaryHeader,
   renderSummarySegments,
 } from "../summary";
+import { usePortfolioAccountState } from "../summary/live-accounts";
 import {
   getCollectionEntries,
   getPortfolioPaneSettings,
@@ -270,7 +270,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const showCashDrawer = !paneSettings.hideCash && !!(isPortfolioTab && currentPortfolio?.brokerInstanceId && accountState);
   const summaryAccountState = useMemo(
-    () => accountState ? { account: accountState.account, sourceLabel: accountState.sourceLabel } : null,
+    () => accountState
+      ? { account: accountState.account, sourceLabel: accountState.sourceLabel, snapshotBasis: accountState.snapshotBasis }
+      : null,
     [accountState],
   );
   const accountCurrency = accountState?.account.currency ?? "";
