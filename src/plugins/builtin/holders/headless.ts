@@ -74,7 +74,6 @@ const SORT_COLUMNS: Record<string, HolderColumnId> = {
 interface HolderSnapshot {
   data: HolderData;
   marketCap?: number;
-  sharesOutstanding?: number;
 }
 
 export interface HoldersHeadlessDependencies {
@@ -136,12 +135,12 @@ export function createHoldersHeadless(
     describe: (args) => `Holders | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
-      const { data, marketCap, sharesOutstanding } = await dependencies.loadSnapshot(symbol, args, ctx);
+      const { data, marketCap } = await dependencies.loadSnapshot(symbol, args, ctx);
       const currency = data.currency ?? "USD";
       const rows = sortRows(buildRows(data), {
         columnId: SORT_COLUMNS[String(args.options.sort)] ?? "value",
         direction: args.options.order === "asc" ? "asc" : "desc",
-      }, marketCap, sharesOutstanding)
+      }, marketCap)
         .slice(0, Number(args.options.limit))
         .map((row) => ({
           name: row.name,
@@ -150,7 +149,7 @@ export function createHoldersHeadless(
           shares: row.shares ?? null,
           changeShares: row.changeShares ?? null,
           changePercent: row.changePercent ?? null,
-          percentHeld: resolveHolderOwnershipPercent(row, marketCap, sharesOutstanding) ?? null,
+          percentHeld: resolveHolderOwnershipPercent(row, marketCap) ?? null,
           reportDate: row.reportDate ?? null,
           currency,
         }));

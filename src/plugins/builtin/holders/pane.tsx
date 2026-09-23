@@ -36,6 +36,9 @@ import { loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import type { HolderColumn, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
+import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
+
+const HOLDER_MARKET_CAP_SAMPLE_MS = 5_000;
 
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -54,19 +57,16 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const fundMatchAbortRef = useRef<AbortController | null>(null);
 
   const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
-  const sharesOutstanding = financials?.fundamentals?.sharesOutstanding;
+  // A stake without a reported percentage is the holding's value over the
+  // market cap. The stream keeps the cap current, about once a second; the
+  // stakes follow it at most every few seconds so ticks do not re-sort them.
+  useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 30 });
   const quoteMarketCap = financials?.quote?.marketCap;
-  // Only the last-resort fallback reads the market cap; with share counts it
-  // is left out so a price tick does not re-sort the holders.
-  const hasShareCount = sharesOutstanding != null && sharesOutstanding > 0;
-  const otherCurrency = !!financials?.quote?.currency && financials.quote.currency !== currency;
-  const marketCap = hasShareCount || otherCurrency ? undefined : quoteMarketCap;
+  const liveMarketCap = financials?.quote?.currency && financials.quote.currency !== currency ? undefined : quoteMarketCap;
+  const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
   const exchange = ticker?.metadata.exchange ?? "";
   const rows = useMemo(() => buildRows(data), [data]);
-  const sortedRows = useMemo(
-    () => sortRows(rows, sortPreference, marketCap, sharesOutstanding),
-    [marketCap, rows, sharesOutstanding, sortPreference],
-  );
+  const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   const columns = useMemo(() => buildColumns(width), [width]);
   const selectedIdx = selectedId
     ? sortedRows.findIndex((row) => row.id === selectedId)
@@ -262,13 +262,13 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       case "percentHeld":
         return {
-          text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap, sharesOutstanding)),
+          text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap)),
           color: selectedColor ?? colors.textDim,
         };
       case "reportDate":
         return { text: displayDate(row.reportDate), color: selectedColor ?? colors.textDim };
     }
-  }, [currency, fundMatches, marketCap, sharesOutstanding]);
+  }, [currency, fundMatches, marketCap]);
 
   usePaneFooter("holders", () => {
     return {
@@ -347,7 +347,6 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onActivate={openFundDetail}
           currency={currency}
           marketCap={marketCap}
-          sharesOutstanding={sharesOutstanding}
         />
       )}
     </Box>

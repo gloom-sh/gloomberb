@@ -8,7 +8,7 @@ import {
 } from "./format";
 import type { HolderRow } from "./types";
 
-export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, marketCap, sharesOutstanding, emptyStateTitle }: {
+export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, marketCap, emptyStateTitle }: {
   rows: HolderRow[];
   width: number;
   height: number;
@@ -17,12 +17,11 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
   onActivate?: (row: HolderRow) => void;
   currency: string;
   marketCap?: number;
-  sharesOutstanding?: number;
   /** Loading, error, and no-ticker states the pane resolves for both views. */
   emptyStateTitle?: string;
 }) {
   const items = useMemo<Array<MetricTreemapItem<HolderRow>>>(() => rows.map((row) => {
-    const ownership = formatHolderOwnershipLine(row, marketCap, sharesOutstanding);
+    const ownership = formatHolderOwnershipLine(row, marketCap);
     const change = row.changePercent != null ? formatMaybePercent(row.changePercent) : "No change";
     return {
       id: row.id,
@@ -36,7 +35,7 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
       tertiaryText: ownership ? change : null,
       data: row,
     };
-  }), [currency, marketCap, rows, sharesOutstanding]);
+  }), [currency, marketCap, rows]);
 
   return (
     <MetricTreemapSurface
