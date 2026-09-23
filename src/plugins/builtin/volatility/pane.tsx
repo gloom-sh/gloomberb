@@ -52,9 +52,11 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   const result = partial ?? resource.data;
   const data = result?.data;
-  // Indices without a level are reported in the notices, not as empty rows.
+  // Indices without a level are reported in the notices, not as empty rows;
+  // rows still loading keep their place so the board does not jump.
+  const loading = !!result && result.loaded < result.total;
   const rows = useMemo(() => {
-    const ordered = boardOrder(data?.board ?? []).filter((row) => row.value != null);
+    const ordered = boardOrder(data?.board ?? []).filter((row) => row.value != null || (loading && !row.error));
     if (!sort.id) return ordered;
     const key = sort.id as keyof VolatilityBoardRow;
     return ordered.sort((left, right) => {
@@ -64,7 +66,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
       return (typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b)))
         * (sort.direction === "asc" ? 1 : -1);
     });
-  }, [data?.board, sort]);
+  }, [data?.board, sort, loading]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   useVolatilityEvidence(result, tab, selected, resource.loading);
   const notices = [resource.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
