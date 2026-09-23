@@ -438,7 +438,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({ data: articles, metadata: { ticker: ticker ?? null, feed: feed ?? null } }, {
       rows: newsRows,
       columns: [
-        { key: "publishedAt", header: "Published" },
+        // UTC, as the news panes print it, rather than the host zone unlabeled.
+        {
+          key: "publishedAt",
+          header: "Published (UTC)",
+          format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "",
+        },
         { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },
         { key: "tickers", header: "Tickers", maxWidth: 16 },
@@ -467,6 +472,20 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+/**
+ * Holder lists name institutions and funds; individual insiders rarely appear.
+ * The insider share of the company is reported either way, so say it.
+ */
+function insiderSummary(data: HolderData, ownerTypes: Set<string>): string {
+  const held = data.summary?.insidersPercentHeld;
+  const share = held == null || !Number.isFinite(held)
+    ? ""
+    : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
+  const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
+  const transactions = listed ? "" : `Form 4 transactions: gloomberb fn INS ${data.symbol}`;
+  return [share, transactions].filter(Boolean).join("\n");
+}
+
 async function runHolders(
   rawArgs: string[],
   ctx: Parameters<CliCommandDef["execute"]>[1],
@@ -488,6 +507,9 @@ async function runHolders(
         { key: "value", header: "Value", align: "right", value: (row) => row.value == null ? "" : formatCompact(Number(row.value)) },
         { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
       ],
+      ...(commandName === "insider" && ownerTypes
+        ? { summary: (holderData: HolderData) => insiderSummary(holderData, ownerTypes) }
+        : {}),
       empty: `No holders reported for ${symbol}.`,
     });
   });

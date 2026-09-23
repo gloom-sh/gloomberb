@@ -10,7 +10,7 @@ import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneTicker } from "../../../state/app/context";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Prose, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { isUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -55,9 +55,10 @@ function formatFiledAt(filing: SecFilingItem): string {
 }
 
 function buildDetailBody(filing: SecFilingItem): string {
+  const items = secFilingItemCodes(filing.items);
   const sections = [
     getMeaningfulPrimaryDescription(filing),
-    filing.items ? `Items: ${filing.items}` : undefined,
+    items ? `Items: ${items}` : undefined,
     filing.primaryDocument ? `Primary document: ${filing.primaryDocument}` : undefined,
   ].filter((value): value is string => !!value && value.trim().length > 0);
 
@@ -204,7 +205,7 @@ function toFeedItems(
         `Filed ${formatFiledAt(filing)}`,
         ...(acceptedAt ? [`SEC-reported acceptance ${acceptedAt}`] : []),
         `Accession ${filing.accessionNumber}`,
-        ...(filing.items ? [`Items ${filing.items}`] : []),
+        ...(secFilingItemCodes(filing.items) ? [`Items ${secFilingItemCodes(filing.items)}`] : []),
         ...(filingPreviewTruncated(filing, selected ? selectedDocuments : [], contentCache)
           ? ["Preview truncated. Open the SEC filing for the complete documents and terms."] : []),
       ],
