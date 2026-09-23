@@ -374,6 +374,17 @@ export function useFxRatesMap(currencies: Array<string | null | undefined>): Map
     }
   }, [normalizedCurrencyKey]);
 
+  // Converted totals follow the streamed USD pairs while the app is visible;
+  // the loaded rates above stay the fallback.
+  const appVisible = useAppVisible();
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator || !appVisible || typeof coordinator.subscribeFxRates !== "function") return;
+    if (!normalizedCurrencies.some((currency) => currency !== "USD")) return;
+    const subscription = coordinator.subscribeFxRates(normalizedCurrencies);
+    return () => subscription();
+  }, [appVisible, normalizedCurrencyKey]);
+
   return useMemo(() => {
     const rates = new Map<string, number>();
     rates.set("USD", 1);

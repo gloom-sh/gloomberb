@@ -32,6 +32,16 @@ import {
 import { MarketDataCoordinatorEvents } from "./events";
 import type { DataFrameScheduler } from "../frame-scheduler";
 import {
+  FX_LIVE_RATE_MAX_AGE_MS,
+  FX_LIVE_RATE_MAX_DEVIATION,
+  FX_LIVE_RATE_MIN_CHANGE,
+  FX_LIVE_RATE_REFRESH_MS,
+  FX_LIVE_RATE_STALE_MS,
+  fxLegForCurrency,
+  fxRateFromLegQuote,
+  type FxLeg,
+} from "./fx-legs";
+import {
   CHART_CACHE_TTL_MS,
   OPTIONS_CACHE_TTL_MS,
   EXPECTED_EMPTY,
@@ -107,7 +117,16 @@ export class MarketDataCoordinator {
   private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key));
   private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key));
   private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key));
-  private readonly fxStore = new QueryStore<number>((key) => this.events.bump(key));
+  private readonly liveFxRates = new Map<string, { rate: number; observedAt: number; receivedAt: number }>();
+  /** The last rate a request loaded per currency; a streamed rate must stay near it to be believed. */
+  private readonly loadedFxRates = new Map<string, number>();
+  private writingLiveFxRate = false;
+  private readonly fxLegsByQuoteKey = new Map<string, FxLeg>();
+  private readonly fxLegsByCurrency = new Map<string, FxLeg>();
+  private readonly fxStore = new QueryStore<number>(
+    (key) => this.events.bump(key),
+    (key, entry) => this.projectLiveFxRate(key, entry),
+  );
   private readonly financialCacheStores: FinancialCacheStores = {
     quoteStore: this.quoteStore,
     snapshotStore: this.snapshotStore,
@@ -512,6 +531,76 @@ export class MarketDataCoordinator {
     return this.quoteSubscriptionManager.subscribe(targets);
   }
 
+  /**
+   * Streams the USD pair behind each currency so converted values move with
+   * the market. The pairs ride the normal quote subscription (one per pair,
+   * shared by every caller) at background priority, and their mids replace
+   * the loaded rate while they are current; the loaded rate stays the fallback.
+   */
+  subscribeFxRates(currencies: readonly string[]): QuoteSubscriptionHandle {
+    const legs = new Map<string, FxLeg>();
+    for (const currency of currencies) {
+      const leg = fxLegForCurrency(currency);
+      if (!leg) continue;
+      const key = buildQuoteKey(leg.instrument);
+      legs.set(key, leg);
+      this.fxLegsByQuoteKey.set(key, leg);
+      this.fxLegsByCurrency.set(leg.currency, leg);
+    }
+    return this.quoteSubscriptionManager.subscribe([...legs.values()].map((leg) => ({
+      instrument: leg.instrument,
+      priority: { visible: false, selected: false, weight: 20 },
+    })));
+  }
+
+  private applyLiveFxLeg(leg: FxLeg, quote: Quote | null): void {
+    if (!quote || quote.stale === true) return;
+    const rate = fxRateFromLegQuote(leg, quote);
+    if (rate == null) return;
+    // Without a loaded rate there is nothing to catch a wrong pair or a bad print.
+    const reference = this.loadedFxRates.get(leg.currency);
+    if (reference == null || Math.abs(rate / reference - 1) > FX_LIVE_RATE_MAX_DEVIATION) return;
+    const now = Date.now();
+    const previous = this.liveFxRates.get(leg.currency);
+    if (previous && Math.abs(rate / previous.rate - 1) < FX_LIVE_RATE_MIN_CHANGE && now - previous.receivedAt < FX_LIVE_RATE_REFRESH_MS) return;
+    const observedAt = Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? Math.min(quote.lastUpdated, now) : now;
+    this.liveFxRates.set(leg.currency, { rate, observedAt, receivedAt: now });
+    const key = buildFxKey(leg.currency);
+    this.writingLiveFxRate = true;
+    try {
+      this.fxStore.set(key, this.fxStore.get(key));
+    } finally {
+      this.writingLiveFxRate = false;
+    }
+  }
+
+  private projectLiveFxRate(key: string, entry: QueryEntry<number>): QueryEntry<number> {
+    const currency = key.slice(key.indexOf(":") + 1);
+    const live = this.liveFxRates.get(currency);
+    const loaded = entry.data ?? entry.lastGoodData;
+    // A loading or error entry built from the current one still carries the
+    // streamed value; only a rate a request produced is a reference.
+    if (!this.writingLiveFxRate && loaded != null && Number.isFinite(loaded) && loaded > 0 && loaded !== live?.rate) {
+      const firstReference = !this.loadedFxRates.has(currency);
+      this.loadedFxRates.set(currency, loaded);
+      // A pair that streamed before any rate loaded can be checked now.
+      const leg = firstReference && !live ? this.fxLegsByCurrency.get(currency) : undefined;
+      if (leg) queueMicrotask(() => this.applyLiveFxLeg(leg, this.quoteStore.get(buildQuoteKey(leg.instrument)).data));
+    }
+    if (!live || Date.now() - live.receivedAt > FX_LIVE_RATE_MAX_AGE_MS) return entry;
+    if (entry.data === live.rate && entry.asOf === live.observedAt) return entry;
+    return {
+      ...entry,
+      phase: "ready",
+      data: live.rate,
+      lastGoodData: live.rate,
+      error: null,
+      asOf: live.observedAt,
+      fetchedAt: Math.max(entry.fetchedAt ?? 0, live.receivedAt),
+      staleAt: live.observedAt + FX_LIVE_RATE_STALE_MS,
+    };
+  }
+
   private applyStreamQuote(instrument: InstrumentRef, quote: Quote): void {
     const key = buildQuoteKey(instrument);
     const current = this.quoteStore.get(key);
@@ -525,7 +614,10 @@ export class MarketDataCoordinator {
       if (receivedAt == null || (previousReceipt != null && receivedAt - previousReceipt < STREAM_RECEIPT_REFRESH_MS)) return;
     }
     const attempts = [createAttempt(resolvedQuote.providerId ?? this.dataProvider.id, startedAt, "success")];
-    this.quoteStore.set(key, readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts));
+    const entry = readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts);
+    this.quoteStore.set(key, entry);
+    const fxLeg = this.fxLegsByQuoteKey.get(key);
+    if (fxLeg) this.applyLiveFxLeg(fxLeg, entry.data);
   }
 
   private resolveIncomingQuote(instrument: InstrumentRef, quote: Quote): Quote {

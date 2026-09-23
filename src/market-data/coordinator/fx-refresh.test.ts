@@ -2,7 +2,10 @@ import { expect, test } from "bun:test";
 import { AssetDataRouter } from "../../sources/provider-router";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
+import type { QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { Quote } from "../../types/financials";
 import { MarketDataCoordinator } from "./index";
+import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -59,3 +62,51 @@ for (const cachedRouter of [false, true]) {
     }
   });
 }
+
+test("streamed USD pairs move the FX rate while current and keep the loaded rate as the reference", async () => {
+  const now = Date.now();
+  const rates: Record<string, number> = { EUR: 1.1, JPY: 1 / 150 };
+  const subscribed: string[][] = [];
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  const provider = createTestDataProvider({
+    getExchangeRate: async (currency) => rates[currency]!,
+    subscribeQuotes: (targets, onQuote) => {
+      subscribed.push(targets.map((target) => `${target.symbol}${target.visible ? "" : " (background)"}`));
+      emit = onQuote;
+      return () => {};
+    },
+  });
+  const clock = createManualFrameDriver(0);
+  const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(clock.driver) });
+  const pair = (symbol: string, quote: Partial<Quote>) => {
+    emit!({ symbol, exchange: "" }, { symbol, currency: "USD", change: 0, changePercent: 0, lastUpdated: now, price: 0, ...quote });
+  };
+
+  await coordinator.loadFxRate("EUR");
+  coordinator.subscribeFxRates(["USD", "EUR", "JPY", "XXX"]);
+  expect(subscribed.at(-1)?.sort()).toEqual(["EURUSD=X (background)", "JPY=X (background)"]);
+
+  pair("EURUSD=X", { price: 1.1181, bid: 1.118, ask: 1.1182 });
+  // No loaded JPY rate yet, so nothing can vouch for the streamed one.
+  pair("JPY=X", { price: 151 });
+  clock.advance(0);
+  expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
+  expect(coordinator.getFxEntry("EUR").asOf).toBe(now);
+  expect(coordinator.getFxEntry("JPY").data).toBeNull();
+
+  // Once a rate loads, the held pair quote is checked against it and used.
+  await coordinator.loadFxRate("JPY");
+  await Promise.resolve();
+  expect(coordinator.getFxEntry("JPY").data).toBeCloseTo(1 / 151, 8);
+
+  // A loaded rate cannot pull a current streamed one back.
+  rates.EUR = 1.09;
+  await coordinator.loadFxRate("EUR", { forceRefresh: true });
+  expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
+
+  // A print far from the loaded rate is a wrong pair or a bad tick.
+  pair("EURUSD=X", { price: 0.5 });
+  clock.advance(1_000);
+  expect(coordinator.getQuoteEntry({ symbol: "EURUSD=X", exchange: "" }).data?.price).toBe(0.5);
+  expect(coordinator.getFxEntry("EUR").data).toBeCloseTo(1.1181, 6);
+});
