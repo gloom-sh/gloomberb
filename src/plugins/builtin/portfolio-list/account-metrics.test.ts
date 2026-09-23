@@ -138,44 +138,73 @@ describe("broker-linked header totals", () => {
       lastUpdated: Date.now() - 1_000, listingExchangeName: "NASDAQ", marketState: "REGULAR", dataSource: "live", ...overrides,
     },
   });
-  const account: BrokerAccount = {
-    accountId: "U1", name: "U1", currency: "USD",
-    // Broker values include a small residual the rows do not carry.
+  // Broker values include a small residual the rows do not carry.
+  const snapshot = (overrides: Partial<BrokerAccount> = {}): BrokerAccount => ({
+    accountId: "U1", name: "U1", currency: "USD", updatedAt: Date.now() - 60_000,
     grossPositionValue: 2_510, netLiquidation: 5_000, dailyPnl: 30, unrealizedPnl: 300, totalCashValue: 2_490,
-  };
+    ...overrides,
+  });
   const tickers = [position("AAPL", 10, 90, 100), position("MSFT", 5, 260, 300)];
   const totalsFor = (financials: Array<[string, TickerFinancials]>) => calculatePortfolioSummaryTotals(
     tickers, new Map(financials), "USD", new Map([["USD", 1]]), true, "ibkr:U1",
   );
 
-  test("anchors on the broker snapshot and adds the move of quoted positions", () => {
+  test("a snapshot from the position import moves by each quote against its broker mark", () => {
+    const account = snapshot();
     // AAPL is 10 above the broker mark; MSFT has no current quote.
     const totals = totalsFor([["AAPL", quote("AAPL", 110, 12)]]);
     expect(totals.livePriced).toBe(false);
-    expect(resolvePortfolioMarketValue(totals, account)).toBe(2_510 + 100);
-    expect(resolvePortfolioNetLiquidation(totals, account)).toBe(5_000 + 100);
-    const metrics = resolvePortfolioAccountMetrics(totals, account);
+    expect(resolvePortfolioMarketValue(totals, account, undefined, "marks")).toBe(2_510 + 100);
+    expect(resolvePortfolioNetLiquidation(totals, account, undefined, "marks")).toBe(5_000 + 100);
+    const metrics = resolvePortfolioAccountMetrics(totals, account, undefined, "marks");
     expect(metrics.dailyPnl).toBe(30 + 100);
     expect(metrics.dailyPnlPct).toBeCloseTo(130 / 4_970 * 100);
     expect(metrics.unrealizedPnl).toBe(300 + 100);
 
-    // A quote from a previous session or a delayed feed does not count as live.
+    // A quote from a previous session does not price a lot.
     const stale = totalsFor([
       ["AAPL", quote("AAPL", 110, 12, { lastUpdated: Date.now() - 3 * 86_400_000 })],
       ["MSFT", quote("MSFT", 310, 4, { dataSource: "delayed" })],
     ]);
     expect(stale.livePriced).toBe(false);
-    expect(resolvePortfolioMarketValue(stale, account)).toBe(2_510 + 50);
+    expect(resolvePortfolioMarketValue(stale, account, undefined, "marks")).toBe(2_510 + 50);
   });
 
-  test("uses quote totals once every position has a current real-time quote", () => {
+  test("a snapshot loaded after the import moves only from the quotes first seen with it", () => {
+    // Reloaded at 110: the broker figures already hold the move from the
+    // import marks, so adding it again would count it twice.
+    const reloaded = snapshot({ grossPositionValue: 2_610, netLiquidation: 5_100, dailyPnl: 130 });
+    const atLoad = totalsFor([["AAPL", quote("AAPL", 110, 12)]]);
+    expect(resolvePortfolioNetLiquidation(atLoad, reloaded, undefined, "loaded")).toBe(5_100);
+    expect(resolvePortfolioMarketValue(atLoad, reloaded)).toBe(2_610);
+
+    const later = totalsFor([["AAPL", quote("AAPL", 112, 14)], ["MSFT", quote("MSFT", 310, 14, { dataSource: "delayed" })]]);
+    expect(resolvePortfolioNetLiquidation(later, reloaded)).toBe(5_100 + 20);
+    expect(resolvePortfolioAccountMetrics(later, reloaded).dailyPnl).toBe(130 + 20);
+    // A lot first quoted after the load starts from that quote.
+    const latest = totalsFor([["AAPL", quote("AAPL", 112, 14)], ["MSFT", quote("MSFT", 320, 24, { dataSource: "delayed" })]]);
+    expect(resolvePortfolioMarketValue(latest, reloaded)).toBe(2_610 + 20 + 50);
+
+    // The next reload is a new snapshot with its own starting point.
+    expect(resolvePortfolioNetLiquidation(latest, snapshot({ netLiquidation: 5_170 }))).toBe(5_170);
+  });
+
+  test("keeps the broker's day P&L and its basis when every position turns live", () => {
+    const account = snapshot();
     const totals = totalsFor([["AAPL", quote("AAPL", 110, 12)], ["MSFT", quote("MSFT", 290, -4)]]);
     expect(totals.livePriced).toBe(true);
-    expect(resolvePortfolioMarketValue(totals, account)).toBe(1_100 + 1_450);
-    expect(resolvePortfolioNetLiquidation(totals, account)).toBe(5_000 + 100 - 50);
-    const metrics = resolvePortfolioAccountMetrics(totals, account);
-    expect(metrics.dailyPnl).toBe(120 - 20);
+    expect(resolvePortfolioMarketValue(totals, account, undefined, "marks")).toBe(1_100 + 1_450);
+    expect(resolvePortfolioNetLiquidation(totals, account, undefined, "marks")).toBe(5_000 + 100 - 50);
+    const metrics = resolvePortfolioAccountMetrics(totals, account, undefined, "marks");
+    expect(metrics.dailyPnl).toBe(30 + 100 - 50);
+    expect(metrics.dailyPnlPct).toBeCloseTo(80 / 4_970 * 100);
     expect(metrics.unrealizedPnl).toBe(200 + 150);
+
+    // A day P&L from an earlier session is not today's; the quotes' is.
+    const yesterday = snapshot({ updatedAt: Date.now() - 2 * 86_400_000 });
+    const stale = resolvePortfolioAccountMetrics(totals, yesterday, undefined, "marks");
+    expect(stale.dailyPnl).toBe(120 - 20);
+    expect(stale.dailyPnlPct).toBe(totals.dailyPnlPct);
   });
 
   test("a short position moves the net figures against the gross value", () => {
@@ -184,9 +213,9 @@ describe("broker-linked header totals", () => {
       new Map([["AAPL", quote("AAPL", 110, 12, { dataSource: "delayed" })]]),
       "USD", new Map([["USD", 1]]), true, "ibkr:U1",
     );
-    expect(quoted.brokerSnapshotDelta).toEqual({ gross: 100, net: -100 });
-    const shortAccount: BrokerAccount = { ...account, grossPositionValue: 1_000, dailyPnl: -30, unrealizedPnl: -100 };
-    expect(resolvePortfolioMarketValue(quoted, shortAccount)).toBe(1_100);
-    expect(resolvePortfolioAccountMetrics(quoted, shortAccount).unrealizedPnl).toBe(-200);
+    const shortAccount = snapshot({ grossPositionValue: 1_000, dailyPnl: -30, unrealizedPnl: -100 });
+    expect(resolvePortfolioMarketValue(quoted, shortAccount, undefined, "marks")).toBe(1_100);
+    expect(resolvePortfolioNetLiquidation(quoted, shortAccount, undefined, "marks")).toBe(4_900);
+    expect(resolvePortfolioAccountMetrics(quoted, shortAccount, undefined, "marks").unrealizedPnl).toBe(-200);
   });
 });

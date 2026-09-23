@@ -1,4 +1,5 @@
 import type { BrokerAccount } from "../../../types/trading";
+import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
 import type { PortfolioSummaryTotals } from "./metrics";
 import { portfolioPnlPercent } from "./position-metrics";
 
@@ -8,6 +9,28 @@ export interface PortfolioAccountMetrics {
   unrealizedPnl: number;
   unrealizedPnlPct: number;
   realizedPnl?: number;
+}
+
+/**
+ * When a broker account snapshot was taken, relative to the position marks.
+ * - "marks": in the same import as the positions (a statement or a sync).
+ *   The snapshot priced every lot at its broker mark, so a lot has since
+ *   moved by its quote value minus that mark.
+ * - "loaded": later, listed on connect or reloaded live. The snapshot already
+ *   holds every move up to then, so a lot moves from the quote value first
+ *   seen with the snapshot. The default: it can miss a move but never counts
+ *   one twice.
+ */
+export type BrokerSnapshotBasis = "marks" | "loaded";
+
+/** Quote values first seen with each loaded snapshot, by lot. A reload is a new object and starts over. */
+const loadedSnapshotBaselines = new WeakMap<BrokerAccount, Map<string, number>>();
+
+interface SnapshotDelta {
+  /** Applies to market value. */
+  gross: number;
+  /** Signed by side; applies to P&L and net liquidation. */
+  net: number;
 }
 
 function finiteNumber(value: unknown): value is number {
@@ -20,12 +43,44 @@ function percentChange(value: number, previousValue: number): number {
 
 /**
  * Broker account figures are one-shot snapshots. Carry them forward by the
- * move current quotes show for the positions they price, so the header
- * follows the stream while staying anchored to the broker's own numbers.
+ * move current quotes show since the snapshot, so the header follows the
+ * stream while staying anchored to the broker's own numbers.
  */
-function snapshotDelta(totals: PortfolioSummaryTotals, side: "gross" | "net"): number {
-  const delta = totals.brokerSnapshotDelta?.[side];
-  return finiteNumber(delta) ? delta : 0;
+function brokerSnapshotDelta(
+  totals: PortfolioSummaryTotals,
+  account: BrokerAccount,
+  basis: BrokerSnapshotBasis,
+): SnapshotDelta {
+  const delta = { gross: 0, net: 0 };
+  const lots = totals.pricedLots;
+  if (!lots?.length) return delta;
+  let baselines: Map<string, number> | undefined;
+  if (basis === "loaded") {
+    baselines = loadedSnapshotBaselines.get(account);
+    if (!baselines) {
+      baselines = new Map();
+      loadedSnapshotBaselines.set(account, baselines);
+    }
+  }
+  for (const lot of lots) {
+    let baseline = baselines ? baselines.get(lot.key) : lot.brokerValue;
+    if (baselines && baseline === undefined) {
+      baselines.set(lot.key, lot.value);
+      baseline = lot.value;
+    }
+    if (baseline === null || baseline === undefined) continue;
+    const move = lot.value - baseline;
+    delta.gross += move;
+    delta.net += lot.direction * move;
+  }
+  return delta;
+}
+
+/** A broker's day P&L belongs to the session it was taken in. */
+function isCurrentSessionSnapshot(account: BrokerAccount, now = Date.now()): boolean {
+  const takenAt = account.updatedAt;
+  if (!finiteNumber(takenAt) || takenAt <= 0) return true;
+  return !isTimestampStaleForExchangeSession(takenAt, "NYSE", now);
 }
 
 /** With a current real-time quote for every position, quote totals replace the broker snapshot. */
@@ -47,11 +102,14 @@ export function resolvePortfolioMarketValue(
   totals: PortfolioSummaryTotals,
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
+  basis: BrokerSnapshotBasis = "loaded",
 ): number {
   const live = liveTotal(totals, totals.totalMktValue);
   if (live != null) return live;
   const broker = resolveBrokerPortfolioMarketValue(account, convertAccountValue);
-  return broker != null ? broker + snapshotDelta(totals, "gross") : totals.totalMktValue;
+  return broker != null && account
+    ? broker + brokerSnapshotDelta(totals, account, basis).gross
+    : totals.totalMktValue;
 }
 
 /** Net liquidation moves with the positions; cash and margin stay as the broker reported them. */
@@ -59,19 +117,31 @@ export function resolvePortfolioNetLiquidation(
   totals: PortfolioSummaryTotals,
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
+  basis: BrokerSnapshotBasis = "loaded",
 ): number | null {
-  if (!finiteNumber(account?.netLiquidation)) return null;
-  return convertAccountValue(account.netLiquidation) + snapshotDelta(totals, "net");
+  if (!account || !finiteNumber(account.netLiquidation)) return null;
+  return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis).net;
 }
 
 export function resolvePortfolioAccountMetrics(
   totals: PortfolioSummaryTotals,
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
+  basis: BrokerSnapshotBasis = "loaded",
 ): PortfolioAccountMetrics {
-  const liveDailyPnl = liveTotal(totals, totals.dailyPnl);
-  const brokerDailyPnl = liveDailyPnl == null && finiteNumber(account?.dailyPnl) ? convertAccountValue(account.dailyPnl) : null;
-  const dailyPnl = brokerDailyPnl != null ? brokerDailyPnl + snapshotDelta(totals, "net") : totals.dailyPnl;
+  const delta = account ? brokerSnapshotDelta(totals, account, basis) : { gross: 0, net: 0 };
+
+  // The broker's day P&L includes trades closed today, lots opened at their
+  // fill and fees, which quotes cannot see. It stays the anchor while it is
+  // from this session, so the figure and its basis never flip. One from an
+  // earlier session only stands in, unmoved, when quotes cannot give today's.
+  const currentSession = !!account && isCurrentSessionSnapshot(account);
+  const brokerDailyPnl = account && finiteNumber(account.dailyPnl) && (currentSession || !Number.isFinite(totals.dailyPnl))
+    ? convertAccountValue(account.dailyPnl)
+    : null;
+  const dailyPnl = brokerDailyPnl != null
+    ? brokerDailyPnl + (currentSession ? delta.net : 0)
+    : totals.dailyPnl;
   // The prior close does not move intraday, so the snapshot's own pair defines it.
   const previousNetLiquidation = brokerDailyPnl != null && finiteNumber(account?.netLiquidation)
     ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
@@ -82,7 +152,7 @@ export function resolvePortfolioAccountMetrics(
 
   const liveUnrealizedPnl = liveTotal(totals, totals.unrealizedPnl);
   const brokerUnrealizedPnl = liveUnrealizedPnl == null && finiteNumber(account?.unrealizedPnl)
-    ? convertAccountValue(account.unrealizedPnl) + snapshotDelta(totals, "net")
+    ? convertAccountValue(account.unrealizedPnl) + delta.net
     : null;
   const unrealizedPnl = brokerUnrealizedPnl ?? totals.unrealizedPnl;
   const unrealizedPnlPct = portfolioPnlPercent(unrealizedPnl, totals.totalCostBasis) ?? Number.NaN;

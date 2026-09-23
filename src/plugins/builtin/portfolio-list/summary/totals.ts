@@ -12,6 +12,16 @@ import {
   type PortfolioPositionPnl,
 } from "../position-metrics";
 
+/** A position lot valued from a current quote, in the base currency. */
+export interface PricedPortfolioLot {
+  /** Stable for the lot while the positions stay as imported. */
+  key: string;
+  direction: 1 | -1;
+  value: number;
+  /** The broker's value for the lot at the last import, when it gave one. */
+  brokerValue: number | null;
+}
+
 export interface PortfolioSummaryTotals {
   totalMktValue: number;
   netMktValue?: number;
@@ -32,12 +42,8 @@ export interface PortfolioSummaryTotals {
   unavailableConversions?: string[];
   /** Every position is valued from a current, real-time quote. */
   livePriced?: boolean;
-  /**
-   * How far current quotes have moved the positions they price away from the
-   * broker's own snapshot values for those lots, in the base currency. Gross
-   * applies to market value; net (signed by side) to P&L and net liquidation.
-   */
-  brokerSnapshotDelta?: { gross: number; net: number };
+  /** Lots with a current quote. Broker account snapshots move by these. */
+  pricedLots?: PricedPortfolioLot[];
 }
 
 export function calculatePortfolioSummaryTotals(
@@ -64,9 +70,7 @@ export function calculatePortfolioSummaryTotals(
   let watchlistCount = 0;
   const unavailableConversions = new Set<string>();
   let livePriced = true;
-  let snapshotDeltaGross = 0;
-  let snapshotDeltaNet = 0;
-  let hasSnapshotDelta = false;
+  const pricedLots: PricedPortfolioLot[] = [];
   const now = Date.now();
   const toBase = (value: number, currency: string) => {
     const converted = convertCurrency(value, currency, baseCurrency, exchangeRates);
@@ -111,16 +115,19 @@ export function calculatePortfolioSummaryTotals(
     const freshQuote = currentUnitPrice != null && Number.isFinite(currentUnitPrice)
       && !!quote && !isQuoteStaleForCurrentSession(quote, now);
     if (!freshQuote || quote.dataSource === "delayed" || quote.dataSource === "snapshot") livePriced = false;
-    for (const lot of positionMetrics.pnlLots) {
-      const current = freshQuote ? Math.abs(lot.priceUnits) * currentUnitPrice : Number.NaN;
-      if (!Number.isFinite(current)) {
+    for (let index = 0; index < positionMetrics.pnlLots.length; index++) {
+      const lot = positionMetrics.pnlLots[index]!;
+      const value = freshQuote ? Math.abs(lot.priceUnits) * currentUnitPrice : Number.NaN;
+      if (!Number.isFinite(value)) {
         livePriced = false;
         continue;
       }
-      if (lot.brokerMarketValue === null || !Number.isFinite(lot.brokerMarketValue)) continue;
-      snapshotDeltaGross += current - lot.brokerMarketValue;
-      snapshotDeltaNet += lot.direction * (current - lot.brokerMarketValue);
-      hasSnapshotDelta = true;
+      pricedLots.push({
+        key: `${ticker.metadata.ticker}:${index}`,
+        direction: lot.direction,
+        value,
+        brokerValue: lot.brokerMarketValue !== null && Number.isFinite(lot.brokerMarketValue) ? lot.brokerMarketValue : null,
+      });
     }
 
     const marketValue = resolvePortfolioMarketValue(positionMetrics, currentUnitPrice);
@@ -167,8 +174,6 @@ export function calculatePortfolioSummaryTotals(
     watchlistCount,
     ...(unavailableConversions.size > 0 ? { unavailableConversions: [...unavailableConversions].sort() } : {}),
     ...(isPortfolio ? { livePriced: hasPositions && livePriced } : {}),
-    ...(hasSnapshotDelta && Number.isFinite(snapshotDeltaGross) && Number.isFinite(snapshotDeltaNet)
-      ? { brokerSnapshotDelta: { gross: snapshotDeltaGross, net: snapshotDeltaNet } }
-      : {}),
+    ...(pricedLots.length > 0 ? { pricedLots } : {}),
   };
 }

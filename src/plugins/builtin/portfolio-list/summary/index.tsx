@@ -9,13 +9,16 @@ import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
-import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue, resolvePortfolioNetLiquidation } from "../account-metrics";
+import {
+  resolvePortfolioAccountMetrics,
+  resolvePortfolioMarketValue,
+  resolvePortfolioNetLiquidation,
+  type BrokerSnapshotBasis,
+} from "../account-metrics";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
-
-export { useLiveBrokerAccounts, type LiveBrokerAccounts } from "./live-accounts";
 
 export interface PortfolioSummarySegment {
   id: string;
@@ -31,6 +34,8 @@ export interface PortfolioSummarySegment {
 export interface PortfolioSummaryAccountState {
   account: BrokerAccount;
   sourceLabel: string;
+  /** How the account figures line up with the position marks. */
+  snapshotBasis?: BrokerSnapshotBasis;
 }
 
 export interface ResolvedPortfolioAccountState extends PortfolioSummaryAccountState {
@@ -67,6 +72,23 @@ function parseIsoDateAsLocalDate(value: string): Date | null {
   if (!match) return null;
   const [, year, month, day] = match;
   return new Date(Number(year), Number(month) - 1, Number(day));
+}
+
+/**
+ * A cached account taken no later than the positions were imported was
+ * priced at the same broker marks. A live listing, or one taken after the
+ * import (on connect), already holds later moves.
+ */
+function resolveSnapshotBasis(account: BrokerAccount, portfolio: Portfolio, live: boolean): BrokerSnapshotBasis {
+  if (live) return "loaded";
+  const asOfDate = account.asOfDate ? parseIsoDateAsLocalDate(account.asOfDate) : null;
+  const takenAt = account.updatedAt || asOfDate?.getTime();
+  const importedAt = portfolio.lastSyncedAt;
+  return typeof takenAt === "number" && Number.isFinite(takenAt)
+    && typeof importedAt === "number" && Number.isFinite(importedAt)
+    && takenAt <= importedAt
+    ? "marks"
+    : "loaded";
 }
 
 function getAccountFreshnessTime(account: BrokerAccount): number {
@@ -181,6 +203,7 @@ export function resolvePortfolioAccountState(
     account,
     sourceLabel: source.label,
     sourceKind: source.kind,
+    snapshotBasis: resolveSnapshotBasis(account, portfolio, !!liveAccount),
     visibleCashBalances: getVisibleCashBalances(account.cashBalances),
   };
 }
@@ -209,10 +232,11 @@ export function buildPortfolioSummarySegments({
 
   const candidates: PortfolioSummarySegment[] = [];
   const account = accountState?.account;
-  const accountMetrics = resolvePortfolioAccountMetrics(totals, account, convertAccountValue);
-  const totalMarketValue = resolvePortfolioMarketValue(totals, account, convertAccountValue);
+  const basis = accountState?.snapshotBasis;
+  const accountMetrics = resolvePortfolioAccountMetrics(totals, account, convertAccountValue, basis);
+  const totalMarketValue = resolvePortfolioMarketValue(totals, account, convertAccountValue, basis);
   // Net Liq moves with live quotes from the broker's snapshot; cash and margin stay as reported.
-  const netLiquidation = resolvePortfolioNetLiquidation(totals, account, convertAccountValue);
+  const netLiquidation = resolvePortfolioNetLiquidation(totals, account, convertAccountValue, basis);
   const accountValue = (id: string, label: string, value: number | undefined) => value != null
     ? createSummarySegment(id, [
       { text: label, tone: "label" },
