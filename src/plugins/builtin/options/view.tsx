@@ -359,22 +359,24 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   // Streamed bid/ask, last trade and volume replace the snapshot's for the
   // visible contracts, and every value derived below (IV, Greeks, summary,
   // analytics) reads this chain rather than the snapshot.
+  // The snapshot object itself comes back while nothing streamed, so the
+  // memos below only recompute when a quote actually landed.
   const liveChain = useMemo(
-    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness) : null,
+    () => strikeChain ? overlayOptionChainQuotes(strikeChain, optionQuoteEntries, optionQuoteFreshness).chain : null,
     [optionQuoteEntries, optionQuoteFreshness, strikeChain],
   );
   const callsByStrike = useMemo(
-    () => new Map(liveChain?.chain.calls.map((c) => [c.strike, c]) ?? []),
+    () => new Map(liveChain?.calls.map((c) => [c.strike, c]) ?? []),
     [liveChain],
   );
   const putsByStrike = useMemo(
-    () => new Map(liveChain?.chain.puts.map((p) => [p.strike, p]) ?? []),
+    () => new Map(liveChain?.puts.map((p) => [p.strike, p]) ?? []),
     [liveChain],
   );
   // One solve per applied batch: a streamed contract's IV comes from its live
   // midpoint, the rest from the snapshot, all against the same forward.
   const volatilities = useMemo(
-    () => liveChain ? solveChainVolatilities(liveChain.chain, spot, dividendYield) : null,
+    () => liveChain ? solveChainVolatilities(liveChain, spot, dividendYield) : null,
     [dividendYield, spot, liveChain],
   );
   const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
@@ -396,7 +398,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   // going stale shows at once; only the stream itself is paced.
   const summaryResetKey = useMemo(() => ({}), [strikeSelectionKey, strikeChain, spot == null]);
   const summaryInput = useThrottledValue(
-    useMemo(() => ({ chain: liveChain?.chain ?? null, spot, volatilities }), [liveChain, spot, volatilities]),
+    useMemo(() => ({ chain: liveChain, spot, volatilities }), [liveChain, spot, volatilities]),
     OPTIONS_SUMMARY_THROTTLE_MS,
     summaryResetKey,
   );
@@ -411,7 +413,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     selectedEntry: strikeChain === expirationChain ? expirationChainEntry
       : strikeChain === initialChain ? initialChainEntry : null,
     catalogue: availableExpirations, spot, spotAsOf: underlying?.quote?.lastUpdated,
-    liveChain: liveChain && liveChain.chain !== strikeChain ? liveChain.chain : null,
+    liveChain: liveChain !== strikeChain ? liveChain : null,
   });
   const enrichment = expirationUnavailable ? null : enrichmentState.snapshot;
   usePaneNoticeFooter({ registrationId: "options-enrichment-warnings", focused,
