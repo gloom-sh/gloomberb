@@ -249,8 +249,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     options: expirationDates.map((ts) => ({ label: formatExpDate(ts), value: String(ts) })),
     onChange: (value: string) => expirationPickRef.current(value),
   }], [expirationDates, selectedExpiration]);
+  // A scheduled refresh of a chain already on screen is quiet: the in-session
+  // cadence would otherwise blink the footer every few seconds.
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
-    || (expirationChainEntry?.phase === "loading" || expirationChainEntry?.phase === "refreshing");
+    || expirationChainEntry?.phase === "loading"
+    || (expirationChainEntry?.phase === "refreshing" && strikeChain === null);
   // Refresh failures keep a ready entry with last-good data and an error.
   // Surface that warning even when the cached chain is still usable.
   const error = (expirationUnavailable ? "Selected expiration unavailable." : null)
