@@ -1,7 +1,13 @@
 import type { PaneSettingsDef } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import type { OptionsViewProps } from "./types";
 import { OptionsView } from "./view";
+
+/** The registered chain shows IV rank; isolated view renders stay offline. */
+function OptionsPane(props: OptionsViewProps) {
+  return <OptionsView {...props} ivRank />;
+}
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
@@ -48,7 +54,7 @@ export const optionsModule: PluginModule = {
       id: "options",
       name: "Options",
       icon: "O",
-      component: OptionsView,
+      component: OptionsPane,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 28 },
@@ -77,7 +83,7 @@ export const optionsModule: PluginModule = {
       id: "options",
       name: "Options",
       order: 35,
-      component: OptionsView,
+      component: OptionsPane,
       isVisible: ({ hasOptionsChain }) => hasOptionsChain,
     });
   },

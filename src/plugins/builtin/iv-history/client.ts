@@ -4,7 +4,7 @@ import type { ChartRequest, InstrumentRef } from "../../../market-data/request-t
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
-import { realizedVolatility } from "../shared/volatility";
+import { realizedVolatility, realizedVolatilityCadenceIssue } from "../shared/volatility";
 
 export type IvMethod = "quote-mid" | "trade-close";
 export type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
@@ -114,7 +114,9 @@ export async function loadRealizedVolatilities(
       let value: number | null = null;
       try {
         const entry = await dependencies.loadChart({ instrument, bufferRange: "1Y", granularity: "resolution", resolution: "1d" });
-        value = realizedVolatility(resolveEntryValue(entry) ?? [], window);
+        const history = resolveEntryValue(entry) ?? [];
+        // A provider that fell back to weekly or intraday bars would misstate daily HV.
+        value = realizedVolatilityCadenceIssue(history) ? null : realizedVolatility(history, window);
       } catch { value = null; }
       result.set(instrument.symbol, value);
       options.onValue?.(instrument.symbol, value);

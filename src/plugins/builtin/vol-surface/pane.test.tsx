@@ -21,6 +21,7 @@ let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let coordinator: MarketDataCoordinator | undefined;
 let previousCoordinator: ReturnType<typeof getSharedMarketDataCoordinator>;
 let treasury: ReturnType<typeof spyOn<typeof apiClient, "getCloudYieldCurve">> | undefined;
+let impliedVolatility: ReturnType<typeof spyOn<typeof apiClient, "impliedVolatility">> | undefined;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -85,6 +86,8 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
   coordinator = new MarketDataCoordinator(provider);
   setSharedMarketDataCoordinator(coordinator);
   await coordinator.loadSnapshot({ symbol: SYMBOL, exchange: optionTicker ? "" : "NASDAQ" });
+  // Cloud IV history (stored dates, IV rank) stays offline; the live surface is under test.
+  impliedVolatility = spyOn(apiClient, "impliedVolatility").mockRejectedValue(new Error("Cloud IV offline in tests"));
   treasury = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([
     { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: date.toISOString().slice(0, 10) },
     { maturity: "1Y", maturityYears: 1, yield: 4, asOf: date.toISOString().slice(0, 10) },
@@ -129,6 +132,7 @@ afterEach(async () => {
   coordinator?.destroy(); coordinator = undefined;
   setSharedMarketDataCoordinator(previousCoordinator ?? null);
   treasury?.mockRestore(); treasury = undefined;
+  impliedVolatility?.mockRestore(); impliedVolatility = undefined;
 });
 
 test("a pinned unsampled expiry survives handback and loaded selections do not restart the surface", async () => {

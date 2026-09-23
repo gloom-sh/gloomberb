@@ -16,6 +16,9 @@ import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../option
 import { formatStrikeLabel } from "../options/table";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadVolatilitySurface } from "./client";
+import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
+import { formatIvRank, useIvRank } from "../iv-history/rank";
+import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
   type SurfaceSettings, type SurfaceSnapshot } from "./model";
@@ -58,6 +61,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const [limit, setLimit] = usePluginPaneState("expiryLimit", 18);
   const [camera, setCamera] = usePluginPaneState<SurfaceCamera>("camera", DEFAULT_SURFACE_CAMERA);
   const [fixedYears, setFixedYears] = usePluginPaneState<number | null>("fixedYears", null);
+  const [historyDate, setHistoryDate] = usePluginPaneState<string | null>("historyDate", null);
   const [sort, setSort] = useState<{ id: string; direction: "asc" | "desc" }>({ id: "tenor", direction: "asc" });
   const controller = useRef<AbortController | null>(null);
   const [partial, setPartial] = useState<{ key: string; snapshot: SurfaceSnapshot } | null>(null);
@@ -83,11 +87,20 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     });
   // Stable quote reference prevents every streaming tick from restarting all expiry requests.
   }, [requestKey]);
-  const resource = useAsyncResource(symbol && spotAvailable ? request : null);
+  const resource = useAsyncResource(symbol && spotAvailable && !historyDate ? request : null);
+  // Stored close surfaces and IV rank come from the Cloud IV history of the underlying.
+  const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
+  const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
+  const dates = useAsyncResource(underlying ? datesLoader : null);
+  const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, historyDate!)), [underlying, historyDate]);
+  const stored = useAsyncResource(underlying && historyDate ? storedLoader : null);
+  const ivRank = useIvRank(underlying || null);
+  const active = historyDate ? stored : resource;
   useEffect(() => () => controller.current?.abort(), [request]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
-  const snapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
+  const liveSnapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
+  const snapshot: DatedSurfaceSnapshot | null | undefined = historyDate ? stored.data : liveSnapshot;
   useEffect(() => {
     // Existing slices only change selection. A new pin causes one load and then
     // remains in the request identity after its partial snapshots arrive.
@@ -113,7 +126,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     });
   }, [createPaneFromTemplate, expiration, selectedExpiry?.expiration, snapshot?.symbol, symbol, ticker, target?.instrument]);
   useVolSurfaceEvidence({ snapshot, view: activeTab, grid: activeTab === "surface" && bitmapAvailable ? denseGrid : grid,
-    selectedExpiry, loading: resource.loading, bitmapAvailable, axis: activeTab === "surface" && bitmapAvailable ? "forward" : axis,
+    selectedExpiry, loading: active.loading, bitmapAvailable, axis: activeTab === "surface" && bitmapAvailable ? "forward" : axis,
     tenors: activeTab === "surface" && bitmapAvailable ? "listed" : tenors, overlaySmiles });
   const tableSelectedRow = grid?.rows.find((row) => tenors === "fixed"
     ? row.years === (fixedYears ?? grid.rows[0]?.years) : row.expiration === selectedExpiry?.expiration) ?? null;
@@ -124,7 +137,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const cellIndex = nearestIndex(selectedRow, activeTab === "surface" && bitmapAvailable ? surfaceCoordinate : coordinate);
   const tableCellIndex = nearestIndex(tableSelectedRow, coordinate);
   const selectedCell = selectedRow?.cells[cellIndex];
-  const canLoadMore = !!snapshot && snapshot.requested < snapshot.catalogue.length && !resource.loading;
+  const canLoadMore = !historyDate && !!snapshot && snapshot.requested < snapshot.catalogue.length && !resource.loading;
   const loadMore = useCallback(() => { if (canLoadMore) setLimit((current) => current + 12); }, [canLoadMore, setLimit]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const onScroll = useTableLoadMore(scrollRef, canLoadMore, loadMore);
@@ -150,11 +163,21 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     const next = snapshot.expiries[Math.max(0, Math.min(snapshot.expiries.length - 1, index + direction))];
     if (next) setExpiration(next.expiration);
   };
+  const storedDates = dates.data ?? [];
+  const toggleHistory = () => setHistoryDate(historyDate ? null : storedDates[0] ?? null);
+  /** Dates run newest first: a positive step goes back in time; stepping past the newest returns to live. */
+  const stepHistory = (step: number) => {
+    const index = storedDates.indexOf(historyDate ?? "");
+    const next = index + step;
+    setHistoryDate(next < 0 ? null : storedDates[Math.min(storedDates.length - 1, next)] ?? historyDate);
+  };
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.meta || event.alt) return false;
     const key = event.name;
-    if (key === "r") void resource.reload();
+    if (key === "r") { void active.reload(); void dates.reload(); }
     else if (key === "v") cycleTab();
+    else if (key === "t") toggleHistory();
+    else if ((key === "," || key === ".") && historyDate) stepHistory(key === "," ? 1 : -1);
     else if (key === "p") openPricer();
     else if (key === "m" && canLoadMore) loadMore();
     else if (key === "[") nextExpiry(-1);
@@ -175,18 +198,20 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const failures = snapshot?.failures.map((failure) => `${failure.expiration ? expiryLabel(failure.expiration) : "Catalogue"}: ${failure.message}`) ?? [];
   const notices = [...(snapshot?.warnings ?? []), ...failures,
     ...(snapshot?.expiries.flatMap((entry) => entry.warnings.map((warning) => `${expiryLabel(entry.expiration)}: ${warning}`)) ?? []),
-    ...(!spotAvailable && symbol ? ["Underlying price unavailable or stale"] : []),
+    ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
+    ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
     ...(expiration != null && snapshot && !resource.loading && !snapshot.catalogue.includes(expiration)
       ? [`${expiryLabel(expiration)}: selected expiration unavailable`] : []),
-    ...(resource.error ? [resource.error] : [])];
+    ...(active.error ? [active.error] : [])];
   const arbitrageWarnings = snapshot?.warnings.filter((warning) => /calendar|butterfly/i.test(warning)).length ?? 0;
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   usePaneFooter("ovdv", () => ({
     info: [
       ...(arbitrageWarnings ? [{ id: "arbitrage", parts: [{ text: `${arbitrageWarnings} arbitrage warnings`, tone: "warning" as const }] }] : []),
       ...(snapshot ? [{ id: "progress", parts: [{ text: `${snapshot.loaded}/${snapshot.requested} expiries`, tone: "muted" as const }] }] : []),
-      ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(snapshot ? [{ id: "source", parts: [{ text: snapshot.expiries.some((entry) => entry.dataSource === "live") ? "mixed / live" : "delayed", tone: "muted" as const }] }] : []),
+      ...(active.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(snapshot ? [{ id: "source", parts: [{ text: snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
+        : snapshot.expiries.some((entry) => entry.dataSource === "live") ? "mixed / live" : "delayed", tone: "muted" as const }] }] : []),
       ...(snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(selectedExpiry?.fit && activeTab === "smile" ? [{ id: "fit", parts: [{ text: `${selectedExpiry.fit.method} · RMSE ${(selectedExpiry.fit.residual * 100).toFixed(3)} vol pts`, tone: "muted" as const }] }] : []),
     ],
@@ -196,9 +221,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ...(selectedCell?.volatility ? [{ id: "pricer", key: "p", label: "rice", onPress: openPricer }] : []),
       ...(canLoadMore ? [{ id: "more", key: "m", label: "ore expiries", onPress: loadMore }] : []),
       ...(activeTab === "surface" && bitmapAvailable ? [{ id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
+      ...(storedDates.length ? [{ id: "history", key: "t", label: historyDate ? " live" : " stored dates", onPress: toggleHistory }] : []),
     ],
-  }), [snapshot, resource.loading, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain]);
-  const exportMetadata = () => [["method", ivSource, priceSide], ["filters", JSON.stringify(snapshot?.settings)],
+  }), [snapshot, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain]);
+  const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
     ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
       expiry.fit?.method, expiry.fit?.residual, expiry.rateMethod, JSON.stringify(expiry.filterCounts)]) ?? [])];
@@ -240,12 +266,16 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
   return <Box flexDirection="column" width={width} height={height} overflow="hidden">
     <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense focused={focused && activeTab !== "surface"} />
-    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={resource.loading && !snapshot}
-      error={!snapshot ? resource.error : null} empty={!snapshot && !resource.loading} subject="volatility surface">
+    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
+      error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
       <Box height={1} flexDirection="row" paddingX={1} gap={2}>
         <SelectButton label="Expiry" value={String(expiration ?? selectedExpiry?.expiration ?? "")} options={snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? []}
           onChange={(value) => setExpiration(Number(value))} />
-        <Text fg={colors.textDim}>{`Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}`}</Text>
+        {storedDates.length ? <SelectButton label="Date" value={historyDate ?? ""} onChange={(value) => setHistoryDate(value || null)}
+          options={[{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))]} /> : null}
+        <Text fg={colors.textDim}>{snapshot?.stored
+          ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York · mid IV`
+          : `Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}${ivRank ? ` · IV30 ${(ivRank.value * 100).toFixed(1)}% IVR ${formatIvRank(ivRank)} close` : ""}`}</Text>
       </Box>
       {content}
       <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>{selectedCell?.point
@@ -255,8 +285,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   </Box>;
 }
 
+const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+function formatCaptureTime(iso: string): string {
+  const time = Date.parse(iso);
+  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
+}
 function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, focused, onKey, metadata }: {
-  snapshot: SurfaceSnapshot; selected: SurfaceExpiry | null; onSelect: (expiry: SurfaceExpiry) => void;
+  snapshot: DatedSurfaceSnapshot; selected: SurfaceExpiry | null; onSelect: (expiry: SurfaceExpiry) => void;
   forwards: boolean; width: number; height: number; focused: boolean;
   onKey: (event: DataTableKeyEvent) => boolean; metadata: () => unknown[][];
 }) {
@@ -266,7 +301,7 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
   const value = (entry: SurfaceExpiry, id: string): number | string | null => id === "expiry" ? entry.expiration
     : forwards ? [entry.forward, entry.forward == null ? null : entry.forward - snapshot.spot,
       entry.dividendYield == null || entry.years * 365 < DIVIDEND_YIELD_MIN_DAYS ? null : entry.dividendYield * 100,
-      entry.rate == null ? null : entry.rate * 100, entry.parity.pairs.length, entry.asOf?.slice(0, 10) ?? null][Number(id)] ?? null
+      entry.rate == null ? null : entry.rate * 100, snapshot.stored ? null : entry.parity.pairs.length, entry.asOf?.slice(0, 10) ?? null][Number(id)] ?? null
       : [entry.skew.put25, entry.skew.call25, entry.skew.riskReversal, entry.skew.butterfly, entry.skew.moneynessSkew, entry.termSlope][Number(id)] ?? null;
   const rows = [...snapshot.expiries].sort((a, b) => {
     const x = value(a, sort.id), y = value(b, sort.id);

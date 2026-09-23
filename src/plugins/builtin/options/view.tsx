@@ -57,6 +57,8 @@ import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
 import { optionMid } from "../shared/volatility";
+import type { IvStats } from "../iv-history/client";
+import { formatIvRank, useIvRank } from "../iv-history/rank";
 
 type SummaryMetric = { label: string; value: string };
 
@@ -71,8 +73,9 @@ function SummaryRow({ metrics }: { metrics: SummaryMetric[] }) {
   </Box>;
 }
 
-function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency }: {
+function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency, ivRank }: {
   summary: OptionsSummary | null;
+  ivRank?: { stats: IvStats | null } | null;
   enrichment: OptionsEnrichmentSnapshot | null;
   width: number;
   rowCount: number;
@@ -82,6 +85,7 @@ function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency }:
     { label: "ATM IV", value: formatIv(summary?.atmImpliedVolatility ?? undefined) },
     { label: "HV30", value: formatIv(summary?.historicalVolatility30d ?? undefined) },
     { label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
+    ...(ivRank ? [{ label: "IVR", value: formatIvRank(ivRank.stats) }] : []),
   ];
   const move = (amount: number | null | undefined, percent: number | null | undefined) =>
     amount == null || percent == null ? "--" : `${amount.toFixed(2)} ${currency} (${percent.toFixed(2)}%)`;
@@ -110,7 +114,7 @@ function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency }:
   </Box>;
 }
 
-export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
+export function OptionsView({ width, height, focused, onCapture = () => {}, ivRank: showIvRank = false }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const liveStreaming = useLiveStreamingSetting();
@@ -135,6 +139,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const isOpt = target?.isOptionTicker ?? false;
   const parsed = target?.parsedOption ?? null;
   const effectiveTicker = target?.effectiveTicker ?? "";
+  const ivRank = useIvRank(showIvRank ? effectiveTicker : null);
   const effectiveExchange = target?.effectiveExchange ?? "";
   const selectionTargetKey = `${ticker?.metadata.ticker ?? ""}|${target?.cacheKey ?? ""}`;
   const underlyingQuoteTarget = isOpt
@@ -624,7 +629,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     <Box flexDirection="column" flexGrow={1} paddingX={1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
       {summaryRowCount > 0 && (
         <OptionsSummaryStrip summary={summary} enrichment={enrichment} width={width}
-          rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""} />
+          rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""}
+          ivRank={showIvRank ? { stats: ivRank } : null} />
       )}
 
       <Box flexDirection="row" height={1} gap={1}>

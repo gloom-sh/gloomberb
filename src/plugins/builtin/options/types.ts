@@ -38,4 +38,6 @@ export type OptionsViewProps = {
   height: number;
   focused: boolean;
   onCapture?: (capturing: boolean) => void;
+  /** Show IV rank from Cloud IV history; the registered panes opt in, isolated renders stay offline. */
+  ivRank?: boolean;
 };
