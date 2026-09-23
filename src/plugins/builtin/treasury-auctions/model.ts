@@ -118,7 +118,7 @@ export function rateValue(auction: TreasuryAuction): number | null {
 /** Treasury's name for the rate rateValue reports; a bill's High Rate is its discount rate. */
 export function rateLabel(auction: TreasuryAuction): string {
   if (auction.secType === "FRN") return "High discount margin";
-  return auction.highInvestmentRate != null ? "Investment rate" : "High yield";
+  return FILTER_TYPES.bill.has(auction.secType) ? "Investment rate" : "High yield";
 }
 
 /** FRN discount margins read in basis points; every other rate in percent. */

@@ -8,6 +8,7 @@ import {
   matchesFilter,
   nextAuctionSort,
   nextFilter,
+  rateLabel,
   rateValue,
   termLengthDays,
   visibleAuctions,
@@ -67,6 +68,10 @@ describe("auction metrics", () => {
     const frn = auction({ secType: "FRN", securityTerm: "1-Year 11-Month", highDiscountMargin: 0.055, highYield: 3.9 });
     expect(rateValue(frn)).toBe(0.055);
     expect(formatAuctionRate(frn, rateValue(frn), "-")).toBe("5.5bp");
+    // Announced auctions carry no result yet but keep their type's rate name.
+    expect(rateLabel(auction({ secType: "Bill", securityTerm: "13-Week" }))).toBe("Investment rate");
+    expect(rateLabel(auction({ secType: "CMB", securityTerm: "6-Week" }))).toBe("Investment rate");
+    expect(rateLabel(auction({ secType: "Note", securityTerm: "10-Year" }))).toBe("High yield");
   });
 
   test("keeps a zero indirect allocation as 0%, not unknown", () => {
