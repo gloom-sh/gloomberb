@@ -276,6 +276,32 @@ describe("event rows", () => {
     expect(ttm?.qRevenue).toBeUndefined();
   });
 
+  test("sums the reported quarter EPS shown above the TTM row instead of statement GAAP EPS", () => {
+    // UNH: reported (adjusted) 2.92, 2.11, 7.23, 6.38 against GAAP 2.59, 0.02, 6.90, 6.04.
+    const reported = [["2025-09-30", 2.92], ["2025-12-31", 2.11], ["2026-03-31", 7.23], ["2026-06-30", 6.38]] as const;
+    const actions = {
+      symbol: "UNH",
+      dividends: [],
+      splits: [],
+      earnings: [
+        { date: "2026-10-13", dateType: "announcement" as const, epsEstimate: 4.15 },
+        ...reported.map(([date, epsActual]) => ({ date, dateType: "fiscal-period-end" as const, currency: "USD", epsActual })),
+      ],
+    };
+    const financials = {
+      financialCurrency: "USD",
+      quarterlyStatements: [["2025-06-30", 4.08], ["2025-09-30", 2.59], ["2025-12-31", 0.02], ["2026-03-31", 6.9], ["2026-06-30", 6.04]]
+        .map(([date, eps]) => ({ date: date as string, eps: eps as number, totalRevenue: 100 })),
+    };
+    const ttm = () => buildEventRows(actions, null, financials, "USD").find((row) => row.status === "TTM");
+    expect(ttm()?.annualEps).toBeCloseTo(18.64, 10);
+    expect(ttm()).toMatchObject({ date: "2026-06-30", epsCurrency: "USD", annualRevenue: 400 });
+
+    // A quarter without its reported row cannot be summed from the rows, so the statement TTM stays.
+    actions.earnings.splice(1, 1);
+    expect(ttm()?.annualEps).toBeCloseTo(15.55, 10);
+  });
+
   test("omits a TTM row when a flow metric is missing from one of the last four quarters", () => {
     const rows = buildEventRows(null, null, {
       quarterlyStatements: [

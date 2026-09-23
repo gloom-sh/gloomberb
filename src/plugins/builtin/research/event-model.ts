@@ -149,20 +149,46 @@ function estimateValue(pair: EstimatePair): string {
   return growth == null ? "-" : formatPercent(growth);
 }
 
-function ttmRow(quarterlyStatements: readonly FinancialStatement[], financialCurrency?: string): EventRow | null {
+/**
+ * The TTM row sits under the reported quarters, so its EPS sums those rows'
+ * provider EPS (often adjusted) rather than statement GAAP EPS whenever the
+ * four statement quarters each have a reported row.
+ */
+function reportedTtmEps(
+  latestFour: readonly FinancialStatement[],
+  earnings: CorporateActionsData["earnings"],
+): { eps: number; currency?: string } | null {
+  if (latestFour.length < 4) return null;
+  const reported = earnings.filter((earning) => earning.epsActual != null);
+  const quarters = latestFour.map((statement) => {
+    const matches = reported.filter((earning) => statementForEarningsDate([statement], earning) === statement);
+    return matches.length === 1 ? matches[0]! : null;
+  });
+  if (quarters.some((earning) => earning == null)) return null;
+  const currencies = new Set(quarters.map((earning) => earning!.currency));
+  if (currencies.size !== 1) return null;
+  return { eps: quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0), currency: quarters[0]!.currency };
+}
+
+function ttmRow(
+  quarterlyStatements: readonly FinancialStatement[],
+  earnings: CorporateActionsData["earnings"],
+  financialCurrency?: string,
+): EventRow | null {
   const latestFour = quarterlyStatements.slice(-4);
   const ttm = computeTTM([...quarterlyStatements]);
   if (!ttm || (ttm.totalRevenue == null && ttm.eps == null)) return null;
   const latest = latestFour.at(-1);
+  const reportedEps = reportedTtmEps(latestFour, earnings);
   return {
     id: `ttm:${latest?.date ?? ""}`,
     date: latest?.date ?? "",
     status: "TTM",
     period: "4 qtrs",
     detail: "sum",
-    epsCurrency: ttm.currency ?? financialCurrency,
+    epsCurrency: reportedEps ? reportedEps.currency : ttm.currency ?? financialCurrency,
     revenueCurrency: ttm.currency ?? financialCurrency,
-    annualEps: ttm.eps,
+    annualEps: reportedEps ? reportedEps.eps : ttm.eps,
     annualRevenue: ttm.totalRevenue,
     value: "-",
     tone: "muted",
@@ -214,10 +240,10 @@ export function buildEventRows(
 ): EventRow[] {
   const rows: EventRow[] = [];
   const quarterlyStatements = sortedQuarterlyStatements(financials);
-  const ttm = ttmRow(quarterlyStatements, financials?.financialCurrency);
+  const earnings = data?.earnings ?? [];
+  const ttm = ttmRow(quarterlyStatements, earnings, financials?.financialCurrency);
   if (ttm) rows.push(ttm);
 
-  const earnings = data?.earnings ?? [];
   const earningsIds = earningsRowIds(earnings);
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.

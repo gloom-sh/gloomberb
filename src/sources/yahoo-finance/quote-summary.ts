@@ -148,7 +148,7 @@ export async function loadYahooCorporateActions({
   for (const symbol of symbolsToTry) {
     try {
       const params = new URLSearchParams({
-        modules: "price,quoteType,calendarEvents,earningsHistory",
+        modules: "price,quoteType,calendarEvents,earningsHistory,earningsTrend",
       });
       const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
       const [chartResult, summaryResult] = await Promise.allSettled([
@@ -206,7 +206,7 @@ export async function loadYahooEarningsCalendar(
 
     const settled = await Promise.allSettled(
       batch.map(async (symbol) => {
-        const params = new URLSearchParams({ modules: "calendarEvents,earningsTrend,quoteType" });
+        const params = new URLSearchParams({ modules: "calendarEvents,earningsTrend,earningsHistory,quoteType" });
         const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
         const data = await fetchJsonWithCrumb<QuoteSummaryResponse>(url);
         const mod = data.quoteSummary?.result?.[0];

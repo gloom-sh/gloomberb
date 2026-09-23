@@ -204,16 +204,42 @@ export function mapYahooSplits(events: ChartResult["events"], meta?: ChartResult
     .filter((split): split is SplitAction => split !== null);
 }
 
+/** Quarter ends closer than this are the same fiscal quarter under different normalizations. */
+const SAME_QUARTER_MS = 45 * 86_400_000;
+
+/**
+ * Yahoo can keep serving the "0q" trend after that quarter has been reported
+ * (ORCL in Sep 2026 listed the reported Aug quarter against its December date).
+ * Its consensus then describes a past period, and calendarEvents copies it.
+ */
+function yahooReportedQuarterTrend(result: YahooQuoteSummaryResult): YahooEarningsTrend | undefined {
+  const currentQtr = result.earningsTrend?.trend?.find((trend) => trend.period === "0q");
+  const periodEnd = currentQtr?.endDate ? Date.parse(currentQtr.endDate) : Number.NaN;
+  if (!Number.isFinite(periodEnd)) return undefined;
+  const reported = (result.earningsHistory?.history ?? [])
+    .filter((earning) => financeRawNumber(earning.epsActual) != null)
+    .map((earning) => Date.parse(yahooRawDate(earning.quarter) ?? ""))
+    .filter(Number.isFinite);
+  return reported.some((reportedEnd) => periodEnd - reportedEnd < SAME_QUARTER_MS) ? currentQtr : undefined;
+}
+
+/** A calendar value copied from an already reported quarter's trend is not a forecast for the upcoming date. */
+function staleCalendarValue(value: unknown, staleTrendValue: unknown): unknown {
+  const raw = financeRawNumber(value);
+  return raw != null && raw === financeRawNumber(staleTrendValue) ? undefined : value;
+}
+
 export function mapYahooCalendarEarnings(result: YahooQuoteSummaryResult): EarningsAction[] {
   const rawDate = result.calendarEvents?.earnings?.earningsDate?.[0];
   const date = yahooRawDate(rawDate);
   if (!date) return [];
   const timestamp = yahooRawDateTime(rawDate);
+  const staleTrend = yahooReportedQuarterTrend(result);
   return [{
     date,
     dateType: "announcement",
     time: timestamp ? inferEarningsTiming(timestamp) : undefined,
-    epsEstimate: financeRawNumber(result.calendarEvents?.earnings?.earningsAverage),
+    epsEstimate: financeRawNumber(staleCalendarValue(result.calendarEvents?.earnings?.earningsAverage, staleTrend?.earningsEstimate?.avg)),
   }];
 }
 
@@ -248,7 +274,10 @@ export function mapYahooEarningsCalendarEvent(
   const earningsDate = new Date((cal.earningsDate[0]!.raw ?? 0) * 1000);
   if (Number.isNaN(earningsDate.getTime())) return null;
 
-  const currentQtr = result.earningsTrend?.trend?.find((trend) => trend.period === "0q");
+  const staleTrend = yahooReportedQuarterTrend(result);
+  const currentQtr = staleTrend ? undefined : result.earningsTrend?.trend?.find((trend) => trend.period === "0q");
+  const staleEps = staleTrend?.earningsEstimate;
+  const staleRevenue = staleTrend?.revenueEstimate;
   const earningsEstimate = currentQtr?.earningsEstimate;
   const revenueEstimate = currentQtr?.revenueEstimate;
   const epsTrend = currentQtr?.epsTrend;
@@ -292,9 +321,9 @@ export function mapYahooEarningsCalendarEvent(
     earningsDate,
     earningsCallDate: yahooRawDateTime(cal.earningsCallDate?.[0]),
     isDateEstimate: cal.isEarningsDateEstimate ?? null,
-    epsEstimate: estimateValue("epsEstimate", earningsEstimate?.avg, cal.earningsAverage, earningsEstimate?.earningsCurrency, true),
-    epsLow: estimateValue("epsLow", earningsEstimate?.low, cal.earningsLow, earningsEstimate?.earningsCurrency, true),
-    epsHigh: estimateValue("epsHigh", earningsEstimate?.high, cal.earningsHigh, earningsEstimate?.earningsCurrency, true),
+    epsEstimate: estimateValue("epsEstimate", earningsEstimate?.avg, staleCalendarValue(cal.earningsAverage, staleEps?.avg), earningsEstimate?.earningsCurrency, true),
+    epsLow: estimateValue("epsLow", earningsEstimate?.low, staleCalendarValue(cal.earningsLow, staleEps?.low), earningsEstimate?.earningsCurrency, true),
+    epsHigh: estimateValue("epsHigh", earningsEstimate?.high, staleCalendarValue(cal.earningsHigh, staleEps?.high), earningsEstimate?.earningsCurrency, true),
     epsYearAgo: estimateValue("epsYearAgo", earningsEstimate?.yearAgoEps, undefined, earningsEstimate?.earningsCurrency, true),
     epsGrowth: estimateValue("epsGrowth", earningsEstimate?.growth),
     epsAnalysts: estimateValue("epsAnalysts", earningsEstimate?.numberOfAnalysts),
@@ -305,9 +334,9 @@ export function mapYahooEarningsCalendarEvent(
     epsRevisionDown7d: estimateValue("epsRevisionDown7d", epsRevisions?.downLast7Days),
     epsRevisionDown30d: estimateValue("epsRevisionDown30d", epsRevisions?.downLast30days),
     epsActual: null,
-    revenueEstimate: estimateValue("revenueEstimate", revenueEstimate?.avg, cal.revenueAverage, revenueEstimate?.revenueCurrency, true),
-    revenueLow: estimateValue("revenueLow", revenueEstimate?.low, cal.revenueLow, revenueEstimate?.revenueCurrency, true),
-    revenueHigh: estimateValue("revenueHigh", revenueEstimate?.high, cal.revenueHigh, revenueEstimate?.revenueCurrency, true),
+    revenueEstimate: estimateValue("revenueEstimate", revenueEstimate?.avg, staleCalendarValue(cal.revenueAverage, staleRevenue?.avg), revenueEstimate?.revenueCurrency, true),
+    revenueLow: estimateValue("revenueLow", revenueEstimate?.low, staleCalendarValue(cal.revenueLow, staleRevenue?.low), revenueEstimate?.revenueCurrency, true),
+    revenueHigh: estimateValue("revenueHigh", revenueEstimate?.high, staleCalendarValue(cal.revenueHigh, staleRevenue?.high), revenueEstimate?.revenueCurrency, true),
     revenueYearAgo: estimateValue("revenueYearAgo", revenueEstimate?.yearAgoRevenue, undefined, revenueEstimate?.revenueCurrency, true),
     revenueGrowth: estimateValue("revenueGrowth", revenueEstimate?.growth),
     revenueAnalysts: estimateValue("revenueAnalysts", revenueEstimate?.numberOfAnalysts),

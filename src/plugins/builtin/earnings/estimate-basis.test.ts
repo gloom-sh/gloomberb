@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { loadYahooEarningsCalendar } from "../../../sources/yahoo-finance/quote-summary";
-import { mapYahooEarningsCalendarEvent } from "../../../sources/yahoo-finance/mappers";
+import { mapYahooCalendarEarnings, mapYahooEarningsCalendarEvent } from "../../../sources/yahoo-finance/mappers";
 import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachEarningsCalendarPersistence, loadEarningsCalendar, resetEarningsCalendarPersistence } from "./data/cache";
@@ -23,7 +23,7 @@ for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
     let requests = 0;
     const events = await loadYahooEarningsCalendar([symbol], async <T>(url: string) => {
       requests++;
-      expect(new URL(url).searchParams.get("modules")).toBe("calendarEvents,earningsTrend,quoteType");
+      expect(new URL(url).searchParams.get("modules")).toBe("calendarEvents,earningsTrend,earningsHistory,quoteType");
       return { quoteSummary: { result: [recordedEarnings[symbol]] } } as T;
     });
     const event = events[0]!;
@@ -93,6 +93,26 @@ test("missing or incompatible EPS trend currency/period cannot create a 30-day c
   const no30d = synthetic();
   delete no30d.earningsTrend!.trend![0]!.epsTrend!["30daysAgo"];
   expect(earningsEpsChange30d(mapYahooEarningsCalendarEvent(no30d, "SYN")!)).toBeNull();
+});
+
+test("a forecast quarter Yahoo already reports as actual carries no estimates into the next announcement", () => {
+  // ORCL on 2026-09-23: 0q still ended 2026-08-31 (reported 1.92 on Sep 10) against the Dec 10 date,
+  // and calendarEvents repeated that quarter's consensus.
+  const source = synthetic();
+  source.calendarEvents!.earnings = { ...source.calendarEvents!.earnings, earningsAverage: 150, earningsLow: 120, earningsHigh: 7 };
+  source.earningsHistory = { history: [
+    { quarter: { raw: Date.parse("2026-06-30T00:00:00Z") / 1000 }, epsActual: 1.1 },
+    { quarter: { raw: Date.parse("2026-09-30T00:00:00Z") / 1000 }, epsActual: 1.4 },
+  ] };
+  const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
+  expect(event.earningsDate.toISOString().slice(0, 10)).toBe("2026-11-05");
+  expect([event.epsEstimate, event.epsLow, event.revenueEstimate, event.epsAnalysts, event.epsTrend30dAgo]).toEqual([null, null, null, null, null]);
+  expect(event.epsHigh).toBe(7);
+  expect(earningsForecastPeriod(event)).toBeNull();
+  expect(mapYahooCalendarEarnings(source)[0]?.epsEstimate).toBeUndefined();
+
+  source.earningsHistory.history!.pop();
+  expect(mapYahooEarningsCalendarEvent(source, "SYN")!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
 });
 
 test("calendar fallback values retain unknown basis while unrelated trend ranges/counts stay separate", () => {
