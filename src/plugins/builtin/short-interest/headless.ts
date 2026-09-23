@@ -109,8 +109,8 @@ export function createShortInterestHeadless(
         ...(yahooFallback ? {
           complete: false,
           errors: [cloudSessionRequired
-            ? "FINRA history needs a Gloom Cloud sign-in; showing Yahoo's latest two settlements."
-            : "FINRA history unavailable; showing Yahoo's latest two settlements."],
+            ? "Full history needs a Gloom Cloud sign-in; showing the latest two settlements."
+            : "Full history unavailable; showing the latest two settlements."],
         } : {}),
         metadata: { symbol, order: args.options.order, ...(source ? { source } : {}) },
       };

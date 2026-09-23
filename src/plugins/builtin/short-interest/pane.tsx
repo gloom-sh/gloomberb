@@ -126,7 +126,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
       ...(yahooFallback ? [{
         id: "source",
         parts: [{
-          text: cloudSessionRequired ? "Yahoo, sign in for FINRA history" : "Yahoo source",
+          text: cloudSessionRequired ? "latest 2 settlements, sign in for history" : "latest 2 settlements",
           tone: "warning" as const,
         }],
       }] : []),
