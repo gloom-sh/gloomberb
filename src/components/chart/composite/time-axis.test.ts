@@ -130,6 +130,14 @@ describe("adaptive composite time axis", () => {
     expectValidLayout(multiyear, 40);
   });
 
+  test("does not repeat the final year before a mid-year right endpoint", () => {
+    const layout = viewport("2017-11-24T00:00:00.000Z", "2026-09-23T00:00:00.000Z", 120);
+    expect(layout.ticks.filter((tick) => tick.label === "2026")).toHaveLength(1);
+    expect(layout.ticks.at(-1)).toMatchObject({ label: "2026", ratio: 1 });
+    expect(layout.text).toContain("2025");
+    expectValidLayout(layout, 120);
+  });
+
   test("gives a wide NBIS-length chart useful bimonthly density", () => {
     const narrow = viewport(
       "2024-10-21T00:00:00.000Z",

@@ -78,7 +78,9 @@ function buildMetricRows(metrics: DividendMetrics, currency: string): MetricRow[
     { label: "3Y Cash CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
     { label: "Earnings Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
     { label: "Recent Cadence", value: formatFrequency(metrics.paymentFrequency) },
-    { label: "Ex-Dividend", value: formatDate(metrics.exDividendDate) },
+    metrics.nextExDividendDate
+      ? { label: "Next Ex-Date", value: formatDate(metrics.nextExDividendDate) }
+      : { label: "Last Ex-Date", value: formatDate(metrics.lastExDividendDate) },
     { label: "Next Pay", value: formatDate(metrics.nextPayDate) },
   ];
 }

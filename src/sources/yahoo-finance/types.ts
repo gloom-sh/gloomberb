@@ -114,6 +114,8 @@ export type QuoteSummaryResponse = {
         }>;
       };
       calendarEvents?: {
+        exDividendDate?: { raw?: number } | number | null;
+        dividendDate?: { raw?: number } | number | null;
         earnings?: {
           earningsDate?: Array<{ raw?: number; fmt?: string }>;
           earningsCallDate?: Array<{ raw?: number; fmt?: string }>;

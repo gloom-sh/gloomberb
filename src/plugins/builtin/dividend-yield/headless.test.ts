@@ -17,7 +17,8 @@ const fixture: DividendData = {
     growth1Y: 0.04,
     growth3Y: 0.03,
     paymentFrequency: "quarterly",
-    exDividendDate: new Date("2026-08-10T00:00:00.000Z"),
+    lastExDividendDate: new Date("2026-08-10T00:00:00.000Z"),
+    nextExDividendDate: null,
     nextPayDate: new Date("2026-08-17T00:00:00.000Z"),
   },
   payments: [

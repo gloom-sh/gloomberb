@@ -8,12 +8,15 @@ import { dividendReferencePrice, fetchDividendData, type DividendData } from "./
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
+import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
 const PAYMENT_COLUMNS = [
   { key: "exDate", header: "Ex-date" },
-  { key: "amount", header: "Amount", align: "right" as const },
+  { key: "amount", header: "Amount", align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
+      ? formatDistributionAmount(value, row.currency) : value == null ? "-" : String(value) },
   { key: "currency", header: "CCY" },
   { key: "type", header: "Type" },
 ];
@@ -44,6 +47,10 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
     return data;
   },
 };
+
+function dateEntry(label: string, date: Date | null) {
+  return { label, value: date, ...(date ? { formatted: date.toISOString().slice(0, 10) } : {}) };
+}
 
 function matchesType(payment: DividendPayment, type: string): boolean {
   return type === "all" || payment.type === type;
@@ -78,7 +85,7 @@ export function projectDividendYieldHeadless(
       {
         title: "Dividend metrics",
         entries: [
-          { label: "Price", value: data.price },
+          { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency) } : {}) },
           ...(data.stale ? [{ label: "History status", value: "Stale cash history; recent distributions may be missing." }] : []),
           ...(priceStatus ? [{ label: "Price status", value: priceStatus === "stale"
             ? "Stale reference price; cash yield may be out of date."
@@ -91,8 +98,9 @@ export function projectDividendYieldHeadless(
           { label: "1Y Cash Growth", value: metrics.growth1Y, formatted: formatPercent(metrics.growth1Y ?? undefined) },
           { label: "3Y Cash CAGR", value: metrics.growth3Y, formatted: formatPercent(metrics.growth3Y ?? undefined) },
           { label: "Frequency", value: metrics.paymentFrequency },
-          { label: "Ex-dividend", value: metrics.exDividendDate },
-          { label: "Next pay", value: metrics.nextPayDate },
+          dateEntry("Last ex-dividend", metrics.lastExDividendDate),
+          dateEntry("Next ex-dividend", metrics.nextExDividendDate),
+          dateEntry("Next pay", metrics.nextPayDate),
           ...(data.payments.length > 0 && metrics.trailingRate === 0
             ? [{ label: "Cash status", value: "No cash distributions reported in the past 12 months." }] : []),
         ],
@@ -118,7 +126,7 @@ export function projectDividendYieldHeadless(
       priceAsOf: data.priceAsOf ?? null,
       priceStale: data.priceStale ?? null,
       limitations: data.notes ?? [],
-      yieldMethod: "Cash distributions with ex-dates in the preceding 12 months divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
+      yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
       forwardRateMethod: "Provider indicated annual cash rate, only when its currency units are comparable with the share price.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
     },

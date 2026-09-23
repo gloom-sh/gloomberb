@@ -8,6 +8,7 @@ import type { QuoteSummaryResponse } from "../../../sources/yahoo-finance/types"
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarYearsBefore } from "./calendar";
+import { inferCadence, trailingCashAt } from "./trailing-cash";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { dividendPriceAsOf } from "./reference-price";
 
@@ -65,6 +66,8 @@ export function extractDividendFields(payload: unknown): QuoteSummaryDividendFie
   const summaryDetail = result.summaryDetail;
   const financialData = result.financialData;
   const defaultKeyStats = result.defaultKeyStatistics;
+  // Stock summaries often leave the payment date only in calendarEvents.
+  const calendarEvents = result.calendarEvents;
 
   return {
     trailingAnnualDividendRate: financeRawNumber(summaryDetail?.trailingAnnualDividendRate) ?? null,
@@ -76,8 +79,8 @@ export function extractDividendFields(payload: unknown): QuoteSummaryDividendFie
       ?? financeRawNumber(defaultKeyStats?.payoutRatio)
       ?? financeRawNumber(summaryDetail?.payoutRatio)
       ?? null,
-    exDividendDate: financeRawNumber(summaryDetail?.exDividendDate) ?? null,
-    dividendDate: financeRawNumber(summaryDetail?.dividendDate) ?? null,
+    exDividendDate: financeRawNumber(summaryDetail?.exDividendDate) ?? financeRawNumber(calendarEvents?.exDividendDate) ?? null,
+    dividendDate: financeRawNumber(calendarEvents?.dividendDate) ?? financeRawNumber(summaryDetail?.dividendDate) ?? null,
     currency: typeof summaryDetail?.currency === "string" ? summaryDetail.currency : null,
   };
 }
@@ -150,7 +153,7 @@ async function fetchDividendDataForSymbol(
 ): Promise<DividendData> {
   const quoteUrl =
     `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`
-    + "?modules=summaryDetail,financialData,defaultKeyStatistics";
+    + "?modules=summaryDetail,financialData,defaultKeyStatistics,calendarEvents";
 
   const [chartResult, quoteResult] = await Promise.allSettled([
     trackRequest("dividend-history", () =>
@@ -248,19 +251,21 @@ export function buildDividendMetrics(
 ): DividendMetrics {
   const now = options.now ?? new Date();
   const eligible = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0);
-  const cutoff = calendarYearsBefore(now, 1);
   const trailingRate = options.historyAvailable !== false
-    ? eligible.filter((payment) => payment.exDate > cutoff).reduce((sum, payment) => sum + payment.amount, 0)
+    ? trailingCashAt(eligible, now)
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const forwardRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
   const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
   const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
 
-  const exDividendDate = quoteFields?.exDividendDate != null
-    ? reportedDividendDate(quoteFields.exDividendDate)
-    : payments.length > 0
-      ? payments[0]!.exDate
-      : null;
+  // A reported ex-date can be the latest one or an announced one; keep them apart.
+  const reportedExDate = reportedDividendDate(quoteFields?.exDividendDate ?? null);
+  const pastExDates = payments.filter((payment) => payment.exDate <= now).map((payment) => payment.exDate.getTime());
+  if (reportedExDate && reportedExDate <= now) pastExDates.push(reportedExDate.getTime());
+  const lastExDividendDate = pastExDates.length > 0 ? new Date(Math.max(...pastExDates)) : null;
+  const upcomingExDates = payments.filter((payment) => payment.exDate > now).map((payment) => payment.exDate.getTime());
+  if (reportedExDate && reportedExDate > now) upcomingExDates.push(reportedExDate.getTime());
+  const nextExDividendDate = upcomingExDates.length > 0 ? new Date(Math.min(...upcomingExDates)) : null;
 
   const reportedPayDate = reportedDividendDate(quoteFields?.dividendDate ?? null);
   const today = new Date(now.toISOString().slice(0, 10));
@@ -275,7 +280,8 @@ export function buildDividendMetrics(
     growth1Y,
     growth3Y,
     paymentFrequency: options.historyAvailable !== false ? inferFrequency(eligible, now) : null,
-    exDividendDate,
+    lastExDividendDate,
+    nextExDividendDate,
     nextPayDate,
   }, currentPrice);
 }
@@ -289,34 +295,17 @@ export function repriceDividendMetrics(metrics: DividendMetrics, price: number |
   };
 }
 
-const DAY = 24 * 60 * 60 * 1000;
-
 function computeGrowth(payments: DividendPayment[], years: number, now: Date): number | null {
-  const recentStart = calendarYearsBefore(now, 1);
   const priorEnd = calendarYearsBefore(now, years);
   const priorStart = calendarYearsBefore(priorEnd, 1);
   // A new fund's partial first year is not a full-year growth baseline.
   if (!payments.some((payment) => payment.exDate <= priorStart)) return null;
-  const recent = payments.filter((p) => p.exDate > recentStart && p.exDate <= now).reduce((sum, p) => sum + p.amount, 0);
-  const prior = payments.filter((p) => p.exDate > priorStart && p.exDate <= priorEnd).reduce((sum, p) => sum + p.amount, 0);
+  const recent = trailingCashAt(payments, now);
+  const prior = trailingCashAt(payments, priorEnd);
   return prior > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
 }
 
 function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {
   if (!payments.some((payment) => payment.exDate > calendarYearsBefore(now, 1))) return null;
-  const cutoff = calendarYearsBefore(now, 2);
-  // Old suspensions or a former schedule must not redefine a fund's recent cadence.
-  const dates = [...new Set(payments.filter((payment) => payment.exDate > cutoff).map((payment) => payment.exDate.getTime()))]
-    .sort((a, b) => a - b);
-  if (dates.length < 2) return null;
-  const gaps: number[] = [];
-  for (let i = 1; i < dates.length; i++) {
-    gaps.push((dates[i]! - dates[i - 1]!) / DAY);
-  }
-  const avgGapDays = gaps.reduce((sum, g) => sum + g, 0) / gaps.length;
-  if (Math.abs(avgGapDays - 30) < 8) return "monthly";
-  if (Math.abs(avgGapDays - 91) < 18) return "quarterly";
-  if (Math.abs(avgGapDays - 182) < 36) return "semi-annual";
-  if (Math.abs(avgGapDays - 365) < 73) return "annual";
-  return "irregular";
+  return inferCadence(payments, now);
 }

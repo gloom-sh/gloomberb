@@ -553,6 +553,8 @@ function layoutTimeAxis({
   let previousEnd = startLabel.length - 1;
   for (const candidate of candidates.filter((entry) => !entry.boundary)) {
     const label = formatInteriorLabel(candidate.timestamp, previousTimestamp, interval);
+    // A year boundary inside the final year would repeat the right endpoint's year.
+    if (label === endLabel) continue;
     const center = candidate.ratio * Math.max(axisWidth - 1, 0);
     const start = resolveLabelStart(center, label, axisWidth);
     const end = start + label.length - 1;

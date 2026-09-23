@@ -48,8 +48,8 @@ test("invalid summary dates cannot break reports or invalidate independent cash 
       const result = await definition.load(request, context);
       expect(result).toMatchObject({ complete: false, errors: [INVALID_DIVIDEND_SUMMARY_DATE],
         metadata: { historyAvailable: true, historyError: null, summaryError: INVALID_DIVIDEND_SUMMARY_DATE } });
-      expect(metric(result, field === "exDividendDate" ? "Ex-dividend" : "Next pay")).toBeNull();
-      expect(metric(result, field === "exDividendDate" ? "Next pay" : "Ex-dividend")).toEqual(new Date(validDate * 1000));
+      expect(metric(result, field === "exDividendDate" ? "Next ex-dividend" : "Next pay")).toBeNull();
+      expect(metric(result, field === "exDividendDate" ? "Next pay" : "Next ex-dividend")).toEqual(new Date(validDate * 1000));
       expect(metric(result, "Trailing rate")).toBe(4);
       expect(metric(result, "Forward rate")).toBe(20);
       expect(renderHeadlessPaneText(definition, result, request, "DVD")).toContain(INVALID_DIVIDEND_SUMMARY_DATE);
@@ -60,7 +60,7 @@ test("invalid summary dates cannot break reports or invalidate independent cash 
   }
   nativeSource("USD", { cash }, { currency: "USD", exDividendDate: { raw: 0 } });
   const epoch = await definition.load(request, context);
-  expect(metric(epoch, "Ex-dividend")).toEqual(new Date(0));
+  expect(metric(epoch, "Next ex-dividend")).toBeNull();
   expect(epoch.metadata?.summaryError).toBeNull();
 });
 
@@ -196,7 +196,8 @@ test("reported future ex-dates and payment dates stay distinct and cannot become
   const result = await definition.load(request, context);
   expect(metric(result, "Trailing rate")).toBe(4);
   expect(metric(result, "Forward rate")).toBe(20);
-  expect(metric(result, "Ex-dividend")).toEqual(new Date(futureEx * 1000));
+  expect(metric(result, "Next ex-dividend")).toEqual(new Date(futureEx * 1000));
+  expect(metric(result, "Last ex-dividend")).toEqual(new Date((day - 10 * 86400) * 1000));
   expect(metric(result, "Next pay")).toEqual(new Date(futurePay * 1000));
   const history = result.sections[1]!;
   expect("rows" in history ? history.rows : []).toMatchObject([

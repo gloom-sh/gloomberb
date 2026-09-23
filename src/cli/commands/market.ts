@@ -12,7 +12,7 @@ import type {
 } from "../../types/financials";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
-import { formatCompact } from "../../utils/format";
+import { formatCompact, formatDistributionAmount } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
@@ -205,17 +205,25 @@ function analystRows(data: AnalystResearchData) {
   }));
 }
 
+/** Provider values carry binary floating-point noise such as 0.26940000000000003. */
+function cleanDecimal(value: number | undefined): string {
+  return value == null || !Number.isFinite(value) ? "" : String(Number(value.toFixed(6)));
+}
+
 function corporateActionRows(data: CorporateActionsData) {
+  const currency = /^[A-Z]{3}$/.test(data.currency ?? "") ? data.currency! : null;
   return [
     ...data.earnings.map((event) => ({
       type: "earnings",
       date: event.date,
-      detail: event.epsActual == null ? `est ${event.epsEstimate ?? ""}` : `eps ${event.epsActual}`,
+      // History rows are keyed by fiscal quarter end, upcoming ones by announcement date.
+      detail: (event.epsActual == null ? `est ${cleanDecimal(event.epsEstimate)}` : `eps ${cleanDecimal(event.epsActual)}`)
+        + (event.dateType === "fiscal-period-end" ? " (period end)" : ""),
     })),
     ...data.dividends.map((event) => ({
       type: "dividend",
       date: event.exDate,
-      detail: String(event.amount),
+      detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
     })),
     ...data.splits.map((event) => ({
       type: "split",

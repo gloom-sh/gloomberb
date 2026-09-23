@@ -17,6 +17,8 @@ export interface DividendMetrics {
   growth1Y: number | null;
   growth3Y: number | null;
   paymentFrequency: "monthly" | "quarterly" | "semi-annual" | "annual" | "irregular" | null;
-  exDividendDate: Date | null;
+  lastExDividendDate: Date | null;
+  /** Announced ex-date after now, from the summary or a future-dated history record. */
+  nextExDividendDate: Date | null;
   nextPayDate: Date | null;
 }
