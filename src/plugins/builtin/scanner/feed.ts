@@ -73,9 +73,8 @@ export function useScannerStatusFooter(
       }];
     }
     const status = state.payload?.status;
-    if (!status || status === "starting") {
-      return [{ id: "scanner-status", parts: [{ text: "connecting", tone: "muted" as const }] }];
-    }
+    // The feed connects in the background; nothing to report until it answers.
+    if (!status || status === "starting") return [];
     if (status === "live") {
       return [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
     }

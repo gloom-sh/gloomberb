@@ -7,7 +7,8 @@ export const cryptoMarketsCache = createPluginCache<CryptoMarketsPayload>({
   kind: "crypto-markets",
   source: "gloom-cloud",
   schemaVersion: 1,
-  policy: { staleMs: 30_000, expireMs: 86_400_000 },
+  // Stale before the pane's 15-second refresh, so every tick fetches.
+  policy: { staleMs: 10_000, expireMs: 86_400_000 },
 });
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);

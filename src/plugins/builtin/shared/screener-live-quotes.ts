@@ -24,7 +24,7 @@ export interface ScreenerQuoteFreshness {
   subscriptionStartedAt: number;
 }
 
-export type ScreenerQuoteFeedStatus = "live" | "mixed" | "connecting" | "polling";
+export type ScreenerQuoteFeedStatus = "live" | "mixed" | "polling";
 
 export function buildScreenerQuoteTargets(
   rows: readonly Pick<ScreenerQuoteRow, "symbol" | "exchange">[],
@@ -125,11 +125,12 @@ export function resolveScreenerQuoteFeedStatus(
 
   if (liveCount === targets.length) return "live";
   if (liveCount > 0) return "mixed";
+  // The socket connects in the background; there is nothing to report yet.
   if (
     fallbackCount === 0
     && freshness.now - freshness.subscriptionStartedAt < STREAM_CONNECTING_GRACE_MS
   ) {
-    return "connecting";
+    return null;
   }
   return "polling";
 }

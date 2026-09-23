@@ -13,7 +13,7 @@ import {
 import { useTickerSourceActivate } from "../../shared/ticker-source";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
-import { useAppActive } from "../../../../state/app/activity";
+import { useAppVisible } from "../../../../state/app/activity";
 import {
   useAppSelector,
   usePaneCollection,
@@ -66,7 +66,7 @@ import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
   const paneInstance = usePaneInstance();
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const config = usePaneAppConfig();
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);

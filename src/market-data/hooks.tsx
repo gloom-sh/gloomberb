@@ -4,7 +4,7 @@ import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types
 import type { TickerRecord } from "../types/ticker";
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest, TickerInstrumentOptions } from "./request-types";
 import { instrumentFromTicker } from "./request-types";
-import { useAppActive } from "../state/app/activity";
+import { useAppVisible } from "../state/app/activity";
 import {
   getSharedMarketDataCoordinator,
   resolveEntryValue,
@@ -218,7 +218,7 @@ export function useChartQueries(
   const keys = useMemo(() => requests.map((request) => buildChartKey(request)), [requestKey]);
   const keysVersion = useCoordinatorKeysVersion(keys);
   const coordinator = getSharedMarketDataCoordinator();
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const wasActiveRef = useRef(appActive);
   const entries = useMemo(() => (
     coordinator
@@ -270,7 +270,7 @@ export function useOptionsQuery(
   useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
   const entry = coordinator && request ? coordinator.getOptionsEntry(request) : null;
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const refreshIntervalMs = Math.max(0, options.refreshIntervalMs ?? 0);
 
   useEffect(() => {

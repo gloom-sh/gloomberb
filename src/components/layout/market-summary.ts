@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
-import { useAppActive } from "../../state/app/activity";
+import { useAppVisible } from "../../state/app/activity";
 import { useAppSelector } from "../../state/app/context";
 import { selectBaseCurrency } from "../../state/selectors-ui";
 import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
@@ -60,7 +60,7 @@ export function resolveMarketSummaryFit(options: {
 
 export function useMarketSummary(): MarketSummary {
   const colors = useThemeColors();
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const baseCurrency = useAppSelector(selectBaseCurrency);
   const spyQuoteEntry = useQuoteEntry("SPY", null);
   const spyQuote = useResolvedEntryValue(spyQuoteEntry);

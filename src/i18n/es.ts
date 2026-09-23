@@ -647,7 +647,6 @@ export const es: Record<string, string> = {
   "Real-time": "Tiempo real",
   "real-time options": "opciones en tiempo real",
   "mixed real-time and delayed options": "opciones mixtas en tiempo real y diferidas",
-  "connecting real-time options": "conectando opciones en tiempo real",
   "options delayed fallback": "respaldo diferido de opciones",
   "crossed quote": "cotización cruzada",
   "one-sided quote": "cotización unilateral",

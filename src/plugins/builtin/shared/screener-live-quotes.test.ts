@@ -88,6 +88,13 @@ describe("screener live quotes", () => {
       subscriptionStartedAt: 900,
     })).toBe("live");
   });
+
+  test("reports nothing while the stream is still connecting", () => {
+    const targets = buildScreenerQuoteTargets([{ symbol: "AAPL", exchange: "NASDAQ" }], null);
+    const entries = new Map<string, QueryEntry<Quote>>();
+    expect(resolveScreenerQuoteFeedStatus(targets, entries, { now: 1_000, subscriptionStartedAt: 900 })).toBeNull();
+    expect(resolveScreenerQuoteFeedStatus(targets, entries, { now: 60_000, subscriptionStartedAt: 900 })).toBe("polling");
+  });
 });
 
 test("replacement snapshots clear unavailable fields and select only the qualified listing", () => {
