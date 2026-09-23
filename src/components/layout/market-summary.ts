@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppVisible } from "../../state/app/activity";
@@ -7,11 +7,30 @@ import { selectBaseCurrency } from "../../state/selectors-ui";
 import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
 import { t } from "../../i18n";
 import { useQuoteEntry, useResolvedEntryValue } from "../../market-data/hooks";
+import { useQuoteStreaming } from "../../state/hooks/quote-streaming";
+import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { formatPercentRaw } from "../../utils/format";
 import { formatMarketPrice } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 
-const SPY_REFRESH_MS = 5 * 60_000; // 5 min
+/**
+ * SPY rides the shared feed. The snapshot poll only runs while the feed has
+ * not delivered for this long: signed out, a dropped connection, or a build
+ * without a streaming source.
+ */
+const SPY_FALLBACK_REFRESH_MS = 5 * 60_000;
+/**
+ * The header is always on screen but never the thing being read, so SPY ranks
+ * as a visible monitor symbol with a low weight: panes the user is working in
+ * win any per-plan cap on streamed symbols.
+ */
+const SPY_STREAM_TARGETS: QuoteSubscriptionTarget[] = [{
+  symbol: "SPY",
+  exchange: "",
+  surface: "monitor",
+  visible: true,
+  weight: 20,
+}];
 
 export interface MarketSummary {
   baseCurrency: string;
@@ -74,15 +93,23 @@ export function useMarketSummary(): MarketSummary {
     return () => clearInterval(id);
   }, [appActive, mktState]);
 
+  useQuoteStreaming(SPY_STREAM_TARGETS);
+  const spyQuoteRef = useRef(spyQuote);
+  spyQuoteRef.current = spyQuote;
+  // Snapshot loads only while the feed is quiet. The first one shares its
+  // request with the paint `useQuoteEntry` starts on mount.
   useEffect(() => {
     if (!appActive) return;
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) return;
-    const fetchSpy = async () => {
-      await coordinator.loadQuote({ symbol: "SPY" }).catch(() => {});
+    const topUp = () => {
+      const quote = spyQuoteRef.current;
+      const streamedAt = quote?.delivery === "stream" && quote.stale !== true ? quote.receivedAt ?? 0 : 0;
+      if (Date.now() - streamedAt < SPY_FALLBACK_REFRESH_MS) return;
+      void coordinator.loadQuote({ symbol: "SPY" }).catch(() => {});
     };
-    fetchSpy();
-    const id = setInterval(fetchSpy, SPY_REFRESH_MS);
+    topUp();
+    const id = setInterval(topUp, SPY_FALLBACK_REFRESH_MS);
     return () => { clearInterval(id); };
   }, [appActive]);
 
