@@ -191,11 +191,10 @@ export function formatMoverPrice(price: number | null, currency: string): string
     { minimumFractionDigits: currencyMinorDigits(unit.currency) });
 }
 
-
-/** Range endpoints belong to the original screener price denomination. */
 /** Keyed by the overlaid row, which the shared overlay keeps while its quote holds. */
 const convertedOverlays = new WeakMap<ScreenerQuote, ScreenerQuote>();
 
+/** Range endpoints belong to the original screener price denomination. */
 export function overlayMarketMoverQuotes(
   rows: readonly ScreenerQuote[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
