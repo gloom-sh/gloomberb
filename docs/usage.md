@@ -5,6 +5,7 @@
 - [Research data conventions](research-data.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
+- [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
 - [CLI commands and output formats](#cli)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
@@ -281,6 +282,20 @@ percentile and date when the pane is wide enough; a flow rule shows its latest
 matching print, or how many of its contracts are being watched. **History** lists the alerts
 delivered to your phone over the last 90 days; `r` refreshes it. The phone's
 notification settings have one switch for these market and research alerts.
+
+## Live prices and refresh cadence
+
+Prices come from one shared stream: a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update on every frame (about 10 per second); everything else about once a second. A pane covered by floating windows keeps its subscriptions at that slower rate and its refresh clocks rest until it is uncovered. Minimizing or hiding the app pauses streams and polling; the terminal always counts as visible. Plans that cap streamed symbols spend them on the rows in view.
+
+What moves while you watch:
+
+- Portfolios and watchlists: price, change, volume, market value, P&L and weight. MCAP, P/E, FWD P/E and DIV% are repriced from the live price when the per-share figure behind each (shares outstanding, EPS, forward EPS, dividend per share) is on the quote's currency basis; otherwise they keep the served value. 52W% counts today's range, and TARGET% uses the live price when the target is in the listing's currency. `DES` uses the same rules. Broker account totals, Net Liq and P&L in the portfolio header and `PORT` move with the positions' quotes from the broker's last snapshot.
+- `WEI`, `FUT`, `BI`/`SP`, `FXC`, `EQS` rows, `CRYP`, the header SPY chip and market state, and price alerts, which trigger on the tick that crosses.
+- Charts, including the research Chart tab: the forming bar takes each quote's high, low, close and volume, and settles to the source's bar shortly after it closes.
+- `OMON`: Last, volume, IV and Greeks stream during the regular session; a real-time chain also reloads every 15 seconds. `OVDV` reloads a real-time surface every 15 seconds in session at the live spot; on desktop and web the 3D surface eases into its new shape. `HVG` re-reads its ATM IV every minute in session. `VOLS` and the `VIX` curve stream index levels; the rest re-read every 15 seconds in session.
+- `CTM` and `WIRP` refresh delayed contract quotes every minute while Globex trades.
+
+News panes refresh every two minutes while the app is visible. A hidden browser tab falls back to the configured refresh interval, which still feeds breaking-news notifications; the desktop app keeps two minutes while minimized. `VF` toggles value flashing: a changed price dims for 300 ms, each symbol on its own clock, at most once every 600 ms.
 
 ## CLI
 

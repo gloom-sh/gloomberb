@@ -232,10 +232,23 @@ more of what is loaded" uses the same helper.
   from `createPluginCache`. First load shows `loadingText(subject)`, a hard
   failure `unavailableText(subject)` plus the message; once data exists a
   refresh never blanks it. Start `loading` at `true` when the first frame
-  would otherwise claim an empty result. Live quotes go through
+  would otherwise claim an empty result. `useAutoRefresh` follows the
+  configured interval; pass `{ intervalMs }` only for data that moves
+  faster (a delayed curve in session). Live quotes go through
   `gloomberb/quotes` and `LIVE_STREAMING_QUICK_SETTING`. Fetching lives in
   `client.ts`, projection in `view.ts`/`model.ts`, shared with the `headless`
   definition.
+- Live data: gate timers, polls and streams on `usePaneVisible()` (app
+  visible and pane not covered), not on focus; `useAppVisible()` is for work
+  that must continue while the pane is covered. A covered pane keeps its
+  quote subscriptions at the off-screen cadence instead of dropping them.
+  `useTickerFinancialsMap` is passive and only moves while another pane
+  streams the symbol; a pane showing a price uses `useLiveTickerFinancials`
+  or `useLiveTickerFinancialsMap` (`visible: false` for totals and weights).
+  A pane that only needs the symbol uses `usePaneTickerIdentity`, not
+  `usePaneTicker`, which re-renders on every tick. Tables fed by ticks keep
+  `renderCell` stable (read data through refs) and pass `getRowVersion`, so
+  one symbol's tick redraws one row.
 - Everything interactive works by mouse and keyboard through the kit.
   Pane-local keys are single unmodified letters declared as hints. Reserved:
   `j`/`k`/arrows move, Enter opens, Esc/Backspace back, `r` refresh, `!`

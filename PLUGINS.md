@@ -1110,6 +1110,23 @@ usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 
 The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves.
 
+`useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
+
+Gate any other timer, poll or stream on `usePaneVisible()`, not on pane focus: it is true while the app can be seen and the pane is not covered by floating windows. `useAppVisible()` is the app half alone, for work that should continue while the pane is covered.
+
+`useTickerFinancialsMap` is passive: it reads the shared store and opens no stream, so its prices only move while another pane streams the same symbols. A pane that shows a price, or something computed from it, reads through the live variants, which also subscribe; identical symbols share one subscription across panes, and a covered pane's quotes drop to the off-screen cadence:
+
+```tsx
+import { useLiveTickerFinancials, useLiveTickerFinancialsMap, usePaneTickerIdentity } from "gloomberb/react";
+
+const { symbol, ticker } = usePaneTickerIdentity();
+const financials = useLiveTickerFinancials(symbol, ticker);
+// Totals and weights only aggregate prices: stream them off screen.
+const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
+```
+
+`usePaneTickerIdentity()` returns the pane's symbol, ticker and contract without its financials; `usePaneTicker()` also re-renders on every quote tick of the symbol, so a pane that only needs the symbol (news, filings, holders) uses the identity hook.
+
 `createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues` and `cycleSortPreference` from `gloomberb/utils` so mixed columns sort like the host's.
 
 ### Live quotes
