@@ -1,5 +1,4 @@
 import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { hasLikelyQuoteUnitMismatch } from "../../../utils/currency-units";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../../utils/market-capitalization";
 
@@ -13,10 +12,10 @@ import { selectMarketCapitalization, type MarketCapitalization } from "../../../
 /** The server's bound for repricing a served trailing P/E: beyond it the source
  * multiple is on another share class or currency unit, not a few days old. */
 const PRICE_DRIFT = 1.5;
-/** Shares times the reference close must land near the stored capitalization;
- * ADR ratios and share classes sit outside this band. */
-const SHARE_BASIS_LOW = 0.8;
-const SHARE_BASIS_HIGH = 1.25;
+/** The server's close-basis tolerance: a capitalization's implied share price
+ * must sit this close to a price the listing traded at before its share count
+ * is trusted to scale the quote. */
+const PRICE_BASIS = 0.005;
 
 /** Optional base values; used only when the served block carries them. */
 type ValuationFundamentals = Fundamentals & { forwardEps?: number; dividendRate?: number };
@@ -30,11 +29,11 @@ function positive(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-/** The price valuations follow: the displayed session price of an equity quote. */
+/** The price valuations follow: the quote's own price, as the server reprices
+ * served statistics, rather than a separate pre- or post-market print. */
 function liveValuationPrice(quote: Quote | null | undefined): number | null {
   if (!quote || quote.priceBasis === "percent-of-par") return null;
-  const price = getActiveQuoteDisplay(quote)?.price;
-  return positive(price) ? price : null;
+  return positive(quote.price) ? quote.price : null;
 }
 
 /** A per-share base value shares the quote's basis only when the block's
@@ -79,9 +78,23 @@ export function liveDividendYield(quote: Quote | null | undefined, fundamentals:
 }
 
 /**
+ * Whether a capitalization's implied share price is one this listing traded
+ * at: the prior close (a source capitalization) or anywhere in the session
+ * range (one repriced when it was served), within the server's tolerance.
+ * META's class A count implies 851 against a 747 close and fails; so does an
+ * ADR count off by its ratio.
+ */
+function impliedPriceOnListing(implied: number, quote: Quote): boolean {
+  const anchors = [quote.previousClose, quote.low, quote.high].filter(positive);
+  if (anchors.length === 0) return false;
+  return implied >= Math.min(...anchors) * (1 - PRICE_BASIS)
+    && implied <= Math.max(...anchors) * (1 + PRICE_BASIS);
+}
+
+/**
  * Market capitalization at the current price. The stored capitalization keeps
- * its currency; shares outstanding only replace it when shares times the
- * reference close reproduce it, so a count for another class or listing
+ * its currency; shares outstanding only replace it when they reproduce it at
+ * a price the listing traded at, so a count for another class or listing
  * never scales the price.
  */
 export function liveMarketCapitalization(
@@ -95,19 +108,21 @@ export function liveMarketCapitalization(
   if (!quote || price == null || !positive(shares) || !positive(stored.value) || stored.currency !== quote.currency) {
     return { ...stored, live: false };
   }
-  const reference = positive(quote.previousClose) ? quote.previousClose : price;
-  const basis = shares * reference / stored.value;
-  if (basis < SHARE_BASIS_LOW || basis > SHARE_BASIS_HIGH) return { ...stored, live: false };
+  if (!impliedPriceOnListing(stored.value / shares, quote)) return { ...stored, live: false };
   return { ...stored, value: shares * price, live: true };
 }
 
 /**
  * The 52-week extremes with today's session folded in, so a new high or low
- * reads 100% or 0% instead of pinning against a stale bound.
+ * reads 100% or 0% instead of pinning against a stale bound. A caller that
+ * positions a pre- or post-market price passes it so the range contains it.
  */
-export function liveFiftyTwoWeekRange(quote: Quote | null | undefined): { low: number; high: number } | null {
+export function liveFiftyTwoWeekRange(
+  quote: Quote | null | undefined,
+  displayedPrice?: number | null,
+): { low: number; high: number } | null {
   if (!quote || !positive(quote.low52w) || !positive(quote.high52w)) return null;
-  const session = [quote.price, quote.high, quote.low].filter(positive);
+  const session = [quote.price, quote.high, quote.low, displayedPrice].filter(positive);
   const low = Math.min(quote.low52w, ...session);
   const high = Math.max(quote.high52w, ...session);
   return high > low ? { low, high } : null;

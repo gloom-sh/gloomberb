@@ -26,20 +26,37 @@ describe("live valuation", () => {
     expect(liveMarketCapitalization(quote(), fundamentals)).toMatchObject({ value: 1_100, currency: "USD", live: true });
     // The basis check reads the reference close, so a large move today still reprices.
     expect(liveMarketCapitalization(quote({ price: 140, change: 40 }), fundamentals)).toMatchObject({ value: 1_400, live: true });
-    // Two ordinary shares per listed share (an ADR or another class) keep the stored cap.
+    // Two ordinary shares per listed share (an ADR ratio) keep the stored cap.
     expect(liveMarketCapitalization(quote(), { ...fundamentals, sharesOutstanding: 20 })).toMatchObject({ value: 1_000, live: false });
     // An issuer capitalization in another currency than the listing is never scaled by its price.
     expect(liveMarketCapitalization(quote(), { ...fundamentals, marketCapCurrency: "EUR" }))
       .toMatchObject({ value: 1_000, currency: "EUR", live: false });
-    // A quote's own capitalization is repriced on the same terms.
-    expect(liveMarketCapitalization(quote({ marketCap: 990 }), fundamentals)).toMatchObject({ value: 1_100, live: true });
+    // A capitalization priced during today's session (the quote's own, or one
+    // the server repriced) proves its count against the session range.
+    expect(liveMarketCapitalization(quote({ marketCap: 1_050, low: 98, high: 112 }), fundamentals))
+      .toMatchObject({ value: 1_100, live: true });
+    expect(liveMarketCapitalization(quote({ marketCap: 1_050 }), fundamentals)?.live).toBe(false);
     expect(liveMarketCapitalization(quote({ priceBasis: "percent-of-par" }), fundamentals)?.live).toBe(false);
+  });
+
+  test("keeps the stored cap when the share count is on another class", () => {
+    // META: the class A count implies 851 against a 747 close.
+    const meta = quote({ price: 750, change: 3, previousClose: 747, low: 741, high: 756 });
+    const classA: Fundamentals = { marketCap: 1.88e12, marketCapCurrency: "USD", sharesOutstanding: 1.88e12 / 851 };
+    expect(liveMarketCapitalization(meta, classA)).toMatchObject({ value: 1.88e12, live: false });
+    // A count about 1% off the close is not the close either.
+    const drifted: Fundamentals = { ...classA, sharesOutstanding: 1.88e12 / 755 };
+    expect(liveMarketCapitalization({ ...meta, low: 745, high: 749 }, drifted)?.live).toBe(false);
+    // The full count at the close reprices.
+    const full: Fundamentals = { ...classA, sharesOutstanding: 1.88e12 / 747 };
+    expect(liveMarketCapitalization(meta, full)?.value).toBeCloseTo(1.88e12 / 747 * 750, -3);
   });
 
   test("reprices trailing P/E with the served rules", () => {
     const fundamentals: Fundamentals = { trailingPE: 20, eps: 5, marketCapCurrency: "USD" };
     expect(liveTrailingPE(quote(), fundamentals)).toBeCloseTo(22);
-    expect(liveTrailingPE(quote({ marketState: "POST", postMarketPrice: 120 }), fundamentals)).toBeCloseTo(24);
+    // The quote's own price, as served, not a separate post-market print.
+    expect(liveTrailingPE(quote({ marketState: "POST", postMarketPrice: 120 }), fundamentals)).toBeCloseTo(22);
     // Losses and zero earnings keep the stored multiple and its N/M display.
     expect(liveTrailingPE(quote(), { ...fundamentals, trailingPE: -12, eps: -9 })).toBe(-12);
     expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0 })).toBe(20);
@@ -60,6 +77,8 @@ describe("live valuation", () => {
   test("folds today's session into the 52-week range", () => {
     expect(liveFiftyTwoWeekRange(quote({ high52w: 105, low52w: 80, high: 112, low: 101 }))).toEqual({ low: 80, high: 112 });
     expect(liveFiftyTwoWeekRange(quote({ high52w: 150, low52w: 80 }))).toEqual({ low: 80, high: 150 });
+    // A post-market print beyond the high is the position's new extreme.
+    expect(liveFiftyTwoWeekRange(quote({ high52w: 105, low52w: 80 }), 118)).toEqual({ low: 80, high: 118 });
     expect(liveFiftyTwoWeekRange(quote({ high52w: undefined, low52w: 80 }))).toBeNull();
   });
 

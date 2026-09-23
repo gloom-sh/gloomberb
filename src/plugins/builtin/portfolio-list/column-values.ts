@@ -179,7 +179,7 @@ function tradedQuoteDisplay(
 }
 
 function fiftyTwoWeekPosition(displayQuote: ActiveQuoteDisplay | null, quote: TickerFinancials["quote"]): number | null {
-  const range = displayQuote ? liveFiftyTwoWeekRange(quote) : null;
+  const range = displayQuote ? liveFiftyTwoWeekRange(quote, displayQuote.price) : null;
   return displayQuote && range ? ((displayQuote.price - range.low) / (range.high - range.low)) * 100 : null;
 }
 
