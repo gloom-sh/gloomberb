@@ -11,10 +11,22 @@ import { debugLog } from "../utils/debug-log";
 
 /** GUI builds apply data at most this often, aligned to animation frames (~15 Hz). */
 export const GUI_DATA_FRAME_MIN_INTERVAL_MS = 66;
-/** OpenTUI redraws are expensive; 10 Hz keeps visible quotes lively without a render storm. */
+/** OpenTUI redraws are expensive; at most 10 Hz keeps visible quotes lively without a render storm. */
 export const TERMINAL_DATA_FRAME_INTERVAL_MS = 100;
 /** A hidden document pauses animation frames; data still drains this often. */
 const HIDDEN_DOCUMENT_FRAME_FALLBACK_MS = 1_000;
+/**
+ * With load pacing, the work one frame sets off (applying, React commits,
+ * paint) may take at most 1/FRAME_LOAD_FACTOR of the time: a pane that needs
+ * 60 ms per update gets one every 240 ms instead of stalling input.
+ */
+const FRAME_LOAD_FACTOR = 4;
+/** Load pacing never slows visible data below the off-screen rate. */
+const MAX_PACED_FRAME_INTERVAL_MS = 1_000;
+/** Longer than this is a stall or a throttled timer, not the cost of a frame. */
+const FRAME_COST_OUTLIER_MS = 500;
+/** Share of a new cost sample in the running estimate, so one slow frame (a GC pause) barely moves it. */
+const FRAME_COST_SMOOTHING = 0.3;
 /** Tasks that queue more appliers are re-run inside one frame at most this many times. */
 const MAX_APPLY_PASSES = 4;
 
@@ -30,6 +42,12 @@ export interface DataFrameDriver {
   now(): number;
   /** Runs `run` once, no sooner than `delayMs`, at the renderer's next frame opportunity. Returns a cancel. */
   schedule(run: () => void, delayMs: number): () => void;
+  /**
+   * Calls `probe` once the work a frame set off has had its turn: the React
+   * commits its notifications queued and, on DOM, the layout and paint after
+   * them. A driver with it spaces frames by what they cost (see withLoadPacing).
+   */
+  afterFrame?(probe: () => void): void;
 }
 
 export interface DataFrameRequest {
@@ -104,14 +122,34 @@ export function createAnimationFrameDriver(
   };
 }
 
-/** Deterministic driver for tests: time only moves when the test advances it. */
+/**
+ * Lets the scheduler space a driver's frames by their measured cost. The
+ * probe runs on the next macrotask, after the microtasks where React commits
+ * store updates and, in a browser, after the paint that follows an animation
+ * frame.
+ */
+export function withLoadPacing(driver: DataFrameDriver): DataFrameDriver {
+  return {
+    ...driver,
+    afterFrame(probe) {
+      setTimeout(probe, 0);
+    },
+  };
+}
+
+/**
+ * Deterministic driver for tests: time only moves when the test advances it,
+ * or spends it inside a frame to stand for that frame's cost.
+ */
 export function createManualFrameDriver(minIntervalMs: number): {
   driver: DataFrameDriver;
   advance(ms: number): void;
+  spend(ms: number): void;
   readonly pending: boolean;
 } {
   let now = 0;
   let scheduled: { run: () => void; at: number } | null = null;
+  const probes: Array<() => void> = [];
   return {
     driver: {
       minIntervalMs,
@@ -123,6 +161,9 @@ export function createManualFrameDriver(minIntervalMs: number): {
           if (scheduled === entry) scheduled = null;
         };
       },
+      afterFrame(probe) {
+        probes.push(probe);
+      },
     },
     advance(ms) {
       const target = now + ms;
@@ -131,8 +172,12 @@ export function createManualFrameDriver(minIntervalMs: number): {
         scheduled = null;
         now = Math.max(now, entry.at);
         entry.run();
+        for (const probe of probes.splice(0)) probe();
       }
-      now = target;
+      now = Math.max(now, target);
+    },
+    spend(ms) {
+      now += ms;
     },
     get pending() {
       return scheduled !== null;
@@ -149,6 +194,8 @@ export class DataFrameScheduler {
   private scheduledAt: number | null = null;
   private lastFrameAt = Number.NEGATIVE_INFINITY;
   private running = false;
+  /** Running estimate of what one notifying frame costs, when the driver reports it. */
+  private frameCostMs = 0;
 
   constructor(private driver: DataFrameDriver = createTimerFrameDriver(0)) {}
 
@@ -156,7 +203,26 @@ export class DataFrameScheduler {
     this.cancel();
     this.driver = driver;
     this.lastFrameAt = Number.NEGATIVE_INFINITY;
+    this.frameCostMs = 0;
     this.reschedule();
+  }
+
+  /** Current spacing between frames: the driver's minimum, stretched while frames are expensive. */
+  frameIntervalMs(): number {
+    return Math.max(
+      this.driver.minIntervalMs,
+      Math.min(MAX_PACED_FRAME_INTERVAL_MS, this.frameCostMs * FRAME_LOAD_FACTOR),
+    );
+  }
+
+  private recordFrameCost(costMs: number): void {
+    if (!Number.isFinite(costMs) || costMs < 0 || costMs > FRAME_COST_OUTLIER_MS) return;
+    this.frameCostMs += (costMs - this.frameCostMs) * FRAME_COST_SMOOTHING;
+    // The next frame was booked before this cost was known.
+    if (!this.running && this.scheduledAt !== null && this.scheduledAt < this.lastFrameAt + this.frameIntervalMs()) {
+      this.cancel();
+      this.reschedule();
+    }
   }
 
   now(): number {
@@ -192,7 +258,7 @@ export class DataFrameScheduler {
       this.cancel();
       return;
     }
-    const at = Math.max(this.lastFrameAt + this.driver.minIntervalMs, earliest);
+    const at = Math.max(this.lastFrameAt + this.frameIntervalMs(), earliest);
     if (this.scheduledAt !== null && this.scheduledAt <= at) return;
     this.cancel();
     this.scheduledAt = at;
@@ -215,8 +281,10 @@ export class DataFrameScheduler {
   private runFrame(): void {
     if (this.running) return;
     this.running = true;
-    const now = this.driver.now();
+    const driver = this.driver;
+    const now = driver.now();
     this.lastFrameAt = now;
+    let notified = false;
     try {
       // Applying a batch may queue another applier (a flush feeding a
       // derived store); those still belong to this frame.
@@ -226,9 +294,17 @@ export class DataFrameScheduler {
         runTasks(due);
       }
       // Listeners that write data while being notified are heard next frame.
-      runTasks(this.takeDue("notify", now));
+      const listeners = this.takeDue("notify", now);
+      notified = listeners.length > 0;
+      runTasks(listeners);
     } finally {
       this.running = false;
+      // Only a frame that told readers something sets off renders worth timing.
+      if (notified && driver.afterFrame) {
+        driver.afterFrame(() => {
+          if (this.driver === driver) this.recordFrameCost(driver.now() - now);
+        });
+      }
       this.reschedule();
     }
   }

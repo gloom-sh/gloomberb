@@ -37,6 +37,32 @@ test("coalesces requests into frames spaced by the interval and honours not-befo
   expect(clock.pending).toBe(false);
 });
 
+test("frames that set off expensive renders are spaced out, and return to full rate once cheap", () => {
+  const clock = createManualFrameDriver(100);
+  const frames = new DataFrameScheduler(clock.driver);
+  let costMs = 80;
+  const starts: number[] = [];
+  const render = () => {
+    starts.push(clock.driver.now());
+    clock.spend(costMs);
+    frames.request(render, { phase: "notify" });
+  };
+  const gaps = () => starts.slice(1).map((start, index) => start - starts[index]!);
+
+  frames.request(render, { phase: "notify" });
+  clock.advance(10_000);
+  // An 80 ms render settles near one frame per 320 ms, a quarter of the time.
+  expect(gaps()[0]).toBe(100);
+  expect(gaps().at(-1)).toBeGreaterThan(300);
+  expect(gaps().at(-1)).toBeLessThanOrEqual(320);
+
+  costMs = 1;
+  starts.length = 0;
+  clock.advance(10_000);
+  expect(gaps().at(-1)).toBe(100);
+  frames.remove(render);
+});
+
 test("a hidden document that stops animation frames still drains data about once a second", async () => {
   const requested: Array<() => void> = [];
   globals.requestAnimationFrame = (callback: () => void) => requested.push(callback);
