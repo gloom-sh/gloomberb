@@ -98,9 +98,10 @@ export function surface3DViewport(width: number, height: number, input: Surface3
   const radius = Math.hypot(X_EXTENT, Y_EXTENT, (Math.max(top, CEILING) - FLOOR) / 2);
   const usable = width * (1 - reserveRight);
   // The box never fills its bounding sphere, so a little overfill keeps it large without clipping while turning.
-  const scale = Math.min(usable * 0.86, height * 0.9) / (2 * radius) * 1.1 * camera.zoom;
+  const scale = Math.min(usable * 0.86, height * 0.84) / (2 * radius) * 1.1 * camera.zoom;
   const middle = rawProject({ x: 0, y: 0, z: (FLOOR + Math.max(top, CEILING)) / 2 }, terms);
-  return { width, height, scale, offsetX: middle.x, offsetY: middle.y, centerX: usable * 0.5, centerY: height * 0.5, ...terms };
+  // Perspective enlarges the near floor corner and its tick labels hang below it, so the box sits a little high.
+  return { width, height, scale, offsetX: middle.x, offsetY: middle.y, centerX: usable * 0.5, centerY: height * 0.46, ...terms };
 }
 
 export function projectSurface3D(point: { x: number; y: number; z: number }, viewport: Surface3DViewport) {
