@@ -14,6 +14,7 @@ import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
+import { timeLabel } from "./calendar-model";
 import type { EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -200,7 +201,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
 
       <Box paddingX={1} flexDirection="row" height={1}>
         <Text fg={colors.textDim}>Scheduled: </Text>
-        <Text fg={colors.text}>{event.time}</Text>
+        <Text fg={colors.text}>{timeLabel(event.date)}</Text>
         {event.forecast ? (
           <>
             <Text fg={colors.textDim}>  Forecast: </Text>

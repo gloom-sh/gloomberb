@@ -66,6 +66,15 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * Rows are grouped by local day, so the time beside them is local too. The
+ * payload's `time` is the UTC clock time and would put a 23:00 UTC release
+ * under the next local day at "23:00".
+ */
+export function timeLabel(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function dayLabel(d: Date, today: Date): string {
   const dk = dateKey(d);
   const todayKey = dateKey(today);

@@ -29,6 +29,7 @@ import {
   matchesCountry,
   matchesImpact,
   resetEconCalendarPersistence,
+  timeLabel,
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
@@ -299,7 +300,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
     switch (column.id) {
       case "time":
-        return { text: ev.time, color: selectedColor ?? colors.textMuted };
+        return { text: timeLabel(ev.date), color: selectedColor ?? colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {

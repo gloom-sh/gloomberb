@@ -104,4 +104,32 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("YESTERDAY");
     expect(frame).toContain("NOW");
   });
+
+  // The payload's `time` is the UTC clock; rows group by local day.
+  test("shows a late-UTC release at its local time under its local day", async () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Europe/Paris";
+    try {
+      const persistence = new MemoryPluginPersistence();
+      persistence.seedResource("calendar", "global", [{
+        id: "au",
+        date: "2026-08-21T23:00:00.000Z",
+        time: "23:00",
+        country: "AU",
+        event: "Flash Manufacturing PMI",
+        impact: "medium",
+        actual: null,
+        forecast: null,
+        prior: "52.0",
+      }], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+      attachEconCalendarPersistence(persistence);
+      const frame = await renderPane(110);
+
+      expect(frame).toContain("TOMORROW · Sat Aug 22");
+      expect(frame).toContain("01:00");
+      expect(frame).not.toContain("23:00");
+    } finally {
+      process.env.TZ = previousTz;
+    }
+  });
 });
