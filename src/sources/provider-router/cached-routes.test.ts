@@ -79,6 +79,26 @@ describe("shared cached market queries", () => {
     } finally { first.destroy(); second.destroy(); persistence.close(); }
   });
 
+  test("a short-lived router awaits stale FX refreshes and refresh mode refetches fresh rates", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const rates = [157.9, 158.1].map((usdJpy) => 1 / usdJpy);
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: async () => rates[calls++]! });
+    const staleFetch = Date.now() - 4 * 24 * 60 * 60_000;
+    persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "JPY/USD", sourceKey: "provider:fx" },
+      { rate: 1 / 156.86, asOf: new Date(staleFetch).toISOString(), stale: true },
+      { fetchedAt: staleFetch, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 } });
+    const cli = new AssetDataRouter(provider, [], persistence.resources);
+    cli.setBackgroundRevalidation(false);
+    try {
+      expect(await cli.getExchangeRate("JPY")).toBe(rates[0]!);
+      // A new process reads the persisted refresh, not the four-day-old rate.
+      expect(await new AssetDataRouter(provider, [], persistence.resources).getExchangeRate("JPY")).toBe(rates[0]!);
+      expect(await cli.getExchangeRate("JPY", { cacheMode: "refresh" })).toBe(rates[1]!);
+      expect(calls).toBe(2);
+    } finally { persistence.close(); }
+  });
+
   test("shares cold loads with direct provider calls and keeps errors attached to stale fallback", async () => {
     let calls = 0;
     const pending = deferred<number>();

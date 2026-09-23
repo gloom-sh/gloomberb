@@ -13,7 +13,6 @@ import type {
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { formatCompact } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { createBaseConverter } from "../base-converter";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
 import {
@@ -453,14 +452,29 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
   const currency = requireArg(rawArgs[0]?.trim().toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
   await withMarketData(ctx, async (market) => {
     const baseCurrency = market.config.baseCurrency.trim().toUpperCase();
-    const rate = await createBaseConverter(market.dataProvider, baseCurrency)(1, currency);
+    const load = (code: string) => market.dataProvider.getCachedQuery("getExchangeRate", [code])
+      .load({ force: ctx.cliOptions.refresh }).catch(() => null);
+    const legs = currency === baseCurrency ? [] : await Promise.all([load(currency), load(baseCurrency)]);
+    const [from, base] = legs;
+    const rate = currency === baseCurrency ? 1 : from && base ? from.value / base.value : Number.NaN;
     if (!Number.isFinite(rate) || rate <= 0) ctx.fail(`Exchange rate unavailable for ${currency}/${baseCurrency}`);
-    ctx.printResult({ data: [{ currency, baseCurrency, rate }] }, {
+    // A cross rate is only as current as its older leg.
+    const observed = legs.flatMap((leg) => leg?.asOf ?? []);
+    const asOf = observed.length > 0 ? new Date(Math.min(...observed)).toISOString() : null;
+    const stale = legs.some((leg) => leg != null && (leg.staleAt <= Date.now() || leg.refreshError != null));
+    ctx.printResult({ data: [{ currency, baseCurrency, rate, asOf, stale }] }, {
       layout: "record",
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
         { key: "rate", header: "Rate", align: "right" },
+        {
+          key: "asOf",
+          header: "As Of",
+          format: (value: unknown, row: { stale: boolean }) => (
+            row.stale ? cliStyles.warning(`${value ?? ""} stale`.trim()) : String(value ?? "")
+          ),
+        },
       ],
     });
   });

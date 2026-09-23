@@ -77,6 +77,8 @@ export class AssetDataRouter implements DataProvider {
   private readonly financialRoutes: ProviderRouterFinancialRoutes;
   private readonly cachedRoutes: ProviderRouterCachedRoutes;
   private readonly healthyProviders = new WeakMap<DataProvider, DataProvider>();
+  /** A short-lived process exits before a background refresh can land, so it must await stale entries. */
+  private revalidateInBackground = true;
 
   constructor(
     fallbackSource: CapabilityRouteSource | DataProvider | null = null,
@@ -238,8 +240,12 @@ export class AssetDataRouter implements DataProvider {
     return known ?? null;
   }
 
-  async getExchangeRate(fromCurrency: string): Promise<number> {
-    return (await this.getCachedQuery("getExchangeRate", [fromCurrency]).load({ force: false, background: true })).value;
+  setBackgroundRevalidation(enabled: boolean): void {
+    this.revalidateInBackground = enabled;
+  }
+
+  async getExchangeRate(fromCurrency: string, context?: Pick<MarketDataRequestContext, "cacheMode">): Promise<number> {
+    return (await this.getCachedQuery("getExchangeRate", [fromCurrency]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
@@ -251,15 +257,15 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getHolders(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData> {
-    return (await this.getCachedQuery("getHolders", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+    return (await this.getCachedQuery("getHolders", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async getAnalystResearch(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData> {
-    return (await this.getCachedQuery("getAnalystResearch", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+    return (await this.getCachedQuery("getAnalystResearch", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async getCorporateActions(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData> {
-    return (await this.getCachedQuery("getCorporateActions", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+    return (await this.getCachedQuery("getCorporateActions", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async getEarningsCalendar(symbols: string[], context?: MarketDataRequestContext) {
@@ -267,19 +273,19 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
-    return (await this.getCachedQuery("getSecFilings", [ticker, count, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+    return (await this.getCachedQuery("getSecFilings", [ticker, count, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   async getSecFilingDocuments(filing: SecFilingItem) {
-    return (await this.getCachedQuery("getSecFilingDocuments", [filing]).load({ force: false, background: true })).value;
+    return (await this.getCachedQuery("getSecFilingDocuments", [filing]).load({ force: false, background: this.revalidateInBackground })).value;
   }
 
   async getSecFilingContent(filing: SecFilingItem): Promise<string | null> {
-    return (await this.getCachedQuery("getSecFilingContent", [filing]).load({ force: false, background: true })).value;
+    return (await this.getCachedQuery("getSecFilingContent", [filing]).load({ force: false, background: this.revalidateInBackground })).value;
   }
 
   async getArticleSummary(url: string): Promise<string | null> {
-    return (await this.getCachedQuery("getArticleSummary", [url]).load({ force: false, background: true })).value;
+    return (await this.getCachedQuery("getArticleSummary", [url]).load({ force: false, background: this.revalidateInBackground })).value;
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
@@ -357,7 +363,7 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain> {
-    return (await this.getCachedQuery("getOptionsChain", [ticker, exchange, expirationDate, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+    return (await this.getCachedQuery("getOptionsChain", [ticker, exchange, expirationDate, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
   }
 
   getCachedQuery<K extends CachedAssetMethod>(method: K, args: CachedAssetArgs<K>) {

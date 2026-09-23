@@ -82,6 +82,7 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   };
   dataProvider.attachRegistry(registryAdapter as PluginRegistry);
   dataProvider.setConfigAccessor(() => context.config);
+  dataProvider.setBackgroundRevalidation(false);
   return { ...context, dataProvider };
 }
 
@@ -98,6 +99,7 @@ export async function initCliServices(options: CliServicesOptions = {}) {
     externalPlugins: options.externalPlugins ?? [],
   });
   services.providerRouter.setConfigAccessor(() => config);
+  services.providerRouter.setBackgroundRevalidation(false);
   await ensureCliServicesReady(services);
   return {
     config,
