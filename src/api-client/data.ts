@@ -112,6 +112,8 @@ import type {
   CloudTweetSearchResponse,
   CloudWorldVenueMapPayload,
   CloudYieldPointPayload,
+  ScannerFlowHistoryPage,
+  ScannerFlowHistoryQuery,
 } from "./types";
 
 type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -374,6 +376,36 @@ export class CloudDataApi {
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {
     return this.request<CentralBankRatesPayload>("/cloud/econ/central-bank-rates", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** Recorded FLOW prints older than the live tape (Pro). */
+  async getScannerFlowHistory(
+    query: ScannerFlowHistoryQuery,
+    signal?: AbortSignal,
+  ): Promise<ScannerFlowHistoryPage> {
+    const params = new URLSearchParams();
+    if (query.before) {
+      params.set("beforeAt", String(query.before.at));
+      params.set("beforeId", query.before.id);
+    }
+    const optional: Array<[string, string | number | undefined]> = [
+      ["limit", query.limit],
+      ["minPremium", query.minPremium],
+      ["right", query.right],
+      ["kind", query.kind],
+      ["minVolOi", query.minVolOi],
+      ["maxExpiryDays", query.maxExpiryDays],
+    ];
+    for (const [key, value] of optional) {
+      if (value != null) params.set(key, String(value));
+    }
+    if (query.symbols) {
+      params.set("universe", "symbols");
+      params.set("symbols", query.symbols.join(","));
+    }
+    return this.request<ScannerFlowHistoryPage>(`/market/scanner/flow/history?${params}`, {
+      signal: signal ?? AbortSignal.timeout(20_000),
+    });
   }
 
   getMobileAlertHistory<T>(offset = 0) {

@@ -1489,6 +1489,25 @@ export interface ScannerFlowPayload extends ScannerAccessInfo {
   events: ScannerFlowEvent[];
 }
 
+/** Filters for recorded flow prints, matching the FLOW pane's own. */
+export interface ScannerFlowHistoryQuery {
+  /** Page before this print (newest first); omit for the latest prints. */
+  before?: { at: number; id: string };
+  limit?: number;
+  minPremium?: number;
+  right?: "C" | "P";
+  kind?: "sweep" | "block";
+  minVolOi?: number;
+  maxExpiryDays?: number;
+  /** Only these listed symbols (the pane's "mine" universe). */
+  symbols?: string[];
+}
+
+export interface ScannerFlowHistoryPage {
+  events: ScannerFlowEvent[];
+  hasMore: boolean;
+}
+
 export type ScannerPayload = ScannerHiloPayload | ScannerFlowPayload;
 
 /** What a scanner subscriber receives: data, or the entitlement refusal. */

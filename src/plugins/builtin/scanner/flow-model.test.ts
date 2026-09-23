@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { ScannerFlowEvent } from "../../../api-client";
-import { DEFAULT_FLOW_FILTERS, filterFlowEvents, flowEmptyState, type FlowFilters } from "./flow-model";
+import {
+  DEFAULT_FLOW_FILTERS,
+  compareFlowDesc,
+  filterFlowEvents,
+  flowEmptyState,
+  flowHistoryQuery,
+  flowRowsSpanDays,
+  formatFlowTime,
+  keepFlowPrints,
+  mergeFlowRows,
+  type FlowFilters,
+} from "./flow-model";
 
 const NOW = Date.parse("2026-03-02T15:00:00Z");
 
@@ -91,5 +102,63 @@ describe("flow empty state", () => {
     // An empty tape is not a filter problem, whatever the filters are set to.
     expect(flowEmptyState(0, 0, "live").title).toBe("No prints on the tape yet.");
     expect(flowEmptyState(0, 0, "closed").hint).toContain("next session");
+  });
+});
+
+describe("paging below the live tape", () => {
+  test("the pane keeps every live print it received, newest first, once each", () => {
+    const first = keepFlowPrints([], [event({ id: "b", at: NOW - 1 }), event({ id: "a", at: NOW - 2 })]);
+    // The tape rolled: "a" fell off, "c" arrived. The pane still has "a".
+    const second = keepFlowPrints(first, [event({ id: "c", at: NOW }), event({ id: "b", at: NOW - 1 })]);
+    expect(second.map((entry) => entry.id)).toEqual(["c", "b", "a"]);
+    expect(keepFlowPrints(second, [event({ id: "c", at: NOW })])).toBe(second);
+    expect(keepFlowPrints(second, [event({ id: "d", at: NOW + 1 })], 2).map((entry) => entry.id)).toEqual(["d", "c"]);
+  });
+
+  test("merged rows are newest first with ties in byte order, each print once", () => {
+    const live = [event({ id: "opt-b", at: NOW }), event({ id: "opt-a", at: NOW })];
+    const older = [event({ id: "opt-a", at: NOW }), event({ id: "opt-z", at: NOW - 5 })];
+    expect(mergeFlowRows(live, older).map((entry) => entry.id)).toEqual(["opt-b", "opt-a", "opt-z"]);
+    // Matches Postgres' "C" collation, which the server pages by.
+    expect([event({ id: "opt-B", at: NOW }), event({ id: "opt-a", at: NOW })].sort(compareFlowDesc).map((entry) => entry.id))
+      .toEqual(["opt-a", "opt-B"]);
+  });
+
+  test("the pane's filters become the recorded-print query", () => {
+    expect(flowHistoryQuery(DEFAULT_FLOW_FILTERS, watchlist)).toEqual({ limit: 100, minPremium: 250_000 });
+    expect(flowHistoryQuery(
+      filters({ side: "puts", kind: "blocks", volOi: "5", expiry: "7", universe: "watchlist", minPremium: "1000000" }),
+      new Set(["nvda", "BRK.B"]),
+      { at: NOW, id: "opt-1" },
+      50,
+    )).toEqual({
+      before: { at: NOW, id: "opt-1" },
+      limit: 50,
+      minPremium: 1_000_000,
+      right: "P",
+      kind: "block",
+      minVolOi: 5,
+      maxExpiryDays: 7,
+      symbols: ["BRK.B", "NVDA"],
+    });
+  });
+
+  test("share classes and adjusted contracts match the watchlist by option root", () => {
+    const events = [
+      event({ id: "brk", underlying: "BRKB" }),
+      event({ id: "soxs", underlying: "SOXS1" }),
+      event({ id: "amd", underlying: "AMD" }),
+    ];
+    const visible = filterFlowEvents(events, filters({ universe: "watchlist" }), new Set(["BRK.B", "SOXS"]), NOW);
+    expect(visible.map((entry) => entry.id)).toEqual(["brk", "soxs"]);
+  });
+
+  test("prints from earlier days show their date", () => {
+    const today = new Date(2026, 2, 2, 15, 4, 5).getTime();
+    const yesterday = new Date(2026, 2, 1, 9, 31, 0).getTime();
+    expect(formatFlowTime(today, today)).toBe("15:04:05");
+    expect(formatFlowTime(yesterday, today)).toBe("03/01 09:31");
+    expect(flowRowsSpanDays([event({ at: today })], today)).toBe(false);
+    expect(flowRowsSpanDays([event({ at: today }), event({ at: yesterday })], today)).toBe(true);
   });
 });

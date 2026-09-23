@@ -1,26 +1,34 @@
-import { useCallback, useMemo, useState } from "react";
-import type { ScannerFlowEvent } from "../../../api-client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiClient, type ScannerFlowEvent } from "../../../api-client";
 import {
   DataTableView,
   PaneStatusBody,
   QueryBar,
+  useTableLoadMore,
   type DataTableCell,
   type DataTableColumn,
+  type DataTableKeyEvent,
+  type PaneFooterSegment,
 } from "../../../components";
 import { useAppSelector, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
+import { useFlowHistory } from "./flow-history";
 import {
   DEFAULT_FLOW_FILTERS,
   FLOW_FILTER_OPTIONS,
   filterFlowEvents,
   flowEmptyState,
+  flowHistoryQuery,
+  flowRowsSpanDays,
+  keepFlowPrints,
+  mergeFlowRows,
   formatFlowExpiry,
   formatFlowPremium,
   formatFlowSide,
@@ -36,10 +44,11 @@ import {
   type FlowVolOi,
 } from "./flow-model";
 
-function buildColumns(width: number): DataTableColumn[] {
+function buildColumns(width: number, dated: boolean): DataTableColumn[] {
   // EXP is right aligned and SIDE is left aligned, so EXP needs an extra cell or
-  // the two header labels read as one "EXP SIDE" word.
-  const fixed = { time: 8, ticker: 7, type: 8, strike: 8, exp: 7, side: 5, size: 7, prem: 7, volOi: 6 };
+  // the two header labels read as one "EXP SIDE" word. Prints from earlier days
+  // carry their date ("09/22 15:04"), so the time column widens for them.
+  const fixed = { time: dated ? 11 : 8, ticker: 7, type: 8, strike: 8, exp: 7, side: 5, size: 7, prem: 7, volOi: 6 };
   const total = Object.values(fixed).reduce((sum, value) => sum + value, 0);
   // Table chrome is one gap per column, two cells of padding, and the scrollbar.
   const slack = Math.max(0, width - total - 9 - 2 - 1);
@@ -127,19 +136,63 @@ function FlowPane({ focused, width, height }: PaneProps) {
     () => ({ minPremium, side, kind, volOi, expiry, universe }),
     [expiry, kind, minPremium, side, universe, volOi],
   );
-  const events = useMemo(
-    () => filterFlowEvents(feed.payload?.events, filters, watchlist),
-    [feed.payload?.events, filters, watchlist],
+  // The shared tape holds only its latest prints; the pane keeps every one it
+  // has received, and recorded pages continue below the oldest of them.
+  // Folded in during render, not after it, so the first recorded page is
+  // already asked for below the live prints it arrived with.
+  const keptRef = useRef<readonly ScannerFlowEvent[]>([]);
+  const kept = useMemo(() => {
+    keptRef.current = keepFlowPrints(keptRef.current, feed.payload?.events);
+    return keptRef.current;
+  }, [feed.payload?.events]);
+  const liveRows = useMemo(
+    () => filterFlowEvents(kept, filters, watchlist),
+    [filters, kept, watchlist],
   );
+
+  const historyQuery = useMemo(() => flowHistoryQuery(filters, watchlist), [filters, watchlist]);
+  const oldestKept = kept.at(-1);
+  const oldestLive = useMemo(
+    () => (oldestKept ? { at: oldestKept.at, id: oldestKept.id } : null),
+    [oldestKept?.at, oldestKept?.id],
+  );
+  const history = useFlowHistory(historyQuery, oldestLive, !!feed.payload && !feed.denied);
+  const events = useMemo(() => mergeFlowRows(liveRows, history.events), [history.events, liveRows]);
+
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const canLoadOlder = history.hasMore && !history.loading && !history.error && !!feed.payload && !feed.denied;
+  const onBodyScrollActivity = useTableLoadMore(scrollRef, canLoadOlder, history.loadMore);
+  // A strict filter or a quiet tape should still fill the pane, including
+  // before the open, when every row is recorded.
+  const bodyRows = Math.max(1, height - 3);
+  useEffect(() => {
+    if (canLoadOlder && events.length < bodyRows) history.loadMore();
+  }, [bodyRows, canLoadOlder, events.length, history.loadMore]);
 
   const emptyState = useMemo(
-    () => flowEmptyState(feed.payload?.events.length ?? 0, events.length, feed.payload?.status),
-    [events.length, feed.payload?.events.length, feed.payload?.status],
+    () => flowEmptyState(kept.length, liveRows.length, feed.payload?.status),
+    [feed.payload?.status, kept.length, liveRows.length],
   );
 
-  useScannerStatusFooter("flow", feed, focused);
+  const historyFooter = useMemo<PaneFooterSegment | null>(() => {
+    if (history.error) {
+      return { id: "flow-history", parts: [{ text: "older prints unavailable · r retry", tone: "warning" }] };
+    }
+    if (history.loading) return { id: "flow-history", parts: [{ text: "loading older prints", tone: "muted" }] };
+    return null;
+  }, [history.error, history.loading]);
+  useScannerStatusFooter("flow", feed, focused, historyFooter);
 
-  const columns = useMemo(() => buildColumns(width), [width]);
+  const dated = useMemo(() => flowRowsSpanDays(events), [events]);
+  const columns = useMemo(() => buildColumns(width, dated), [dated, width]);
+
+  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (event.name !== "r" || !history.error) return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    history.retry();
+    return true;
+  }, [history.error, history.retry]);
 
   const handleSelect = useCallback((event: ScannerFlowEvent) => {
     setSelectedId(event.id);
@@ -187,9 +240,18 @@ function FlowPane({ focused, width, height }: PaneProps) {
         getItemKey={eventKey}
         onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
         renderCell={renderRow}
-        emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
+        emptyContent={
+          !feed.payload
+            ? <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />
+            : events.length === 0 && history.loading
+              ? <PaneStatusBody loading loadingLabel="Loading recorded prints..." />
+              : undefined
+        }
         emptyStateTitle={emptyState.title}
         emptyStateHint={emptyState.hint}
+        onRootKeyDown={handleRootKeyDown}
+        onBodyScrollActivity={onBodyScrollActivity}
+        scrollRef={scrollRef}
       />
     </Box>
   );
