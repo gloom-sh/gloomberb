@@ -117,7 +117,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, [settings, position]);
   const chosenControls = controlState ?? baseControls.value;
   // A scenario date the live origin has passed is now, not an error.
-  const controls = live && chosenControls ? { ...chosenControls, date: Math.max(chosenControls.date, live.position.asOf) } : chosenControls;
+  const liveAsOf = live?.position.asOf ?? null;
+  const controls = useMemo(() => liveAsOf != null && chosenControls
+    ? { ...chosenControls, date: Math.max(chosenControls.date, liveAsOf) } : chosenControls, [chosenControls, liveAsOf]);
   const result = useMemo(() => {
     if (frozen) return { scenario: frozen, error: null };
     if (!controlState && baseControls.error) return { scenario: null, error: baseControls.error };
@@ -160,7 +162,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     const id = await dialog.prompt<string>({ content: (ctx: PromptContext<string>) => <ChoiceDialog {...ctx} title="Load strategy"
       choices={choices.map((entry) => ({ id: entry.id, label: entry.name, detail: dateLabel(entry.position.asOf) }))} /> }).catch(() => "");
     const selected = choices.find((entry) => entry.id === id);
-    if (selected) { setPosition(selected.position); setControls(selected.controls); setLocalError(null); }
+    // A saved strategy opens at its saved spot, date and vols; following the market is an explicit choice.
+    if (selected) { setPosition(selected.position); setControls(selected.controls); setFollow(false); setLocalError(null); }
   };
   const save = (name: string) => {
     if (!scenario) return;
@@ -323,6 +326,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       detailTitle={detail === "chain" ? "Choose contract" : detail === "leg" ? "Position leg" : detail === "save" ? "Save strategy" : "Scenario inputs"}
       detailContent={detail === "chain" ? chainDetail : detail === "leg" && editingLeg ? <ScenarioLegEditor key={editingLeg.id}
         leg={editingLeg} focused={focused} width={width} onCancel={() => { setDetail(null); setEditingLeg(null); }} onSave={(leg) => {
+          // A typed volatility is an assumption: the scenario stops following the market.
+          if (live && Math.abs(leg.volatility - editingLeg.volatility) > 1e-12) setFollow(false);
           const current = baseline();
           const legs = current.legs.some((entry) => entry.id === leg.id) ? current.legs.map((entry) => entry.id === leg.id ? leg : entry) : [...current.legs, leg];
           setPosition({ ...current, legs }); setSelectedId(leg.id); setDetail(null); setEditingLeg(null); setLocalError(null);
