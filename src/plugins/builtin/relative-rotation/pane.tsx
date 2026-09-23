@@ -52,7 +52,7 @@ const PALETTE = [
   "#f472b6",
   "#a3e635",
   "#b5835a",
-  "#e5e7eb",
+  "#94a3b8",
 ];
 const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "ETF", width: 7, align: "left" },
