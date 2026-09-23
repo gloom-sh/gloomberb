@@ -401,14 +401,18 @@ describe("MarketDataCoordinator key subscriptions", () => {
     const { clock, coordinator, emitQuote } = createFramedCoordinator();
     const amd = { symbol: "AMD", exchange: "NASDAQ" };
     const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+    // The server paces a target without a visible or selected hint, so the client does too.
+    const nvda = { symbol: "NVDA", exchange: "NASDAQ" };
     coordinator.subscribeQuotes([
       { instrument: amd, priority: { visible: true } },
       { instrument: msft, priority: { visible: false, weight: 10 } },
+      { instrument: nvda },
     ]);
     const price = (instrument: typeof amd) => coordinator.getQuoteEntry(instrument).data?.price;
 
     emitQuote(amd, quote("AMD", 100));
     emitQuote(msft, quote("MSFT", 200));
+    emitQuote(nvda, quote("NVDA", 300));
     expect(price(amd)).toBeUndefined();
     clock.advance(0);
     // First data for a key never waits, whatever its tier.
@@ -418,13 +422,14 @@ describe("MarketDataCoordinator key subscriptions", () => {
     for (let tick = 1; tick <= 5; tick += 1) {
       emitQuote(amd, quote("AMD", 100 + tick));
       emitQuote(msft, quote("MSFT", 200 + tick));
+      emitQuote(nvda, quote("NVDA", 300 + tick));
       clock.advance(100);
       expect(price(amd)).toBe(100 + tick);
-      expect(price(msft)).toBe(200);
+      expect([price(msft), price(nvda)]).toEqual([200, 300]);
     }
 
     clock.advance(500);
-    expect(price(msft)).toBe(205);
+    expect([price(msft), price(nvda)]).toEqual([205, 305]);
 
     // A held-back tick shows on the next frame once its row scrolls into view.
     emitQuote(msft, quote("MSFT", 206));
@@ -528,7 +533,7 @@ describe("MarketDataCoordinator key subscriptions", () => {
     const firstTimestamp = 1_700_000_000_000;
     try {
       coordinator.subscribeKeys([buildQuoteKey(aapl)], () => { calls += 1; });
-      coordinator.subscribeQuotes([{ instrument: aapl }]);
+      coordinator.subscribeQuotes([{ instrument: aapl, priority: { visible: true } }]);
 
       Date.now = () => firstTimestamp;
       emitQuote({ symbol: "AAPL", exchange: "NASDAQ" }, quote("AAPL", 100, { lastUpdated: firstTimestamp }));
@@ -565,7 +570,7 @@ describe("MarketDataCoordinator key subscriptions", () => {
 
     try {
       coordinator.subscribeKeys([buildQuoteKey(option)], () => { calls += 1; });
-      coordinator.subscribeQuotes([{ instrument: option }]);
+      coordinator.subscribeQuotes([{ instrument: option, priority: { visible: true } }]);
 
       Date.now = () => firstTimestamp;
       const heartbeat = quote(option.symbol, 2.5, {
@@ -601,7 +606,7 @@ describe("MarketDataCoordinator key subscriptions", () => {
     const option = { symbol: "AAPL260731C00110000", exchange: "OPTIONS" };
     const firstTimestamp = 1_800_000_000_000;
     try {
-      coordinator.subscribeQuotes([{ instrument: option }]);
+      coordinator.subscribeQuotes([{ instrument: option, priority: { visible: true } }]);
 
       Date.now = () => firstTimestamp;
       emitQuote(

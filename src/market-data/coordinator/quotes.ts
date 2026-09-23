@@ -52,12 +52,14 @@ export const QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS = 100;
 export const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
 
 /**
- * Visible and selected keys apply every data frame. Only a target explicitly
- * marked off-screen waits for the background interval; a consumer that gives
- * no hint is treated as on screen.
+ * Visible and selected keys apply every data frame; every other key waits for
+ * the background interval. This is the server's rule too: the socket sends
+ * the hints as given, and the server paces a target not marked visible or
+ * selected at about 1 Hz, so a consumer that gives no hint is paced on both
+ * ends rather than polled every frame for ticks that never come.
  */
 export function isForegroundQuoteTarget(target: Pick<QuoteSubscriptionTarget, "visible" | "selected">): boolean {
-  return target.selected === true || target.visible !== false;
+  return target.selected === true || target.visible === true;
 }
 
 function quoteTargetFromInstrument(
