@@ -1,7 +1,9 @@
 /** Self-contained so the screenshot runner can evaluate it in the browser. */
 export function readVisibleKeyValues(root: HTMLElement): Array<{ label: string; text: string }> {
   const view = root.ownerDocument.defaultView!;
-  return Array.from(root.querySelectorAll<HTMLElement>('[data-gloom-ui="key-value-row"]')).flatMap((row) => {
+  // A stat grid cell is a labelled value too: label first, then the figure.
+  const rows = root.querySelectorAll<HTMLElement>('[data-gloom-ui="key-value-row"], [data-gloom-role="stat-grid-cell"]');
+  return Array.from(rows).flatMap((row) => {
     const rect = row.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return [];
     let left = 0, top = 0, right = view.innerWidth, bottom = view.innerHeight;

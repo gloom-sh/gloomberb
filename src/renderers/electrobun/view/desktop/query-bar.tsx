@@ -117,7 +117,7 @@ function FilterChip({ item, open, onOpenChange }: { item: HostQueryBarItem; open
         type="button"
         className="gloom-qb-chip"
         data-kind="toggle"
-        data-narrowing={item.checked ? "true" : undefined}
+        data-narrowing={item.narrowing ? "true" : undefined}
         aria-pressed={item.checked}
         onMouseDown={(event) => event.stopPropagation()}
         onClick={item.onToggle}
