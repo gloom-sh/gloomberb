@@ -247,7 +247,9 @@ async function collectShotStatSeries(
   if (resolved.pane.id !== ECON_STATISTICS_PANE_ID) return [];
   const loaded = await Promise.all(STATS.map(async (def) => {
     try {
-      return [def.seriesId, await defaultStatLoader(def)] as [string, DatedObservation[]];
+      const result = await defaultStatLoader(def);
+      const observations = Array.isArray(result) ? result : result.observations;
+      return [def.seriesId, observations] as [string, DatedObservation[]];
     } catch {
       return null;
     }

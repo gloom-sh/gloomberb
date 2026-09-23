@@ -20,7 +20,7 @@ import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { usePluginPaneState } from "../../runtime";
-import { fetchShortInterest } from "./client";
+import { loadShortInterest } from "./client";
 import {
   DEFAULT_SORT,
   buildColumns,
@@ -62,10 +62,12 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const symbol = ticker?.metadata.ticker ?? null;
 
   const skipNonUs = !!(ticker && hasClassifiableUsEquityMetadata(ticker) && !isUsEquityTicker(ticker));
-  const request = useCallback(() => fetchShortInterest(symbol!), [symbol]);
+  const request = useCallback(() => loadShortInterest(symbol!), [symbol]);
   const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
   const { error, updatedAt, reload: refresh } = resource;
-  const records = resource.data ?? EMPTY_RECORDS;
+  const records = resource.data?.records ?? EMPTY_RECORDS;
+  const yahooFallback = resource.data?.source === "yahoo" && records.length > 0;
+  const cloudSessionRequired = yahooFallback && resource.data?.cloudSessionRequired === true;
   const status = skipNonUs ? "loaded" : resource.status;
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>(
     "short-interest:sort",
@@ -121,8 +123,15 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     info: [
       ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(status === "error" && error ? [{ id: "error", parts: [{ text: error.slice(0, 60), tone: "warning" as const }] }] : []),
+      ...(yahooFallback ? [{
+        id: "source",
+        parts: [{
+          text: cloudSessionRequired ? "Yahoo, sign in for FINRA history" : "Yahoo source",
+          tone: "warning" as const,
+        }],
+      }] : []),
     ],
-  }), [error, status]);
+  }), [cloudSessionRequired, error, status, yahooFallback]);
 
   if (!ticker || !symbol) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;

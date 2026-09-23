@@ -291,7 +291,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
-  const columns = useMemo(() => buildAuctionColumns(width), [width]);
+  const columns = useMemo(() => buildAuctionColumns(), []);
   const activeFilterLabel = AUCTION_FILTERS.find((entry) => entry.value === filter)?.label ?? "All";
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {

@@ -283,13 +283,43 @@ function displayValue(value: unknown): string {
   if (value instanceof Date) return displayTime(value.getTime());
   if (typeof value === "number") return displayNumber(value);
   if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "string" && ISO_INSTANT.test(value)) return displayInstant(value);
   return String(value);
+}
+
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * Providers hand some instants over as ISO strings; print them in UTC like Date
+ * values, keeping seconds and milliseconds only when the source carries them
+ * (tape prints), never SIP nanoseconds.
+ */
+function displayInstant(value: string): string {
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return value;
+  const iso = new Date(time).toISOString();
+  if (iso.slice(17, 23) === "00.000") return displayTime(time);
+  return `${iso.slice(0, iso.endsWith(".000Z") ? 19 : 23).replace("T", " ")} UTC`;
 }
 
 /** Drops binary floating-point noise (4.019999999999996) without rounding real digits. */
 function displayNumber(value: number): string {
   if (!Number.isFinite(value) || Number.isInteger(value) || Math.abs(value) >= 1e9) return String(value);
-  return String(Number(value.toPrecision(12)));
+  return String(float32Shortest(value) ?? Number(value.toPrecision(12)));
+}
+
+/**
+ * Some feeds store prices as float32, so 338.93 arrives as 338.929992676. A value
+ * that is exactly a float32 prints as the shortest decimal that rounds back to it,
+ * which leaves genuine doubles (never exactly float32 unless short) untouched.
+ */
+function float32Shortest(value: number): number | null {
+  if (Math.fround(value) !== value) return null;
+  for (let digits = 1; digits <= 9; digits += 1) {
+    const candidate = Number(value.toPrecision(digits));
+    if (Math.fround(candidate) === value) return candidate;
+  }
+  return null;
 }
 
 function displayTime(time: number): string {

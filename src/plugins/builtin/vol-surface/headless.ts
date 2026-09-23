@@ -39,7 +39,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         ], rows: grid.rows.flatMap((row) => row.cells.map((cell) => ({ tenor: row.label, coordinate: cell.coordinate,
           strike: cell.strike, volatility: cell.volatility, interpolated: row.interpolated, extrapolated: row.extrapolated }))) },
         { title: "Expiries", columns: [
-          { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: (value) => typeof value === "number" ? value.toFixed(2) : "--" },
+          { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--" },
           { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
         ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: new Date(expiry.expiration * 1000).toISOString().slice(0, 10), fit: expiry.fit?.method ?? null })) },
         // The pane lists these (arbitrage, SVI fallback) beside the surface.

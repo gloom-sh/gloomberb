@@ -2,6 +2,10 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRotation } from "./client";
 import { rotationInstruments, sectorRotationInstruments } from "./model";
 
+/** Same rounding as the pane: ratios to 2 decimals, percentiles whole. */
+const fixed = (value: unknown, digits: number) =>
+  typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "--";
+
 export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   argument: {
@@ -70,10 +74,10 @@ export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "symbol", header: "Symbol" },
             { key: "label", header: "Name" },
             { key: "quadrant", header: "Quadrant" },
-            { key: "strength", header: "Strength", align: "right" },
-            { key: "strengthPercentile", header: "Pctl 1Y", align: "right" },
-            { key: "momentum", header: "Momentum", align: "right" },
-            { key: "momentumPercentile", header: "Pctl 1Y", align: "right" },
+            { key: "strength", header: "Strength", align: "right", format: (value) => fixed(value, 2) },
+            { key: "strengthPercentile", header: "Pctl 1Y", align: "right", format: (value) => fixed(value, 0) },
+            { key: "momentum", header: "Momentum", align: "right", format: (value) => fixed(value, 2) },
+            { key: "momentumPercentile", header: "Pctl 1Y", align: "right", format: (value) => fixed(value, 0) },
             { key: "asOf", header: "As of" },
           ],
           rows: data.rows.map((row) => ({

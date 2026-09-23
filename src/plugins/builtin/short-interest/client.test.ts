@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
-import { fetchShortInterest } from "./client";
+import { ApiRequestError } from "../../../api-client/errors";
+import { fetchShortInterest, loadShortInterest } from "./client";
 
 const yahoo = spyOn(YahooHttpClient.prototype, "fetchJsonWithCrumb");
 afterEach(() => yahoo.mockReset());
@@ -44,4 +45,11 @@ test("FINRA average daily volume remains independent of its reported days-to-cov
   } }) });
   expect(rows[0]).toMatchObject({ averageDailyVolume: 8_800_000, shortRatio: 2.3, shortPercentFloat: null });
   expect(yahoo).not.toHaveBeenCalled();
+});
+
+test("the Yahoo fallback reports its source and whether Cloud wanted a session", async () => {
+  yahoo.mockResolvedValue(record());
+  const denied = { getCloudShortInterest: async () => { throw new ApiRequestError("Unauthorized", 401); } };
+  expect(await loadShortInterest("TEST", denied)).toMatchObject({ source: "yahoo", cloudSessionRequired: true });
+  expect(await loadShortInterest("TEST", fallback)).toMatchObject({ source: "yahoo", cloudSessionRequired: false });
 });

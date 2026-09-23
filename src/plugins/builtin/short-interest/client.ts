@@ -1,9 +1,11 @@
 import { apiClient } from "../../../api-client";
 import type { CloudShortInterestPayload } from "../../../api-client/types";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { financeRawNumber, yahooRawDate } from "../../../sources/yahoo-finance/mappers";
 import type { QuoteSummaryResponse, YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
+import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import type { ShortInterestRecord } from "./types";
 
 export const YAHOO_SHORT_INTEREST_CONNECTION_ID = "yahoo-short-interest";
@@ -100,23 +102,46 @@ function normalizeCloudRecords(payload: CloudShortInterestPayload): ShortInteres
   return records;
 }
 
+export interface ShortInterestResult {
+  records: ShortInterestRecord[];
+  /** FINRA's full settlement history from Cloud, or Yahoo's latest two settlements. */
+  source: "finra" | "yahoo";
+  /** Cloud refused the request for want of a verified session. */
+  cloudSessionRequired: boolean;
+}
+
+function isSessionDenial(error: unknown): boolean {
+  if (error instanceof ApiRequestError) return error.status === 401 || error.status === 403;
+  return isCloudSessionRequired(error instanceof Error ? error.message : null);
+}
+
 /**
  * FINRA publishes every bi-monthly settlement, so it is the only real history.
  * Yahoo carries the current and prior settlement plus percent of float, so it
- * stays as the fallback when the cloud route is unavailable.
+ * stays as the fallback when the cloud route is unavailable, and the result says
+ * which one answered.
  */
-export async function fetchShortInterest(
+export async function loadShortInterest(
   symbol: string,
   cloudClient: Pick<typeof apiClient, "getCloudShortInterest"> = apiClient,
-): Promise<ShortInterestRecord[]> {
+): Promise<ShortInterestResult> {
+  let cloudSessionRequired = false;
   try {
     const response = await cloudClient.getCloudShortInterest(symbol);
     const records = response.status === "success" && response.data
       ? normalizeCloudRecords(response.data)
       : [];
-    if (records.length > 0) return records;
-  } catch {
+    if (records.length > 0) return { records, source: "finra", cloudSessionRequired };
+  } catch (error) {
     // Fall through to Yahoo rather than failing the pane.
+    cloudSessionRequired = isSessionDenial(error);
   }
-  return fetchYahooShortInterest(symbol);
+  return { records: await fetchYahooShortInterest(symbol), source: "yahoo", cloudSessionRequired };
+}
+
+export async function fetchShortInterest(
+  symbol: string,
+  cloudClient: Pick<typeof apiClient, "getCloudShortInterest"> = apiClient,
+): Promise<ShortInterestRecord[]> {
+  return (await loadShortInterest(symbol, cloudClient)).records;
 }

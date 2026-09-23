@@ -21,7 +21,7 @@ export interface StatViewModel {
   previous: StatPoint | null;
   yearAgo: StatPoint | null;
   changeOnPrevious: number | null;
-  /** Where the current reading sits in the series' own history. */
+  /** Where the current reading sits within the selected range. */
   percentile: number;
   sigmaVsTrend: number;
   mean: number;
@@ -76,7 +76,9 @@ export function projectStat(
     : [...points].reverse().find((point) => point.date <= target &&
       Date.parse(target) - Date.parse(point.date) <= (perYear === 52 ? 7 : 4) * 86_400_000) ?? null;
   const previous = points[points.length - 2] ?? null;
-  const atOrBelow = points.filter((point) => point.value <= latest.value).length;
+  // High, low, mean and percentile describe the selected window, like the chart.
+  const visible = sliceByRange(points, range);
+  const atOrBelow = visible.filter((point) => point.value <= latest.value).length;
 
   return {
     stat,
@@ -85,12 +87,12 @@ export function projectStat(
     previous,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
-    percentile: points.length === 0 ? 0 : (100 * atOrBelow) / points.length,
+    percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,
     sigmaVsTrend: sigmaVsTrend(trend, latest.value, latest.date),
-    mean: points.reduce((total, point) => total + point.value, 0) / points.length,
-    high: extreme(points, "high"),
-    low: extreme(points, "low"),
-    visible: sliceByRange(points, range),
+    mean: visible.reduce((total, point) => total + point.value, 0) / visible.length,
+    high: extreme(visible, "high"),
+    low: extreme(visible, "low"),
+    visible,
     observationStale: nowMs - Date.parse(latest.date) > stat.staleAfterMs,
     fetchedAt: build.cache?.fetchedAt ?? null,
     cacheStale: build.cache?.stale ?? null,

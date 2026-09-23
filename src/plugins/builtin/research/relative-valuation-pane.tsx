@@ -38,7 +38,7 @@ function relativeSymbolsFromPane(symbol: string | null, paneSettings: Record<str
   return symbol ? [symbol] : [];
 }
 
-function buildRelativeColumns(width: number, baseCurrency: string): RelativeColumn[] {
+function buildRelativeColumns(baseCurrency: string): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
   const pctWidth = 8;
@@ -54,7 +54,7 @@ function buildRelativeColumns(width: number, baseCurrency: string): RelativeColu
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
     { id: "revenueGrowth", label: "REV%", width: metricWidth, align: "right" },
-    { id: "operatingMargin", label: "OP%", width: Math.max(metricWidth, width - symbolWidth - priceWidth - pctWidth - capWidth - metricWidth * 5 - 10), align: "right" },
+    { id: "operatingMargin", label: "OP%", width: metricWidth, align: "right" },
   ];
 }
 
@@ -100,7 +100,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
-  const columns = useMemo(() => buildRelativeColumns(width, baseCurrency), [width, baseCurrency]);
+  const columns = useMemo(() => buildRelativeColumns(baseCurrency), [baseCurrency]);
   const fetchGenRef = useRef(0);
 
   const reload = useCallback((forceRefresh = false) => {

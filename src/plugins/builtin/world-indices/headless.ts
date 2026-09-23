@@ -41,7 +41,10 @@ const COLUMNS = [
   {
     key: "lastUpdated",
     header: "Updated",
-    format: (value: unknown) => value == null ? "-" : new Date(Number(value)).toISOString(),
+    format: (value: unknown) => {
+      const time = value == null ? Number.NaN : Number(value);
+      return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : "-";
+    },
   },
 ];
 

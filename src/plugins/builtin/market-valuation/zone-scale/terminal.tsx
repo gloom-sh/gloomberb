@@ -47,9 +47,9 @@ export function TerminalZoneColorScale({ indicator, value, width, markerColor }:
   }
 
   const captions = blankRow(scaleWidth);
-  if (geometry.underLabel) placeText(captions, geometry.underLabel, 0, colors.textDim);
-  if (geometry.overLabel) {
-    placeText(captions, geometry.overLabel, scaleWidth - geometry.overLabel.length, colors.textDim);
+  if (geometry.leftLabel) placeText(captions, geometry.leftLabel, 0, colors.textDim);
+  if (geometry.rightLabel) {
+    placeText(captions, geometry.rightLabel, scaleWidth - geometry.rightLabel.length, colors.textDim);
   }
   const fairBand = geometry.bands.find((band) => band.id === "fair");
   if (geometry.fairLabel && fairBand) {
@@ -57,8 +57,8 @@ export function TerminalZoneColorScale({ indicator, value, width, markerColor }:
       ((fairBand.startFraction + fairBand.endFraction) / 2) * (scaleWidth - 1),
     );
     const start = center - Math.floor((geometry.fairLabel.length - 1) / 2);
-    const overStart = scaleWidth - geometry.overLabel.length;
-    if (start >= geometry.underLabel.length + 1 && start + geometry.fairLabel.length <= overStart - 1) {
+    const overStart = scaleWidth - geometry.rightLabel.length;
+    if (start >= geometry.leftLabel.length + 1 && start + geometry.fairLabel.length <= overStart - 1) {
       placeText(captions, geometry.fairLabel, start, colors.textDim);
     }
   }
@@ -76,7 +76,7 @@ export function TerminalZoneColorScale({ indicator, value, width, markerColor }:
   }
 
   const rows: Array<{ id: string; cells: Cell[] }> = [];
-  if (geometry.underLabel || geometry.overLabel) rows.push({ id: "caption", cells: captions });
+  if (geometry.leftLabel || geometry.rightLabel) rows.push({ id: "caption", cells: captions });
   rows.push({ id: "bar", cells: bar });
   rows.push({ id: "tick", cells: ticks });
 

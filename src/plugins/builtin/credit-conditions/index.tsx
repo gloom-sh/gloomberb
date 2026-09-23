@@ -40,10 +40,13 @@ function formatBp(value: number | null, signed = false): string {
   return `${sign}${value.toFixed(1)}bp`;
 }
 
+/** The index column orders by credit quality (IG, AAA to BBB, HY), not alphabetically. */
+const RATING_ORDER = new Map<CreditSeriesId, number>(CREDIT_SERIES.map((series, index) => [series.seriesId, index]));
+
 function sortRows(rows: CreditConditionRow[], id: SortId, descending: boolean): CreditConditionRow[] {
   return [...rows].sort((left, right) => {
     let comparison = 0;
-    if (id === "label") comparison = left.label.localeCompare(right.label);
+    if (id === "label") comparison = (RATING_ORDER.get(left.seriesId) ?? 0) - (RATING_ORDER.get(right.seriesId) ?? 0);
     else if (id === "date") comparison = left.date.localeCompare(right.date);
     else if (id === "oas") comparison = left.oasBp - right.oasBp;
     else comparison = (left.dailyChangeBp ?? -Infinity) - (right.dailyChangeBp ?? -Infinity);

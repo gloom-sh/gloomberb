@@ -100,6 +100,7 @@ export function projectHiloSnapshot(
     items: [...lows, ...highs],
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
     metadata: {
+      ...(payload.access === "delayed" ? { notices: [`Delayed ${payload.delayMinutes} minutes`] } : {}),
       status: payload.status,
       access: payload.access,
       delayMinutes: payload.delayMinutes,
@@ -155,7 +156,10 @@ export function createHiloHeadless(
       {
         key: "at",
         header: "Observed at",
-        format: (value: unknown) => new Date(Number(value)).toISOString(),
+        format: (value: unknown) => {
+          const time = Number(value);
+          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
+        },
       },
     ],
     describe: "New Highs / Lows",
@@ -242,7 +246,10 @@ export function createFlowHeadless(
       {
         key: "at",
         header: "Time",
-        format: (value: unknown) => new Date(Number(value)).toISOString(),
+        format: (value: unknown) => {
+          const time = Number(value);
+          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
+        },
       },
       { key: "underlying", header: "Ticker" },
       { key: "right", header: "Right" },

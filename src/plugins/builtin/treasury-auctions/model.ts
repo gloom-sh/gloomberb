@@ -187,21 +187,18 @@ export function nextAuctionSort(
   return { columnId, direction: columnId === "type" || columnId === "term" ? "asc" : "desc" };
 }
 
-export function buildAuctionColumns(width: number): AuctionColumn[] {
+/** TERM takes the spare width; the table adds the gaps and header room itself. */
+export function buildAuctionColumns(): AuctionColumn[] {
   const dateWidth = 8;
   const typeWidth = 6;
   const rateWidth = 8;
   const btcWidth = 6;
   const indirectWidth = 9;
   const sizeWidth = 8;
-  const termWidth = Math.max(
-    10,
-    width - dateWidth - typeWidth - rateWidth - btcWidth - indirectWidth - sizeWidth - 8,
-  );
   return [
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
     { id: "type", label: "TYPE", width: typeWidth, align: "left" },
-    { id: "term", label: "TERM", width: termWidth, align: "left" },
+    { id: "term", label: "TERM", width: 10, align: "left", flexGrow: 1 },
     { id: "rate", label: "RATE", width: rateWidth, align: "right" },
     { id: "btc", label: "B/C", width: btcWidth, align: "right" },
     { id: "indirect", label: "INDIRECT", width: indirectWidth, align: "right" },

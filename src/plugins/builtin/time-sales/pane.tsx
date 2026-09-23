@@ -9,7 +9,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey } from "./model";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
@@ -70,7 +70,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneFooter("time-sales:actions", () => ({ hints: [{ id: "pause", key: "space", label: frozen ? "resume" : "pause", onPress: freeze }] }), [frozen, resource.data, resource.epoch]);
   usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeTime(data.asOf)} UTC`, tone: "muted" }] },
+    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeTimeSeconds(data.asOf)} UTC`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
@@ -90,7 +90,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         rootBefore={<Box flexDirection="column" flexShrink={0} paddingX={1}>
           <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClockMs(stats.asOf) : "--"} UTC`} />
           <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClockMs(stats.from) : "--"} to ${stats.asOf ? tapeClockMs(stats.asOf) : "--"}`} />
-          <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low)} to ${tapePrice(stats.high)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low)} to ${tapePrice(data.session.high)} · ${tapeTime(data.session.asOf)} UTC` : undefined} />
+          <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low)} to ${tapePrice(stats.high)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low)} to ${tapePrice(data.session.high)} · ${tapeTimeSeconds(data.session.asOf)} UTC` : undefined} />
         </Box>}
         renderCell={(row, column) => {
           if (row.trade) {

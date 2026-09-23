@@ -21,8 +21,9 @@ export interface ZoneScaleGeometry {
   bands: Array<ZoneScaleBand & { from: number; to: number; startFraction: number; endFraction: number }>;
   markerFraction: number;
   ticks: ZoneScaleTick[];
-  underLabel: string;
-  overLabel: string;
+  /** Caption over the low end of the scale; "overvalued" when the bands run expensive to cheap. */
+  leftLabel: string;
+  rightLabel: string;
   fairLabel: string;
 }
 
@@ -46,6 +47,12 @@ export function zoneScaleGeometry(
     : allTicks.filter((tick, index) =>
       index === 0 || index === allTicks.length - 1 || tick === indicator.reference?.value);
 
+  // Some measures (dividend yield, excess CAPE yield) are cheaper when higher, so
+  // their bands start at overvalued and the end captions swap with them.
+  const inverted = raw[0]?.id.endsWith("overvalued") ?? false;
+  const underLabel = width >= 48 ? "undervalued" : width >= 28 ? "under" : "";
+  const overLabel = width >= 48 ? "overvalued" : width >= 28 ? "over" : "";
+
   return {
     bands,
     markerFraction: zoneScaleFraction(indicator, value),
@@ -53,8 +60,8 @@ export function zoneScaleGeometry(
       label: indicator.formatValue(tick),
       fraction: zoneScaleFraction(indicator, tick),
     })),
-    underLabel: width >= 48 ? "undervalued" : width >= 28 ? "under" : "",
-    overLabel: width >= 48 ? "overvalued" : width >= 28 ? "over" : "",
+    leftLabel: inverted ? overLabel : underLabel,
+    rightLabel: inverted ? underLabel : overLabel,
     fairLabel: width >= 64 ? "fair" : "",
   };
 }

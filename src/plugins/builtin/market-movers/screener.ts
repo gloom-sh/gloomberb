@@ -1,3 +1,4 @@
+import { yahooSecurityName } from "../../../sources/yahoo-finance/names";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { createThrottledFetch, type ThrottledFetchTransport } from "../../../utils/throttled-fetch";
 import type { PluginPersistence } from "../../../types/plugin";
@@ -234,6 +235,8 @@ export function convertScreenerPriceUnit(value: number | undefined, from: string
     ? value / source.divisor * target.divisor : undefined;
 }
 
+const textField = (value: unknown) => typeof value === "string" ? value : undefined;
+
 export function parseScreenerResponse(data: any): ScreenerQuote[] {
   const quotes = data?.finance?.result?.[0]?.quotes;
   if (data?.finance?.error != null || !Array.isArray(quotes)) {
@@ -245,7 +248,7 @@ export function parseScreenerResponse(data: any): ScreenerQuote[] {
     const avgVolume = screenerVolume(q.averageDailyVolume3Month) ?? screenerVolume(q.averageDailyVolume10Day);
     return [{
       symbol: q.symbol.trim(),
-      name: q.shortName ?? q.longName ?? q.symbol,
+      name: yahooSecurityName(textField(q.shortName), textField(q.longName)) ?? q.symbol.trim(),
       price: screenerNumber(q.regularMarketPrice),
       change: screenerNumber(q.regularMarketChange),
       changePercent: screenerNumber(q.regularMarketChangePercent),

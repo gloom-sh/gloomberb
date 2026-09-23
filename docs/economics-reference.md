@@ -10,6 +10,8 @@ ECST shows FRED observations transformed into the measures below. The pane keeps
 
 NSA means not seasonally adjusted. An annual-rate housing count is a flow stated at an annual rate. Effective fed funds is the monthly average effective overnight rate, while the FOMC sets a separate target range. The curve spread is 10Y minus 2Y; its zero reference marks inversion. The core-PCE 2% line is a reference: the Fed target applies to overall PCE inflation.
 
+High, low, mean and percentile are computed over the selected range (5Y, 20Y or ALL), the same window the chart draws. The trend line and sigma use the full loaded history.
+
 The latest observation date identifies the source period, not necessarily its release date. The previous value is the preceding available print. The 1Y comparison uses the matching calendar period for monthly and quarterly data and a nearby prior business observation for daily data.
 
 Ordinary loads and automatic checks reuse series retrieved within six hours. Pressing `r` requests current observations, including revisions to earlier periods. If a request fails, available cached observations remain visible with the existing error and stale status; independently available statistics still update. This is current-series research, not reconstruction of publication-time vintages.

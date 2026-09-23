@@ -168,7 +168,7 @@ describe("headless pane printer", () => {
     };
 
     const text = renderHeadlessPaneText(definition, result, args, "News");
-    expect(text).toContain("As of: 2026-09-03T12:00:00Z");
+    expect(text).toContain("As of: 2026-09-03 12:00 UTC");
     expect(text).toContain("Markets open");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,

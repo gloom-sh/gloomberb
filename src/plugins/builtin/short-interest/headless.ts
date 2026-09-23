@@ -5,7 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatCompact, formatNumber } from "../../../utils/format";
-import { fetchShortInterest } from "./client";
+import { loadShortInterest, type ShortInterestResult } from "./client";
 import {
   buildRows,
   sortRows,
@@ -46,11 +46,11 @@ export interface ShortInterestHeadlessDependencies {
     symbol: string,
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
-  ): Promise<ShortInterestRecord[]>;
+  ): Promise<ShortInterestRecord[] | ShortInterestResult>;
 }
 
 const defaultDependencies: ShortInterestHeadlessDependencies = {
-  loadRecords: (symbol, _args, ctx) => fetchShortInterest(symbol, ctx.apiClient),
+  loadRecords: (symbol, _args, ctx) => loadShortInterest(symbol, ctx.apiClient),
 };
 
 export function createShortInterestHeadless(
@@ -85,7 +85,11 @@ export function createShortInterestHeadless(
     describe: (args) => `Short Interest | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
-      const records = await dependencies.loadRecords(symbol, args, ctx);
+      const loaded = await dependencies.loadRecords(symbol, args, ctx);
+      const { records, source, cloudSessionRequired } = Array.isArray(loaded)
+        ? { records: loaded, source: undefined, cloudSessionRequired: false }
+        : loaded;
+      const yahooFallback = source === "yahoo" && records.length > 0;
       const preference: SortPreference = {
         columnId: "settlementDate",
         direction: args.options.order === "oldest" ? "asc" : "desc",
@@ -102,7 +106,13 @@ export function createShortInterestHeadless(
         }));
       return {
         rows,
-        metadata: { symbol, order: args.options.order },
+        ...(yahooFallback ? {
+          complete: false,
+          errors: [cloudSessionRequired
+            ? "FINRA history needs a Gloom Cloud sign-in; showing Yahoo's latest two settlements."
+            : "No FINRA history; showing Yahoo's latest two settlements."],
+        } : {}),
+        metadata: { symbol, order: args.options.order, ...(source ? { source } : {}) },
       };
     },
   };

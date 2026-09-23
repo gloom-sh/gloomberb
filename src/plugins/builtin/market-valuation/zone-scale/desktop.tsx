@@ -79,9 +79,9 @@ export function DesktopZoneColorScale({ indicator, value, width, markerColor }: 
           );
         })}
 
-        {geometry.underLabel ? (
+        {geometry.leftLabel ? (
           <SvgText x={0} y={16} fill={colors.textDim} textAnchor="start" fontFamily="inherit" fontSize="15">
-            {geometry.underLabel}
+            {geometry.leftLabel}
           </SvgText>
         ) : null}
         {geometry.fairLabel ? (
@@ -96,7 +96,7 @@ export function DesktopZoneColorScale({ indicator, value, width, markerColor }: 
             {geometry.fairLabel}
           </SvgText>
         ) : null}
-        {geometry.overLabel ? (
+        {geometry.rightLabel ? (
           <SvgText
             x={VIEWBOX_WIDTH}
             y={16}
@@ -105,7 +105,7 @@ export function DesktopZoneColorScale({ indicator, value, width, markerColor }: 
             fontFamily="inherit"
             fontSize="15"
           >
-            {geometry.overLabel}
+            {geometry.rightLabel}
           </SvgText>
         ) : null}
 

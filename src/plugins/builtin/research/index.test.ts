@@ -7,6 +7,7 @@ import {
   sortRatingRows,
   type RatingSortPreference,
 } from "./analyst-pane";
+import { ratingTargetDelta } from "./analyst-model";
 import { buildEventDetailBody, buildEventRows, matchEarningsSecFiling } from "./corporate-actions-pane";
 import { eventSourceNotice } from "./event-model";
 
@@ -125,7 +126,7 @@ describe("analyst rating columns", () => {
       current: "Outperform",
       prior: "Outperform",
       currentPriceTarget: 220,
-      priorPriceTarget: 0,
+      priorPriceTarget: 9,
     };
     const widePrior: AnalystRatingRecord = {
       date: "2026-05-02",
@@ -142,6 +143,12 @@ describe("analyst rating columns", () => {
     expect(formatRatingTarget(narrowPrior, "USD", targetColumn).indexOf("→")).toBe(
       formatRatingTarget(widePrior, "USD", targetColumn).indexOf("→"),
     );
+  });
+
+  test("a cached first target's 0 prior reads as no prior target", () => {
+    const first: AnalystRatingRecord = { date: "2026-08-04", firm: "China Renaissance", currentPriceTarget: 280, priorPriceTarget: 0 };
+    expect(formatRatingTarget(first, "USD")).toBe(" $280");
+    expect(ratingTargetDelta(first)).toBeNull();
   });
 });
 

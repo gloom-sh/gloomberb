@@ -89,13 +89,22 @@ export interface RatingTargetColumnSizing {
   targetCurrentWidth: number;
 }
 
+/**
+ * Yahoo reports a firm's first target with a 0 prior. The mapper drops it, but
+ * entries cached before that still carry the 0, so read it as no prior here too.
+ */
+function priorRatingTarget(row: AnalystResearchData["ratings"][number]): number | undefined {
+  const prior = row.priorPriceTarget;
+  return prior === 0 && row.currentPriceTarget != null && row.currentPriceTarget > 0 ? undefined : prior;
+}
+
 export function formatRatingTarget(
   row: AnalystResearchData["ratings"][number],
   currency: string | undefined,
   sizing?: Partial<RatingTargetColumnSizing>,
 ): string {
   const current = row.currentPriceTarget;
-  const prior = row.priorPriceTarget;
+  const prior = priorRatingTarget(row);
   if (current == null && prior == null) return "-";
   if (current == null) return ` ${formatPriceTarget(prior, currency)}`;
   if (prior == null) return ` ${formatPriceTarget(current, currency)}`;
@@ -106,9 +115,10 @@ export function formatRatingTarget(
 }
 
 export function ratingTargetDelta(row: AnalystResearchData["ratings"][number]): number | null {
-  if (row.currentPriceTarget == null || row.priorPriceTarget == null
-    || !Number.isFinite(row.currentPriceTarget) || !Number.isFinite(row.priorPriceTarget)) return null;
-  return row.currentPriceTarget - row.priorPriceTarget;
+  const prior = priorRatingTarget(row);
+  if (row.currentPriceTarget == null || prior == null
+    || !Number.isFinite(row.currentPriceTarget) || !Number.isFinite(prior)) return null;
+  return row.currentPriceTarget - prior;
 }
 
 export type RatingColumnId = "date" | "firm" | "action" | "current" | "target" | "prior";
@@ -150,7 +160,7 @@ export function buildRatingColumns(
     (sizing, row) => ({
       targetPriorWidth: Math.max(
         sizing.targetPriorWidth,
-        row.priorPriceTarget == null ? 0 : formatPriceTarget(row.priorPriceTarget, currency).length,
+        priorRatingTarget(row) == null ? 0 : formatPriceTarget(priorRatingTarget(row), currency).length,
       ),
       targetCurrentWidth: Math.max(
         sizing.targetCurrentWidth,
