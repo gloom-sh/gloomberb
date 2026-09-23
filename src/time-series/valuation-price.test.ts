@@ -6,7 +6,8 @@ import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { extractFundamentalSeries, valuationPriceIssues } from "./fundamentals";
 import { resolveStudies } from "./studies";
 import { resolveChartSpecData } from "./resolve";
-import { chartQuoteOverrideKeyForSource, subscribeToLiveChartQuotes } from "./live-quotes";
+import { chartQuoteOverrideKeyForSource, getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
+import { createQuoteStoreFixture } from "./fixtures/quote-store";
 import { CHART_SPEC_VERSION, type ChartSpec, type SecuritySeriesSource } from "./types";
 
 const source = (metric = "trailingPE"): SecuritySeriesSource => ({ kind: "security",
@@ -224,17 +225,19 @@ test.each(["NaN", "future"] as const)("actual live quote status and %s timestamp
   const data = fixture();
   const spec: ChartSpec = { version: CHART_SPEC_VERSION, viewport: { range: "5Y", resolution: "1d" }, panels: [{ id: "main" }],
     studies: [], series: [{ id: "pe", source: source(), style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }] };
-  let emit!: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1];
-  let target!: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[0][number];
   const provider = createTestDataProvider({ getTickerFinancials: async () => data, getQuote: async () => data.quote!,
-    getPriceHistoryForResolution: async () => data.priceHistory,
-    subscribeQuotes: (targets, listener) => { target = targets[0]!; emit = listener; return () => {}; } });
+    getPriceHistoryForResolution: async () => data.priceHistory });
+  const store = createQuoteStoreFixture();
+  const target = getLiveChartQuoteTargets(spec)[0]!;
+  const emit = store.emit;
   const results: Awaited<ReturnType<typeof resolveChartSpecData>>[] = [];
-  const stop = subscribeToLiveChartQuotes({ spec, dataProvider: provider, refreshIntervalMs: 0,
-    onRefresh: async (quoteOverrides) => { results.push(await resolveChartSpecData(spec, { dataProvider: provider,
-      now: new Date("2026-09-12"), quoteOverrides })); } });
+  const pending: Promise<unknown>[] = [];
+  const stop = observeLiveChartQuotes({ spec, store, onChange: (quoteOverrides) => {
+    pending.push(resolveChartSpecData(spec, { dataProvider: provider,
+      now: new Date("2026-09-12"), quoteOverrides }).then((result) => results.push(result)));
+  } });
   async function waitForCount(count: number) {
-    for (let tries = 0; tries < 100 && results.length < count; tries++) await Bun.sleep(2);
+    await Promise.all(pending);
     expect(results).toHaveLength(count);
   }
   const valid = { ...data.quote!, stale: false };

@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
   ChoiceDialog,
   EmptyState,
@@ -22,6 +22,7 @@ import {
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
+import { LIVE_CHART_TERMINAL_FRAME_MS } from "../../../time-series/live-quotes";
 import { chartSeriesSourceKey } from "../../../capabilities";
 import { useShortcut } from "../../../react/input";
 import { useDialog, useDialogState, type PromptContext } from "../../../ui/dialog";
@@ -126,7 +127,6 @@ interface ChartComposerSurfaceProps {
   height: number;
   footerId: string;
   onCapture?: (capturing: boolean) => void;
-  liveWhenUnfocused?: boolean;
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
@@ -154,11 +154,11 @@ function ChartComposerSurface({
   height,
   footerId,
   onCapture,
-  liveWhenUnfocused = true,
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const { publicSharing, cellWidthPx = 8 } = useUiCapabilities();
+  const desktopWeb = useUiHost().kind === "desktop-web";
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -216,7 +216,11 @@ function ChartComposerSurface({
     requestViewport: activeRuntimeViewport?.requestViewport,
     targetPointCount,
     currentResolution: currentResolutionRef.current,
-    liveStreaming: liveStreaming && (liveWhenUnfocused || focused),
+    // Streaming follows visibility, not focus: a chart watched beside another
+    // pane stays live. Focus only raises its quotes to selected priority.
+    liveStreaming,
+    selected: focused,
+    liveRefreshIntervalMs: desktopWeb ? 0 : LIVE_CHART_TERMINAL_FRAME_MS,
   });
   currentResolutionRef.current = resolution.resolution ?? currentResolutionRef.current;
   const availableResolutions = useMemo<ChartResolution[]>(() => {
@@ -762,7 +766,6 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
       height={height}
       footerId="chart-composer:research"
       onCapture={onCapture}
-      liveWhenUnfocused={false}
     />
   );
 }

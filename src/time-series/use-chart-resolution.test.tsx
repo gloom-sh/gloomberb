@@ -5,9 +5,11 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import type { DataProvider } from "../types/data-provider";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import {
+  MarketDataCoordinator,
   setSharedMarketDataCoordinator,
 } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
+import { IDLE_COORDINATOR_QUOTES } from "./fixtures/quote-store";
 import type { ChartResolveSources } from "./resolve";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import {
@@ -166,8 +168,9 @@ afterEach(async () => {
 });
 
 describe("useChartResolution", () => {
-  test("polls chart data without opening a quote subscription when live streaming is disabled", async () => {
+  test("with streaming off, polls quotes into the chart without reloading its history", async () => {
     let historyCalls = 0;
+    let quoteCalls = 0;
     let subscribeCalls = 0;
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
@@ -175,24 +178,78 @@ describe("useChartResolution", () => {
         historyCalls += 1;
         return INITIAL_HISTORY;
       },
+      getQuote: async () => {
+        quoteCalls += 1;
+        return {
+          symbol: "RESOLUTION-HOOK-TEST", price: 104 + quoteCalls, currency: "USD", change: 0, changePercent: 0,
+          lastUpdated: Date.parse("2025-01-03T20:00:00.000Z") + quoteCalls,
+        };
+      },
       subscribeQuotes: () => {
         subscribeCalls += 1;
         return () => {};
       },
     });
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
     testSetup = await testRender(<PollingResolutionHarness sources={sourcesFor(provider)} />, {
       width: 24,
       height: 1,
     });
 
-    await waitFor(() => historyCalls >= 2 && latestResult?.loading === false);
+    await waitFor(() => quoteCalls >= 3 && latestResult?.loading === false);
     expect(subscribeCalls).toBe(0);
+    expect(historyCalls).toBe(1);
+    expect(latestResult?.series[0]?.points).toHaveLength(2);
+  });
 
-    const callsAfterImmediatePoll = historyCalls;
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 45));
+  test("streams shared quotes into the forming bar and opens the next bar at its boundary", async () => {
+    const minute = Math.floor(Date.now() / 60_000) * 60_000;
+    const history: PricePoint[] = [
+      { date: new Date(minute - 180_000), open: 100, high: 101, low: 99, close: 100, volume: 10 },
+      { date: new Date(minute - 120_000), open: 100, high: 100.5, low: 99.5, close: 100, volume: 5 },
+    ];
+    let emit: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[1] | null = null;
+    let target: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[0][number] | null = null;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => history,
+      subscribeQuotes: (targets, onQuote) => {
+        target = targets[0] ?? null;
+        emit = onQuote;
+        return () => {};
+      },
     });
-    await waitFor(() => historyCalls > callsAfterImmediatePoll);
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+    const spec: ChartSpec = { ...SPEC, viewport: { range: "1D", resolution: "1m" }, series: [{ ...SPEC.series[0]!,
+      source: { kind: "security", instrument: { symbol: "LIVE-BARS", exchange: "CCC" }, fieldId: "market.ohlcv" } }] };
+    const sources: ChartResolveSources = { dataProvider: provider, loadFredSeries: async () => { throw new Error("unused"); } };
+    testSetup = await testRender(<ResolutionHarness sources={sources} spec={spec} />, { width: 24, height: 1 });
+    const bars = () => (latestResult?.bufferedSeries ?? []).find((entry) => entry.id === "price")?.points ?? [];
+    const settle = async (predicate: () => boolean) => {
+      for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          await testSetup!.renderOnce();
+        });
+      }
+      expect(predicate()).toBe(true);
+    };
+    await settle(() => bars().length === 2 && emit !== null);
+
+    const quote = (offset: number, price: number) => ({
+      symbol: "LIVE-BARS", price, currency: "USD", change: 0, changePercent: 0,
+      lastUpdated: minute + offset, listingExchangeName: "CCC",
+    });
+    emit!(target!, quote(-100_000, 103));
+    await settle(() => bars().at(-1)?.close === 103);
+    emit!(target!, quote(-90_000, 98));
+    await settle(() => bars().at(-1)?.close === 98);
+    expect(bars().at(-1)).toMatchObject({ open: 100, high: 103, low: 98, close: 98 });
+
+    emit!(target!, quote(-30_000, 99));
+    await settle(() => bars().length === 3);
+    expect(bars().at(-2)).toMatchObject({ high: 103, low: 98, close: 98 });
+    expect(bars().at(-1)).toMatchObject({ date: new Date(minute - 60_000), open: 99, high: 99, low: 99, close: 99 });
   });
 
   test("keeps renderable data settled through empty adaptive and live refreshes", async () => {
@@ -220,6 +277,7 @@ describe("useChartResolution", () => {
         return () => {};
       },
     });
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
     const sources = sourcesFor(provider);
     testSetup = await testRender(<ResolutionHarness sources={sources} />, {
       width: 24,
@@ -293,6 +351,7 @@ describe("useChartResolution", () => {
         return () => {};
       },
     });
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
     const sources = sourcesFor(provider);
     testSetup = await testRender(<ResolutionHarness sources={sources} />, {
       width: 24,
@@ -429,6 +488,7 @@ describe("useChartResolution", () => {
       getPriceHistory: async () => [],
     });
     setSharedMarketDataCoordinator({
+      ...IDLE_COORDINATOR_QUOTES,
       subscribe: () => () => {},
       getVersion: () => 1,
       getKeysVersion: () => 1,
@@ -468,6 +528,7 @@ describe("useChartResolution", () => {
       getPriceHistory: async () => { throw new Error("Selected history unavailable"); },
     });
     setSharedMarketDataCoordinator({
+      ...IDLE_COORDINATOR_QUOTES,
       subscribe: () => () => {}, getVersion: () => 1,
       getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready",
         data: INITIAL_HISTORY, lastGoodData: INITIAL_HISTORY, source: "test", fetchedAt: Date.now() }),

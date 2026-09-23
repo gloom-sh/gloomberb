@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../test-support/data-provider";
 import type { Quote } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
+import { createQuoteStoreFixture } from "./fixtures/quote-store";
 import {
   chartQuoteOverrideKeyForTarget,
+  createLiveChartRefresher,
   getLiveChartQuoteTargets,
-  subscribeToLiveChartQuotes,
+  observeLiveChartQuotes,
 } from "./live-quotes";
 
 function securitySeries(
@@ -97,46 +98,34 @@ describe("live chart quotes", () => {
     expect(getLiveChartQuoteTargets(spec).map((target) => target.symbol)).toEqual(["MSFT"]);
   });
 
-  test("coalesces bursts, serializes refreshes, and stops cleanly", async () => {
+  test("serializes refreshes from store quotes with one latest follow-up, and stops cleanly", async () => {
     const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
-    let handler: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1]
-      | undefined;
-    let subscribedTarget: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[0][number]
-      | undefined;
-    let unsubscribeCalls = 0;
-    const provider = createTestDataProvider({
-      subscribeQuotes: (targets, onQuote) => {
-        subscribedTarget = targets[0];
-        handler = onQuote;
-        return () => {
-          unsubscribeCalls += 1;
-        };
-      },
-    });
+    const store = createQuoteStoreFixture();
+    const [target] = getLiveChartQuoteTargets(spec);
+    const key = chartQuoteOverrideKeyForTarget(target!);
     let releaseFirst!: () => void;
     const firstRefresh = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    let latest: ReadonlyMap<string, Quote> = new Map();
     const snapshots: Array<ReadonlyMap<string, Quote>> = [];
-    const dispose = subscribeToLiveChartQuotes({
-      spec,
-      dataProvider: provider,
-      refreshIntervalMs: 0,
-      onRefresh: async (overrides) => {
-        snapshots.push(overrides);
-        if (snapshots.length === 1) await firstRefresh;
-      },
+    const refresher = createLiveChartRefresher(async () => {
+      snapshots.push(latest);
+      if (snapshots.length === 1) await firstRefresh;
     });
-    const key = chartQuoteOverrideKeyForTarget(subscribedTarget!);
+    const stop = observeLiveChartQuotes({ spec, store, onChange: (overrides) => {
+      latest = overrides;
+      refresher.request();
+    } });
 
-    handler!(subscribedTarget!, quote("AAPL", 100, 100));
-    handler!(subscribedTarget!, quote("AAPL", 101, 101));
+    store.emit(target!, quote("AAPL", 100, 100));
+    store.emit(target!, quote("AAPL", 101, 101));
     await waitFor(() => snapshots.length === 1);
     expect(snapshots[0]?.get(key)?.price).toBe(101);
 
-    handler!(subscribedTarget!, quote("AAPL", 102, 102));
-    handler!(subscribedTarget!, quote("AAPL", 99, 99));
-    handler!(subscribedTarget!, quote("AAPL", 103, 103));
+    store.emit(target!, quote("AAPL", 102, 102));
+    store.emit(target!, quote("AAPL", 99, 99));
+    store.emit(target!, quote("AAPL", 103, 103));
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(snapshots).toHaveLength(1);
 
@@ -144,79 +133,59 @@ describe("live chart quotes", () => {
     await waitFor(() => snapshots.length === 2);
     expect(snapshots[1]?.get(key)?.price).toBe(103);
 
-    dispose();
-    dispose();
-    expect(unsubscribeCalls).toBe(1);
-    handler!(subscribedTarget!, quote("AAPL", 104, 104));
+    stop();
+    stop();
+    refresher.dispose();
+    expect(store.listenerCount()).toBe(0);
+    store.emit(target!, quote("AAPL", 104, 104));
     await new Promise((resolve) => setTimeout(resolve, 5));
     expect(snapshots).toHaveLength(2);
   });
 
-  test("ignores receipt-only updates but refreshes changed price or security type", async () => {
+  test("ignores receipt-only updates but reports changed price, volume or security type", () => {
     const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
-    let handler: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1]
-      | undefined;
-    let target: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[0][number]
-      | undefined;
-    const provider = createTestDataProvider({
-      subscribeQuotes: (targets, onQuote) => {
-        target = targets[0];
-        handler = onQuote;
-        return () => {};
-      },
-    });
-    let refreshCalls = 0;
-    const dispose = subscribeToLiveChartQuotes({
-      spec,
-      dataProvider: provider,
-      refreshIntervalMs: 0,
-      onRefresh: () => {
-        refreshCalls += 1;
-      },
-    });
+    const store = createQuoteStoreFixture();
+    const [target] = getLiveChartQuoteTargets(spec);
+    let changes = 0;
+    const stop = observeLiveChartQuotes({ spec, store, onChange: () => { changes += 1; } });
 
-    handler!(target!, { ...quote("AAPL", 100, 100), receivedAt: 100 });
-    await waitFor(() => refreshCalls === 1);
-    handler!(target!, { ...quote("AAPL", 100, 100), receivedAt: 101 });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(refreshCalls).toBe(1);
-
-    handler!(target!, { ...quote("AAPL", 101, 100), receivedAt: 102 });
-    await waitFor(() => refreshCalls === 2);
-    handler!(target!, { ...quote("AAPL", 101, 100), receivedAt: 103, instrumentType: "Common Stock" });
-    await waitFor(() => refreshCalls === 3);
-    dispose();
+    store.emit(target!, { ...quote("AAPL", 100, 100), receivedAt: 100 });
+    expect(changes).toBe(1);
+    store.emit(target!, { ...quote("AAPL", 100, 100), receivedAt: 101 });
+    expect(changes).toBe(1);
+    store.emit(target!, { ...quote("AAPL", 101, 100), receivedAt: 102 });
+    expect(changes).toBe(2);
+    store.emit(target!, { ...quote("AAPL", 101, 100), receivedAt: 103, volume: 5_000 });
+    expect(changes).toBe(3);
+    store.emit(target!, { ...quote("AAPL", 101, 100), receivedAt: 104, volume: 5_000, instrumentType: "Common Stock" });
+    expect(changes).toBe(4);
+    stop();
   });
 
-  test("continues after a synchronous background refresh failure", async () => {
-    const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
-    let handler: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1]
-      | undefined;
-    let target: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[0][number]
-      | undefined;
-    const provider = createTestDataProvider({
-      subscribeQuotes: (targets, onQuote) => {
-        target = targets[0];
-        handler = onQuote;
-        return () => {};
-      },
-    });
+  test("keeps refreshing after a synchronous refresh failure", async () => {
     let refreshCalls = 0;
-    const dispose = subscribeToLiveChartQuotes({
-      spec,
-      dataProvider: provider,
-      refreshIntervalMs: 0,
-      onRefresh: () => {
-        refreshCalls += 1;
-        if (refreshCalls === 1) throw new Error("temporary failure");
-      },
+    const refresher = createLiveChartRefresher(() => {
+      refreshCalls += 1;
+      if (refreshCalls === 1) throw new Error("temporary failure");
     });
-
-    handler!(target!, quote("AAPL", 100, 100));
+    refresher.request();
     await waitFor(() => refreshCalls === 1);
-    handler!(target!, quote("AAPL", 101, 101));
+    refresher.request();
     await waitFor(() => refreshCalls === 2);
+    refresher.dispose();
+  });
 
-    dispose();
+  test("a quote stamped just ahead of the local clock still replaces an older one", () => {
+    const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
+    const store = createQuoteStoreFixture();
+    const [target] = getLiveChartQuoteTargets(spec);
+    const key = chartQuoteOverrideKeyForTarget(target!);
+    let latest: ReadonlyMap<string, Quote> = new Map();
+    const stop = observeLiveChartQuotes({ spec, store, onChange: (overrides) => { latest = overrides; } });
+    const now = Date.now();
+    store.emit(target!, quote("AAPL", 100, now - 5_000));
+    store.emit(target!, quote("AAPL", 101, now + 1_000));
+    expect(latest.get(key)?.price).toBe(101);
+    stop();
   });
 });

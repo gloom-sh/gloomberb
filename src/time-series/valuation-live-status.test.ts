@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { resolveChartSpecData } from "./resolve";
-import { subscribeToLiveChartQuotes } from "./live-quotes";
+import { getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
+import { createQuoteStoreFixture } from "./fixtures/quote-store";
 import type { Quote, TickerFinancials } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 
@@ -19,29 +20,29 @@ for (const receivedAt of [undefined, 42]) {
       panels: [{ id: "main" }], studies: [], series: [{ id: "pe", source: { kind: "security", instrument: { symbol: "TEST", exchange: "NYSE" },
         fieldId: "valuation.trailingPE", period: "annual", timestampMode: "available-at" },
         style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }] };
-    let emit!: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1];
-    let target!: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[0][number];
     const provider = createTestDataProvider({ getTickerFinancials: async () => financials,
-      getQuote: async () => financials.quote!, getPriceHistoryForResolution: async () => financials.priceHistory,
-      subscribeQuotes: (targets, listener) => { target = targets[0]!; emit = listener; return () => {}; } });
+      getQuote: async () => financials.quote!, getPriceHistoryForResolution: async () => financials.priceHistory });
+    const store = createQuoteStoreFixture();
+    const target = getLiveChartQuoteTargets(spec)[0]!;
     const results: Awaited<ReturnType<typeof resolveChartSpecData>>[] = [];
-    const stop = subscribeToLiveChartQuotes({ spec, dataProvider: provider, refreshIntervalMs: 0,
-      onRefresh: async (quoteOverrides) => { results.push(await resolveChartSpecData(spec, { dataProvider: provider,
-        now: new Date("2026-09-12T00:00:00Z"), quoteOverrides })); } });
-    async function send(next: Quote, refreshes?: number) {
-      emit(target, next);
-      if (refreshes === undefined) { await Bun.sleep(10); return; }
-      for (let attempt = 0; attempt < 100 && results.length < refreshes; attempt++) await Bun.sleep(2);
+    const pending: Promise<unknown>[] = [];
+    const stop = observeLiveChartQuotes({ spec, store, onChange: (quoteOverrides) => {
+      pending.push(resolveChartSpecData(spec, { dataProvider: provider,
+        now: new Date("2026-09-12T00:00:00Z"), quoteOverrides }).then((result) => results.push(result)));
+    } });
+    async function send(next: Quote) {
+      store.emit(target, next);
+      await Promise.all(pending);
     }
     try {
-      await send({ ...quote }, 1);
+      await send({ ...quote });
       expect(results).toHaveLength(1);
       expect(results.at(-1)?.series[0]?.points.map(point => point.value)).toEqual([5.5, 6]);
-      await send({ ...quote, stale: true }, 2);
+      await send({ ...quote, stale: true });
       expect(results).toHaveLength(2);
       expect(results.at(-1)?.series[0]?.points.map(point => point.value)).toEqual([5.5]);
       expect(results.at(-1)?.warnings.some(warning => warning.includes("source quote is stale"))).toBe(true);
-      await send({ ...quote, stale: false }, 3);
+      await send({ ...quote, stale: false });
       expect(results).toHaveLength(3);
       expect(results.at(-1)?.series[0]?.points.map(point => point.value)).toEqual([5.5, 6]);
       expect(results.at(-1)?.warnings.some(warning => warning.includes("source quote is stale"))).toBe(false);
@@ -55,7 +56,7 @@ for (const receivedAt of [undefined, 42]) {
       // After advancing the receipt, delayed older-receipt status is also rejected.
       await send({ ...quote, stale: true, receivedAt: 999 });
       expect(results).toHaveLength(3);
-      await send({ ...quote, stale: true, receivedAt: 1000 }, 4);
+      await send({ ...quote, stale: true, receivedAt: 1000 });
       expect(results).toHaveLength(4);
       expect(results.at(-1)?.series[0]?.points.map(point => point.value)).toEqual([5.5]);
     } finally { stop(); }

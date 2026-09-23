@@ -1890,10 +1890,11 @@ export function CompositeChart({
   const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
   const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
   const panelCount = new Set(panelSeries.map((entry) => entry.panelId)).size;
+  // A forming bar can change its extremes or volume without moving its close.
   const lastTickKey = visibleSeries.map((entry) => {
     const last = entry.points.at(-1);
     if (!last) return entry.id;
-    return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${entry.latestChangePercent ?? ""}`;
+    return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${last.high ?? ""}:${last.low ?? ""}:${last.volume ?? ""}:${entry.latestChangePercent ?? ""}`;
   }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows - xMarkerRows);
   const resolvedColors = useMemo<CompositeChartColors>(() => ({

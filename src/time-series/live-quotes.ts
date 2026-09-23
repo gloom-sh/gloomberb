@@ -1,13 +1,21 @@
 import { canonicalTimeSeriesFieldId, isMarketFieldId } from "./field-catalog";
-import type { DataProvider, QuoteSubscriptionTarget } from "../types/data-provider";
+import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { ChartSeriesSpec, ChartSpec, SecuritySeriesSource } from "./types";
 import { activeStudyInputSeriesIds } from "./studies";
 import { valuationSeriesUsesLiveQuote } from "./fundamentals";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
+import type { InstrumentRef } from "../market-data/request-types";
+import type { QueryEntry } from "../market-data/result-types";
+import { buildQuoteKey, resolveEntryData } from "../market-data/selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
+import { LIVE_QUOTE_FUTURE_TOLERANCE_MS } from "./chart-data";
 
-export const LIVE_CHART_REFRESH_INTERVAL_MS = 1_000;
+/**
+ * A terminal chart re-rasterizes its whole bitmap for each redraw. It follows
+ * the shared quote cadence but never redraws faster than this.
+ */
+export const LIVE_CHART_TERMINAL_FRAME_MS = 250;
 
 export function chartQuoteOverrideKeyForSource(source: SecuritySeriesSource): string {
   return instrumentIdentityKey({
@@ -43,7 +51,7 @@ function supportsLiveQuote(
 }
 
 /** Displayed or study-required quote-sensitive instruments, deduplicated by routing identity. */
-export function getLiveChartQuoteTargets(spec: ChartSpec): QuoteSubscriptionTarget[] {
+export function getLiveChartQuoteTargets(spec: ChartSpec, priority: { selected?: boolean } = {}): QuoteSubscriptionTarget[] {
   const targets = new Map<string, QuoteSubscriptionTarget>();
   const activeStudyInputs = activeStudyInputSeriesIds(spec.studies);
   for (const series of spec.series) {
@@ -58,6 +66,7 @@ export function getLiveChartQuoteTargets(spec: ChartSpec): QuoteSubscriptionTarg
       },
       surface: "detail",
       visible: true,
+      ...(priority.selected ? { selected: true } : {}),
       weight: 1,
     };
     targets.set(chartQuoteOverrideKeyForTarget(target), target);
@@ -72,9 +81,12 @@ export function liveChartQuoteTargetSignature(spec: ChartSpec): string {
     .join("\n");
 }
 
-/** A malformed timestamp cannot outrank a usable source observation forever. */
+/**
+ * A malformed timestamp cannot outrank a usable source observation forever. A
+ * stamp just ahead of the local clock is a clock difference, not a malformed one.
+ */
 export function compareChartQuoteRecency(next: Quote, current: Quote): number {
-  const now = Date.now();
+  const now = Date.now() + LIVE_QUOTE_FUTURE_TOLERANCE_MS;
   const sourceTime = (quote: Quote) => hasValidQuoteObservationTime(quote, now) ? quote.lastUpdated : -Infinity;
   const nextTime = sourceTime(next);
   const currentTime = sourceTime(current);
@@ -97,6 +109,7 @@ function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): b
   if (!current) return true;
   return next.lastUpdated !== current.lastUpdated
     || next.price !== current.price
+    || next.volume !== current.volume
     || next.stale !== current.stale
     || next.currency !== current.currency
     || next.instrumentType !== current.instrumentType
@@ -108,90 +121,120 @@ function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): b
     || next.listingExchangeName !== current.listingExchangeName;
 }
 
-export interface LiveChartQuoteSubscriptionOptions {
+/** The shared quote store, as exposed by the market data coordinator. */
+export interface ChartQuoteStore {
+  subscribeKeys(keys: readonly string[], listener: () => void): () => void;
+  getQuoteEntry(instrument: InstrumentRef): QueryEntry<Quote>;
+}
+
+export interface LiveChartQuoteObserverOptions {
   spec: ChartSpec;
-  dataProvider: DataProvider | null;
-  onRefresh: (quoteOverrides: ReadonlyMap<string, Quote>) => Promise<void> | void;
-  refreshIntervalMs?: number;
+  store: ChartQuoteStore;
+  /** Latest quote per chart instrument, after any change that affects the chart. */
+  onChange: (quoteOverrides: ReadonlyMap<string, Quote>) => void;
+}
+
+function targetInstrument(target: QuoteSubscriptionTarget): InstrumentRef {
+  return {
+    symbol: target.symbol,
+    exchange: target.exchange,
+    brokerId: target.context?.brokerId,
+    brokerInstanceId: target.context?.brokerInstanceId,
+    instrument: target.context?.instrument ?? null,
+  };
 }
 
 /**
- * Coalesces streaming quote bursts and serializes engine refreshes. A slow
- * refresh can have at most one follow-up queued, using the latest quote per
- * instrument, so streaming never fans out into overlapping history requests.
+ * Follows the chart's instruments in the shared quote store. The store is fed
+ * by the one deduplicated stream every pane shares, so a chart opens no
+ * connection of its own and updates at the same cadence as the rest of the app.
+ * Receipt-only heartbeats keep freshness metadata current without rebuilding
+ * unchanged series, studies and chart bitmaps.
  */
-export function subscribeToLiveChartQuotes({
-  spec,
-  dataProvider,
-  onRefresh,
-  refreshIntervalMs = LIVE_CHART_REFRESH_INTERVAL_MS,
-}: LiveChartQuoteSubscriptionOptions): () => void {
-  const targets = getLiveChartQuoteTargets(spec);
-  if (!dataProvider?.subscribeQuotes || targets.length === 0) return () => {};
-
-  const subscribedKeys = new Set(targets.map(chartQuoteOverrideKeyForTarget));
+export function observeLiveChartQuotes({ spec, store, onChange }: LiveChartQuoteObserverOptions): () => void {
+  const entries = getLiveChartQuoteTargets(spec).map((target) => ({
+    key: chartQuoteOverrideKeyForTarget(target),
+    instrument: targetInstrument(target),
+  }));
+  if (entries.length === 0) return () => {};
   const quoteOverrides = new Map<string, Quote>();
-  const interval = Math.max(0, refreshIntervalMs);
+  let disposed = false;
+  const read = () => {
+    if (disposed) return;
+    let changed = false;
+    for (const { key, instrument } of entries) {
+      const quote = resolveEntryData(store.getQuoteEntry(instrument));
+      const previous = quoteOverrides.get(key);
+      if (!quote || quote === previous || !isNewerQuote(quote, previous)) continue;
+      quoteOverrides.set(key, quote);
+      if (hasResolutionRelevantChange(quote, previous)) changed = true;
+    }
+    if (changed) onChange(new Map(quoteOverrides));
+  };
+  const unsubscribe = store.subscribeKeys(entries.map(({ instrument }) => buildQuoteKey(instrument)), read);
+  read();
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    unsubscribe();
+  };
+}
+
+export interface LiveChartRefresher {
+  /** Ask for a refresh; requests made while one runs collapse into one follow-up. */
+  request: () => void;
+  dispose: () => void;
+}
+
+/**
+ * Serializes chart refreshes. A slow refresh has at most one follow-up queued,
+ * which runs with the latest inputs, so a quote burst never fans out into
+ * overlapping resolves. `minIntervalMs` spaces refresh starts on surfaces
+ * where each redraw is expensive.
+ */
+export function createLiveChartRefresher(
+  run: () => Promise<void> | void,
+  minIntervalMs = 0,
+): LiveChartRefresher {
   let disposed = false;
   let pending = false;
   let inFlight = false;
   let lastStartedAt = Number.NEGATIVE_INFINITY;
   let timer: ReturnType<typeof setTimeout> | null = null;
-
-  const schedule = () => {
-    if (disposed || inFlight || timer !== null || !pending) return;
-    const delay = Math.max(0, interval - (Date.now() - lastStartedAt));
-    timer = setTimeout(() => {
-      timer = null;
-      if (disposed || inFlight || !pending) return;
-      pending = false;
-      inFlight = true;
-      lastStartedAt = Date.now();
-      const snapshot = new Map(quoteOverrides);
-      Promise.resolve()
-        .then(() => onRefresh(snapshot))
-        .catch(() => {
-          // A background refresh failure must not stop the live subscription.
-        })
-        .finally(() => {
-          inFlight = false;
-          if (pending) schedule();
-        });
-    }, delay);
-  };
-
-  let unsubscribe: () => void;
-  try {
-    unsubscribe = dataProvider.subscribeQuotes(targets, (target, quote) => {
-      if (disposed) return;
-      const key = chartQuoteOverrideKeyForTarget(target);
-      const previous = quoteOverrides.get(key);
-      if (!subscribedKeys.has(key) || !isNewerQuote(quote, previous)) return;
-      quoteOverrides.set(key, quote);
-      // receivedAt-only updates keep freshness metadata current without
-      // rebuilding unchanged series, studies, and chart bitmaps.
-      if (!hasResolutionRelevantChange(quote, previous)) return;
-      pending = true;
-      schedule();
-    });
-  } catch {
-    disposed = true;
-    pending = false;
-    if (timer !== null) clearTimeout(timer);
-    timer = null;
-    return () => {};
-  }
-
-  return () => {
-    if (disposed) return;
-    disposed = true;
-    pending = false;
-    if (timer !== null) clearTimeout(timer);
-    timer = null;
-    try {
-      unsubscribe();
-    } catch {
-      // Cleanup remains idempotent even if a provider has already torn down.
+  const pump = () => {
+    if (disposed || inFlight || !pending || timer !== null) return;
+    const wait = lastStartedAt + minIntervalMs - Date.now();
+    if (wait > 0) {
+      timer = setTimeout(() => {
+        timer = null;
+        pump();
+      }, wait);
+      return;
     }
+    pending = false;
+    inFlight = true;
+    lastStartedAt = Date.now();
+    Promise.resolve()
+      .then(run)
+      .catch(() => {
+        // A background refresh failure must not stop live updates.
+      })
+      .finally(() => {
+        inFlight = false;
+        pump();
+      });
+  };
+  return {
+    request: () => {
+      if (disposed) return;
+      pending = true;
+      pump();
+    },
+    dispose: () => {
+      disposed = true;
+      pending = false;
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+    },
   };
 }

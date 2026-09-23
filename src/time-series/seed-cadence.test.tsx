@@ -4,6 +4,7 @@ import { testRender } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
+import { IDLE_COORDINATOR_QUOTES } from "./fixtures/quote-store";
 import { parsedPriceHistoryKey, readParsedHistoryResult, readParsedPriceHistory, rememberParsedPriceHistory } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
@@ -82,6 +83,7 @@ for (const source of ["parsed", "coordinator"] as const) {
         if (hasDaily) rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "1M", "1d"), daily);
       } else {
         setSharedMarketDataCoordinator({
+          ...IDLE_COORDINATOR_QUOTES,
           subscribe: () => () => {}, getVersion: () => 1,
           getChartEntry: (request: ChartRequest) => {
             const points = request.resolution === "1wk" ? weekly : hasDaily && request.resolution === "1d" ? daily : null;
@@ -187,7 +189,7 @@ for (const cache of ["parsed", "coordinator"] as const) {
         // A stale first cache must not mask a fresh coordinator acquisition.
         if (scenario === "preopen") rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "1M", "15m"), sessionPoints,
           { ...metadata, session: { ...session, observedAt: Date.parse("2026-09-21T19:50:00Z") } });
-        setSharedMarketDataCoordinator({ subscribe: () => () => {}, getVersion: () => 1,
+        setSharedMarketDataCoordinator({ ...IDLE_COORDINATOR_QUOTES, subscribe: () => () => {}, getVersion: () => 1,
           getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready", data: sessionPoints,
             lastGoodData: sessionPoints, history: metadata }),
         } as never);
