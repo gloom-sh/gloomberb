@@ -145,6 +145,11 @@ export class CloudDataApi {
     return this.request<T>(`/cloud/equity-screener/${path}`, init);
   }
 
+  /** Stored implied volatility (HIVG, VCA, OVDV dates); one prefix-scoped method, like EQS. */
+  impliedVolatility<T>(path: string, init?: RequestInit) {
+    return this.request<T>(`/cloud/iv/${path}`, init);
+  }
+
   async searchInstruments(
     query: string,
     limit = 10,

@@ -50,6 +50,7 @@ import { optionsScenarioModule } from "./builtin/options-scenario";
 import { optionsCalculatorModule } from "./builtin/options-calculator";
 import { volSurfaceModule } from "./builtin/vol-surface";
 import { realizedVolModule } from "./builtin/realized-vol";
+import { ivHistoryModule } from "./builtin/iv-history";
 import { backtestModule } from "./builtin/backtest";
 import { composeBuiltinPlugin, type PluginModule } from "./builtin/plugin-module";
 import { portfolioListModule } from "./builtin/portfolio-list";
@@ -98,6 +99,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    ivHistoryModule,
     backtestModule,
     timeSalesModule,
     estimateRevisionsModule,

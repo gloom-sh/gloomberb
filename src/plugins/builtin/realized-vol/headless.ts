@@ -9,7 +9,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
   return {
     shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
     describe: (args) => `${initialView === "graph" ? "HVG" : "HVT"} ${args.symbols[0] ?? ""}`,
-    discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; historical IV is not supplied."] },
+    discovery: { screenshotReadiness: "live-dom", limitations: ["IV is a dated current observation; HIVG has the stored IV history."] },
     options: [
       { key: "tab", type: "enum", values: [{ value: "graph" }, { value: "cone" }], defaultValue: initialView,
         description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
