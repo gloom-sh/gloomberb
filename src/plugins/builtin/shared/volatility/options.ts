@@ -87,6 +87,16 @@ export interface ImpliedForward {
   warnings: string[];
 }
 
+/**
+ * Largest log gap between a parity forward and spot grown at the risk-free rate:
+ * 5% for spot and chain observed at different times plus 100% a year of
+ * dividend and borrow carry. Stale quotes left on far strikes (for example
+ * contracts listed before a split) otherwise produce forwards several times spot.
+ */
+export function maxParityCarryLogGap(years: number): number {
+  return 0.05 + Math.max(0, years);
+}
+
 /** Use the two nearest valid paired strikes on each side of spot, then their median. */
 export function extractImpliedForward(
   calls: readonly ParityQuote[], puts: readonly ParityQuote[], spot: number, years: number, rate: number,
@@ -108,6 +118,8 @@ export function extractImpliedForward(
   };
   const putMap = quotesByStrike(puts);
   const candidates: ParityPair[] = [];
+  const maxGap = maxParityCarryLogGap(years);
+  let implausible = 0;
   for (const call of quotesByStrike(calls).values()) {
     const put = putMap.get(call.strike);
     if (!put) continue;
@@ -115,13 +127,16 @@ export function extractImpliedForward(
     const forwardBid = call.strike + (call.bid - put.ask) * growth;
     const forwardAsk = call.strike + (call.ask - put.bid) * growth;
     if (![forward, forwardBid, forwardAsk].every(positive)) continue;
+    if (Math.abs(Math.log(forward / spot) - rate * years) > maxGap) { implausible += 1; continue; }
     candidates.push({ strike: call.strike, forward, forwardBid, forwardAsk,
       call: call.contractSymbol ?? null, put: put.contractSymbol ?? null });
   }
   const below = candidates.filter((pair) => pair.strike <= spot).sort((a, b) => b.strike - a.strike).slice(0, 2);
   const above = candidates.filter((pair) => pair.strike > spot).sort((a, b) => a.strike - b.strike).slice(0, 2);
   const pairs = [...below, ...above].sort((a, b) => a.strike - b.strike);
-  if (!pairs.length) return unavailable("No paired two-sided quotes for put-call parity");
+  if (!pairs.length) {
+    return unavailable(implausible ? "Parity forwards are inconsistent with spot" : "No paired two-sided quotes for put-call parity");
+  }
   const forwards = pairs.map((pair) => pair.forward).sort((a, b) => a - b);
   const middle = Math.floor(forwards.length / 2);
   const forward = forwards.length % 2 ? forwards[middle]! : forwards[middle - 1]! / 2 + forwards[middle]! / 2;

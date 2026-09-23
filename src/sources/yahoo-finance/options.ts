@@ -48,6 +48,17 @@ function deriveOptionMarketState(underlyingMarketState?: MarketState): MarketSta
   return underlyingMarketState === "REGULAR" ? "REGULAR" : "CLOSED";
 }
 
+/**
+ * Yahoo solves IV from the bid/ask midpoint. Without a quote (after the close,
+ * or an unquoted strike) its bisection returns 1e-5 or a power of two, and
+ * a midpoint below intrinsic also returns the 1e-5 floor. Zero marks it unknown.
+ */
+function yahooImpliedVolatility(raw: Record<string, any>): number {
+  const value = raw.impliedVolatility;
+  const quoted = (raw.bid ?? 0) > 0 || (raw.ask ?? 0) > 0;
+  return quoted && typeof value === "number" && Number.isFinite(value) && value >= 1e-4 ? value : 0;
+}
+
 function mapYahooOptionContract(raw: Record<string, any>): OptionContract {
   const activity = (value: unknown): number | undefined =>
     typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
@@ -62,7 +73,7 @@ function mapYahooOptionContract(raw: Record<string, any>): OptionContract {
     openInterest: activity(raw.openInterest),
     bid: raw.bid ?? 0,
     ask: raw.ask ?? 0,
-    impliedVolatility: raw.impliedVolatility ?? 0,
+    impliedVolatility: yahooImpliedVolatility(raw),
     inTheMoney: raw.inTheMoney ?? false,
     expiration: raw.expiration ?? 0,
     lastTradeDate: raw.lastTradeDate ?? 0,

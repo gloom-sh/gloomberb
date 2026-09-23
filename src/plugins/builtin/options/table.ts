@@ -115,8 +115,10 @@ export function findNearestStrikeIndex(strikes: number[], targetStrike: number):
 }
 
 export function formatStrikeLabel(strike: number): string {
+  // 15 significant digits keep every listed decimal but drop binary noise from
+  // computed strikes such as spot * 0.9.
   return Number.isFinite(strike)
-    ? strike.toLocaleString("en-US", { maximumSignificantDigits: 21 }) : "—";
+    ? strike.toLocaleString("en-US", { maximumSignificantDigits: 15 }) : "—";
 }
 
 export function formatIv(value: number | undefined): string {

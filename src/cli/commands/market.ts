@@ -465,12 +465,18 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol> [--expiration <unix>]", ctx);
   await withMarketData(ctx, async (market) => {
-    const chain = await market.dataProvider.getOptionsChain(
-      symbol,
-      exchange,
-      expiration == null ? undefined : Number(expiration),
-    );
-    ctx.printResult({ data: chain, metadata: { symbol, expirations: chain.expirationDates } }, {
+    const expirationDate = expiration == null ? undefined : Number(expiration);
+    const result = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
+      .load({ force: ctx.cliOptions.refresh });
+    const chain = result?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
+      cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
+    });
+    // A failed refresh falls back to the stored chain, which can be days old.
+    const warnings = result?.refreshError == null ? undefined : [
+      `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
+        + (chain.asOf ? ` (last trade ${chain.asOf})` : ""),
+    ];
+    ctx.printResult({ data: chain, metadata: { symbol, expirations: chain.expirationDates }, warnings }, {
       rows: optionRows,
       columns: [
         { key: "side", header: "Side" },

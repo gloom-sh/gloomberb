@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceSettings } from "./model";
 
@@ -33,13 +34,13 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [
         { title: "Surface", columns: [
           { key: "tenor", header: "Tenor" }, { key: "coordinate", header: String(args.options.axis) },
-          { key: "strike", header: "Strike" }, { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
+          { key: "strike", header: "Strike", format: (value) => typeof value === "number" ? formatStrikeLabel(value) : "--" }, { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
           { key: "interpolated", header: "Interpolated" }, { key: "extrapolated", header: "Extrapolated" },
         ], rows: grid.rows.flatMap((row) => row.cells.map((cell) => ({ tenor: row.label, coordinate: cell.coordinate,
           strike: cell.strike, volatility: cell.volatility, interpolated: row.interpolated, extrapolated: row.extrapolated }))) },
         { title: "Expiries", columns: [
           { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward" },
-          { key: "rate", header: "Rate" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
+          { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
         ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: new Date(expiry.expiration * 1000).toISOString().slice(0, 10), fit: expiry.fit?.method ?? null })) },
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),

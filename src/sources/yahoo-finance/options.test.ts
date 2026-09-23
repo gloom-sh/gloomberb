@@ -11,3 +11,15 @@ test("Yahoo activity preserves numeric zero and does not coerce missing or inval
     expect(JSON.parse(JSON.stringify(chain)).calls[0]).not.toHaveProperty("volume");
     expect(JSON.parse(JSON.stringify(chain)).calls[6]).toMatchObject({ volume: 0, openInterest: 0 });
 });
+test("Yahoo IV solved from an empty quote or clamped at its floor is unknown", async () => {
+    // After the close Yahoo zeroes bid/ask and still returns bisection output.
+    const input = [
+        { bid: 0, ask: 0, impliedVolatility: 0.125 },
+        { bid: 0, ask: 0, impliedVolatility: 0.0039162109375 },
+        { bid: 353.35, ask: 356.12, impliedVolatility: 0.000010000000000000003 },
+        { bid: 0, ask: 0.05, impliedVolatility: 0.92 },
+        { bid: 1.67, ask: 1.74, impliedVolatility: 0.18 },
+    ].map((contract, index) => ({ ...contract, contractSymbol: `OPTION${index}`, strike: index + 1 }));
+    const chain = await loadYahooOptionsChain({ ticker: "SPY", exchange: "NYSEARCA", fetchJsonWithCrumb: async () => ({ optionChain: { result: [{ expirationDates: [1], options: [{ calls: input, puts: [] }] }] } }) as any });
+    expect(chain.calls.map(contract => contract.impliedVolatility)).toEqual([0, 0, 0, 0.92, 0.18]);
+});

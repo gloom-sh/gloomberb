@@ -65,6 +65,24 @@ describe("parity forward", () => {
     expect(result.forward).toBeCloseTo(forwardFromCarry(100, 0.5, 0.04, 0.015)!, 6);
     expect(result.warnings).toContain("Parity forward quote intervals disagree");
   });
+  test("stale far-strike pairs cannot set a forward far from spot carry", () => {
+    // Quotes left on pre-split contracts implied a forward of 5.5x spot.
+    const stale = (strike: number, call: number, put: number) => [
+      { strike, bid: call - 8, ask: call + 8, contractSymbol: `call${strike}` },
+      { strike, bid: put - 1, ask: put + 1, contractSymbol: `put${strike}` },
+    ] as const;
+    const pairs = [stale(470, 820, 24), stale(480, 814, 25)];
+    const result = extractImpliedForward(pairs.map(([call]) => call), pairs.map(([, put]) => put), 229, 0.24, 0.04);
+    expect(result.forward).toBeNull();
+    expect(result.warnings).toEqual(["Parity forwards are inconsistent with spot"]);
+    // A stale pair nearest spot is skipped for the next valid strike.
+    const strikes = [90, 95, 100, 110, 115];
+    const [call105, put105] = stale(105, 400, 1);
+    const mixed = extractImpliedForward([...strikes.map((k) => quote(k, "call")), call105],
+      [...strikes.map((k) => quote(k, "put")), put105], 100, 0.5, 0.04);
+    expect(mixed.pairs.map((pair) => pair.strike)).toEqual([95, 100, 110, 115]);
+    expect(mixed.forward).toBeCloseTo(forwardFromCarry(100, 0.5, 0.04, 0.015)!, 6);
+  });
   test("the existing IV solver recovers volatility when forward is the underlying", () => {
     const forward = forwardFromCarry(input.spot, input.years, input.rate, input.dividendYield)!;
     // Setting q=r gives discounted Black forward pricing without duplicating a pricer.
