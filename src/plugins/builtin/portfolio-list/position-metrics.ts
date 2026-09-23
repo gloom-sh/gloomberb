@@ -32,8 +32,27 @@ export interface PortfolioPositionMetrics {
   pnlLots: { signedCost: number; priceUnits: number; direction: 1 | -1; brokerMarketValue: number | null; brokerPnl: number | null }[];
 }
 
+/** Listed option categories, including options on futures, valued at their mark. */
+const OPTION_CATEGORIES = new Set(["OPT", "OPTION", "OPTIONS", "FOP"]);
+
+function isListedOption(ticker: TickerRecord): boolean {
+  return OPTION_CATEGORIES.has(ticker.metadata.assetCategory?.trim().toUpperCase() ?? "");
+}
+
+function hasContractMultiplier(multiplier: number | undefined): multiplier is number {
+  return typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0;
+}
+
 function normalizePositionMultiplier(multiplier: number | undefined): number {
-  return typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
+  return hasContractMultiplier(multiplier) ? multiplier : 1;
+}
+
+/** An option lot without a contract multiplier (a manual entry) is valued per
+ * unit. The multiplier is not guessed, so the pane flags the row instead. */
+export function hasUnknownOptionMultiplier(ticker: TickerRecord, activeTab: string | undefined): boolean {
+  return isListedOption(ticker) && ticker.metadata.positions.some((position) =>
+    (!activeTab || position.portfolio === activeTab) && position.shares !== 0
+    && !hasContractMultiplier(position.multiplier));
 }
 
 export function signedPositionDirection(position: { shares: number; side?: "long" | "short" }): 1 | -1 {
@@ -86,7 +105,7 @@ export function getPortfolioPositionMetrics(
     positionCurrency, positionCount: positions.length, hasShorts: false,
     totalShares: 0, totalCost: 0, hasCostBasis: positions.length > 0, priceBasis, signedCost: 0, totalCostUnits: 0,
     totalPriceUnits: 0, grossPriceUnits: 0, multiplierHint: 1,
-    valuesAtMark: ticker.metadata.assetCategory?.trim().toUpperCase() === "OPT",
+    valuesAtMark: isListedOption(ticker),
     brokerMktValue: 0, brokerNetMktValue: 0, hasBrokerMktValue: positions.length > 0,
     brokerPnl: 0, hasBrokerPnl: positions.length > 0,
     brokerMarkPrice: positions.length === 1 && priceBasis ? positions[0]?.markPrice : undefined,

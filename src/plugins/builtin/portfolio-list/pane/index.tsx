@@ -74,6 +74,7 @@ import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../live-valuation";
+import { hasUnknownOptionMultiplier } from "../position-metrics";
 
 // Rows follow every tick. Totals walk the whole collection, so the footer
 // coalesces to about four updates a second and the weight denominator to one.
@@ -502,9 +503,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const capNotice = viewMode === "table" && columns.some((column) => column.id === "market_cap")
     && selectedCap?.provenance.kind === "fundamentals" && !selectedCap.live
     ? `${cursorSymbol} market cap: ${describeFundamentalMarketCap(selectedCap.provenance)}.` : undefined;
+  const selectedTicker = cursorSymbol ? tickerBySymbol.get(cursorSymbol) : undefined;
+  const multiplierNotice = isPortfolioTab && selectedTicker && hasUnknownOptionMultiplier(selectedTicker, activeCollectionId)
+    ? `${cursorSymbol} has no contract multiplier; its value assumes 1x.` : undefined;
   usePaneNoticeFooter({
     registrationId: "portfolio-list-notices",
-    notices: capNotice ? [...summaryNotices, capNotice] : summaryNotices,
+    notices: [...summaryNotices, capNotice, multiplierNotice].filter((notice): notice is string => !!notice),
     focused: focused && !quickAddFocused,
   });
   const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight);

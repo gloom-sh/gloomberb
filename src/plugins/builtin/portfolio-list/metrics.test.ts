@@ -289,11 +289,12 @@ describe("portfolio-metrics", () => {
   });
 
   test("values listed options at the two-sided mark while LAST shows the print", () => {
-    const ticker = createTicker({
+    const option = (assetCategory: string) => createTicker({
       ticker: "SPY  260619C00500000",
-      assetCategory: "OPT",
+      assetCategory,
       positions: [{ portfolio: "main", shares: 2, avgCost: 4.25, broker: "ibkr", currency: "USD", multiplier: 100 }],
     });
+    let ticker = option("OPT");
     const column = (id: string): ColumnConfig => ({ id, label: id, width: 10, align: "right" });
     const valueAt = (quote: Partial<Quote>) => {
       const financials = createFinancials({
@@ -309,6 +310,9 @@ describe("portfolio-metrics", () => {
     // Without a timestamp, a print outside the market may be the fresher side.
     expect(valueAt({ bid: 1, ask: 1.2 })).toEqual({ last: 5, value: 1_000, day: 100 });
     expect(valueAt({ bid: undefined, ask: 1.2 })).toEqual({ last: 5, value: 1_000, day: 100 });
+    // Options on futures are marked the same way.
+    ticker = option("FOP");
+    expect(valueAt({ bid: 4.9, ask: 5.3 })).toEqual({ last: 5, value: 1_020, day: 120 });
   });
 
   test("formats equity average cost with tighter precision than quote prices", () => {

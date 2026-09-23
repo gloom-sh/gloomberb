@@ -15,7 +15,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { createRowValueCache, type RowValueCache } from "../../../components/ui/row-value-cache";
 import { columnContextVersion, objectVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
-import { getPortfolioPositionMetrics } from "./position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay } from "./position-metrics";
 import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
 import { useThrottledMemo } from "./use-throttled-memo";
 
@@ -44,9 +44,14 @@ function positionAdjustedChangePercent(
   context: ColumnContext,
   isPortfolioTab: boolean,
 ): number | null {
-  const changePercent = numericValue(getSortValue(CHANGE_PCT_COLUMN, ticker, financials, context));
-  if (changePercent == null || !isPortfolioTab) return changePercent;
-  const positionMetrics = getPortfolioPositionMetrics(ticker, context.activeTab, quoteCurrency(ticker, financials));
+  if (!isPortfolioTab) return numericValue(getSortValue(CHANGE_PCT_COLUMN, ticker, financials, context));
+  // The move the position is valued on, like its DAY P&L: an option's mark, not its last print.
+  const quote = financials?.quote;
+  const currency = quoteCurrency(ticker, financials);
+  const valuation = getPortfolioQuoteDisplay(getPortfolioPositionMetrics(ticker, context.activeTab, currency, undefined, quote), quote);
+  const changePercent = numericValue(valuation?.changePercent ?? null);
+  if (changePercent == null) return null;
+  const positionMetrics = getPortfolioPositionMetrics(ticker, context.activeTab, currency);
   return positionMetrics.grossPriceUnits > 0
     ? changePercent * positionMetrics.totalPriceUnits / positionMetrics.grossPriceUnits
     : null;
@@ -156,20 +161,23 @@ export function PortfolioGrid({
   const chartWidth = Math.max(1, width - 2);
   const cellAspect = Math.max(0.5, Math.min(4, cellHeightPx / Math.max(1, cellWidthPx)));
   const tileCacheRef = useRef(createRowValueCache<string, MetricTreemapItem<TickerRecord>>(2000));
-  const tickerKey = sortedTickers.map((ticker) => ticker.metadata.ticker).join("\u001f");
+  // Structure applies at once: membership, committed order, edited records,
+  // the collection and the base currency. Only quote-driven inputs are throttled.
+  const recordsKey = sortedTickers.map((ticker) => objectVersion(ticker)).join(",");
+  const structureDeps = [isPortfolioTab, recordsKey, columnContext.activeTab, columnContext.baseCurrency];
   const layoutWeights = useThrottledMemo(
     () => new Map(sortedTickers.map((ticker) => [
       ticker.metadata.ticker,
       tileWeight(ticker, financialsMap.get(ticker.metadata.ticker), columnContext, isPortfolioTab),
     ])),
     [financialsMap, columnContext],
-    [isPortfolioTab, tickerKey],
+    structureDeps,
     PORTFOLIO_REORDER_THROTTLE_MS,
   );
   const items = useThrottledMemo(
     () => buildPortfolioGridItems(sortedTickers, financialsMap, columnContext, isPortfolioTab, layoutWeights, tileCacheRef.current),
     [financialsMap, columnContext, layoutWeights, sortedTickers],
-    [isPortfolioTab, tickerKey],
+    structureDeps,
     GRID_TILE_THROTTLE_MS,
   );
   const navigationTiles = useMemo(

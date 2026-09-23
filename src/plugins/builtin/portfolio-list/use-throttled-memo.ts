@@ -8,6 +8,7 @@ interface ThrottledMemoState<T> {
   value: T;
   throttledDeps: readonly unknown[];
   immediateDeps: readonly unknown[];
+  /** Monotonic time of the last recomputation, so a wall-clock step cannot stall it. */
   at: number;
 }
 
@@ -30,7 +31,7 @@ export function useThrottledMemo<T>(
   latestThrottledDepsRef.current = throttledDeps;
 
   const state = stateRef.current;
-  const now = Date.now();
+  const now = performance.now();
   let pending = false;
   if (!state || !sameDeps(state.immediateDeps, immediateDeps) || now - state.at >= intervalMs) {
     if (!state || !sameDeps(state.immediateDeps, immediateDeps) || !sameDeps(state.throttledDeps, throttledDeps)) {
@@ -42,7 +43,7 @@ export function useThrottledMemo<T>(
 
   useEffect(() => {
     if (!pending || timerRef.current) return;
-    const wait = Math.max(0, intervalMs - (Date.now() - (stateRef.current?.at ?? 0)));
+    const wait = Math.max(0, intervalMs - (performance.now() - (stateRef.current?.at ?? 0)));
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       const current = stateRef.current;
