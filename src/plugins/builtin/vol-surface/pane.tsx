@@ -92,15 +92,22 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
   const dates = useAsyncResource(underlying ? datesLoader : null);
-  const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, historyDate!)), [underlying, historyDate]);
-  const stored = useAsyncResource(underlying && historyDate ? storedLoader : null);
   const ivRank = useIvRank(underlying || null);
-  const active = historyDate ? stored : resource;
   useEffect(() => () => controller.current?.abort(), [request]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
   const liveSnapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
-  const snapshot: DatedSurfaceSnapshot | null | undefined = historyDate ? stored.data : liveSnapshot;
+  // Outside regular hours the delayed chain publishes zero bids, so nothing is two-sided.
+  // Judged on the last complete load, so a refresh in progress does not flip the view.
+  const liveQuotes = liveQuoteCoverage(resource.data);
+  const liveEmpty = liveQuotes.empty && liveQuoteCoverage(liveSnapshot).points === 0;
+  // With no clean live quote, the latest stored close stands in until the chain reopens.
+  const fallbackDate = !historyDate && liveEmpty ? dates.data?.[0] ?? null : null;
+  const shownDate = historyDate ?? fallbackDate;
+  const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
+  const stored = useAsyncResource(underlying && shownDate ? storedLoader : null);
+  const active = shownDate ? stored : resource;
+  const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
   useEffect(() => {
     // Existing slices only change selection. A new pin causes one load and then
     // remains in the request identity after its partial snapshots arrive.
@@ -137,7 +144,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const cellIndex = nearestIndex(selectedRow, activeTab === "surface" && bitmapAvailable ? surfaceCoordinate : coordinate);
   const tableCellIndex = nearestIndex(tableSelectedRow, coordinate);
   const selectedCell = selectedRow?.cells[cellIndex];
-  const canLoadMore = !historyDate && !!snapshot && snapshot.requested < snapshot.catalogue.length && !resource.loading;
+  const canLoadMore = !shownDate && !!snapshot && snapshot.requested < snapshot.catalogue.length && !resource.loading;
   const loadMore = useCallback(() => { if (canLoadMore) setLimit((current) => current + 12); }, [canLoadMore, setLimit]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const onScroll = useTableLoadMore(scrollRef, canLoadMore, loadMore);
@@ -200,6 +207,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(snapshot?.expiries.flatMap((entry) => entry.warnings.map((warning) => `${expiryLabel(entry.expiration)}: ${warning}`)) ?? []),
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
     ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
+    ...(fallbackDate ? [`Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),
     ...(expiration != null && snapshot && !resource.loading && !snapshot.catalogue.includes(expiration)
       ? [`${expiryLabel(expiration)}: selected expiration unavailable`] : []),
     ...(active.error ? [active.error] : [])];
@@ -249,7 +257,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         backgroundColor: chosen ? colors.selected : cell.volatility == null ? colors.bg : blendHex(colors.bg, cell.volatility > 0.5 ? colors.warning : colors.positive, Math.min(0.48, 0.08 + cell.volatility * 0.5)),
         onMouseDown: () => { onSelectRow(row); setCoordinate(cell.coordinate); } };
     }} emptyStateTitle="No volatility observations." />;
-  const content = activeTab === "surface" && denseGrid ? <VolatilitySurface width={width} height={tableHeight}
+  const content = !shownDate && liveEmpty ? <EmptyState title="No two-sided option quotes"
+    message={`${liveQuotes.zeroBid === liveQuotes.contracts ? "All" : `${liveQuotes.zeroBid.toLocaleString()} of`} ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries have a zero bid${liveQuotes.zeroBid === liveQuotes.contracts ? "" : ", and none of the rest passes the quote filters"}. The delayed feed publishes zero bids outside regular hours (09:30 to 16:00 New York); the surface fills in when quotes return.`} />
+    : activeTab === "surface" && denseGrid ? <VolatilitySurface width={width} height={tableHeight}
     grid={denseGrid} camera={camera} onCameraChange={setCamera} selected={{
       tenorIndex: denseGrid.tenors.findIndex((years) => years === selectedExpiry?.years),
       moneynessIndex: selectedCell?.strike && selectedExpiry?.forward
@@ -271,7 +281,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       <Box height={1} flexDirection="row" paddingX={1} gap={2}>
         <SelectButton label="Expiry" value={String(expiration ?? selectedExpiry?.expiration ?? "")} options={snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? []}
           onChange={(value) => setExpiration(Number(value))} />
-        {storedDates.length ? <SelectButton label="Date" value={historyDate ?? ""} onChange={(value) => setHistoryDate(value || null)}
+        {storedDates.length ? <SelectButton label="Date" value={shownDate ?? ""} onChange={(value) => setHistoryDate(value || null)}
           options={[{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))]} /> : null}
         <Text fg={colors.textDim}>{snapshot?.stored
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York · mid IV`
@@ -290,6 +300,16 @@ function formatCaptureTime(iso: string): string {
   const time = Date.parse(iso);
   return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
 }
+/** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
+export function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
+  const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];
+  const points = expiries.reduce((sum, entry) => sum + entry.points.length, 0);
+  const contracts = expiries.reduce((sum, entry) => sum + Object.values(entry.filterCounts).reduce((a, b) => a + b, 0) + entry.points.length, 0);
+  const zeroBid = expiries.reduce((sum, entry) => sum + entry.filterCounts["zero-bid"], 0);
+  const settled = !!snapshot && snapshot.loaded >= snapshot.requested;
+  return { empty: settled && expiries.length > 0 && points === 0 && contracts > 0, points, expiries: expiries.length, contracts, zeroBid };
+}
+
 function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, focused, onKey, metadata }: {
   snapshot: DatedSurfaceSnapshot; selected: SurfaceExpiry | null; onSelect: (expiry: SurfaceExpiry) => void;
   forwards: boolean; width: number; height: number; focused: boolean;

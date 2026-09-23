@@ -13,6 +13,7 @@ import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
 import { VolSurfacePane } from "./pane";
 import { selectSurfaceExpiries } from "./client";
+import { buildSurfaceExpiry } from "./model";
 
 const PANE_ID = "vol-surface:interaction-test";
 const SYMBOL = "VOLTEST";
@@ -29,12 +30,13 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function quotedChain(expirations: number[], expiration: number, now: number): OptionsChain {
+function quotedChain(expirations: number[], expiration: number, now: number, zeroBids = false): OptionsChain {
   const quote = (strike: number, side: "call" | "put"): OptionContract => {
     const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, spot: 100, strike, side,
       daysToExpiry: daysToExpiryFrom(expiration, now), rate: 0.04, dividendYield: 0.01, volatility: 0.32 }).price;
     return { contractSymbol: `${SYMBOL}-${expiration}-${side}-${strike}`, expiration, strike, currency: "USD",
-      bid: price * 0.99, ask: price * 1.01, lastPrice: price, impliedVolatility: 0.32, openInterest: 100,
+      // Outside regular hours the delayed feed publishes zero bids and asks.
+      bid: zeroBids ? 0 : price * 0.99, ask: zeroBids ? 0 : price * 1.01, lastPrice: price, impliedVolatility: 0.32, openInterest: 100,
       volume: 10, lastTradeDate: now / 1000 - 60, change: 0, percentChange: 0,
       inTheMoney: side === "call" ? strike < 100 : strike > 100 };
   };
@@ -55,7 +57,18 @@ async function settle(frames = 7) {
   }
 }
 
-async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false } = {}) {
+/** A stored close surface of the quoted chain, compacted the way the platform capture stores it. */
+function storedPayload(expirations: number[], now: number) {
+  const curve = [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" }, { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-09-21" }];
+  const expiries = expirations.map((expiration) => buildSurfaceExpiry({ chain: quotedChain(expirations, expiration, now), expiration, spot: 100, curve, now }));
+  const capturedAt = new Date(now).toISOString();
+  return { version: 1, symbol: SYMBOL, sessionDate: "2026-09-22", capturedAt, spot: 100, surface: { version: 1, symbol: SYMBOL, spot: 100,
+    spotAsOf: capturedAt, capturedAt, source: null, failures: [], expiries: JSON.parse(JSON.stringify(expiries.map((expiry) => ({
+      ...expiry, points: expiry.points.map((point) => [point.strike, point.side === "call" ? 1 : 0, point.volatility, point.mid,
+        point.contract.bid, point.contract.ask, point.openInterest, point.contract.contractSymbol]) })))) } };
+}
+
+async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false, zeroBids = false, storedDates = false } = {}) {
   const now = Date.now();
   const date = new Date(now);
   const expirations = (pinnedSelection ? Array.from({ length: 40 }, (_, index) => index + 1) : [45, 120])
@@ -79,7 +92,7 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
     getOptionsChain: async (_symbol, _exchange, expiration) => {
       calls.push(expiration);
       return holdSecond && expiration === expirations[1] ? held.promise
-        : quotedChain(expirations, expiration ?? expirations[0]!, now);
+        : quotedChain(expirations, expiration ?? expirations[0]!, now, zeroBids);
     },
   });
   previousCoordinator = getSharedMarketDataCoordinator();
@@ -87,7 +100,11 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
   setSharedMarketDataCoordinator(coordinator);
   await coordinator.loadSnapshot({ symbol: SYMBOL, exchange: optionTicker ? "" : "NASDAQ" });
   // Cloud IV history (stored dates, IV rank) stays offline; the live surface is under test.
-  impliedVolatility = spyOn(apiClient, "impliedVolatility").mockRejectedValue(new Error("Cloud IV offline in tests"));
+  impliedVolatility = storedDates
+    ? spyOn(apiClient, "impliedVolatility").mockImplementation((async (path: string) => path.startsWith("surface-dates")
+      ? { version: 1, symbol: SYMBOL, dates: ["2026-09-22"] }
+      : path.startsWith("surface?") ? storedPayload(expirations, now) : Promise.reject(new Error("offline"))) as never)
+    : spyOn(apiClient, "impliedVolatility").mockRejectedValue(new Error("Cloud IV offline in tests"));
   treasury = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([
     { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: date.toISOString().slice(0, 10) },
     { maturity: "1Y", maturityYears: 1, yield: 4, asOf: date.toISOString().slice(0, 10) },
@@ -229,4 +246,20 @@ test("partial expiry progress settles without reloading or rendering indefinitel
   await settle();
   expect(context.commits).toBe(completedCommits);
   expect(context.calls).toHaveLength(2);
+});
+
+test("a chain with no two-sided quote explains itself instead of drawing an empty surface", async () => {
+  await mount({ zeroBids: true });
+  const frame = setup!.captureCharFrame();
+  expect(frame).toContain("No two-sided option quotes");
+  expect(frame).toContain("have a zero bid");
+});
+
+test("with no live quote the latest stored close stands in, labelled as such", async () => {
+  await mount({ zeroBids: true, storedDates: true });
+  await settle();
+  const frame = setup!.captureCharFrame();
+  expect(frame).not.toContain("No two-sided option quotes");
+  expect(frame).toContain("Stored close");
+  expect(frame).toContain("2026-09-22");
 });
