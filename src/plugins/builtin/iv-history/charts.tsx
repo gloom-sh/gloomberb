@@ -11,6 +11,8 @@ import type { DatedValue, IvHistoryModel } from "./model";
 const PANELS = [{ id: "vol", height: 3 }, { id: "spread", height: 1 }];
 /** The chart drawing blue: IV90 must read apart from amber IV30 in every theme. */
 const IV90_COLOR = "#4c9aff";
+/** The live capture point must stand apart from the amber IV30 line it continues. */
+const LIVE_COLOR = "#c084fc";
 
 function volSeries(id: string, label: string, color: string, points: readonly DatedValue[], panelId: string,
   style: ResolvedSeries["style"] = "line"): ResolvedSeries {
@@ -40,7 +42,7 @@ export function IvHistoryChart({ model, width, height, hvLabel }: { model: IvHis
   const colors = useThemeColors();
   const palette = resolveChartPalette(colors);
   const series = useMemo(() => ivHistorySeries(model, { iv30: colors.warning, iv90: IV90_COLOR, hv: colors.positive,
-    quote: colors.textBright, spread: colors.textDim }, hvLabel), [model, colors, hvLabel]);
+    quote: LIVE_COLOR, spread: colors.textDim }, hvLabel), [model, colors, hvLabel]);
   return <CompositeChart series={series} panels={PANELS} width={width} height={height} navigable={false} showLegend showTimeAxis formatValue={formatLegendValue}
     remoteKind="implied-volatility-history"
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
