@@ -21,6 +21,7 @@ import type { PluginModule } from "../plugin-module";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { isStreamCarryingQuote } from "../shared/use-quote-board";
 import { fxLegQuoteKey, fxLegTargets, fxLegs, liveFxLegEntry } from "./live-legs";
 import { MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
 import { createFxExportMetadata } from "./export";
@@ -30,7 +31,7 @@ const FX_MATRIX_PANE_ID = "fx-matrix";
 const NO_SAVED_CURRENCIES: string[] = [];
 const BASE_COLUMN_WIDTH = 5;
 const RATE_COLUMN_WIDTH = 10;
-/** Snapshot rates reload at this pace while any leg is not streaming. */
+/** Snapshot rates reload at this pace while the feed is not carrying every leg. */
 const FX_FALLBACK_REFRESH_MS = 60_000;
 
 function FxMatrixPane({ focused, width, height }: PaneProps) {
@@ -45,7 +46,11 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const liveStreaming = useLiveStreamingSetting();
   const legs = useMemo(() => fxLegs(currencies), [currencies]);
   const legTargets = useMemo(() => fxLegTargets(legs, selectedCurrency), [legs, selectedCurrency]);
-  const { entries: legEntries } = useLiveQuoteEntries(legTargets, { freshnessScopeKey: "fx-matrix", liveStreaming });
+  const {
+    entries: legEntries,
+    freshnessNow,
+    subscriptionStartedAt,
+  } = useLiveQuoteEntries(legTargets, { freshnessScopeKey: "fx-matrix", liveStreaming });
   const liveEntries = useMemo(() => {
     const coordinator = getSharedMarketDataCoordinator();
     return new Map(legs.flatMap((leg) => {
@@ -74,7 +79,15 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const snapshotFetchedAt = summarizeFxRates(currencies, snapshotRates, (currency) => (
     getSharedMarketDataCoordinator()?.getFxEntry(currency)
   )).latestFetchedAt;
-  const allLegsLive = legs.every((leg) => liveEntries.has(leg.currency));
+  // Any newer pair quote may draw a rate, but only a leg the feed keeps
+  // current relaxes the snapshot reload: a quote another pane loaded, or one
+  // the stream stopped sending, would otherwise freeze the matrix. With
+  // streaming off, the legs' own quote poll is the feed.
+  const allLegsLive = legs.every((leg) => {
+    const entry = legEntries.get(fxLegQuoteKey(leg));
+    if (!liveStreaming) return liveEntries.has(leg.currency) && (entry?.fetchedAt ?? 0) >= subscriptionStartedAt;
+    return isStreamCarryingQuote(entry, subscriptionStartedAt, freshnessNow);
+  });
 
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
