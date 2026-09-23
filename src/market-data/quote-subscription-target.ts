@@ -1,4 +1,5 @@
 export interface QuoteSubscriptionPriorityTarget {
+  route?: "auto" | "provider" | "broker";
   surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "options" | "screener" | "unknown";
   visible?: boolean;
   selected?: boolean;
@@ -16,10 +17,24 @@ function quoteSubscriptionPriorityScore(target: QuoteSubscriptionPriorityTarget)
   return score;
 }
 
+const ROUTE_PRECEDENCE: Record<NonNullable<QuoteSubscriptionPriorityTarget["route"]>, number> = {
+  auto: 0,
+  provider: 1,
+  broker: 2,
+};
+
+/**
+ * Merges every pane's request for one instrument. Priority fields come from
+ * the most important request, but the route does not: a broker request wins
+ * whenever any pane makes it, and the router decides whether that broker can
+ * stream. A cursor or focus change therefore never moves an instrument
+ * between sources.
+ */
 export function mergeQuoteSubscriptionTargets<T extends QuoteSubscriptionPriorityTarget>(
   targets: Iterable<T>,
 ): T | null {
   let selectedTarget: T | null = null;
+  let route: QuoteSubscriptionPriorityTarget["route"];
   let selectedScore = -1;
   let visible = false;
   let selected = false;
@@ -33,6 +48,9 @@ export function mergeQuoteSubscriptionTargets<T extends QuoteSubscriptionPriorit
     if (!selectedTarget || score > selectedScore) {
       selectedTarget = target;
       selectedScore = score;
+    }
+    if (target.route && (!route || ROUTE_PRECEDENCE[target.route] > ROUTE_PRECEDENCE[route])) {
+      route = target.route;
     }
     if (target.visible !== undefined) {
       hasVisible = true;
@@ -50,6 +68,7 @@ export function mergeQuoteSubscriptionTargets<T extends QuoteSubscriptionPriorit
 
   if (!selectedTarget) return null;
   const merged = { ...selectedTarget };
+  if (route) (merged as QuoteSubscriptionPriorityTarget).route = route;
   if (hasVisible) merged.visible = visible;
   else delete merged.visible;
   if (hasSelected) merged.selected = selected;

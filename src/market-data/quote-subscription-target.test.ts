@@ -29,6 +29,25 @@ describe("mergeQuoteSubscriptionTargets", () => {
     });
   });
 
+  test("keeps one route per instrument whichever pane ranks highest", () => {
+    const portfolioRow = (selected: boolean) => ({
+      symbol: "AAPL", route: "broker" as const, surface: "portfolio" as const, visible: true, selected, weight: selected ? 100 : 80,
+    });
+    const detail = { symbol: "AAPL", route: "provider" as const, surface: "detail" as const, visible: true, selected: true, weight: 100 };
+    const watchlist = { symbol: "AAPL", route: "auto" as const, surface: "watchlist" as const, visible: true, weight: 80 };
+
+    for (const targets of [
+      [detail, portfolioRow(false)],
+      [portfolioRow(true), detail],
+      [watchlist, portfolioRow(false), detail],
+    ]) {
+      expect(mergeQuoteSubscriptionTargets(targets)?.route).toBe("broker");
+    }
+    expect(mergeQuoteSubscriptionTargets([detail, portfolioRow(false)])?.surface).toBe("detail");
+    expect(mergeQuoteSubscriptionTargets([watchlist, detail])?.route).toBe("provider");
+    expect(mergeQuoteSubscriptionTargets([{ symbol: "AAPL" }, watchlist])?.route).toBe("auto");
+  });
+
   test("preserves explicit false and zero values", () => {
     expect(mergeQuoteSubscriptionTargets([
       { symbol: "MSFT", visible: false, selected: false, weight: 0 },
