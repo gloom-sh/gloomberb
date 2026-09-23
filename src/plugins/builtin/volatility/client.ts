@@ -6,7 +6,7 @@ import type { ChartRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
-import { buildVolatilityData, VOLATILITY_INDICES, VOLATILITY_SERIES,
+import { buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLATILITY_SERIES,
   type VolatilityData, type VolatilityHistoryInput, type VolatilityInputs,
   type VolatilitySeriesId, type VolatilitySeriesInput } from "./model";
 
@@ -24,8 +24,11 @@ export interface VolatilityLoaderDependencies {
   loadChart(request: ChartRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<PricePoint[]>>;
   getChartEntry?(request: ChartRequest): QueryEntry<PricePoint[]>;
   loadFred(seriesId: VolatilitySeriesId, options: { limit?: number; sortOrder?: "asc" | "desc" }): Promise<FredSeriesData>;
+  /** CBOE implied correlation closes; without it those rows fall back to the index history route. */
+  loadImpliedCorrelation?(): Promise<ImpliedCorrelationSeries[]>;
   now?: () => number;
 }
+export interface ImpliedCorrelationSeries { id: string; source: string; observations: { date: string; value: number }[] }
 export interface VolatilityLoadOptions {
   signal?: AbortSignal;
   onSnapshot?: (snapshot: VolatilityLoadResult) => void;
@@ -37,7 +40,7 @@ export function volatilityHistoryRequest(symbol: string): ChartRequest {
 }
 export function createVolatilityDependencies(
   marketData?: DataProvider,
-  cloudApi: Pick<typeof apiClient, "getCloudFredSeries"> = apiClient,
+  cloudApi: Pick<typeof apiClient, "getCloudFredSeries"> & Partial<Pick<typeof apiClient, "impliedVolatility">> = apiClient,
 ): VolatilityLoaderDependencies {
   const coordinator = marketData ? new MarketDataCoordinator(marketData) : getSharedMarketDataCoordinator();
   return {
@@ -45,7 +48,14 @@ export function createVolatilityDependencies(
       : Promise.reject(new Error("Market data coordinator unavailable")),
     ...(coordinator ? { getChartEntry: (request: ChartRequest) => coordinator.getChartEntry(request) } : {}),
     loadFred: (seriesId, options) => cloudApi.getCloudFredSeries(seriesId, options),
+    ...(cloudApi.impliedVolatility ? { loadImpliedCorrelation: async () =>
+      (await cloudApi.impliedVolatility!<{ series: ImpliedCorrelationSeries[] }>("implied-correlation")).series } : {}),
   };
+}
+/** A CBOE daily close as a daily bar dated at the 16:15 New York settlement. */
+function correlationHistory(series: ImpliedCorrelationSeries): PricePoint[] {
+  return series.observations.filter((row) => Number.isFinite(row.value) && row.value > 0)
+    .map((row) => ({ date: new Date(`${row.date}T20:15:00Z`), close: row.value }));
 }
 function requestFor(seriesId: VolatilitySeriesId): FredSeriesRequest {
   return { seriesId, limit: VOLATILITY_HISTORY_LIMIT, sortOrder: "desc" };
@@ -122,6 +132,8 @@ export async function loadVolatilityData(
   const total = VOLATILITY_INDICES.length + VOLATILITY_SERIES.length;
   const snapshot = () => project(inputs, loaded, total, loaded < total);
   const publish = () => { if (!options.signal?.aborted) options.onSnapshot?.(snapshot()); };
+  // One request serves both correlation rows.
+  let correlation: Promise<ImpliedCorrelationSeries[]> | undefined;
   const jobs = [
     ...VOLATILITY_SERIES.map(({ seriesId }) => async () => {
       try {
@@ -137,6 +149,15 @@ export async function loadVolatilityData(
     }),
     ...VOLATILITY_INDICES.map((definition) => async () => {
       try {
+        const cboeId = (IMPLIED_CORRELATION_ROWS as Record<string, string>)[definition.id];
+        if (cboeId && dependencies.loadImpliedCorrelation) {
+          correlation ??= dependencies.loadImpliedCorrelation();
+          const series = (await correlation).find((entry) => entry.id === cboeId);
+          const history = series ? correlationHistory(series) : [];
+          inputs.history![definition.id] = { history, source: "cboe", fetchedAt: now, stale: false,
+            error: history.length ? null : `${cboeId} history unavailable` };
+          return;
+        }
         inputs.history![definition.id] = historyInput(await dependencies.loadChart(volatilityHistoryRequest(definition.symbol),
           { forceRefresh: force }), now);
       } catch (error) {

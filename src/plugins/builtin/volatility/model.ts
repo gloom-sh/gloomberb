@@ -30,7 +30,12 @@ export const VOLATILITY_BOARD_INDICES = [
   { id: "vxgog", symbol: "^VXGOG", label: "Alphabet" },
   { id: "vxgs", symbol: "^VXGS", label: "Goldman Sachs" },
   { id: "vxibm", symbol: "^VXIBM", label: "IBM" },
+  // CBOE S&P 500 implied correlation: daily closes come from Cloud (CBOE history), not Yahoo's single print.
+  { id: "cor1m", symbol: "^COR1M", label: "S&P 500 corr 1M" },
+  { id: "cor3m", symbol: "^COR3M", label: "S&P 500 corr 3M" },
 ] as const;
+/** Board rows sourced from Cloud's CBOE implied correlation history. */
+export const IMPLIED_CORRELATION_ROWS = { cor1m: "COR1M", cor3m: "COR3M" } as const;
 export const VOLATILITY_INDICES = [...VOLATILITY_CURVE_INDICES, ...VOLATILITY_BOARD_INDICES] as const;
 export type VolatilityIndexId = typeof VOLATILITY_INDICES[number]["id"];
 

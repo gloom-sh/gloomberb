@@ -59,9 +59,9 @@ describe("volatility source loader", () => {
     while (pending.length) { pending.splice(0).forEach((resolve) => resolve()); await settle(); }
     const result = await loading;
     expect(peak).toBe(4);
-    expect(result.loaded).toBe(22);
-    expect(snapshots.at(-1)?.loaded).toBe(22);
-    expect(seen).toHaveLength(20);
+    expect(result.loaded).toBe(24);
+    expect(snapshots.at(-1)?.loaded).toBe(24);
+    expect(seen).toHaveLength(22);
     expect(seen.every((request) => request.instrument.exchange === "" && request.bufferRange === "1Y"
       && request.granularity === "resolution" && request.resolution === "1d")).toBe(true);
     expect(fredRequests).toEqual([["VIXCLS", { limit: 400, sortOrder: "desc" }], ["VXVCLS", { limit: 400, sortOrder: "desc" }]]);
@@ -102,13 +102,13 @@ describe("volatility source loader", () => {
     expect(cached?.data.board.find((row) => row.id === "vix")?.value).toBe(22);
     await loadVolatilityData(false, dependencies);
     await loadVolatilityData(false, dependencies);
-    expect(calls).toHaveLength(20);
+    expect(calls).toHaveLength(22);
     expect(fredCalls).toBe(2);
     await loadVolatilityData(true, dependencies);
-    expect(calls).toHaveLength(40);
+    expect(calls).toHaveLength(44);
     expect(fredCalls).toBe(4);
     expect(calls[0]?.slice(0, 4)).toEqual(["^VIX", "", "1Y", "1d"]);
-    expect(calls[20]?.[4]).toMatchObject({ cacheMode: "refresh" });
+    expect(calls[22]?.[4]).toMatchObject({ cacheMode: "refresh" });
   });
 
   test("failed empty sources do not mark fresh displayed observations stale", async () => {
@@ -144,11 +144,34 @@ describe("volatility source loader", () => {
     expect(cached?.data.fred.metrics[0]?.title).toBe("VIXCLS");
   });
 
+  test("implied correlation rows use one CBOE history request, not the index route", async () => {
+    let correlationCalls = 0;
+    const charts: string[] = [];
+    // The board's 1Y percentile needs 200 closes spanning 300 days.
+    const dates = Array.from({ length: 360 }, (_, index) => new Date(Date.UTC(2025, 8, 25) + index * 86_400_000).toISOString().slice(0, 10));
+    const result = await loadVolatilityData(false, {
+      loadChart: async (request) => { charts.push(request.instrument.symbol); throw new Error("no index route"); },
+      loadFred: async () => { throw new Error("cloud offline"); },
+      loadImpliedCorrelation: async () => {
+        correlationCalls += 1;
+        return [{ id: "COR1M", source: "cboe", observations: dates.map((date, index) => ({ date, value: 10 + (index % 20) })) },
+          { id: "COR3M", source: "cboe", observations: [] }];
+      },
+      now: () => now,
+    });
+    expect(correlationCalls).toBe(1);
+    expect(charts).not.toContain("^COR1M");
+    const cor1m = result.data.board.find((row) => row.id === "cor1m")!;
+    expect(cor1m).toMatchObject({ value: 10 + (359 % 20), source: "cboe", date: dates.at(-1) });
+    expect(cor1m.percentile1y).not.toBeNull();
+    expect(result.data.board.find((row) => row.id === "cor3m")).toMatchObject({ value: null, error: "COR3M history unavailable" });
+  });
+
   test("returns an explicit no-data envelope after independent source failures", async () => {
     const result = await loadVolatilityData(false, { loadChart: async () => { throw new Error("history offline"); },
       loadFred: async () => { throw new Error("cloud offline"); } });
-    expect(result).toMatchObject({ phase: "error", loaded: 22, total: 22, stale: false });
-    expect(result.errors).toHaveLength(22);
+    expect(result).toMatchObject({ phase: "error", loaded: 24, total: 24, stale: false });
+    expect(result.errors).toHaveLength(24);
     expect(result.data.board.every((row) => row.value == null)).toBe(true);
     expect(result.data.curve.date).toBeNull();
   });
