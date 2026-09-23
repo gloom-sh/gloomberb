@@ -9,7 +9,7 @@ import type {
   OptionsChain,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyMinorDigits, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
@@ -113,8 +113,12 @@ function quoteRows(results: QuoteCliRecord[]) {
     const display = getActiveQuoteDisplay(quote);
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
     const options = { ...quoteFormatOptions(quote), minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) };
+    // An index level is in points, not in the currency its members trade in.
+    const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
     const price = (value: number | undefined) => (
-      quote && value != null ? formatMarketPriceWithCurrency(value, quote.currency, options) : ""
+      quote && value != null
+        ? indexPoints ? formatMarketPrice(value, options) : formatMarketPriceWithCurrency(value, quote.currency, options)
+        : ""
     );
     return {
       symbol: result.target.symbol,
@@ -128,7 +132,9 @@ function quoteRows(results: QuoteCliRecord[]) {
       session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
       // The close the shown move is measured from; a pre-market move starts at the last close.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
-      dayRange: quote?.low != null && quote.high != null ? formatPriceRange(quote.low, quote.high, quote.currency, options, "-") : "",
+      dayRange: quote?.low != null && quote.high != null
+        ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
+        : "",
       volume: quote?.volume ?? null,
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",

@@ -238,8 +238,8 @@ const congressTradesModule: PluginModule = {
     id: "congress-trades-pane",
     paneId: CONGRESS_TRADES_PANE_ID,
     label: "Congress Trades",
-    description: "Track newly disclosed House periodic transaction reports.",
-    keywords: ["congress", "house", "trades", "ptr", "stock", "disclosures"],
+    description: "Track newly disclosed House and Senate periodic transaction reports.",
+    keywords: ["congress", "house", "senate", "trades", "ptr", "stock", "disclosures"],
     shortcut: { prefix: "CG", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
     headless: congressHeadless,
     createInstance: (_context, options) => {

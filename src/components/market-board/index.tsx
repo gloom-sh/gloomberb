@@ -8,6 +8,8 @@ import type { DataTableColumn, DataTableCell } from "../ui";
 export interface MarketBoardRow {
   id: string;
   label: string;
+  /** Secondary name shown beside the label, such as the instrument a jurisdiction sets. */
+  labelDetail?: string;
   value: number | null;
   valueText: string;
   change: number | null;
@@ -36,6 +38,11 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   changeLabel?: string;
   valueWidth?: number;
   labelWidth?: number;
+  /** Header over the row names; defaults to INSTRUMENT. */
+  labelHeader?: string;
+  /** Header over `labelDetail`, shown when any row carries one. */
+  labelDetailHeader?: string;
+  labelDetailWidth?: number;
   valueLabel?: string;
   percentileLabel?: string;
   asOfWidth?: number;
@@ -50,12 +57,12 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
  * native sparklines, stable selection and a mouse/keyboard detail stack. */
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
   selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D", valueWidth = 12,
-  labelWidth = 18, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
+  labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   const [sort, setSort] = useState({ id: "", direction: "asc" as "asc" | "desc" });
   const items = useMemo(() => sort.id ? [...rows].sort((a, b) => {
-    const key = sort.id as "label" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
+    const key = sort.id as "label" | "labelDetail" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
     const extra = extraColumns?.find((item) => item.column.id === sort.id);
     const left = extra ? extra.sortValue(a) : a[key], right = extra ? extra.sortValue(b) : b[key];
     if (left == null) return right == null ? 0 : 1;
@@ -64,8 +71,10 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     return sort.direction === "asc" ? comparison : -comparison;
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
+  const withLabelDetail = rows.some((row) => row.labelDetail !== undefined);
   const columns: DataTableColumn[] = [
-    { id: "label", label: "INSTRUMENT", width: labelWidth, align: "left", flexGrow: 1 },
+    { id: "label", label: labelHeader, width: labelWidth, align: "left", flexGrow: withLabelDetail ? 0 : 1 },
+    ...(withLabelDetail ? [{ id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left" as const, flexGrow: 1 }] : []),
     { id: "value", label: valueLabel, width: valueWidth, align: "right" },
     { id: "change", label: changeLabel, width: 10, align: "right" },
     ...(rows.some((row) => row.changeAsOf !== undefined) ? [{ id: "changeAsOf", label: "LAST CHANGE", width: 11, align: "left" as const }] : []),
@@ -79,6 +88,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (extra) return extra.renderCell(row);
     const muted = row.status === "unavailable" ? colors.textDim : colors.text;
     if (column.id === "label") return { text: row.label, color: muted };
+    if (column.id === "labelDetail") return { text: row.labelDetail ?? "", color: colors.textMuted };
     if (column.id === "value") return { text: row.valueText, color: muted };
     if (column.id === "change") return { text: row.changeText, color: signedChange && row.change != null && row.change !== 0
       ? row.change > 0 ? colors.positive : colors.negative : colors.textMuted };

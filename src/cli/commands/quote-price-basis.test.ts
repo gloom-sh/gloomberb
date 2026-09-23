@@ -39,6 +39,7 @@ test("quote command preserves raw declarations and formats its actual output row
     { ...rawQuote, symbol: "PAR", priceBasis: "percent-of-par" as const },
     { ...rawQuote, symbol: "UNKNOWN" },
     { ...rawQuote, symbol: "UNIT", priceBasis: "per-unit" as const },
+    { ...rawQuote, symbol: "^IDX", instrumentType: "INDEX" },
   ];
   let closed = 0;
   let captured: unknown;
@@ -56,8 +57,9 @@ test("quote command preserves raw declarations and formats its actual output row
   } as unknown as CliCommandContext;
   await marketDataCliCommands.find(command => command.name === "quote")!.execute(quotes.map(quote => quote.symbol), ctx);
   expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toEqual(quotes);
-  expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00"]);
-  expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87]);
+  // An index level is in points, never dollars.
+  expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00", "87.00"]);
+  expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87, 87]);
   expect(closed).toBe(1);
 });
 

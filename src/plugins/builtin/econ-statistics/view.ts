@@ -17,6 +17,8 @@ export interface StatViewModel {
   stat: StatDef;
   range: StatRangeId;
   latest: StatPoint;
+  /** The latest print's period at the series' own cadence: "Sep 21", "Aug", "Q2". */
+  period: string;
   /** The print before this one, for the direction of the last move. */
   previous: StatPoint | null;
   yearAgo: StatPoint | null;
@@ -44,6 +46,18 @@ export function sliceByRange(
   const cutoff = Date.parse(points.at(-1)!.date) - window;
   const sliced = points.filter((point) => Date.parse(point.date) >= cutoff);
   return sliced.length >= 2 ? sliced : [...points];
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Rows mix daily, weekly, monthly and quarterly prints, so each names its own period. */
+export function formatStatPeriod(date: string, perYear: number): string {
+  const month = Number(date.slice(5, 7));
+  const name = MONTHS[month - 1];
+  if (!name) return date;
+  if (perYear <= 4) return `Q${Math.ceil(month / 3)}`;
+  if (perYear <= 12) return name;
+  return `${name} ${Number(date.slice(8, 10))}`;
 }
 
 function extreme(points: readonly StatPoint[], pick: "high" | "low"): StatPoint {
@@ -84,6 +98,7 @@ export function projectStat(
     stat,
     range,
     latest,
+    period: formatStatPeriod(latest.date, perYear),
     previous,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,

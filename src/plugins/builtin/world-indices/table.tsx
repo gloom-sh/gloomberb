@@ -26,7 +26,7 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
   const priceWidth = 15;
   const changeWidth = 12;
   const changePercentWidth = 9;
-  // 5-char 24h time in an 8-wide column: the shared table's floating-pane width
+  // 5-char 24h time (or a 6-char "Sep 18" date) in an 8-wide column: the shared table's floating-pane width
   // accounting runs a few cells long, and the slack keeps the value intact.
   const timeWidth = 8;
   const showChange = width >= CHANGE_MIN_WIDTH;
@@ -62,10 +62,21 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
   ];
 }
 
-/** 24-hour so the cell stays 5 wide in every locale and never clips. */
-export function formatQuoteTime(lastUpdated: number | undefined): string {
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * 24-hour so the cell stays 5 wide in every locale and never clips. A quote from
+ * an earlier day shows its date instead, so a closed market's last print is not
+ * read as a time today.
+ */
+export function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
   if (!lastUpdated) return "—";
   const date = new Date(lastUpdated);
+  const today = new Date(now);
+  if (date.getFullYear() !== today.getFullYear() || date.getMonth() !== today.getMonth()
+    || date.getDate() !== today.getDate()) {
+    return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  }
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 

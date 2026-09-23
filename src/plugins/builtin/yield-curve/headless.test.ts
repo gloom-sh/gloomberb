@@ -14,10 +14,10 @@ describe("yield curve headless model", () => {
       ],
     });
     const result = await headless.load(args, {} as HeadlessPaneContext);
-    expect(result.rows).toHaveLength(10);
+    expect(result.rows).toHaveLength(TREASURY_MATURITIES.length);
     expect(result.metadata).toMatchObject({
       requestedDate: null, asOf: null, inverted: null, spread2Y10YBasisPoints: null,
-      missingTenors: ["1M", "3M", "6M", "1Y", "5Y", "7Y", "20Y", "30Y"], stale: false,
+      missingTenors: ["1M", "3M", "6M", "1Y", "3Y", "5Y", "7Y", "20Y", "30Y"], stale: false,
     });
     expect(result.errors).toHaveLength(2);
   });

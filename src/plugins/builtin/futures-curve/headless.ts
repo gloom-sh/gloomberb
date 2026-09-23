@@ -7,7 +7,7 @@ const rank = (value: number | null) => value == null ? null : Math.round(value);
 
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CTM"], dataRequirements: ["Gloom Cloud futures curve endpoint"],
-    limitations: ["Yahoo catalogues can be incomplete", "Ghosts and percentiles use the same listed contracts", "Cboe VIX is daily settlement"] },
+    limitations: ["Listed-contract catalogues can be incomplete", "Ghosts and percentiles use the same listed contracts", "Cboe VIX is daily settlement"] },
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "root", description: "FUT root such as CL, ES, ZN or VX. Defaults to ES." },
   options: [], describe: (args) => `Futures curve ${args.argument || "ES"}`,
   async load(args, ctx) {

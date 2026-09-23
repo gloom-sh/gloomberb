@@ -9,7 +9,7 @@ import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
-import { policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
+import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
 
 const PANELS = [{ id: "main" }];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
@@ -51,7 +51,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   const data = resource.data?.payload;
-  const rows = useMemo(() => data?.rows.map(policyBoardRow) ?? [], [data]);
+  const rows = useMemo(() => data?.rows.filter((row) => !hasNoPolicyRate(row)).map(policyBoardRow) ?? [], [data]);
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
@@ -71,7 +71,7 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
       empty={!resource.loading && !resource.error && !data} subject="central bank rates">
       {data ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        valueWidth={14} changeLabel="LAST MOVE" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} />} /> : null}
+        valueWidth={14} changeLabel="LAST MOVE" labelHeader="JURISDICTION" labelWidth={14} labelDetailHeader="INSTRUMENT" renderDetail={(row) => <PolicyDetail row={row.observation} width={width} height={Math.max(5, height - 2)} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }
