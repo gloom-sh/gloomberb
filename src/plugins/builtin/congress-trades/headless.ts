@@ -26,6 +26,7 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "memberName", header: "Member" },
   { key: "side", header: "Side" },
   { key: "ticker", header: "Ticker" },
+  { key: "assetName", header: "Asset" },
   {
     key: "amountLow",
     header: "Amount",

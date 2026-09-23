@@ -45,7 +45,7 @@ export function renderCongressTradeCell(
       return { text: trade.side, color: sideColor(trade.side, rowState.selected), attributes: TextAttributes.BOLD };
     case "ticker":
       return {
-        text: trade.ticker ?? "--",
+        text: trade.ticker ?? (column.assetFallback && trade.assetName ? trade.assetName : "--"),
         content: trade.ticker ? (
           <TickerBadgeList
             symbols={[trade.ticker]}

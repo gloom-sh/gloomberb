@@ -442,7 +442,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           items={tradeRows}
           sortColumnId={tradeSort.columnId}
           sortDirection={tradeSort.direction}
-          onHeaderClick={(columnId) => setTradeSort((current) => nextSort(current, columnId as TradeColumnId, columnId === "member" || columnId === "ticker" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setTradeSort((current) => nextSort(current, columnId as TradeColumnId, columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc"))}
           getItemKey={(trade) => trade.id}
           renderCell={(trade, column, index, row) => {
             const cell = renderCongressTradeCell(trade, column, index, row);

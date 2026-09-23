@@ -38,7 +38,11 @@ export type TradeColumnId =
   | "amount"
   | "asset"
   | "owner";
-export type TradeColumn = DataTableColumn & { id: TradeColumnId };
+export type TradeColumn = DataTableColumn & {
+  id: TradeColumnId;
+  /** Ticker column without an asset column beside it: name the asset when there is no ticker. */
+  assetFallback?: boolean;
+};
 export type MemberColumnId =
   | "party"
   | "medianReturn"
@@ -204,17 +208,23 @@ export function buildTradeColumns(width: number, tickerView = false): TradeColum
   const tickerWidth = tickerView ? 0 : 12;
   const amountWidth = 14;
   const ownerWidth = 8;
-  const memberWidth = Math.max(
+  const flexWidth = Math.max(
     14,
     width - filedWidth - txWidth - lagWidth - sideWidth - tickerWidth - amountWidth - ownerWidth - 36,
   );
+  // Member names rarely pass 22 cells; the rest names the asset, which is the
+  // only identification for trades without a ticker (bonds, T-bills, funds).
+  const memberWidth = Math.min(22, Math.max(18, flexWidth - 13));
+  const assetWidth = flexWidth - memberWidth - 1;
+  const showAsset = assetWidth >= 12;
   return [
     { id: "filed", label: "FILED", width: filedWidth, align: "left" },
     { id: "tx", label: "TX", width: txWidth, align: "left" },
     { id: "lag", label: "LAG", width: lagWidth, align: "right" },
-    { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
+    { id: "member", label: "MEMBER", width: showAsset ? memberWidth : flexWidth, align: "left" },
     { id: "side", label: "SIDE", width: sideWidth, align: "left" },
-    ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const }] : []),
+    ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const, assetFallback: !showAsset }] : []),
+    ...(showAsset ? [{ id: "asset" as const, label: "ASSET", width: assetWidth, align: "left" as const }] : []),
     { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
     { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
     { id: "returnSinceTx", label: "TX RET%", width: 10, align: "right" },
