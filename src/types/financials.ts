@@ -47,6 +47,8 @@ export interface Quote {
   providerId?: string;
   price: number;
   currency: string;
+  /** Source units per `currency` unit when the venue quotes a sub-unit, such as 100 for a London line in pence. */
+  providerPriceDivisor?: number;
   change: number;
   changePercent: number;
   previousClose?: number;

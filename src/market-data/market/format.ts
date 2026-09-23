@@ -20,19 +20,31 @@ export interface MarketFormatOptions extends AssetDisplayContext {
   precisionOffset?: number;
   priceRange?: number;
   fixedFractionDigits?: number;
+  /** Source units per displayed currency unit; a price quoted in pence keeps its pence decimals in pounds. */
+  quotedUnitDivisor?: number;
 }
 
 /** Current price fields use the quote's source metadata; stored cost/mark
  * conventions and independent history must not supply its missing basis. */
 export function quoteFormatOptions(
-  quote: Pick<Quote, "instrumentType" | "priceBasis"> | null | undefined,
+  quote: Pick<Quote, "instrumentType" | "priceBasis" | "providerPriceDivisor"> | null | undefined,
   fallbackAssetCategory?: string,
   metadataInstrumentType?: string,
 ): MarketFormatOptions {
   // Separate metadata may identify a bond whose convention is unknown. It must
   // never turn a saved bond into a monetary quote or supply a par declaration.
   const fallback = metadataInstrumentType?.trim().toUpperCase() === "BOND" ? "BOND" : fallbackAssetCategory;
-  return { assetCategory: quote?.instrumentType?.trim() || fallback, priceBasis: quote?.priceBasis };
+  const divisor = quote?.providerPriceDivisor;
+  return {
+    assetCategory: quote?.instrumentType?.trim() || fallback,
+    priceBasis: quote?.priceBasis,
+    ...(divisor != null && Number.isFinite(divisor) && divisor > 1 ? { quotedUnitDivisor: divisor } : {}),
+  };
+}
+
+/** Decimals a sub-unit quote adds in the major unit: two for pence shown in pounds. */
+function quotedUnitFractionDigits(divisor: number | undefined): number {
+  return divisor != null && Number.isFinite(divisor) && divisor > 1 ? Math.min(3, Math.round(Math.log10(divisor))) : 0;
 }
 
 const CASH_TYPES = new Set(["CASH", "FX", "FOREX", "CCY", "CURRENCY", "CURRENCYPAIR"]);
@@ -204,10 +216,11 @@ function getPriceMaxFractionDigits(
   value: number,
   priceRange: number | undefined,
   precisionOffset: number,
+  quotedUnitDigits = 0,
 ): number {
   const baseMaxFractionDigits = kind === "other" && priceRange !== undefined
     ? 6
-    : getBasePriceMaxFractionDigits(kind, value);
+    : getBasePriceMaxFractionDigits(kind, value) + quotedUnitDigits;
   const adaptiveFractionDigits = getAdaptivePriceFractionDigits(priceRange, precisionOffset);
   return adaptiveFractionDigits === null
     ? baseMaxFractionDigits
@@ -287,11 +300,12 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
     return `${formatMarketPrice(value, { ...options, priceBasis: "per-unit", maxWidth })}% par`;
   }
   const kind = resolveAssetDisplayKind(options);
+  const quotedUnitDigits = kind === "equity" || kind === "other" ? quotedUnitFractionDigits(options.quotedUnitDivisor) : 0;
   const fixedFractionDigits = options.fixedFractionDigits;
   if (fixedFractionDigits !== undefined) {
     const maxFractionDigits = kind === "other" && options.priceRange !== undefined
       ? 6
-      : getBasePriceMaxFractionDigits(kind, value);
+      : getBasePriceMaxFractionDigits(kind, value) + quotedUnitDigits;
     const clampedFixedFractionDigits = Math.max(0, Math.min(fixedFractionDigits, maxFractionDigits));
     return formatVariableNumber(value, clampedFixedFractionDigits, options.maxWidth, clampedFixedFractionDigits);
   }
@@ -300,7 +314,7 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
     Math.min(options.minimumFractionDigits ?? 0, getBasePriceMaxFractionDigits(kind, value)),
   );
   const maxFractionDigits = Math.max(
-    getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0),
+    getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0, quotedUnitDigits),
     minimumFractionDigits,
   );
   return formatPriceNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
@@ -332,7 +346,7 @@ export function formatSignedMarketPrice(value: number | undefined, options: Mark
 export function formatMarketChangeWithCurrency(value: number | undefined, currency: string, options: MarketFormatOptions = {}): string {
   if (value == null || !Number.isFinite(value)) return "—";
   if (resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatSignedMarketPrice(value, options);
-  if (resolveAssetDisplayKind(options) === "contract") {
+  if (resolveAssetDisplayKind(options) === "contract" || quotedUnitFractionDigits(options.quotedUnitDivisor) > 0) {
     return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, {
       ...options, minimumFractionDigits: Math.max(2, options.minimumFractionDigits ?? 0),
     })}`;
