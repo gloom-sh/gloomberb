@@ -439,7 +439,17 @@ export function mergeRefreshedFinancials(cached: TickerFinancials, fresh: Ticker
   for (const field of RETRACTABLE_VALUATION_FIELDS) {
     if (!currencyConflict && typeof statistics[field] === "number" && Number.isFinite(statistics[field])) update[field] = statistics[field];
   }
-  return excludeNonCompanyFinancials({ ...merged, fundamentals: mergeFundamentals(update, merged.fundamentals) });
+  let fundamentals = mergeFundamentals(update, merged.fundamentals);
+  // The source serving a multiple or yield without its per-share base has
+  // withdrawn that base, so an older one must not keep repricing the figure.
+  const withdrawForwardEps = statistics.forwardPE != null && statistics.forwardEps === undefined;
+  const withdrawDividendRate = statistics.dividendYield != null && statistics.dividendRate === undefined;
+  if (fundamentals && (withdrawForwardEps || withdrawDividendRate)) {
+    fundamentals = { ...fundamentals };
+    if (withdrawForwardEps) delete fundamentals.forwardEps;
+    if (withdrawDividendRate) delete fundamentals.dividendRate;
+  }
+  return excludeNonCompanyFinancials({ ...merged, fundamentals });
 }
 
 export function mergeCachedFinancialRecords(

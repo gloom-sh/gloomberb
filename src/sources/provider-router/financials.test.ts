@@ -3,6 +3,7 @@ import {
   dropUnusableProviderQuote,
   mergeFinancials,
   mergeMissingStatementArrays,
+  mergeRefreshedFinancials,
   isProviderQuoteUsableForCurrentSession,
 } from "./financials";
 import { makeFinancials, makeQuote } from "./test-support";
@@ -197,4 +198,12 @@ test("per-share bases that reprice a multiple stay with that multiple's observat
   expect(merged?.dividendRate).toBeUndefined();
   expect(mergeFinancials(makeFinancials({ fundamentals: { revenue: 200 } }), older)?.fundamentals)
     .toMatchObject({ forwardPE: 20, forwardEps: 5, dividendYield: 0.02, dividendRate: 2 });
+  // Enrichment keeps the cached multiple and yield, but a base the same source withdrew stops repricing them.
+  const enriched = mergeRefreshedFinancials(older, fresh).fundamentals;
+  expect(enriched).toMatchObject({ forwardPE: 20, dividendYield: 0.02, revenue: 100 });
+  expect(enriched?.forwardEps).toBeUndefined();
+  expect(enriched?.dividendRate).toBeUndefined();
+  // A response without the multiple or yield withdrew nothing.
+  expect(mergeRefreshedFinancials(older, makeFinancials({ fundamentals: { revenue: 200 } })).fundamentals)
+    .toMatchObject({ forwardEps: 5, dividendRate: 2 });
 });
