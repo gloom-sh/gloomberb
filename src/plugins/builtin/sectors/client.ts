@@ -6,6 +6,7 @@ import {
   historySessionBefore,
   latestHistoryDate,
   sectorReturnTargetDate,
+  sectorQuoteSessionDate,
   sectorReturnStartDate,
   type SectorRow,
 } from "./sector-model";
@@ -85,6 +86,7 @@ export async function loadSectorRows(
         quoteSessionDate: sessionDate,
         quoteIssue,
         lastReportedPrice,
+        quoteUpdatedAt: quote && Number.isFinite(quote.lastUpdated) ? quote.lastUpdated : null,
         changePercent,
         return1M: month?.value ?? null,
         return1Y: year?.value ?? null,
@@ -138,14 +140,5 @@ function completedSessionQuote(quote: Quote, history: readonly PricePoint[]): Qu
 }
 
 function quoteSessionDate(quote: Quote): string | null {
-  const declared = quote.changeSessionDate;
-  if (typeof declared === "string" && /^\d{4}-\d{2}-\d{2}$/.test(declared)
-    && Number.isFinite(Date.parse(declared)) && new Date(declared).toISOString().slice(0, 10) === declared) return declared;
-  if (declared != null) return null;
-  if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
-  // Every instrument in these collections is a US-listed ETF. quote.price is
-  // the regular-session price; prefer its declared session when supplied.
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date(quote.lastUpdated));
+  return sectorQuoteSessionDate(quote);
 }

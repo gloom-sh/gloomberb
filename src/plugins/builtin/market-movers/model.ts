@@ -126,12 +126,21 @@ export function nextSortPreference(
   return DEFAULT_SORT_PREFERENCE;
 }
 
+/** A row is rebuilt only when its quote or rank moved, so unchanged rows skip the render. */
+const moverRows = new WeakMap<ScreenerQuote, MarketMoverRow>();
+
 export function createRows(quotes: ScreenerQuote[]): MarketMoverRow[] {
-  return quotes.map((quote, index) => ({
-    ...quote,
-    volumeRatio: screenerVolumeRatio(quote.volume, quote.avgVolume),
-    rank: index + 1,
-  }));
+  return quotes.map((quote, index) => {
+    const cached = moverRows.get(quote);
+    if (cached?.rank === index + 1) return cached;
+    const row = {
+      ...quote,
+      volumeRatio: screenerVolumeRatio(quote.volume, quote.avgVolume),
+      rank: index + 1,
+    };
+    moverRows.set(quote, row);
+    return row;
+  });
 }
 
 export function summaryQuoteFromQuote(
@@ -184,6 +193,9 @@ export function formatMoverPrice(price: number | null, currency: string): string
 
 
 /** Range endpoints belong to the original screener price denomination. */
+/** Keyed by the overlaid row, which the shared overlay keeps while its quote holds. */
+const convertedOverlays = new WeakMap<ScreenerQuote, ScreenerQuote>();
+
 export function overlayMarketMoverQuotes(
   rows: readonly ScreenerQuote[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
@@ -191,13 +203,17 @@ export function overlayMarketMoverQuotes(
   return overlayScreenerQuoteEntries(rows, entries).map((row, index) => {
     const original = rows[index]!;
     if (row === original) return row;
+    const cached = convertedOverlays.get(row);
+    if (cached) return cached;
     const convert = (value: number | undefined) => convertScreenerPriceUnit(value, original.currency, row.currency);
-    return {
+    const converted = {
       ...row,
       fiftyTwoWeekLow: convert(original.fiftyTwoWeekLow),
       fiftyTwoWeekHigh: convert(original.fiftyTwoWeekHigh),
       dayLow: convert(original.dayLow),
       dayHigh: convert(original.dayHigh),
     };
+    convertedOverlays.set(row, converted);
+    return converted;
   });
 }

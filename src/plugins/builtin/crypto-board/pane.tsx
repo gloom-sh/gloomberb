@@ -14,7 +14,7 @@ import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAppVisible } from "../../../state/app/activity";
+import { usePaneVisible } from "../../../state/app/activity";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { colors, priceColor } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -47,6 +47,8 @@ import {
  * trail it by 15 minutes. It refreshes on this clock, not the app's data one.
  */
 export const CRYPTO_BOARD_REFRESH_MS = 15_000;
+/** Once every streamed row is live, the board only carries the rest of the tab. */
+const CRYPTO_BOARD_STREAMING_REFRESH_MS = 60_000;
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const STREAM_OVERSCAN = 8;
 /** Before the table reports its window, stream what a full-height pane shows. */
@@ -119,13 +121,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
-  const appVisible = useAppVisible();
+  const paneVisible = usePaneVisible();
   const reloadBoard = resource.load;
-  useEffect(() => {
-    if (!appVisible) return;
-    const timer = setInterval(() => void reloadBoard(false), CRYPTO_BOARD_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [appVisible, reloadBoard]);
 
   const tabAssets = useMemo(
     () => data?.assets.filter((asset) => asset.kind === activeTab) ?? [],
@@ -151,6 +148,21 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const rows = useMemo(
     () => sortCryptoRows(buildCryptoRows(tabAssets, activeTab, entries, freshnessNow), sort),
     [activeTab, entries, freshnessNow, sort, tabAssets],
+  );
+  const streamedIds = useMemo(() => new Set(streamedAssets.map((asset) => asset.symbol)), [streamedAssets]);
+  const allStreamedLive = liveStreaming && streamedIds.size > 0
+    && rows.every((row) => !streamedIds.has(row.id) || row.live);
+  const boardRefreshMs = allStreamedLive ? CRYPTO_BOARD_STREAMING_REFRESH_MS : CRYPTO_BOARD_REFRESH_MS;
+  useEffect(() => {
+    if (!paneVisible) return;
+    const timer = setInterval(() => void reloadBoard(false), boardRefreshMs);
+    return () => clearInterval(timer);
+  }, [boardRefreshMs, paneVisible, reloadBoard]);
+  const renderCell = useCallback(
+    (row: CryptoRow, column: CryptoColumn, _index: number, rowState: { selected: boolean }) => (
+      renderCryptoCell(row, column, rowState.selected)
+    ),
+    [],
   );
   useEffect(() => {
     if (!rows.length) return;
@@ -240,7 +252,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           })}
           visibleRangeKey={`${activeTab}:${sort.columnId}:${sort.direction}`}
           onVisibleRangeChange={setVisibleRange}
-          renderCell={(row, column, _index, rowState) => renderCryptoCell(row, column, rowState.selected)}
+          renderCell={renderCell}
           emptyStateTitle="No crypto assets returned."
         />
       </PaneStatusBody>

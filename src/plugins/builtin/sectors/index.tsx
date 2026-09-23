@@ -7,7 +7,12 @@ import { usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { Quote } from "../../../types/financials";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { SectorMoveBar } from "./move-bar";
 import {
   SECTOR_COLLECTIONS,
@@ -23,7 +28,9 @@ import {
   INITIAL_ROWS_BY_COLLECTION,
   buildSectorColumns,
   nextSortPreference,
+  isLiveSectorQuote,
   normalizeRowsForCollection,
+  overlayLiveSectorQuote,
   sectorRowIssues,
   sortRows,
   updateRowsForCollection,
@@ -40,6 +47,13 @@ export { sectorsHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would refetch the board every render. */
 const NO_SAVED_ETFS: string[] = [];
+
+/**
+ * Prices, the day move and the returns stream; the year of history behind the
+ * returns only reloads on the app's research cadence. When any fund is not
+ * streaming inside the board's session, the snapshot reloads at this pace.
+ */
+const SECTOR_FALLBACK_REFRESH_MS = 60_000;
 
 /** The value as printed (two decimals), so a move that rounds to zero is neither signed nor coloured. */
 const shownPercent = (value: number) => Math.round(value * 100) / 100 || 0;
@@ -83,7 +97,36 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     () => normalizeRowsForCollection(rowsByCollection, activeCollection.id, activeItems),
     [activeCollection.id, activeItems, rowsByCollection],
   );
-  const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
+  const liveStreaming = useLiveStreamingSetting();
+  const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => activeItems.map((item) => ({
+    symbol: item.etf,
+    exchange: "",
+    surface: "screener",
+    visible: true,
+    selected: item.etf === selectedEtf,
+    weight: item.etf === selectedEtf ? 100 : 70,
+  })), [activeItems, selectedEtf]);
+  const { entries: liveEntries } = useLiveQuoteEntries(quoteTargets, {
+    freshnessScopeKey: `sectors:${activeCollection.id}`,
+    liveStreaming,
+  });
+  // Live values stay out of the persisted rows: writing every tick would churn
+  // pane persistence. Unchanged rows keep their object for the table's memo.
+  const liveRowCache = useRef(new WeakMap<SectorRow, { quote: Quote | null; row: SectorRow }>());
+  const { liveRows, allLive } = useMemo(() => {
+    let covered = true;
+    const next = rows.map((row) => {
+      const quote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: row.etf, exchange: "" })));
+      if (!row.loading && !isLiveSectorQuote(row, quote)) covered = false;
+      const cached = liveRowCache.current.get(row);
+      if (cached && cached.quote === quote) return cached.row;
+      const live = overlayLiveSectorQuote(row, quote);
+      liveRowCache.current.set(row, { quote, row: live });
+      return live;
+    });
+    return { liveRows: next, allLive: covered };
+  }, [liveEntries, rows]);
+  const sortedRows = useMemo(() => sortRows(liveRows, sortPreference), [liveRows, sortPreference]);
   const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
   const loading = rows.some((row) => row.loading);
   const tabs = useMemo(() => SECTOR_COLLECTIONS.map((collection) => ({
@@ -112,7 +155,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true, quoteSessionDate: null, quoteIssue: "quote unavailable", lastReportedPrice: null, returnIntegrity: {} }), loading: false }))
+        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true, quoteSessionDate: null, quoteIssue: "quote unavailable", lastReportedPrice: null, quoteUpdatedAt: null, returnIntegrity: {} }), loading: false }))
       )));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
@@ -133,7 +176,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     fetchAll();
   }, [fetchAll]);
 
-  useAutoRefresh(lastRefreshMs, fetchAll);
+  useAutoRefresh(lastRefreshMs, fetchAll, { intervalMs: allLive ? null : SECTOR_FALLBACK_REFRESH_MS });
 
   useEffect(() => {
     if (activeCollectionId === activeCollection.id) return;

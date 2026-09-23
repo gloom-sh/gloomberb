@@ -5,7 +5,7 @@ import {
   MarketDataCoordinator,
   setSharedMarketDataCoordinator,
 } from "../../../market-data/coordinator";
-import type { QueryEntry } from "../../../market-data/result-types";
+import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
@@ -58,6 +58,9 @@ function installCoordinator(): void {
       RATES[currency] != null ? readyEntry(RATES[currency]!) : errorEntry()
     ),
     loadFxRate: async () => {},
+    // The USD legs also subscribe as pair quotes; none arrive in this test.
+    subscribeQuotes: () => () => {},
+    getQuoteEntry: () => createIdleEntry(),
   } as unknown as MarketDataCoordinator);
 }
 

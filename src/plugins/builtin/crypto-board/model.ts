@@ -66,6 +66,19 @@ export function liveQuote(
   return quote;
 }
 
+/** The completed daily closes depend only on the board snapshot, so each asset builds them once. */
+const closesByAsset = new WeakMap<CryptoMarketAsset, PricePoint[]>();
+
+function completedCloses(asset: CryptoMarketAsset): PricePoint[] {
+  const cached = closesByAsset.get(asset);
+  if (cached) return cached;
+  const start = asset.history ? Date.parse(`${asset.history.start}T00:00:00Z`) : 0;
+  const closes: PricePoint[] = (asset.history?.closes ?? []).flatMap((close, index) =>
+    close == null ? [] : [{ date: new Date(start + index * DAY_MS), close }]);
+  closesByAsset.set(asset, closes);
+  return closes;
+}
+
 export function buildCryptoRow(
   asset: CryptoMarketAsset,
   quote: Quote | null,
@@ -83,10 +96,11 @@ export function buildCryptoRow(
     ? asset.marketCap * (price / asset.price)
     : finite(asset.circulatingSupply) && asset.circulatingSupply > 0 ? asset.circulatingSupply * price : null;
   const start = asset.history ? Date.parse(`${asset.history.start}T00:00:00Z`) : 0;
-  const history: PricePoint[] = (asset.history?.closes ?? []).flatMap((close, index) =>
-    close == null ? [] : [{ date: new Date(start + index * DAY_MS), close }]);
+  const closes = completedCloses(asset);
+  const history: PricePoint[] = closes.length
+    ? [...closes, { date: new Date(Math.max(now, start + closes.length * DAY_MS)), close: price }]
+    : closes;
   const updatedAt = quote?.lastUpdated ?? (asset.quoteTime ? Date.parse(asset.quoteTime) : null);
-  if (history.length) history.push({ date: new Date(Math.max(now, start + history.length * DAY_MS)), close: price });
   return {
     asset,
     id: asset.symbol,
@@ -107,15 +121,27 @@ export function buildCryptoRow(
   };
 }
 
+const rowsByAsset = new WeakMap<CryptoMarketAsset, { quote: Quote | null; day: number; row: CryptoRow }>();
+
 export function buildCryptoRows(
   assets: readonly CryptoMarketAsset[],
   kind: CryptoAssetKind,
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
   now = Date.now(),
 ): CryptoRow[] {
+  const day = utcDay(now);
   return assets
     .filter((asset) => asset.kind === kind)
-    .map((asset) => buildCryptoRow(asset, liveQuote(asset, entries), now));
+    .map((asset) => {
+      // Returns move by UTC day and the price by quote, so a row whose asset,
+      // quote and day all held is reused and its table row skips the render.
+      const quote = liveQuote(asset, entries);
+      const cached = rowsByAsset.get(asset);
+      if (cached && cached.quote === quote && cached.day === day) return cached.row;
+      const row = buildCryptoRow(asset, quote, now);
+      rowsByAsset.set(asset, { quote, day, row });
+      return row;
+    });
 }
 
 /**

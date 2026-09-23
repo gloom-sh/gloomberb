@@ -48,6 +48,13 @@ function finite(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+/**
+ * The last overlay of each source row. Every stream flush hands over a new
+ * entries map, but most rows' quotes did not move; returning the same row
+ * object for those lets memoized table rows skip the render.
+ */
+const overlayCache = new WeakMap<object, { quote: Quote; row: ScreenerQuoteRow }>();
+
 export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
   rows: readonly T[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
@@ -62,20 +69,27 @@ export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
     ) {
       return row;
     }
-
-    return {
-      ...row,
-      name: quote.name?.trim() || row.name,
-      price: quote.price,
-      change: finite(quote.change) ? quote.change : null,
-      changePercent: finite(quote.changePercent)
-        ? quote.changePercent
-        : null,
-      volume: finite(quote.volume) && quote.volume >= 0 ? quote.volume : null,
-      currency: quote.currency?.trim() || "",
-      lastUpdated: quote.lastUpdated,
-    };
+    const cached = overlayCache.get(row);
+    if (cached?.quote === quote) return cached.row as T;
+    const overlaid = overlayQuote(row, quote);
+    overlayCache.set(row, { quote, row: overlaid });
+    return overlaid;
   });
+}
+
+function overlayQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
+  return {
+    ...row,
+    name: quote.name?.trim() || row.name,
+    price: quote.price,
+    change: finite(quote.change) ? quote.change : null,
+    changePercent: finite(quote.changePercent)
+      ? quote.changePercent
+      : null,
+    volume: finite(quote.volume) && quote.volume >= 0 ? quote.volume : null,
+    currency: quote.currency?.trim() || "",
+    lastUpdated: quote.lastUpdated,
+  };
 }
 
 function freshQuote(

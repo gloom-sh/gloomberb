@@ -1,5 +1,5 @@
 import type { DataTableColumn } from "../../../components";
-import type { PricePoint } from "../../../types/financials";
+import type { PricePoint, Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { getPricePointTimestamp } from "../../../utils/price-history";
 import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
@@ -23,6 +23,8 @@ export interface SectorRow extends SectorDef {
   quoteSessionDate?: string | null;
   quoteIssue?: string | null;
   lastReportedPrice?: number | null;
+  /** When the snapshot quote behind `price` was stamped; a live quote must be at least as new. */
+  quoteUpdatedAt?: number | null;
   returnIntegrity?: Partial<Record<SectorReturnRange, PriceHistoryIntegrity>>;
   returnAsOfDate?: string | null;
   return1MStartDate?: string | null;
@@ -94,6 +96,7 @@ export function normalizeRowsForCollection(
       quoteSessionDate: existing?.quoteSessionDate ?? null,
       quoteIssue: existing?.quoteIssue ?? null,
       lastReportedPrice: existing?.lastReportedPrice ?? null,
+      quoteUpdatedAt: existing?.quoteUpdatedAt ?? null,
       returnIntegrity: existing?.returnIntegrity ?? {},
       returnAsOfDate: existing?.returnAsOfDate ?? null,
       return1MStartDate: existing?.return1MStartDate ?? null,
@@ -287,4 +290,53 @@ export function nextSortPreference(current: SectorSortPreference, columnId: stri
     return { columnId: typedColumnId, direction: "asc" };
   }
   return DEFAULT_SORT_PREFERENCE;
+}
+
+const finitePositive = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/**
+ * The session a quote's regular price belongs to. Every instrument in these
+ * collections is a US-listed ETF, so an undeclared session is the New York
+ * date of the quote.
+ */
+export function sectorQuoteSessionDate(quote: Quote): string | null {
+  const declared = quote.changeSessionDate;
+  if (typeof declared === "string" && /^\d{4}-\d{2}-\d{2}$/.test(declared)
+    && Number.isFinite(Date.parse(declared)) && new Date(declared).toISOString().slice(0, 10) === declared) return declared;
+  if (declared != null) return null;
+  if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(quote.lastUpdated));
+}
+
+/**
+ * A live quote extends a loaded row only inside the session its returns are
+ * measured to. Every fund shares that session, so a pre-market print (the
+ * next session) or a quote older than the snapshot leaves the row alone and
+ * the board keeps ranking on one completed session. The 1M and 1Y returns
+ * keep their baselines: the row's own return and price imply the start close.
+ */
+export function isLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
+  if (!quote || quote.stale === true || !finitePositive(quote.price)) return false;
+  if (!finitePositive(row.price) || !row.returnAsOfDate) return false;
+  if (row.quoteUpdatedAt != null && quote.lastUpdated < row.quoteUpdatedAt) return false;
+  return sectorQuoteSessionDate(quote) === row.returnAsOfDate;
+}
+
+export function overlayLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): SectorRow {
+  if (!isLiveSectorQuote(row, quote) || row.price == null) return row;
+  const changePercent = Number.isFinite(quote.changePercent) ? quote.changePercent : row.changePercent;
+  if (quote.price === row.price && changePercent === row.changePercent) return row;
+  const scale = quote.price / row.price;
+  const rescale = (value: number | null) => (value == null ? null : ((1 + value / 100) * scale - 1) * 100);
+  return {
+    ...row,
+    price: quote.price,
+    lastReportedPrice: quote.price,
+    changePercent,
+    return1M: rescale(row.return1M),
+    return1Y: rescale(row.return1Y),
+  };
 }

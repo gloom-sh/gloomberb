@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   ScrollBox,
@@ -21,6 +21,7 @@ import {
   usePaneNoticeFooter,
   useTableLoadMore,
   type DataTableColumn,
+  type DataTableVisibleRange,
   type SelectControl,
 } from "../../../components";
 import {
@@ -65,6 +66,15 @@ import {
   screenRowId,
 } from "./model";
 import { useScreenResults } from "./results";
+import { overlayLiveScreenRows } from "./live";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { buildScreenerQuoteTargets } from "../shared/screener-live-quotes";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+
+/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
+const STREAM_OVERSCAN = 8;
+/** Before the table reports its window, stream what a full-height pane shows. */
+const INITIAL_STREAM_ROWS = 40;
 
 const TABS = [
   { value: "results", label: "Results" },
@@ -232,7 +242,23 @@ function EquityScreenView({
   );
   const results = useScreenResults(definition, session.requestKey);
   const data = results.data;
-  const rows = data?.rows ?? [];
+  const snapshotRows = data?.rows ?? [];
+  // Price, change, volume and market cap stream for the rows on screen; the
+  // screen itself (membership, order, percentiles) stays the snapshot's.
+  const liveStreaming = useLiveStreamingSetting();
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange>({ start: 0, end: INITIAL_STREAM_ROWS });
+  const streamTargets = useMemo(() => {
+    const onScreen = snapshotRows.slice(Math.max(0, visibleRange.start - STREAM_OVERSCAN), visibleRange.end + STREAM_OVERSCAN);
+    const selectedRow = snapshotRows.find((row) => screenRowId(row) === selectedId);
+    const streamed = selectedRow && !onScreen.includes(selectedRow) ? [...onScreen, selectedRow] : onScreen;
+    const selectedTarget = selectedRow ? selectedRow.symbol : null;
+    return buildScreenerQuoteTargets(streamed, selectedTarget);
+  }, [selectedId, snapshotRows, visibleRange]);
+  const { entries: liveEntries } = useLiveQuoteEntries(streamTargets, {
+    freshnessScopeKey: `equity-screener:${JSON.stringify(definition)}`,
+    liveStreaming,
+  });
+  const rows = useMemo(() => overlayLiveScreenRows(snapshotRows, liveEntries), [liveEntries, snapshotRows]);
   const opened = rows.find((row) => screenRowId(row) === openId);
   const selected =
     opened ?? rows.find((row) => screenRowId(row) === selectedId) ?? rows[0];
@@ -846,6 +872,8 @@ function EquityScreenView({
             scrollRef={tableScroll}
             onBodyScrollActivity={loadMore}
             resetScrollKey={JSON.stringify(definition)}
+            visibleRangeKey={JSON.stringify(definition)}
+            onVisibleRangeChange={setVisibleRange}
             getItemKey={screenRowId}
             selection={{
               kind: "id",
