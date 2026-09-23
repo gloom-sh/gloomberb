@@ -354,6 +354,24 @@ async function bestEffortYahooMetadata(
   }
 }
 
+/**
+ * Screeners rank on a snapshot older than the quote fields they return, so a
+ * list is re-ranked on the metric it displays. Unknown values sort last.
+ */
+export function rankScreenerQuotes(category: ScreenerCategory, quotes: ScreenerQuote[]): ScreenerQuote[] {
+  const metric = (quote: ScreenerQuote): number | null => {
+    const value = category === "most_actives" ? quote.volume : quote.changePercent;
+    if (value == null || !Number.isFinite(value)) return null;
+    return category === "day_losers" ? -value : value;
+  };
+  return [...quotes].sort((left, right) => {
+    const a = metric(left);
+    const b = metric(right);
+    if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+    return b - a;
+  });
+}
+
 export async function fetchPreferredMarketMovers(
   category: ScreenerCategory,
   count = 25,
@@ -362,7 +380,7 @@ export async function fetchPreferredMarketMovers(
 ): Promise<MarketMoversResult> {
   if (!sources.isCloudEligible()) {
     const result = await sources.fetchYahoo(category, count, options);
-    return { quotes: result.data, source: "yahoo", stale: result.stale };
+    return { quotes: rankScreenerQuotes(category, result.data), source: "yahoo", stale: result.stale };
   }
 
   const yahooMetadata = sources.fetchYahoo(
@@ -384,9 +402,9 @@ export async function fetchPreferredMarketMovers(
       const metadata = await bestEffortYahooMetadata(yahooMetadata);
       const metadataBySymbol = new Map(metadata.map((quote) => [quote.symbol, quote]));
       return {
-        quotes: response.data.items.map((item) => (
+        quotes: rankScreenerQuotes(category, response.data.items.map((item) => (
           mergeCloudScreenerItem(item, metadataBySymbol.get(item.symbol))
-        )),
+        ))),
         source: "cloud",
         stale: response.stale === true || response.data.stale === true,
       };
@@ -397,7 +415,7 @@ export async function fetchPreferredMarketMovers(
 
   const fallback = await yahooMetadata;
   return {
-    quotes: fallback.data,
+    quotes: rankScreenerQuotes(category, fallback.data),
     source: "yahoo",
     stale: fallback.stale,
   };

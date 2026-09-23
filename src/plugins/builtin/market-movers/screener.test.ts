@@ -221,6 +221,26 @@ describe("fetchScreener", () => {
     expect(result.quotes.map((quote) => quote.symbol)).toEqual(["AAPL", "MSFT"]);
   });
 
+  test("ranks each list on the metric it displays, not the vendor's snapshot order", async () => {
+    // Yahoo ranks on an older snapshot than the live quote fields it returns.
+    const quote = (symbol: string, volume: number | null, changePercent: number | null) => ({
+      ...parseScreenerResponse(SAMPLE_SCREENER_RESPONSE)[0]!, symbol, volume, changePercent,
+    });
+    const quotes = [quote("NVDA", 93_300_000, 0.66), quote("INTC", 107_680_000, 1.71), quote("NONE", null, null), quote("GRAB", 180_760_000, -8.9)];
+    const sources: PreferredMarketMoverSources = {
+      isCloudEligible: () => false,
+      fetchCloud: async () => { throw new Error("not expected"); },
+      fetchYahoo: async () => ({ data: quotes, stale: false }),
+    };
+    const symbols = async (category: "most_actives" | "day_gainers" | "day_losers") => (
+      (await fetchPreferredMarketMovers(category, 25, undefined, sources)).quotes.map((entry) => entry.symbol)
+    );
+
+    expect(await symbols("most_actives")).toEqual(["GRAB", "INTC", "NVDA", "NONE"]);
+    expect(await symbols("day_gainers")).toEqual(["INTC", "NVDA", "GRAB", "NONE"]);
+    expect(await symbols("day_losers")).toEqual(["GRAB", "NVDA", "INTC", "NONE"]);
+  });
+
   test("reports a cached Yahoo fallback as stale", async () => {
     // Regression: an expired cache served after a failed fetch reported
     // stale: false, so the pane's stale marker never appeared.
