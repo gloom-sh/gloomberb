@@ -57,7 +57,10 @@ function mergeSearchResults(
 
     const existing = results[existingIndex]!;
     if (getSearchResultRichness(item, context) > getSearchResultRichness(existing, context)) {
-      results[existingIndex] = item;
+      // A broker's richer row still describes the listing the cloud scored.
+      results[existingIndex] = item.popularity == null && existing.popularity != null
+        ? { ...item, popularity: existing.popularity }
+        : item;
     }
   }
 }

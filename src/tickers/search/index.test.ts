@@ -551,6 +551,82 @@ describe("ticker-search utilities", () => {
     ])).toEqual(["NESN", "NESTLEIND"]);
   });
 
+  describe("provider popularity", () => {
+    // Cloud responses captured from Yahoo's search scores on 2026-09-23.
+    const listing = (symbol: string, name: string, exchange: string, popularity?: number, type = "EQUITY") =>
+      makeSearchResult(symbol, name, { exchange, type, ...(popularity == null ? {} : { popularity }) });
+    const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+      query,
+      tickers: new Map<string, TickerRecord>(),
+      providerResults,
+      totalLimit: 10,
+    });
+    const symbols = (query: string, providerResults: InstrumentSearchResult[]) =>
+      build(query, providerResults).map((item) => item.symbol);
+    const primary = (query: string, providerResults: InstrumentSearchResult[]) =>
+      build(query, providerResults).find((item) => item.category === "Primary Listing")?.symbol;
+    const withoutPopularity = (results: InstrumentSearchResult[]) =>
+      results.map(({ popularity: _popularity, ...result }) => result);
+
+    const taiwan = [
+      listing("TSM", "Taiwan Semiconductor Manufacturing Company Limited", "NYSE", 94661),
+      listing("2330", "Taiwan Semiconductor Manufacturing Company Limited", "TWSE", 22037),
+      listing("TSMC34", "Taiwan Semiconductor Manufacturing Co., Ltd.", "B3", 20945, "Depositary Receipt"),
+      listing("5425", "Taiwan Semiconductor Co., Ltd.", "TWSE", 20052),
+      listing("057782", "Fubon Warrant on Taiwan Semiconductor", "TWSE", undefined, "Warrant"),
+    ];
+
+    test("a far more popular company outranks a small namesake typed exactly", () => {
+      expect(symbols("Taiwan Semiconductor", taiwan)).toEqual(["TSM", "2330", "TSMC34", "5425", "057782"]);
+      expect(primary("Taiwan Semiconductor", taiwan)).toBe("TSM");
+      // Older servers send no popularity, so the exact name still leads there.
+      expect(primary("Taiwan Semiconductor", withoutPopularity(taiwan))).toBe("5425");
+    });
+
+    test("comparable popularity keeps the exactly named company first", () => {
+      const siemens = [
+        listing("ENR", "Siemens Energy AG", "XETRA", 21317),
+        listing("SIE", "Siemens Aktiengesellschaft", "XETRA", 20993),
+        listing("SIEGY", "Siemens Aktiengesellschaft", "PNK", 20451),
+        listing("SMERY", "Siemens Energy AG", "OQX", 20257),
+        listing("SHL", "Siemens Healthineers AG", "XETRA", 20245),
+      ];
+      expect(symbols("Siemens", siemens)).toEqual(["SIE", "SIEGY", "ENR", "SMERY", "SHL"]);
+
+      const nestle = [
+        listing("NESN", "Nestlé S.A.", "SIX", 21186),
+        listing("NSRGY", "Nestlé S.A.", "OID", 20886),
+        listing("NESTLEIND", "Nestlé India Limited", "NSE", 20247),
+      ];
+      expect(symbols("nestle", nestle)).toEqual(["NESN", "NSRGY", "NESTLEIND"]);
+
+      const apple = [
+        listing("AAPL", "Apple Inc.", "NASDAQ", 235768),
+        listing("APLE", "Apple Hospitality REIT, Inc.", "NYSE", 21233),
+      ];
+      for (const results of [apple, [...apple].reverse(), withoutPopularity([...apple].reverse())]) {
+        expect(symbols("Apple", results)).toEqual(["AAPL", "APLE"]);
+      }
+    });
+
+    test("a typed depositary receipt yields to its issuer's home listing; an untyped ADR keeps popularity order", () => {
+      const toyota = [
+        listing("TM", "Toyota Motor Corporation", "NYSE", 23125),
+        listing("7203", "Toyota Motor Corporation", "JPX", 20228),
+        listing("TOYOF", "Toyota Motor Corporation", "PNK", 20069),
+        listing("8015", "Toyota Tsusho Corporation", "JPX", 20033),
+        listing("TOM", "Toyota Motor Corp.", "XHAN"),
+      ];
+      // Yahoo files TM as plain NYSE equity, exactly like a second home line.
+      expect(symbols("Toyota", toyota)).toEqual(["TM", "7203", "TOYOF", "TOM", "8015"]);
+      const typed = toyota.map((result) => result.symbol === "TM" ? { ...result, type: "Depositary Receipt" } : result);
+      expect(symbols("Toyota", typed)).toEqual(["7203", "TOYOF", "TOM", "TM", "8015"]);
+      expect(primary("Toyota", typed)).toBe("7203");
+      // A ticker search keeps the provider's order among that ticker's lines.
+      expect(symbols("TM", typed)[0]).toBe("TM");
+    });
+  });
+
   test("normalizes legal suffixes in literal company-name queries", () => {
     const cases = [
       {

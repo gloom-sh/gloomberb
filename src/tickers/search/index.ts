@@ -60,6 +60,7 @@ const SHARE_CLASS_SUFFIXES = new Set(["A", "B", "C", "D", "K"]);
 interface TickerSearchCandidateOptions {
   includeOptionContracts?: boolean;
   providerRanks?: ReadonlyMap<string, number>;
+  providerPopularity?: ReadonlyMap<string, number>;
 }
 
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
@@ -106,6 +107,7 @@ export function createLocalTickerSearchCandidates(
           exchangeLabel: venue,
           primaryExchangeLabel: contractKey ? result!.primaryExchange : primaryExchangeLabel,
           providerRank: options.providerRanks?.get(symbol),
+          popularity: options.providerPopularity?.get(symbol),
           category: "Saved",
           kind: "ticker",
           saved: true,
@@ -144,6 +146,7 @@ function createProviderTickerSearchCandidates(
       exchangeLabel: result.exchange,
       primaryExchangeLabel: result.primaryExchange,
       providerRank,
+      popularity: searchResultPopularity(result),
       category: saved ? "Saved" : "Other Listings",
       kind: "search",
       saved,
@@ -213,6 +216,7 @@ export function buildTickerSearchCandidates({
   const candidateOptions = {
     includeOptionContracts,
     providerRanks: providerHints.ranks,
+    providerPopularity: providerHints.popularity,
   };
   const localItems = rankTickerSearchItems(
     createLocalTickerSearchCandidates(tickers.values(), providerHints.results, candidateOptions),
@@ -318,12 +322,16 @@ function buildProviderHints(
 ): {
   results: Map<string, InstrumentSearchResult>;
   ranks: Map<string, number>;
+  popularity: Map<string, number>;
 } {
   const results = new Map<string, InstrumentSearchResult>();
   const ranks = new Map<string, number>();
+  const popularity = new Map<string, number>();
   for (const [rank, result] of searchResults.entries()) {
     const symbol = getSearchResultSymbol(result);
     if (!ranks.has(symbol)) ranks.set(symbol, rank);
+    const score = searchResultPopularity(result);
+    if (score != null) popularity.set(symbol, Math.max(score, popularity.get(symbol) ?? score));
     const existing = results.get(symbol);
     const preferredExchange = localTickers.get(symbol)?.metadata.exchange;
     if (
@@ -333,7 +341,12 @@ function buildProviderHints(
       results.set(symbol, result);
     }
   }
-  return { results, ranks };
+  return { results, ranks, popularity };
+}
+
+/** Older servers and other providers send no popularity; ignore anything else malformed. */
+function searchResultPopularity(result: InstrumentSearchResult): number | undefined {
+  return typeof result.popularity === "number" && Number.isFinite(result.popularity) ? result.popularity : undefined;
 }
 
 async function searchProviderResults(
