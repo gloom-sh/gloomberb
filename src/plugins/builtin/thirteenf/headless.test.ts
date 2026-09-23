@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
@@ -144,5 +145,38 @@ describe("13F headless model", () => {
       actionLabel: "Add",
     })]);
     expect(holdings.metadata).toMatchObject({ view: "holdings", fund: detail.name });
+  });
+
+  describe("ticker argument", () => {
+    const holder = (index: number) => ({ id: `f${index}`, cik: `${index}`, fund: `Fund ${index}`, ticker: "KO", cusip: "191216100", issuer: "Coca-Cola",
+      type: "SH", value: 100, shares: 1, weight: null, previousWeight: null, weightChange: null, action: "held" });
+    const page = (offset: number, count: number, hasMore: boolean) => ({ ticker: "KO", quarter: "2026Q2", period: "2026-06-30", previousPeriod: "2026-03-31",
+      rows: Array.from({ length: count }, (_, index) => holder(offset + index)), warnings: [], asOf: "", holderCount: 60, newCount: 0, exitCount: 0,
+      totalValue: null, valueScope: "page", hasMore, nextOffset: offset + count });
+    let spy: ReturnType<typeof spyOn> | null = null;
+    afterEach(() => { spy?.mockRestore(); spy = null; });
+
+    test("pages holders up to the limit and reports more", async () => {
+      const offsets: number[] = [];
+      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (_view: string, params: { offset: number }) => {
+        offsets.push(params.offset);
+        return page(params.offset, 25, params.offset < 50);
+      }) as never);
+      const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
+      const result = await headless.load({ ...args("auto", 40), argument: "KO", rawArgument: "KO" }, context());
+      expect(offsets).toEqual([0, 25]);
+      expect(result.rows).toHaveLength(40);
+      expect(result.metadata).toMatchObject({ view: "ticker-holdings", truncated: true });
+    });
+
+    test("falls back to the holders listing for a ticker without a mapped CUSIP", async () => {
+      spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => { throw new Error("No 13F CUSIP found for ZZZZ"); }) as never);
+      const tabs: string[] = [];
+      const headless = createThirteenFHeadless({ loadBrowser: async (tab) => { tabs.push(tab); return { rows: [], warning: "No 13F holders for ZZZZ" }; }, loadDetail: async () => detail });
+      const result = await headless.load({ ...args("auto"), argument: "ZZZZ", rawArgument: "ZZZZ" }, context());
+      expect(tabs).toEqual(["byTicker"]);
+      expect(result.metadata).toMatchObject({ view: "byTicker" });
+      await expect(headless.load({ ...args("ticker-holdings"), argument: "ZZZZ", rawArgument: "ZZZZ" }, context())).rejects.toThrow(/No 13F CUSIP/);
+    });
   });
 });

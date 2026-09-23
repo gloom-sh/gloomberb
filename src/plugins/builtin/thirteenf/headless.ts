@@ -6,7 +6,7 @@ import type {
 } from "../../../types/plugin";
 import { normalizeCik } from "./api";
 import { buildFundOverlap } from "./overlap";
-import { loadCrowding, loadTickerHoldings } from "./signals";
+import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type TickerHoldings } from "./signals";
 import {
   loadBrowserRows,
   loadFundDetail,
@@ -279,10 +279,24 @@ export function createThirteenFHeadless(
           // The pane states the fund sample beside the table; the text report needs it too.
           metadata: { ...metadata, view, rank, truncated: rows.length > limit, notices: [`${metadata.period}: ${metadata.loadedFunds}/${metadata.sourceFunds} ranked funds`] }, errors: metadata.warnings };
       }
+      let holdings: TickerHoldings | null = null;
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
-        const { rows, ...metadata } = await loadTickerHoldings(query.replace(/^\$/, "").toUpperCase(), Number(args.options.offset ?? 0), ctx.signal);
-        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
+        const ticker = query.replace(/^\$/, "").toUpperCase();
+        try {
+          holdings = await loadTickerHoldings(ticker, Number(args.options.offset ?? 0), ctx.signal);
+          // The endpoint pages 25 funds at a time.
+          while (holdings.hasMore && holdings.rows.length < limit) {
+            holdings = appendTickerHoldings(holdings, await loadTickerHoldings(ticker, holdings.nextOffset, ctx.signal));
+          }
+        } catch (error) {
+          // A ticker without a mapped CUSIP falls back to the holders listing.
+          if (requestedView !== "auto" || ctx.signal?.aborted) throw error;
+        }
+      }
+      if (holdings) {
+        const { rows, ...metadata } = holdings;
+        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit || metadata.hasMore }, errors: metadata.warnings };
       }
 
       if (view === "holdings" || view === "filings") {
@@ -335,7 +349,7 @@ export function createThirteenFHeadless(
         };
       }
 
-      const tab = browserTab(view, query);
+      const tab = browserTab(view === "ticker-holdings" ? requestedView : view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
       return {
         columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))]
