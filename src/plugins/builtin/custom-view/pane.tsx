@@ -20,6 +20,13 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { usePluginAppActions, usePluginPaneActions } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { resolveEntryValue } from "../../../market-data/coordinator";
+import { buildQuoteKey } from "../../../market-data/selectors";
+import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import { normalizeSymbol } from "../../../utils/exchanges";
+import { LIVE_VIEW_ROW_LIMIT, liveViewColumns, overlayViewRow, viewRowSymbol } from "./live-quotes";
 import { loadViewSource, type LoadedView } from "./loader";
 import {
   applyViewProjection,
@@ -37,6 +44,14 @@ export const CUSTOM_VIEW_SPEC_SETTING = "spec";
 type Column = DataTableColumn & { key: string; transform?: ViewColumn["transform"] };
 
 const DEFAULT_COLUMN_WIDTH = 14;
+const NO_ROWS: ViewRow[] = [];
+const NO_TARGETS: QuoteSubscriptionTarget[] = [];
+/** Live values move every tick; filters and sort follow them at most this often. */
+const LIVE_VIEW_ORDER_SAMPLE_MS = 5_000;
+
+function viewQuoteKey(symbol: string): string {
+  return buildQuoteKey({ symbol: normalizeSymbol(symbol), exchange: "", instrument: null });
+}
 
 function columnsFor(spec: ViewSpec, loaded: LoadedView | null): Column[] {
   const known = new Map((loaded?.columns ?? []).map((column) => [column.key, column]));
@@ -84,10 +99,52 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   }, [spec]);
 
   const columns = useMemo(() => (spec ? columnsFor(spec, data) : []), [data, spec]);
-  const rows = useMemo(
-    () => (spec && data ? applyViewProjection(data.rows, spec.projection, sort) : []),
+  const symbolKey = spec?.presentation.symbolKey ?? (columns.some((column) => column.key === "symbol") ? "symbol" : null);
+
+  // Price, change and volume columns of rows that name a symbol stream through
+  // the shared quote feed; every other column keeps the loader's refresh.
+  const liveFields = useMemo(() => liveViewColumns(data?.columns ?? []), [data?.columns]);
+  const sourceRows = data?.rows ?? NO_ROWS;
+  const loadedRows = useMemo(
+    () => (spec && data ? applyViewProjection(data.rows, spec.projection, sort) : NO_ROWS),
     [data, sort, spec],
   );
+  const streamBlock = Math.max(10, height);
+  const streamWindowStart = Math.max(0, (Math.floor(selectedIndex / streamBlock) - 1) * streamBlock);
+  const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => {
+    if (liveFields.size === 0 || !symbolKey) return NO_TARGETS;
+    const targets: QuoteSubscriptionTarget[] = [];
+    loadedRows.slice(0, LIVE_VIEW_ROW_LIMIT).forEach((row, index) => {
+      const symbol = viewRowSymbol(row, symbolKey);
+      if (!symbol) return;
+      const visible = index >= streamWindowStart && index < streamWindowStart + streamBlock * 3;
+      targets.push({ symbol, exchange: "", surface: "screener", visible, weight: visible ? 60 : 20 });
+    });
+    return targets;
+  }, [liveFields, loadedRows, streamBlock, streamWindowStart, symbolKey]);
+  const { entries: liveQuotes } = useLiveQuoteEntries(quoteTargets);
+  const liveRows = useMemo(() => {
+    if (quoteTargets.length === 0) return sourceRows;
+    return sourceRows.map((row) => {
+      const symbol = viewRowSymbol(row, symbolKey);
+      const entry = symbol ? liveQuotes.get(viewQuoteKey(symbol)) : undefined;
+      return overlayViewRow(row, entry ? resolveEntryValue(entry) : null, liveFields);
+    });
+  }, [liveFields, liveQuotes, quoteTargets.length, sourceRows, symbolKey]);
+  // Filtering and sorting on live values at tick speed would shuffle rows
+  // under the cursor, so the order follows sampled values instead.
+  const orderInput = useSampledValue(
+    liveRows,
+    LIVE_VIEW_ORDER_SAMPLE_MS,
+    `${updatedAt ?? ""}:${sort ? `${sort.by}:${sort.direction}` : String(sort)}`,
+  );
+  const rows = useMemo(() => {
+    if (!spec || !data) return NO_ROWS;
+    const ordered = applyViewProjection(orderInput, spec.projection, sort);
+    if (orderInput === liveRows) return ordered;
+    const indexOf = new Map(orderInput.map((row, index) => [row, index]));
+    return ordered.map((row) => liveRows[indexOf.get(row) ?? -1] ?? row);
+  }, [data, liveRows, orderInput, sort, spec]);
   const baseByColumn = useMemo(() => {
     const bases = new Map<string, number>();
     for (const column of columns) {
@@ -97,7 +154,6 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     }
     return bases;
   }, [columns, rows]);
-  const symbolKey = spec?.presentation.symbolKey ?? (columns.some((column) => column.key === "symbol") ? "symbol" : null);
   const activeSort = sort === undefined ? spec?.projection.sort ?? null : sort;
   // Memoized so the table's row memo holds while the selection moves.
   const rowKey = useCallback((row: ViewRow, index: number) => (
