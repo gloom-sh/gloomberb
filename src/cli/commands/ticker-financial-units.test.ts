@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { buildTickerReport } from "./ticker";
+import { buildTickerReport, renderFundamentalsReport } from "./ticker";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
 const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
@@ -55,4 +55,13 @@ test("enterprise value is shown in the market cap's currency, converted or label
   const unconverted = await render(async () => Number.NaN);
   expect(unconverted).toContain("Market Cap 200B CHF");
   expect(unconverted).toContain("Enterprise Value 255B CHF");
+  // Local Yahoo fundamentals declare no capitalization unit: the listing's quote currency applies.
+  const undeclared: TickerFinancials = { quote: { ...quote, marketCap: 3.8e12 }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { enterpriseValue: 3.85e12 },
+  };
+  const plain = await report(undeclared);
+  expect(plain).toContain("Market Cap 3.8T USD");
+  expect(plain).toContain("Enterprise Value 3.85T USD");
+  expect(renderFundamentalsReport({ ...undeclared, symbol: "UNITTEST" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " "))
+    .toContain("Enterprise Value 3.85T USD");
 });

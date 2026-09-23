@@ -242,16 +242,24 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
   }
 }
 
-/** A source's enterprise value is in the units of the capitalization it reports beside it. */
-function enterpriseValueCurrency(fundamentals: TickerFinancials["fundamentals"]): string | undefined {
-  return fundamentals?.marketCapCurrency?.trim() || undefined;
+/** A source's enterprise value is in the units of the capitalization it reports beside it,
+ * which without a declared unit is the listing's quote currency (as the overview labels it). */
+function enterpriseValueCurrency(
+  quote: TickerFinancials["quote"],
+  fundamentals: TickerFinancials["fundamentals"],
+): string | undefined {
+  return fundamentals?.marketCapCurrency?.trim()
+    || selectMarketCapitalization(quote, fundamentals)?.currency
+    || quote?.currency?.trim()
+    || undefined;
 }
 
 function fundamentalsMetrics(
+  quote: TickerFinancials["quote"],
   fundamentals: TickerFinancials["fundamentals"],
   marketCapText: string,
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
-  enterpriseValueText = formatReportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(fundamentals)),
+  enterpriseValueText = formatReportedMoney(fundamentals?.enterpriseValue, enterpriseValueCurrency(quote, fundamentals)),
 ): Array<[string, string]> {
   return [
     ["Market Cap", marketCapText],
@@ -290,7 +298,7 @@ export function renderFundamentalsReport(
   const marketCapText = capitalization
     ? `${formatCompact(capitalization.value)} ${capitalization.currency}`
     : "—";
-  const metrics = fundamentalsMetrics(fundamentals, marketCapText, computeTickerPriceReturns(financials));
+  const metrics = fundamentalsMetrics(quote, fundamentals, marketCapText, computeTickerPriceReturns(financials));
   const symbol = quote?.symbol ?? financials.symbol;
   const name = quote?.name && quote.name !== symbol ? ` ${cliStyles.bold(quote.name)}` : "";
   const lines = [`${cliStyles.accent(symbol)}${name}`];
@@ -390,7 +398,7 @@ export async function buildTickerReport({
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
   const enterpriseValue = fundamentals?.enterpriseValue;
-  const evCurrency = enterpriseValueCurrency(fundamentals);
+  const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
   const convertedEnterpriseValue = enterpriseValue != null && Number.isFinite(enterpriseValue) && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
     ? await toBase(enterpriseValue, evCurrency) : Number.NaN;
@@ -430,7 +438,7 @@ export async function buildTickerReport({
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(fundamentals, marketCapText, priceReturns, enterpriseValueText));
+  appendMetricSection(lines, "Fundamentals", fundamentalsMetrics(quote, fundamentals, marketCapText, priceReturns, enterpriseValueText));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));
