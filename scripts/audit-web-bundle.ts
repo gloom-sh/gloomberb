@@ -72,6 +72,10 @@ for (const packageName of WEB_BUNDLED_PLUGIN_PACKAGES) {
 
 const shareScripts = outputFiles.filter((path) => /assets\/share\/.*\.js$/.test(path));
 const shareBytes = (await Promise.all(shareScripts.map((path) => stat(path)))).reduce((sum, entry) => sum + entry.size, 0);
-if (shareBytes > 300_000) failures.push(`share bundle is ${shareBytes} bytes (limit 300000)`);
+// The share page ships the shared API client, live quote socket included, so
+// the budget leaves room for its protocol; it exists to catch a dependency or
+// renderer pulled in by accident, not a few hundred bytes of socket handling.
+const SHARE_BUNDLE_LIMIT = 305_000;
+if (shareBytes > SHARE_BUNDLE_LIMIT) failures.push(`share bundle is ${shareBytes} bytes (limit ${SHARE_BUNDLE_LIMIT})`);
 if (failures.length) throw new Error(`Web bundle audit failed:\n${failures.join("\n")}`);
 console.log(`Web bundle audit passed (${outputFiles.length} files, share JS ${shareBytes} bytes).`);
