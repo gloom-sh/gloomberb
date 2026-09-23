@@ -110,7 +110,7 @@ export function createShortInterestHeadless(
           complete: false,
           errors: [cloudSessionRequired
             ? "FINRA history needs a Gloom Cloud sign-in; showing Yahoo's latest two settlements."
-            : "No FINRA history; showing Yahoo's latest two settlements."],
+            : "FINRA history unavailable; showing Yahoo's latest two settlements."],
         } : {}),
         metadata: { symbol, order: args.options.order, ...(source ? { source } : {}) },
       };
