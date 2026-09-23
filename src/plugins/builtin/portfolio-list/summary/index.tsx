@@ -9,7 +9,7 @@ import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
-import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../account-metrics";
+import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue, resolvePortfolioNetLiquidation } from "../account-metrics";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
@@ -209,6 +209,8 @@ export function buildPortfolioSummarySegments({
   const account = accountState?.account;
   const accountMetrics = resolvePortfolioAccountMetrics(totals, account, convertAccountValue);
   const totalMarketValue = resolvePortfolioMarketValue(totals, account, convertAccountValue);
+  // Net Liq moves with live quotes from the broker's snapshot; cash and margin stay as reported.
+  const netLiquidation = resolvePortfolioNetLiquidation(totals, account, convertAccountValue);
   const accountValue = (id: string, label: string, value: number | undefined) => value != null
     ? createSummarySegment(id, [
       { text: label, tone: "label" },
@@ -216,8 +218,12 @@ export function buildPortfolioSummarySegments({
     ])
     : null;
 
-  const netLiq = accountValue("netliq", "Net Liq", account?.netLiquidation);
-  if (netLiq) candidates.push(netLiq);
+  if (netLiquidation != null) {
+    candidates.push(createSummarySegment("netliq", [
+      { text: "Net Liq", tone: "label" },
+      { text: formatCompact(netLiquidation), tone: "value", bold: true },
+    ]));
+  }
 
   candidates.push(createSummarySegment("val", [
     { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },

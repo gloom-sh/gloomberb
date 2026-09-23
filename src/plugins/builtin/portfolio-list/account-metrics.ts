@@ -18,6 +18,21 @@ function percentChange(value: number, previousValue: number): number {
   return previousValue !== 0 ? (value / previousValue) * 100 : Number.NaN;
 }
 
+/**
+ * Broker account figures are one-shot snapshots. Carry them forward by the
+ * move current quotes show for the positions they price, so the header
+ * follows the stream while staying anchored to the broker's own numbers.
+ */
+function snapshotDelta(totals: PortfolioSummaryTotals, side: "gross" | "net"): number {
+  const delta = totals.brokerSnapshotDelta?.[side];
+  return finiteNumber(delta) ? delta : 0;
+}
+
+/** With a current real-time quote for every position, quote totals replace the broker snapshot. */
+function liveTotal(totals: PortfolioSummaryTotals, value: number): number | null {
+  return totals.livePriced === true && Number.isFinite(value) ? value : null;
+}
+
 export function resolveBrokerPortfolioMarketValue(
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
@@ -33,7 +48,20 @@ export function resolvePortfolioMarketValue(
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
 ): number {
-  return resolveBrokerPortfolioMarketValue(account, convertAccountValue) ?? totals.totalMktValue;
+  const live = liveTotal(totals, totals.totalMktValue);
+  if (live != null) return live;
+  const broker = resolveBrokerPortfolioMarketValue(account, convertAccountValue);
+  return broker != null ? broker + snapshotDelta(totals, "gross") : totals.totalMktValue;
+}
+
+/** Net liquidation moves with the positions; cash and margin stay as the broker reported them. */
+export function resolvePortfolioNetLiquidation(
+  totals: PortfolioSummaryTotals,
+  account?: BrokerAccount | null,
+  convertAccountValue: (value: number) => number = (value) => value,
+): number | null {
+  if (!finiteNumber(account?.netLiquidation)) return null;
+  return convertAccountValue(account.netLiquidation) + snapshotDelta(totals, "net");
 }
 
 export function resolvePortfolioAccountMetrics(
@@ -41,16 +69,21 @@ export function resolvePortfolioAccountMetrics(
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
 ): PortfolioAccountMetrics {
-  const brokerDailyPnl = finiteNumber(account?.dailyPnl) ? convertAccountValue(account.dailyPnl) : null;
-  const dailyPnl = brokerDailyPnl ?? totals.dailyPnl;
+  const liveDailyPnl = liveTotal(totals, totals.dailyPnl);
+  const brokerDailyPnl = liveDailyPnl == null && finiteNumber(account?.dailyPnl) ? convertAccountValue(account.dailyPnl) : null;
+  const dailyPnl = brokerDailyPnl != null ? brokerDailyPnl + snapshotDelta(totals, "net") : totals.dailyPnl;
+  // The prior close does not move intraday, so the snapshot's own pair defines it.
   const previousNetLiquidation = brokerDailyPnl != null && finiteNumber(account?.netLiquidation)
-    ? convertAccountValue(account.netLiquidation) - dailyPnl
+    ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
     : null;
   const dailyPnlPct = previousNetLiquidation != null
     ? percentChange(dailyPnl, previousNetLiquidation)
     : totals.dailyPnlPct;
 
-  const brokerUnrealizedPnl = finiteNumber(account?.unrealizedPnl) ? convertAccountValue(account.unrealizedPnl) : null;
+  const liveUnrealizedPnl = liveTotal(totals, totals.unrealizedPnl);
+  const brokerUnrealizedPnl = liveUnrealizedPnl == null && finiteNumber(account?.unrealizedPnl)
+    ? convertAccountValue(account.unrealizedPnl) + snapshotDelta(totals, "net")
+    : null;
   const unrealizedPnl = brokerUnrealizedPnl ?? totals.unrealizedPnl;
   const unrealizedPnlPct = portfolioPnlPercent(unrealizedPnl, totals.totalCostBasis) ?? Number.NaN;
 
