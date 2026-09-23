@@ -1,6 +1,6 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
-import { isPublishedJpxClosure } from "../published-jpx-sessions";
+import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
@@ -217,6 +217,16 @@ export function latestRegularSessionClose(
     if (close != null && close <= time) return { date, close, timeZone };
   }
   return null;
+}
+
+/**
+ * True when the venue's full-day closures for the year of `date` are
+ * published: US venues and JPX. Elsewhere a local holiday reads as a weekday.
+ */
+export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
+  const canonical = canonicalExchange(exchange);
+  const year = Number(date.slice(0, 4));
+  return canonical === "JPX" ? hasPublishedJpxCalendar(year) : !!getPublishedUsEquityCalendarYears(canonical)?.includes(year);
 }
 
 function usSessionState(timestampMs: number): UsSessionState {

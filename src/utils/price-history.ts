@@ -1,6 +1,6 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "./exchanges";
-import { isTimestampStaleForExchangeSession, latestRegularSessionClose } from "../market-data/market/freshness";
+import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
+import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latestRegularSessionClose } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -190,20 +190,32 @@ export function isPriceHistoryStaleForCurrentWindow(
 }
 
 // Sources finish the closing auction and late prints some minutes after the
-// bell, past the delayed feed's lag. Cloud expires its own daily copies at the
-// same point.
+// bell, past the delayed feed's lag. A copy fetched later can still carry an
+// unfinished bar when its source had not settled it; only the source can tell.
 const SESSION_BAR_SETTLE_MS = 30 * 60 * 1000;
 const CRYPTO_BAR_MAX_AGE_MS = 60 * 60 * 1000;
-// A copy missing a settled session is asked again at this pace, so a halted,
-// illiquid or differently scheduled listing does not refetch on every request.
+// A copy missing a settled session is asked again at most this often, and less
+// often as that close recedes, so a halted, delisted or late listing costs a
+// handful of requests per session rather than one per request.
 const BEHIND_RECHECK_MS = 60 * 60 * 1000;
+const BEHIND_RECHECK_BACKOFF = 4;
 
 interface CalendarHistoryFetchOptions extends Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> {
-  /** FX (`=X`) and futures (`=F`) trade through their venue's closed days. */
-  symbol?: string;
-  /** The latest refetch attempt for this request, including a failed one. */
+  /**
+   * The latest check of this request, including a failed or empty one; the
+   * fetch of the copy itself when absent.
+   */
   checkedAt?: number;
 }
+
+/**
+ * - current: holds every settled session it can.
+ * - unsettled: fetched before the latest settled close, so it can hold that
+ *   session in progress.
+ * - behind: fetched after that close but without its bar; not due a re-check.
+ * - recheck: behind, and due a re-check.
+ */
+export type CalendarHistoryFetchState = "current" | "unsettled" | "behind" | "recheck";
 
 function dayNumber(date: string): number {
   return Date.parse(`${date}T00:00:00Z`) / DAY_MS;
@@ -228,31 +240,34 @@ function isBarBeforeSession(latestTime: number, session: string, intervalMs: num
 
 /**
  * A daily or coarser series changes at every close. A copy fetched before the
- * latest settled close can hold that session in progress, so it is outdated
- * whatever its cache TTL. A copy fetched after that close but without its bar
- * is asked again at most hourly. A copy of a 24/7 series goes out of date
- * within the hour.
+ * latest settled close is outdated whatever its cache TTL. A copy fetched
+ * after it but without its bar is behind only where the venue's closures are
+ * published (US venues, JPX): elsewhere, and for a bare symbol whose venue is
+ * unknown, a local holiday would read as a missing session. A copy of a 24/7
+ * series goes out of date within the hour.
  */
-export function isCalendarHistoryFetchOutdated(
+export function calendarHistoryFetchState(
   points: PricePoint[],
   fetchedAt: number,
   now = Date.now(),
   options: CalendarHistoryFetchOptions = {},
-): boolean {
-  if (!Number.isFinite(fetchedAt) || !Number.isFinite(now) || fetchedAt >= now) return false;
+): CalendarHistoryFetchState {
+  if (!Number.isFinite(fetchedAt) || !Number.isFinite(now) || fetchedAt >= now) return "current";
   const normalized = normalizePriceHistory(points);
   const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
-  if (intervalMs == null || intervalMs < DAY_MS) return false;
+  if (intervalMs == null || intervalMs < DAY_MS) return "current";
   const exchange = canonicalExchange(options.exchange);
-  if (exchange === "CCC") return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS;
+  if (exchange === "CCC") return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS ? "unsettled" : "current";
   // Bare symbols resolve to their US listing at the sources.
   const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
-  if (!session) return false;
-  if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return true;
-  if (/=[XF]$/.test(parsePublicTickerKey(options.symbol ?? "").symbol)) return false;
-  if (now - Math.max(fetchedAt, options.checkedAt ?? Number.NEGATIVE_INFINITY) < BEHIND_RECHECK_MS) return false;
+  if (!session) return "current";
+  if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return "unsettled";
+  if (!exchange || !hasPublishedSessionCalendar(exchange, session.date)) return "current";
   const latest = normalized.findLast(hasFiniteClose);
-  return !!latest && isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone);
+  if (!latest || !isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone)) return "current";
+  const lastCheck = options.checkedAt ?? fetchedAt;
+  const pace = Math.max(BEHIND_RECHECK_MS, (now - session.close) / BEHIND_RECHECK_BACKOFF);
+  return now - lastCheck >= pace ? "recheck" : "behind";
 }
 
 export function normalizeTickerFinancialsPriceHistory(financials: TickerFinancials): TickerFinancials {

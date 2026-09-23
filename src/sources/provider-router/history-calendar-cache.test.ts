@@ -65,47 +65,57 @@ test("a weekly series ending in a trade-time row is refetched after the close", 
   } finally { store.close(); }
 });
 
-test("daily history missing a settled session is re-checked at most hourly", async () => {
+const upTo = (last: string, volume = 50_000_000): PricePoint[] => ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23"]
+  .filter((date) => date <= last)
+  .map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 200, volume: date === last ? volume : 50_000_000 }));
+
+test("daily history missing a settled session is re-checked on a receding schedule shared by every process", async () => {
   const calls: string[] = [];
-  let load = () => daily("2026-09-21", 210);
+  let load = () => upTo("2026-09-21");
   const store = new AppPersistence(createTempDbPath("calendar-behind"));
-  const router = new AssetDataRouter(source(() => load(), calls), [], store.resources);
-  const last = async () => new Date((await router.getPriceHistory("NVDA", "NASDAQ", "1Y")).at(-1)!.date).toISOString().slice(0, 10);
+  const provider = source(() => load(), calls);
+  let router = new AssetDataRouter(provider, [], store.resources);
+  const at = async (iso: string, range: "1M" | "1Y" = "1Y") => {
+    setSystemTime(new Date(iso));
+    return new Date((await router.getPriceHistory("NVDA", "NASDAQ", range)).at(-1)!.date).toISOString().slice(0, 10);
+  };
   try {
-    // Fetched after the 09-22 close, still without that session (a halt, a
-    // late source, or a listing on another schedule).
-    setSystemTime(new Date("2026-09-23T10:00:00Z"));
-    expect(await last()).toBe("2026-09-21");
-    setSystemTime(new Date("2026-09-23T10:50:00Z"));
-    await last();
+    // Fetched after the 09-22 close settled, still without that session (a
+    // halt, a late source): re-checked an hour later at the earliest.
+    expect(await at("2026-09-22T20:31:00Z")).toBe("2026-09-21");
+    await at("2026-09-22T21:20:00Z");
     expect(calls).toHaveLength(1);
-    setSystemTime(new Date("2026-09-23T11:05:00Z"));
-    await last();
-    setSystemTime(new Date("2026-09-23T11:40:00Z"));
-    await last();
-    expect(calls).toHaveLength(2);
-    // A failed re-check is bounded the same way.
     load = () => { throw new Error("offline"); };
-    setSystemTime(new Date("2026-09-23T12:10:00Z"));
-    expect(await last()).toBe("2026-09-21");
-    setSystemTime(new Date("2026-09-23T12:40:00Z"));
-    await last();
+    expect(await at("2026-09-22T21:35:00Z")).toBe("2026-09-21");
+    expect(calls).toHaveLength(2);
+    // A failed re-check binds a new process too.
+    router = new AssetDataRouter(provider, [], store.resources);
+    await at("2026-09-22T22:00:00Z");
+    expect(calls).toHaveLength(2);
+    // So does one that answers nothing usable: the 1M key is asked once and
+    // the broader copy keeps answering.
+    load = () => [];
+    expect(await at("2026-09-22T22:40:00Z", "1M")).toBe("2026-09-21");
     expect(calls).toHaveLength(3);
-    load = () => daily("2026-09-22", 219);
-    setSystemTime(new Date("2026-09-23T13:15:00Z"));
-    expect(await last()).toBe("2026-09-22");
-    setSystemTime(new Date("2026-09-23T19:00:00Z"));
-    await last();
+    router = new AssetDataRouter(provider, [], store.resources);
+    expect(await at("2026-09-22T23:10:00Z", "1M")).toBe("2026-09-21");
+    expect(calls).toHaveLength(3);
+    // Re-checks spread out as the close recedes: a quarter of its age apart.
+    load = () => upTo("2026-09-21");
+    await at("2026-09-23T06:00:00Z");
+    await at("2026-09-23T07:00:00Z");
     expect(calls).toHaveLength(4);
+    load = () => upTo("2026-09-22");
+    expect(await at("2026-09-23T09:00:00Z")).toBe("2026-09-21");
+    expect(await at("2026-09-23T09:30:00Z")).toBe("2026-09-22");
+    await at("2026-09-23T19:00:00Z");
+    expect(calls).toHaveLength(5);
   } finally { store.close(); }
 });
 
 test("a narrower range is not answered from a broader copy that is behind or in progress", async () => {
   const calls: string[] = [];
-  const bars = (last: string, volume: number): PricePoint[] => ["2026-09-16", "2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22", "2026-09-23"]
-    .filter((date) => date <= last)
-    .map((date) => ({ date: new Date(`${date}T00:00:00Z`), close: 200, volume: date === last ? volume : 50_000_000 }));
-  let load = () => bars("2026-09-21", 40_000_000);
+  let load = () => upTo("2026-09-21", 40_000_000);
   const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
     calls.push(range);
     return load();
@@ -118,17 +128,17 @@ test("a narrower range is not answered from a broader copy that is behind or in 
   };
   try {
     // A 5Y copy fetched mid-morning after the backend dropped Monday's row.
+    // The 1M key has its own copy upstream, so it is asked once.
     setSystemTime(new Date("2026-09-23T11:41:00Z"));
     await last("5Y");
-    load = () => bars("2026-09-22", 45_000_000);
+    load = () => upTo("2026-09-22", 45_000_000);
     setSystemTime(new Date("2026-09-23T13:00:00Z"));
     expect((await last("1M")).date).toBe("2026-09-22");
-    // The fresh 1M copy now answers; the broader copy does not force refetches.
     setSystemTime(new Date("2026-09-23T13:03:00Z"));
     expect((await last("1M")).date).toBe("2026-09-22");
     expect(calls).toEqual(["5Y", "1M"]);
-    // Once the 1M copy is past its short TTL, it still outranks the broader
-    // copy that is behind, even while its revalidation fails.
+    // Once the 1M copy is past its short TTL it still outranks the fresher
+    // broader copy that is behind, even while its revalidation fails.
     load = () => { throw new Error("offline"); };
     setSystemTime(new Date("2026-09-23T13:10:00Z"));
     expect((await last("1M")).date).toBe("2026-09-22");
@@ -136,14 +146,66 @@ test("a narrower range is not answered from a broader copy that is behind or in 
     expect(calls).toEqual(["5Y", "1M", "1M"]);
 
     // A 5Y copy with today's in-progress bar is replaced after the close.
-    load = () => bars("2026-09-23", 1_236_003);
-    setSystemTime(new Date("2026-09-23T15:00:00Z"));
-    await last("5Y");
-    load = () => bars("2026-09-23", 88_000_000);
+    // Its paced re-check lands during the session.
+    load = () => upTo("2026-09-23", 1_236_003);
+    setSystemTime(new Date("2026-09-23T17:00:00Z"));
+    expect(await last("5Y")).toEqual({ date: "2026-09-23", volume: 1_236_003 });
+    load = () => upTo("2026-09-23", 88_000_000);
     setSystemTime(new Date("2026-09-23T20:40:00Z"));
     expect((await last("1M")).volume).toBe(88_000_000);
     setSystemTime(new Date("2026-09-23T20:43:00Z"));
     expect((await last("1M")).volume).toBe(88_000_000);
     expect(calls).toEqual(["5Y", "1M", "1M", "5Y", "1M"]);
+  } finally { store.close(); }
+});
+
+test("a narrow range of a listing that stays behind is not revalidated on its short TTL", async () => {
+  const calls: string[] = [];
+  const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
+    calls.push(range);
+    return upTo("2026-09-21");
+  } };
+  const store = new AppPersistence(createTempDbPath("calendar-halted"));
+  const router = new AssetDataRouter(provider, [], store.resources);
+  try {
+    setSystemTime(new Date("2026-09-23T10:00:00Z"));
+    await router.getPriceHistory("HALT", "NASDAQ", "5Y");
+    for (let time = Date.parse("2026-09-23T10:01:00Z"); time <= Date.parse("2026-09-23T20:00:00Z"); time += 60_000) {
+      setSystemTime(new Date(time));
+      await router.getPriceHistory("HALT", "NASDAQ", "1M");
+      await Bun.sleep(0);
+    }
+    // One ask of the 1M key, then one paced re-check before the next close.
+    expect(calls).toEqual(["5Y", "1M", "1M"]);
+    // Without a broader copy, the 1M copy's own short TTL does not drive it either.
+    calls.length = 0;
+    for (let time = Date.parse("2026-09-23T10:01:00Z"); time <= Date.parse("2026-09-23T20:00:00Z"); time += 60_000) {
+      setSystemTime(new Date(time));
+      await router.getPriceHistory("STILL", "NASDAQ", "1M");
+      await Bun.sleep(0);
+    }
+    expect(calls).toEqual(["1M", "1M"]);
+  } finally { store.close(); }
+});
+
+test("a listing on a venue without published closures is not re-checked through its holidays", async () => {
+  const calls: string[] = [];
+  const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
+    calls.push(`${range} ${new Date().toISOString()}`);
+    return upTo("2026-09-23");
+  } };
+  const store = new AppPersistence(createTempDbPath("calendar-krx"));
+  const router = new AssetDataRouter(provider, [], store.resources);
+  try {
+    // KRX is closed for Chuseok, Thursday 09-24 to Saturday 09-26.
+    for (let time = Date.parse("2026-09-24T00:00:00Z"); time < Date.parse("2026-09-28T00:00:00Z"); time += 10 * 60_000) {
+      setSystemTime(new Date(time));
+      await router.getPriceHistory("005930", "KRX", "1M");
+      await router.getPriceHistory("005930", "KRX", "1Y");
+      await Bun.sleep(0);
+    }
+    // One fetch per key a day, as before: the holiday is not a missing session.
+    expect(calls.map((call) => call.slice(3, 13))).toEqual(["2026-09-24", "2026-09-24", "2026-09-24", "2026-09-24",
+      "2026-09-25", "2026-09-25", "2026-09-26", "2026-09-26", "2026-09-27", "2026-09-27"]);
   } finally { store.close(); }
 });

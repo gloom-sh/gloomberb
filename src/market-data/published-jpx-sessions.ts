@@ -15,3 +15,8 @@ const JPX_CLOSURES: Record<number, readonly string[]> = {
 export function isPublishedJpxClosure(date: string): boolean {
   return JPX_CLOSURES[Number(date.slice(0, 4))]?.includes(date.slice(5)) ?? false;
 }
+
+/** True when the closures of that year are published. */
+export function hasPublishedJpxCalendar(year: number): boolean {
+  return JPX_CLOSURES[year] !== undefined;
+}
