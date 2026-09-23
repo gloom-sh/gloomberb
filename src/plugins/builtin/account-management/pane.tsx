@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Button, ConfirmDialog, Tabs, usePaneHeaderTabs } from "../../../components";
 import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
-import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
+import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
-import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
+import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -431,13 +431,20 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const instrumentOptions = useMemo(() => ({
     portfolioId: draft.sharedPortfolioId || undefined,
   }), [draft.sharedPortfolioId]);
-  const marketFinancials = useTickerFinancialsMap(portfolioTickers, instrumentOptions);
+  // The positions stream in the background (about once a second each) and
+  // merge with the portfolio pane's own subscriptions.
+  const marketFinancials = useLiveTickerFinancialsMap(portfolioTickers, {
+    surface: "portfolio",
+    visible: false,
+    weight: 10,
+    instrumentOptions,
+  });
   const liveFinancials = useMemo(
     () => buildPortfolioFinancialsMap(portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions),
     [portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions],
   );
   // The preview is a 1Y return and a beta: position values only weight daily
-  // returns, so price ticks from other panes need not recompute them.
+  // returns, so price ticks need not recompute them.
   const financials = useSampledValue(
     liveFinancials,
     PROFILE_PREVIEW_SAMPLE_MS,
