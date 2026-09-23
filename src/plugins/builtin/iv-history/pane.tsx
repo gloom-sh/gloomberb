@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, SelectButton, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { IvHistoryChart } from "./charts";
@@ -105,11 +105,10 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     }
   };
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <Box height={1} flexDirection="row" paddingX={1} gap={2}>
-      <SelectButton label="Lookback" value={lookback} options={LOOKBACKS} onChange={setLookback} />
-      <SelectButton label="Realized" value={String(hvWindow)} options={HV_OPTIONS} onChange={setHvWindow} />
-      <Text fg={colors.textDim}>{"ATM implied (30 and 90 calendar days) against close-to-close realized · rank and percentile over each value's prior 52 weeks"}</Text>
-    </Box>
+    <QueryBar width={width} filters={[
+      { id: "lookback", label: "Lookback", value: lookback, options: LOOKBACKS, onChange: setLookback },
+      { id: "realized", label: "Realized", value: String(hvWindow), options: HV_OPTIONS, onChange: setHvWindow },
+    ]} />
     {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
       error={!model ? resource.error ?? identityError ?? null : null} empty={!!model && !model.iv30.length && !model.quoteIv30.length}
       emptyTitle={model?.status === "queued" || model?.status === "backfilling" ? `Backfilling ${symbol} implied volatility history...` : undefined}>

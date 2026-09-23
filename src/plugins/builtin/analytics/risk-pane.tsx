@@ -13,7 +13,9 @@ import {
   KeyValueRow,
   PaneStatusBody,
   StaticChartSurface,
+  QueryBar,
   Tabs,
+  usePaneHeaderTabs,
   usePaneFooter,
   usePaneNoticeFooter,
   type DataTableColumn,
@@ -311,7 +313,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ];
     return [];
   }, [model, view]);
-  // The chart takes what the table does not need: tabs (2), header, rows and footer.
+  // The chart takes what the table does not need: view tabs and portfolio bar (2), header, rows and footer.
   const chartHeight =
     series.length && height >= 18
       ? Math.max(0, Math.min(Math.floor(height * 0.6), height - 4 - rows.length - 2))
@@ -490,6 +492,19 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     ],
     [width, sharedEvidence, showPercentile, sharedDate],
   );
+  const selectView = (value: string) => {
+    setView(value);
+    setOpen(null);
+    setSelected(null);
+  };
+  const tabsInHeader = usePaneHeaderTabs(portfolio && model ? {
+    tabs,
+    activeValue: view,
+    onSelect: selectView,
+    focused: focused && !openRow,
+  } : null);
+  // The view strip and the portfolio bar take one row each in the terminal.
+  const chromeRows = tabsInHeader ? 1 : 2;
   if (!portfolio)
     return (
       <EmptyState
@@ -508,30 +523,29 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     );
   return (
     <Box width={width} height={height} flexDirection="column">
-      <Tabs
-        tabs={
-          portfolios.length
+      {!tabsInHeader && (
+        <Tabs
+          tabs={tabs}
+          activeValue={view}
+          onSelect={selectView}
+          focused={focused && !openRow}
+          compact
+        />
+      )}
+      <QueryBar
+        width={width}
+        filters={[{
+          id: "portfolio",
+          label: "Portfolio",
+          value: portfolio.id,
+          options: portfolios.length
             ? portfolios.map((row) => ({ value: row.id, label: row.name }))
-            : [{ value: portfolio.id, label: portfolio.name }]
-        }
-        activeValue={portfolio.id}
-        onSelect={(id) => {
-          setPortfolio(id);
-          setOpen(null);
-        }}
-        focused={false}
-        compact
-      />
-      <Tabs
-        tabs={tabs}
-        activeValue={view}
-        onSelect={(value) => {
-          setView(value);
-          setOpen(null);
-          setSelected(null);
-        }}
-        focused={focused && !openRow}
-        compact
+            : [{ value: portfolio.id, label: portfolio.name }],
+          onChange: (id: string) => {
+            setPortfolio(id);
+            setOpen(null);
+          },
+        }]}
       />
       <DataTableStackView<RiskDisplayRow, DataTableColumn>
         focused={focused}
@@ -553,7 +567,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             />
           ) : undefined
         }
-        rootHeight={Math.max(3, height - 2)}
+        rootHeight={Math.max(3, height - chromeRows)}
         resetScrollKey={`${portfolio.id}:${view}`}
         selection={{
           kind: "id",

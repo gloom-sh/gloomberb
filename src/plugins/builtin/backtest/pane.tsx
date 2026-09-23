@@ -4,9 +4,10 @@ import {
   DataTableView,
   EmptyState,
   PaneStatusBody,
-  SelectButton,
+  QueryBar,
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneTicker,
   type DataTableColumn,
@@ -20,7 +21,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -132,8 +133,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     ],
   }), [history.loading, history.data?.source, result, costBps, view, paneId]);
 
+  const tabsInHeader = usePaneHeaderTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused } : null);
   if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
-  const bodyHeight = Math.max(4, height - 2);
+  const bodyHeight = Math.max(4, height - 1 - (tabsInHeader ? 0 : 1));
   const wide = width >= 120;
   const summaryTable = (tableWidth: number, tableHeight: number) => (
     <DataTableView<SummaryRow, DataTableColumn>
@@ -173,19 +175,19 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   );
   return (
     <Box width={width} height={height} flexDirection="column">
-      <Box height={1} paddingX={1} flexDirection="row" gap={2}>
-        <SelectButton
-          label="Strategy"
-          controlRef={strategyControl}
-          value={STRATEGY_OPTIONS.some((option) => option.value === preset) ? preset : "custom"}
-          options={STRATEGY_OPTIONS}
-          onChange={(value) => setPreset(value)}
-        />
-        {width >= 90 ? (
-          <Text fg={colors.textMuted}>{`entry ${ruleStrings.entry} · exit ${ruleStrings.exit}`.slice(0, Math.max(0, width - 40))}</Text>
-        ) : null}
-      </Box>
-      <Tabs tabs={TABS} activeValue={view} onSelect={setView} focused={focused} dense />
+      {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} focused={focused} dense />}
+      <QueryBar
+        width={width}
+        filters={[{
+          id: "strategy",
+          label: "Strategy",
+          controlRef: strategyControl,
+          value: STRATEGY_OPTIONS.some((option) => option.value === preset) ? preset : "custom",
+          options: STRATEGY_OPTIONS,
+          onChange: (value: string) => setPreset(value),
+        }]}
+        meta={`entry ${ruleStrings.entry} · exit ${ruleStrings.exit}`}
+      />
       <PaneStatusBody
         loading={history.loading && !history.data}
         error={!history.data ? history.error : null}

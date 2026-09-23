@@ -13,8 +13,9 @@ import {
   KeyValueRow,
   Notice,
   PaneStatusBody,
-  SelectButton,
+  QueryBar,
   Tabs,
+  usePaneHeaderTabs,
   TextField,
   usePaneFooter,
   usePaneNoticeFooter,
@@ -593,16 +594,24 @@ function EquityScreenView({
       hint.onPress();
     }
   });
-  const bodyHeight = Math.max(5, height - 2);
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: TABS,
+    activeValue: mode,
+    onSelect: switchMode,
+    focused: focused && !saveForm && editing === null,
+  });
+  const bodyHeight = Math.max(5, height - 1 - (tabsInHeader ? 0 : 1));
   return (
     <Box width={width} height={height} flexDirection="column">
-      <Tabs
-        tabs={TABS}
-        activeValue={mode}
-        onSelect={switchMode}
-        focused={focused && !saveForm && editing === null}
-        dense
-      />
+      {!tabsInHeader && (
+        <Tabs
+          tabs={TABS}
+          activeValue={mode}
+          onSelect={switchMode}
+          focused={focused && !saveForm && editing === null}
+          dense
+        />
+      )}
       {saveForm ? (
         !access.emailVerified ? (
           <SignInWall
@@ -682,12 +691,15 @@ function EquityScreenView({
               />
             ) : (
               <>
-                <Box height={1} paddingX={1}>
-                  <SelectButton
-                    label="Currency"
-                    controlRef={queryControl}
-                    value={definition.currency ?? "all"}
-                    options={[
+                <QueryBar
+                  width={width}
+                  filters={[{
+                    id: "currency",
+                    label: "Currency",
+                    controlRef: queryControl,
+                    value: definition.currency ?? "all",
+                    defaultValue: "all",
+                    options: [
                       { value: "all", label: "All currencies" },
                       ...[
                         ...new Set([
@@ -699,15 +711,14 @@ function EquityScreenView({
                           ...(data?.universe.currencies ?? []),
                         ]),
                       ].map((value) => ({ value, label: value })),
-                    ]}
-                    onChange={(value) =>
+                    ],
+                    onChange: (value: string) =>
                       apply({
                         ...definition,
                         currency: value === "all" ? null : value,
-                      })
-                    }
-                  />
-                </Box>
+                      }),
+                  }]}
+                />
                 <DataTableView
                   columns={[
                     {
@@ -803,28 +814,28 @@ function EquityScreenView({
           subject="equity screen"
         >
           {!opened ? (
-            <Box height={1} paddingX={1}>
-              <SelectButton
-                label="Metric"
-                controlRef={queryControl}
-                value={metric}
-                options={
-                  metricFields.length
-                    ? metricFields.map((field) => ({
-                        value: field.id as NumericField,
-                        label: field.label,
-                      }))
-                    : [{ value: metric, label: screenLabel(metric) }]
-                }
-                onChange={(value) => {
-                  setMetric(value);
+            <QueryBar
+              width={width}
+              filters={[{
+                id: "metric",
+                label: "Metric",
+                controlRef: queryControl,
+                value: metric,
+                options: metricFields.length
+                  ? metricFields.map((field) => ({
+                      value: field.id as NumericField,
+                      label: field.label,
+                    }))
+                  : [{ value: metric, label: screenLabel(metric) }],
+                onChange: (value: string) => {
+                  setMetric(value as NumericField);
                   apply({
                     ...definition,
-                    sort: { field: value, direction: "desc" },
+                    sort: { field: value as NumericField, direction: "desc" },
                   });
-                }}
-              />
-            </Box>
+                },
+              }]}
+            />
           ) : null}
           <DataTableStackView
             columns={columns}
