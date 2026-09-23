@@ -1,6 +1,6 @@
 import { formatPriceEarnings, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
 import type { HeadlessPaneDefinition } from "../../../types/headless";
-import { formatCurrency, formatNumber, formatPercent } from "../../../utils/format";
+import { formatCurrency, formatLevelPercent, formatNumber, formatPercent } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues } from "./relative-valuation-model";
 import { paneSchemas } from "./headless-schema";
@@ -20,9 +20,9 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       key: key!, header: header!, align: "right" as const,
       format: (value: unknown) => value == null ? "-" : formatNumber(Number(value), 1),
     })),
-    ...[["fcfYield", "FCF Yield"], ["revenueGrowth", "Revenue Growth"], ["operatingMargin", "Op Margin"]].map(([key, header]) => ({
+    ...[["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]].map(([key, header]) => ({
       key: key!, header: header!, align: "right" as const,
-      format: (value: unknown) => value == null ? "-" : formatPercent(Number(value)),
+      format: (value: unknown) => value == null ? "-" : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
     })),
   ],
   async load({ symbols }, ctx) {

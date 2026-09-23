@@ -13,7 +13,10 @@ import {
 import { canonicalExchange } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
 
-/** Column headers. Currency sits in the footer; percentage fields carry %. */
+/**
+ * Column headers. Currency sits in the footer; percentage fields carry %.
+ * Growth and margins come from the latest fiscal-year statement, so they say FY.
+ */
 export const SHORT_LABELS: Record<NumericField, string> = {
   price: "PRICE",
   changePercent: "CHG %",
@@ -25,11 +28,11 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   forwardPE: "FWD P/E",
   enterpriseToRevenue: "EV/REV",
   dividendYieldPercent: "DIV YLD %",
-  revenueGrowthPercent: "REV GR %",
-  earningsGrowthPercent: "EARN GR %",
-  grossMarginPercent: "GROSS MGN %",
-  operatingMarginPercent: "OP MGN %",
-  netMarginPercent: "NET MGN %",
+  revenueGrowthPercent: "FY REV GR %",
+  earningsGrowthPercent: "FY EARN GR %",
+  grossMarginPercent: "FY GROSS MGN %",
+  operatingMarginPercent: "FY OP MGN %",
+  netMarginPercent: "FY NET MGN %",
   shortInterestShares: "SHORT INT",
   shortInterestChangePercent: "SI CHG %",
   daysToCover: "DAYS COVER",

@@ -8,6 +8,7 @@ import {
   formatCompactCurrency,
   formatCurrency,
   formatNumber,
+  formatLevelPercent,
   formatPercent,
   formatPercentRaw,
 } from "../../../../utils/format";
@@ -19,12 +20,6 @@ import {
 import type { PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
 import { formatReportedMoney } from "../../../../utils/reported-money";
-
-/** Yields and margins are levels, not changes, so they carry no sign. */
-function formatLevelPercent(value: number): string {
-  const percent = value * 100;
-  return `${(Object.is(Math.round(percent * 100), -0) ? 0 : percent).toFixed(2)}%`;
-}
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 

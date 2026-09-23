@@ -49,6 +49,13 @@ export function formatPercent(value: number | undefined): string {
   return `${sign}${(value * 100).toFixed(2)}%`;
 }
 
+/** Format a level such as a yield or margin (0.0123 -> 1.23%). Levels are not changes, so they carry no sign. */
+export function formatLevelPercent(value: number | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const fixed = (value * 100).toFixed(2);
+  return `${/[1-9]/.test(fixed) ? fixed : fixed.replace("-", "")}%`;
+}
+
 /** Format a percentage that's already in percent form (e.g., 1.23 -> +1.23%) */
 export function formatPercentRaw(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";

@@ -15,7 +15,7 @@ import { useAppSelector, usePaneInstance } from "../../../state/app/context";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { colors, priceColor } from "../../../theme/colors";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { usePluginTickerActions } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../shared/table-pane";
@@ -53,8 +53,9 @@ function buildRelativeColumns(baseCurrency: string): RelativeColumn[] {
     { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
-    { id: "revenueGrowth", label: "REV%", width: metricWidth, align: "right" },
-    { id: "operatingMargin", label: "OP%", width: metricWidth, align: "right" },
+    // Latest quarter against the year before, and a trailing-twelve-month margin.
+    { id: "revenueGrowth", label: "Q REV%", width: metricWidth, align: "right" },
+    { id: "operatingMargin", label: "TTM OP%", width: metricWidth, align: "right" },
   ];
 }
 
@@ -192,11 +193,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "evSales":
         return { text: formatNumber(row.evSales ?? undefined, 1), color: selectedColor ?? colors.text };
       case "fcfYield":
-        return { text: formatPercent(row.fcfYield ?? undefined), color: selectedColor ?? priceColor(row.fcfYield ?? 0) };
+        return { text: formatLevelPercent(row.fcfYield ?? undefined), color: selectedColor ?? priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":
         return { text: formatPercent(row.revenueGrowth ?? undefined), color: selectedColor ?? priceColor(row.revenueGrowth ?? 0) };
       case "operatingMargin":
-        return { text: formatPercent(row.operatingMargin ?? undefined), color: selectedColor ?? colors.text };
+        return { text: formatLevelPercent(row.operatingMargin ?? undefined), color: selectedColor ?? colors.text };
     }
   }, []);
 
