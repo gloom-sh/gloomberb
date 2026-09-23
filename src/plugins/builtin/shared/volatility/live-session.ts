@@ -58,22 +58,23 @@ export function usOptionsSession(now: number): OptionsSessionState {
  */
 export function useOptionsSessionOpen(enabled = true): boolean {
   const visible = useAppVisible();
-  const [open, setOpen] = useState(() => usOptionsSession(Date.now()).open);
+  const [state, setState] = useState(() => usOptionsSession(Date.now()));
   useEffect(() => {
     if (!enabled || !visible) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const update = () => {
       const now = Date.now();
-      const state = usOptionsSession(now);
-      setOpen(state.open);
-      const wait = state.nextChangeAt == null ? MAX_BOUNDARY_WAIT_MS
-        : Math.min(MAX_BOUNDARY_WAIT_MS, Math.max(1_000, state.nextChangeAt - now + 250));
+      const next = usOptionsSession(now);
+      setState((current) => current.open === next.open && current.nextChangeAt === next.nextChangeAt ? current : next);
+      const wait = next.nextChangeAt == null ? MAX_BOUNDARY_WAIT_MS
+        : Math.min(MAX_BOUNDARY_WAIT_MS, Math.max(1_000, next.nextChangeAt - now + 250));
       timer = setTimeout(update, wait);
     };
     update();
     return () => { if (timer) clearTimeout(timer); };
   }, [enabled, visible]);
-  return open;
+  // An answer from before its own boundary is recomputed rather than trusted.
+  return state.nextChangeAt != null && Date.now() >= state.nextChangeAt ? usOptionsSession(Date.now()).open : state.open;
 }
 
 /**
