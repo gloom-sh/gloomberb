@@ -5,9 +5,10 @@ import {
   usePaneFooter,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type DataTableVisibleRange,
   type PaneFooterSegment,
 } from "../../../components";
-import { useAppSelector, usePaneInstance } from "../../../state/app/context";
+import { usePaneInstance } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { type InputRenderable } from "../../../ui";
@@ -16,10 +17,13 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 import {
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
+  useVisibleBoardSymbols,
+  type BoardQuoteMap,
 } from "../shared/use-quote-board";
 import { boardErrorMessage } from "../world-indices/footer";
 import {
@@ -52,26 +56,45 @@ export const FUTURES_PANE_ID = "futures";
 const FUTURES_SYMBOLS = FUTURES_CONTRACTS.map((contract) => contract.symbol);
 
 const alwaysNavigable = () => true;
+const NO_BOARD_QUOTES: BoardQuoteMap = new Map();
+/** Columns whose order moves with every tick; the others keep a fixed order. */
+const LIVE_SORT_COLUMNS = new Set<string>(["status", "price", "change", "changePercent", "volume", "time"]);
 
 function FuturesPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const dataProvider = useAssetData();
   const paneInstance = usePaneInstance();
-  // One cadence, the one the user configured, instead of a private 60s timer.
-  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
-  const { quotes, refresh } = useQuoteBoard(
-    FUTURES_SYMBOLS,
-    Math.max(1, refreshIntervalMinutes || 1) * 60_000,
-  );
+  const liveStreaming = useLiveStreamingSetting();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<FuturesSortPreference>(DEFAULT_FUTURES_SORT);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const [collapsedSectors, setCollapsedSectors] = useState<ReadonlySet<FuturesSector>>(new Set());
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
   const searchInputRef = useRef<InputRenderable | null>(null);
 
   const contractsBySector = useMemo(() => getContractsBySector(), []);
+  // The stream follows the rows on screen; collapsed sectors and filtered-out
+  // contracts drop to the off-screen cadence. A sort on a live column moves
+  // rows with every tick, so then every listed contract counts as on screen.
+  const windowSymbols = useMemo(
+    () => buildFuturesRows(contractsBySector, sortPreference, NO_BOARD_QUOTES, {
+      query: searchQuery,
+      collapsed: collapsedSectors,
+    }).map((row) => (row.type === "row" ? row.contract.symbol : null)),
+    [collapsedSectors, contractsBySector, searchQuery, sortPreference],
+  );
+  const liveSort = sortPreference.columnId !== null && LIVE_SORT_COLUMNS.has(sortPreference.columnId);
+  const visibleSymbols = useVisibleBoardSymbols(
+    windowSymbols,
+    liveSort || !visibleRange ? { start: 0, end: windowSymbols.length } : visibleRange,
+  );
+  const { quotes, refresh } = useQuoteBoard(FUTURES_SYMBOLS, {
+    liveStreaming,
+    visibleSymbols,
+    selectedSymbol: selectedId,
+  });
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
     () => buildFuturesRows(contractsBySector, sortPreference, quotes, {
@@ -221,6 +244,8 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       sortDirection={sortPreference.direction}
       onHeaderClick={(columnId) => setSortPreference((current) => nextFuturesSort(current, columnId))}
       getItemKey={futuresRowId}
+      visibleRangeKey={windowSymbols.join(",")}
+      onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderSectorHeader}
       renderCell={renderCell}
       emptyStateTitle={searchQuery.trim()

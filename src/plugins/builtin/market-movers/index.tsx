@@ -7,7 +7,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { priceColor } from "../../../theme/colors";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatPercentRaw } from "../../../utils/format";
-import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
+import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../shared/auto-refresh";
@@ -63,9 +63,6 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const [savedSummarySymbols] = usePaneSettingValue<string[]>("summarySymbols", NO_SAVED_SELECTION);
   const tabs = useMemo(() => resolveTabs(savedTabs), [savedTabs]);
   const summarySymbols = useMemo(() => resolveSummarySymbols(savedSummarySymbols), [savedSummarySymbols]);
-  // One cadence, the one the user configured, instead of a private 60s timer.
-  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
-  const refreshIntervalMs = Math.max(1, refreshIntervalMinutes || 1) * 60_000;
   // Pane state rather than local state, so `--list` on the CLI and a restored
   // layout open on the same tab the user (or the screenshot) asked for.
   const [activeTab, setActiveTab] = usePluginPaneState<TabId>("activeTab", tabs[0]!.id);
@@ -123,7 +120,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
 
   // The index summary is a quote board like any other, so it runs on the shared
   // one instead of a third parallel pipeline against the same upstream.
-  const { quotes: summaryBoard } = useQuoteBoard(summarySymbols, refreshIntervalMs);
+  const { quotes: summaryBoard } = useQuoteBoard(summarySymbols, { liveStreaming });
   const summaryQuotes = useMemo<MarketSummaryQuote[]>(() => (
     summarySymbols
       .map((symbol) => {

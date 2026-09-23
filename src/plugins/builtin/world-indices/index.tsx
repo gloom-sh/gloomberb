@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DataTableView } from "../../../components";
+import { DataTableView, type DataTableVisibleRange } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
+import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
-import { useQuoteBoard } from "../shared/use-quote-board";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useQuoteBoard, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
 import { createPublicPaneShare } from "../shared/public-pane";
@@ -44,16 +45,24 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
   const [savedSymbols] = usePaneSettingValue<string[]>("symbols", NO_SAVED_SYMBOLS);
   const entries = useMemo(() => resolveIndexEntries(savedSymbols), [savedSymbols]);
   const symbols = useMemo(() => entries.map((entry) => entry.symbol), [entries]);
-  // One cadence, the one the user configured, instead of a private 60s timer.
-  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
-  const { quotes, refresh } = useQuoteBoard(
-    symbols,
-    Math.max(1, refreshIntervalMinutes || 1) * 60_000,
-  );
+  const liveStreaming = useLiveStreamingSetting();
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<WorldIndexSortPreference>(DEFAULT_SORT_PREFERENCE);
-
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
   const indicesByRegion = useMemo(() => getIndicesByRegion(entries), [entries]);
+  // The stream follows the rows on screen. A sort on a live column reorders
+  // rows as quotes tick, so the window is only known in the fixed orders; a
+  // board this size simply counts as fully on screen otherwise.
+  const liveSort = sortPreference.columnId !== null && sortPreference.columnId !== "symbol" && sortPreference.columnId !== "name";
+  const windowSymbols = useMemo(
+    () => buildFlatRows(indicesByRegion, sortPreference, new Map()).map((row) => (
+      row.type === "row" ? row.entry.symbol : null
+    )),
+    [indicesByRegion, sortPreference],
+  );
+  const visibleSymbols = useVisibleBoardSymbols(windowSymbols, liveSort ? null : visibleRange);
+  const { quotes, refresh } = useQuoteBoard(symbols, { liveStreaming, visibleSymbols, selectedSymbol });
+
   const flatRows = useMemo(
     () => buildFlatRows(indicesByRegion, sortPreference, quotes),
     [indicesByRegion, quotes, sortPreference],
@@ -122,6 +131,8 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
       getItemKey={worldIndexRowKey}
+      visibleRangeKey={`${sortPreference.columnId}:${sortPreference.direction}`}
+      onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderRegionHeader}
       renderCell={renderCell}
       emptyStateTitle="No market data provider connected."

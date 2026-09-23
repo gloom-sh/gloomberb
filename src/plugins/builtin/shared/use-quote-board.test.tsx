@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import type { MarketDataRequestContext, QuoteBatchResult } from "../../../types/data-provider";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import type { MarketDataRequestContext, QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { Text } from "../../../ui";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
@@ -57,7 +59,7 @@ let setBoardSymbols: (symbols: string[]) => void = () => {};
 let setBoardProvider: (provider: object | null) => void = () => {};
 
 function Probe({ intervalMs, symbols }: { intervalMs: number; symbols: string[] }) {
-  const board = useQuoteBoard(symbols, intervalMs);
+  const board = useQuoteBoard(symbols, { fallbackIntervalMs: intervalMs });
   quotes = board.quotes;
   refreshBoard = board.refresh;
   return <Text>{`${board.quotes.size}`}</Text>;
@@ -123,7 +125,7 @@ describe("useQuoteBoard cache bypass", () => {
     await settle();
     expect(calls[1]?.forceRefresh).toBe(true);
 
-    // The poll is a refresh too, so it must bypass the provider cache as well.
+    // The fallback poll is a refresh too, so it must bypass the provider cache as well.
     await settle(POLL_MS * 2);
     expect(calls.length).toBeGreaterThan(2);
     expect(calls.slice(1).every((call) => call.forceRefresh === true)).toBe(true);
@@ -274,5 +276,50 @@ describe("useQuoteBoard target changes", () => {
     await act(async () => setBoardSymbols([]));
     await settle();
     expect(quoteBoardStatus(quotes)).toEqual({ loading: 0, stale: 0, unavailable: 0, latestTs: 0 });
+  });
+});
+
+describe("useQuoteBoard streaming", () => {
+  afterEach(() => {
+    setSharedMarketDataCoordinator(null);
+  });
+
+  test("rides the shared feed and polls only the symbols the feed is not carrying", async () => {
+    let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    let streamed: QuoteSubscriptionTarget[] = [];
+    const coordinator = new MarketDataCoordinator(createTestDataProvider({
+      subscribeQuotes: (targets, onQuote) => {
+        streamed = targets;
+        emit = onQuote;
+        return () => {};
+      },
+    }));
+    setSharedMarketDataCoordinator(coordinator);
+    const { provider, calls } = batchProvider(() => SYMBOLS.map((symbol) => ({
+      target: { symbol, exchange: "" },
+      quote: quote(symbol, 100),
+    })));
+    await mount(provider, POLL_MS);
+
+    // Index symbols go out on the feed with the listing the board loads them by.
+    expect(streamed.map((target) => [target.symbol, target.exchange])).toEqual([["^FTSE", ""], ["^GSPC", ""]]);
+    await act(async () => emit!(streamed.find((target) => target.symbol === "^GSPC")!, {
+      ...quote("^GSPC", 101),
+      lastUpdated: 1_700_000_060_000,
+      delivery: "stream",
+    }));
+    // Store listeners hear about a change on a zero timer.
+    await settle(5);
+    expect(quotes.get("^GSPC")?.quote?.price).toBe(101);
+    expect(quotes.get("^FTSE")?.quote?.price).toBe(100);
+
+    const before = calls.length;
+    await settle(POLL_MS * 3);
+    const polls = calls.slice(before);
+    expect(polls.length).toBeGreaterThan(0);
+    expect(polls.every((call) => call.forceRefresh === true && call.symbols.join() === "^FTSE")).toBe(true);
+    // A late snapshot never replaces the newer streamed quote.
+    expect(quotes.get("^GSPC")?.quote?.price).toBe(101);
+    coordinator.destroy();
   });
 });
