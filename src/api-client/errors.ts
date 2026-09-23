@@ -43,8 +43,18 @@ export function parseApiErrorMessage(body: string): string {
     );
     return parts.join(" ") || body;
   } catch {
-    return body;
+    return htmlErrorTitle(body) ?? body;
   }
+}
+
+/**
+ * A proxy in front of the API (Cloudflare) can replace an error body with its
+ * own HTML page; its title ("api.gloom.sh | 502: Bad gateway") is the message.
+ */
+function htmlErrorTitle(body: string): string | null {
+  if (!/^\s*<(?:!doctype\s+html|html)[\s>]/i.test(body)) return null;
+  const title = /<title[^>]*>([^<]*)<\/title>/i.exec(body)?.[1]?.replace(/\s+/g, " ").trim();
+  return title?.split(" | ").at(-1) || "The server returned an error page.";
 }
 
 export function isHardSessionInvalidMessage(message: string): boolean {

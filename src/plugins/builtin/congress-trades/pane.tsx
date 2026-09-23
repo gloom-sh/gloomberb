@@ -105,6 +105,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     direction: "desc",
   });
   const fetchGenRef = useRef(0);
+  const openFiltersRef = useRef<() => Promise<void>>(async () => {});
   const pageBusy = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -207,6 +208,8 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
       event.preventDefault?.(); event.stopPropagation?.(); setDetailMode(null); return;
     }
     if (!payload && isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refresh(); }
+    // Without a table there is no row handler, and a failing filter must stay changeable.
+    if (!payload && isPlainKey(event, "f")) { event.preventDefault?.(); event.stopPropagation?.(); void openFiltersRef.current(); }
   }, { phase: "before" });
   useAutoRefresh(lastLoadedAt, refresh);
 
@@ -342,6 +345,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     const control = choice === "chamber" ? chamberControl : choice === "side" ? sideControl : choice === "owner" ? ownerControl : choice === "asset" ? assetControl : choice === "amount" ? amountControl : null;
     control?.current?.open();
   }, [dialog]);
+  openFiltersRef.current = openFilters;
   const handleFiltersKey = (event: DataTableKeyEvent) => {
     if (isPlainKey(event, "f") || isPlainKey(event, "i")) {
       event.preventDefault?.(); event.stopPropagation?.();
@@ -398,7 +402,12 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <PaneStatusBody loading={status === "loading"} error={error} subject="Congress PTR filings" />
+        {filterBar}
+        <PaneStatusBody
+          loading={status === "loading"}
+          error={error}
+          subject={filters.chamber === "senate" ? "Senate PTR filings" : filters.chamber === "house" ? "House PTR filings" : "Congress PTR filings"}
+        />
       </Box>
     );
   }
