@@ -31,7 +31,6 @@ const QUOTES: DataTableColumn[] = [
   { id: "askExchange", label: "VENUE", width: 6, align: "left" },
   { id: "spread", label: "SPREAD BP", width: 10, align: "right" },
 ];
-const noop = () => {};
 const rank = (value: number | null) => value == null ? "pctl --" : `${value.toFixed(0)} pctl`;
 type TapeRow = { id: string; trade?: TapeTrade; quote?: TapeQuote };
 
@@ -95,7 +94,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         focused={focused} rootWidth={width} rootHeight={Math.max(3, height - tabRows)}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}
         onActivate={(row) => { setPaused({ data, epoch: resource.epoch }); setDetail({ row, epoch: resource.epoch }); }} getItemKey={(row) => row.id}
-        sortColumnId={null} sortDirection="desc" onHeaderClick={noop} freezeFirstColumn
+        sortColumnId={null} sortDirection="desc" freezeFirstColumn
         detailOpen={!!detail && !!resource.data} onBack={() => setDetail(null)} detailTitle={detail?.trade ? `Trade ${detail.trade.id}` : "Quote"}
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
         rootBefore={<StatGrid width={width} items={[
