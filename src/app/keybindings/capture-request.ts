@@ -1,12 +1,12 @@
 /**
- * A request to bind a key to command bar text, handed from the command bar to
- * the help pane. The bar cannot capture a key itself: the moment it opens, it
- * owns the keyboard, and the capture has to outlive the bar closing.
+ * A request handed to Help > Shortcuts. `command` binds a key to command bar
+ * text: the bar cannot capture a key itself, since the moment it opens it owns
+ * the keyboard, and the capture has to outlive the bar closing. `review` opens
+ * the table on the first binding with a problem, for the startup notice.
  */
-export interface KeybindingCaptureRequest {
-  kind: "command";
-  query: string;
-}
+export type KeybindingCaptureRequest =
+  | { kind: "command"; query: string }
+  | { kind: "review" };
 
 let pending: KeybindingCaptureRequest | null = null;
 const listeners = new Set<() => void>();

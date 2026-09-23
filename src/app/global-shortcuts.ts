@@ -19,9 +19,13 @@ import {
   getDefaultKeybindings,
   matchKeybinding,
   matchesKeyChord,
+  requestKeybindingCapture,
   resolvePluginShortcutChords,
   type ResolvedKeybindings,
 } from "./keybindings";
+
+/** Long enough to read a few conflicts and choose Review. */
+const KEYBINDING_NOTICE_DURATION_MS = 15_000;
 
 /**
  * Tells the user once per launch when `config.json` holds a binding that does
@@ -48,6 +52,14 @@ function useKeybindingIssueNotice(
         ...(more > 0 ? [`and ${more} more; see Help > Shortcuts.`] : []),
       ].join("\n"),
       type: "error",
+      duration: KEYBINDING_NOTICE_DURATION_MS,
+      action: {
+        label: "Review",
+        onClick: () => {
+          requestKeybindingCapture({ kind: "review" });
+          pluginRegistry.showPane("help");
+        },
+      },
     });
   }, [initialized, issueKey, keybindings.issues, pluginRegistry]);
 }

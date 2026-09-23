@@ -218,16 +218,21 @@ export function KeybindingsEditor({
     if (target.kind === "row") setSelectedId(target.row.id);
   }, []);
 
-  // "Bind a key" from the command bar lands here; the pane may have been
-  // opened for it, so the request is read on mount as well as on change.
+  // "Bind a key" from the command bar and the keybinding notice land here; the
+  // pane may have been opened for them, so the request is read on mount as
+  // well as on change.
   useEffect(() => {
     const consume = () => {
       const request = takeKeybindingCaptureRequest();
-      if (request) startCapture({ kind: "new-command", query: request.query });
+      if (request?.kind === "command") startCapture({ kind: "new-command", query: request.query });
+      if (request?.kind === "review") {
+        const flagged = bindableRows.find((row) => row.noteTone === "warning");
+        if (flagged) setSelectedId(flagged.id);
+      }
     };
     consume();
     return subscribeKeybindingCapture(consume);
-  }, [startCapture]);
+  }, [bindableRows, startCapture]);
 
   const captureLabel = capture
     ? capture.kind === "row" ? shortLabel(capture.row.label) : `"${capture.query}"`

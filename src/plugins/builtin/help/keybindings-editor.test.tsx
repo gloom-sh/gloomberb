@@ -4,7 +4,7 @@ import { requestKeybindingCapture } from "../../../app/keybindings";
 import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
+import { cloneLayout, createDefaultConfig, type KeybindingsConfig } from "../../../types/config";
 import { Box } from "../../../ui";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { PluginRenderProvider } from "../../runtime";
@@ -15,8 +15,9 @@ const HelpPane = helpModule.panes![0]!.component;
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let latestState: AppState | null = null;
 
-function Harness() {
+function Harness({ keybindings }: { keybindings?: KeybindingsConfig }) {
   const config = createDefaultConfig(`/tmp/gloom-help-keybindings-${process.pid}-${Date.now()}`);
+  config.keybindings = keybindings;
   config.layout = { dockRoot: { kind: "pane", instanceId: id }, instances: [{ instanceId: id, paneId: "help", binding: { kind: "none" } }], floating: [], detached: [] };
   config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
   const initial = createInitialState(config);
@@ -144,4 +145,20 @@ test("a bind request from the command bar captures a command chord and refuses t
   await frame();
   expect(setup!.captureCharFrame()).not.toContain("Press a key");
   expect(latestState?.config.keybindings).toEqual({ commands: { "Alt+1": "DES AAPL" } });
+});
+
+test("a review request from the keybinding notice opens Shortcuts on the first conflicting row", async () => {
+  await act(async () => {
+    setup = await testRender(<Harness keybindings={{ commands: { "Ctrl+W": "DES AAPL" } }} />, { width: 90, height: 30 });
+  });
+  await frame();
+  await act(() => { requestKeybindingCapture({ kind: "review" }); });
+  await frame();
+  await frame();
+  const text = setup!.captureCharFrame();
+  expect(text).toContain("Pane Management");
+  // The footer spells out the selected row's note, so pane close is selected
+  // rather than the first row, whose footer would repeat the raw issue.
+  const footer = text.split("\n").find((line) => line.includes("[Enter]rebind"));
+  expect(footer).toContain('also "DES AAPL"');
 });
