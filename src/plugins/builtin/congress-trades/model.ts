@@ -116,6 +116,32 @@ export function formatAmountRange(low: number | null, high: number | null, raw?:
   return formatMoneyShort(low ?? high);
 }
 
+function isoOptionDate(value: string): string {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(value);
+  if (!match) return value;
+  const year = match[3]!.length === 2 ? `20${match[3]}` : match[3]!;
+  return `${year}-${match[1]!.padStart(2, "0")}-${match[2]!.padStart(2, "0")}`;
+}
+
+/**
+ * Filings name an option by its underlying stock ("... Common Stock") and put
+ * the contract terms in the description, so option rows lead with the terms.
+ */
+export function tradeAssetLabel(trade: Pick<CloudCongressTradePayload, "assetName" | "assetType" | "description">): string {
+  if (trade.assetType !== "OP") return trade.assetName;
+  const text = trade.description ?? "";
+  const right = /\b(call|put)s?\b/i.exec(text)?.[1]?.toUpperCase() ?? "OPTION";
+  const strike = /strike(?:\s+price)?(?:\s+of)?:?\s*\$\s*([\d,]+(?:\.\d+)?)/i.exec(text)?.[1];
+  const expiry = /(?:expires?|expiration(?:\s+date)?(?:\s+of)?):?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(text)?.[1];
+  const terms = [
+    right,
+    strike ? `$${Number(strike.replace(/,/g, ""))}` : null,
+    expiry ? `exp ${isoOptionDate(expiry)}` : null,
+  ].filter(Boolean).join(" ");
+  const underlying = trade.assetName.replace(/\s*(?:-\s*)?Common Stock\s*$/i, "").trim();
+  return underlying ? `${terms} · ${underlying}` : terms;
+}
+
 function compareText(left: string, right: string): number {
   return left.localeCompare(right, "en-US", { sensitivity: "base" });
 }

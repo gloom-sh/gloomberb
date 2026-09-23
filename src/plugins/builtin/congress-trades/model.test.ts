@@ -7,6 +7,7 @@ import {
   mergeCongressPages,
   nextCongressPage,
   previousCongressYearPage,
+  tradeAssetLabel,
 } from "./model";
 
 function payload(overrides: Partial<CloudCongressHousePayload> = {}): CloudCongressHousePayload {
@@ -110,5 +111,19 @@ describe("congress paging", () => {
     expect(merged.year).toBe(2025);
     expect(merged.trades.map((trade) => trade.id)).toEqual(["t1", "t2"]);
     expect(merged.members.map((member) => member.id)).toEqual(["m1", "m2"]);
+  });
+});
+
+describe("congress trade asset label", () => {
+  test("reads option terms from Senate and House descriptions", () => {
+    const label = (assetName: string, description: string | null, assetType: string | null = "OP") => tradeAssetLabel({ assetName, assetType, description });
+    expect(label("Williams Companies, Inc. (The) Common Stock", "Option Type: Call Strike price: $75.00 Expires: 2026-08-21 · All transactions notified to Filer on September 1, 2026"))
+      .toBe("CALL $75 exp 2026-08-21 · Williams Companies, Inc. (The)");
+    expect(label("Microsoft Corporation - Common Stock", "Call options; Strike price $340; Expires 10/16/2026"))
+      .toBe("CALL $340 exp 2026-10-16 · Microsoft Corporation");
+    expect(label("Bloom Energy Corporation Class A Common Stock", "Purchased 100 put options with a strike price of $1,100.50 and an expiration date of 6/7/27."))
+      .toBe("PUT $1100.5 exp 2027-06-07 · Bloom Energy Corporation Class A");
+    expect(label("Apple Inc. - Common Stock", null)).toBe("OPTION · Apple Inc.");
+    expect(label("Apple Inc. - Common Stock", "Call options", "ST")).toBe("Apple Inc. - Common Stock");
   });
 });

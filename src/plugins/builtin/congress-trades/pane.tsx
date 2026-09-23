@@ -28,6 +28,7 @@ import {
   type CloudCongressTickerPayload,
 } from "../../../api-client";
 import type { PaneProps } from "../../../types/plugin";
+import { usePaneSettingValue } from "../../../state/app/context";
 import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_MEMBER_FILING_LIMIT,
@@ -76,6 +77,13 @@ import { isPlainKey } from "../../../utils/keyboard";
 import type { DataTableKeyEvent } from "../../../components";
 
 export { CONGRESS_TRADES_PANE_ID } from "./model";
+
+/** The Congress pane; `CG WMB` keeps its ticker in pane settings. */
+export function CongressPane(props: PaneProps) {
+  const [ticker] = usePaneSettingValue("ticker", "");
+  const symbol = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
+  return <CongressTradesPane key={symbol} {...props} tickerFilter={symbol || undefined} />;
+}
 
 export function CongressTradesPane({ focused, width, height, tickerFilter }: PaneProps & { tickerFilter?: string }) {
   const rendererHost = useRendererHost();

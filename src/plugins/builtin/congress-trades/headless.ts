@@ -16,6 +16,7 @@ import {
   sortedMembers,
   sortedTrades,
   sortedTickers,
+  tradeAssetLabel,
 } from "./model";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 
@@ -26,7 +27,15 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "memberName", header: "Member" },
   { key: "side", header: "Side" },
   { key: "ticker", header: "Ticker" },
-  { key: "assetName", header: "Asset" },
+  {
+    key: "assetName",
+    header: "Asset",
+    format: (value, row) => tradeAssetLabel({
+      assetName: typeof value === "string" ? value : "",
+      assetType: typeof row.assetType === "string" ? row.assetType : null,
+      description: typeof row.description === "string" ? row.description : null,
+    }),
+  },
   {
     key: "amountLow",
     header: "Amount",

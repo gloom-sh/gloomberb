@@ -11,6 +11,7 @@ import {
   formatCongressReturn,
   formatLag,
   formatShortDate,
+  tradeAssetLabel,
   type MemberColumn,
   type TradeColumn,
   type TickerColumn,
@@ -62,7 +63,7 @@ export function renderCongressTradeCell(
         color: selectedColor ?? colors.textBright,
       };
     case "asset":
-      return { text: trade.assetName, color: selectedColor ?? colors.text };
+      return { text: tradeAssetLabel(trade), color: selectedColor ?? colors.text };
     case "owner":
       return { text: trade.owner, color: selectedColor ?? colors.textDim };
   }

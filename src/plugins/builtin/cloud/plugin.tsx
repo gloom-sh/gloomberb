@@ -16,7 +16,7 @@ import {
 } from "../chat/channels";
 import {
   CONGRESS_TRADES_PANE_ID,
-  CongressTradesPane,
+  CongressPane,
 } from "../congress-trades/pane";
 import { congressHeadless } from "../congress-trades/headless";
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
@@ -228,7 +228,7 @@ const congressTradesModule: PluginModule = {
     id: CONGRESS_TRADES_PANE_ID,
     name: "Congress",
     icon: "G",
-    component: CongressTradesPane,
+    component: CongressPane,
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 112, height: 30 },
@@ -240,9 +240,14 @@ const congressTradesModule: PluginModule = {
     label: "Congress Trades",
     description: "Track newly disclosed House periodic transaction reports.",
     keywords: ["congress", "house", "trades", "ptr", "stock", "disclosures"],
-    shortcut: { prefix: "CG" },
+    shortcut: { prefix: "CG", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
     headless: congressHeadless,
-    createInstance: () => ({ placement: "floating" }),
+    createInstance: (_context, options) => {
+      const symbol = (options?.symbol ?? options?.arg)?.trim().toUpperCase();
+      return symbol
+        ? { instanceId: `${CONGRESS_TRADES_PANE_ID}:${symbol}`, title: `Congress ${symbol}`, placement: "floating", settings: { ticker: symbol } }
+        : { placement: "floating" };
+    },
     publicShare: createPublicPaneShare("Congress Trades"),
   }],
 };
