@@ -29,3 +29,21 @@ test("an older, stale or differently priced quote leaves the snapshot alone", ()
     expect(withLiveQuote(snapshot, quote)).toBe(snapshot);
   }
 });
+
+test("values measured at a stale price or from stale fundamentals do not scale", () => {
+  const staleFundamentals = { ...snapshot, fundamentals: { ...snapshot.fundamentals!, stale: true } };
+  const fromStaleFundamentals = relativeValuationValues(withLiveQuote(staleFundamentals, live({})));
+  expect(fromStaleFundamentals.price).toBe(110);
+  expect(fromStaleFundamentals.marketCap).toBeCloseTo(1_100);
+  expect(fromStaleFundamentals.reportedMultiples.trailingPE).toBe(20);
+
+  const staleQuote = {
+    ...snapshot,
+    quote: { ...snapshot.quote!, stale: true },
+    fundamentals: { ...snapshot.fundamentals!, marketCap: 900, marketCapCurrency: "USD" },
+  };
+  const fromStaleQuote = relativeValuationValues(withLiveQuote(staleQuote, live({})));
+  expect(fromStaleQuote.price).toBe(110);
+  expect(fromStaleQuote.marketCap).toBe(900);
+  expect(fromStaleQuote.reportedMultiples.trailingPE).toBe(20);
+});
