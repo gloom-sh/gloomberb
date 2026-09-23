@@ -9,6 +9,7 @@ import { MultiSelectDialogButton } from "./multi-select/dialog";
 import { summarizeMultiSelectValues, toggleMultiSelectValue, type MultiSelectOption } from "./multi-select";
 import { SelectButton, type SelectButtonOption, type SelectControl } from "./select-button";
 import { SegmentedControl } from "./toggle";
+import { Tabs } from "./tabs";
 
 export interface QueryBarSearch {
   value: string;
@@ -89,7 +90,7 @@ export type QueryBarFilter = QueryBarSelectFilter<any> | QueryBarMultiFilter | Q
 
 export interface QueryBarView<T extends string = string> {
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; hint?: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   /** Terminal: left/right cycle the view while this is true. */
   focused?: boolean;
@@ -104,6 +105,59 @@ export interface QueryBarProps {
   view?: QueryBarView<any>;
   /** Muted context at the right edge (the selected row's date). Not for status. */
   meta?: string;
+}
+
+/** Beyond this many options a terminal strip scrolls instead of segmenting. */
+const TERMINAL_SEGMENT_LIMIT = 6;
+
+/**
+ * Terminal rendering of an inline filter or view: segments for a few short
+ * options, a scrolling tab strip for many (expiries, chart ranges). Hints
+ * prefix the label ("1:1D") because the terminal has no tooltip.
+ */
+function TerminalChoiceStrip({
+  options,
+  value,
+  onChange,
+  focused,
+  shortcutScope,
+}: {
+  options: { value: string; label: string; hint?: string; disabled?: boolean }[];
+  value: string;
+  onChange: (value: string) => void;
+  focused?: boolean;
+  shortcutScope?: string;
+}) {
+  const labelled = options.map((option) => ({
+    value: option.value,
+    label: option.hint ? `${option.hint}:${option.label}` : option.label,
+    disabled: option.disabled,
+  }));
+  if (options.length > TERMINAL_SEGMENT_LIMIT) {
+    return (
+      <Box flexGrow={1} flexShrink={1} minWidth={0} height={1} overflow="hidden">
+        <Tabs
+          tabs={labelled}
+          activeValue={value || null}
+          onSelect={onChange}
+          compact
+          dense
+          variant="bare"
+          focused={focused}
+          keyboardNavigation={false}
+        />
+      </Box>
+    );
+  }
+  return (
+    <SegmentedControl
+      options={labelled}
+      value={value}
+      onChange={onChange}
+      focused={focused}
+      shortcutScope={shortcutScope}
+    />
+  );
 }
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
@@ -262,6 +316,7 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         description: option.description,
         disabled: option.disabled,
         selected: option.value === filter.value,
+        hint: option.hint,
       })),
       onSelect: (value: string) => { if (value !== filter.value) filter.onChange(value); },
       onToggle: () => {},
@@ -295,7 +350,7 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         items={items}
         view={view ? {
           value: view.value,
-          options: view.options.map((option) => ({ value: option.value, label: option.label })),
+          options: view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled })),
           onChange: view.onChange,
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
@@ -331,10 +386,10 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         }
         if (filter.inline) {
           return (
-            <Box key={filter.id} flexDirection="row" gap={1}>
+            <Box key={filter.id} flexDirection="row" gap={1} flexShrink={filter.options.length > TERMINAL_SEGMENT_LIMIT ? 1 : 0} minWidth={0}>
               <Text fg={colors.textMuted}>{filter.label}</Text>
-              <SegmentedControl
-                options={filter.options.map((option) => ({ value: option.value, label: option.short ?? option.label, disabled: option.disabled }))}
+              <TerminalChoiceStrip
+                options={filter.options.map((option) => ({ value: option.value, label: option.short ?? option.label, hint: option.hint, disabled: option.disabled }))}
                 value={filter.value}
                 onChange={filter.onChange}
               />
@@ -361,8 +416,8 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
       {meta && <Text fg={colors.textMuted}>{meta}</Text>}
       {view && (
         <>
-          <SegmentedControl
-            options={view.options.map((option) => ({ value: option.value, label: option.label }))}
+          <TerminalChoiceStrip
+            options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
             value={view.value}
             onChange={view.onChange}
             focused={view.focused}

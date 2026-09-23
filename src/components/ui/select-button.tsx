@@ -19,6 +19,8 @@ export interface SelectButtonOption<T extends string = string> {
   short?: string;
   description?: string;
   disabled?: boolean;
+  /** A key that picks this option, shown beside it where there is room (e.g. "1"). */
+  hint?: string;
 }
 
 export interface SelectButtonProps<T extends string = string> {

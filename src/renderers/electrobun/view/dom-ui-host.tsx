@@ -16,6 +16,7 @@ import {
 import { WebPopover } from "./desktop/popover";
 import { WebQueryBar } from "./desktop/query-bar";
 import { WebMenu } from "./desktop/menu";
+import { WebIcon, WebIconButton } from "./desktop/icons";
 import { WebSelectField } from "./desktop/select-field";
 import { WebBox } from "./host/box";
 import { WebChartSurface } from "./host/chart-surface";
@@ -94,6 +95,8 @@ export function createDomUiHost(
     Popover: WebPopover,
     QueryBar: WebQueryBar,
     Menu: WebMenu,
+    Icon: WebIcon,
+    IconButton: WebIconButton,
     SelectField: WebSelectField,
     TextField: WebTextField,
     MessageComposer: WebMessageComposer,

@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KeyValueRow, SegmentedControl, TextField, usePaneFooter, usePaneNoticeFooter } from "../../../components";
+import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { useAsyncResource, useInputCapture } from "../../../public/react";
 import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, ScrollBox } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import type { InlineField } from "../kelly-sizer/fields";
-import { InlineFieldView, truncateText } from "../kelly-sizer/view";
 import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, solveImpliedVolatility, updateOptionCalcDraft, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
 import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialSteps } from "./binomial";
 import { draftFromCalculatorInputs, parseCashDividends } from "./inputs";
@@ -21,6 +19,14 @@ const SIDE_OPTIONS = [
   { label: "Call", value: "call" },
   { label: "Put", value: "put" },
 ];
+const MODEL_OPTIONS = [
+  { label: "European BS", short: "Euro BS", value: "european" },
+  { label: "American CRR", short: "Amer CRR", value: "american" },
+];
+const IV_SOURCE_OPTIONS = [
+  { label: "Input", value: "input" },
+  { label: "Surface", value: "surface" },
+];
 
 function formatSigned(value: number | undefined, decimals: number): string {
   if (value == null) return "--";
@@ -28,7 +34,6 @@ function formatSigned(value: number | undefined, decimals: number): string {
 }
 
 export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
-  const ui = useUiHost();
   const paneInstance = usePaneInstance();
   const screenshotSnapshot = paneInstance?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
   const seedResult = useMemo(() => {
@@ -78,7 +83,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     setDraft((current) => updateOptionCalcDraft(reconcileOptionCalcDraft(current, seed), patch));
   }, [seed, setDraft]);
 
-  const fields = useMemo<InlineField[]>(() => [
+  const fields = useMemo<GridField[]>(() => [
     { id: "spot", label: "Spot", value: draft.spot, valueText: String(draft.spot), onValue: (value) => updateDraft({ spot: value }) },
     { id: "strike", label: "Strike", value: draft.strike, valueText: String(draft.strike), onValue: (value) => updateDraft({ strike: value }) },
     {
@@ -141,6 +146,16 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     if (source === "surface" && !draft.symbol) setActiveFieldId("symbol");
   };
   const commitSymbol = (symbol: string) => { updateDraft({ symbol: symbol.trim().toUpperCase() }); setActiveFieldId(null); };
+  // Leaving the underlying cell by any route (click, Tab, Esc) applies it.
+  const previousActiveField = useRef(activeFieldId);
+  useEffect(() => {
+    const previous = previousActiveField.current;
+    previousActiveField.current = activeFieldId;
+    if (previous === "symbol" && activeFieldId !== "symbol") {
+      const next = symbolText.trim().toUpperCase();
+      if (next !== draft.symbol) updateDraft({ symbol: next });
+    }
+  }, [activeFieldId, draft.symbol, symbolText, updateDraft]);
 
 
   const setSide = useCallback((side: OptionSide) => updateDraft({ side }), [updateDraft]);
@@ -184,7 +199,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       if (event.name === "r" && surfaceSource) void surfaceResource.reload();
       return;
     }
-    if (ui.kind === "desktop-web" && isPlainKey(event, "left", "right")) {
+    if (!activeFieldId && isPlainKey(event, "left", "right")) {
       event.preventDefault();
       event.stopPropagation();
       setSide(event.name === "left" ? "call" : "put");
@@ -217,9 +232,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     ],
   }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps]);
 
-  const columns = width >= 78 ? 3 : width >= 42 ? 2 : 1;
-  const fieldWidth = Math.max(12, Math.min(26, Math.floor((width - 2) / columns)));
-  const rows = Math.max(1, Math.ceil(fields.length / columns));
+  const gridFields: GridField[] = [
+    { id: "symbol", kind: "text", label: "Underlying", valueText: symbolText, placeholder: "ticker",
+      onText: (value) => setSymbolText(value.toUpperCase()) },
+    ...fields,
+    ...(american ? [{ id: "dividends", kind: "text" as const, label: "Dividends", wide: true, valueText: dividendText,
+      placeholder: "day:amount; e.g. 30:0.25;90:0.25", onText: setDividendText }] : []),
+  ];
   // Each paired metric needs room for its label, value and complete unit.
   const pairMetrics = width >= 82;
   // Leave a column for the native scrollbar beside the result body's padding.
@@ -231,59 +250,27 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   return (
     <Box flexDirection="column" width={width} height={height}>
       <SurfaceNotices notices={notices} focused={focused} />
-      <Box height={1} paddingX={1} flexDirection="row" gap={1}>
-        <SegmentedControl
-          options={SIDE_OPTIONS}
-          value={draft.side}
-          onChange={(value) => setSide(value as OptionSide)}
-          focused={focused && !activeFieldId}
-          shortcutScope="options-calculator:side"
-        />
-        {draft.symbol ? (
-          <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-            {truncateText(draft.symbol, Math.max(0, width - 20))}
-          </Text>
-        ) : null}
-      </Box>
-
-      <Box paddingX={1} height={width >= 62 ? 1 : 2} flexDirection={width >= 62 ? "row" : "column"} gap={width >= 62 ? 3 : 0}>
-        <SegmentedControl options={[{ label: "European BS", value: "european" }, { label: "American CRR", value: "american" }]}
-          value={american ? "american" : "european"} onChange={setModel} focused={false} />
-        <SegmentedControl options={[{ label: "Input IV", value: "input" }, { label: "Surface IV", value: "surface" }]}
-          value={surfaceSource ? "surface" : "input"} onChange={setVolSource} focused={false} />
-      </Box>
-      {activeFieldId === "symbol" && <Box paddingX={1} height={ui.kind === "desktop-web" ? 3 : 2}>
-        <TextField label="Underlying ticker" value={symbolText} width={24} focused={focused}
-          onChange={setSymbolText} onSubmit={commitSymbol} />
-      </Box>}
-      <Box flexDirection="column" paddingX={1} height={rows}>
-        {Array.from({ length: rows }, (_, rowIndex) => (
-          <Box key={rowIndex} height={1} flexDirection="row">
-            {fields.slice(rowIndex * columns, rowIndex * columns + columns).map((field, offset) => {
-              const index = rowIndex * columns + offset;
-              return (
-                <InlineFieldView
-                  key={field.id}
-                  field={field}
-                  active={activeFieldId === field.id}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={() => {
-                    setSelectedIndex(index);
-                    setActiveFieldId(field.id);
-                  }}
-                />
-              );
-            })}
-          </Box>
-        ))}
-      </Box>
-
-      {american && <Box paddingX={1} height={ui.kind === "desktop-web" ? 3 : 2} flexShrink={0}>
-        <TextField label="Cash dividends (day:amount)" value={dividendText} placeholder="30:0.25;90:0.25"
-          width={Math.max(20, width - 3)} focused={focused && activeFieldId === "dividends"}
-          onMouseDown={() => setActiveFieldId("dividends")} onChange={setDividendText} onSubmit={() => setActiveFieldId(null)} />
-      </Box>}
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "side", label: "Type", inline: true, value: draft.side, options: SIDE_OPTIONS, onChange: (value: string) => setSide(value as OptionSide) },
+          { id: "model", label: "Model", inline: true, value: american ? "american" : "european", options: MODEL_OPTIONS, onChange: setModel },
+          { id: "iv", label: "IV", inline: true, value: surfaceSource ? "surface" : "input", options: IV_SOURCE_OPTIONS, onChange: setVolSource },
+        ]}
+      />
+      <FieldGrid
+        fields={gridFields}
+        activeId={activeFieldId}
+        width={width}
+        focused={focused}
+        onActivate={(id) => {
+          const index = fields.findIndex((field) => field.id === id);
+          if (index >= 0) setSelectedIndex(index);
+          if (id === "symbol" && activeFieldId !== "symbol") setSymbolText(draft.symbol);
+          setActiveFieldId(id);
+        }}
+        onDeactivate={() => activeFieldId === "symbol" ? commitSymbol(symbolText) : setActiveFieldId(null)}
+      />
       <Box height={1} />
 
       <ScrollBox id="options-calculator-results" flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>

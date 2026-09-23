@@ -900,3 +900,79 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* A labelled text filter beside the search (e.g. tickers). */
 .gloom-qb-textfield { flex: 0 1 180px; min-width: 110px; }
 .gloom-qb-filters .gloom-qb-textfield { flex: none; width: calc(22 * var(--cell-w)); }
+
+/* Field grid: a calculator's inputs as one sheet under the query bar. Same
+   band surface and hairlines; each cell is label, value, unit. The cell being
+   edited takes the accent base line the active search field uses. */
+[data-gloom-role="field-grid"] {
+  --fg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
+  --fg-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  box-shadow: inset 0 -1px 0 var(--fg-hairline);
+}
+/* Every row is the same column grid, so a short last row stays aligned. */
+[data-gloom-role="field-grid-row"] {
+  display: grid !important;
+  grid-template-columns: repeat(var(--field-columns, 3), minmax(0, 1fr));
+}
+[data-gloom-role="field-grid-row"] + [data-gloom-role="field-grid-row"] {
+  box-shadow: inset 0 1px 0 var(--fg-hairline);
+}
+[data-gloom-role="field-grid-cell"] {
+  /* Cells share the row, so the sheet spans the pane; the value keeps its
+     own width beside the label, so a unit never drifts from its number. */
+  width: auto !important;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  box-shadow: inset -1px 0 0 var(--fg-hairline);
+  cursor: text;
+  transition: background-color 120ms ease;
+}
+[data-gloom-role="field-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+[data-gloom-role="field-grid-cell"][data-kind="action"] { cursor: pointer; padding: 0; }
+[data-gloom-role="field-grid-cell"]:hover { background: var(--fg-fill); }
+[data-gloom-role="field-grid-cell"][data-active="true"] {
+  background: var(--fg-fill);
+  box-shadow: inset -1px 0 0 var(--fg-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+[data-gloom-role="field-grid-label"] {
+  flex: 0 0 var(--field-label-w, 9ch);
+  width: var(--field-label-w, 9ch);
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-gloom-role="field-grid-cell"][data-active="true"] [data-gloom-role="field-grid-label"] { color: var(--gloom-text); }
+[data-gloom-role="field-grid-value"] { flex: 0 1 auto; justify-content: flex-end; min-width: 0; }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] { flex: 1 1 auto; width: auto !important; justify-content: flex-start; }
+[data-gloom-role="field-grid-value"] button { justify-content: flex-end; color: var(--gloom-text-bright) !important; font-weight: 600; }
+[data-gloom-role="field-grid-value"] input { text-align: right; color: var(--gloom-text-bright); font-weight: 600; }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] input { text-align: left; font-weight: 400; }
+[data-gloom-role="field-grid-unit"] { flex: none; color: var(--gloom-text-muted); }
+
+/* Icon-only button: pane header, footer, dialog close, window controls. */
+.gloom-icon-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--gloom-text-dim);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-icon-button:disabled { cursor: default; }
+.gloom-icon-button:not(:disabled):hover { background: color-mix(in srgb, var(--gloom-text-bright) 9%, transparent); color: var(--gloom-text-bright); }
+.gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
+.gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }

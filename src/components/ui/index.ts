@@ -6,6 +6,8 @@ export { DataTable } from "./data-table";
 export type { DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange } from "./data-table";
 
 export { Button } from "./button";
+export { Icon, IconButton, ICON_GLYPHS } from "./icon";
+export type { IconButtonProps, IconName, IconProps } from "./icon";
 export { ActionRow } from "./action-row";
 export { DisclosureMarker } from "./disclosure-marker";
 export type { DisclosureMarkerProps } from "./disclosure-marker";
@@ -27,6 +29,8 @@ export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./sel
 
 export { TextField, NumberField } from "./fields";
 export { QueryBar } from "./query-bar";
+export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./field-grid";
+export type { FieldGridProps, GridField } from "./field-grid";
 export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
 export type { TextFieldProps, NumberFieldProps } from "./fields";
 

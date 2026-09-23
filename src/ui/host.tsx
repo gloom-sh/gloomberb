@@ -349,6 +349,8 @@ interface HostQueryBarOption {
   description?: string;
   disabled?: boolean;
   selected: boolean;
+  /** Shortcut key for the option. */
+  hint?: string;
 }
 
 export interface HostQueryBarItem {
@@ -388,7 +390,7 @@ export interface HostQueryBarProps {
   items: HostQueryBarItem[];
   view?: {
     value: string;
-    options: { value: string; label: string }[];
+    options: { value: string; label: string; hint?: string; disabled?: boolean }[];
     onChange(value: string): void;
   };
   onClearAll?: () => void;
@@ -494,6 +496,9 @@ export interface UiHost {
   Checkbox?: ComponentType<HostCheckboxProps>;
   Popover?: ComponentType<HostPopoverProps>;
   Menu?: ComponentType<HostMenuProps>;
+  /** Props are `IconProps` / `IconButtonProps` from components/ui/icon. */
+  Icon?: ComponentType<any>;
+  IconButton?: ComponentType<any>;
   /** Props are `SelectFieldProps` from components/ui/select-field. */
   SelectField?: ComponentType<any>;
   QueryBar?: ComponentType<HostQueryBarProps>;
