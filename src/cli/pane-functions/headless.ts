@@ -13,11 +13,14 @@ import type {
   HeadlessPaneOptionValues,
   HeadlessPaneResult,
   HeadlessPaneRow,
+  HeadlessSeries,
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
 import { cliStyles, renderSection, renderStats, renderTable } from "../../utils/cli-output";
 import { humanizeCliKey } from "../result";
+import { observationDate } from "../../time-series/price-comparison";
+import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 
@@ -277,9 +280,39 @@ export function serializeHeadlessPaneResult(
 
 function displayValue(value: unknown): string {
   if (value == null) return "-";
-  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Date) return displayTime(value.getTime());
+  if (typeof value === "number") return displayNumber(value);
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+/** Drops binary floating-point noise (4.019999999999996) without rounding real digits. */
+function displayNumber(value: number): string {
+  if (!Number.isFinite(value) || Number.isInteger(value) || Math.abs(value) >= 1e9) return String(value);
+  return String(Number(value.toPrecision(12)));
+}
+
+function displayTime(time: number): string {
+  if (!Number.isFinite(time)) return "-";
+  const iso = new Date(time).toISOString();
+  return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : `${iso.slice(0, 16).replace("T", " ")} UTC`;
+}
+
+const CALENDAR_RESOLUTIONS = new Set(["1d", "1wk", "1mo"]);
+
+/** Session bars print the trading date the chart and comparison notice use, not the bar's open instant. */
+function seriesPointDate(series: HeadlessSeries, date: HeadlessSeries["points"][number]["date"]): string {
+  const time = date instanceof Date ? date.getTime() : typeof date === "number" ? date : Date.parse(date);
+  if (!Number.isFinite(time)) return typeof date === "string" ? date : "-";
+  const resolved = series as HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution" | "timeBasis">>;
+  return resolved.historyResolution && CALENDAR_RESOLUTIONS.has(resolved.historyResolution)
+    ? observationDate(time, resolved)
+    : displayTime(time);
+}
+
+function seriesValue(series: HeadlessSeries, value: number | null): string {
+  if (value == null) return "-";
+  return series.unit?.trim() === "%" && Number.isFinite(value) ? value.toFixed(2) : displayNumber(value);
 }
 
 function renderRows(
@@ -327,8 +360,8 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     ));
     return {
       series: series.label,
-      latest: latest ? displayValue(latest.date) : "-",
-      value: latest?.value ?? latest?.close ?? null,
+      latest: latest ? seriesPointDate(series, latest.date) : "-",
+      value: seriesValue(series, latest?.value ?? latest?.close ?? null),
       unit: series.unit?.trim() || null,
       points: series.points.length,
     };

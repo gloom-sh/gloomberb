@@ -32,6 +32,7 @@ import { earningsCalendarHeadless } from "./headless";
 import {
   buildEarningsColumns,
   renderEarningsCell,
+  sharedEarningsCurrency,
   renderEarningsSectionHeader,
   type EarningsColumn,
 } from "./table";
@@ -86,7 +87,8 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
     ? Math.max(0, eventRows.findIndex((row) => eventKey(row.event) === selectedKey))
     : -1;
   const selectedRowIndex = rows.findIndex((row) => row.kind === "event" && row.eventIdx === activeEventIdx);
-  const columns = useMemo(() => buildEarningsColumns(width), [width]);
+  const sharedCurrency = useMemo(() => sharedEarningsCurrency(events), [events]);
+  const columns = useMemo(() => buildEarningsColumns(width, sharedCurrency), [sharedCurrency, width]);
 
   const reload = useCallback((force = false) => {
     const requestId = ++requestIdRef.current;
@@ -172,8 +174,8 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
     _index: number,
     rowState: { selected: boolean },
   ) => {
-    return renderEarningsCell(row, column, rowState.selected);
-  }, []);
+    return renderEarningsCell(row, column, rowState.selected, sharedCurrency);
+  }, [sharedCurrency]);
 
   usePaneFooter("earnings-calendar", () => {
     const symbol = openEvent?.symbol ?? selectedEvent?.symbol ?? null;

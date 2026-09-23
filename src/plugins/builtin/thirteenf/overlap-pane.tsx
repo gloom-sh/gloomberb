@@ -10,7 +10,7 @@ import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { normalizeCik, searchThirteenFFunds } from "./api";
 import { loadFundDetail } from "./data";
-import { formatPercentMaybe } from "./format";
+import { formatWeightMaybe } from "./format";
 import { isCikQuery } from "./model";
 import { buildFundOverlap, type FundOverlapRow } from "./overlap";
 import type { FundDetailData, ThirteenFFund } from "./types";
@@ -90,7 +90,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
         onActivate={row => { if (row.ticker) pinTicker(row.ticker, { floating: true }); }}
         sortColumnId={sort.id} sortDirection={sort.desc ? "desc" : "asc"}
         onHeaderClick={id => { if (id === "weight" || id === "comparedWeight") setSort(current => ({ id, desc: current.id === id ? !current.desc : true })); }}
-        renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "weight" ? formatPercentMaybe(row.weight) : column.id === "comparedWeight" ? formatPercentMaybe(row.comparedWeight) : String(row[column.id as keyof FundOverlapRow]), color: state.selected ? colors.selectedText : colors.text })}
+        renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "comparedWeight" ? formatWeightMaybe(row.comparedWeight) : String(row[column.id as keyof FundOverlapRow]), color: state.selected ? colors.selectedText : colors.text })}
         emptyStateTitle={loading ? "Loading fund positions..." : mismatch ? "Matching reporting quarters unavailable." : "No shared positions."}
       />
     </Box>}

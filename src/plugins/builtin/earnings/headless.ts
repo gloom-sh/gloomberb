@@ -1,6 +1,8 @@
 import type { EarningsEvent } from "../../../types/data-provider";
 import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod, earningsSourceEstimates } from "./estimate-basis";
+import { formatCompact, formatNumber, formatPercent } from "../../../utils/format";
 import type {
+  HeadlessPaneColumn,
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
@@ -11,28 +13,34 @@ import {
   type EarningsCalendarResult,
 } from "./data/cache";
 
-const EARNINGS_COLUMNS = [
-  { key: "date", header: "Date" },
+const num = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+const eps = (value: unknown) => num(value) == null ? "-" : formatNumber(num(value), 2);
+const sales = (value: unknown) => num(value) == null ? "-" : formatCompact(num(value));
+const growth = (value: unknown) => num(value) == null ? "-" : formatPercent(num(value));
+const right = "right" as const;
+
+const EARNINGS_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date", format: (value) => typeof value === "string" ? value.slice(0, 10) : "-" },
   { key: "timing", header: "When" },
   { key: "dateStatus", header: "Status" },
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
   { key: "forecastPeriodEnd", header: "Forecast end" },
   { key: "epsCurrency", header: "EPS ccy" },
-  { key: "epsEstimate", header: "EPS est", align: "right" as const },
-  { key: "epsLow", header: "EPS low", align: "right" as const },
-  { key: "epsHigh", header: "EPS high", align: "right" as const },
-  { key: "epsGrowth", header: "EPS growth", align: "right" as const },
-  { key: "epsTrend30dAgo", header: "EPS 30D ago", align: "right" as const },
-  { key: "epsRevisionUp30d", header: "Rev up", align: "right" as const },
-  { key: "epsRevisionDown30d", header: "Rev down", align: "right" as const },
+  { key: "epsEstimate", header: "EPS est", align: right, format: eps },
+  { key: "epsLow", header: "EPS low", align: right, format: eps },
+  { key: "epsHigh", header: "EPS high", align: right, format: eps },
+  { key: "epsGrowth", header: "EPS growth", align: right, format: growth },
+  { key: "epsTrend30dAgo", header: "EPS 30D ago", align: right, format: eps },
+  { key: "epsRevisionUp30d", header: "Rev up", align: right },
+  { key: "epsRevisionDown30d", header: "Rev down", align: right },
   { key: "revenueCurrency", header: "Sales ccy" },
-  { key: "revenueEstimate", header: "Sales est", align: "right" as const },
-  { key: "revenueLow", header: "Sales low", align: "right" as const },
-  { key: "revenueHigh", header: "Sales high", align: "right" as const },
-  { key: "revenueGrowth", header: "Sales growth", align: "right" as const },
-  { key: "epsAnalysts", header: "EPS analysts", align: "right" as const },
-  { key: "revenueAnalysts", header: "Sales analysts", align: "right" as const },
+  { key: "revenueEstimate", header: "Sales est", align: right, format: sales },
+  { key: "revenueLow", header: "Sales low", align: right, format: sales },
+  { key: "revenueHigh", header: "Sales high", align: right, format: sales },
+  { key: "revenueGrowth", header: "Sales growth", align: right, format: growth },
+  { key: "epsAnalysts", header: "EPS analysts", align: right },
+  { key: "revenueAnalysts", header: "Sales analysts", align: right },
 ];
 
 export interface EarningsCalendarHeadlessDependencies {

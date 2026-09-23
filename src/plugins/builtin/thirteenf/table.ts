@@ -8,6 +8,7 @@ import {
   formatChangeShares,
   formatMoneyCompact,
   formatPercentMaybe,
+  formatWeightMaybe,
   formatRawPercentMaybe,
   formatShares,
   formatShortDate,
@@ -98,7 +99,7 @@ export function renderHoldingCell(
         color: selectedColor ?? (row.estimatedPnl == null ? colors.textDim : priceColor(row.estimatedPnl)),
       };
     case "weight":
-      return { text: formatPercentMaybe(row.weight), color: selectedColor ?? colors.textDim };
+      return { text: formatWeightMaybe(row.weight), color: selectedColor ?? colors.textDim };
     case "shares":
       return { text: formatShares(row.shares), color: selectedColor ?? colors.text };
     case "sharesChange":
@@ -146,7 +147,7 @@ export function renderFilingPositionCell(
     case "value":
       return { text: formatMoneyCompact(row.value), color: selectedColor ?? colors.text };
     case "weight":
-      return { text: formatPercentMaybe(row.weight), color: selectedColor ?? colors.textDim };
+      return { text: formatWeightMaybe(row.weight), color: selectedColor ?? colors.textDim };
     case "shares":
       return { text: formatShares(row.shares), color: selectedColor ?? colors.text };
     case "cusip":

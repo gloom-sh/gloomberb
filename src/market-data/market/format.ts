@@ -127,10 +127,17 @@ function getQuantityMaxFractionDigits(kind: AssetDisplayKind, value: number): nu
   }
 }
 
+function integerDigits(value: number): number {
+  const absolute = Math.abs(value);
+  return absolute >= 1 && Number.isFinite(absolute) ? Math.floor(Math.log10(absolute)) + 1 : 0;
+}
+
 function getBasePriceMaxFractionDigits(kind: AssetDisplayKind, value: number): number {
   switch (kind) {
     case "cash":
-      return 6;
+      // Six decimals, but no more than seven significant digits: providers send
+      // float32 rates, so 157.8800048828125 must not print as 157.880005.
+      return Math.max(2, Math.min(6, 7 - integerDigits(value)));
     case "crypto":
       // Sub-cent coins need eight decimals to stay distinguishable from zero,
       // but a four-figure coin does not. Scaling the ceiling by magnitude keeps
@@ -337,6 +344,8 @@ export function formatMarketChangeWithCurrency(value: number | undefined, curren
       ...options, minimumFractionDigits: Math.max(2, options.minimumFractionDigits ?? 0),
     })}`;
   }
+  // Cents hide the whole move of a sub-cent asset (-$0.00 for a SHIB day change).
+  if (value !== 0 && Math.abs(value) < 0.005) return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, options)}`;
   return `${value > 0 ? "+" : ""}${formatCurrency(value, currency)}`;
 }
 

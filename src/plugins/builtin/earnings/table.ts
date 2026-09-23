@@ -1,5 +1,6 @@
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell, DataTableColumn } from "../../../components";
+import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import type { EarningsEstimateField, EarningsEvent } from "../../../types/data-provider";
 import { colors } from "../../../theme/colors";
 import { formatCompact, formatNumber, formatPercent } from "../../../utils/format";
@@ -36,22 +37,50 @@ function formatTime(date: Date | null | undefined): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatEstimate(event: EarningsEvent, field: EarningsEstimateField, formatter: (value: number) => string): string {
+const MONETARY_FIELDS: readonly EarningsEstimateField[] = [
+  "epsEstimate", "epsLow", "epsHigh", "epsTrend30dAgo", "revenueEstimate", "revenueLow", "revenueHigh",
+];
+
+/** One currency across every displayed estimate moves the code into the headers instead of each cell. */
+export function sharedEarningsCurrency(events: readonly EarningsEvent[]): string | null {
+  const currencies = new Set(events.flatMap((event) => MONETARY_FIELDS
+    .filter((field) => coherentEarningsValue(event, field) != null)
+    .map((field) => event.estimateBasis?.[field]?.currency ?? "?")));
+  const [currency] = currencies;
+  return currencies.size === 1 && currency && /^[A-Z]{3}$/.test(currency) ? currency : null;
+}
+
+function withCurrency(currency: string | null | undefined, text: string, sharedCurrency: string | null): string {
+  return sharedCurrency ? text : `${currency ?? "?"} ${text}`;
+}
+
+function formatEstimate(
+  event: EarningsEvent, field: EarningsEstimateField, formatter: (value: number) => string, sharedCurrency: string | null,
+): string {
   const value = coherentEarningsValue(event, field);
-  return value == null ? "—" : `${event.estimateBasis?.[field]?.currency ?? "?"} ${formatter(value)}`;
+  return value == null ? "—" : withCurrency(event.estimateBasis?.[field]?.currency, formatter(value), sharedCurrency);
 }
 
 function formatEstimateRange(
   event: EarningsEvent, lowField: EarningsEstimateField, highField: EarningsEstimateField,
-  formatter: (value: number) => string,
+  formatter: (value: number) => string, sharedCurrency: string | null,
 ): string {
   const low = coherentEarningsValue(event, lowField);
   const high = coherentEarningsValue(event, highField);
   if (low == null && high == null) return "—";
   const lowCurrency = event.estimateBasis?.[lowField]?.currency ?? "?";
   const highCurrency = event.estimateBasis?.[highField]?.currency ?? "?";
-  if (lowCurrency === highCurrency) return `${lowCurrency} ${low == null ? "—" : formatter(low)}-${high == null ? "—" : formatter(high)}`;
-  return `${formatEstimate(event, lowField, formatter)}-${formatEstimate(event, highField, formatter)}`;
+  if (lowCurrency === highCurrency) {
+    return withCurrency(lowCurrency, `${low == null ? "—" : formatter(low)}-${high == null ? "—" : formatter(high)}`, sharedCurrency);
+  }
+  return `${formatEstimate(event, lowField, formatter, null)}-${formatEstimate(event, highField, formatter, null)}`;
+}
+
+/** A value that prints as zero at the shown precision must not be coloured as a move. */
+function displayedValue(value: number | null, decimals: number): number | null {
+  if (value == null) return null;
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) / scale || 0;
 }
 
 function formatRevisionSummary(event: EarningsEvent): string {
@@ -72,47 +101,51 @@ function formatAnalystSummary(event: EarningsEvent): string {
 
 function estimateColor(value: number | null | undefined, selectedColor: string | undefined): string | undefined {
   if (selectedColor) return selectedColor;
-  if (value == null) return colors.textDim;
-  return value >= 0 ? colors.positive : colors.negative;
+  if (value == null || value === 0) return colors.textDim;
+  return value > 0 ? colors.positive : colors.negative;
 }
 
-export function buildEarningsColumns(width: number): EarningsColumn[] {
+function growthCell(value: number | null, selectedColor: string | undefined): DataTableCell {
+  const shown = displayedValue(value, 4);
+  return { text: shown != null ? formatPercent(shown) : "—", color: estimateColor(shown, selectedColor) };
+}
+
+export function buildEarningsColumns(width: number, sharedCurrency: string | null = null): EarningsColumn[] {
+  const shared = sharedCurrency != null;
   const dateWidth = 8;
   const whenWidth = 8;
   const statusWidth = 4;
   const symbolWidth = 8;
-  const epsWidth = 11;
+  const epsWidth = shared ? 8 : 11;
   const forecastEndWidth = 10;
-  const epsRangeWidth = 20;
+  const epsRangeWidth = shared ? 13 : 20;
   const growthWidth = 8;
-  const trendWidth = 11;
+  const trendWidth = shared ? 7 : 11;
   const revisionsWidth = 7;
-  const revenueWidth = 12;
-  const revenueRangeWidth = 23;
-  const analystsWidth = 7;
-  const columnCount = 15;
-  const fixedWidth = dateWidth + whenWidth + statusWidth + symbolWidth + epsWidth + forecastEndWidth
-    + epsRangeWidth + growthWidth + trendWidth + revisionsWidth + revenueWidth
-    + revenueRangeWidth + growthWidth + analystsWidth;
-  const nameWidth = Math.max(14, width - 2 - columnCount - fixedWidth);
-
-  return [
+  const revenueWidth = shared ? 9 : 12;
+  const revenueRangeWidth = shared ? 13 : 23;
+  const analystsWidth = 6;
+  const columns: EarningsColumn[] = [
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
     { id: "when", label: "WHEN", width: whenWidth, align: "left" },
     { id: "status", label: "ST", width: statusWidth, align: "left" },
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
-    { id: "name", label: "NAME", width: nameWidth, align: "left" },
+    { id: "name", label: "NAME", width: 14, align: "left" },
     { id: "forecastEnd", label: "EST END", width: forecastEndWidth, align: "left" },
-    { id: "epsEstimate", label: "EPS", width: epsWidth, align: "right" },
+    { id: "epsEstimate", label: shared ? `EPS ${sharedCurrency}` : "EPS", width: epsWidth, align: "right" },
     { id: "epsRange", label: "EPS RNG", width: epsRangeWidth, align: "right" },
     { id: "epsGrowth", label: "EPS YOY", width: growthWidth, align: "right" },
     { id: "epsTrend", label: "EPS 30D", width: trendWidth, align: "right" },
     { id: "epsRevisions", label: "REV 30D", width: revisionsWidth, align: "right" },
-    { id: "revenueEstimate", label: "SALES", width: revenueWidth, align: "right" },
+    { id: "revenueEstimate", label: shared ? `SALES ${sharedCurrency}` : "SALES", width: revenueWidth, align: "right" },
     { id: "revenueRange", label: "SALES RNG", width: revenueRangeWidth, align: "right" },
     { id: "revenueGrowth", label: "SALES YOY", width: growthWidth, align: "right" },
     { id: "analysts", label: "ANL", width: analystsWidth, align: "right" },
   ];
+  // The table widens a column to fit its header, so the name takes what the rendered columns leave.
+  const fixedWidth = columns.reduce((sum, column) => sum + (column.id === "name" ? 0 : tableColumnWidth(column) + TABLE_COLUMN_GAP), 0);
+  const nameWidth = Math.max(14, width - 2 - TABLE_COLUMN_GAP - fixedWidth);
+  return columns.map((column) => column.id === "name" ? { ...column, width: nameWidth } : column);
 }
 
 export function renderEarningsSectionHeader(row: EarningsDisplayRow) {
@@ -128,6 +161,7 @@ export function renderEarningsCell(
   row: EarningsDisplayRow,
   column: EarningsColumn,
   selected: boolean,
+  sharedCurrency: string | null = null,
 ): DataTableCell {
   if (row.kind !== "event") return { text: "" };
 
@@ -163,23 +197,20 @@ export function renderEarningsCell(
       return { text: earningsForecastPeriod(row.event)?.periodEndDate ?? "—", color: selectedColor ?? colors.textDim };
     case "epsEstimate":
       return {
-        text: formatEstimate(row.event, "epsEstimate", value => formatNumber(value, 2)),
+        text: formatEstimate(row.event, "epsEstimate", value => formatNumber(value, 2), sharedCurrency),
         color: selectedColor ?? colors.textDim,
       };
     case "epsRange":
       return {
-        text: formatEstimateRange(row.event, "epsLow", "epsHigh", value => formatNumber(value, 2)),
+        text: formatEstimateRange(row.event, "epsLow", "epsHigh", value => formatNumber(value, 2), sharedCurrency),
         color: selectedColor ?? colors.textDim,
       };
     case "epsGrowth":
-      return {
-        text: coherentEarningsValue(row.event, "epsGrowth") != null ? formatPercent(coherentEarningsValue(row.event, "epsGrowth")!) : "—",
-        color: estimateColor(coherentEarningsValue(row.event, "epsGrowth"), selectedColor),
-      };
+      return growthCell(coherentEarningsValue(row.event, "epsGrowth"), selectedColor);
     case "epsTrend": {
-      const change = earningsEpsChange30d(row.event);
+      const change = displayedValue(earningsEpsChange30d(row.event), 2);
       return {
-        text: change != null ? `${row.event.estimateBasis?.epsEstimate?.currency} ${formatNumber(change, 2)}` : "—",
+        text: change != null ? withCurrency(row.event.estimateBasis?.epsEstimate?.currency, formatNumber(change, 2), sharedCurrency) : "—",
         color: estimateColor(change, selectedColor),
       };
     }
@@ -194,19 +225,16 @@ export function renderEarningsCell(
     }
     case "revenueEstimate":
       return {
-        text: formatEstimate(row.event, "revenueEstimate", formatCompact),
+        text: formatEstimate(row.event, "revenueEstimate", formatCompact, sharedCurrency),
         color: selectedColor ?? colors.textDim,
       };
     case "revenueRange":
       return {
-        text: formatEstimateRange(row.event, "revenueLow", "revenueHigh", formatCompact),
+        text: formatEstimateRange(row.event, "revenueLow", "revenueHigh", formatCompact, sharedCurrency),
         color: selectedColor ?? colors.textDim,
       };
     case "revenueGrowth":
-      return {
-        text: coherentEarningsValue(row.event, "revenueGrowth") != null ? formatPercent(coherentEarningsValue(row.event, "revenueGrowth")!) : "—",
-        color: estimateColor(coherentEarningsValue(row.event, "revenueGrowth"), selectedColor),
-      };
+      return growthCell(coherentEarningsValue(row.event, "revenueGrowth"), selectedColor);
     case "analysts":
       return {
         text: formatAnalystSummary(row.event),

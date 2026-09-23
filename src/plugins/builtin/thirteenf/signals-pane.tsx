@@ -8,7 +8,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import { actionLabel, formatMoneyCompact, formatPercentMaybe, formatShares } from "./format";
+import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHoldings, type TickerHolderRow } from "./signals";
 
@@ -68,7 +68,7 @@ export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, 
     onActivate={row => setFund({ cik: row.cik, name: row.fund })}
     sortColumnId={sort.id} sortDirection={sort.desc ? "desc" : "asc"}
     onHeaderClick={id => setSort(current => ({ id, desc: current.id === id ? !current.desc : id !== "fund" }))}
-    renderCell={(row, column, _index, state) => ({ text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatPercentMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
+    renderCell={(row, column, _index, state) => ({ text: column.id === "value" ? formatMoneyCompact(row.value) : column.id === "shares" ? formatShares(row.shares) : column.id === "weight" ? formatWeightMaybe(row.weight) : column.id === "action" ? actionLabel(row.action) : String(row[column.id as keyof TickerHolderRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
     emptyStateTitle={loading ? "Loading 13F holders..." : error ? "13F holders unavailable." : "No reported holders."}
   />;
 }

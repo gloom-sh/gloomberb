@@ -13,7 +13,8 @@ import { reuseResolvedSeriesIdentity } from "./panel-series";
 const cases = [
   ["EURUSD=X", "USD", "CURRENCY", 1.1602274179458618, "$1.160227"],
   ["USDEUR=X", "EUR", "CURRENCY", 0.8618999719619751, "€0.8619"],
-  ["JPY=X", "JPY", "CURRENCY", 153.5540008544922, "¥153.554001"],
+  // A float32 provider rate: seven significant digits drop the 153.554001 tail.
+  ["JPY=X", "JPY", "CURRENCY", 153.5540008544922, "¥153.554"],
   ["JPYUSD=X", "USD", "CURRENCY", 0.00651236716657877, "$0.006512"],
   ["AAPL", "USD", "EQUITY", 259.7499, "$259.75"],
   // A real provider quote, not a hand-rounded one: crypto display precision has

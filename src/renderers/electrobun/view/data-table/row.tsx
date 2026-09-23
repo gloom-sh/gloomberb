@@ -9,6 +9,7 @@ import type {
   DataTableSectionHeader,
 } from "../../../../components/ui/data-table";
 import { useFrozenColumnInsets } from "./frozen-column";
+import { displayWidth } from "../../../../utils/format";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
 import {
   CSS_BG,
@@ -35,6 +36,17 @@ function renderHeaderLabel<C extends DataTableColumn>(
     isSorted,
     text: column.label + indicator,
   };
+}
+
+/**
+ * Keep one blank cell between a right-aligned header and a left-aligned
+ * neighbour, as fitTableHeaderText does in the terminal; otherwise the two
+ * labels read as one ("1Y 1D MOVE").
+ */
+function headerTouchesNext<C extends DataTableColumn>(columns: readonly C[], index: number, text: string): boolean {
+  const next = columns[index + 1];
+  return !!next && columns[index]!.align === "right" && (next.align ?? "left") === "left"
+    && displayWidth(text) < columns[index]!.width;
 }
 
 function contentJustifyForAlign(align: string | undefined): CSSProperties["justifyContent"] {
@@ -117,6 +129,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
               zIndex: freezeFirstColumn && columnIndex === 0 ? 1 : undefined,
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
+              paddingRight: headerTouchesNext(columns, columnIndex, text) ? WEB_CELL_WIDTH : undefined,
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
               overflow: "hidden",

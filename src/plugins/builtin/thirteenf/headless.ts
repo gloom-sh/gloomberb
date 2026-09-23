@@ -35,11 +35,21 @@ import {
   formatRawPercentMaybe,
   formatShares,
   formatShortDate,
+  formatWeightMaybe,
 } from "./format";
 import type {
   FundDetailData,
   ThirteenFBrowserTab,
 } from "./types";
+
+const numberOrNull = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
+const money = (value: unknown) => formatMoneyCompact(numberOrNull(value));
+const weight = (value: unknown) => formatWeightMaybe(numberOrNull(value));
+const shares = (value: unknown) => formatShares(numberOrNull(value));
+const weightPoints = (value: unknown) => {
+  const change = numberOrNull(value);
+  return change == null ? "--" : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
+};
 
 const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Fund" },
@@ -86,7 +96,7 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
     header: "13F %",
     description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation.",
     align: "right",
-    format: (value) => formatPercentMaybe(value == null ? null : Number(value)),
+    format: weight,
   },
   {
     key: "shares",
@@ -248,7 +258,7 @@ export function createThirteenFHeadless(
         const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
         const samePeriod = !!first.latestForm && first.latestForm.periodOfReport === second.latestForm?.periodOfReport;
         const rows = buildFundOverlap(first, second);
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight" }, { key: "comparedWeight", header: "Second weight" }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!samePeriod ? ["The funds have different latest reporting quarters."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, truncated: rows.length > limit } };
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight", align: "right", format: weight }, { key: "comparedWeight", header: "Second weight", align: "right", format: weight }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!samePeriod ? ["The funds have different latest reporting quarters."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, truncated: rows.length > limit } };
       }
       if (view === "crowding") {
         const { rows: sourceRows, ...metadata } = await loadCrowding(ctx.signal);
@@ -260,12 +270,14 @@ export function createThirteenFHeadless(
           if (right.weightChange == null) return -1;
           return (left.weightChange - right.weightChange) * (rank === "decreases" ? 1 : -1);
         });
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds" }, { key: "newCount", header: "New" }, { key: "exitCount", header: "Exits" }, { key: "weightChange", header: "Weight change" }, { key: "comparedFunds", header: "Compared" }, { key: "totalValue", header: "Value" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, rank, truncated: rows.length > limit }, errors: metadata.warnings };
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "issuer", header: "Issuer" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds", align: "right" }, { key: "newCount", header: "New", align: "right" }, { key: "exitCount", header: "Exits", align: "right" }, { key: "weightChange", header: "Weight change", align: "right", format: weightPoints }, { key: "comparedFunds", header: "Compared", align: "right" }, { key: "totalValue", header: "Value", align: "right", format: money }], rows: rows.slice(0, limit).map(row => ({ ...row })),
+          // The pane states the fund sample beside the table; the text report needs it too.
+          metadata: { ...metadata, view, rank, truncated: rows.length > limit, notices: [`${metadata.period}: ${metadata.loadedFunds}/${metadata.sourceFunds} ranked funds`] }, errors: metadata.warnings };
       }
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
         const { rows, ...metadata } = await loadTickerHoldings(query.toUpperCase(), Number(args.options.offset ?? 0), ctx.signal);
-        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value" }, { key: "shares", header: "Shares" }, { key: "weight", header: "13F weight" }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
+        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
       }
 
       if (view === "holdings" || view === "filings") {

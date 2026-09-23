@@ -14,7 +14,7 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
+import { formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
@@ -38,6 +38,16 @@ import { dividendPriceAsOf, dividendPriceStatus, dividendQuotePriceMetadata } fr
 function formatRate(value: number | null, currency: string): string {
   if (value == null) return "—";
   return formatDistributionAmount(value, currency);
+}
+
+/** Axis ticks are interpolated levels: size decimals to the tick spacing, not the six kept for payments. */
+function cashAxisFractionDigits(points: readonly ProjectedChartPoint[]): number {
+  const values = points.map((point) => point.close).filter(Number.isFinite);
+  const range = values.length ? Math.max(...values) - Math.min(...values) : 0;
+  const level = values.length ? Math.max(...values.map(Math.abs)) : 0;
+  const spread = range > 0 ? range / 4 : level;
+  if (!(spread > 0)) return 2;
+  return Math.max(2, Math.min(6, Math.ceil(-Math.log10(spread))));
 }
 
 function formatGrowth(value: number | null): string {
@@ -118,6 +128,7 @@ function DividendSummary({
   // Keep the history header and three cash rows usable in a short pane.
   const summaryHeight = Math.min(rowCount + chartHeight, Math.max(1, height - 4));
   const palette = resolveChartPalette(colors, "positive");
+  const axisDigits = cashAxisFractionDigits(chartPoints);
 
   return (
     <ScrollBox ref={scrollRef} scrollY focusable={false} height={summaryHeight} flexShrink={0}>
@@ -145,7 +156,7 @@ function DividendSummary({
             colors={palette}
             yAxisLabel="TTM cash/share"
             yAxisColor={colors.textDim}
-            formatYAxisValue={(value) => formatRate(value, currency)}
+            formatYAxisValue={(value) => formatCurrency(value, currency, axisDigits)}
           />
         </Box>
       )}

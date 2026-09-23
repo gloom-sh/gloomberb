@@ -57,6 +57,8 @@ describe("formatMarketPrice", () => {
     expect(formatMarketPrice(259.7499, { assetCategory: "STK" })).toBe("259.75");
     expect(formatMarketPrice(1.084567, { isCashBalance: true })).toBe("1.084567");
     expect(formatMarketPrice(1.17364, { assetCategory: "CURRENCY" })).toBe("1.17364");
+    // Float32 provider rates: the seventh significant digit ends the display.
+    expect(formatMarketPrice(157.8800048828125, { assetCategory: "CURRENCY" })).toBe("157.88");
     expect(formatMarketPrice(0.000123456789, { assetCategory: "CRYPTO" })).toBe("0.00012346");
   });
 
@@ -158,6 +160,9 @@ test("quote formatting uses metadata only to withhold unknown bond units", () =>
   expect(formatMarketChangeWithCurrency(-1, "USD", declared)).toBe("-$1.00");
   const par = quoteFormatOptions({ priceBasis: "percent-of-par" }, "STK");
   expect(formatMarketChangeWithCurrency(-1, "USD", par)).toBe("-1% par");
+  // A sub-cent coin's whole day move must not round to -$0.00.
+  expect(formatMarketChangeWithCurrency(-2.6955e-8, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("-$0.00000002696");
+  expect(formatMarketChangeWithCurrency(-0.37, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("-$0.37");
 });
 
 test("contract price precision does not change units, signed/zero/missing semantics, quantity or cost", () => {

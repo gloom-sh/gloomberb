@@ -16,7 +16,7 @@ export interface PriceComparison {
   sourceBounds?: Record<string, { start: number; end: number }>;
 }
 
-function observationDate(time: number, series: ResolvedSeries): string {
+export function observationDate(time: number, series: Pick<ResolvedSeries, "timeBasis">): string {
   const date = new Date(time);
   // Date-only provider bars are represented as UTC midnight throughout the app.
   // Timestamped bars use the exchange's local calendar; crypto uses UTC.

@@ -3,7 +3,7 @@ import type { HoldingAction } from "./types";
 
 export function formatMoneyCompact(value: number | null | undefined): string {
   if (value == null) return "--";
-  return `$${formatCompact(value)}`;
+  return value < 0 ? `-$${formatCompact(-value)}` : `$${formatCompact(value)}`;
 }
 
 export function formatShares(value: number | null | undefined): string {
@@ -15,6 +15,12 @@ export function formatPercentMaybe(value: number | null | undefined): string {
   if (value == null) return "--";
   const sign = value > 0 ? "+" : "";
   return `${sign}${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
+}
+
+/** Portfolio weights are shares of a whole, so they carry no sign. */
+export function formatWeightMaybe(value: number | null | undefined): string {
+  if (value == null) return "--";
+  return `${(value * 100).toFixed(Math.abs(value) >= 0.1 ? 1 : 2)}%`;
 }
 
 export function formatRawPercentMaybe(value: number | null | undefined): string {

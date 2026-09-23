@@ -49,7 +49,7 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
 };
 
 function dateEntry(label: string, date: Date | null) {
-  return { label, value: date, ...(date ? { formatted: date.toISOString().slice(0, 10) } : {}) };
+  return { label, value: date, formatted: date ? date.toISOString().slice(0, 10) : "—" };
 }
 
 function matchesType(payment: DividendPayment, type: string): boolean {

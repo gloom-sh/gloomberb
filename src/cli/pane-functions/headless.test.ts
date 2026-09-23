@@ -301,7 +301,7 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   ] };
   const text = renderHeadlessPaneText(definition, result, args, "Research");
   expect(text).toContain("Unit");
-  expect(text.split("\n").find(line => line.includes("Credit percent"))).toMatch(/2\.7\s+%/);
+  expect(text.split("\n").find(line => line.includes("Credit percent"))).toMatch(/2\.70\s+%/);
   expect(text.split("\n").find(line => line.includes("Credit basis points"))).toMatch(/270\s+bp/);
   expect(text.split("\n").find(line => line.includes("Indexed value"))).toMatch(/102\.5\s+index/);
   expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
