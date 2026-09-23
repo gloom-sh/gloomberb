@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./pane/header";
+import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 
@@ -86,6 +87,7 @@ export function FloatingPaneWrapper({
   children,
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
+  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true);
   const bg = floatingPaneBg(focused);
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
@@ -125,6 +127,9 @@ export function FloatingPaneWrapper({
         locked={locked}
         showActions={showActions}
         quickSettings={quickSettings}
+        tabs={headerTabs}
+        bodyBackground={bg}
+        topRule
         onHeaderMouseMove={onHeaderMouseMove}
         onHeaderMouseDown={onHeaderMouseDown}
         onHeaderMouseDrag={onHeaderMouseDrag}
@@ -135,7 +140,7 @@ export function FloatingPaneWrapper({
       />
 
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>
-        {children}
+        <PaneHeaderTabsProvider value={headerTabsContext}>{children}</PaneHeaderTabsProvider>
       </PaneBodyFrame>
 
       {renderFooter && (

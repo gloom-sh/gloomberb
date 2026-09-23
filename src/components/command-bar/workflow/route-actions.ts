@@ -1,6 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { InputRenderable, TextareaRenderable } from "../../../ui";
-import type { NativeSelectElement } from "../../ui/native-select";
+import type { SelectFieldHandle } from "../../ui/select-field";
 import {
   coerceFieldBoolean,
   coerceFieldString,
@@ -28,10 +28,10 @@ export function getCommandBarWorkflowInputRef(
   return store[fieldId]!;
 }
 
-export function setWorkflowNativeSelectElement(
-  refs: Map<string, NativeSelectElement>,
+export function setWorkflowSelectFieldHandle(
+  refs: Map<string, SelectFieldHandle>,
   fieldId: string,
-  element: NativeSelectElement | null,
+  element: SelectFieldHandle | null,
 ): void {
   if (element) {
     refs.set(fieldId, element);

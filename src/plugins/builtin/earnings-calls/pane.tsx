@@ -8,7 +8,7 @@ import {
   Button,
   DataTableStackView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, Spinner,
+  InputSearchBar, PaneStatusBody, QueryBar, Spinner,
   usePaneFooter,
   useTableLoadMore,
   type DataTableCell,
@@ -860,19 +860,20 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       detailContent={detailContent}
       detailTitle={selected ? callTitle(selected) : undefined}
       rootBefore={
-        <InputSearchBar
-          value={searchQuery}
-          focused={focused && !detailOpen}
-          active={searchFocused}
+        <QueryBar
           width={width}
-          focusToken={searchFocusToken}
-          inputRef={searchInputRef}
-          placeholder="ticker, company, or period"
-          debounceMs={80}
-          onFocus={focusSearch}
-          onBlur={blurSearch}
-          onNavigateDown={blurSearch}
-          onQueryChange={setSearchQuery}
+          search={{
+            value: searchQuery,
+            onChange: setSearchQuery,
+            placeholder: "ticker, company, or period",
+            focused: focused && !detailOpen,
+            active: searchFocused,
+            onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+            focusToken: searchFocusToken,
+            inputRef: searchInputRef,
+            debounceMs: 80,
+            onNavigateDown: blurSearch,
+          }}
         />
       }
       onRootKeyDown={handleRootKey}

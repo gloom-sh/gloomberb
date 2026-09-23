@@ -81,8 +81,9 @@ the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
   footer does not repeat them; Enter submits, Esc cancels. It keeps `saving`
   and the last result message.
 - No toolbars in the body. A row of buttons above a table is a set of footer
-  hints. Query controls (search bar, filter bar, chart range and interval
-  pickers) are the exception and sit in `rootBefore` or above the plot.
+  hints. Query controls are the exception: search, filters and sort go in one
+  `QueryBar` in `rootBefore` (chart range and interval pickers sit above the
+  plot).
 
 ## 4. Information density
 
@@ -139,7 +140,11 @@ more of what is loaded" uses the same helper.
 
 - `Tabs` is the only tab strip: controlled, mouse, `h`/`l` and arrows while
   focused, `underline` for pane sections, `pill` for layout tabs, `bare`.
-  First row of the body, full width, never boxed, never in the footer.
+  A pane's primary strip is registered with `usePaneHeaderTabs` (above any
+  early return): the desktop draws it in the pane title bar and the hook
+  returns true; the terminal draws the pane's own `Tabs` as the first row of
+  the body. Subtract the tab row only when it is in the body. Never in the
+  footer.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
@@ -150,6 +155,22 @@ more of what is loaded" uses the same helper.
 - `SegmentedControl` is a mode inside a form or dialog, not a tab strip.
 - Tabs and stacks compose: strip on top, stack below, strip stays while the
   detail is open.
+
+## 6b. Query bar, menus, detail header
+
+- `QueryBar` is the one row above a list: `search`, `filters` and one `view`.
+  A `select` filter takes a `defaultValue` when it narrows (the chip shows a
+  reset while it differs); omit it when it picks what is shown. `inline` for
+  four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
+  field. One terminal row; on the desktop it scrolls sideways when narrow.
+  Status never goes in the bar; units and as-of context may use `meta`.
+- A stack detail whose content starts with a `QueryBar` gets Back and the item
+  title as the bar's first segments automatically; do not add a second row.
+- Every menu, dropdown and pop-up list is `MenuPopover`/`Menu` in the kit
+  `Popover`. No positioned boxes, no native `<select>`.
+- On the desktop, pane headers, query bars, detail bars and table header rows
+  share one chrome height (`chromeRowPx()`, `--chrome-h`). Tables and details
+  fill to the pane footer; do not size them with terminal row arithmetic.
 
 ## 7. Tabs with forms
 
@@ -233,7 +254,9 @@ All under `src/plugins/builtin/` unless noted.
 | Feed stack with read state, restore past page one | `sec/index.tsx` |
 | Load more on scroll, abort, dedupe, density comments | `research-search/pane.tsx` |
 | Paged shelf with keyed first-page identity | `jobs/pane.tsx`, `jobs/pages.ts` |
-| Tabs, lazy mount, `PaneFooterScope`, `hideTabs` | `ticker-detail/pane.tsx` |
+| Tabs, lazy mount, `PaneFooterScope`, `hideTabs`, header tabs | `ticker-detail/pane.tsx` |
+| Query bar: search, selects, toggle, header tabs | `cot/pane.tsx`, `congress-trades/filters.tsx` |
+| Query bar: multi, text field, inline, view | `research-search/pane.tsx` |
 | Tabs as a query over one table | `market-movers/index.tsx` |
 | Tabs with forms, Save per form, Ctrl+S | `account-management/pane.tsx`, `footer.ts` |
 | Form in a stack detail, empty footer while editing | `broker-manager/detail.tsx`, `footer.ts` |

@@ -8,7 +8,7 @@ import {
 import type { InputRenderable, ScrollBoxRenderable, TextareaRenderable } from "../../../ui";
 import type { AppAction } from "../../../state/app/context";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { NativeSelectElement } from "../../ui/native-select";
+import type { SelectFieldHandle } from "../../ui/select-field";
 import { extractBrokerWorkflowValues } from "./broker";
 import { buildTickerListingPicker } from "./ticker-listing-picker";
 import type {
@@ -32,7 +32,7 @@ import {
   getWorkflowFieldStringValueFromRefs,
   moveWorkflowFocusAction,
   openWorkflowFieldPickerAction,
-  setWorkflowNativeSelectElement,
+  setWorkflowSelectFieldHandle,
   syncActiveWorkflowTextareaAction,
   updateRouteStack,
   type CommandBarWorkflowInputRefs,
@@ -66,11 +66,11 @@ interface UseCommandBarWorkflowRuntimeResult {
   moveWorkflowFocus: (delta: number) => void;
   openWorkflowFieldPicker: (route: CommandBarWorkflowRoute, field: CommandBarWorkflowField) => void;
   openWorkflowRoute: (route: CommandBarWorkflowRoute) => void;
-  setWorkflowNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
+  setWorkflowSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   submitWorkflowRoute: (route: CommandBarWorkflowRoute) => Promise<void>;
   syncActiveWorkflowTextarea: (route: CommandBarWorkflowRoute | null) => void;
   updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
-  workflowNativeSelectRefs: RefObject<Map<string, NativeSelectElement>>;
+  workflowSelectFieldRefs: RefObject<Map<string, SelectFieldHandle>>;
   workflowScrollRef: RefObject<ScrollBoxRenderable | null>;
 }
 
@@ -87,15 +87,15 @@ export function useCommandBarWorkflowRuntime({
   updateTopRoute,
 }: UseCommandBarWorkflowRuntimeOptions): UseCommandBarWorkflowRuntimeResult {
   const workflowInputRefs = useRef<CommandBarWorkflowInputRefs>({});
-  const workflowNativeSelectRefs = useRef(new Map<string, NativeSelectElement>());
+  const workflowSelectFieldRefs = useRef(new Map<string, SelectFieldHandle>());
   const workflowScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const ensureRouteFieldFocus = useCallback((route: CommandBarWorkflowRoute) => {
     focusWorkflowTextField(workflowInputRefs.current, route);
   }, []);
 
-  const setWorkflowNativeSelectRef = useCallback((fieldId: string, element: NativeSelectElement | null) => {
-    setWorkflowNativeSelectElement(workflowNativeSelectRefs.current, fieldId, element);
+  const setWorkflowSelectFieldRef = useCallback((fieldId: string, element: SelectFieldHandle | null) => {
+    setWorkflowSelectFieldHandle(workflowSelectFieldRefs.current, fieldId, element);
   }, []);
 
   const openWorkflowRoute = useCallback((route: CommandBarWorkflowRoute) => {
@@ -237,11 +237,11 @@ export function useCommandBarWorkflowRuntime({
     moveWorkflowFocus,
     openWorkflowFieldPicker,
     openWorkflowRoute,
-    setWorkflowNativeSelectRef,
+    setWorkflowSelectFieldRef,
     submitWorkflowRoute,
     syncActiveWorkflowTextarea,
     updateWorkflowValue,
-    workflowNativeSelectRefs,
+    workflowSelectFieldRefs,
     workflowScrollRef,
   };
 }

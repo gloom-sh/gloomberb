@@ -5,10 +5,11 @@ import {
   ConfirmDialog,
   DataTableStackView,
   EmptyState,
-  InputSearchBar,
+  QueryBar,
   Spinner,
   Tabs,
   useExternalLinkFooter,
+  usePaneHeaderTabs,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -27,8 +28,10 @@ import { usePluginPaneState } from "../../runtime";
 import type { PaneProps } from "../../../types/plugin";
 import type {
   CloudSavedSearch,
+  CloudSearchDocType,
   CloudSearchDocument,
   CloudSearchHit,
+  CloudSearchSort,
 } from "../../../api-client";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction } from "../shared/cloud-upgrade";
@@ -45,7 +48,6 @@ import {
   updateSavedSearch,
 } from "./data";
 import { useDocumentFocusRequest } from "./focus-handoff";
-import { SearchFilterBar } from "./filter-bar";
 import { SearchDocumentView } from "./document-view";
 import { SavedSearchesView } from "./saved-view";
 import {
@@ -53,22 +55,30 @@ import {
   buildResultColumns,
   buildSearchParams,
   DEFAULT_FILTERS,
+  DOC_TYPE_OPTIONS,
   filtersFromSaved,
   filtersToSaved,
   formatHitDate,
   hitMatchCountLabel,
   hitTypeLabel,
   parseTickerFilter,
+  RANGE_OPTIONS,
   RESEARCH_SEARCH_PANE_ID,
   savedSearchName,
+  SORT_OPTIONS,
   type SearchColumn,
   type SearchFilters,
+  type SearchRangeKey,
 } from "./model";
 import { parseMarkedSnippet, snippetPlainText, truncateSegments } from "./snippet";
 import { SnippetText } from "./snippet-text";
 
 const QUERY_DEBOUNCE_MS = 300;
 const TICKER_FIELD_WIDTH = 22;
+const MODE_TABS = [
+  { label: "Results", value: "results" },
+  { label: "Saved", value: "saved" },
+];
 
 type PaneMode = "results" | "saved";
 type LoadStatus = "idle" | "loading" | "loaded" | "error";
@@ -508,6 +518,15 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     showHint: !!openHit?.url,
   });
 
+  const modeTabs = MODE_TABS;
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: modeTabs,
+    activeValue: mode,
+    onSelect: (value) => setMode(value as PaneMode),
+    focused: focused && !openHit && activeField === null && !typePickerOpen,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
+
   if (signInRequired || verificationRequired) {
     return (
       <SignInWall
@@ -517,12 +536,9 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     );
   }
 
-  const tabs = (
+  const tabs = tabsInHeader ? null : (
     <Tabs
-      tabs={[
-        { label: "Results", value: "results" },
-        { label: "Saved", value: "saved" },
-      ]}
+      tabs={modeTabs}
       activeValue={mode}
       onSelect={(value) => setMode(value as PaneMode)}
       focused={focused && !openHit && activeField === null && !typePickerOpen}
@@ -542,7 +558,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
           onDelete={(search) => { void removeSaved(search); }}
           focused={focused}
           width={width}
-          height={Math.max(1, height - 1)}
+          height={Math.max(1, height - tabRows)}
           emptyTitle={savedStatus === "loading"
             ? "Loading saved searches..."
             : "Run a search, then press Ctrl+S to save it and get keyword alerts."}
@@ -568,39 +584,70 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     );
   }
 
-  const compact = width < 76;
-  const searchBars = (
-    <Box flexDirection={compact ? "column" : "row"}>
-      <InputSearchBar
-        value={query}
-        focused={focused && !openHit && !typePickerOpen}
-        active={activeField === "query"}
-        width={compact ? width : Math.max(20, width - TICKER_FIELD_WIDTH)}
-        focusToken={fieldFocusToken}
-        inputRef={queryInputRef}
-        placeholder="words or phrase across calls, news, and filings"
-        debounceMs={QUERY_DEBOUNCE_MS}
-        onFocus={() => focusField("query")}
-        onBlur={blurField}
-        onNavigateDown={blurField}
-        onQueryChange={setQuery}
-      />
-      <InputSearchBar
-        value={filters.tickers.join(" ")}
-        focused={focused && !openHit && !typePickerOpen}
-        active={activeField === "tickers"}
-        width={compact ? width : TICKER_FIELD_WIDTH}
-        focusToken={fieldFocusToken}
-        inputRef={tickerInputRef}
-        placeholder="tickers"
-        glyph="#"
-        debounceMs={QUERY_DEBOUNCE_MS}
-        onFocus={() => focusField("tickers")}
-        onBlur={blurField}
-        onNavigateDown={blurField}
-        onQueryChange={(value) => setFilters({ ...filters, tickers: parseTickerFilter(value) })}
-      />
-    </Box>
+  const queryBar = (
+    <QueryBar
+      width={width}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "words or phrase across calls, news, and filings",
+        focused: focused && !openHit && !typePickerOpen,
+        active: activeField === "query",
+        onActiveChange: (active) => active ? focusField("query") : blurField(),
+        focusToken: fieldFocusToken,
+        inputRef: queryInputRef,
+        debounceMs: QUERY_DEBOUNCE_MS,
+        onNavigateDown: blurField,
+      }}
+      filters={[
+        {
+          id: "tickers",
+          kind: "text",
+          label: "Tickers",
+          value: filters.tickers.join(" "),
+          onChange: (value: string) => setFilters({ ...filters, tickers: parseTickerFilter(value) }),
+          placeholder: "any",
+          focused: focused && !openHit && !typePickerOpen,
+          active: activeField === "tickers",
+          onActiveChange: (active: boolean) => active ? focusField("tickers") : blurField(),
+          focusToken: fieldFocusToken,
+          inputRef: tickerInputRef,
+          debounceMs: QUERY_DEBOUNCE_MS,
+          width: TICKER_FIELD_WIDTH,
+        },
+        {
+          id: "types",
+          kind: "multi",
+          label: "Types",
+          title: "Document types",
+          values: filters.docTypes,
+          options: DOC_TYPE_OPTIONS,
+          emptyLabel: "All",
+          onOpenChange: setTypePickerOpen,
+          onChange: (values: string[]) => setFilters({ ...filters, docTypes: values as CloudSearchDocType[] }),
+        },
+        {
+          id: "range",
+          label: "Date",
+          inline: true,
+          value: filters.range === "custom" ? "all" : filters.range,
+          defaultValue: "all",
+          options: RANGE_OPTIONS,
+          onChange: (value: string) => setFilters({
+            ...filters,
+            range: value as SearchRangeKey,
+            // Presets own the window from here, so stored bounds must not linger.
+            from: undefined,
+            to: undefined,
+          }),
+        },
+      ]}
+      view={{
+        value: filters.sort,
+        options: SORT_OPTIONS,
+        onChange: (value: string) => setFilters({ ...filters, sort: value as CloudSearchSort }),
+      }}
+    />
   );
 
   const emptyTitle = !trimmedQuery
@@ -630,20 +677,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         ) : (
           <Box flexGrow={1} />
         )}
-        rootBefore={(
-          <Box flexDirection="column">
-            {searchBars}
-            <SearchFilterBar
-              filters={filters}
-              onChange={setFilters}
-              onDialogOpenChange={setTypePickerOpen}
-              width={width}
-            />
-          </Box>
-        )}
+        rootBefore={queryBar}
         onRootKeyDown={handleRootKeyDown}
         rootWidth={width}
-        rootHeight={Math.max(1, height - 1)}
+        rootHeight={Math.max(1, height - tabRows)}
         scrollRef={tableScrollRef}
         onBodyScrollActivity={loadMoreFromScroll}
         resetScrollKey={`${trimmedQuery}:${filters.sort}:${filters.range}:${filters.tickers.join(",")}:${filters.docTypes.join(",")}`}

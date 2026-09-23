@@ -10,7 +10,7 @@ import {
   type TextareaRenderable,
 } from "../../../ui";
 import { NumberField, TextField } from "../../ui";
-import { NativeSelect, type NativeSelectElement } from "../../ui/native-select";
+import { SelectField, type SelectFieldHandle } from "../../ui/select-field";
 import {
   coerceFieldString,
   getWorkflowFieldDescription,
@@ -37,7 +37,7 @@ interface CommandBarWorkflowFieldRowProps {
   onFieldPickerOpen: (route: CommandBarWorkflowRoute, field: CommandBarWorkflowField) => void;
   onFieldValueChange: (fieldId: string, value: CommandBarFieldValue) => void;
   onMoveFieldFocus: (delta: number) => void;
-  onNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
+  onSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   onSubmit: (route: CommandBarWorkflowRoute) => void | Promise<void>;
 }
 
@@ -53,7 +53,7 @@ export function CommandBarWorkflowFieldRow({
   onFieldPickerOpen,
   onFieldValueChange,
   onMoveFieldFocus,
-  onNativeSelectRef,
+  onSelectFieldRef,
   onSubmit,
 }: CommandBarWorkflowFieldRowProps) {
   const palette = useCommandBarPalette(nativePaneChrome);
@@ -61,7 +61,7 @@ export function CommandBarWorkflowFieldRow({
   const value = route.values[field.id];
   const borderColor = active ? palette.selectedBg : palette.bg;
   const fieldBg = nativePaneChrome ? "transparent" : active ? palette.inputBg : palette.panelBg;
-  const useNativeSelect = nativePaneChrome && field.type === "select";
+  const useSelectField = nativePaneChrome && field.type === "select";
   const fieldDescription = getWorkflowFieldDescription(field, active);
   const fieldLabel = t(field.label);
   const translatedFieldDescription = translateWorkflowFieldDescription(fieldDescription);
@@ -75,7 +75,7 @@ export function CommandBarWorkflowFieldRow({
   const focusOrOpenField = () => {
     onActiveTextareaSync(route);
     onFieldFocus(field.id);
-    if (!isWorkflowTextField(field) && !useNativeSelect) {
+    if (!isWorkflowTextField(field) && !useSelectField) {
       onFieldPickerOpen(route, field);
     }
   };
@@ -86,7 +86,7 @@ export function CommandBarWorkflowFieldRow({
     disabled: route.pending,
     actions: {
       focus: focusOrOpenField,
-      open: !isWorkflowTextField(field) && !useNativeSelect ? focusOrOpenField : undefined,
+      open: !isWorkflowTextField(field) && !useSelectField ? focusOrOpenField : undefined,
       submit: () => void onSubmit(route),
     },
     metadata: {
@@ -182,8 +182,8 @@ export function CommandBarWorkflowFieldRow({
             onSubmit={submitOrMoveNext}
           />
         )
-      ) : useNativeSelect ? (
-        <NativeSelect
+      ) : useSelectField ? (
+        <SelectField
           disabled={route.pending}
           value={coerceFieldString(value)}
           options={field.options.map((option) => ({
@@ -192,7 +192,7 @@ export function CommandBarWorkflowFieldRow({
             description: option.description ? t(option.description) : undefined,
           }))}
           width="100%"
-          selectRef={(element) => onNativeSelectRef(field.id, element)}
+          selectRef={(element) => onSelectFieldRef(field.id, element)}
           onFocus={() => onFieldFocus(field.id)}
           onChange={(nextValue) => onFieldValueChange(field.id, nextValue)}
         />

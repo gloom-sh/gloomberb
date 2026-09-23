@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
+import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -228,16 +228,18 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     ]) }] : [] };
   }, [loadError, loading, returnAsOfDate, updatedAgo]);
 
-  const rootBefore = (
+  const selectCollection = (value: string) => {
+    const nextId = value as SectorCollectionId;
+    setActiveCollectionId(nextId);
+    setSelectedEtf(null);
+  };
+  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: activeCollection.id, onSelect: selectCollection, focused });
+  const rootBefore = tabsInHeader ? undefined : (
     <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">
       <Tabs
         tabs={tabs}
         activeValue={activeCollection.id}
-        onSelect={(value) => {
-          const nextId = value as SectorCollectionId;
-          setActiveCollectionId(nextId);
-          setSelectedEtf(null);
-        }}
+        onSelect={selectCollection}
         compact
         variant="bare"
         focused={focused}

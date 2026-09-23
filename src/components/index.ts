@@ -71,6 +71,8 @@ export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";
 export type { StackSortPreference } from "./feed-stack-controller";
 export { PaneFooterScope, usePaneFooter } from "./layout/pane/footer";
+export { NestedPaneTabs, usePaneHeaderTabs } from "./layout/pane/header-tabs";
+export type { PaneHeaderTabsRegistration } from "./layout/pane/header-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that
 // changes with loading/error state, and one that also carries a link.
 export { usePaneStatusFooter, usePaneStatusLinkFooter } from "../plugins/builtin/shared/pane-footer";

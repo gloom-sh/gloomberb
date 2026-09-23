@@ -6,9 +6,16 @@ import {
   Tabs,
   usePaneNoticeFooter,
   usePaneFooter,
+  usePaneHeaderTabs,
   ChoiceDialog,
   useTableLoadMore,
 } from "../../../components";
+
+const CONGRESS_TABS = [
+  { label: "Trades", value: "trades" },
+  { label: "Members", value: "members" },
+  { label: "Tickers", value: "tickers" },
+];
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useShortcut } from "../../../react/input";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
@@ -360,7 +367,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   ] : [] }), [detailMode, mine, setMine, openFilters]);
   const filterBar = <CongressFilterBar filters={filters} onChange={setFilters} mine={mine} onMine={setMine} width={width}
     controls={{ chamber: chamberControl, side: sideControl, owner: ownerControl, assetType: assetControl, minAmount: amountControl }} />;
-  const filterHeight = width < 100 ? 2 : 1;
+  const filterHeight = 1;
 
   const detailContent = detailMode?.kind === "ticker" ? (
     <CongressTradesPane focused={focused} width={width} height={height - 3} paneId="congress-ticker" paneType="congress-trades" tickerFilter={detailMode.ticker} />
@@ -381,7 +388,14 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
       ? detailMember.memberName
       : undefined;
 
-  const tabs = tickerFilter ? null : (
+  const tabsInHeader = usePaneHeaderTabs(tickerFilter ? null : {
+    tabs: CONGRESS_TABS,
+    activeValue: activeTab,
+    onSelect: selectTab,
+    focused: focused && !detailMode,
+  });
+  const tabRows = tickerFilter || tabsInHeader ? 0 : 1;
+  const tabs = tickerFilter || tabsInHeader ? null : (
     <Box height={1}>
       <Tabs
         tabs={[
@@ -437,7 +451,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
-          rootHeight={Math.max(1, height - (tickerFilter ? 0 : 1) - filterHeight)}
+          rootHeight={Math.max(1, height - tabRows - filterHeight)}
           columns={tradeColumns}
           items={tradeRows}
           sortColumnId={tradeSort.columnId}
@@ -457,7 +471,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           focused={focused} detailOpen={detailMode !== null} onBack={() => setDetailMode(null)} detailTitle={detailTitle} detailContent={detailContent}
           selection={{ kind: "id", selectedId: selectedTicker, getId: (row) => row.ticker, onChange: setSelectedTicker }}
           onActivate={(row) => { setSelectedTicker(row.ticker); setDetailMode({ kind: "ticker", ticker: row.ticker }); }}
-          rootWidth={width} rootHeight={Math.max(1, height - 1 - filterHeight)} rootBefore={filterBar}
+          rootWidth={width} rootHeight={Math.max(1, height - tabRows - filterHeight)} rootBefore={filterBar}
           onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
           sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
           onHeaderClick={(columnId) => setTickerSort((current) => nextSort(current, columnId as TickerColumnId, columnId === "ticker" ? "asc" : "desc"))}
@@ -489,7 +503,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
-          rootHeight={Math.max(1, height - 1 - filterHeight)}
+          rootHeight={Math.max(1, height - tabRows - filterHeight)}
           columns={memberColumns}
           items={memberRows}
           sortColumnId={memberSort.columnId}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
-import { Checkbox, DataTableView, KeyValueRow, Notice, NumberField, Section, SegmentedControl, SelectButton, Tabs, TextField, usePaneNoticeFooter, type SelectControl } from "../../../components";
+import { Checkbox, DataTableView, KeyValueRow, Notice, NumberField, Section, SegmentedControl, SelectButton, Tabs, TextField, usePaneHeaderTabs, usePaneNoticeFooter, type SelectControl } from "../../../components";
 import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -71,6 +71,8 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     update({ mode, quote: result ? String(Number((mode === "yield" ? result.analytics.yieldPercent : result.analytics.cleanPrice).toPrecision(13))) : draft.quote });
   }, [result, draft.quote, update]);
   const selectTab = useCallback((value: string) => { setActiveField(null); setTab(value); }, [setTab]);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !activeField });
+  const tabRows = tabsInHeader ? 0 : 1;
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
@@ -115,7 +117,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     [{ label: "Convexity", value: `${fixed(result.analytics.convexity)} yr²` }, { label: "DV01 / 100", value: fixed(result.analytics.dv01, 6) }],
   ] : [];
   return <Box flexDirection="column" width={width} height={height}>
-    <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !activeField} dense />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !activeField} dense />}
     {tab === "valuation" ? <ScrollBox ref={formScroll} flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
       <Box flexDirection="column" paddingX={1} gap={1}>
         <Box flexDirection="row" gap={2}>{field("settlement", "Settlement")}{field("maturity", "Maturity")}</Box>
@@ -138,9 +140,9 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
       </Box> : null}
     </ScrollBox> : evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <>
       <Box paddingX={1} height={1}><Text fg={colors.textMuted}>{`Settlement ${result.terms.settlement} · per 100 face`}</Text></Box>
-      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 2)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 1 - tabRows)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
         renderCell={(row, column) => ({ text: column.id === "date" ? row.date : fixed(row[column.id as "amount" | "presentValue"]) })} />
-        : <DataTableView emptyStateTitle="No yield scenarios" columns={SHOCK_COLUMNS} items={result.sensitivity} getItemKey={(row) => String(row.shiftBps)} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 2)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+        : <DataTableView emptyStateTitle="No yield scenarios" columns={SHOCK_COLUMNS} items={result.sensitivity} getItemKey={(row) => String(row.shiftBps)} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 1 - tabRows)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
           renderCell={(row, column) => { const value = row[column.id as keyof typeof row]; return { text: column.id === "shiftBps" ? `${value! > 0 ? "+" : ""}${value}` : fixed(value), color: column.id === "priceChange" && value != null ? value > 0 ? colors.positive : value < 0 ? colors.negative : colors.text : undefined }; }} />}
     </> : null}
   </Box>;

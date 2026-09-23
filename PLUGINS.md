@@ -1047,8 +1047,11 @@ Choose the existing control that owns the interaction you need:
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
 | Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
-| Navigation and choices | `Tabs`, `SegmentedControl`, `SelectButton`, `Checkbox` |
-| Actions and inputs | `Button`, `TextField`, `NumberField`, `InputSearchBar` |
+| Pane tab strip | `usePaneHeaderTabs` (title-bar tabs on the desktop), `Tabs` |
+| Search, filters, sort above a list | `QueryBar` |
+| Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |
+| Choices inside forms | `SegmentedControl`, `SelectButton`, `SelectField`, `Checkbox` |
+| Actions and inputs | `Button`, `TextField`, `NumberField` |
 | Clickable/expandable summaries | `ActionRow` |
 | Selectable lists | `ListView` |
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
@@ -1063,7 +1066,13 @@ Choose the existing control that owns the interaction you need:
 
 Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book visualizations, rich inline ticker content, and specialized editors can use lower-level primitives. Do not recreate a button with a clickable `Box`, a section heading with styled `Text`, or a field with raw `Input`. Add a missing repeated pattern to the kit and migrate the callers together. Keep domain calculations and formatting with the pane.
 
-`Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` chooses a native select or terminal dialog internally; a `SelectControl` ref can open it without knowing the renderer.
+`Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` opens the kit menu on the desktop and a choice dialog in the terminal; a `SelectControl` ref can open it without knowing the renderer.
+
+A pane's primary tab strip goes through `usePaneHeaderTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. On the desktop the strip moves into the pane title bar and the hook returns true; the terminal returns false and the pane keeps drawing its own `Tabs`. Subtract the tab row from heights only when it is in the body.
+
+Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself.
+
+Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box.
 
 `PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, and retry `actions`:
 

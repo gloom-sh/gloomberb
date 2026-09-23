@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apiClient, type CloudThesis } from "../../../../api-client";
 import {
   DataTableStackView,
-  InputSearchBar,
   PaneStatusBody,
+  QueryBar,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -438,19 +438,20 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       rootBefore={(
-        <InputSearchBar
-          value={searchQuery}
-          focused={focused && !openThesis}
-          active={searchFocused}
+        <QueryBar
           width={width}
-          focusToken={searchFocusToken}
-          inputRef={searchInputRef}
-          placeholder={`ticker or company in ${exposure.scope.label.toLowerCase()}`}
-          debounceMs={80}
-          onFocus={focusSearch}
-          onBlur={blurSearch}
-          onNavigateDown={blurSearch}
-          onQueryChange={setSearchQuery}
+          search={{
+            value: searchQuery,
+            onChange: setSearchQuery,
+            placeholder: `ticker or company in ${exposure.scope.label.toLowerCase()}`,
+            focused: focused && !openThesis,
+            active: searchFocused,
+            onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
+            focusToken: searchFocusToken,
+            inputRef: searchInputRef,
+            debounceMs: 80,
+            onNavigateDown: blurSearch,
+          }}
         />
       )}
       columns={columns}

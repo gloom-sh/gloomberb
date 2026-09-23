@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Tabs, PaneFooterScope } from "../../../components";
+import { Tabs, PaneFooterScope, usePaneHeaderTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -66,28 +66,39 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
   2,
 );
 
+const ALERT_TABS = [
+  { label: "Prices", value: "prices" },
+  { label: "Events", value: "events" },
+  { label: "History", value: "history" },
+];
+
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: ALERT_TABS,
+    activeValue: tab,
+    onSelect: setTab,
+    focused: props.focused,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
   return (
     <Box flexDirection="column" width={props.width} height={props.height}>
-      <Tabs
-        tabs={[
-          { label: "Prices", value: "prices" },
-          { label: "Events", value: "events" },
-          { label: "History", value: "history" },
-        ]}
-        activeValue={tab}
-        onSelect={setTab}
-        focused={props.focused}
-        dense
-      />
+      {!tabsInHeader && (
+        <Tabs
+          tabs={ALERT_TABS}
+          activeValue={tab}
+          onSelect={setTab}
+          focused={props.focused}
+          dense
+        />
+      )}
       <PaneFooterScope active>
         {tab === "events" ? (
-          <EventAlertsPane {...props} height={Math.max(1, props.height - 1)} />
+          <EventAlertsPane {...props} height={Math.max(1, props.height - tabRows)} />
         ) : tab === "history" ? (
-          <AlertHistoryPane {...props} height={Math.max(1, props.height - 1)} />
+          <AlertHistoryPane {...props} height={Math.max(1, props.height - tabRows)} />
         ) : (
-          <PriceAlertsPane {...props} height={Math.max(1, props.height - 1)} />
+          <PriceAlertsPane {...props} height={Math.max(1, props.height - tabRows)} />
         )}
       </PaneFooterScope>
     </Box>

@@ -1,6 +1,6 @@
 import type { KeyEventLike } from "../../react/input";
 import { isPlainBackspace } from "../../utils/back-navigation";
-import { openNativeSelect, type NativeSelectElement } from "../ui/native-select";
+import { openSelectField, type SelectFieldHandle } from "../ui/select-field";
 import {
   coerceFieldBoolean,
   getVisibleWorkflowFields,
@@ -98,7 +98,7 @@ export function handleWorkflowRouteShortcut({
   popRoute,
   submitWorkflowRoute,
   updateWorkflowValue,
-  workflowNativeSelectRefs,
+  workflowSelectFieldRefs,
 }: {
   currentRoute: CommandBarRoute | null;
   event: KeyEventLike;
@@ -115,7 +115,7 @@ export function handleWorkflowRouteShortcut({
   popRoute: () => void;
   submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
-  workflowNativeSelectRefs: RefLike<Map<string, NativeSelectElement>>;
+  workflowSelectFieldRefs: RefLike<Map<string, SelectFieldHandle>>;
 }): boolean {
   if (currentRoute?.kind !== "workflow") return false;
 
@@ -176,7 +176,7 @@ export function handleWorkflowRouteShortcut({
     if (activeField.type === "select" || activeField.type === "multi-select" || activeField.type === "ordered-multi-select" || activeField.type === "toggle") {
       consumeShortcutEvent(event);
       if (nativePaneChrome && activeField.type === "select") {
-        openNativeSelect(workflowNativeSelectRefs.current.get(activeField.id));
+        openSelectField(workflowSelectFieldRefs.current.get(activeField.id));
         return true;
       }
       openWorkflowFieldPicker(currentRoute, activeField);

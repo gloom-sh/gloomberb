@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfirmDialog,
   DataTableStackView,
-  InputSearchBar,
   KeyValueRow,
   PaneStatusBody,
+  QueryBar,
   Tabs,
   useExternalLinkFooter,
+  usePaneHeaderTabs,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -569,6 +570,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     ],
     [categories],
   );
+  const selectCategory = (value: string) => setCategory(value || null);
+  const tabsInHeader = usePaneHeaderTabs(categories.length > 1 ? {
+    tabs: categoryTabs,
+    activeValue: category ?? "",
+    onSelect: selectCategory,
+    focused: focused && !searchFocused && !detailOpen,
+  } : null);
 
   if (status === "loading" && entries.length === 0) {
     return (
@@ -588,31 +596,31 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         detailTitle={selected?.name}
         rootBefore={(
           <Box flexDirection="column" width={width}>
-            <InputSearchBar
-              value={query}
-              focused={focused && !detailOpen}
-              active={searchFocused}
-              width={width}
-              focusToken={searchFocusToken}
-              inputRef={searchInputRef}
-              placeholder="name or category"
-              debounceMs={80}
-              onFocus={focusSearch}
-              onBlur={blurSearch}
-              onNavigateDown={blurSearch}
-              onQueryChange={setQuery}
-            />
-            {categories.length > 1 ? (
+            {categories.length > 1 && !tabsInHeader ? (
               <Tabs
                 tabs={categoryTabs}
                 activeValue={category ?? ""}
-                onSelect={(value) => setCategory(value || null)}
+                onSelect={selectCategory}
                 focused={focused && !searchFocused && !detailOpen}
                 variant="underline"
                 dense
                 scrollable
               />
             ) : null}
+            <QueryBar
+              width={width}
+              search={{
+                value: query,
+                onChange: setQuery,
+                placeholder: "name or category",
+                focused: focused && !detailOpen,
+                active: searchFocused,
+                onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
+                focusToken: searchFocusToken,
+                inputRef: searchInputRef,
+                onNavigateDown: blurSearch,
+              }}
+            />
           </Box>
         )}
         selection={{

@@ -1,6 +1,6 @@
 import { Box } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, Tabs, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, Tabs, usePaneFooter, usePaneHeaderTabs, type DataTableKeyEvent } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -225,21 +225,27 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     ],
   }), [activeTab, feedStatus, loadedTab, loadError, loading, moversStale, summaryQuotes]);
 
+  const tabItems = tabs.map((tab) => ({ label: tab.label, value: tab.id }));
+  const selectTab = (value: string) => {
+    setActiveTab(value as TabId);
+    setSelectedSymbol(null);
+  };
+  const tabsInHeader = usePaneHeaderTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused });
+
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1} paddingX={1}>
-        <Tabs
-          tabs={tabs.map((tab) => ({ label: tab.label, value: tab.id }))}
-          activeValue={activeTab}
-          onSelect={(value) => {
-            setActiveTab(value as TabId);
-            setSelectedSymbol(null);
-          }}
-          compact
-          variant="bare"
-          focused={focused}
-        />
-      </Box>
+      {!tabsInHeader && (
+        <Box height={1} paddingX={1}>
+          <Tabs
+            tabs={tabItems}
+            activeValue={activeTab}
+            onSelect={selectTab}
+            compact
+            variant="bare"
+            focused={focused}
+          />
+        </Box>
+      )}
 
       <DataTableView<MarketMoverRow, MarketMoverColumn>
         focused={focused}

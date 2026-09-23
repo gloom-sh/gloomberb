@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, Tabs,
+  PaneStatusBody, QueryBar, Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
@@ -327,10 +328,21 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     status,
   ]);
 
-  const tabs = (
+  const filterTabs = useMemo(
+    () => AUCTION_FILTERS.map((entry) => ({ label: entry.label, value: entry.value })),
+    [],
+  );
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: filterTabs,
+    activeValue: filter,
+    onSelect: (value) => selectFilter(value as AuctionFilter),
+    focused: focused && !detailOpen && !searchFocused,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const tabs = tabsInHeader ? null : (
     <Box height={1} flexShrink={0} overflow="hidden">
       <Tabs
-        tabs={AUCTION_FILTERS.map((entry) => ({ label: entry.label, value: entry.value }))}
+        tabs={filterTabs}
         activeValue={filter}
         onSelect={(value) => selectFilter(value as AuctionFilter)}
         compact
@@ -370,19 +382,19 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         detailContent={selected ? <TreasuryAuctionDetail auction={selected} width={width} /> : null}
         detailTitle={selected ? `${selected.secType} ${selected.securityTerm}` : undefined}
         rootBefore={(
-          <InputSearchBar
-            value={searchQuery}
-            focused={focused && !detailOpen}
-            active={searchFocused}
+          <QueryBar
             width={width}
-            focusToken={searchFocusToken}
-            inputRef={searchInputRef}
-            placeholder="type, term, or date"
-            debounceMs={80}
-            onFocus={focusSearch}
-            onBlur={blurSearch}
-            onNavigateDown={blurSearch}
-            onQueryChange={setSearchQuery}
+            search={{
+              value: searchQuery,
+              onChange: setSearchQuery,
+              placeholder: "type, term, or date",
+              focused: focused && !detailOpen,
+              active: searchFocused,
+              onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
+              focusToken: searchFocusToken,
+              inputRef: searchInputRef,
+              onNavigateDown: blurSearch,
+            }}
           />
         )}
         onRootKeyDown={handleRootKeyDown}
@@ -398,7 +410,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
           setDetailOpen(true);
         }}
         rootWidth={width}
-        rootHeight={Math.max(1, height - 1)}
+        rootHeight={Math.max(1, height - tabRows)}
         columns={columns}
         items={rows}
         sortColumnId={sortPreference.columnId}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
-  InputSearchBar,
+  QueryBar,
   usePaneFooter,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
@@ -228,19 +228,20 @@ function FuturesPane({ focused, width, height }: PaneProps) {
         : "No market data provider connected."}
       emptyStateHint={searchQuery.trim() ? "Clear search." : undefined}
       rootBefore={(
-        <InputSearchBar
-          value={searchQuery}
-          focused={focused}
-          active={searchFocused}
+        <QueryBar
           width={width}
-          focusToken={searchFocusToken}
-          inputRef={searchInputRef}
-          placeholder="ticker or name"
-          debounceMs={80}
-          onFocus={focusSearch}
-          onBlur={blurSearch}
-          onNavigateDown={blurSearch}
-          onQueryChange={setSearchQuery}
+          search={{
+            value: searchQuery,
+            onChange: setSearchQuery,
+            placeholder: "ticker or name",
+            focused,
+            active: searchFocused,
+            onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+            focusToken: searchFocusToken,
+            inputRef: searchInputRef,
+            debounceMs: 80,
+            onNavigateDown: blurSearch,
+          }}
         />
       )}
       onRootKeyDown={handleRootKeyDown}

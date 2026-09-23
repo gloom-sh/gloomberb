@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneNoticeFooter,
+import { Badge, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
   type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -90,14 +90,16 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     ...(source ? [{ id: "source", parts: [{ text: `${source} · ${observationBasis}`, tone: "muted" as const }] }] : []),
     ...(asOf ? [{ id: "date", parts: [{ text: observationTime && tab === "board" ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, source, asOf, observationTime, observationBasis, tab]);
-  const contentHeight = Math.max(5, height - 1);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const contentHeight = Math.max(5, height - tabRows);
   // The board needs only its rows; the selected index history takes the rest.
   const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
   const curveTableHeight = Math.min(8, Math.max(4, Math.floor(contentHeight * 0.3)));
   const historyHeight = Math.max(3, Math.floor(contentHeight * 0.6));
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused} />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused} />}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
       {data && tab === "curve" && <>
         <Box height={1} flexDirection="row" paddingX={1} gap={3} overflow="hidden">

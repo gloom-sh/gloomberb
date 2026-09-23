@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
-import { Button, Section, SectionHeading, Tabs, type TableSection } from "../../../components";
+import { Button, Section, SectionHeading, Tabs, usePaneHeaderTabs, type TableSection } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
 import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
@@ -54,7 +54,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
-  const contentHeight = Math.max(0, height - 1);
+  const selectTab = (value: string) => setActiveTabId(value as HelpTabId);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: [...HELP_TABS], activeValue: activeTabId, onSelect: selectTab, focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const contentHeight = Math.max(0, height - tabRows);
   // The scrolling tab bodies pad by one cell, so their tables get the rest.
   const bodyWidth = Math.max(1, width - 2);
 
@@ -219,16 +222,18 @@ function HelpPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box width={width} height={1} flexShrink={0}>
-        <Tabs
-          tabs={[...HELP_TABS]}
-          activeValue={activeTabId}
-          onSelect={(value) => setActiveTabId(value as HelpTabId)}
-          focused={focused}
-          compact
-          scrollable={false}
-        />
-      </Box>
+      {!tabsInHeader && (
+        <Box width={width} height={1} flexShrink={0}>
+          <Tabs
+            tabs={[...HELP_TABS]}
+            activeValue={activeTabId}
+            onSelect={selectTab}
+            focused={focused}
+            compact
+            scrollable={false}
+          />
+        </Box>
+      )}
       {activeTabId === "shortcuts" ? (
         <KeybindingsEditor focused={focused} width={width} height={contentHeight} />
       ) : activeTabId === "functions" ? (

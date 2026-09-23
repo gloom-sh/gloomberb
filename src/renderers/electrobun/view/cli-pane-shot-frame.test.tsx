@@ -9,6 +9,7 @@ import { WebInputHostProvider } from "./input-host";
 import { WebDialogHostProvider } from "./dialog-host";
 import { createDomTestHarness } from "./test-utils";
 import { PaneShotFrame } from "./cli-pane-shot-frame";
+import { nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
 
 const { render } = createDomTestHarness({ withUi: false });
 const renderer: RendererHost = {
@@ -42,10 +43,13 @@ test("pane screenshots retain warnings, optionally preserve source status and re
     </UiHostProvider>;
   }
   const root = await render(<Harness />);
-  const bodyHeight = () => root.querySelector("[data-body-height]")?.getAttribute("data-body-height");
+  const bodyHeight = () => Number(root.querySelector("[data-body-height]")?.getAttribute("data-body-height"));
+  // 24 rows less the desktop header, and less the footer row when one shows.
+  const withoutFooter = 24 - nativePaneHeaderRows();
+  const withFooter = withoutFooter - 1;
   expect(root.textContent).toContain("Research data");
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
-  expect(bodyHeight()).toBe("23");
+  expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
   expect(root.querySelector('button[aria-label="Data warnings"] svg')).not.toBeNull();
@@ -53,20 +57,20 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(root.textContent).not.toContain("Source publication date unavailable.");
   expect(root.textContent).not.toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
-  expect(bodyHeight()).toBe("22");
+  expect(bodyHeight()).toBeCloseTo(withFooter);
 
   await act(async () => update({ warning: true, active: false }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
-  expect(bodyHeight()).toBe("23");
+  expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: true, active: true }));
   expect(root.querySelector('button[aria-label="Data warnings"]')).not.toBeNull();
   await act(async () => update({ warning: false, active: true }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
-  expect(bodyHeight()).toBe("23");
+  expect(bodyHeight()).toBeCloseTo(withoutFooter);
 
   await act(async () => update({ warning: false, active: true, preserveStatus: true }));
   expect(root.textContent).toContain("Loading a normal source");
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
-  expect(bodyHeight()).toBe("22");
+  expect(bodyHeight()).toBeCloseTo(withFooter);
 });

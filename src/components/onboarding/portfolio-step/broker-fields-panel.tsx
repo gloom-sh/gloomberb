@@ -4,7 +4,7 @@ import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { BrokerConfigField } from "../../../types/broker";
 import { TextField, type ListViewItem } from "../../ui";
-import { NativeSelect } from "../../ui/native-select";
+import { SelectField } from "../../ui/select-field";
 import { formatBrokerFieldValue } from "./utils";
 
 export function BrokerFieldsPanel({
@@ -96,7 +96,7 @@ export function BrokerFieldsPanel({
               )}
               {field.type === "select" && desktop ? (
                 <Box style={{ marginTop: 8 }}>
-                  <NativeSelect
+                  <SelectField
                     value={activeSelectValue}
                     width="100%"
                     height={32}

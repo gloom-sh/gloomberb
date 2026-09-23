@@ -4,6 +4,7 @@ html, body, #root { width: 100%; height: 100%; min-height: 100%; overflow: hidde
 body {
   --cell-w: 8px;
   --cell-h: 18px;
+  --chrome-h: 20px;
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
@@ -584,6 +585,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   border: 1px solid;
   border-radius: 8px;
   padding: 8px;
+  outline: none;
   box-shadow:
     0 14px 34px color-mix(in srgb, var(--gloom-bg) 42%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
@@ -598,3 +600,303 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   visibility: visible;
 }
+
+/* Query bar: search, filters and a view switch above a list. One faint band;
+   controls sit flush, split by hairlines, and a filter that narrows the list is
+   tinted with an accent base line. The row scrolls sideways when the pane is
+   narrower than its controls. */
+.gloom-qb {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  --qb-accent-fill: color-mix(in srgb, var(--gloom-border-focused) 18%, transparent);
+  --qb-label: color-mix(in srgb, var(--gloom-text) 58%, transparent);
+  /* 20px at the default font size, whole pixels at every size. The bottom
+     padding keeps the controls clear of the hairline, so they centre between
+     the header rule above and the hairline below. */
+  height: var(--chrome-h);
+  padding-bottom: 1px;
+  flex-shrink: 0;
+  min-width: 0;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 -1px 0 var(--qb-hairline);
+  font-size: 12px;
+}
+.gloom-qb button { font: inherit; border: 0; margin: 0; }
+.gloom-qb-scroll {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.gloom-qb-scroll::-webkit-scrollbar { display: none; }
+.gloom-qb-search,
+.gloom-qb-chip,
+.gloom-qb-inline,
+.gloom-qb-clear {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--gloom-text);
+  white-space: nowrap;
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-qb-search {
+  flex: 0 1 260px;
+  min-width: 150px;
+  color: var(--gloom-text-muted);
+  cursor: text;
+}
+.gloom-qb-search:hover { background: var(--qb-fill); }
+.gloom-qb-search[data-active="true"] {
+  background: var(--qb-fill);
+  color: var(--gloom-text);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+.gloom-qb-search-icon { width: 11px; height: 11px; flex: none; }
+.gloom-qb-search[data-active="true"] .gloom-qb-search-icon { color: var(--gloom-border-focused); }
+.gloom-qb-search-input { flex: 1; min-width: 0; display: flex; align-items: center; }
+.gloom-qb-search-input input::placeholder { color: var(--gloom-text-muted); }
+.gloom-qb-kbd {
+  flex: none;
+  min-width: 15px;
+  height: 15px;
+  line-height: 15px;
+  text-align: center;
+  font-size: 10px;
+  border-radius: 3px;
+  background: var(--qb-fill);
+  color: var(--gloom-text-muted);
+}
+.gloom-qb-filters { display: flex; align-items: stretch; flex: none; }
+.gloom-qb-filters .gloom-popover-anchor { display: flex; align-items: stretch; }
+.gloom-qb-chip { cursor: pointer; }
+.gloom-qb-chip:hover, .gloom-qb-chip[data-open="true"] { background: var(--qb-fill); }
+.gloom-qb-label { color: var(--qb-label); }
+.gloom-qb-chevron { width: 9px; height: 9px; color: var(--gloom-text-muted); margin-right: -2px; }
+.gloom-qb-chip[data-narrowing="true"],
+.gloom-qb-chip[data-narrowing="true"]:hover {
+  background: var(--qb-accent-fill);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+.gloom-qb-chip[data-narrowing="true"] .gloom-qb-label { color: color-mix(in srgb, var(--gloom-border-focused) 80%, var(--gloom-text)); }
+.gloom-qb-chip[data-narrowing="true"] .gloom-qb-value { color: var(--gloom-text-bright); font-weight: 600; }
+.gloom-qb-reset {
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  color: var(--gloom-text-muted);
+  cursor: pointer;
+}
+.gloom-qb-reset svg { width: 10px; height: 10px; }
+.gloom-qb-reset:hover { background: var(--qb-fill); color: var(--gloom-text-bright); }
+.gloom-qb-clear { color: var(--gloom-text-muted); cursor: pointer; box-shadow: none; }
+.gloom-qb-clear:hover { color: var(--gloom-text); background: var(--qb-fill); }
+.gloom-qb-inline { gap: 2px; padding-right: 0; }
+.gloom-qb-inline .gloom-qb-label { padding-right: 4px; color: var(--gloom-text-muted); }
+.gloom-qb-view {
+  margin-left: auto;
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  box-shadow: inset 1px 0 0 var(--qb-hairline);
+}
+.gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
+.gloom-qb-view button {
+  height: 100%;
+  padding: 0 8px;
+  border-radius: 0;
+  background: transparent;
+  /* Options read as values (like a chip's value); the label beside an inline
+     group stays the muted one. */
+  color: color-mix(in srgb, var(--gloom-text) 82%, transparent);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-qb-view button:hover { color: var(--gloom-text); }
+.gloom-qb-view button[data-active="true"] {
+  background: var(--qb-fill);
+  color: var(--gloom-text-bright);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--gloom-border-focused);
+}
+/* Context gives way first when the pane is narrow. */
+.gloom-qb-meta {
+  margin-left: auto;
+  align-self: center;
+  flex: 0 1000 auto;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--gloom-text-muted);
+}
+.gloom-qb-meta + .gloom-qb-view { margin-left: 0; }
+
+
+/* Detail header of a list/detail stack: the same band as the query bar, so
+   Back and the item title read as the pane's toolbar. Grows when a long title
+   wraps rather than hiding it. */
+.gloom-stack-bar {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  display: flex;
+  align-items: stretch;
+  min-height: var(--chrome-h);
+  padding-bottom: 1px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 -1px 0 var(--qb-hairline);
+  font-size: 12px;
+}
+.gloom-stack-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  margin: 0;
+  font: inherit;
+  background: transparent;
+  color: var(--gloom-text);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.gloom-stack-back:hover { background: var(--qb-fill); color: var(--gloom-text-bright); }
+.gloom-stack-back svg { width: 11px; height: 11px; color: var(--gloom-text-muted); }
+.gloom-stack-back:hover svg { color: var(--gloom-text-bright); }
+.gloom-stack-title {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  padding: 5px 10px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--gloom-text-bright);
+  overflow-wrap: break-word;
+}
+.gloom-stack-hint { flex: none; align-self: center; padding: 0 10px; color: var(--gloom-text-muted); white-space: nowrap; }
+/* Back and the title when a detail's query bar has taken the stack header. */
+.gloom-qb .gloom-stack-back { height: 100%; }
+.gloom-qb-title {
+  flex: 0 1 auto;
+  max-width: 40ch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--gloom-text-bright);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+}
+
+/* Optical centring for one-line chrome text: size the text by its capitals and
+   baseline, so flex centring puts the letters in the middle whatever the font's
+   ascent and descent are (SF Mono and Menlo differ from the Linux fallbacks).
+   Equal padding and negative margin keep ascenders and descenders inside any
+   overflow clip without changing the layout size. */
+[data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
+[data-gloom-role="pane-header"] [data-gloom-role="pane-grip"],
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+.gloom-qb-label,
+.gloom-qb-value,
+.gloom-qb-text,
+.gloom-qb-title,
+.gloom-qb-meta,
+.gloom-stack-title {
+  text-box: trim-both cap alphabetic;
+}
+[data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
+.gloom-qb-title,
+.gloom-qb-meta {
+  padding-block: 4px;
+  margin-block: -4px;
+}
+.gloom-qb-view button { display: inline-flex; align-items: center; }
+
+/* A stack detail fills everything under its header, down to the pane footer.
+   Details are often given a height worked out in terminal rows (pane height
+   minus the rows the terminal spends on chrome); on the desktop that chrome is
+   a different size, and a fixed height left a band of empty pane above the
+   footer. The detail's own layout still flexes inside the filled box. */
+.gloom-stack-detail > * {
+  flex: 1 1 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Popovers take focus so their keys work; the focus ring is noise on a
+   surface that is plainly the active one. */
+.gloom-popover:focus, .gloom-popover:focus-visible { outline: none; }
+.gloom-popover[data-density="menu"] { padding: 4px; border-radius: 7px; }
+
+/* Menu: the one list of choices every popover menu renders (filter menus,
+   selects, multi-selects, the pane menu). */
+.gloom-menu { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 12px; }
+.gloom-menu-title {
+  padding: 4px 8px 3px;
+  color: var(--gloom-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.gloom-menu-divider { height: 1px; margin: 3px 4px; background: color-mix(in srgb, var(--gloom-text) 12%, transparent); }
+.gloom-menu-item {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--gloom-text);
+  white-space: nowrap;
+}
+.gloom-menu-item[aria-disabled="true"] { color: var(--gloom-text-muted); cursor: default; }
+.gloom-menu-item[data-highlighted="true"] { background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent); color: var(--gloom-text-bright); }
+.gloom-menu-item[data-selected="true"] { font-weight: 600; }
+.gloom-menu-label { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.gloom-menu-text { overflow: hidden; text-overflow: ellipsis; }
+.gloom-menu-description { color: var(--gloom-text-muted); font-weight: 400; font-size: 11px; white-space: normal; }
+.gloom-menu-hint { flex: none; padding-left: 16px; color: var(--gloom-text-muted); font-weight: 400; }
+.gloom-menu-check { flex: none; color: var(--gloom-border-focused); display: inline-flex; }
+.gloom-menu-check svg { width: 11px; height: 11px; }
+
+.gloom-dialog-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: -3px -4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gloom-text-muted);
+  cursor: pointer;
+}
+.gloom-dialog-close svg { width: 12px; height: 12px; }
+.gloom-dialog-close:hover { background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent); color: var(--gloom-text-bright); }
+
+/* A labelled text filter beside the search (e.g. tickers). */
+.gloom-qb-textfield { flex: 0 1 180px; min-width: 110px; }
+.gloom-qb-filters .gloom-qb-textfield { flex: none; width: calc(22 * var(--cell-w)); }

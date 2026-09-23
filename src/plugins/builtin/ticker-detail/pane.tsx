@@ -17,7 +17,7 @@ import {
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getCollectionName, getCollectionTickerCount } from "../../../state/selectors";
 import { getSharedRegistry } from "../../registry";
-import { EmptyState, PaneFooterScope, Tabs, usePaneFooter } from "../../../components";
+import { EmptyState, NestedPaneTabs, PaneFooterScope, Tabs, usePaneFooter, usePaneHeaderTabs } from "../../../components";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
 import {
@@ -176,8 +176,6 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     [cloudAccess.hint, cloudAccess.segment, financials?.quote, quoteFooterActive, resolvedTabId, width],
   );
 
-  const tabBarHeight = paneSettings.hideTabs ? 0 : 1;
-  const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");
   // A quote tick re-renders this pane; the tab strip only has to re-render
   // when a tab appears, disappears, or is renamed.
@@ -186,6 +184,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     () => allTabs.map((tab) => ({ label: t(tab.name), value: tab.id })),
     [tabItemsKey],
   );
+  const tabsInHeader = usePaneHeaderTabs(!paneSettings.hideTabs && ticker ? {
+    tabs: tabItems,
+    activeValue: resolvedTabId,
+    onSelect: setActiveTabId,
+    focused: focused && !pluginCaptured,
+  } : null);
+  const tabBarHeight = paneSettings.hideTabs || tabsInHeader ? 0 : 1;
+  const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
@@ -237,7 +243,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
-      {!paneSettings.hideTabs && (
+      {!paneSettings.hideTabs && !tabsInHeader && (
         <Tabs
           tabs={tabItems}
           activeValue={resolvedTabId}
@@ -262,12 +268,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
               overflow="hidden"
             >
               <PaneFooterScope active={isActive}>
-                <TickerResearchTab
-                  width={width}
-                  height={contentHeight}
-                  focused={focused && isActive}
-                  onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
-                />
+                <NestedPaneTabs>
+                  <TickerResearchTab
+                    width={width}
+                    height={contentHeight}
+                    focused={focused && isActive}
+                    onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
+                  />
+                </NestedPaneTabs>
               </PaneFooterScope>
             </Box>
           );

@@ -157,6 +157,7 @@ export function ShellPaneLayers({
                     locked={pane.instance.locked === true}
                     showActions={showActions}
                     quickSettings={getPaneQuickSettings(leaf.instanceId)}
+                    topRule={rect.y > 0.01}
                     windowModeSelected={windowModeSelected}
                     footer={footer}
                     onMouseDownCapture={nativePaneChrome ? (event) => handleNativePaneMouseDown(leaf.instanceId, event) : undefined}

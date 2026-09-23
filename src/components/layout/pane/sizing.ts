@@ -1,6 +1,15 @@
+import { WEB_CELL_HEIGHT, chromeRowPx } from "../../../theme/font-scale";
 
 const PANE_HEADER_ROWS = 1;
+/** Desktop pane header height in cells: one chrome row (see chromeRowPx). */
+export function nativePaneHeaderRows(): number {
+  return chromeRowPx() / WEB_CELL_HEIGHT;
+}
 const PANE_FOOTER_ROWS = 1;
+
+export function paneHeaderRows(nativePaneChrome: boolean | undefined): number {
+  return nativePaneChrome ? nativePaneHeaderRows() : PANE_HEADER_ROWS;
+}
 
 const NATIVE_PANE_BODY_LAYOUT_PROPS = {
   flexGrow: 1,
@@ -19,7 +28,7 @@ function resolvePaneBodyHeight({
   nativePaneChrome,
   footerVisible,
   reserveFooter = true,
-  headerRows = PANE_HEADER_ROWS,
+  headerRows = paneHeaderRows(nativePaneChrome),
 }: {
   height: number;
   nativePaneChrome?: boolean;
@@ -53,7 +62,7 @@ export function resolvePaneBodyFrame({
   nativePaneChrome,
   footerVisible,
   reserveFooter = true,
-  headerRows = PANE_HEADER_ROWS,
+  headerRows = paneHeaderRows(nativePaneChrome),
 }: {
   width?: number;
   height?: number;

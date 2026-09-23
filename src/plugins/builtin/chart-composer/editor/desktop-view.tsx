@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Box, Text } from "../../../../ui";
 import { Button, Checkbox } from "../../../../components/ui";
-import { NativeSelect } from "../../../../components/ui/native-select";
+import { SelectField } from "../../../../components/ui/select-field";
 import { colors } from "../../../../theme/colors";
 import type {
   SeriesEditorActionModel,
@@ -78,7 +78,7 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
           ) : field.kind === "panel" ? (
             <Box flexDirection="row" width="100%" style={{ gap: 6 }}>
               <Box flexGrow={1} minWidth={0}>
-                <NativeSelect
+                <SelectField
                   value={field.value}
                   options={field.options}
                   width="100%"
@@ -88,7 +88,7 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
               <Button label="New Panel" onPress={field.onAddPanel} />
             </Box>
           ) : (
-            <NativeSelect
+            <SelectField
               value={field.value}
               options={field.options}
               width="100%"

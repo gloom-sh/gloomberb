@@ -8,6 +8,7 @@ import {
   InputSearchBar,
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { useFxRatesMap, useTickerFinancials, useTickerFinancialsMap } from "../../../market-data/hooks";
@@ -389,6 +390,19 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
     [config.portfolios],
   );
+  const modeTabs = useMemo(() => KELLY_MODES.map((entry) => ({ label: entry.label, value: entry.id })), []);
+  const selectMode = (nextMode: string) => {
+    setMode(nextMode as KellySizingMode);
+    setSelectedFieldIndex(0);
+    activateInput(null);
+  };
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: modeTabs,
+    activeValue: mode,
+    onSelect: selectMode,
+    focused: focused && !activeInputId,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
   const fieldColumns = width >= 92 ? 3 : 2;
   const commonColumns = width >= 78 ? 3 : 2;
   const commonRows = Math.max(1, Math.ceil(commonFields.length / commonColumns));
@@ -400,7 +414,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const contextFieldWidth = Math.max(16, Math.min(32, Math.floor((width - 2) / 2)));
   const metricsRows = 6;
   const curveDecisionRows = 1;
-  const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - commonRows - fieldsRows - metricsRows - curveDecisionRows - 8));
+  const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - commonRows - fieldsRows - metricsRows - curveDecisionRows - 7 - tabRows));
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
   const leftMetricsWidth = Math.max(18, Math.floor((width - 2) * 0.52));
   const rightMetricsWidth = Math.max(16, width - 2 - leftMetricsWidth);
@@ -493,19 +507,17 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         ) : null}
       </Box>
 
-      <Box height={1} paddingX={1}>
-        <Tabs
-          tabs={KELLY_MODES.map((entry) => ({ label: entry.label, value: entry.id }))}
-          activeValue={mode}
-          onSelect={(nextMode) => {
-            setMode(nextMode as KellySizingMode);
-            setSelectedFieldIndex(0);
-            activateInput(null);
-          }}
-          compact
-          focused={focused && !activeInputId}
-        />
-      </Box>
+      {!tabsInHeader && (
+        <Box height={1} paddingX={1}>
+          <Tabs
+            tabs={modeTabs}
+            activeValue={mode}
+            onSelect={selectMode}
+            compact
+            focused={focused && !activeInputId}
+          />
+        </Box>
+      )}
 
       <Box flexDirection="column" paddingX={1} height={commonRows}>
         {Array.from({ length: commonRows }, (_, rowIndex) => (

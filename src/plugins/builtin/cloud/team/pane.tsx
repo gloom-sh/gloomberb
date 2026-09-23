@@ -9,7 +9,7 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { Button, Tabs, loadingText, usePaneFooter, type PaneHint } from "../../../../components";
+import { Button, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
@@ -494,13 +494,45 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     }
   }, { allowEditable: true });
 
+  const teamTabs = useMemo(() => [
+    ...snapshot.teams.map((entry) => ({
+      label: `${teamPrefix(entry)} ${entry.name}`,
+      value: entry.id,
+      fg: teamAccentHex(entry.accentColor),
+    })),
+    ...(showCreate ? [{ label: "New team", value: "__create" }] : []),
+  ], [showCreate, snapshot.teams]);
+  const selectTeam = useCallback((value: string) => {
+    if (value === "__create") {
+      setCreating(true);
+    } else {
+      setCreating(false);
+      setTeamId(value);
+    }
+    setMessage(null);
+  }, []);
+  const startCreate = useCallback(() => {
+    setCreating(true);
+    setMessage(null);
+  }, []);
+  const tabsInHeader = usePaneHeaderTabs(signedIn ? {
+    tabs: teamTabs,
+    activeValue: showCreate ? "__create" : team?.id ?? null,
+    onSelect: selectTeam,
+    focused,
+    keyboardNavigation: false,
+    addLabel: showCreate ? undefined : "+",
+    onAdd: showCreate ? undefined : startCreate,
+  } : null);
+
   if (!signedIn) {
     return <SignInWall action="use teams" />;
   }
 
   const contentWidth = Math.max(24, width - 2);
   const banners = snapshot.invitations;
-  const headerRows = 2 + (banners.length > 0 ? banners.length + 1 : 0) + (message ? 1 : 0);
+  const tabRows = tabsInHeader ? 0 : 1;
+  const headerRows = 1 + tabRows + (banners.length > 0 ? banners.length + 1 : 0) + (message ? 1 : 0);
   const bodyHeight = Math.max(3, height - headerRows - 1);
 
   return (
@@ -519,34 +551,21 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
         {banners.length > 0 ? <Box height={1} /> : null}
 
         {/* Team switcher: one pill per team in its accent, plus the form. */}
-        <Box height={1} flexDirection="row" alignItems="center">
-          <Tabs
-            tabs={[
-              ...snapshot.teams.map((entry) => ({
-                label: `${teamPrefix(entry)} ${entry.name}`,
-                value: entry.id,
-                fg: teamAccentHex(entry.accentColor),
-              })),
-              ...(showCreate ? [{ label: "New team", value: "__create" }] : []),
-            ]}
-            activeValue={showCreate ? "__create" : team?.id ?? null}
-            onSelect={(value) => {
-              if (value === "__create") {
-                setCreating(true);
-              } else {
-                setCreating(false);
-                setTeamId(value);
-              }
-              setMessage(null);
-            }}
-            focused={focused}
-            variant="pill"
-            compact
-            keyboardNavigation={false}
-            addLabel={showCreate ? undefined : "+"}
-            onAdd={showCreate ? undefined : () => { setCreating(true); setMessage(null); }}
-          />
-        </Box>
+        {!tabsInHeader && (
+          <Box height={1} flexDirection="row" alignItems="center">
+            <Tabs
+              tabs={teamTabs}
+              activeValue={showCreate ? "__create" : team?.id ?? null}
+              onSelect={selectTeam}
+              focused={focused}
+              variant="pill"
+              compact
+              keyboardNavigation={false}
+              addLabel={showCreate ? undefined : "+"}
+              onAdd={showCreate ? undefined : startCreate}
+            />
+          </Box>
+        )}
 
         {showCreate ? (
           <Box height={1} />

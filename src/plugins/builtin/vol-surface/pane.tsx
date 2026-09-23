@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter,
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
   usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
@@ -38,13 +38,15 @@ const DIVIDEND_YIELD_MIN_DAYS = 30;
 
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
-  const tableHeight = Math.max(3, height - 4);
-  const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   const { symbol, ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const target = resolveOptionsTarget(ticker);
   const underlyingFinancials = useTickerFinancials(target?.isOptionTicker ? target.effectiveTicker : null, null);
   const [activeTab, setActiveTab] = usePluginPaneState("activeTabId", "surface");
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab, focused: focused && activeTab !== "surface" });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const tableHeight = Math.max(3, height - 3 - tabRows);
+  const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   const [axis] = usePaneSettingValue<Axis>("axis", "spot");
   const [tenors] = usePaneSettingValue<"listed" | "fixed">("tenors", "listed");
   const [ivSource] = usePaneSettingValue<SurfaceSettings["ivSource"]>("ivSource", "recomputed");
@@ -275,18 +277,21 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         onSelect={(entry) => setExpiration(entry.expiration)} forwards={activeTab === "forwards"} width={width} height={tableHeight}
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
   return <Box flexDirection="column" width={width} height={height} overflow="hidden">
-    <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense focused={focused && activeTab !== "surface"} />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={activeTab} onSelect={setActiveTab} variant="underline" dense focused={focused && activeTab !== "surface"} />}
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
-      <Box height={1} flexDirection="row" paddingX={1} gap={2}>
-        <SelectButton label="Expiry" value={String(expiration ?? selectedExpiry?.expiration ?? "")} options={snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? []}
-          onChange={(value) => setExpiration(Number(value))} />
-        {storedDates.length ? <SelectButton label="Date" value={shownDate ?? ""} onChange={(value) => setHistoryDate(value || null)}
-          options={[{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))]} /> : null}
-        <Text fg={colors.textDim}>{snapshot?.stored
+      <QueryBar width={width}
+        filters={[
+          { id: "expiry", label: "Expiry", value: String(expiration ?? selectedExpiry?.expiration ?? ""),
+            options: snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? [],
+            onChange: (value: string) => setExpiration(Number(value)) },
+          ...(storedDates.length ? [{ id: "date", label: "Date", value: shownDate ?? "", defaultValue: "",
+            options: [{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))],
+            onChange: (value: string) => setHistoryDate(value || null) }] : []),
+        ]}
+        meta={snapshot?.stored
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York · mid IV`
-          : `Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}${ivRank ? ` · IV30 ${(ivRank.value * 100).toFixed(1)}% IVR ${formatIvRank(ivRank)} close` : ""}`}</Text>
-      </Box>
+          : `Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}${ivRank ? ` · IV30 ${(ivRank.value * 100).toFixed(1)}% IVR ${formatIvRank(ivRank)} close` : ""}`} />
       {content}
       <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>{selectedCell?.point
         ? `Nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest} · residual ${formatIv(selectedCell.fitResidual)}`

@@ -5,7 +5,7 @@ import type {
   ScrollBoxRenderable,
   TextareaRenderable,
 } from "../../../ui";
-import type { NativeSelectElement } from "../../ui/native-select";
+import type { SelectFieldHandle } from "../../ui/select-field";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
 import type { ThemePickerHandle } from "../theme-picker";
@@ -44,7 +44,7 @@ export interface CommandBarPanelProps {
   onMultiSelectSelect: (index: number) => void;
   onMultiSelectToggle: (id: string) => void;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
-  onNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
+  onSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   onOverlayClose: () => void;
   onQueryChange: (query: string) => void;
   onThemeCommit: (themeId: string) => void;

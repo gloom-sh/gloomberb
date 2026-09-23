@@ -29,6 +29,8 @@ export function WebPopover({
   minWidth = 280,
   maxWidth = "min(420px, calc(100vw - 20px))",
   label,
+  density = "content",
+  focusOnOpen = true,
 }: HostPopoverProps) {
   const colors = useThemeColors();
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -108,7 +110,9 @@ export function WebPopover({
 
   useEffect(() => {
     if (!open) return;
-    const focusFrame = window.requestAnimationFrame(() => popoverRef.current?.focus({ preventScroll: true }));
+    const focusFrame = focusOnOpen
+      ? window.requestAnimationFrame(() => popoverRef.current?.focus({ preventScroll: true }))
+      : 0;
     const handleOutsideMouseDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -129,7 +133,7 @@ export function WebPopover({
       document.removeEventListener("mousedown", handleOutsideMouseDown, true);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [onOpenChange, open]);
+  }, [focusOnOpen, onOpenChange, open]);
 
   return (
     <>
@@ -140,6 +144,7 @@ export function WebPopover({
         <div
           ref={popoverRef}
           className="gloom-popover"
+          data-density={density}
           role="dialog"
           aria-label={label}
           tabIndex={-1}

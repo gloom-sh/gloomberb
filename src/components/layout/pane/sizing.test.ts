@@ -13,7 +13,8 @@ describe("pane sizing", () => {
       reserveFooter: false,
     });
 
-    expect(bodyFrame.height).toBe(28);
+    // The desktop header is 20px, a fractional cell taller than the terminal's.
+    expect(bodyFrame.height).toBeCloseTo(30 - 20 / 18 - 1);
     expect(bodyFrame.layoutProps).toEqual({
       flexGrow: 1,
       flexShrink: 1,

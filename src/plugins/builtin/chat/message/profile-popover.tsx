@@ -1,5 +1,5 @@
-import { Button } from "../../../../components/ui";
-import { Box, Text } from "../../../../ui";
+import { Button, Popover } from "../../../../components/ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
@@ -150,21 +150,9 @@ export function UserProfilePopover({
   const usernameWidth = Math.max(1, headerWidth - (statsWidth > 0 ? statsWidth + 1 : 0));
   const showSetupAction = shouldOfferChatProfileSetup(user, isOwnProfile) && !!onSetUpProfile;
 
-  return (
-    <Box
-      position="absolute"
-      top={1}
-      right={2}
-      width={popoverWidth}
-      flexDirection="column"
-      backgroundColor={colors.panel}
-      border
-      borderColor={colors.borderFocused}
-      paddingX={1}
-      onMouseMove={onKeepOpen}
-      onMouseOut={onClose}
-      style={{ zIndex: 4 }}
-    >
+  const { nativePaneChrome } = useUiCapabilities();
+  const content = (
+    <>
       <Box height={1} width={headerWidth} flexDirection="row">
         <Box width={usernameWidth}>
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>
@@ -188,6 +176,47 @@ export function UserProfilePopover({
       {showSetupAction ? (
         <Button label="Set up profile" width={headerWidth} variant="ghost" compact stopPropagation onPress={onSetUpProfile} />
       ) : null}
+    </>
+  );
+
+  if (nativePaneChrome) {
+    // The kit popover, anchored to the chat pane's top-right corner where the
+    // terminal card sits. It stays open while the pointer is over it.
+    return (
+      <Box position="absolute" top={1} right={2} width={1} height={0}>
+        <Popover
+          open
+          onOpenChange={(open) => { if (!open) onClose(); }}
+          trigger={<Box width={1} height={0} />}
+          placement="bottom-end"
+          minWidth={0}
+          focusOnOpen={false}
+          label="User profile"
+        >
+          <Box flexDirection="column" width={headerWidth} onMouseMove={onKeepOpen} onMouseOut={onClose}>
+            {content}
+          </Box>
+        </Popover>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      position="absolute"
+      top={1}
+      right={2}
+      width={popoverWidth}
+      flexDirection="column"
+      backgroundColor={colors.panel}
+      border
+      borderColor={colors.borderFocused}
+      paddingX={1}
+      onMouseMove={onKeepOpen}
+      onMouseOut={onClose}
+      style={{ zIndex: 4 }}
+    >
+      {content}
     </Box>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValueRow, NumberField,
-  PageStackView, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
+  PageStackView, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
@@ -172,7 +172,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     else if (event.name === "r") void resource.reload();
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   const controlsHeight = useUiCapabilities().nativePaneChrome ? 3 : 2;
-  const bodyHeight = Math.max(3, height - 8 - controlsHeight);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: focused && !volActive });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const bodyHeight = Math.max(3, height - 7 - tabRows - controlsHeight);
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / unit", width: 13, align: "right" },
@@ -207,7 +209,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         : column.id === "price" || column.id === "strike" ? money(leg[column.id])
         : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
   const root = <>
-    <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused && !volActive} />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused && !volActive} />}
     {scenario && <>
       <Box paddingX={1} flexDirection="row" gap={3} height={controlsHeight} flexShrink={0}>
         <SelectButton label="Scenario date" controlRef={dateControl} value={String(scenario.controls.date)}

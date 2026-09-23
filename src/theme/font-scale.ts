@@ -52,7 +52,18 @@ export function syncFontScale(fontSizePx: unknown): boolean {
 
   style.setProperty("--cell-w", `${WEB_CELL_WIDTH}px`);
   style.setProperty("--cell-h", `${WEB_CELL_HEIGHT}px`);
+  style.setProperty("--chrome-h", `${chromeRowPx()}px`);
   style.setProperty("font-size", `${size}px`);
   appliedToDocument = true;
   return true;
+}
+
+/**
+ * Height of a desktop chrome row: pane headers, query bars, stack detail bars
+ * and table header rows. 20px at the default font size, a little taller than a
+ * text cell so controls have room, and rounded to whole pixels at every size so
+ * rules and text land on the pixel grid. CSS mirrors it as --chrome-h.
+ */
+export function chromeRowPx(): number {
+  return Math.round(WEB_CELL_HEIGHT * 20 / 18);
 }

@@ -5,7 +5,7 @@ import { type AlertContext, type PromptContext, useDialogKeyboard } from "../ui/
 import type { WizardStep } from "../types/plugin";
 import { colors } from "../theme/colors";
 import { isPlainKey } from "../utils/keyboard";
-import { DialogFrame, ListView, TextField } from "./ui";
+import { Button, DialogFrame, ListView, TextField } from "./ui";
 import { t } from "../i18n";
 
 export function PaneTemplateInfoStep({
@@ -138,18 +138,8 @@ export function PaneTemplateTextareaStep({
         </Box>
         <Box height={1} />
         <Box flexDirection="row" gap={1}>
-          <Box
-            backgroundColor={colors.selected}
-            onMouseDown={commit}
-          >
-            <Text fg={colors.selectedText}>{` ${t("Save")} `}</Text>
-          </Box>
-          <Box
-            backgroundColor={colors.panel}
-            onMouseDown={() => resolve("")}
-          >
-            <Text fg={colors.text}>{` ${t("Cancel")} `}</Text>
-          </Box>
+          <Button label="Save" variant="primary" onPress={commit} />
+          <Button label="Cancel" variant="secondary" onPress={() => resolve("")} />
         </Box>
       </Box>
     </DialogFrame>

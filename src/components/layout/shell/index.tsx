@@ -138,7 +138,15 @@ export function Shell({
   const transientFocusLayoutStateRef = useRef<TransientFocusLayoutState | null>(null);
   transientFocusLayoutStateRef.current = transientFocusLayoutState;
   const [hoveredMenuItemId, setHoveredMenuItemId] = useState<string | null>(null);
+  const menuStateRef = useRef(menuState);
+  menuStateRef.current = menuState;
+  // The desktop menu closes on the press outside it, which re-renders before
+  // the menu button's own handler runs; remembering the close lets that same
+  // press on the button act as a toggle instead of reopening the menu.
+  const lastMenuCloseRef = useRef<{ paneId: string; at: number } | null>(null);
   const closePaneMenu = useCallback(() => {
+    const open = menuStateRef.current;
+    if (open) lastMenuCloseRef.current = { paneId: open.paneId, at: Date.now() };
     setMenuState(null);
     setHoveredMenuItemId(null);
   }, []);
@@ -516,9 +524,16 @@ export function Shell({
     toggleFocusedPaneFloating,
   });
 
-  const openPaneMenu = useCallback((paneId: string, rect: LayoutBounds, event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+  const openPaneMenu = useCallback((paneId: string, rect: LayoutBounds, event?: { preventDefault?: () => void; stopPropagation?: () => void; target?: unknown; pixelX?: number; pixelY?: number }) => {
     const pane = paneMap.get(paneId);
     if (!pane) return;
+    // A second press on the same pane's menu button closes it.
+    if (menuStateRef.current?.paneId === paneId) {
+      closePaneMenu();
+      return;
+    }
+    const lastClose = lastMenuCloseRef.current;
+    if (lastClose?.paneId === paneId && Date.now() - lastClose.at < 250) return;
     focusPane(paneId);
     const context = {
       kind: "pane" as const,
@@ -578,9 +593,10 @@ export function Shell({
         y: menuY,
         width: menuWidth,
         items: fallbackItems,
+        anchor: nativePaneChrome ? paneMenuAnchor(event) : undefined,
       });
     });
-  }, [canExportPaneCsv, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneAccelerators, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneAccelerators, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
 
   const {
     handleFloatingCloseMouseDown,
@@ -738,4 +754,21 @@ export function Shell({
       />
     </Box>
   );
+}
+
+/**
+ * Desktop menu anchor: the bottom-right of the pane's `...` button when that is
+ * what was pressed, otherwise the pointer (a right-click on the title bar).
+ */
+function paneMenuAnchor(event?: { target?: unknown; pixelX?: number; pixelY?: number }): ActionMenuState["anchor"] {
+  const target = event?.target as { closest?: (selector: string) => { getBoundingClientRect(): { right: number; bottom: number } } | null } | undefined;
+  const button = target?.closest?.("[data-gloom-role=pane-action]");
+  if (button) {
+    const rect = button.getBoundingClientRect();
+    return { x: rect.right, y: rect.bottom, placement: "bottom-end" };
+  }
+  if (typeof event?.pixelX === "number" && typeof event.pixelY === "number") {
+    return { x: event.pixelX, y: event.pixelY, placement: "bottom-start" };
+  }
+  return undefined;
 }

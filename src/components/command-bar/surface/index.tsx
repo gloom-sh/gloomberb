@@ -144,12 +144,12 @@ export function CommandBar({
     readTickerSearchCache,
     runDirectCommand,
     runSecurityDescriptionShortcut,
-    setWorkflowNativeSelectRef,
+    setWorkflowSelectFieldRef,
     submitWorkflowRoute,
     syncActiveWorkflowTextarea,
     tickerActionItems,
     updateWorkflowValue,
-    workflowNativeSelectRefs,
+    workflowSelectFieldRefs,
     workflowScrollRef,
     writeTickerSearchCache,
   } = useCommandBarActionRuntime({
@@ -485,7 +485,7 @@ export function CommandBar({
     setRootHoveredIdx,
     setRootSelectedIdx,
     setRouteStack,
-    setWorkflowNativeSelectRef,
+    setWorkflowSelectFieldRef,
     stateRef,
     submitWorkflowRoute,
     syncActiveWorkflowTextarea,
@@ -498,7 +498,7 @@ export function CommandBar({
     updateTopRoute,
     updateWorkflowValue,
     visibleListStateRef,
-    workflowNativeSelectRefs,
+    workflowSelectFieldRefs,
     workflowScrollRef,
   });
 

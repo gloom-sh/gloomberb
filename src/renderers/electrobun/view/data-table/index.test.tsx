@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
+import { tableHeaderPx } from "./dom";
 import { act, useRef, useState } from "react";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
 import { AppContext, createInitialState } from "../../../../state/app/context";
@@ -74,7 +75,8 @@ test("controlled centering keeps following late quotes until the user scrolls", 
 
   const container = await render(<Harness />);
   const body = container.querySelector('[data-gloom-role="data-table-body-scroll"]') as HTMLElement;
-  Object.defineProperty(body, "clientHeight", { configurable: true, value: WEB_CELL_HEIGHT * 11 });
+  // A header row plus ten body rows.
+  Object.defineProperty(body, "clientHeight", { configurable: true, value: tableHeaderPx() + WEB_CELL_HEIGHT * 10 });
   const settle = () => new Promise((resolve) => setTimeout(resolve, 25));
   const emitScroll = () => body.dispatchEvent(new testWindow.Event("scroll") as unknown as Event);
 

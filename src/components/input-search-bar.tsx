@@ -15,6 +15,7 @@ export function InputSearchBar({
   placeholder,
   debounceMs,
   glyph = "/",
+  appearance = "strip",
   normalizeValue = identity,
   onNavigateDown,
   onFocus,
@@ -24,13 +25,15 @@ export function InputSearchBar({
   value: string;
   focused: boolean;
   active: boolean;
-  width: number;
+  width: number | "100%";
   focusToken: number;
   inputRef: RefObject<InputRenderable | null>;
   placeholder: string;
   debounceMs: number;
   /** Leading marker; override when a pane shows more than one field. */
   glyph?: string;
+  /** `plain` drops the strip background and glyph for a host that draws its own field (QueryBar). */
+  appearance?: "strip" | "plain";
   normalizeValue?: (value: string) => string;
   onNavigateDown?: () => void;
   onFocus: () => void;
@@ -90,7 +93,7 @@ export function InputSearchBar({
       height={1}
       width={width}
       flexDirection="row"
-      backgroundColor={colors.panel}
+      backgroundColor={appearance === "plain" ? undefined : colors.panel}
       onMouseDown={(event: any) => {
         event.preventDefault?.();
         event.stopPropagation?.();
@@ -98,8 +101,8 @@ export function InputSearchBar({
         inputRef.current?.focus?.();
       }}
     >
-      <Text fg={active ? colors.textBright : colors.textDim}>{glyph}</Text>
-      <Box width={1} />
+      {appearance === "strip" && <Text fg={active ? colors.textBright : colors.textDim}>{glyph}</Text>}
+      {appearance === "strip" && <Box width={1} />}
       <Input
         ref={inputRef}
         value={draft}
@@ -108,8 +111,8 @@ export function InputSearchBar({
         placeholderColor={colors.textDim}
         textColor={colors.text}
         focusedTextColor={colors.text}
-        backgroundColor={colors.panel}
-        focusedBackgroundColor={colors.panel}
+        backgroundColor={appearance === "plain" ? "transparent" : colors.panel}
+        focusedBackgroundColor={appearance === "plain" ? "transparent" : colors.panel}
         cursorColor={colors.textBright}
         flexGrow={1}
         onFocus={onFocus}

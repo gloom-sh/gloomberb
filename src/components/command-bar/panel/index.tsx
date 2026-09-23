@@ -57,7 +57,7 @@ export function CommandBarPanel({
   onMultiSelectSelect,
   onMultiSelectToggle,
   onNativeOccluderChange,
-  onNativeSelectRef,
+  onSelectFieldRef,
   onOverlayClose,
   onQueryChange,
   onThemeCommit,
@@ -186,17 +186,15 @@ export function CommandBarPanel({
               <Box height={1} paddingX={contentPadding} flexDirection="row">
                 {currentRoute ? (
                   <>
-                    <Text
-                      fg={palette.subtle}
-                      onMouseDown={(event: any) => {
-                        event.stopPropagation?.();
-                        event.preventDefault?.();
-                        onBack();
-                      }}
-                      data-gloom-interactive="true"
-                    >
-                      {`\u2190 ${t("Back")}`}
-                    </Text>
+                    <Button
+                      label={t("Back")}
+                      displayLabel={nativePaneChrome ? `‹ ${t("Back")}` : `\u2190 ${t("Back")}`}
+                      variant="plain"
+                      compact
+                      flush
+                      stopPropagation
+                      onPress={onBack}
+                    />
                     <Box width={2} />
                     <Text fg={palette.text} attributes={TextAttributes.BOLD}>
                       {truncateText(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
@@ -258,7 +256,7 @@ export function CommandBarPanel({
               onFieldPickerOpen={onFieldPickerOpen}
               onFieldValueChange={onFieldValueChange}
               onMoveFieldFocus={onMoveFieldFocus}
-              onNativeSelectRef={onNativeSelectRef}
+              onSelectFieldRef={onSelectFieldRef}
               onSubmit={onWorkflowSubmit}
             />
           )}

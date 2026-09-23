@@ -5,10 +5,11 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-  type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { HostTabsProps } from "../../../../ui/host";
 import { WEB_CELL_HEIGHT } from "../input-host";
+import { useHorizontalOverflow } from "./overflow-fade";
+import { useTopSurfaceColor } from "./top-surface";
 
 type CssVars = CSSProperties & Record<`--${string}`, string>;
 
@@ -35,13 +36,17 @@ export function WebTabs({
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
   const [dragSourceValue, setDragSourceValue] = useState<string | null>(null);
   const [dragTargetValue, setDragTargetValue] = useState<string | null>(null);
+  const header = variant === "header";
   const showUnderline = variant === "underline" && !compact;
   // A tab bar occupies exactly the one row every caller reserves for it. Any
   // extra pixels here are pixels the pane's children are told they own and the
   // pane then clips, which is how a chart's time axis ends up behind a footer.
-  const listHeight = showUnderline || compact ? WEB_CELL_HEIGHT : "100%";
+  // Title-bar tabs fill the header to its bottom edge. The header draws its
+  // bottom rule inside its own box, so the active tab covers it exactly at any
+  // zoom and opens into the pane body; inactive tabs sit on the rule.
+  const listHeight = header ? "100%" : showUnderline || compact ? WEB_CELL_HEIGHT : "100%";
   const tabFontSize = compact || showUnderline ? 12 : 13;
-  const tabPaddingInline = dense ? 5 : showUnderline ? 10 : 8;
+  const tabPaddingInline = header ? 10 : dense ? 5 : showUnderline ? 10 : 8;
   const tabPaddingBlock = variant === "bare" || variant === "pill" ? 2 : 0;
 
   useEffect(() => {
@@ -52,6 +57,12 @@ export function WebTabs({
   }, [activeValue, tabs]);
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  // A strip wider than its pane scrolls sideways; fade the edge hiding tabs.
+  const overflow = useHorizontalOverflow(tabListRef, [tabs]);
+  // The active title-bar tab opens into the pane, so it takes the colour of
+  // whatever is directly under it.
+  useTopSurfaceColor(tabListRef, header, [activeValue, tabs, focused]);
 
   const startReorder = (sourceValue: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -105,16 +116,8 @@ export function WebTabs({
     dragCleanupRef.current = cleanup;
   };
 
-  const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    const element = event.currentTarget;
-    if (element.scrollWidth <= element.clientWidth) return;
-    if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
-
-    element.scrollLeft += event.deltaY;
-    event.preventDefault();
-  };
-
   const resolveTabBackground = (active: boolean, hovered: boolean) => {
+    if (header) return active ? "var(--pane-tab-active-bg)" : hovered ? "var(--pane-tab-hover-bg)" : "transparent";
     if (active && variant === "pill") {
       return hovered
         ? `color-mix(in srgb, ${palette.activeBg} 76%, ${palette.hoverBg})`
@@ -125,6 +128,7 @@ export function WebTabs({
 
   const resolveTabColor = (disabled: boolean, active: boolean, hovered: boolean) => {
     if (disabled) return palette.disabledFg;
+    if (header && active) return "var(--pane-tab-active-fg)";
     if (active && variant === "pill") return palette.activePillFg;
     if (active) return palette.activeFg;
     if (hovered) return palette.hoverFg;
@@ -140,21 +144,22 @@ export function WebTabs({
       ref={tabListRef}
       data-gloom-role="tab-list"
       role="tablist"
-      onWheel={handleWheel}
+      onWheel={overflow.onWheel}
       style={{
         display: "flex",
         flexDirection: "row",
-        alignItems: "stretch",
-        gap: dense ? 2 : 4,
+        alignItems: header ? "flex-end" : "stretch",
+        gap: header ? 2 : dense ? 2 : 4,
         width: "100%",
         height: listHeight,
         minInlineSize: 0,
         flexShrink: 0,
         overflowX: "auto",
         overflowY: "hidden",
-        paddingInline: variant === "underline" || dense ? 0 : 4,
+        paddingInline: header || variant === "underline" || dense ? 0 : 4,
         paddingBlock: tabPaddingBlock,
         boxSizing: "border-box",
+        ...overflow.maskStyle,
       }}
     >
       {tabs.map((tab, index) => {
@@ -188,22 +193,28 @@ export function WebTabs({
           gap: 6,
           position: "relative",
           minWidth: 0,
-          height: "100%",
+          height: header ? "calc(100% - var(--pane-tab-top-gap, 2px))" : "100%",
           paddingInline: tabPaddingInline,
           paddingBlock: 0,
-          paddingBottom: showUnderline ? 2 : 0,
+          // Header tabs reach the header's bottom edge; lifting the label by the
+          // top gap keeps it on the centre line the title and buttons use.
+          paddingBottom: header ? "var(--pane-tab-label-lift, 3px)" : showUnderline ? 2 : 0,
           margin: 0,
           border: "1px solid transparent",
-          borderRadius: variant === "underline" ? 5 : 6,
+          borderBottomWidth: header ? 0 : 1,
+          borderRadius: header ? "6px 6px 0 0" : variant === "underline" ? 5 : 6,
           background: resolveTabBackground(active, hovered || dragTarget),
           boxSizing: "border-box",
           font: "inherit",
           fontSize: tabFontSize,
           fontWeight: active ? 700 : 500,
-          lineHeight: 1,
+          // A unitless 1 clips descenders under the label's overflow guard.
+          lineHeight: header ? "16px" : 1,
           textAlign: "center",
           whiteSpace: "nowrap",
-          borderColor: active && focused && variant !== "pill"
+          borderColor: header
+            ? active ? "var(--pane-tab-border)" : "transparent"
+            : active && focused && variant !== "pill"
             ? `color-mix(in srgb, ${palette.activeUnderline} 35%, transparent)`
             : "transparent",
           transform: `translateX(${dragTranslateX}px)${sourceDragging ? " scale(1.03)" : ""}`,

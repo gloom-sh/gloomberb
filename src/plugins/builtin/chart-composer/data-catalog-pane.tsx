@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, type InputRenderable } from "../../../ui";
 import {
   DataTableView,
-  InputSearchBar,
+  QueryBar,
   Tabs,
+  usePaneHeaderTabs,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -276,6 +277,13 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     () => CATALOG_FILTERS.map((entry) => ({ label: entry.label, value: entry.id })),
     [],
   );
+  const selectFilter = useCallback((value: string) => setFilter(value as CatalogFilterId), [setFilter]);
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs,
+    activeValue: filter,
+    onSelect: selectFilter,
+    focused: focused && !searchFocused,
+  });
 
   return (
     <DataTableView<CatalogSeriesRow, CatalogColumn>
@@ -284,27 +292,30 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       rootHeight={height}
       rootBefore={(
         <Box flexDirection="column">
-          <InputSearchBar
-            value={searchQuery}
-            focused={focused}
-            active={searchFocused}
+          <QueryBar
             width={width}
-            focusToken={searchFocusToken}
-            inputRef={searchInputRef}
-            placeholder="series, source, or expression"
-            debounceMs={80}
-            onFocus={focusSearch}
-            onBlur={blurSearch}
-            onNavigateDown={blurSearch}
-            onQueryChange={setSearchQuery}
+            search={{
+              value: searchQuery,
+              onChange: setSearchQuery,
+              placeholder: "series, source, or expression",
+              focused,
+              active: searchFocused,
+              onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
+              focusToken: searchFocusToken,
+              inputRef: searchInputRef,
+              debounceMs: 80,
+              onNavigateDown: blurSearch,
+            }}
           />
-          <Tabs
-            tabs={tabs}
-            activeValue={filter}
-            onSelect={(value) => setFilter(value as CatalogFilterId)}
-            focused={focused && !searchFocused}
-            compact
-          />
+          {!tabsInHeader && (
+            <Tabs
+              tabs={tabs}
+              activeValue={filter}
+              onSelect={selectFilter}
+              focused={focused && !searchFocused}
+              compact
+            />
+          )}
         </Box>
       )}
       selection={{

@@ -3,6 +3,7 @@ import { Box, type InputRenderable } from "../../../ui";
 import {
   EmptyState,
   Tabs,
+  usePaneHeaderTabs,
 } from "../../../components";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneInstance, usePaneInstanceId, usePaneTicker } from "../../../state/app/context";
@@ -268,6 +269,22 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     activeFeed,
   });
 
+  const feedTabs = useMemo(() => feeds.map((feed) => ({
+    label: truncateWithEllipsis(feed.title, 18),
+    value: feed.id,
+    onClose: removeFeed,
+    onDoubleClick: focusSearch,
+  })), [feeds, focusSearch, removeFeed]);
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: feedTabs,
+    activeValue: activeFeed?.id ?? null,
+    onSelect: setActiveFeedId,
+    focused: focused && !searchFocused,
+    onAdd: () => addFeed(),
+    closeMode: "active",
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
+
   const searchBar = activeFeed ? (
     <TwitterFeedSearchBar
       feed={activeFeed}
@@ -285,25 +302,20 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1}>
-        <Tabs
-          tabs={feeds.map((feed) => ({
-            label: truncateWithEllipsis(feed.title, 18),
-            value: feed.id,
-            onClose: removeFeed,
-            onDoubleClick: focusSearch,
-          }))}
-          activeValue={activeFeed?.id ?? null}
-          onSelect={(id) => {
-            setActiveFeedId(id);
-          }}
-          compact
-          variant="pill"
-          closeMode="active"
-          onAdd={() => addFeed()}
-          focused={focused && !searchFocused}
-        />
-      </Box>
+      {!tabsInHeader && (
+        <Box height={1}>
+          <Tabs
+            tabs={feedTabs}
+            activeValue={activeFeed?.id ?? null}
+            onSelect={setActiveFeedId}
+            compact
+            variant="pill"
+            closeMode="active"
+            onAdd={() => addFeed()}
+            focused={focused && !searchFocused}
+          />
+        </Box>
+      )}
 
       {!activeFeed ? (
         <Box padding={1} flexGrow={1}>
@@ -313,7 +325,7 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
         <TweetSearchTable
           focused={focused && !searchFocused}
           width={width}
-          height={Math.max(1, height - 1)}
+          height={Math.max(1, height - tabRows)}
           requestKey={`feed:${activeFeed.id}:${activeFeed.query}:${activeFeed.queryType}`}
           footerId="twitter-feed-search"
           rootBefore={searchBar}

@@ -14,6 +14,9 @@ import {
   WebTextField,
 } from "./desktop/controls";
 import { WebPopover } from "./desktop/popover";
+import { WebQueryBar } from "./desktop/query-bar";
+import { WebMenu } from "./desktop/menu";
+import { WebSelectField } from "./desktop/select-field";
 import { WebBox } from "./host/box";
 import { WebChartSurface } from "./host/chart-surface";
 import { WebInput, WebTextarea } from "./host/input";
@@ -88,6 +91,9 @@ export function createDomUiHost(
     Button: WebButton,
     Checkbox: WebCheckbox,
     Popover: WebPopover,
+    QueryBar: WebQueryBar,
+    Menu: WebMenu,
+    SelectField: WebSelectField,
     TextField: WebTextField,
     MessageComposer: WebMessageComposer,
     ListView: WebListView,

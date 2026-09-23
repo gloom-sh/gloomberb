@@ -16,6 +16,8 @@ export type { CheckboxProps } from "./checkbox";
 export { ShortcutHint } from "./shortcut-hint";
 export { Popover } from "./popover";
 export type { PopoverProps } from "./popover";
+export { Menu, MenuPopover } from "./menu";
+export type { MenuItem, MenuProps, MenuPopoverProps } from "./menu";
 
 export { MultiSelectDialogButton, MultiSelectDialogContent } from "./multi-select/dialog";
 export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint } from "./multi-select/dialog";
@@ -24,6 +26,8 @@ export { SelectButton } from "./select-button";
 export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./select-button";
 
 export { TextField, NumberField } from "./fields";
+export { QueryBar } from "./query-bar";
+export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
 export type { TextFieldProps, NumberFieldProps } from "./fields";
 
 export { getMessageComposerBlockHeight, MessageComposer } from "./message-composer";

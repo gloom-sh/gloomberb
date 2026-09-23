@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, SegmentedControl, type DataTableCell,
+  PaneStatusBody, QueryBar, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableSelectionChangeReason,
@@ -251,24 +251,11 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     ? Math.max(3, height - 2)
     : Math.min(visible.length + 2, Math.max(3, height - 12));
   // The stacked table consumes rows outside the detail scroll viewport.
-  const bodyHeight = Math.max(1, height);
-  const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight - 1);
+  const bodyHeight = Math.max(1, height - 1);
+  const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight);
 
   const list = (
     <Box flexDirection="column" width={listWidth} flexShrink={0}>
-      <InputSearchBar
-        value={query}
-        focused={focused}
-        active={searchFocused}
-        width={listWidth}
-        focusToken={searchFocusToken}
-        inputRef={searchInputRef}
-        placeholder="filter indicators"
-        debounceMs={80}
-        onFocus={focusSearch}
-        onBlur={blurSearch}
-        onQueryChange={setQuery}
-      />
       <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">
         <DataTableView<IndicatorRow, Column>
           focused={focused && !searchFocused}
@@ -296,14 +283,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   const detail = (
     <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
-      <Box flexDirection="row" height={1} paddingX={1} overflow="hidden" justifyContent="flex-end">
-        <SegmentedControl
-          options={RANGE_OPTIONS}
-          value={range}
-          onChange={(value) => setRange(value as ValuationRangeId)}
-        />
-      </Box>
-      <ScrollBox height={Math.max(1, detailHeight - 1)} scrollY focusable={false}>
+      <ScrollBox height={detailHeight} scrollY focusable={false}>
         <Box flexDirection="column" paddingBottom={1}>
           {selectedView ? <IndicatorDetail
             view={selectedView}
@@ -322,6 +302,21 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      <QueryBar
+        width={width}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "filter indicators",
+          focused,
+          active: searchFocused,
+          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+          focusToken: searchFocusToken,
+          inputRef: searchInputRef,
+          debounceMs: 80,
+        }}
+        view={{ value: range, options: RANGE_OPTIONS, onChange: (value: string) => setRange(value as ValuationRangeId) }}
+      />
       <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
         {list}
         {detail}

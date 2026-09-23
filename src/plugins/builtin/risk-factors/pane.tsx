@@ -6,6 +6,7 @@ import {
   EmptyState, PaneStatusBody, Prose, SectionHeading, Spinner,
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -154,6 +155,17 @@ export function RiskFactorsPane({
 
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
+  const yearTabs = useMemo(() => years.map((entry) => ({
+    label: `${entry.reportYear} 10-K`,
+    value: String(entry.reportYear),
+  })), [years]);
+  const selectYear = (value: string) => { setSelectedTicker(ticker); setSelectedYear(Number(value)); };
+  const tabsInHeader = usePaneHeaderTabs(years.length > 1 ? {
+    tabs: yearTabs,
+    activeValue: year === null ? "" : String(year),
+    onSelect: selectYear,
+    focused,
+  } : null);
 
   if (!ticker) return <EmptyState title="Pick a ticker to see its risk factors." />;
   if (!list.data && list.loading) return <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />;
@@ -182,15 +194,12 @@ export function RiskFactorsPane({
       minHeight={0}
       overflow="hidden"
     >
-      {years.length > 1 && (
+      {years.length > 1 && !tabsInHeader && (
         <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
           <Tabs
-            tabs={years.map((entry) => ({
-              label: `${entry.reportYear} 10-K`,
-              value: String(entry.reportYear),
-            }))}
+            tabs={yearTabs}
             activeValue={year === null ? "" : String(year)}
-            onSelect={(value) => { setSelectedTicker(ticker); setSelectedYear(Number(value)); }}
+            onSelect={selectYear}
             compact
             variant="bare"
             focused={focused}

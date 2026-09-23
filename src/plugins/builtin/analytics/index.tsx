@@ -5,7 +5,7 @@ import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
-import { EmptyState, SectionHeading, Tabs, usePaneNoticeFooter } from "../../../components";
+import { EmptyState, SectionHeading, Tabs, usePaneHeaderTabs, usePaneNoticeFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
@@ -100,6 +100,13 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     setCurrentPortfolioId(portfolioId);
     setSelectedSectorId(null);
   }, [setCurrentPortfolioId]);
+  const tabsInHeader = usePaneHeaderTabs(portfolioTabs.length > 0 ? {
+    tabs: portfolioTabs,
+    activeValue: activePortfolioId,
+    onSelect: handlePortfolioSelect,
+    focused,
+  } : null);
+  const tabRows = tabsInHeader ? 0 : 1;
 
   const portfolioTickers = useMemo(() => {
     if (!activePortfolioId) return [];
@@ -269,7 +276,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     enabled: hasPositions || hasAccountContent,
     title: "Portfolio data",
   });
-  const availableHistoryChartHeight = height - metricsHeight - 7;
+  const availableHistoryChartHeight = height - metricsHeight - 6 - tabRows;
   const historyChartHeight = performanceChartPoints.filter((point) => Number.isFinite(point.close)).length >= 2 && availableHistoryChartHeight >= 5
     ? Math.min(8, availableHistoryChartHeight)
     : 0;
@@ -303,17 +310,19 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
         </Box>
       ) : (
         <>
-          <Box flexDirection="row" height={1}>
-            <Box flexShrink={1} overflow="hidden">
-              <Tabs
-                tabs={portfolioTabs}
-                activeValue={activePortfolioId}
-                onSelect={handlePortfolioSelect}
-                compact
-                focused={focused}
-              />
+          {!tabsInHeader && (
+            <Box flexDirection="row" height={1}>
+              <Box flexShrink={1} overflow="hidden">
+                <Tabs
+                  tabs={portfolioTabs}
+                  activeValue={activePortfolioId}
+                  onSelect={handlePortfolioSelect}
+                  compact
+                  focused={focused}
+                />
+              </Box>
             </Box>
-          </Box>
+          )}
 
           {!hasPositions && !hasAccountContent ? (
             <Box paddingX={1} paddingY={1}>

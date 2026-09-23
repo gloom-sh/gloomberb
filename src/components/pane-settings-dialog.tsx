@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PaneSettingField } from "../types/plugin";
 import type { PluginRegistry } from "../plugins/registry";
 import { isPlainKey } from "../utils/keyboard";
-import { openNativeSelect, type NativeSelectElement } from "./ui/native-select";
+import { openSelectField, type SelectFieldHandle } from "./ui/select-field";
 import {
   DesktopPaneSettingsDialogBody,
   DesktopUnavailablePaneSettingsDialog,
@@ -38,7 +38,7 @@ export function PaneSettingsDialogContent({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [hoveredFieldKey, setHoveredFieldKey] = useState<string | null>(null);
   const [, setSettingsRevision] = useState(0);
-  const desktopSelectRefs = useRef(new Map<string, NativeSelectElement>());
+  const desktopSelectRefs = useRef(new Map<string, SelectFieldHandle>());
 
   const fields = descriptor?.settingsDef.fields ?? [];
 
@@ -53,7 +53,7 @@ export function PaneSettingsDialogContent({
     setSettingsRevision((revision) => revision + 1);
   };
 
-  const setDesktopSelectRef = (fieldKey: string, element: NativeSelectElement | null) => {
+  const setDesktopSelectRef = (fieldKey: string, element: SelectFieldHandle | null) => {
     if (element) desktopSelectRefs.current.set(fieldKey, element);
     else desktopSelectRefs.current.delete(fieldKey);
   };
@@ -90,7 +90,7 @@ export function PaneSettingsDialogContent({
 
     if (field.type === "select") {
       if (isDesktop) {
-        openNativeSelect(desktopSelectRefs.current.get(field.key));
+        openSelectField(desktopSelectRefs.current.get(field.key));
         return;
       }
       await dialog.alert({

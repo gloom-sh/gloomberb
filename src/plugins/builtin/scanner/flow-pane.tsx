@@ -3,10 +3,9 @@ import type { ScannerFlowEvent } from "../../../api-client";
 import {
   DataTableView,
   PaneStatusBody,
-  SelectButton,
+  QueryBar,
   type DataTableCell,
   type DataTableColumn,
-  type SelectButtonOption,
 } from "../../../components";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -36,36 +35,6 @@ import {
   type FlowUniverse,
   type FlowVolOi,
 } from "./flow-model";
-
-/** Every filter is reachable from the pane body, not just the settings dialog. */
-function FlowFilter<T extends string>({
-  id,
-  label,
-  value,
-  options,
-  defaultValue,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: T;
-  options: readonly SelectButtonOption<T>[];
-  defaultValue: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <Box marginRight={2}>
-      <SelectButton
-        label={label}
-        value={value}
-        options={options}
-        emphasized={value !== defaultValue}
-        onChange={onChange}
-        idPrefix={`flow-filter-${id}`}
-      />
-    </Box>
-  );
-}
 
 function buildColumns(width: number): DataTableColumn[] {
   // EXP is right aligned and SIDE is left aligned, so EXP needs an extra cell or
@@ -181,58 +150,23 @@ function FlowPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {/* paddingLeft matches the table's own left inset, so the filter row and
-          the TIME column start on the same cell. */}
-      <Box height={1} flexDirection="row" overflow="hidden" paddingLeft={1}>
-        <FlowFilter
-          id="premium"
-          label="Prem"
-          value={minPremium}
-          options={FLOW_FILTER_OPTIONS.minPremium}
-          defaultValue={DEFAULT_FLOW_FILTERS.minPremium}
-          onChange={setMinPremium}
-        />
-        <FlowFilter
-          id="side"
-          label="Side"
-          value={side}
-          options={FLOW_FILTER_OPTIONS.side}
-          defaultValue={DEFAULT_FLOW_FILTERS.side}
-          onChange={setSide}
-        />
-        <FlowFilter
-          id="kind"
-          label="Kind"
-          value={kind}
-          options={FLOW_FILTER_OPTIONS.kind}
-          defaultValue={DEFAULT_FLOW_FILTERS.kind}
-          onChange={setKind}
-        />
-        <FlowFilter
-          id="voloi"
-          label="V/OI"
-          value={volOi}
-          options={FLOW_FILTER_OPTIONS.volOi}
-          defaultValue={DEFAULT_FLOW_FILTERS.volOi}
-          onChange={setVolOi}
-        />
-        <FlowFilter
-          id="expiry"
-          label="Exp"
-          value={expiry}
-          options={FLOW_FILTER_OPTIONS.expiry}
-          defaultValue={DEFAULT_FLOW_FILTERS.expiry}
-          onChange={setExpiry}
-        />
-        <FlowFilter
-          id="universe"
-          label="Univ"
-          value={universe}
-          options={FLOW_FILTER_OPTIONS.universe}
-          defaultValue={DEFAULT_FLOW_FILTERS.universe}
-          onChange={setUniverse}
-        />
-      </Box>
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "premium", label: "Prem", value: minPremium, defaultValue: DEFAULT_FLOW_FILTERS.minPremium,
+            options: FLOW_FILTER_OPTIONS.minPremium, onChange: setMinPremium },
+          { id: "side", label: "Side", value: side, defaultValue: DEFAULT_FLOW_FILTERS.side,
+            options: FLOW_FILTER_OPTIONS.side, onChange: setSide },
+          { id: "kind", label: "Kind", value: kind, defaultValue: DEFAULT_FLOW_FILTERS.kind,
+            options: FLOW_FILTER_OPTIONS.kind, onChange: setKind },
+          { id: "voloi", label: "V/OI", value: volOi, defaultValue: DEFAULT_FLOW_FILTERS.volOi,
+            options: FLOW_FILTER_OPTIONS.volOi, onChange: setVolOi },
+          { id: "expiry", label: "Exp", value: expiry, defaultValue: DEFAULT_FLOW_FILTERS.expiry,
+            options: FLOW_FILTER_OPTIONS.expiry, onChange: setExpiry },
+          { id: "universe", label: "Univ", value: universe, defaultValue: DEFAULT_FLOW_FILTERS.universe,
+            options: FLOW_FILTER_OPTIONS.universe, onChange: setUniverse },
+        ]}
+      />
       <DataTableView<ScannerFlowEvent>
         focused={focused}
         selection={{

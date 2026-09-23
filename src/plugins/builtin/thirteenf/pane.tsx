@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Checkbox,
   DataTableStackView,
   DataTableView,
-  EmptyState, InputSearchBar, KeyValueRow, PaneStatusBody, Tabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
+  EmptyState, KeyValueRow, PaneStatusBody, QueryBar, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
   type DataTableRootKeyContext, type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -83,9 +82,10 @@ interface FundSeed {
   name: string;
 }
 
+const trimSearchValue = (value: string) => value.trim();
 const SEARCH_DEBOUNCE_MS = 250;
 const LOAD_MORE_THRESHOLD = 10;
-const trimSearchValue = (value: string) => value.trim();
+const THIRTEENF_TABS = [{ label: "Funds", value: "funds" }, { label: "Crowding", value: "crowding" }];
 
 function appendUniqueRows(currentRows: FundBrowserRow[], nextRows: FundBrowserRow[]): FundBrowserRow[] {
   if (nextRows.length === 0) return currentRows;
@@ -290,23 +290,22 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   });
 
   const rootBefore = (
-    <Box flexDirection="column">
-      <InputSearchBar
-        value={query}
-        focused={focused && !detailSeed}
-        active={searchFocused}
-        width={width}
-        focusToken={searchFocusToken}
-        inputRef={searchInputRef}
-        placeholder="fund, ticker, CIK, or latest"
-        debounceMs={SEARCH_DEBOUNCE_MS}
-        normalizeValue={trimSearchValue}
-        onFocus={focusSearch}
-        onBlur={blurSearch}
-        onNavigateDown={blurSearch}
-        onQueryChange={updateQuery}
-      />
-    </Box>
+    <QueryBar
+      width={width}
+      search={{
+        value: query,
+        onChange: updateQuery,
+        placeholder: "fund, ticker, CIK, or latest",
+        focused: focused && !detailSeed,
+        active: searchFocused,
+        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+        focusToken: searchFocusToken,
+        inputRef: searchInputRef,
+        debounceMs: SEARCH_DEBOUNCE_MS,
+        onNavigateDown: blurSearch,
+        normalizeValue: trimSearchValue,
+      }}
+    />
   );
 
   const emptyTitle = status === "loading" || status === "idle"
@@ -653,13 +652,15 @@ export function FundDetailView({
           }}
           rootWidth={width}
           rootBefore={(
-            <Box flexDirection="column" paddingX={1}>
-              <Checkbox label="Mine" checked={mineOnly} onChange={setMineOnly} />
-              <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
-              <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
-              {data?.latestReport && data.latestReport.filings.length > 1 ? (
-                <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
-              ) : null}
+            <Box flexDirection="column">
+              <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]} />
+              <Box flexDirection="column" paddingX={1}>
+                <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
+                <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
+                {data?.latestReport && data.latestReport.filings.length > 1 ? (
+                  <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
+                ) : null}
+              </Box>
             </Box>
           )}
           columns={[{ id: "mine", label: "MINE", width: 5, align: "left" }, ...buildHoldingColumns(width - 6)]}
@@ -872,10 +873,12 @@ function FilingDetailView({
 export function ThirteenFPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("browserTab", "funds");
   const [detailOpen, setDetailOpen] = useState(false);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: THIRTEENF_TABS, activeValue: tab, onSelect: setTab, focused: props.focused && !detailOpen });
+  const tabRows = tabsInHeader ? 0 : 1;
   return <Box flexDirection="column" width={props.width} height={props.height}>
-    <Tabs tabs={[{ label: "Funds", value: "funds" }, { label: "Crowding", value: "crowding" }]} activeValue={tab} onSelect={setTab} focused={props.focused && !detailOpen} compact />
+    {!tabsInHeader && <Tabs tabs={THIRTEENF_TABS} activeValue={tab} onSelect={setTab} focused={props.focused && !detailOpen} compact />}
     <PaneFooterScope active>
-      {tab === "crowding" ? <ThirteenFCrowdingPane {...props} height={Math.max(1, props.height - 1)} /> : <ThirteenFBrowserPane {...props} onDetailChange={setDetailOpen} height={Math.max(1, props.height - 1)} />}
+      {tab === "crowding" ? <ThirteenFCrowdingPane {...props} height={Math.max(1, props.height - tabRows)} /> : <ThirteenFBrowserPane {...props} onDetailChange={setDetailOpen} height={Math.max(1, props.height - tabRows)} />}
     </PaneFooterScope>
   </Box>;
 }

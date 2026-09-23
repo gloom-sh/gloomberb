@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "../../../components";
+import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -62,8 +62,10 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const curves = useMemo(() => data ? moneyMarketCurves(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  const boardHeight = Math.max(3, Math.min(rows.length + 2, Math.floor((height - 1) * 0.45)));
-  const curveHeight = Math.max(8, height - 1 - boardHeight);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const boardHeight = Math.max(3, Math.min(rows.length + 2, Math.floor((height - tabRows) * 0.45)));
+  const curveHeight = Math.max(8, height - tabRows - boardHeight);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => { if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
@@ -77,12 +79,12 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
     ] : [],
   });
   return <Box width={width} height={height} flexDirection="column">
-    <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!resource.loading && !resource.error && !data} subject="money markets">
-      {data ? <MarketBoardStack rows={rows} width={width} height={Math.max(3, height - 1)} focused={focused}
+      {data ? <MarketBoardStack rows={rows} width={width} height={Math.max(3, height - tabRows)} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-        changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, height - 3)} />}
+        changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, height - tabRows - 2)} />}
         rootBefore={tab === "bills" ? <CurveSurface series={curves} width={width} height={curveHeight} display="chart"
           selectedPointId={data.billsCurve.points.find((point) => point.seriesId === selected?.observation.seriesId)?.tenor ?? null}
           valueLabel="Discount yield (%)" formatValue={(value) => `${value.toFixed(2)}%`} formatX={(value) => `${(value * 12).toFixed(1)} months`}

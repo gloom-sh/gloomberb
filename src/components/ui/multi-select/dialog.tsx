@@ -21,6 +21,7 @@ import { Button } from "../button";
 import { Checkbox } from "../checkbox";
 import { DialogFrame } from "../frame";
 import { Popover } from "../popover";
+import { Menu } from "../menu";
 import {
   getMultiSelectDisplayValues,
   mergeMultiSelectDisplayValues,
@@ -134,37 +135,27 @@ function DesktopMultiSelectMenu({
   };
 
   return (
-    <Box flexDirection="column" width="300px" maxWidth="calc(100vw - 40px)" style={{ gap: 6 }}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ fontWeight: 700, padding: "1px 4px 4px" }}>
-        {title}
-      </Text>
-      {options.length === 0 ? (
-        <Text fg={colors.textMuted} style={{ padding: "4px" }}>{emptyLabel ?? "None"}</Text>
-      ) : (
-        <Box flexDirection="column" style={{ gap: 2 }}>
-          {options.map((option) => (
-            <Box
-              key={option.value}
-              width="100%"
-              flexDirection="column"
-              style={{ borderRadius: 6, padding: "5px 6px" }}
-              hoverBackgroundColor="color-mix(in srgb, var(--gloom-text-bright) 7%, transparent)"
-            >
-              <Checkbox
-                label={option.label}
-                checked={selectedValues.includes(option.value)}
-                disabled={option.disabled}
-                description={option.description}
-                width="100%"
-                variant="desktop"
-                onChange={() => { void toggleOption(option); }}
-              />
-            </Box>
-          ))}
-        </Box>
-      )}
-      {error ? <Text fg={colors.negative} wrapText style={{ padding: "4px" }}>{error}</Text> : null}
-    </Box>
+    <Menu
+      title={title}
+      label={title}
+      selection="multi"
+      items={options.length === 0
+        ? [{ id: "\u0000empty", label: emptyLabel ?? "None", disabled: true }]
+        : [
+          ...options.map((option) => ({
+            id: option.value,
+            label: option.label,
+            description: option.description,
+            disabled: option.disabled,
+            checked: selectedValues.includes(option.value),
+          })),
+          ...(error ? [{ id: "\u0000error", kind: "heading" as const, label: error }] : []),
+        ]}
+      onSelect={(value) => {
+        const option = options.find((entry) => entry.value === value);
+        if (option) void toggleOption(option);
+      }}
+    />
   );
 }
 
@@ -469,8 +460,9 @@ function MultiSelectDialogButtonInner({
         trigger={trigger}
         anchorPoint={popoverAnchorPoint}
         placement="bottom-start"
-        minWidth={300}
+        minWidth={240}
         label={title ?? label}
+        density="menu"
       >
         <DesktopMultiSelectMenu
           title={title ?? label}

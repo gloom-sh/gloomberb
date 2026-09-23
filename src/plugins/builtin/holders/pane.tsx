@@ -4,6 +4,7 @@ import {
   DataTableView,
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   usePaneTicker,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -277,6 +278,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     };
   }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, toggleView]);
 
+  const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: VIEW_TABS, activeValue: viewMode, onSelect: selectView, focused });
+
   // Both views share one status; the treemap must not claim "no chartable
   // values" while the request is still in flight or the pane has no ticker.
   const statusTitle = !symbol
@@ -284,20 +288,23 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     : loading && !data
       ? "Loading holders..."
       : !data && error ? error : sortedRows.length === 0 ? "No holders available" : null;
-  const chartHeight = Math.max(1, height - 1 - (nativePaneChrome ? 1 : 0));
+  const tabRows = tabsInHeader ? 0 : 1;
+  const chartHeight = Math.max(1, height - tabRows - (nativePaneChrome ? 1 : 0));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1} paddingX={1}>
-        <Tabs
-          tabs={VIEW_TABS}
-          activeValue={viewMode}
-          onSelect={(value) => setViewMode(value as ViewMode)}
-          compact
-          variant="bare"
-          focused={focused}
-        />
-      </Box>
+      {!tabsInHeader && (
+        <Box height={1} paddingX={1}>
+          <Tabs
+            tabs={VIEW_TABS}
+            activeValue={viewMode}
+            onSelect={selectView}
+            compact
+            variant="bare"
+            focused={focused}
+          />
+        </Box>
+      )}
 
       {viewMode === "table" ? (
         <DataTableView<HolderRow, HolderColumn>

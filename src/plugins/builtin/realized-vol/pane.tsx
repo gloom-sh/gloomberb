@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter,
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
   usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -7,7 +7,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import type { RealizedVolatilityEstimator, VolatilityConeStatistics } from "../shared/volatility";
 import { loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
@@ -119,21 +119,22 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,
   };
-  const contentHeight = Math.max(4, height - 3);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const contentHeight = Math.max(4, height - 1 - tabRows);
   const coneTableHeight = Math.min(10, Math.max(4, Math.floor(contentHeight * 0.42)));
   const sortedCone = [...(model?.cone ?? [])].sort((left, right) => {
     const a = left[sort.id], b = right[sort.id];
     return a == null ? b == null ? 0 : 1 : b == null ? -1 : (a - b) * (sort.direction === "asc" ? 1 : -1);
   });
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <Tabs tabs={TABS} activeValue={view} onSelect={setView} variant="underline" dense focused={focused} />
-    <Box height={1} flexDirection="row" paddingX={1} gap={2}>
-      <SelectButton label="Estimator" value={estimator} options={ESTIMATOR_OPTIONS} onChange={(value) => setEstimator(value as RealizedVolatilityEstimator)} />
-      <SelectButton label="Lookback" value={String(lookback)} options={[{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }]} onChange={setLookback} />
-    </Box>
-    <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>{showIv && iv.data?.reference
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} variant="underline" dense focused={focused} />}
+    <QueryBar width={width} filters={[
+      { id: "estimator", label: "Estimator", value: estimator, options: ESTIMATOR_OPTIONS, onChange: (value: string) => setEstimator(value as RealizedVolatilityEstimator) },
+      { id: "lookback", label: "Lookback", value: String(lookback), options: [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }], onChange: setLookback },
+    ]} meta={showIv && iv.data?.reference
       ? `${view === "cone" ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} ·` : "ATM IV observed"} ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC · ${iv.data.reference.source ?? "options"}`
-      : `Annualized % · ${Number(lookback) === 2 ? "2Y" : "1Y"} history`}</Text></Box>
+      : `Annualized % · ${Number(lookback) === 2 ? "2Y" : "1Y"} history`} />
     {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="realized volatility" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.history.length}>
       {model && view === "cone" ? <>

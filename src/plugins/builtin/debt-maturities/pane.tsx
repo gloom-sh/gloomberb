@@ -16,6 +16,7 @@ import {
   PageStackView,
   PaneStatusBody,
   Tabs,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   usePaneTicker,
@@ -351,7 +352,11 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     [data, latest],
   );
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  const bodyHeight = Math.max(3, height - 2);
+  const tabsInHeader = usePaneHeaderTabs(
+    latest ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused } : null,
+  );
+  const tabRows = tabsInHeader ? 0 : 1;
+  const bodyHeight = Math.max(3, height - tabRows - 1);
   const tableHeight = Math.min(9, Math.max(4, bodyHeight - 3));
   const chartHeight = Math.max(0, bodyHeight - tableHeight - 4);
   const historyTableHeight = Math.min(
@@ -477,13 +482,15 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       >
         {latest ? (
           <>
-            <Tabs
-              tabs={TABS}
-              activeValue={tab}
-              onSelect={setTab}
-              dense
-              focused={focused}
-            />
+            {!tabsInHeader && (
+              <Tabs
+                tabs={TABS}
+                activeValue={tab}
+                onSelect={setTab}
+                dense
+                focused={focused}
+              />
+            )}
             {tab === "filing" ? (
               <FilingDetail latest={latest} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (

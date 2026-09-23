@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
+import { CurveSurface, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -50,7 +50,9 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const newest = data ? newestQuote(data.contracts) : null;
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
-  const bodyHeight = Math.max(9, height - 3);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const bodyHeight = Math.max(9, height - tabRows - 2);
   const tableHeight = tab === "curve" ? Math.max(3, Math.min(rows.length + 2, Math.floor(bodyHeight * 0.4))) : bodyHeight;
   const curveHeight = tab === "curve" ? Math.max(6, bodyHeight - tableHeight) : 0;
   useAutoRefresh(resource.updatedAt, resource.load);
@@ -78,7 +80,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     return { text: curveTimestamp(row.asOf), color: row.stale ? colors.warning : colors.textMuted };
   }, [colors, root]);
   return <Box width={width} height={height} flexDirection="column">
-    <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!!data && !data.contracts.length} subject="futures curve">
       {data ? <>

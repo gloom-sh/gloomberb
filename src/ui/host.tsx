@@ -306,7 +306,7 @@ export interface HostTabsProps {
   onSelect: (value: string) => void;
   compact?: boolean;
   dense?: boolean;
-  variant?: "underline" | "pill" | "bare";
+  variant?: "underline" | "pill" | "bare" | "header";
   closeMode?: "active" | "always";
   addLabel?: string;
   onAdd?: () => void;
@@ -327,6 +327,61 @@ export interface HostCheckboxProps {
   variant?: "default" | "desktop";
 }
 
+interface HostQueryBarOption {
+  value: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+  selected: boolean;
+}
+
+export interface HostQueryBarItem {
+  id: string;
+  kind: "select" | "multi" | "toggle" | "text";
+  label: string;
+  /** Current value as shown on the control, e.g. "All" or "News, Filings". */
+  valueLabel: string;
+  /** Differs from its default, so the list on screen is narrower than it could be. */
+  narrowing: boolean;
+  /** Short exclusive choice drawn as inline segments instead of a menu. */
+  inline?: boolean;
+  /** Text filters: the live input, rendered by the kit, and its field state. */
+  node?: ReactNode;
+  active?: boolean;
+  onActivate?(): void;
+  /** Text filters: the field width in cells. */
+  width?: number;
+  checked?: boolean;
+  options: HostQueryBarOption[];
+  /** Select: choose the value. Multi: toggle the value. */
+  onSelect(value: string): void;
+  onToggle(): void;
+  /** Back to the default value. */
+  onReset(): void;
+}
+
+export interface HostQueryBarProps {
+  search?: {
+    /** The live input, rendered by the kit so it keeps keyboard capture and Esc handling. */
+    node: ReactNode;
+    filled: boolean;
+    active: boolean;
+    onActivate(): void;
+    onClear(): void;
+  };
+  items: HostQueryBarItem[];
+  view?: {
+    value: string;
+    options: { value: string; label: string }[];
+    onChange(value: string): void;
+  };
+  onClearAll?: () => void;
+  /** Muted context at the right edge, e.g. the selected row's date. */
+  meta?: string;
+  /** Opens one item's menu, e.g. from a pane shortcut. The token changes per request. */
+  openRequest?: { id: string; token: number } | null;
+}
+
 export interface HostPopoverProps {
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -337,6 +392,45 @@ export interface HostPopoverProps {
   minWidth?: number | string;
   maxWidth?: number | string;
   label?: string;
+  /** `menu` is the tight padding a Menu wants; `content` (default) is for free-form content. */
+  density?: "content" | "menu";
+  /**
+   * Move focus into the popover when it opens (default). An autocomplete under
+   * an input passes false so typing continues in the input.
+   */
+  focusOnOpen?: boolean;
+}
+
+export interface HostMenuItem {
+  id: string;
+  label: string;
+  kind?: "item" | "divider" | "heading";
+  description?: string;
+  /** Right-aligned secondary text, e.g. a shortcut. */
+  hint?: string;
+  disabled?: boolean;
+  /** The current value of a single-select menu. */
+  selected?: boolean;
+  /** The checkbox state in a multi-select menu. */
+  checked?: boolean;
+}
+
+export interface HostMenuProps {
+  items: HostMenuItem[];
+  onSelect(id: string): void;
+  /** `single` marks the selected item with a check; `multi` gives each item a checkbox. */
+  selection?: "none" | "single" | "multi";
+  /** Muted heading above the items. */
+  title?: string;
+  label?: string;
+  /** Esc, or a choice in a menu that closes on select. */
+  onClose?(): void;
+  /**
+   * Controlled highlight, for a menu driven by another control (an
+   * autocomplete input). With it, the menu leaves the keyboard to that control.
+   */
+  highlightedId?: string | null;
+  onHighlight?(id: string): void;
 }
 
 export interface UiHost {
@@ -381,6 +475,10 @@ export interface UiHost {
   Tabs?: ComponentType<HostTabsProps>;
   Checkbox?: ComponentType<HostCheckboxProps>;
   Popover?: ComponentType<HostPopoverProps>;
+  Menu?: ComponentType<HostMenuProps>;
+  /** Props are `SelectFieldProps` from components/ui/select-field. */
+  SelectField?: ComponentType<any>;
+  QueryBar?: ComponentType<HostQueryBarProps>;
   DataTable?: ComponentType<any>;
   createSyntaxStyle?(): SyntaxStyleLike;
   colorFromHex?(hex: string): unknown;

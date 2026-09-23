@@ -4,7 +4,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { type PromptContext, useDialog } from "../../ui/dialog";
 import { ChoiceDialog } from "./choice-dialog";
-import { NativeSelect, openNativeSelect, type NativeSelectElement } from "./native-select";
+import { SelectField, openSelectField, type SelectFieldHandle } from "./select-field";
 import { Button } from "./button";
 import { WEB_CELL_WIDTH } from "../../theme/font-scale";
 
@@ -68,7 +68,7 @@ export function SelectButton<T extends string = string>({
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const dialog = useDialog();
   const current = options.find((option) => option.value === value);
-  const nativeSelectRef = useRef<NativeSelectElement | null>(null);
+  const selectFieldRef = useRef<SelectFieldHandle | null>(null);
 
   const selectValue = useCallback((next: unknown) => {
     const candidate = typeof next === "string" ? next : (next as { value?: string })?.value;
@@ -98,7 +98,7 @@ export function SelectButton<T extends string = string>({
     if (disabled) return;
     onFocus?.();
     if (isDesktopWeb) {
-      openNativeSelect(nativeSelectRef.current);
+      openSelectField(selectFieldRef.current);
       return;
     }
     void dialog.prompt<string>({
@@ -125,11 +125,11 @@ export function SelectButton<T extends string = string>({
     return (
       <Box flexDirection="row" alignItems="center" gap={1} id={idPrefix ? `${idPrefix}:select` : undefined}>
         {showLabel && <Text fg={colors.textMuted}>{label}</Text>}
-        <NativeSelect
+        <SelectField
           label={label}
           variant={variant}
           width={width === undefined ? undefined : width * WEB_CELL_WIDTH}
-          selectRef={(element) => { nativeSelectRef.current = element; }}
+          selectRef={(element) => { selectFieldRef.current = element; }}
           onFocus={onFocus}
           value={value}
           options={options.map((option) => ({

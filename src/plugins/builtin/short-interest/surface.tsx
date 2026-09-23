@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Box } from "../../../ui";
-import { PaneFooterScope, Tabs } from "../../../components";
+import { PaneFooterScope, Tabs, usePaneHeaderTabs } from "../../../components";
 import { usePluginPaneState } from "../../../public/react";
 import type { PaneProps } from "../../../types/plugin";
 import { ShortVolumePane } from "../short-volume/pane";
@@ -11,9 +11,11 @@ export function ShortInterestSurface(props: Pick<PaneProps, "width" | "height" |
   const [tab, setTab] = usePluginPaneState("short-interest:tab", "interest");
   const [mounted, setMounted] = useState(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);
-  const height = Math.max(1, props.height - 1);
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: props.focused });
+  const tabRows = tabsInHeader ? 0 : 1;
+  const height = Math.max(1, props.height - tabRows);
   return <Box width={props.width} height={props.height} flexDirection="column">
-    <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={props.focused} dense />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={props.focused} dense />}
     {TABS.map(({ value }) => mounted.has(value) || value === tab ? <Box key={value} visible={value === tab} height={height} flexGrow={1} flexBasis={0} overflow="hidden">
       <PaneFooterScope active={value === tab}>
         {value === "volume" ? <ShortVolumePane {...props} height={height} focused={props.focused && value === tab} />

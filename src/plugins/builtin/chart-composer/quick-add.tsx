@@ -7,7 +7,7 @@ import {
   type BoxRenderable,
   type InputRenderable,
 } from "../../../ui";
-import { InlineQuickAddRow, ListView, type ListViewItem } from "../../../components/ui";
+import { InlineQuickAddRow, ListView, MenuPopover, type ListViewItem } from "../../../components/ui";
 import { getNativeSurfaceManager } from "../../../components/chart/native/surface/manager";
 import { getRenderableCellRect } from "../../../components/chart/native/surface/visibility";
 import { useShortcut } from "../../../react/input";
@@ -333,26 +333,8 @@ export function ChartSeriesQuickAdd({
     enabled: focused && !shortcutBlocked && (shortcutEnabled || active),
   });
 
-  const items = useMemo<ListViewItem[]>(() => suggestions.map((suggestion) => ({
-    id: suggestion.id,
-    label: suggestion.label,
-    description: suggestion.description,
-    detail: suggestion.detail,
-  })), [suggestions]);
-
-  return (
-    <Box
-      position="relative"
-      width={controlWidth}
-      height={1}
-      flexShrink={0}
-      overflow="visible"
-      backgroundColor={colors.panel}
-      zIndex={30}
-      data-gloom-role="chart-series-quick-add"
-      data-gloom-chart-quick-add={quickAddId}
-      data-gloom-focus-scope="chart-series-quick-add"
-    >
+  const desktop = ui.kind === "desktop-web";
+  const quickAddRow = (
       <InlineQuickAddRow
         value={query}
         active={inputFocused}
@@ -390,7 +372,53 @@ export function ChartSeriesQuickAdd({
         }}
         onCancel={cancel}
       />
-      {drawerHeight > 0 ? (
+  );
+
+  const items = useMemo<ListViewItem[]>(() => suggestions.map((suggestion) => ({
+    id: suggestion.id,
+    label: suggestion.label,
+    description: suggestion.description,
+    detail: suggestion.detail,
+  })), [suggestions]);
+
+  return (
+    <Box
+      position="relative"
+      width={controlWidth}
+      height={1}
+      flexShrink={0}
+      overflow="visible"
+      backgroundColor={colors.panel}
+      zIndex={30}
+      data-gloom-role="chart-series-quick-add"
+      data-gloom-chart-quick-add={quickAddId}
+      data-gloom-focus-scope="chart-series-quick-add"
+    >
+      {desktop ? (
+        // Desktop suggestions are the kit menu in the kit popover, like every
+        // other dropdown; the input keeps focus and drives the highlight.
+        <MenuPopover
+          open={drawerHeight > 0}
+          onOpenChange={(open) => { if (!open) cancel(); }}
+          trigger={quickAddRow}
+          focusOnOpen={false}
+          label="Chart series suggestions"
+          minWidth={controlWidth * 8}
+          closeOnSelect={false}
+          highlightedId={suggestions[clampSelection(selectedIndex, suggestions.length)]?.id ?? null}
+          onHighlight={(id) => setSelectedIndex(Math.max(0, suggestions.findIndex((suggestion) => suggestion.id === id)))}
+          items={drawerStatus
+            ? [{ id: "\u0000status", kind: "heading", label: drawerStatus }]
+            : suggestions.map((suggestion) => ({
+              id: suggestion.id,
+              label: suggestion.label,
+              description: suggestion.description,
+              hint: suggestion.detail,
+            }))}
+          onSelect={(id) => commitSuggestion(suggestions.find((suggestion) => suggestion.id === id))}
+        />
+      ) : quickAddRow}
+      {!desktop && drawerHeight > 0 ? (
         <Box
           ref={drawerRef}
           position="absolute"

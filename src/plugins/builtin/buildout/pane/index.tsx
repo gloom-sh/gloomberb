@@ -7,6 +7,7 @@ import {
   Spinner,
   useTableLoadMore,
   usePaneFooter,
+  usePaneHeaderTabs,
   type DataTableKeyEvent,
   type PaneHint,
 } from "../../../../components";
@@ -42,6 +43,7 @@ import {
   rowTitle,
   rowWithFavorite,
   sortRows,
+  tabs,
 } from "../table-model";
 import {
   tickerSearchText,
@@ -328,6 +330,14 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     toggleFavorite,
   }), [favoriteBusyKey, toggleFavorite]);
 
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs,
+    activeValue: activeTab,
+    onSelect: (value) => setActiveTab(value as BuildoutTabId),
+    focused: focused && !detailRow,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
+
   if (state.status === "loading") {
     return <Box padding={1}><Spinner label={`Loading ${BUILDOUT_NAME}...`} /></Box>;
   }
@@ -341,7 +351,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   }
 
   const listOpen = activeTab === "companies" && !!selectedList;
-  const tableHeight = Math.max(1, height - 1 - (listOpen ? 1 : 0));
+  const tableHeight = Math.max(1, height - tabRows - (listOpen ? 1 : 0));
   const table = (
     <DataTableStackView<BuildoutRow, BuildoutColumn>
       focused={focused}
@@ -390,11 +400,13 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   // own detail. The outer stack only listens while the inner detail is closed.
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
-      <BuildoutPaneHeader
-        activeTab={activeTab}
-        focused={focused && !detailRow}
-        onSelectTab={setActiveTab}
-      />
+      {!tabsInHeader && (
+        <BuildoutPaneHeader
+          activeTab={activeTab}
+          focused={focused && !detailRow}
+          onSelectTab={setActiveTab}
+        />
+      )}
       <PageStackView
         focused={focused && !detailRow}
         detailOpen={listOpen}

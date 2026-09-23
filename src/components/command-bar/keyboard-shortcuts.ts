@@ -1,6 +1,6 @@
 import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchesKeyChord, useKeybindings, type ResolvedKeybindings } from "../../app/keybindings";
-import type { NativeSelectElement } from "../ui/native-select";
+import type { SelectFieldHandle } from "../ui/select-field";
 import {
   consumeShortcutEvent,
   handleConfirmRouteShortcut,
@@ -54,7 +54,7 @@ interface CommandBarKeyboardShortcutArgs {
   themePickerRef: RefLike<ThemePickerHandle | null>;
   updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: RefLike<ListScreenState | null>;
-  workflowNativeSelectRefs: RefLike<Map<string, NativeSelectElement>>;
+  workflowSelectFieldRefs: RefLike<Map<string, SelectFieldHandle>>;
 }
 
 /**
@@ -96,7 +96,7 @@ export function useCommandBarKeyboardShortcuts({
   themePickerRef,
   updateWorkflowValue,
   visibleListStateRef,
-  workflowNativeSelectRefs,
+  workflowSelectFieldRefs,
 }: CommandBarKeyboardShortcutArgs): void {
   const keybindings = useKeybindings();
   useShortcut((event) => {
@@ -132,7 +132,7 @@ export function useCommandBarKeyboardShortcuts({
       popRoute,
       submitWorkflowRoute,
       updateWorkflowValue,
-      workflowNativeSelectRefs,
+      workflowSelectFieldRefs,
     })) {
       return;
     }

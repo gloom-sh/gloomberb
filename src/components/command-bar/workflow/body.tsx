@@ -10,7 +10,7 @@ import {
   type TextareaRenderable,
 } from "../../../ui";
 import { Button, Spinner } from "../../ui";
-import type { NativeSelectElement } from "../../ui/native-select";
+import type { SelectFieldHandle } from "../../ui/select-field";
 import {
   getVisibleWorkflowFields,
 } from "../helpers";
@@ -36,7 +36,7 @@ interface CommandBarWorkflowBodyProps {
   onFieldPickerOpen: (route: CommandBarWorkflowRoute, field: CommandBarWorkflowField) => void;
   onFieldValueChange: (fieldId: string, value: CommandBarFieldValue) => void;
   onMoveFieldFocus: (delta: number) => void;
-  onNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
+  onSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   onSubmit: (route: CommandBarWorkflowRoute) => void | Promise<void>;
 }
 
@@ -53,7 +53,7 @@ export function CommandBarWorkflowBody({
   onFieldPickerOpen,
   onFieldValueChange,
   onMoveFieldFocus,
-  onNativeSelectRef,
+  onSelectFieldRef,
   onSubmit,
 }: CommandBarWorkflowBodyProps) {
   const palette = useCommandBarPalette(nativePaneChrome);
@@ -105,7 +105,7 @@ export function CommandBarWorkflowBody({
             onFieldPickerOpen={onFieldPickerOpen}
             onFieldValueChange={onFieldValueChange}
             onMoveFieldFocus={onMoveFieldFocus}
-            onNativeSelectRef={onNativeSelectRef}
+            onSelectFieldRef={onSelectFieldRef}
             onSubmit={onSubmit}
           />
         );

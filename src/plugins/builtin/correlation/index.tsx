@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { InputSearchBar, SegmentedControl, usePaneFooter, usePaneNoticeFooter } from "../../../components";
+import { QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -178,34 +178,34 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1} flexDirection="row" overflow="hidden">
-        <Box flexShrink={1} overflow="hidden">
-          <InputSearchBar
-            value={symbolsText}
-            focused={focused}
-            active={symbolsEditing}
-            width={Math.max(12, Math.min(40, width - 24))}
-            focusToken={symbolsFocusToken}
-            inputRef={symbolsInputRef}
-            placeholder="tickers"
-            debounceMs={500}
-            onFocus={() => {
-              setSymbolsEditing(true);
-              setSymbolsFocusToken((token) => token + 1);
-            }}
-            onBlur={() => setSymbolsEditing(false)}
-            onQueryChange={(query) => setSymbolsText(query)}
-          />
-        </Box>
-        <Box flexGrow={1} />
-        <SegmentedControl
-          options={CORRELATION_RANGE_OPTIONS.map((range) => ({ label: range, value: range }))}
-          value={rangePreset}
-          onChange={(value) => setRangePreset(value as CorrelationRangePreset)}
-          focused={focused && !symbolsEditing}
-          shortcutScope="correlation:range"
-        />
-      </Box>
+      <QueryBar
+        width={width}
+        search={{
+          value: symbolsText,
+          onChange: (query) => setSymbolsText(query),
+          placeholder: "tickers",
+          focused,
+          active: symbolsEditing,
+          onActiveChange: (active) => {
+            if (!active) {
+              setSymbolsEditing(false);
+              return;
+            }
+            setSymbolsEditing(true);
+            setSymbolsFocusToken((token) => token + 1);
+          },
+          focusToken: symbolsFocusToken,
+          inputRef: symbolsInputRef,
+          debounceMs: 500,
+        }}
+        view={{
+          value: rangePreset,
+          options: CORRELATION_RANGE_OPTIONS.map((range) => ({ label: range, value: range })),
+          onChange: (value: string) => setRangePreset(value as CorrelationRangePreset),
+          focused: focused && !symbolsEditing,
+          shortcutScope: "correlation:range",
+        }}
+      />
 
       {/* Column header row */}
       <Box flexDirection="row" paddingX={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>

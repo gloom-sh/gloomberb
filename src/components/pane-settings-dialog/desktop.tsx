@@ -2,7 +2,9 @@ import { Box, Text } from "../../ui";
 import type { ReactNode } from "react";
 import type { PaneSettingField } from "../../types/plugin";
 import { blendHex, colors } from "../../theme/colors";
-import { NativeSelect, type NativeSelectElement } from "../ui/native-select";
+import { SelectField, type SelectFieldHandle } from "../ui/select-field";
+import { Checkbox } from "../ui/checkbox";
+import { DialogFrame } from "../ui/frame";
 import { summarizePaneSettingValue } from "./value";
 
 const DESKTOP_TEXT_STYLE = {
@@ -22,6 +24,7 @@ function desktopHoverSurface(): string {
   return blendHex(colors.bg, colors.borderFocused, 0.08);
 }
 
+/** Pane settings dialogs: the kit DialogFrame at the settings width. */
 export function DesktopDialogSurface({
   title,
   subtitle,
@@ -34,89 +37,10 @@ export function DesktopDialogSurface({
   children: ReactNode;
 }) {
   return (
-    <Box
-      width={68}
-      maxWidth="calc(100vw - 72px)"
-      flexDirection="column"
-      style={{
-        padding: 12,
-      }}
-    >
-      <Box flexDirection="row" alignItems="flex-start" style={{ marginBottom: 10 }}>
-        <Box flexDirection="column" flexGrow={1} minWidth={0}>
-          <Text fg={colors.textBright} style={desktopText(700)}>{title}</Text>
-          {subtitle && (
-            <Text fg={colors.textMuted} wrapText style={{ ...desktopText(), marginTop: 3 }}>
-              {subtitle}
-            </Text>
-          )}
-        </Box>
-        <Box
-          width={3}
-          height={1}
-          alignItems="center"
-          justifyContent="center"
-          onMouseDown={(event: any) => {
-            event.stopPropagation?.();
-            event.preventDefault?.();
-            dismiss();
-          }}
-          data-gloom-interactive="true"
-          style={{
-            borderRadius: 6,
-            cursor: "pointer",
-            marginLeft: 16,
-            color: colors.textMuted,
-          }}
-        >
-          <Text fg={colors.textMuted} style={desktopText(700)}>x</Text>
-        </Box>
-      </Box>
-      {children}
-    </Box>
-  );
-}
-
-function DesktopSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <Box
-      width="42px"
-      height="18px"
-      flexDirection="row"
-      alignItems="center"
-      justifyContent={checked ? "flex-end" : "flex-start"}
-      backgroundColor={checked ? colors.selected : desktopSubtleSurface()}
-      onMouseDown={(event: any) => {
-        event.stopPropagation?.();
-        event.preventDefault?.();
-        onChange(!checked);
-      }}
-      data-gloom-interactive="true"
-      style={{
-        border: `1px solid ${checked ? colors.borderFocused : colors.border}`,
-        borderRadius: 999,
-        boxShadow: checked
-          ? `inset 0 1px 0 ${blendHex(colors.selected, colors.textBright, 0.1)}`
-          : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
-        cursor: "pointer",
-        paddingInline: 2,
-      }}
-    >
-      <Box
-        width="14px"
-        height="14px"
-        backgroundColor={checked ? colors.selectedText : colors.textMuted}
-        style={{
-          borderRadius: 999,
-          boxShadow: `0 1px 2px ${blendHex(colors.panel, colors.bg, 0.35)}`,
-        }}
-      />
+    <Box width={68} maxWidth="calc(100vw - 72px)" flexDirection="column">
+      <DialogFrame title={title} subtitle={subtitle} onClose={dismiss}>
+        {children}
+      </DialogFrame>
     </Box>
   );
 }
@@ -171,16 +95,16 @@ function DesktopSettingsRow({
   currentValue: unknown;
   onHover: () => void;
   onEdit: () => void;
-  onSelectRef: (fieldKey: string, element: NativeSelectElement | null) => void;
+  onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
   onApply: (field: PaneSettingField, value: unknown) => void;
 }) {
   const isToggle = field.type === "toggle";
   const disabled = field.type === "action" && field.disabled === true;
   const summary = summarizePaneSettingValue(field, currentValue);
   const control = field.type === "toggle" ? (
-    <DesktopSwitch checked={currentValue === true} onChange={(checked) => onApply(field, checked)} />
+    <Checkbox label={field.label} displayLabel="" checked={currentValue === true} onChange={(checked) => onApply(field, checked)} />
   ) : field.type === "select" ? (
-    <NativeSelect
+    <SelectField
       value={typeof currentValue === "string" ? currentValue : ""}
       options={field.options}
       includeUnsetOption
@@ -249,7 +173,7 @@ function DesktopSettingsList({
   settings: Record<string, unknown>;
   onHover: (field: PaneSettingField, index: number) => void;
   onEdit: (field: PaneSettingField, index: number) => void;
-  onSelectRef: (fieldKey: string, element: NativeSelectElement | null) => void;
+  onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
   onApply: (field: PaneSettingField, value: unknown, index: number) => void;
 }) {
   return (
@@ -306,7 +230,7 @@ export function DesktopPaneSettingsDialogBody({
   settings: Record<string, unknown>;
   onHover: (field: PaneSettingField, index: number) => void;
   onEdit: (field: PaneSettingField, index: number) => void;
-  onSelectRef: (fieldKey: string, element: NativeSelectElement | null) => void;
+  onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
   onApply: (field: PaneSettingField, value: unknown, index: number) => void;
 }) {
   return (

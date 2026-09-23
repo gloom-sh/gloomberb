@@ -4,7 +4,7 @@ import type { PaneProps } from "../../../../types/plugin";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../runtime";
-import { Tabs } from "../../../../components";
+import { Tabs, usePaneHeaderTabs } from "../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./news/detail-view";
 import {
   NewsArticleStackView,
@@ -95,12 +95,14 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     error: [error, detailError].filter(Boolean).join(" ") || null,
   });
 
-  const rootBefore = (
+  const selectCategory = (value: string) => setCategory(value as SectorNewsSelection);
+  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: category, onSelect: selectCategory, focused });
+  const rootBefore = tabsInHeader ? undefined : (
     <Box height={1} flexShrink={0} overflow="hidden">
       <Tabs
         tabs={tabs}
         activeValue={category}
-        onSelect={(value) => setCategory(value as SectorNewsSelection)}
+        onSelect={selectCategory}
         compact
         variant="bare"
         focused={focused}

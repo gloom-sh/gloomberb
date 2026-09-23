@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Checkbox, DataTableStackView, DataTableView, EmptyState, KeyValueRow, Tabs, usePaneNoticeFooter, usePaneTicker, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, Tabs, usePaneNoticeFooter, usePaneTicker, useTableLoadMore, type DataTableColumn } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -107,7 +107,7 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
   ];
   return <Box flexDirection="column" width={width} height={height}>
     <Tabs tabs={[{ label: "New", value: "newCount" }, { label: "Exits", value: "exitCount" }, { label: "Increases", value: "weightChange" }, { label: "Decreases", value: "decreases" }]} activeValue={ranking} onSelect={setRanking} focused={false} compact />
-    <Checkbox label="Mine" checked={mineOnly} onChange={setMineOnly} />
+    <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]} />
     {data ? <KeyValueRow label={data.period} value={`${data.loadedFunds}/${data.sourceFunds} ranked funds`} /> : null}
     <DataTableView<CrowdingRow, DataTableColumn> focused={focused} columns={columns} items={rows} getItemKey={row => row.id}
       selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}

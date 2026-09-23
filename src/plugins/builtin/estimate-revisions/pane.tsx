@@ -16,6 +16,7 @@ import {
   PaneStatusBody,
   Prose,
   Tabs,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   usePaneTicker,
@@ -352,6 +353,13 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         ]
       : [],
   });
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: TABS,
+    activeValue: tab,
+    onSelect: setTab,
+    focused: focused && !selectedPeriod,
+  });
+  const tabRows = tabsInHeader ? 0 : 1;
   if (!symbol) return <EmptyState title="Select a ticker." />;
   if (!data && isCloudSessionRequired(resource.error))
     return (
@@ -360,20 +368,22 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         needsVerification={session.needsVerification}
       />
     );
-  const bodyHeight = Math.max(3, height - 1);
+  const bodyHeight = Math.max(3, height - tabRows);
   const guidanceTableHeight = Math.min(
     Math.max(2, guidanceRows.length + 1),
     Math.max(2, bodyHeight - 3),
   );
   return (
     <Box width={width} height={height} flexDirection="column">
-      <Tabs
-        tabs={TABS}
-        activeValue={tab}
-        onSelect={setTab}
-        focused={focused && !selectedPeriod}
-        dense
-      />
+      {!tabsInHeader && (
+        <Tabs
+          tabs={TABS}
+          activeValue={tab}
+          onSelect={setTab}
+          focused={focused && !selectedPeriod}
+          dense
+        />
+      )}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}

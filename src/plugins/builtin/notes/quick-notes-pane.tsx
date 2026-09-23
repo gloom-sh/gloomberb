@@ -4,7 +4,7 @@ import { useShortcut } from "../../../react/input";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
-import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter } from "../../../components";
+import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter, usePaneHeaderTabs } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { MarkdownNotePreview } from "./markdown-note-preview";
@@ -394,31 +394,44 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
           ],
     }), [activeTab, activeTabId, addTab, editing, loadError, renaming, startRename]);
 
+    const noteTabs = tabs.map((tab) => ({
+      label: tab.owner.kind === "team" ? `${ownerLabel(tab.owner, teams)} ${tab.title}` : tab.title,
+      value: tab.id,
+      ...(tab.owner.kind === "team" ? { fg: ownerColor(tab.owner, teams) } : {}),
+      onClose: tabs.length > 1 ? (id: string) => { void requestRemoveTab(id); } : undefined,
+      onDoubleClick: startRenameTab,
+    }));
+    const selectTab = (id: string) => {
+      if (id === activeTabId) return;
+      saveTab(activeTabId);
+      setActiveTabId(id);
+      setEditing(false);
+    };
+    const tabsInHeader = usePaneHeaderTabs({
+      tabs: noteTabs,
+      activeValue: activeTabId,
+      onSelect: selectTab,
+      focused: focused && !editing && !renaming,
+      closeMode: "active",
+      onAdd: () => { void addTab(); },
+    });
+
     return (
       <Box flexDirection="column" flexGrow={1}>
-        <Box height={1}>
-          <Tabs
-            tabs={tabs.map((tab) => ({
-              label: tab.owner.kind === "team" ? `${ownerLabel(tab.owner, teams)} ${tab.title}` : tab.title,
-              value: tab.id,
-              ...(tab.owner.kind === "team" ? { fg: ownerColor(tab.owner, teams) } : {}),
-              onClose: tabs.length > 1 ? (id) => { void requestRemoveTab(id); } : undefined,
-              onDoubleClick: startRenameTab,
-            }))}
-            activeValue={activeTabId}
-            onSelect={(id) => {
-              if (id === activeTabId) return;
-              saveTab(activeTabId);
-              setActiveTabId(id);
-              setEditing(false);
-            }}
-            compact
-            variant="pill"
-            closeMode="active"
-            onAdd={() => { void addTab(); }}
-            focused={focused && !editing && !renaming}
-          />
-        </Box>
+        {!tabsInHeader && (
+          <Box height={1}>
+            <Tabs
+              tabs={noteTabs}
+              activeValue={activeTabId}
+              onSelect={selectTab}
+              compact
+              variant="pill"
+              closeMode="active"
+              onAdd={() => { void addTab(); }}
+              focused={focused && !editing && !renaming}
+            />
+          </Box>
+        )}
         {renaming && (
           <Box height={1} flexDirection="row" paddingLeft={1}>
             <Text fg={colors.textDim}>{"Rename: "}</Text>

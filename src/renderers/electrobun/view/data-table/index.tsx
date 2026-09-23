@@ -30,6 +30,7 @@ import {
   CSS_TEXT_BRIGHT,
   CSS_TEXT_DIM,
   cellTextStyle,
+  tableHeaderPx,
   toCellX,
   toCellY,
   useScrollBoxHandle,
@@ -124,7 +125,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       itemCount: items.length,
       rowSize: WEB_CELL_HEIGHT,
       scrollOffset: element.scrollTop,
-      viewportSize: Math.max(0, element.clientHeight - WEB_CELL_HEIGHT),
+      viewportSize: Math.max(0, element.clientHeight - tableHeaderPx()),
     });
     const previous = lastVisibleRangeRef.current;
     if (
@@ -149,13 +150,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const lastAppliedScrollRequestRef = useRef<string | null>(null);
   const controlledScrollOffsetRef = useRef<{ top: number; left: number } | null>(null);
 
+  const headerPx = tableHeaderPx();
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => bodyElementRef.current,
     estimateSize: () => WEB_CELL_HEIGHT,
     overscan,
-    paddingStart: WEB_CELL_HEIGHT,
-    scrollPaddingStart: WEB_CELL_HEIGHT,
+    paddingStart: headerPx,
+    scrollPaddingStart: headerPx,
   });
 
   const allRows = useMemo<VirtualRow[]>(
@@ -165,17 +167,17 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         index,
         key: getItemKey(items[index]!, index),
         size: WEB_CELL_HEIGHT,
-        start: WEB_CELL_HEIGHT + index * WEB_CELL_HEIGHT,
+        start: headerPx + index * WEB_CELL_HEIGHT,
       }));
     },
-    [getItemKey, items, virtualize],
+    [getItemKey, headerPx, items, virtualize],
   );
   const virtualRows = virtualize
     ? (rowVirtualizer.getVirtualItems() as VirtualRow[])
     : allRows;
   const totalHeight = virtualize
     ? rowVirtualizer.getTotalSize()
-    : WEB_CELL_HEIGHT + items.length * WEB_CELL_HEIGHT;
+    : headerPx + items.length * WEB_CELL_HEIGHT;
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
@@ -229,7 +231,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const element = bodyElementRef.current;
     if (!element) return;
-    const viewportRows = Math.max(1, Math.floor(element.clientHeight / WEB_CELL_HEIGHT) - 1);
+    const viewportRows = Math.max(1, Math.floor((element.clientHeight - tableHeaderPx()) / WEB_CELL_HEIGHT));
     const currentTop = toCellY(element.scrollTop);
     let nextTop = currentTop;
     if (scrollToIndexAlign === "center") {
@@ -271,7 +273,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     bodyElementRef,
     bodyHorizontal.bar,
     bodyVertical.bar,
-    { viewportTopInsetPx: WEB_CELL_HEIGHT },
+    { viewportTopInsetPx: headerPx },
   );
 
   useEffect(() => {
@@ -300,9 +302,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     overflowX: horizontalScrollEnabled ? "auto" : "hidden",
     overflowY: "auto",
     backgroundColor: CSS_BG,
-    // Trim the viewport to whole rows so the bottom row is never a sliver.
-    // Browsers without CSS round() drop this and keep the previous behavior.
-    maxHeight: "round(down, 100%, var(--cell-h))",
+    // The table runs to the pane footer. A partly visible last row is how every
+    // scrolling list reads; trimming the viewport to whole rows left a blank
+    // strip above the footer, and a half row over it after a trackpad scroll.
   };
 
   return (

@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
+import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
-import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
+import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
 
 interface PaneWrapperProps {
   paneId?: string;
@@ -17,6 +18,8 @@ interface PaneWrapperProps {
   locked?: boolean;
   showActions?: boolean;
   quickSettings?: PaneHeaderQuickSetting[];
+  /** A dock divider line is drawn over the top row (the pane is below another). */
+  topRule?: boolean;
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -40,6 +43,7 @@ export function PaneWrapper({
   locked = false,
   showActions = false,
   quickSettings,
+  topRule = false,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -52,6 +56,7 @@ export function PaneWrapper({
   children,
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
+  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true && !!title);
   const bg = paneBg(focused);
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = !!title && shouldReservePaneFooter(nativePaneChrome, showFooter);
@@ -61,7 +66,7 @@ export function PaneWrapper({
     nativePaneChrome,
     footerVisible: renderFooter,
     reserveFooter,
-    headerRows: title ? 1 : 0,
+    headerRows: title ? paneHeaderRows(nativePaneChrome) : 0,
   });
 
   return (
@@ -93,6 +98,9 @@ export function PaneWrapper({
           locked={locked}
           showActions={showActions}
           quickSettings={quickSettings}
+          tabs={headerTabs}
+          bodyBackground={bg}
+          topRule={topRule}
           onHeaderMouseMove={onHeaderMouseMove}
           onHeaderMouseDown={onHeaderMouseDown}
           onHeaderMouseDrag={onHeaderMouseDrag}
@@ -102,7 +110,7 @@ export function PaneWrapper({
         />
       )}
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>
-        {children}
+        <PaneHeaderTabsProvider value={headerTabsContext}>{children}</PaneHeaderTabsProvider>
       </PaneBodyFrame>
       {renderFooter && (
         <PaneFooterBar

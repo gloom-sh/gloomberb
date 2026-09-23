@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Checkbox, DataTableStackView, DataTableView, InputSearchBar, KeyValueRow, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
@@ -84,7 +84,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     detailContent={<Box flexDirection="column" flexGrow={1}>
       <KeyValueRow label="First" value={data.name} detail={data.latestForm?.periodOfReport} />
       <KeyValueRow label="Second" value={peer?.name ?? target?.name ?? ""} detail={peer?.latestForm?.periodOfReport} />
-      <Checkbox label="Mine" checked={mineOnly} onChange={setMineOnly} />
+      <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]} />
       <DataTableView<FundOverlapRow, DataTableColumn> focused={focused} columns={positionColumns} items={rows} getItemKey={row => row.id}
         selection={{ kind: "id", selectedId: selectedPositionId, getId: row => row.id, onChange: setSelectedPositionId }}
         onActivate={row => { if (row.ticker) pinTicker(row.ticker, { floating: true }); }}
@@ -99,7 +99,9 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     rootWidth={width} columns={[{ id: "name", label: "FUND", width: Math.max(20, width - 17), align: "left" }, { id: "cik", label: "CIK", width: 12, align: "left" }]}
     items={[...funds].sort((a, b) => a[fundSort.id].localeCompare(b[fundSort.id]) * (fundSort.desc ? -1 : 1))} getItemKey={row => row.cik} selection={{ kind: "id", selectedId, getId: row => row.cik, onChange: setSelectedId }}
     onActivate={fund => { setSearchFocused(false); setTarget(fund); }}
-    rootBefore={<InputSearchBar inputRef={searchRef} focusToken={focusToken} value={query} focused={focused} active={searchFocused} width={width} placeholder="Second fund name or CIK" debounceMs={250} onQueryChange={setQuery} onFocus={focusSearch} onBlur={() => setSearchFocused(false)} onNavigateDown={() => setSearchFocused(false)} />}
+    rootBefore={<QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "Second fund name or CIK", focused, active: searchFocused,
+      onActiveChange: (active) => active ? focusSearch() : setSearchFocused(false), focusToken, inputRef: searchRef, debounceMs: 250,
+      onNavigateDown: () => setSearchFocused(false) }} />}
     renderCell={(row, column, _index, state) => ({ text: column.id === "name" ? row.name : row.cik, color: state.selected ? colors.selectedText : colors.text })}
     emptyStateTitle={loading ? "Searching funds..." : query ? "No matching funds." : "Search for a second fund."}
   />;

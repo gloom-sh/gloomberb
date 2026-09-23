@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Button, ConfirmDialog, Tabs } from "../../../components";
+import { Button, ConfirmDialog, Tabs, usePaneHeaderTabs } from "../../../components";
 import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
 import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
@@ -638,6 +638,15 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveTab(nextTab);
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[nextTab][0] ?? "username");
   }, []);
+  const tabsInHeader = usePaneHeaderTabs({
+    tabs: accountTabs,
+    activeValue: activeTab,
+    onSelect: selectTab,
+    focused,
+    keyboardNavigation: false,
+  });
+  // The strip and the gap the column puts under it.
+  const tabRows = tabsInHeader ? 0 : 2;
 
   const openPasswordDialog = useCallback(() => {
     if (busy) return;
@@ -840,16 +849,18 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height} paddingX={1} gap={1}>
-      <Tabs
-        tabs={accountTabs}
-        activeValue={activeTab}
-        onSelect={selectTab}
-        focused={focused}
-        variant="pill"
-        compact
-        keyboardNavigation={false}
-      />
-      <ScrollBox height={Math.max(3, bodyHeight - 2)} scrollY focusable={false}>
+      {!tabsInHeader && (
+        <Tabs
+          tabs={accountTabs}
+          activeValue={activeTab}
+          onSelect={selectTab}
+          focused={focused}
+          variant="pill"
+          compact
+          keyboardNavigation={false}
+        />
+      )}
+      <ScrollBox height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
         <Box flexDirection="column" width={contentWidth} gap={1}>
           {activeTab === "profile" ? (
             <>

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useRef, type KeyboardEvent, type RefObject } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 import { Box, Input, Text, Textarea, editableTextContextMenuItems, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { TextAttributes, type InputRenderable } from "../../../../ui";
 import { useShortcut } from "../../../../react/input";
@@ -14,6 +14,8 @@ import type { TextFieldProps } from "../../../../components/ui/fields";
 import type { DialogFrameProps } from "../../../../components/ui/frame";
 import type { MessageComposerProps } from "../../../../components/ui/message-composer";
 import type { PageStackViewProps } from "../../../../components/ui/page-stack-view";
+import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
+import { NestedPaneTabs } from "../../../../components/layout/pane/header-tabs";
 import type { SegmentedControlProps } from "../../../../components/ui/toggle";
 import {
   CONTROL_RADIUS,
@@ -123,6 +125,44 @@ function checkboxCheckImage(): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
+/**
+ * The one checkbox square on the desktop: the kit Checkbox, query-bar toggles
+ * and multi-select menu items all draw it through this style.
+ */
+export function checkboxBoxStyle(
+  colors: ThemeColors,
+  { checked, active = false, size = 14 }: { checked: boolean; active?: boolean; size?: number },
+): CSSProperties {
+  const accentColor = checkboxAccentColor(colors);
+  return {
+    appearance: "none",
+    WebkitAppearance: "none",
+    display: "inline-block",
+    width: size,
+    height: size,
+    margin: 0,
+    backgroundColor: checked ? accentColor : panelFill(colors),
+    backgroundImage: checked ? checkboxCheckImage() : undefined,
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: `${size - 2}px ${size - 2}px`,
+    border: `1px solid ${checked ? accentColor : controlBorderColor(active, false, colors)}`,
+    borderRadius: size >= 14 ? 4 : 3,
+    boxShadow: active
+      ? `0 0 0 2px ${blendHex(colors.bg, colors.borderFocused, 0.28)}, inset 0 1px 0 rgba(255,255,255,0.16)`
+      : "inset 0 1px 0 rgba(255,255,255,0.10)",
+    boxSizing: "border-box",
+    flexShrink: 0,
+    verticalAlign: "middle",
+  };
+}
+
+/** A checkbox square for a control that owns its own click (a menu row, a bar toggle). */
+export function CheckboxBox({ checked, size = 12 }: { checked: boolean; size?: number }) {
+  const colors = useThemeColors();
+  return <span aria-hidden="true" data-gloom-role="checkbox-box" style={checkboxBoxStyle(colors, { checked, size })} />;
+}
+
 export function WebCheckbox({
   label,
   displayLabel,
@@ -140,8 +180,6 @@ export function WebCheckbox({
     ? colors.textBright
     : colors.text;
   const visibleLabel = displayLabel ?? label;
-  const accentColor = checkboxAccentColor(colors);
-  const borderColor = checked ? accentColor : controlBorderColor(active, false, colors);
   return (
     <Box
       flexDirection="column"
@@ -184,25 +222,8 @@ export function WebCheckbox({
             if (event.key === " ") event.stopPropagation();
           }}
           style={{
-            appearance: "none",
-            WebkitAppearance: "none",
-            width: 14,
-            height: 14,
-            margin: 0,
-            backgroundColor: checked ? accentColor : panelFill(colors),
-            backgroundImage: checked ? checkboxCheckImage() : undefined,
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            backgroundSize: "12px 12px",
-            border: `1px solid ${borderColor}`,
-            borderRadius: 4,
-            boxShadow: active
-              ? `0 0 0 2px ${blendHex(colors.bg, colors.borderFocused, 0.28)}, inset 0 1px 0 rgba(255,255,255,0.16)`
-              : "inset 0 1px 0 rgba(255,255,255,0.10)",
-            boxSizing: "border-box",
-            flexShrink: 0,
+            ...checkboxBoxStyle(colors, { checked, active }),
             cursor: disabled ? "default" : "pointer",
-            verticalAlign: "middle",
           }}
         />
         <span
@@ -501,26 +522,48 @@ export function WebSegmentedControl({
 
 export function WebDialogFrame({
   title,
+  subtitle,
   children,
   footer,
   showTitleDivider = false,
+  onClose,
 }: DialogFrameProps) {
   const colors = useThemeColors();
   return (
     <Box flexDirection="column" style={{ padding: 14 }}>
       <Box
-        height={1}
         flexDirection="row"
-        alignItems="center"
+        alignItems="flex-start"
         style={{
           borderBottom: showTitleDivider ? `1px solid ${panelBorder(colors)}` : "none",
           paddingBottom: showTitleDivider ? 8 : 0,
           marginBottom: showTitleDivider ? 10 : 14,
+          gap: 16,
         }}
       >
-        <Text fg={colors.text} attributes={TextAttributes.BOLD} style={{ fontWeight: 700 }}>
-          {title}
-        </Text>
+        <Box flexDirection="column" flexGrow={1} minWidth={0}>
+          <Text fg={colors.text} attributes={TextAttributes.BOLD} style={{ fontWeight: 700 }}>
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text fg={colors.textMuted} wrapText style={{ marginTop: 3 }}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </Box>
+        {onClose ? (
+          <button
+            type="button"
+            className="gloom-dialog-close"
+            aria-label="Close"
+            onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+            onClick={(event) => { event.stopPropagation(); onClose(); }}
+          >
+            <svg viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
       </Box>
       {children}
       {footer && (
@@ -551,13 +594,32 @@ export function WebPageStackView({
   backLabel = "Back",
   backHint,
 }: PageStackViewProps) {
-  const colors = useThemeColors();
   useShortcut((event) => {
     if (!focused || !detailOpen || !isDetailBackNavigationKey(event)) return;
     event.stopPropagation?.();
     event.preventDefault?.();
     onBack();
   });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const attachedRef = useRef(0);
+  const [headerAttached, setHeaderAttached] = useState(false);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  // A hint has no place in a query bar, so a detail with one keeps its band.
+  const slot = useMemo<StackHeaderSlot | null>(() => backHint ? null : {
+    backLabel,
+    title: detailTitle,
+    onBack: () => onBackRef.current(),
+    containerRef,
+    attach: () => {
+      attachedRef.current += 1;
+      setHeaderAttached(true);
+      return () => {
+        attachedRef.current -= 1;
+        if (attachedRef.current === 0) setHeaderAttached(false);
+      };
+    },
+  }, [backHint, backLabel, detailTitle]);
 
   if (!detailOpen) {
     return (
@@ -569,67 +631,46 @@ export function WebPageStackView({
 
   return (
     <Box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0} minHeight={0} overflow="hidden">
-      <Box
-        flexDirection="row"
-        alignItems="flex-start"
-        paddingX={1}
-        gap={1}
-        flexShrink={0}
-        style={{
-          paddingBlock: 8,
-        }}
+      {!headerAttached && (
+        <div className="gloom-stack-bar" data-gloom-role="page-stack-header" data-gloom-top-surface="">
+          <button
+            type="button"
+            className="gloom-stack-back"
+            data-gloom-interactive="true"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBack();
+            }}
+          >
+            <BackChevron />
+            <span className="gloom-qb-text">{backLabel}</span>
+          </button>
+          {detailTitle ? <div className="gloom-stack-title">{detailTitle}</div> : <div style={{ flex: 1 }} />}
+          {backHint ? <span className="gloom-stack-hint">{backHint}</span> : null}
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        className="gloom-stack-detail"
+        data-gloom-role="page-stack-detail"
+        style={{ display: "flex", flexDirection: "column", flex: "1 1 0", minWidth: 0, minHeight: 0, overflow: "hidden" }}
       >
-        <Box
-          height={1}
-          flexDirection="row"
-          alignItems="center"
-          backgroundColor={panelFill(colors)}
-          onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-            onBack();
-          }}
-          data-gloom-interactive="true"
-          style={{
-            border: `1px solid ${panelBorder(colors)}`,
-            borderRadius: CONTROL_RADIUS,
-            paddingInline: 8,
-            cursor: "pointer",
-          }}
-        >
-          <Text fg={colors.textBright} style={{ fontWeight: 600 }}>
-            {`← ${backLabel}`}
-          </Text>
-        </Box>
-        {detailTitle ? (
-          <Box flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
-            <Text
-              fg={colors.textBright}
-              attributes={TextAttributes.BOLD}
-              wrapText
-              style={{
-                display: "block",
-                fontWeight: 700,
-                overflow: "visible",
-                overflowWrap: "break-word",
-                whiteSpace: "normal",
-              }}
-            >
-              {detailTitle}
-            </Text>
-          </Box>
-        ) : (
-          <Box flexGrow={1} />
-        )}
-        {backHint ? (
-          <Text fg={colors.textMuted}>
-            {backHint}
-          </Text>
-        ) : null}
-      </Box>
-      <Box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} minWidth={0} minHeight={0} overflow="hidden">
-        {detailContent}
-      </Box>
+        <StackHeaderContext.Provider value={slot}>
+          <NestedPaneTabs>{detailContent}</NestedPaneTabs>
+        </StackHeaderContext.Provider>
+      </div>
     </Box>
+  );
+}
+
+export function BackChevron() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M7.5 2.5L4 6l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

@@ -35,7 +35,8 @@ export interface TabsProps {
   onSelect: (value: string) => void;
   compact?: boolean;
   dense?: boolean;
-  variant?: "underline" | "pill" | "bare";
+  /** `header` is the desktop title-bar strip drawn by the pane chrome (see usePaneHeaderTabs). */
+  variant?: "underline" | "pill" | "bare" | "header";
   closeMode?: "active" | "always";
   addLabel?: string;
   onAdd?: () => void;

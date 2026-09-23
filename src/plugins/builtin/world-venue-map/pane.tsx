@@ -3,7 +3,7 @@ import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload 
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, SectionHeading, usePaneFooter,
+  PaneStatusBody, QueryBar, SectionHeading, usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent
@@ -215,20 +215,21 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       <Box width="100%" paddingX={1}>
         <SectionHeading title="Venues" />
       </Box>
-      <InputSearchBar
-        value={query}
-        focused={focused}
-        active={searchFocused}
+      <QueryBar
         width={sidebarWidth}
-        focusToken={searchFocusToken}
-        inputRef={inputRef}
-        placeholder="Filter venues..."
-        debounceMs={80}
-        normalizeValue={(value) => value.trim()}
-        onFocus={focusSearch}
-        onBlur={blurSearch}
-        onNavigateDown={blurSearch}
-        onQueryChange={setQuery}
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Filter venues...",
+          focused,
+          active: searchFocused,
+          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+          focusToken: searchFocusToken,
+          inputRef,
+          debounceMs: 80,
+          onNavigateDown: blurSearch,
+          normalizeValue: (value: string) => value.trim(),
+        }}
       />
     </Box>
   );

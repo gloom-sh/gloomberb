@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CompositeChart, DataTableStackView, DataTableView, InputSearchBar, KeyValueRow, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
+import { CompositeChart, DataTableStackView, DataTableView, KeyValueRow, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -38,9 +38,10 @@ const noop = () => {};
 export function CotPane(props: PaneProps) {
   const pane = usePaneInstance();
   const [family, setFamily] = usePluginPaneState<CotFamily>("report", pane?.settings?.report === "disaggregated" ? "disaggregated" : "legacy");
+  const tabsInHeader = usePaneHeaderTabs({ tabs: FAMILIES, activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused });
   return <Box width={props.width} height={props.height} flexDirection="column">
-    <Tabs tabs={FAMILIES} activeValue={family} onSelect={(value) => setFamily(value as CotFamily)} focused={props.focused} dense />
-    <CotBoard key={family} {...props} height={Math.max(3, props.height - 1)} family={family} initialCode={pane?.params?.code ?? null} />
+    {!tabsInHeader && <Tabs tabs={FAMILIES} activeValue={family} onSelect={(value) => setFamily(value as CotFamily)} focused={props.focused} dense />}
+    <CotBoard key={family} {...props} height={Math.max(3, props.height - (tabsInHeader ? 0 : 1))} family={family} initialCode={pane?.params?.code ?? null} />
   </Box>;
 }
 function CotBoard({ width, height, focused, family, initialCode }: PaneProps & { family: CotFamily; initialCode: string | null }) {
@@ -107,14 +108,13 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       if (column.id === "one" || column.id === "three") return { text: rank(column.id === "one" ? row.position.percentile1Y.value : row.position.percentile3Y.value), color: colors.warning };
       return { text: row.reportDate, color: colors.textMuted };
     }}
-    rootBefore={<Box flexDirection="column" flexShrink={0}>
-      <Box paddingX={1} height={1} flexDirection="row" gap={2}>
-        <SelectButton label="Class" value={traderClass} options={COT_CLASSES[family]} onChange={setClass} controlRef={control} />
-        <SelectButton label="Scope" value={scope} options={[...COT_SCOPES]} onChange={setScope} controlRef={scopeControl} />
-      </Box>
-      <InputSearchBar value={query} focused={focused} active={searching} width={width} focusToken={searchFocus} inputRef={searchInput} debounceMs={80} placeholder="market or CFTC code"
-        onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} onNavigateDown={() => setSearching(false)} onQueryChange={setQuery} />
-    </Box>}
+    rootBefore={<QueryBar width={width}
+      search={{ value: query, onChange: setQuery, placeholder: "market or CFTC code", focused, active: searching,
+        onActiveChange: setSearching, focusToken: searchFocus, inputRef: searchInput }}
+      filters={[
+        { id: "class", label: "Class", value: traderClass, options: COT_CLASSES[family], onChange: setClass, controlRef: control },
+        { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },
+      ]} />}
     emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen(null)}
     detailTitle={data?.rows.find((row) => row.contractCode === open)?.marketName ?? open ?? undefined}
     detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 2)} focused={focused}

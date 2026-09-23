@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Tabs,
   usePaneFooter,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
   type DataTableKeyEvent,
   type TickerListVisibleRange,
@@ -224,7 +225,23 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     ? (cashDrawerExpanded ? Math.min(6, Math.max(3, 2 + accountState.visibleCashBalances.length)) : 1)
     : 0;
   const showCollectionTabs = visibleCollections.length > 1;
-  const headerHeight = showCollectionTabs ? 1 : 0;
+  const handleCollectionSelect = useCallback((collectionId: string) => {
+    cancelPendingCursorSymbol();
+    setCurrentCollectionId(collectionId);
+  }, [cancelPendingCursorSymbol, setCurrentCollectionId]);
+  const collectionTabs = useMemo(
+    () => visibleCollections.map((collection) => ({ label: collection.name, value: collection.id })),
+    [visibleCollections],
+  );
+  const tabsInHeader = usePaneHeaderTabs(showCollectionTabs
+    ? {
+      tabs: collectionTabs,
+      activeValue: activeCollectionId,
+      onSelect: handleCollectionSelect,
+      focused: focused && !quickAddFocused,
+    }
+    : null);
+  const headerHeight = showCollectionTabs && !tabsInHeader ? 1 : 0;
   const drawerHeight = showCashDrawer
     ? Math.min(requestedDrawerHeight, Math.max(1, height - (headerHeight + 2)))
     : 0;
@@ -234,11 +251,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       current.start === start && current.end === end ? current : { start, end }
     ));
   }, []);
-
-  const handleCollectionSelect = useCallback((collectionId: string) => {
-    cancelPendingCursorSymbol();
-    setCurrentCollectionId(collectionId);
-  }, [cancelPendingCursorSymbol, setCurrentCollectionId]);
 
   const setSortPreference = useCallback((preference: CollectionSortPreference) => {
     if (!activeCollectionId) return;
@@ -446,12 +458,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {showCollectionTabs && (
+      {showCollectionTabs && !tabsInHeader && (
         <Box flexDirection="column" height={headerHeight}>
           <Box flexDirection="row" height={1}>
             <Box flexShrink={1} overflow="hidden">
               <Tabs
-                tabs={visibleCollections.map((collection) => ({ label: collection.name, value: collection.id }))}
+                tabs={collectionTabs}
                 activeValue={activeCollectionId}
                 onSelect={handleCollectionSelect}
                 compact

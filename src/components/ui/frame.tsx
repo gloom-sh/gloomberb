@@ -34,19 +34,23 @@ export function modalSurfaceStyle(colors: ThemeColors, options: ModalSurfaceOpti
 
 export interface DialogFrameProps {
   title: string;
+  /** Muted line under the title. */
+  subtitle?: string;
   children: ReactNode;
   footer?: string;
   showTitleDivider?: boolean;
+  /** Adds a close button at the right of the title (desktop). Esc still closes every dialog. */
+  onClose?: () => void;
 }
 
-export function DialogFrame({ title: rawTitle, children, footer: rawFooter, showTitleDivider = false }: DialogFrameProps) {
+export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFooter, showTitleDivider = false, onClose }: DialogFrameProps) {
   const title = t(rawTitle);
   const footer = rawFooter === undefined ? undefined : t(rawFooter);
   const colors = useThemeColors();
   const HostDialogFrame = useUiHost().DialogFrame as ComponentType<DialogFrameProps> | undefined;
   if (HostDialogFrame) {
     return (
-      <HostDialogFrame title={title} footer={footer} showTitleDivider={showTitleDivider}>
+      <HostDialogFrame title={title} subtitle={subtitle} footer={footer} showTitleDivider={showTitleDivider} onClose={onClose}>
         {children}
       </HostDialogFrame>
     );
@@ -57,6 +61,7 @@ export function DialogFrame({ title: rawTitle, children, footer: rawFooter, show
       <Box height={1}>
         <Text fg={colors.text} attributes={TextAttributes.BOLD}>{title}</Text>
       </Box>
+      {subtitle && <Text fg={colors.textMuted} wrapText>{subtitle}</Text>}
       <Box height={1} />
       {children}
       {footer && (

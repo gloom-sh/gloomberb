@@ -10,8 +10,18 @@ import {
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../ui/host";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { chromeRowPx } from "../../../../theme/font-scale";
 
 export const TABLE_INLINE_PADDING_PX = 8;
+
+/**
+ * The header row is a chrome row, the same height as the pane header and the
+ * query bar above it; body rows stay one text cell. Rows are positioned below
+ * this offset, so scrolling by whole rows keeps them aligned under the header.
+ */
+export function tableHeaderPx(): number {
+  return chromeRowPx();
+}
 export const CSS_BG = "var(--gloom-bg)";
 export const CSS_PANEL = "var(--gloom-panel)";
 export const CSS_TEXT = "var(--gloom-text)";

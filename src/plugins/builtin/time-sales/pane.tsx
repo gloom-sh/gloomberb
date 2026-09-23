@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
-import { DataTableStackView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
+import { DataTableStackView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -71,12 +71,15 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     info: data ? [{ id: "feed", parts: [{ text: `Alpaca ${data.feed === "sip" ? "SIP" : "SIP 15m delayed"} · ${tapeTime(data.asOf)} UTC`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
+  const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
+  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail });
+  const tabRows = tabsInHeader ? 0 : 1;
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
-    <Tabs tabs={TABS} activeValue={tab} onSelect={(value) => { setTab(value); setDetail(null); setSelected(null); }} focused={focused && !detail} dense />
+    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !detail} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>
       {data && stats ? <DataTableStackView<TapeRow> columns={tab === "quotes" ? QUOTES : TRADES} items={rows}
-        focused={focused} rootWidth={width} rootHeight={Math.max(3, height - 1)}
+        focused={focused} rootWidth={width} rootHeight={Math.max(3, height - tabRows)}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}
         onActivate={(row) => { setPaused({ data, epoch: resource.epoch }); setDetail({ row, epoch: resource.epoch }); }} getItemKey={(row) => row.id}
         sortColumnId={null} sortDirection="desc" onHeaderClick={noop} freezeFirstColumn

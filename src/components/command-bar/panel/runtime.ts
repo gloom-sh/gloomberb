@@ -6,7 +6,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import type { NativeSelectElement } from "../../ui/native-select";
+import type { SelectFieldHandle } from "../../ui/select-field";
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { AppState } from "../../../state/app/context";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
@@ -69,7 +69,7 @@ interface CommandBarPanelRuntimeOptions {
   setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
-  setWorkflowNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
+  setWorkflowSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   stateRef: MutableRefObject<AppState>;
   submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   syncActiveWorkflowTextarea: (route: CommandBarWorkflowRoute) => void;
@@ -82,7 +82,7 @@ interface CommandBarPanelRuntimeOptions {
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
   updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: MutableRefObject<ListScreenState | null>;
-  workflowNativeSelectRefs: MutableRefObject<Map<string, NativeSelectElement>>;
+  workflowSelectFieldRefs: MutableRefObject<Map<string, SelectFieldHandle>>;
   workflowScrollRef: RefObject<ScrollBoxRenderable | null>;
 }
 
@@ -122,7 +122,7 @@ export function useCommandBarPanelRuntime({
   setRootHoveredIdx,
   setRootSelectedIdx,
   setRouteStack,
-  setWorkflowNativeSelectRef,
+  setWorkflowSelectFieldRef,
   stateRef,
   submitWorkflowRoute,
   syncActiveWorkflowTextarea,
@@ -135,7 +135,7 @@ export function useCommandBarPanelRuntime({
   updateTopRoute,
   updateWorkflowValue,
   visibleListStateRef,
-  workflowNativeSelectRefs,
+  workflowSelectFieldRefs,
   workflowScrollRef,
 }: CommandBarPanelRuntimeOptions): CommandBarPanelProps {
   const activateListSelectionRef = useRef(activateListSelection);
@@ -198,7 +198,7 @@ export function useCommandBarPanelRuntime({
     themePickerRef,
     updateWorkflowValue,
     visibleListStateRef,
-    workflowNativeSelectRefs,
+    workflowSelectFieldRefs,
   });
 
   const {
@@ -263,7 +263,7 @@ export function useCommandBarPanelRuntime({
     onMultiSelectSelect: handleMultiSelectSelect,
     onMultiSelectToggle: handleMultiSelectToggle,
     onNativeOccluderChange,
-    onNativeSelectRef: setWorkflowNativeSelectRef,
+    onSelectFieldRef: setWorkflowSelectFieldRef,
     onOverlayClose: closeAll,
     onQueryChange: setActiveListQuery,
     onThemeCommit: handleThemeCommit,

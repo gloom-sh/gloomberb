@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
-  SegmentedControl,
+  QueryBar,
   type DataTableCell,
   type PaneFooterSegment,
 } from "../../../components";
@@ -327,28 +327,23 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const selectedEvent = filtered[selectedIdx];
+  const metaParts = [
+    nextEvent && nextCountdown && width >= 88 ? `next ${nextEvent.event.slice(0, 16).trimEnd()} ${nextCountdown}` : null,
+    selectedEvent ? dayLabel(selectedEvent.date, today) : null,
+  ].filter((part): part is string => !!part);
   const filterControls = (
-    <Box height={1} flexDirection="row" paddingX={1} gap={2} overflow="hidden">
-      <SegmentedControl
-        options={FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] }))}
-        value={impactFilter}
-        onChange={(value) => selectImpactFilter(value as ImpactFilter)}
-      />
-      <SegmentedControl
-        options={COUNTRY_CYCLE.map((value) => ({ value, label: value === "all" ? "All" : value }))}
-        value={countryFilter}
-        onChange={(value) => selectCountryFilter(value as CountryFilter)}
-      />
-      <Box flexGrow={1} />
-      {nextEvent && nextCountdown && width >= 88 && (
-        <Text fg={colors.textMuted}>
-          {`next ${nextEvent.event.slice(0, 16).trimEnd()} ${nextCountdown}`}
-        </Text>
-      )}
-      {selectedEvent && (
-        <Text fg={colors.textDim}>{dayLabel(selectedEvent.date, today)}</Text>
-      )}
-    </Box>
+    <QueryBar
+      width={width}
+      filters={[
+        { id: "impact", label: "Impact", inline: true, value: impactFilter, defaultValue: "all",
+          options: FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] })),
+          onChange: (value: string) => selectImpactFilter(value as ImpactFilter) },
+        { id: "region", label: "Region", inline: true, value: countryFilter, defaultValue: "all",
+          options: COUNTRY_CYCLE.map((value) => ({ value, label: value === "all" ? "All" : value })),
+          onChange: (value: string) => selectCountryFilter(value as CountryFilter) },
+      ]}
+      meta={metaParts.join(" · ") || undefined}
+    />
   );
 
   const detailContent = detailEvent ? (

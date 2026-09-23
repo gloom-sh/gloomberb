@@ -1,4 +1,5 @@
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
+import { MenuPopover } from "../../ui/menu";
 import { colors } from "../../../theme/colors";
 import { MENU_Z_INDEX, truncateMenuText } from "./menu";
 import { t } from "../../../i18n";
@@ -10,6 +11,8 @@ export interface ActionMenuState {
   y: number;
   width: number;
   items: Array<{ id: string; label: string; accelerator?: string; action: () => void }>;
+  /** Desktop: where the menu pops out from, in px (the `...` button or the pointer). */
+  anchor?: { x: number; y: number; placement: "bottom-start" | "bottom-end" };
 }
 
 export function ShellActionMenuOverlay({
@@ -23,7 +26,26 @@ export function ShellActionMenuOverlay({
   onClose: () => void;
   onHoverItem: (itemId: string) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   if (!menuState) return null;
+
+  if (nativePaneChrome) {
+    return (
+      <MenuPopover
+        open
+        onOpenChange={(open) => { if (!open) onClose(); }}
+        anchorPoint={menuState.anchor ?? { x: 0, y: 0 }}
+        placement={menuState.anchor?.placement ?? "bottom-start"}
+        label="Pane"
+        items={menuState.items.map((item) => ({ id: item.id, label: t(item.label), hint: item.accelerator }))}
+        onSelect={(id) => {
+          const item = menuState.items.find((entry) => entry.id === id);
+          onClose();
+          item?.action();
+        }}
+      />
+    );
+  }
 
   return (
     <Box
