@@ -21,6 +21,17 @@ export function isDomReportTruncated(
   return render.truncated || rowsContainEllipsis(render.rows);
 }
 
+/** Column identity per cell; a repeated label within one row stays distinct. */
+function domCellKeys(row: DesktopPaneShotRenderedRow): string[] {
+  const seen = new Map<string, number>();
+  return row.cells.map((cell) => {
+    const base = cell.columnId ?? cell.columnLabel;
+    const occurrence = seen.get(base) ?? 0;
+    seen.set(base, occurrence + 1);
+    return occurrence === 0 ? base : `${base}#${occurrence}`;
+  });
+}
+
 function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
   const byTable = new Map<number, DesktopPaneShotRenderedRow[]>();
   for (const row of rows) {
@@ -30,14 +41,28 @@ function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
   }
 
   return [...byTable.entries()].flatMap(([tableIndex, tableRows], index) => {
-    const columnCount = Math.max(0, ...tableRows.map((row) => row.cells.length));
-    const columns = Array.from({ length: columnCount }, (_, columnIndex) => ({
-      header: tableRows.find((row) => row.cells[columnIndex])?.cells[columnIndex]?.columnLabel
-        ?? `Column ${columnIndex + 1}`,
-    }));
+    // Captured rows omit blank cells, so a cell's position is not its column.
+    const columns: Array<{ key: string; header: string }> = [];
+    for (const row of tableRows) {
+      let previous = -1;
+      const keys = domCellKeys(row);
+      for (const [cellIndex, cell] of row.cells.entries()) {
+        const key = keys[cellIndex]!;
+        let position = columns.findIndex((column) => column.key === key);
+        if (position < 0) {
+          position = previous + 1;
+          columns.splice(position, 0, { key, header: cell.columnLabel });
+        }
+        previous = position;
+      }
+    }
     const output = renderTable(
       columns,
-      tableRows.map((row) => columns.map((_column, columnIndex) => row.cells[columnIndex]?.text ?? "")),
+      tableRows.map((row) => {
+        const keys = domCellKeys(row);
+        const textByKey = new Map(row.cells.map((cell, cellIndex) => [keys[cellIndex]!, cell.text]));
+        return columns.map((column) => textByKey.get(column.key) ?? "");
+      }),
     );
     return [
       ...(index > 0 ? [""] : []),
