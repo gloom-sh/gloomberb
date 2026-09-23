@@ -17,7 +17,7 @@ test("summary money keeps unknown units explicit without borrowing listing curre
   const original = structuredClone(fundamentals);
   expect(overview(fundamentals)).toMatchObject({
     EPS: "4.22 (ccy?)", Revenue: "1.22T (ccy?)", "Net Income": "85.7B (ccy?)", FCF: "-96.6B (ccy?)",
-    "Shares Out": "19.19B", "Profit Marg": "+7.04%", "P/E (TTM)": "25.3",
+    "Shares Out": "19.19B", "Profit Marg": "7.04%", "P/E (TTM)": "25.3",
   });
   expect(fundamentals).toEqual(original);
   expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({

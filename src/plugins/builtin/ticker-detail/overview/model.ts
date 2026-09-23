@@ -20,6 +20,12 @@ import type { PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
 import { formatReportedMoney } from "../../../../utils/reported-money";
 
+/** Yields and margins are levels, not changes, so they carry no sign. */
+function formatLevelPercent(value: number): string {
+  const percent = value * 100;
+  return `${(Object.is(Math.round(percent * 100), -0) ? 0 : percent).toFixed(2)}%`;
+}
+
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
 function compactPositionAccount(position: TickerPosition): string {
@@ -75,7 +81,7 @@ export function buildOverviewStats({
   }
   if (fundamentals?.dividendYield != null) {
     const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
-    stats.push({ label, value: formatPercent(fundamentals.dividendYield) });
+    stats.push({ label, value: formatLevelPercent(fundamentals.dividendYield) });
   }
   if (fundamentals?.revenue != null) {
     stats.push({ label: "Revenue", value: money(fundamentals.revenue) });
@@ -87,10 +93,10 @@ export function buildOverviewStats({
     stats.push({ label: "FCF", value: money(fundamentals.freeCashFlow) });
   }
   if (fundamentals?.operatingMargin != null) {
-    stats.push({ label: "Op Margin", value: formatPercent(fundamentals.operatingMargin) });
+    stats.push({ label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
   }
   if (fundamentals?.profitMargin != null) {
-    stats.push({ label: "Profit Marg", value: formatPercent(fundamentals.profitMargin) });
+    stats.push({ label: "Profit Marg", value: formatLevelPercent(fundamentals.profitMargin) });
   }
   if (fundamentals?.revenueGrowth != null) {
     stats.push({
