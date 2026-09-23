@@ -272,6 +272,15 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   outline: 1px solid var(--tab-hover-underline);
   outline-offset: -1px;
 }
+/* Title-bar tabs open into the pane body, so a ring would draw a line under the
+   active tab's label. Keyboard focus shows as the hover fill instead. */
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:focus-visible {
+  outline: none;
+}
+[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:not([data-active="true"]):focus-visible {
+  background: var(--pane-tab-hover-bg) !important;
+  color: var(--tab-hover-fg) !important;
+}
 [data-gloom-role="tab-close"] {
   cursor: pointer;
 }
