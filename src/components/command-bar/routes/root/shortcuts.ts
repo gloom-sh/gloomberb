@@ -1,6 +1,6 @@
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
-import { getPaneTemplateDisplayLabel } from "../../pane-templates/items";
+import { getPaneTemplateDisplayLabel, paneTemplateShortcutPrefixes } from "../../pane-templates/items";
 
 export type RootShortcutArgKind = "text" | "ticker" | "ticker-list";
 type ShortcutIntentKind = "none" | "complete" | "inferred-complete" | "partial" | "ambiguous";
@@ -109,15 +109,15 @@ function buildShortcutCandidates(
       })),
     ...paneTemplates
       .filter((template) => template.shortcut?.prefix)
-      .map((template) => ({
-        prefix: normalizeShortcutPrefix(template.shortcut!.prefix),
+      .flatMap((template) => paneTemplateShortcutPrefixes(template).map((prefix) => ({
+        prefix: normalizeShortcutPrefix(prefix),
         label: getPaneTemplateDisplayLabel(template),
         description: template.description,
         argKind: getPaneShortcutArgKind(template),
         argPlaceholder: template.shortcut?.argPlaceholder,
         source: "pane-template" as const,
         template,
-      })),
+      }))),
   ].sort((a, b) => b.prefix.length - a.prefix.length);
 }
 

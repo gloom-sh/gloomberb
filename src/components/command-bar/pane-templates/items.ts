@@ -10,6 +10,12 @@ import type { ResultItem } from "../list/model";
 
 type LogErrorFn = (message: string, details: Record<string, unknown>) => void;
 
+/** The primary shortcut prefix and its aliases, in that order. */
+export function paneTemplateShortcutPrefixes(template: Pick<PaneTemplateDef, "shortcut">): string[] {
+  if (!template.shortcut?.prefix) return [];
+  return [template.shortcut.prefix, ...(template.shortcut.aliases ?? [])].filter((prefix) => prefix.trim().length > 0);
+}
+
 export function getPaneTemplateDisplayLabel(template: Pick<PaneTemplateDef, "label">): string {
   let label = template.label.trim();
   if (label.startsWith("New ")) label = label.slice(4);
@@ -91,11 +97,13 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
   return [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
     const pluginId = options.pluginRegistry.getPaneTemplatePluginId(template.id);
     if (pluginId && disabledPluginIds.has(pluginId)) return false;
-    const prefix = template.shortcut?.prefix?.toUpperCase();
+    const argKind = getPaneTemplateArgKind(template);
+    // The longest matching mnemonic wins, so an alias sharing a stem cannot shadow the typed one.
+    const prefix = paneTemplateShortcutPrefixes(template).map((value) => value.toUpperCase())
+      .filter((value) => upper === value || (!!argKind && upper.startsWith(`${value} `)))
+      .sort((a, b) => b.length - a.length)[0];
     if (!prefix) return false;
     const arg = trimmed.slice(prefix.length).trim();
-    const argKind = getPaneTemplateArgKind(template);
-    if (upper !== prefix && (!argKind || !upper.startsWith(`${prefix} `))) return false;
     if (!template.canCreate) return true;
     try {
       const canCreate = template.canCreate(options.context, arg ? { arg } : undefined);
@@ -139,12 +147,14 @@ export function buildPaneTemplateItem(options: {
       .join(" ")
     : null;
   const arg = options.createOptions?.arg;
+  const aliases = options.template.shortcut?.aliases ?? [];
   const searchText = [
     options.template.keywords?.join(" ") || "",
     displayLabel,
     options.template.label,
     options.template.paneId,
     shortcutLabel || "",
+    ...aliases,
     pluginName || "",
   ].filter(Boolean).join(" ");
 
@@ -166,7 +176,7 @@ export function buildPaneTemplateItem(options: {
   return {
     id: `pane-template:${options.template.id}:${arg || ""}`,
     label: displayLabel,
-    detail: shortcutLabel ? `${options.template.description} · ${shortcutLabel}` : options.template.description,
+    detail: [options.template.description, shortcutLabel, aliases.length ? `also ${aliases.join(", ")}` : ""].filter(Boolean).join(" · "),
     category: options.category ?? (pluginName ? `${pluginName} Panes` : "Panes"),
     kind: "action",
     right: options.showShortcut ? options.template.shortcut?.prefix : undefined,

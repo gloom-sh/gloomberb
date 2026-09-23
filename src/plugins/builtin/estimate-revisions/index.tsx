@@ -47,26 +47,37 @@ export const estimateRevisionsModule: PluginModule = {
       },
     },
   ],
-  paneTemplates: ["EM", "EEO", "GUID"].map((shortcut) => ({
-    ...createTickerSurfacePaneTemplate({
-      id: `estimate-revisions-${shortcut.toLowerCase()}`,
-      paneId: "estimate-revisions",
-      label: "Estimate Revisions",
-      description:
-        "Consensus EPS changes, analyst revision counts, surprises and cited guidance.",
-      keywords: [
-        "estimates",
-        "revisions",
-        "consensus",
-        "guidance",
-        shortcut.toLowerCase(),
-      ],
-      shortcut,
-      viewKey: shortcut,
-      settings: () => ({ tab: shortcut === "GUID" ? "guidance" : "revisions" }),
-    }),
-    headless: estimateRevisionsHeadless,
-  })),
+  paneTemplates: [
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "estimate-revisions-em",
+        paneId: "estimate-revisions",
+        label: "Estimate Revisions",
+        description:
+          "Consensus EPS changes, analyst revision counts, surprises and cited guidance.",
+        keywords: ["estimates", "revisions", "consensus", "em", "eeo"],
+        shortcut: "EM",
+        shortcutAliases: ["EEO"],
+        viewKey: "EM",
+        settings: () => ({ tab: "revisions" }),
+      }),
+      headless: estimateRevisionsHeadless,
+    },
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "estimate-revisions-guid",
+        paneId: "estimate-revisions",
+        label: "Company Guidance",
+        description:
+          "Company EPS guidance cited from filings and transcripts, against consensus.",
+        keywords: ["guidance", "outlook", "estimates", "guid"],
+        shortcut: "GUID",
+        viewKey: "GUID",
+        settings: () => ({ tab: "guidance" }),
+      }),
+      headless: estimateRevisionsHeadless,
+    },
+  ],
   setup(ctx) {
     estimateRevisionsCache.attach(ctx.persistence);
   },

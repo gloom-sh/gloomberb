@@ -74,6 +74,9 @@ export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<stri
     registerResolverToken(lookup, template.shortcut?.prefix, template);
   }
   for (const template of registry.paneTemplates.values()) {
+    for (const alias of template.shortcut?.aliases ?? []) registerResolverToken(lookup, alias, template);
+  }
+  for (const template of registry.paneTemplates.values()) {
     registerResolverToken(lookup, template.id, template);
     registerResolverToken(lookup, template.label, template);
     for (const keyword of template.keywords ?? []) registerResolverToken(lookup, keyword, template);

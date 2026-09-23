@@ -75,7 +75,7 @@ export function buildAssistCommandInventory({
     ...paneTemplates.map((template) => describe(
       template.shortcut?.prefix ?? "",
       getPaneTemplateDisplayLabel(template),
-      template.description,
+      template.shortcut?.aliases?.length ? `${template.description} Also ${template.shortcut.aliases.join(", ")}.` : template.description,
       describeArg(getPaneShortcutArgKind(template), template.shortcut?.argPlaceholder),
     )),
   ];

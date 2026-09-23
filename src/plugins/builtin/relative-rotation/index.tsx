@@ -55,8 +55,8 @@ export const relativeRotationModule: PluginModule = {
       },
     },
   ],
-  paneTemplates: ["RRG", "GRR"].map((prefix) => ({
-    id: `relative-rotation-${prefix.toLowerCase()}`,
+  paneTemplates: [{
+    id: "relative-rotation-rrg",
     paneId: "relative-rotation",
     label: "Relative Rotation",
     description:
@@ -67,9 +67,10 @@ export const relativeRotationModule: PluginModule = {
       "strength",
       "momentum",
       "sector",
-      prefix.toLowerCase(),
+      "rrg",
+      "grr",
     ],
-    shortcut: { prefix, argKind: "ticker-list" as const, argOptional: true },
+    shortcut: { prefix: "RRG", aliases: ["GRR"], argKind: "ticker-list" as const, argOptional: true },
     headless: rotationHeadless,
     createInstance: (_context, options) => ({
       settings: options?.symbols?.length
@@ -77,7 +78,7 @@ export const relativeRotationModule: PluginModule = {
         : { scope: "sectors" },
       placement: "floating" as const,
     }),
-  })),
+  }],
   setup(ctx) {
     rotationCache.attach(ctx.persistence);
   },

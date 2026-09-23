@@ -777,7 +777,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
             command: commandNames.has(id) ? id : "fn/shot",
           })),
           ...[...services.services.pluginRegistry.paneTemplates.entries()].map(([id, template]) => {
-            const direct = [id, template.paneId, template.shortcut?.prefix?.toLowerCase()]
+            const direct = [id, template.paneId, template.shortcut?.prefix?.toLowerCase(), ...(template.shortcut?.aliases ?? []).map((alias) => alias.toLowerCase())]
               .filter((value): value is string => !!value)
               .find((value) => commandNames.has(value));
             return {

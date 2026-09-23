@@ -14,6 +14,8 @@ export interface TickerSurfacePaneTemplateOptions {
   description: string;
   keywords: string[];
   shortcut: string;
+  /** Other mnemonics that open the same view without a separate command-bar row. */
+  shortcutAliases?: readonly string[];
   /** Opt in only when this template is available in the hosted browser catalog. */
   publicShare?: boolean;
   titlePrefix?: string;
@@ -93,6 +95,7 @@ export function createTickerSurfacePaneTemplate(
     keywords: templateOptions.keywords,
     shortcut: {
       prefix: templateOptions.shortcut,
+      ...(templateOptions.shortcutAliases?.length ? { aliases: templateOptions.shortcutAliases } : {}),
       argPlaceholder: "ticker",
       argKind: "ticker",
     },

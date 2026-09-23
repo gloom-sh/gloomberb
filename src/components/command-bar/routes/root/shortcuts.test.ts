@@ -168,3 +168,26 @@ describe("ticker data root shortcuts", () => {
     expect(scoped.argText).toBe("AAPL,MSFT");
   });
 });
+
+describe("shortcut aliases", () => {
+  const aliased: PaneTemplateDef = { id: "rate-path-pane", paneId: "rate-path", label: "US Rate Path", description: "WIRP",
+    shortcut: { prefix: "WIRP", aliases: ["FFIP"] } };
+  const withTicker: PaneTemplateDef = { id: "estimate-revisions-em", paneId: "estimate-revisions", label: "Estimate Revisions",
+    description: "EM", shortcut: { prefix: "EM", aliases: ["EEO"], argPlaceholder: "ticker", argKind: "ticker" } };
+
+  test("an alias opens the same template as its primary mnemonic", () => {
+    for (const query of ["WIRP", "FFIP", "ffip"]) {
+      const intent = parseRootShortcutIntent({ query, commands: [], paneTemplates: [aliased], activeTicker: null });
+      expect(intent.kind).not.toBe("none");
+      if (intent.kind === "none" || intent.source !== "pane-template") throw new Error("Expected a pane-template intent");
+      expect(intent.template.id).toBe("rate-path-pane");
+    }
+  });
+
+  test("an alias carries its argument", () => {
+    const intent = parseRootShortcutIntent({ query: "EEO AAPL", commands: [], paneTemplates: [withTicker], activeTicker: null });
+    if (intent.kind === "none" || intent.source !== "pane-template") throw new Error("Expected a pane-template intent");
+    expect(intent.template.id).toBe("estimate-revisions-em");
+    expect(intent.argText).toBe("AAPL");
+  });
+});

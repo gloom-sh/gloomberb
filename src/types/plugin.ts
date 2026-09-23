@@ -220,6 +220,8 @@ export interface PaneTemplateContext {
 
 interface PaneTemplateShortcut {
   prefix: string;
+  /** Other mnemonics for the same view (FFIP for WIRP). They open it when typed but are not listed as separate rows. */
+  aliases?: readonly string[];
   argPlaceholder?: string;
   argKind?: "text" | "ticker" | "ticker-list";
   argOptional?: boolean;

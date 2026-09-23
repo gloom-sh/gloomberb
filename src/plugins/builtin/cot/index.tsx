@@ -8,10 +8,10 @@ export const cotModule: PluginModule = {
   panes: [{ id: "cot", name: "CFTC Positioning", icon: "P", component: CotPane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 106, height: 30 },
     tableExport: true, headless: cotHeadless }],
-  paneTemplates: ["COT", "CFTC"].map((prefix) => ({ id: `cot-${prefix.toLowerCase()}`, paneId: "cot", label: "CFTC Positioning",
+  paneTemplates: [{ id: "cot-cot", paneId: "cot", label: "CFTC Positioning",
     description: "Weekly futures positioning, changes, historical percentiles and cross-market extremes.",
     keywords: ["cot", "cftc", "positioning", "commitments", "managed money", "net spec"],
-    shortcut: { prefix, argKind: "text" as const, argPlaceholder: "code or root", argOptional: true }, headless: cotHeadless,
+    shortcut: { prefix: "COT", aliases: ["CFTC"], argKind: "text" as const, argPlaceholder: "code or root", argOptional: true }, headless: cotHeadless,
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
       const code = cotContractCode(input || context.activeTicker);
@@ -19,7 +19,7 @@ export const cotModule: PluginModule = {
       return { title: code ? `COT ${code}` : "CFTC Positioning", params: code ? { code } : undefined,
         settings: { report: options?.values?.report ?? "legacy" }, placement: "floating" as const };
     },
-  })),
+  }],
   setup(ctx) { cotBoardCache.attach(ctx.persistence); },
   dispose() { cotBoardCache.reset(); },
 };
