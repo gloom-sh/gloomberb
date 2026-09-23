@@ -81,6 +81,21 @@ test("missing holdings block complete-book risk without renormalizing the surviv
     }),
   ).toThrow("different portfolio");
 });
+test("factor proxies resolve on their own listing venue", () => {
+  const snapshot = market();
+  const momentum = snapshot.histories.find(
+    (row) => row.instrument.symbol === "MTUM",
+  )!;
+  expect(momentum.instrument.exchange).toBe("BATS");
+  momentum.returns = momentum.returns.map((row, index) => ({
+    ...row,
+    value: row.value * 1.5 + (index % 3) * 0.001,
+  }));
+  const model = buildPortfolioRisk(portfolio, [holding("SPY")], snapshot);
+  const factor = model.factors.find((row) => row.id === "momentum")!;
+  expect(factor.samples).toBe(60);
+  expect(factor.value).not.toBeNull();
+});
 test("signed equity exposure remains in concentration while shorts block the unfinanced basket", () => {
   const model = buildPortfolioRisk(
     portfolio,

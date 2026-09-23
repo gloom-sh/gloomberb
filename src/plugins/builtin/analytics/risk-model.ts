@@ -1,5 +1,6 @@
 import { portfolioOptionGreeks } from "./risk-options";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
+import { formatNumber } from "../../../utils/format";
 import type { DatedReturn } from "./metrics";
 import {
   computeWeightedPortfolioReturns,
@@ -18,7 +19,11 @@ import {
   calculateBrinson,
   type PortfolioRiskEvidence,
 } from "./risk-evidence";
-import { riskInstrumentId, type RiskMarketSnapshot } from "./risk-client";
+import {
+  RISK_FACTOR_INSTRUMENTS,
+  riskInstrumentId,
+  type RiskMarketSnapshot,
+} from "./risk-client";
 
 export interface PortfolioRiskHolding {
   id: string;
@@ -235,7 +240,12 @@ export function buildPortfolioRisk(
         holdings.map((row) => ({ weight: row.weight!, returns: row.returns })),
       )
     : [];
-  const proxy = (symbol: string) => byId.get(`ARCA:${symbol}`)?.returns ?? [];
+  const proxy = (symbol: string) => {
+    const instrument = RISK_FACTOR_INSTRUMENTS.find(
+      (row) => row.symbol === symbol,
+    );
+    return (instrument && byId.get(riskInstrumentId(instrument))?.returns) || [];
+  };
   const benchmark = proxy("SPY"),
     sample = pairedReturns(basket, benchmark);
   const metrics = rollingBasketRisk(sample);
@@ -308,6 +318,10 @@ export function buildPortfolioRisk(
       value: regression ? regression.beta * stress.shock * 100 : null,
     };
   });
+  if (completeBasket)
+    for (const factor of factors)
+      if (factor.samples === 0)
+        warnings.push(`${factor.label}: no matched factor history`);
   if (completeBasket && metrics.every((row) => row.value == null))
     warnings.push("Fewer than 60 consecutive matched completed daily returns.");
   const performance = evidence?.performance
@@ -350,7 +364,7 @@ export function buildPortfolioRisk(
       asOf: row.priceAsOf,
       detail:
         row.error ??
-        `${row.quantity} shares; ${row.value?.toFixed(2)} ${row.currency}${row.markSource === "close" ? ` at ${row.priceAsOf} close` : ""}; history ${row.historyAsOf}`,
+        `${row.quantity} shares; ${formatNumber(row.value ?? undefined)} ${row.currency}${row.markSource === "close" ? ` at ${row.priceAsOf} close` : ""}; history ${row.historyAsOf}`,
     })),
     correlation: correlation.map((row) => ({
       id: `${row.left}/${row.right}`,

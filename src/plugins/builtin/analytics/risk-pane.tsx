@@ -563,6 +563,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               showTimeAxis
               navigable={false}
               formatAxisValue={(value) => `${value.toFixed(1)}%`}
+              formatValue={(value) => `${value.toFixed(2)}%`}
               remoteKind="portfolio-risk-history"
             />
           ) : undefined
