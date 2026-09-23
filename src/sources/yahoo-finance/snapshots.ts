@@ -20,6 +20,7 @@ import {
 import type { ChartResult } from "./types";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { isShopOperatingTarget } from "../../utils/operating-result";
+import { yahooSecurityName } from "./names";
 
 type YahooChartSnapshot = {
   meta: NonNullable<ChartResult["meta"]>;
@@ -192,7 +193,7 @@ export async function loadYahooTickerFinancials(
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
     marketCap: latest("trailingMarketCap"),
-    name: meta.shortName || meta.longName,
+    name: yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,
@@ -280,7 +281,7 @@ export async function loadYahooQuote(
     changePercent: prev ? (change / prev) * 100 : 0,
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
-    name: meta.shortName || meta.longName,
+    name: yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,

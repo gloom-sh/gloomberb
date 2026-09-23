@@ -21,6 +21,7 @@ import {
 } from "./mappers";
 import { getYahooSymbolsToTry } from "./symbols";
 import type { ChartResult, QuoteSummaryResponse } from "./types";
+import { yahooSecurityName } from "./names";
 
 interface YahooQuoteSummaryOptions {
   exchange?: string;
@@ -83,7 +84,7 @@ export async function loadYahooHolders({
       return {
         providerId,
         symbol: result.price?.symbol ?? symbol,
-        name: result.price?.shortName ?? result.price?.longName,
+        name: yahooSecurityName(result.price?.shortName, result.price?.longName),
         currency: result.price?.currency,
         exchange: result.price?.exchangeName,
         asOf,
@@ -171,7 +172,7 @@ export async function loadYahooCorporateActions({
         fetchedAt: new Date().toISOString(),
         coverage: { dividends: completeDividends ? "available" : "unavailable", splits: chart ? "available" : "unavailable", earnings: result?.calendarEvents || result?.earningsHistory ? "available" : "unavailable" },
         symbol: result?.price?.symbol ?? symbol,
-        name: result?.price?.shortName ?? result?.price?.longName,
+        name: yahooSecurityName(result?.price?.shortName, result?.price?.longName),
         currency: dividendUnit.currency || undefined,
         exchange: result?.price?.exchangeName ?? result?.quoteType?.exchange,
         dividends: dividends.map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),

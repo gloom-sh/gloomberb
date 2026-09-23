@@ -11,6 +11,7 @@ import type {
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import type { ChartResult, YahooEarningsTrend, YahooQuoteSummaryResult } from "./types";
+import { yahooSecurityName } from "./names";
 
 export type ExtendedHoursData = {
   preMarketPrice?: number;
@@ -116,7 +117,7 @@ export function mapYahooAnalystResearchResponse(
     providerId: "yahoo",
     fetchedAt: new Date().toISOString(),
     symbol: result.price?.symbol ?? fallbackSymbol,
-    name: result.price?.shortName ?? result.price?.longName,
+    name: yahooSecurityName(result.price?.shortName, result.price?.longName),
     currency: unit.currency || undefined,
     exchange: result.price?.exchangeName,
     priceTarget: targetHigh != null || targetLow != null || targetMean != null || targetMedian != null
@@ -288,7 +289,7 @@ export function mapYahooEarningsCalendarEvent(
 
   return {
     symbol,
-    name: result.quoteType?.shortName || result.quoteType?.longName || symbol,
+    name: yahooSecurityName(result.quoteType?.shortName, result.quoteType?.longName) || symbol,
     earningsDate,
     earningsCallDate: yahooRawDateTime(cal.earningsCallDate?.[0]),
     isDateEstimate: cal.isEarningsDateEstimate ?? null,
