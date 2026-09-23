@@ -1,6 +1,8 @@
 import type { AppServices } from "../../../../core/app-services";
 import type { DesktopCapabilityRequest } from "../../shared/protocol";
+import { isBatchableQuoteOperation, QuoteEventBatcher } from "../../shared/quote-event-batch";
 import { encodeRpcValue } from "../../view/rpc-codec";
+import { getServerClockOffsetMs } from "../../../../market-data/quotes/clock";
 
 type CapabilityRegistry = AppServices["pluginRegistry"]["capabilities"];
 
@@ -95,19 +97,32 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
         const clientSubscriptionId = request.payload.subscriptionId;
         const scopedSubscriptionId = this.scopeClientId(rpc, clientSubscriptionId);
         this.subscriptions.get(scopedSubscriptionId)?.();
-        await registry.subscribe(
-          request.payload.capabilityId,
-          request.payload.operationId,
-          request.payload.payload,
-          (event) => {
-            rpc.send["capability.event"]({
-              subscriptionId: clientSubscriptionId,
-              event: encodeRpcValue(event),
-            });
-          },
-          { renderer: true, subscriptionId: scopedSubscriptionId },
-        );
-        this.subscriptions.set(scopedSubscriptionId, () => registry.unsubscribe(scopedSubscriptionId));
+        const send = (event: unknown) => {
+          rpc.send["capability.event"]({
+            subscriptionId: clientSubscriptionId,
+            event: encodeRpcValue(event),
+          });
+        };
+        // A busy tape would otherwise cost one message per tick per window.
+        const batcher = isBatchableQuoteOperation(request.payload.operationId)
+          ? new QuoteEventBatcher(send, getServerClockOffsetMs)
+          : null;
+        try {
+          await registry.subscribe(
+            request.payload.capabilityId,
+            request.payload.operationId,
+            request.payload.payload,
+            batcher ? (event) => batcher.push(event) : send,
+            { renderer: true, subscriptionId: scopedSubscriptionId },
+          );
+        } catch (error) {
+          batcher?.dispose();
+          throw error;
+        }
+        this.subscriptions.set(scopedSubscriptionId, () => {
+          batcher?.dispose();
+          registry.unsubscribe(scopedSubscriptionId);
+        });
         return null;
       }
       case "capability.unsubscribe": {

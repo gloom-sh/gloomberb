@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { CapabilityRegistry } from "../../../../capabilities/registry";
 import { DesktopCapabilityBridge } from "./capability-bridge";
+import { QUOTE_EVENT_BATCH_INTERVAL_MS, QUOTE_EVENT_BATCH_KIND } from "../../shared/quote-event-batch";
 
 type TestRpc = {
   key: string;
@@ -61,4 +62,51 @@ test("desktop capability cancellation is window-scoped and window cleanup aborts
   bridge.disposeWindow("window-b");
   expect(await second).toMatchObject({ name: "AbortError" });
   expect(signals.get("second")?.aborted).toBe(true);
+});
+
+test("quote streams reach a window as one batch per interval with the latest tick per instrument", async () => {
+  const registry = new CapabilityRegistry();
+  let emit: ((event: unknown) => void) | null = null;
+  let disposed = 0;
+  registry.register("test", {
+    id: "asset-data.test",
+    kind: "plugin-service",
+    name: "Test",
+    operations: {
+      subscribeQuotes: {
+        kind: "stream",
+        rendererSafe: true,
+        subscribe: (_input: unknown, next) => {
+          emit = next;
+          return () => { disposed += 1; };
+        },
+      },
+    },
+  });
+  const sent: unknown[] = [];
+  const client: TestRpc = { key: "window-a", send: { "capability.event": (payload) => sent.push(payload.event) } };
+  const bridge = new DesktopCapabilityBridge<TestRpc>({ getRegistry: () => registry, getWindowKey: (rpc) => rpc.key });
+  await bridge.handle(client, {
+    method: "capability.subscribe",
+    payload: { subscriptionId: "quote:1", capabilityId: "asset-data.test", operationId: "subscribeQuotes", payload: {} },
+  });
+
+  const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+  const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+  for (const price of [230, 231, 232]) emit!({ target: aapl, quote: { symbol: "AAPL", price } });
+  emit!({ target: msft, quote: { symbol: "MSFT", price: 510 } });
+  expect(sent).toEqual([]);
+
+  await Bun.sleep(QUOTE_EVENT_BATCH_INTERVAL_MS + 20);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({
+    kind: QUOTE_EVENT_BATCH_KIND,
+    events: [{ target: aapl, quote: { price: 232 } }, { target: msft, quote: { price: 510 } }],
+  });
+
+  emit!({ target: aapl, quote: { symbol: "AAPL", price: 233 } });
+  await bridge.handle(client, { method: "capability.unsubscribe", payload: { subscriptionId: "quote:1" } });
+  await Bun.sleep(QUOTE_EVENT_BATCH_INTERVAL_MS + 20);
+  expect(sent).toHaveLength(1);
+  expect(disposed).toBe(1);
 });

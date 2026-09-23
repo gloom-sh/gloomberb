@@ -10,6 +10,7 @@ import {
 } from "../../../capabilities";
 import type { BrokerConnectionStatus } from "../../../types/broker";
 import { backendRequest, onCapabilityEvent } from "./backend-rpc";
+import { unpackQuoteEvents } from "../shared/quote-event-batch";
 
 const statuses = new Map<string, BrokerConnectionStatus>();
 const statusSubscriptions = new Map<string, StatusSubscription>();
@@ -124,9 +125,9 @@ const client: BrokerRemoteClient = {
   subscribeQuotes(instanceId, targets, onQuote) {
     const subscriptionId = `broker-quotes:${instanceId}:${nextSubscriptionId++}`;
     const disposeEvents = onCapabilityEvent(subscriptionId, (message) => {
-      const event = message.event as BrokerRemoteEvent;
-      if (!isBrokerQuoteEvent(event)) return;
-      onQuote(event.target, event.quote);
+      for (const event of unpackQuoteEvents(message.event).events as BrokerRemoteEvent[]) {
+        if (isBrokerQuoteEvent(event)) onQuote(event.target, event.quote);
+      }
     });
     void subscribeBrokerCapability(subscriptionId, "quotes", { instanceId, targets }).catch((error) => {
       disposeEvents();

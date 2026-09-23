@@ -1,8 +1,10 @@
 import type { CapabilityManifest } from "../../../../capabilities";
 import type { NewsArticle, NewsQuery } from "../../../../news/types";
-import type { DataProvider, QuoteSubscriptionTarget } from "../../../../types/data-provider";
-import type { Quote, TickerFinancials } from "../../../../types/financials";
+import type { DataProvider } from "../../../../types/data-provider";
+import type { TickerFinancials } from "../../../../types/financials";
 import { backendRequest, getElectrobunBackendInitSnapshot, onCapabilityEvent } from "../backend-rpc";
+import { setForwardedServerClockOffset } from "../../../../market-data/quotes/clock";
+import { createBackendQuoteSubscription } from "./backend-quote-subscription";
 import { createCapabilityInvoker } from "./capability-invoker";
 import { RemoteQuoteSubscriptionRegistry } from "./quote-subscription-registry";
 
@@ -80,9 +82,6 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
   });
   const assetDataOperations = getRendererOperationIds(ASSET_DATA_CAPABILITY_ID);
   const newsOperations = getRendererOperationIds(NEWS_CAPABILITY_ID);
-  let nextSubscriptionId = 1;
-  let quoteBackendSubscriptionId: string | null = null;
-  let disposeQuoteBackendMessages: (() => void) | null = null;
   let quoteBackendFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   const scheduleQuoteBackendSubscriptionFlush = () => {
@@ -94,38 +93,25 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
   };
 
   const quoteSubscriptions = new RemoteQuoteSubscriptionRegistry(scheduleQuoteBackendSubscriptionFlush);
-
-  const flushQuoteBackendSubscription = () => {
-    if (!hasRendererOperation(assetDataOperations, "subscribeQuotes")) return;
-    const targets = quoteSubscriptions.backendTargets();
-    const previousSubscriptionId = quoteBackendSubscriptionId;
-    if (previousSubscriptionId) {
-      quoteBackendSubscriptionId = null;
-      disposeQuoteBackendMessages?.();
-      disposeQuoteBackendMessages = null;
-      void backendRequest("capability.unsubscribe", { subscriptionId: previousSubscriptionId }).catch(() => {});
-    }
-    if (targets.length === 0) return;
-
-    const subscriptionId = `quote:${nextSubscriptionId++}`;
-    quoteBackendSubscriptionId = subscriptionId;
-    disposeQuoteBackendMessages = onCapabilityEvent(subscriptionId, (message) => {
-      const event = message.event as { target: QuoteSubscriptionTarget; quote: Quote };
-      quoteSubscriptions.dispatch(event.target, event.quote);
-    });
-    void backendRequest("capability.subscribe", {
+  const quoteBackend = createBackendQuoteSubscription({
+    subscribe: (subscriptionId, targets) => backendRequest("capability.subscribe", {
       subscriptionId,
       capabilityId: ASSET_DATA_CAPABILITY_ID,
       operationId: "subscribeQuotes",
       payload: { targets },
-    }).catch((error) => {
-      if (quoteBackendSubscriptionId === subscriptionId) {
-        quoteBackendSubscriptionId = null;
-        disposeQuoteBackendMessages?.();
-        disposeQuoteBackendMessages = null;
-      }
-      console.error("Failed to subscribe to backend quotes", error);
-    });
+    }),
+    unsubscribe: (subscriptionId) => {
+      void backendRequest("capability.unsubscribe", { subscriptionId }).catch(() => {});
+    },
+    onEvent: (subscriptionId, listener) => onCapabilityEvent(subscriptionId, (message) => listener(message.event)),
+    dispatch: (target, quote) => quoteSubscriptions.dispatch(target, quote),
+    onClockOffset: setForwardedServerClockOffset,
+    onError: (error) => console.error("Failed to subscribe to backend quotes", error),
+  });
+
+  const flushQuoteBackendSubscription = () => {
+    if (!hasRendererOperation(assetDataOperations, "subscribeQuotes")) return;
+    quoteBackend.sync(quoteSubscriptions.backendTargets());
   };
 
   const base: RemoteAssetDataClientBase = {
