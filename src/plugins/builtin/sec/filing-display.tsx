@@ -44,7 +44,7 @@ export function buildInsiderTransactionTitle(transaction: InsiderTransaction): s
     ? ` @ ${formatCurrency(transaction.pricePerShare)}`
     : "";
   const value = transaction.totalValue != null
-    ? ` | ${formatCurrency(transaction.totalValue)}`
+    ? ` | $${formatCompact(transaction.totalValue)}`
     : "";
   const shares = transaction.shares != null ? formatCompact(transaction.shares) : "—";
   const security = transaction.securityTitle || "shares";
