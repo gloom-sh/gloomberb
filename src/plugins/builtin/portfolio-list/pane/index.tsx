@@ -1,6 +1,6 @@
 import { Box } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
-import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../../../utils/market-capitalization";
+import { describeFundamentalMarketCap } from "../../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Tabs,
@@ -71,6 +71,15 @@ import { usePortfolioPaneStreaming } from "./streaming";
 import { usePortfolioSupplementalData } from "./supplemental";
 import { useLiveStreamingSetting } from "../../shared/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
+import { useThrottledMemo } from "../use-throttled-memo";
+import { useColumnClock } from "../use-column-clock";
+import { liveMarketCapitalization } from "../live-valuation";
+
+// Rows follow every tick. Totals walk the whole collection, so the footer
+// coalesces to about four updates a second and the weight denominator to one.
+const FOOTER_TOTALS_THROTTLE_MS = 250;
+const WEIGHT_TOTAL_THROTTLE_MS = 1_000;
+const DAY_MS = 86_400_000;
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const activateTicker = useTickerSourceActivate();
@@ -91,7 +100,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const [cashDrawerExpanded, setCashDrawerExpanded] = usePaneStateValue<boolean>("cashDrawerExpanded", false);
   const [, setViewMode] = usePaneSettingValue<PortfolioViewMode>("viewMode", "table");
 
-  const [now, setNow] = useState(Date.now());
   const [streamWindow, setStreamWindow] = useState({ start: 0, end: 24 });
   const [quickAddFocused, setQuickAddFocused] = useState(false);
 
@@ -160,21 +168,46 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const conversionCurrencies = trackedCurrencies.some((currency) => currency !== config.baseCurrency) ? trackedCurrencies : [];
   const fxStatus = summarizeFxRates(conversionCurrencies, effectiveExchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
   const fxStatusText = fxStatusLabel(fxStatus);
-  const portfolioSummaryTotals = useMemo(() => calculatePortfolioSummaryTotals(
-    tickers,
-    financialsMap,
-    config.baseCurrency,
-    effectiveExchangeRates,
-    isPortfolioTab,
-    activeCollectionId,
-  ), [activeCollectionId, config.baseCurrency, effectiveExchangeRates, financialsMap, isPortfolioTab, tickers]);
+  const activeSort = resolveCollectionSortPreference(activeCollectionId, isPortfolioTab, collectionSorts);
+  // Only weights divide by the total: skip the walk when nothing shows one.
+  const needsWeightTotal = isPortfolioTab
+    && (viewMode === "grid" || columns.some((column) => column.id === "weight"));
+  const portfolioTotalMarketValue = useThrottledMemo(
+    () => needsWeightTotal ? calculatePortfolioSummaryTotals(
+      tickers,
+      financialsMap,
+      config.baseCurrency,
+      effectiveExchangeRates,
+      isPortfolioTab,
+      activeCollectionId,
+    ).totalMktValue : undefined,
+    [financialsMap],
+    [activeCollectionId, config.baseCurrency, effectiveExchangeRates, isPortfolioTab, needsWeightTotal, tickers],
+    WEIGHT_TOTAL_THROTTLE_MS,
+  );
 
-  const columnContext: ColumnContext = useMemo(() => ({
+  // The header, footer and notices move with live quotes a few times a second,
+  // not on every tick.
+  const portfolioSummaryTotals = useThrottledMemo(
+    () => calculatePortfolioSummaryTotals(
+      tickers,
+      financialsMap,
+      config.baseCurrency,
+      effectiveExchangeRates,
+      isPortfolioTab,
+      activeCollectionId,
+    ),
+    [financialsMap],
+    [activeCollectionId, config.baseCurrency, effectiveExchangeRates, isPortfolioTab, tickers],
+    FOOTER_TOTALS_THROTTLE_MS,
+  );
+
+  const now = useColumnClock(columns, appActive && viewMode === "table");
+  const baseColumnContext = useMemo(() => ({
     activeTab: isPortfolioTab ? activeCollectionId : undefined,
     baseCurrency: config.baseCurrency,
     exchangeRates: effectiveExchangeRates,
-    now,
-    portfolioTotalMarketValue: portfolioSummaryTotals.totalMktValue,
+    portfolioTotalMarketValue,
     supplementalVersion: supplementalData.version,
     analystResearch: supplementalData.analystResearch,
     corporateActions: supplementalData.corporateActions,
@@ -184,15 +217,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     config.baseCurrency,
     effectiveExchangeRates,
     isPortfolioTab,
-    now,
-    portfolioSummaryTotals.totalMktValue,
+    portfolioTotalMarketValue,
     supplementalData,
   ]);
+  const columnContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now }), [baseColumnContext, now]);
+  // The order only follows the per-second clock when sorting by quote age;
+  // day-based columns read the day, which the day's start stands for.
+  const sortNow = activeSort.columnId === "latency" ? now : Math.floor(now / DAY_MS) * DAY_MS;
+  const sortContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now: sortNow }), [baseColumnContext, sortNow]);
 
-  const activeSort = resolveCollectionSortPreference(activeCollectionId, isPortfolioTab, collectionSorts);
   const candidateSortedTickers = useMemo(
-    () => sortTickers(tickers, financialsMap, activeSort, columnContext, columns),
-    [tickers, financialsMap, activeSort, columnContext, columns],
+    () => sortTickers(tickers, financialsMap, activeSort, sortContext, columns),
+    [tickers, financialsMap, activeSort, sortContext, columns],
   );
   const candidateSymbols = useMemo(
     () => candidateSortedTickers.map((ticker) => ticker.metadata.ticker),
@@ -200,9 +236,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   );
   const orderResetKey = `${activeCollectionId}|${activeSort.columnId ?? ""}|${activeSort.direction}`;
   const orderedSymbols = useThrottledTickerOrder(candidateSymbols, orderResetKey);
+  // Keyed on the records, not the re-sorted candidates, so the rows keep their
+  // identity across ticks until the throttled order actually moves.
   const tickerBySymbol = useMemo(
-    () => new Map(candidateSortedTickers.map((ticker) => [ticker.metadata.ticker, ticker])),
-    [candidateSortedTickers],
+    () => new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker])),
+    [tickers],
   );
   const sortedTickers = useMemo(
     () => orderedSymbols.flatMap((symbol) => {
@@ -370,13 +408,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [activeCollectionId, cancelPendingCursorSymbol, currentCollectionId, setCurrentCollectionId]);
 
   useEffect(() => {
-    if (!appActive) return;
-    // Only ages relative labels (quote age, days held), so the shared 30s cadence is enough.
-    const timerId = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timerId);
-  }, [appActive]);
-
-  useEffect(() => {
     if (sortedTickers.length === 0) {
       if (cursorSymbol !== null) setCursorSymbol(null, { immediate: true });
       return;
@@ -410,7 +441,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     liveStreaming,
   });
 
-  const summaryFooterInfo = useMemo(() => buildPortfolioFooterSegments({
+  const summaryFooterInfo = useThrottledMemo(() => buildPortfolioFooterSegments({
     accountState: summaryAccountState,
     accountStatusText: accountsError
       ? `Accounts unavailable: ${accountsError}`
@@ -420,17 +451,15 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     refreshingSize,
     sortedTickers,
     totals: portfolioSummaryTotals,
-  }), [
+  }), [financialsMap, sortedTickers], [
     accountState,
     accountsError,
     currentPortfolio?.brokerInstanceId,
-    financialsMap,
     isPortfolioTab,
     portfolioSummaryTotals,
     refreshingSize,
-    sortedTickers,
     summaryAccountState,
-  ]);
+  ], FOOTER_TOTALS_THROTTLE_MS);
   const fxWarning = !!(fxStatus.stale || fxStatus.unknownTime || fxStatus.unavailable);
   const summaryNotices = isPortfolioTab
     ? buildPortfolioSummaryNotices({
@@ -468,8 +497,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const showQuickAdd = !!(activeCollectionId && activeCollectionEntry && quickAddCollectionKind);
   const quickAddHeight = showQuickAdd ? 1 : 0;
   const selectedFinancials = cursorSymbol ? financialsMap.get(cursorSymbol) : undefined;
-  const selectedCap = selectMarketCapitalization(selectedFinancials?.quote, selectedFinancials?.fundamentals);
-  const capNotice = viewMode === "table" && columns.some((column) => column.id === "market_cap") && selectedCap?.provenance.kind === "fundamentals"
+  const selectedCap = liveMarketCapitalization(selectedFinancials?.quote, selectedFinancials?.fundamentals);
+  // A cap repriced from the live price has no stale valuation date to explain.
+  const capNotice = viewMode === "table" && columns.some((column) => column.id === "market_cap")
+    && selectedCap?.provenance.kind === "fundamentals" && !selectedCap.live
     ? `${cursorSymbol} market cap: ${describeFundamentalMarketCap(selectedCap.provenance)}.` : undefined;
   usePaneNoticeFooter({
     registrationId: "portfolio-list-notices",

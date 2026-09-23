@@ -1,5 +1,5 @@
 import { formatPriceEarnings } from "../../../../utils/price-earnings";
-import { convertMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
+import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
@@ -20,6 +20,7 @@ import {
 } from "../../../../market-data/market/format";
 import type { PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
+import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
@@ -55,7 +56,8 @@ export function buildOverviewStats({
   if (quote?.volume != null) {
     stats.push({ label: "Volume", value: formatCompact(quote.volume) });
   }
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
+  const capitalization = liveMarketCapitalization(quote, fundamentals);
   if (capitalization) {
     const converted = convertMarketCapitalization(capitalization.value, capitalization.currency, baseCurrency, marketCapExchangeRates);
     stats.push({ label: "Market Cap", value: formatCompactCurrency(converted ?? capitalization.value, converted == null ? capitalization.currency : baseCurrency) });
@@ -63,11 +65,13 @@ export function buildOverviewStats({
   if (fundamentals?.sharesOutstanding) {
     stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
   }
-  if (fundamentals?.trailingPE != null) {
-    stats.push({ label: "P/E (TTM)", value: formatPriceEarnings(fundamentals.trailingPE) });
+  const trailingPE = liveTrailingPE(quote, fundamentals);
+  if (trailingPE != null) {
+    stats.push({ label: "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
   }
-  if (fundamentals?.forwardPE != null) {
-    stats.push({ label: "Fwd P/E", value: formatPriceEarnings(fundamentals.forwardPE) });
+  const forwardPE = liveForwardPE(quote, fundamentals);
+  if (forwardPE != null) {
+    stats.push({ label: "Fwd P/E", value: formatPriceEarnings(forwardPE) });
   }
   if (fundamentals?.eps != null) {
     stats.push({ label: "EPS", value: money(fundamentals.eps, true) });
@@ -75,9 +79,10 @@ export function buildOverviewStats({
   if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
   }
-  if (fundamentals?.dividendYield != null) {
+  const dividendYield = liveDividendYield(quote, fundamentals);
+  if (fundamentals && dividendYield != null) {
     const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
-    stats.push({ label, value: formatLevelPercent(fundamentals.dividendYield) });
+    stats.push({ label, value: formatLevelPercent(dividendYield) });
   }
   if (fundamentals?.revenue != null) {
     stats.push({ label: "Revenue", value: money(fundamentals.revenue) });

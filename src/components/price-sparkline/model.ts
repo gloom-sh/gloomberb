@@ -1,8 +1,11 @@
 import { colors, type ThemeColors } from "../../theme/colors";
-import type { PricePoint } from "../../types/financials";
+import { appendLiveQuotePoint } from "../../time-series/chart-data";
+import type { PricePoint, Quote } from "../../types/financials";
 import { getPricePointTimestamp } from "../../utils/price-history";
 
 const SPARKLINE_FALLBACK_POINTS = 22;
+/** Vertical steps a one-row sparkline can show; a smaller live move redraws nothing. */
+const LIVE_POINT_STEPS = 64;
 
 export type PriceSparklineTrend = "positive" | "negative" | "neutral";
 export type PriceSparklinePeriod = "1D" | "1W" | "1M" | "1Y";
@@ -114,4 +117,31 @@ export function resolvePriceSparklineRange(
     min: Math.min(...values),
     max: Math.max(...values),
   };
+}
+
+/**
+ * Completed bars end at the last fetch; during a session the live price closes
+ * the line. Pass the series returned for the previous quote on the same bars:
+ * a move too small to show keeps that series, so a tick does not redraw it.
+ */
+export function followLiveSparklinePrice(
+  priceHistory: PricePoint[],
+  quote: Quote | null | undefined,
+  options: { assetCategory?: string; period?: PriceSparklinePeriod; previous?: PricePoint[]; now?: number } = {},
+): PricePoint[] {
+  const next = appendLiveQuotePoint(priceHistory, quote, { assetCategory: options.assetCategory, now: options.now });
+  const previous = options.previous;
+  if (!previous || next === priceHistory || previous === priceHistory || previous.length !== next.length) return next;
+  const shown = sparklineValues(resolveSparklineHistory(next, options.period));
+  const prior = previous.at(-1)?.close;
+  const latest = shown.at(-1);
+  if (shown.length < 3 || prior == null || latest == null || !Number.isFinite(prior)) return next;
+  const bars = shown.slice(0, -1);
+  const min = Math.min(...bars);
+  const max = Math.max(...bars);
+  const inside = (value: number) => value >= min && value <= max;
+  // The line's colour compares the last point with the first.
+  const sameTrend = (latest >= shown[0]!) === (prior >= shown[0]!);
+  return sameTrend && inside(prior) && inside(latest) && Math.abs(latest - prior) * LIVE_POINT_STEPS <= max - min
+    ? previous : next;
 }

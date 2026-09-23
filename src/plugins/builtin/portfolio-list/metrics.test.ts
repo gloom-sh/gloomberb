@@ -288,6 +288,29 @@ describe("portfolio-metrics", () => {
     });
   });
 
+  test("values listed options at the two-sided mark while LAST shows the print", () => {
+    const ticker = createTicker({
+      ticker: "SPY  260619C00500000",
+      assetCategory: "OPT",
+      positions: [{ portfolio: "main", shares: 2, avgCost: 4.25, broker: "ibkr", currency: "USD", multiplier: 100 }],
+    });
+    const column = (id: string): ColumnConfig => ({ id, label: id, width: 10, align: "right" });
+    const valueAt = (quote: Partial<Quote>) => {
+      const financials = createFinancials({
+        quote: { symbol: ticker.metadata.ticker, price: 5, change: 0.5, changePercent: 11.11, previousClose: 4.5, ...quote },
+      });
+      const read = (id: string) => Math.round(Number(getSortValue(column(id), ticker, financials, defaultColumnContext)) * 100) / 100;
+      return { last: read("price"), value: read("mkt_value"), day: read("day_pnl") };
+    };
+
+    // A print inside the market, or one older than the quote, yields to the midpoint.
+    expect(valueAt({ bid: 4.9, ask: 5.3 })).toEqual({ last: 5, value: 1_020, day: 120 });
+    expect(valueAt({ bid: 1, ask: 1.2, lastTradeTime: 1_699_999_000_000 })).toEqual({ last: 5, value: 220, day: -680 });
+    // Without a timestamp, a print outside the market may be the fresher side.
+    expect(valueAt({ bid: 1, ask: 1.2 })).toEqual({ last: 5, value: 1_000, day: 100 });
+    expect(valueAt({ bid: undefined, ask: 1.2 })).toEqual({ last: 5, value: 1_000, day: 100 });
+  });
+
   test("formats equity average cost with tighter precision than quote prices", () => {
     const ticker = createTicker({
       assetCategory: "STK",

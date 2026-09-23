@@ -19,7 +19,8 @@ import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
-import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../../utils/market-capitalization";
+import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
+import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
 
 interface OverviewTabProps {
   width?: number;
@@ -43,7 +44,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
 
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  const capitalization = liveMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
   const instrumentType = quote?.instrumentType?.trim()
     || financials?.quoteMetadata?.instrumentType?.trim()
@@ -98,7 +99,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
       ...(priceSeries.warning ? [priceSeries.warning] : []),
       ...(fundamentals?.unavailableFields?.includes("enterpriseValue")
         ? [t("Enterprise value unavailable: the source observation failed validation.")] : []),
-      ...(capitalization?.provenance.kind === "fundamentals"
+      ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
     focused,
@@ -120,7 +121,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     - ticker.metadata.ticker.length - (listingVenue ? listingVenue.length + 3 : 0)
     - (marketStateText ? marketStateText.length + 1 : 0) - 3);
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
-  const hasYearRange = quote?.low52w != null && quote?.high52w != null && quote.high52w > quote.low52w;
+  const yearRange = liveFiftyTwoWeekRange(quote);
+  const hasYearRange = yearRange != null;
   const rangeInline = contentWidth >= 70 && hasDayRange && hasYearRange;
   const rangeWidth = rangeInline
     ? Math.floor((contentWidth - 2) / 2)
@@ -235,11 +237,11 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 markerColor={rangeMarkerColor}
               />
             )}
-            {hasYearRange && (
+            {yearRange && (
               <CompactRangeBar
                 current={quote.price}
-                low={quote.low52w!}
-                high={quote.high52w!}
+                low={yearRange.low}
+                high={yearRange.high}
                 label="52W Range"
                 width={rangeWidth}
                 currency={quoteCurrency}

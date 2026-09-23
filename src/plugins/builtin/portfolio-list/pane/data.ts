@@ -9,6 +9,7 @@ import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/fr
 import { resolveQuoteAgeTimestamp } from "../../../../market-data/quotes/time";
 import { compareSortValues } from "../../../../utils/sort-values";
 import { getSortValue, type ColumnContext } from "../metrics";
+import { columnContextVersion, objectVersion } from "../cell-version";
 import type { ResolvedPortfolioAccountState } from "../summary";
 
 export const VISIBLE_QUOTE_REFRESH_COOLDOWN_MS = 15_000;
@@ -203,30 +204,13 @@ export function sortTickers(
 
   const sortColumn = columns.find((column) => column.id === sortPreference.columnId);
   if (!sortColumn) return tickers;
-  const exchangeRatesVersion = [...columnContext.exchangeRates]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([currency, rate]) => `${currency}:${rate}`)
-    .join(",");
-  const sortContextVersion = [
-    sortColumn.id,
-    columnContext.activeTab ?? "",
-    columnContext.baseCurrency,
-    columnContext.portfolioTotalMarketValue ?? 0,
-    columnContext.supplementalVersion ?? 0,
-    exchangeRatesVersion,
-    sortColumn.id === "latency" ? columnContext.now : 0,
-    sortColumn.id === "held" ? columnContext.now : 0,
-  ].join("|");
+  const sortContextVersion = `${sortColumn.id}|${columnContextVersion(sortColumn.id, columnContext)}`;
   const sortValues = new Map<string, ReturnType<typeof getSortValue>>();
   for (const ticker of tickers) {
     const financials = financialsMap.get(ticker.metadata.ticker);
-    const financialsVersion = [
-      financials?.quote?.lastUpdated ?? 0,
-      Object.keys(financials?.fundamentals ?? {}).length,
-      financials?.priceHistory.length ?? 0,
-    ].join(":");
-    const positionsVersion = JSON.stringify(ticker.metadata.positions);
-    const version = `${sortContextVersion}|${financialsVersion}|${positionsVersion}`;
+    // Ticker records and financials are replaced, never mutated, so their
+    // identities version a row without walking its positions on every tick.
+    const version = `${sortContextVersion}|${objectVersion(ticker)}|${objectVersion(financials)}`;
     sortValues.set(ticker.metadata.ticker, sortValueCache.get(
       `${ticker.metadata.ticker}:${sortColumn.id}`,
       version,

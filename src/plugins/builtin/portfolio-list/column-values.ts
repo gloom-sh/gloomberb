@@ -1,5 +1,5 @@
 import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
-import { convertMarketCapitalization, selectMarketCapitalization } from "../../../utils/market-capitalization";
+import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -17,6 +17,7 @@ import {
   type MarketFormatOptions,
 } from "../../../market-data/market/format";
 import {
+  getActiveQuoteDisplay,
   marketChangeColor,
   marketPriceColor,
   marketStateDot,
@@ -24,6 +25,15 @@ import {
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
+import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../../../components/price-sparkline/model";
+import {
+  liveDividendYield,
+  liveFiftyTwoWeekRange,
+  liveForwardPE,
+  liveMarketCapitalization,
+  liveTrailingPE,
+  targetReferencePrice,
+} from "./live-valuation";
 import {
   getPortfolioPositionMetrics,
   getPortfolioQuoteDisplay,
@@ -38,7 +48,9 @@ export interface ColumnContext {
   activeTab?: string;
   baseCurrency: string;
   exchangeRates: Map<string, number>;
+  /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
+  /** Gross market value of the collection; weights may trail it by about a second. */
   portfolioTotalMarketValue?: number;
   supplementalVersion?: number;
   analystResearch?: Map<string, AnalystResearchData | null>;
@@ -156,6 +168,21 @@ function exDividendDate(symbol: string, ctx: ColumnContext): { pending: boolean;
   };
 }
 
+/** LAST, CHG and quote-derived columns show the traded price; positions in
+ * options are valued at their mark (see getPortfolioQuoteDisplay). */
+function tradedQuoteDisplay(
+  metrics: ReturnType<typeof getPortfolioPositionMetrics>,
+  valuation: ActiveQuoteDisplay | null,
+  quote: TickerFinancials["quote"],
+): ActiveQuoteDisplay | null {
+  return valuation && metrics.valuesAtMark ? getActiveQuoteDisplay(quote) : valuation;
+}
+
+function fiftyTwoWeekPosition(displayQuote: ActiveQuoteDisplay | null, quote: TickerFinancials["quote"]): number | null {
+  const range = displayQuote ? liveFiftyTwoWeekRange(quote) : null;
+  return displayQuote && range ? ((displayQuote.price - range.low) / (range.high - range.low)) * 100 : null;
+}
+
 function getActiveMarketValue(
   activeQuote: ActiveQuoteDisplay | null,
   positionMetrics: ReturnType<typeof getPortfolioPositionMetrics>,
@@ -196,6 +223,7 @@ export function getColumnValue(
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
   const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -244,12 +272,12 @@ export function getColumnValue(
     case "tags":
       return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : "—" };
     case "price":
-      return resolvePortfolioPriceValue(activeQuote, brokerMarkPrice, activeQuote ? currentQuoteOptions : formatOptions, col.width, quote?.marketState);
+      return resolvePortfolioPriceValue(displayQuote, brokerMarkPrice, displayQuote ? currentQuoteOptions : formatOptions, col.width, quote?.marketState);
     case "change":
-      if (!activeQuote) return { text: "—" };
+      if (!displayQuote) return { text: "—" };
       return {
-        text: formatSignedMarketPrice(activeQuote.change, { ...currentQuoteOptions, maxWidth: col.width }),
-        color: marketChangeColor(activeQuote.change, quote?.marketState),
+        text: formatSignedMarketPrice(displayQuote.change, { ...currentQuoteOptions, maxWidth: col.width }),
+        color: marketChangeColor(displayQuote.change, quote?.marketState),
       };
     case "bid":
       return { text: quote?.bid != null ? formatMarketPrice(quote.bid, { ...currentQuoteOptions, maxWidth: col.width }) : "—" };
@@ -272,35 +300,32 @@ export function getColumnValue(
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
     case "change_pct":
-      return activeQuote
-        ? { text: formatPercentRaw(activeQuote.changePercent), color: marketChangeColor(activeQuote.changePercent, quote?.marketState) }
+      return displayQuote
+        ? { text: formatPercentRaw(displayQuote.changePercent), color: marketChangeColor(displayQuote.changePercent, quote?.marketState) }
         : { text: quote ? formatPercentRaw(quote.changePercent) : "—", color: quote ? marketChangeColor(quote.changePercent, quote.marketState) : undefined };
     case "volume":
       return { text: finiteNumber(quote?.volume) ? formatCompact(quote.volume) : "—" };
     case "dollar_volume": {
-      if (!activeQuote || !finiteNumber(quote?.volume)) return { text: "—" };
-      return { text: formatCompact(toBaseQuote(activeQuote.price * quote.volume)) };
+      if (!displayQuote || !finiteNumber(quote?.volume)) return { text: "—" };
+      return { text: formatCompact(toBaseQuote(displayQuote.price * quote.volume)) };
     }
     case "range_52w": {
-      if (!activeQuote || !finiteNumber(quote?.high52w) || !finiteNumber(quote?.low52w)) return { text: "—" };
-      const range = quote.high52w - quote.low52w;
-      if (range <= 0) return { text: "—" };
-      const position = ((activeQuote.price - quote.low52w) / range) * 100;
-      return { text: formatPercentRaw(Math.max(0, Math.min(100, position))) };
+      const position = fiftyTwoWeekPosition(displayQuote, quote);
+      return { text: position == null ? "—" : formatPercentRaw(Math.max(0, Math.min(100, position))) };
     }
     case "market_cap": {
-      const cap = selectMarketCapitalization(quote, fundamentals);
+      const cap = liveMarketCapitalization(quote, fundamentals);
       const value = cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
       return { text: value == null ? "—" : formatCompact(value) };
     }
     case "pe":
-      return { text: formatPriceEarnings(fundamentals?.trailingPE) };
+      return { text: formatPriceEarnings(liveTrailingPE(quote, fundamentals)) };
     case "forward_pe":
-      return { text: formatPriceEarnings(fundamentals?.forwardPE) };
-    case "dividend_yield":
-      return {
-        text: fundamentals?.dividendYield != null ? `${(fundamentals.dividendYield * 100).toFixed(2)}%` : "—",
-      };
+      return { text: formatPriceEarnings(liveForwardPE(quote, fundamentals)) };
+    case "dividend_yield": {
+      const dividendYield = liveDividendYield(quote, fundamentals);
+      return { text: dividendYield != null ? `${(dividendYield * 100).toFixed(2)}%` : "—" };
+    }
     case "ext_hours":
       if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
         const changePercent = quote.preMarketChangePercent;
@@ -372,7 +397,7 @@ export function getColumnValue(
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
       if (analyst.pending) return { text: "…" };
       const value = targetValue(analyst.data);
-      const current = analyst.data?.priceTarget?.current ?? activeQuote?.price;
+      const current = targetReferencePrice(analyst.data, quoteCurrency, displayQuote?.price);
       if (value == null || !current) return { text: "—" };
       const percent = ((value - current) / Math.abs(current)) * 100;
       return { text: formatPercentRaw(percent), color: priceColor(percent) };
@@ -393,7 +418,7 @@ export function getColumnValue(
       return { text: formatShortDate(result.date) };
     }
     case "latency":
-      return { text: formatQuoteAgeWithSource(quote, ctx.now) };
+      return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
     case PRICE_SPARKLINE_COLUMN_ID:
       return { text: "" };
     default:
@@ -414,6 +439,7 @@ export function getSortValue(
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
   const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
     currency: ctx.baseCurrency,
@@ -447,7 +473,7 @@ export function getSortValue(
     case "tags":
       return ticker.metadata.tags.join(",");
     case "price":
-      if (activeQuote) return activeQuote.price;
+      if (displayQuote) return displayQuote.price;
       if (brokerMarkPrice != null) return brokerMarkPrice;
       return null;
     case "bid":
@@ -466,30 +492,27 @@ export function getSortValue(
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
     case "change":
-      return activeQuote?.change ?? null;
+      return displayQuote?.change ?? null;
     case "change_pct":
-      return activeQuote?.changePercent ?? null;
+      return displayQuote?.changePercent ?? null;
     case "volume":
       return quote?.volume ?? null;
     case "dollar_volume":
-      return activeQuote && finiteNumber(quote?.volume)
-        ? toBaseQuote(activeQuote.price * quote.volume)
+      return displayQuote && finiteNumber(quote?.volume)
+        ? toBaseQuote(displayQuote.price * quote.volume)
         : null;
-    case "range_52w": {
-      if (!activeQuote || !finiteNumber(quote?.high52w) || !finiteNumber(quote?.low52w)) return null;
-      const range = quote.high52w - quote.low52w;
-      return range > 0 ? ((activeQuote.price - quote.low52w) / range) * 100 : null;
-    }
+    case "range_52w":
+      return fiftyTwoWeekPosition(displayQuote, quote);
     case "market_cap": {
-      const cap = selectMarketCapitalization(quote, fundamentals);
+      const cap = liveMarketCapitalization(quote, fundamentals);
       return cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
     }
     case "pe":
-      return comparablePriceEarnings(fundamentals?.trailingPE);
+      return comparablePriceEarnings(liveTrailingPE(quote, fundamentals));
     case "forward_pe":
-      return comparablePriceEarnings(fundamentals?.forwardPE);
+      return comparablePriceEarnings(liveForwardPE(quote, fundamentals));
     case "dividend_yield":
-      return fundamentals?.dividendYield ?? null;
+      return liveDividendYield(quote, fundamentals) ?? null;
     case "ext_hours":
       if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
         return quote.preMarketChangePercent ?? null;
@@ -538,7 +561,7 @@ export function getSortValue(
     case "target_pct": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
       const value = analyst.pending ? null : targetValue(analyst.data);
-      const current = analyst.data?.priceTarget?.current ?? activeQuote?.price;
+      const current = targetReferencePrice(analyst.data, quoteCurrency, displayQuote?.price);
       return value != null && current ? ((value - current) / Math.abs(current)) * 100 : null;
     }
     case "rating": {
@@ -556,9 +579,11 @@ export function getSortValue(
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
     case PRICE_SPARKLINE_COLUMN_ID: {
-      const values = (financials?.priceHistory ?? [])
-        .map((point) => point.close)
-        .filter((value) => Number.isFinite(value));
+      // The trend the sparkline draws: its window, closed by the live price.
+      const history = followLiveSparklinePrice(financials?.priceHistory ?? [], quote, {
+        assetCategory: quote?.instrumentType ?? ticker.metadata.assetCategory,
+      });
+      const values = sparklineValues(resolveSparklineHistory(history));
       const first = values[0];
       const last = values.at(-1);
       return first != null && last != null && first !== 0 ? ((last - first) / Math.abs(first)) * 100 : null;

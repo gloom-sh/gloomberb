@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,
@@ -12,8 +12,16 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { useUiCapabilities } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { createRowValueCache, type RowValueCache } from "../../../components/ui/row-value-cache";
+import { columnContextVersion, objectVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
 import { getPortfolioPositionMetrics } from "./position-metrics";
+import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
+import { useThrottledMemo } from "./use-throttled-memo";
+
+// Tile text and colour follow quotes a few times a second; tile areas only
+// move on the reorder cadence, so a tick does not reshuffle the layout.
+const GRID_TILE_THROTTLE_MS = 250;
 
 const MARKET_CAP_COLUMN: ColumnConfig = { id: "market_cap", label: "Mkt Cap", width: 10, align: "right" };
 const MARKET_VALUE_COLUMN: ColumnConfig = { id: "mkt_value", label: "Mkt Value", width: 10, align: "right" };
@@ -44,41 +52,79 @@ function positionAdjustedChangePercent(
     : null;
 }
 
+function tileWeight(
+  ticker: TickerRecord,
+  financials: TickerFinancials | undefined,
+  context: ColumnContext,
+  isPortfolioTab: boolean,
+): number {
+  const weightColumn = isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
+  const fallbackColumn = isPortfolioTab ? MARKET_CAP_COLUMN : VOLUME_COLUMN;
+  const weight = numericValue(getSortValue(weightColumn, ticker, financials, context))
+    ?? numericValue(getSortValue(fallbackColumn, ticker, financials, context))
+    ?? 1;
+  return Math.max(1, Math.abs(weight));
+}
+
+const TILE_COLUMN_IDS = [MARKET_CAP_COLUMN, MARKET_VALUE_COLUMN, CHANGE_PCT_COLUMN, DAY_PNL_COLUMN, VOLUME_COLUMN, WEIGHT_COLUMN]
+  .map((column) => column.id);
+
+function tileVersion(
+  ticker: TickerRecord,
+  financials: TickerFinancials | undefined,
+  context: ColumnContext,
+  isPortfolioTab: boolean,
+  weight: number | undefined,
+): string {
+  return `${isPortfolioTab}|${weight ?? ""}|${objectVersion(ticker)}|${objectVersion(financials)}|${
+    TILE_COLUMN_IDS.map((columnId) => columnContextVersion(columnId, context)).join("|")}`;
+}
+
 function buildPortfolioGridItems(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,
   context: ColumnContext,
   isPortfolioTab: boolean,
+  layoutWeights: ReadonlyMap<string, number>,
+  cache: RowValueCache<string, MetricTreemapItem<TickerRecord>>,
 ): Array<MetricTreemapItem<TickerRecord>> {
   return tickers.map((ticker) => {
     const symbol = ticker.metadata.ticker;
     const financials = financialsMap.get(symbol);
-    const weightColumn = isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
-    const primaryColumn = isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
-    const fallbackColumn = isPortfolioTab ? MARKET_CAP_COLUMN : VOLUME_COLUMN;
-    const weight = numericValue(getSortValue(weightColumn, ticker, financials, context))
-      ?? numericValue(getSortValue(fallbackColumn, ticker, financials, context))
-      ?? 1;
-    const primary = getColumnValue(primaryColumn, ticker, financials, context).text;
-    const change = getColumnValue(CHANGE_PCT_COLUMN, ticker, financials, context).text;
-    const secondary = isPortfolioTab
-      ? `${getColumnValue(DAY_PNL_COLUMN, ticker, financials, context).text} ${change}`
-      : change;
-    const tertiary = isPortfolioTab
-      ? getColumnValue(WEIGHT_COLUMN, ticker, financials, context).text
-      : getColumnValue(VOLUME_COLUMN, ticker, financials, context).text;
-
-    return {
-      id: symbol,
-      label: symbol,
-      weight: Math.max(1, Math.abs(weight)),
-      colorValue: positionAdjustedChangePercent(ticker, financials, context, isPortfolioTab),
-      primaryText: primary,
-      secondaryText: secondary,
-      tertiaryText: tertiary,
-      data: ticker,
-    };
+    const layoutWeight = layoutWeights.get(symbol);
+    const version = tileVersion(ticker, financials, context, isPortfolioTab, layoutWeight);
+    return cache.get(symbol, version, () => buildPortfolioGridItem(ticker, financials, context, isPortfolioTab, layoutWeight));
   });
+}
+
+function buildPortfolioGridItem(
+  ticker: TickerRecord,
+  financials: TickerFinancials | undefined,
+  context: ColumnContext,
+  isPortfolioTab: boolean,
+  layoutWeight: number | undefined,
+): MetricTreemapItem<TickerRecord> {
+  const symbol = ticker.metadata.ticker;
+  const primaryColumn = isPortfolioTab ? MARKET_VALUE_COLUMN : MARKET_CAP_COLUMN;
+  const primary = getColumnValue(primaryColumn, ticker, financials, context).text;
+  const change = getColumnValue(CHANGE_PCT_COLUMN, ticker, financials, context).text;
+  const secondary = isPortfolioTab
+    ? `${getColumnValue(DAY_PNL_COLUMN, ticker, financials, context).text} ${change}`
+    : change;
+  const tertiary = isPortfolioTab
+    ? getColumnValue(WEIGHT_COLUMN, ticker, financials, context).text
+    : getColumnValue(VOLUME_COLUMN, ticker, financials, context).text;
+
+  return {
+    id: symbol,
+    label: symbol,
+    weight: layoutWeight ?? tileWeight(ticker, financials, context, isPortfolioTab),
+    colorValue: positionAdjustedChangePercent(ticker, financials, context, isPortfolioTab),
+    primaryText: primary,
+    secondaryText: secondary,
+    tertiaryText: tertiary,
+    data: ticker,
+  };
 }
 
 export function PortfolioGrid({
@@ -109,9 +155,22 @@ export function PortfolioGrid({
   const { cellWidthPx = 8, cellHeightPx = 18, nativePaneChrome } = useUiCapabilities();
   const chartWidth = Math.max(1, width - 2);
   const cellAspect = Math.max(0.5, Math.min(4, cellHeightPx / Math.max(1, cellWidthPx)));
-  const items = useMemo(
-    () => buildPortfolioGridItems(sortedTickers, financialsMap, columnContext, isPortfolioTab),
-    [columnContext, financialsMap, isPortfolioTab, sortedTickers],
+  const tileCacheRef = useRef(createRowValueCache<string, MetricTreemapItem<TickerRecord>>(2000));
+  const tickerKey = sortedTickers.map((ticker) => ticker.metadata.ticker).join("\u001f");
+  const layoutWeights = useThrottledMemo(
+    () => new Map(sortedTickers.map((ticker) => [
+      ticker.metadata.ticker,
+      tileWeight(ticker, financialsMap.get(ticker.metadata.ticker), columnContext, isPortfolioTab),
+    ])),
+    [financialsMap, columnContext],
+    [isPortfolioTab, tickerKey],
+    PORTFOLIO_REORDER_THROTTLE_MS,
+  );
+  const items = useThrottledMemo(
+    () => buildPortfolioGridItems(sortedTickers, financialsMap, columnContext, isPortfolioTab, layoutWeights, tileCacheRef.current),
+    [financialsMap, columnContext, layoutWeights, sortedTickers],
+    [isPortfolioTab, tickerKey],
+    GRID_TILE_THROTTLE_MS,
   );
   const navigationTiles = useMemo(
     () => buildMetricTreemapNavigationTiles(items, chartWidth, height, cellAspect, nativePaneChrome ? "float" : "integer"),

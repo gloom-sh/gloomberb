@@ -7,12 +7,19 @@ function clampQuoteTimestamp(lastUpdated: number | undefined, now = Date.now()):
   return Math.min(lastUpdated, now);
 }
 
-export function formatQuoteAge(lastUpdated: number | undefined, now = Date.now()): string {
+export interface QuoteAgeFormatOptions {
+  /** Whole seconds only, for a surface whose clock ticks once a second:
+   * milliseconds from that clock would be up to a second out. */
+  seconds?: boolean;
+}
+
+export function formatQuoteAge(lastUpdated: number | undefined, now = Date.now(), options: QuoteAgeFormatOptions = {}): string {
   const clamped = clampQuoteTimestamp(lastUpdated, now);
   if (clamped == null) return "—";
 
+  // A receipt or source time ahead of the clock is fresh, never negative.
   const ageMs = Math.max(0, now - clamped);
-  if (ageMs < 1000) return `${Math.floor(ageMs)}ms`;
+  if (ageMs < 1000) return options.seconds ? "0s" : `${Math.floor(ageMs)}ms`;
 
   const ageSeconds = ageMs / 1000;
   if (ageSeconds < 60) return `${Math.floor(ageSeconds)}s`;
@@ -33,11 +40,12 @@ export function resolveQuoteAgeTimestamp(
 export function formatQuoteAgeWithSource(
   quote: Pick<Quote, "lastUpdated" | "receivedAt" | "dataSource"> | null | undefined,
   now = Date.now(),
+  options: QuoteAgeFormatOptions = {},
 ): string {
   if (!quote) return "—";
 
   const timestamp = resolveQuoteAgeTimestamp(quote, now);
-  const age = timestamp == null ? "—" : formatQuoteAge(timestamp, now);
+  const age = timestamp == null ? "—" : formatQuoteAge(timestamp, now, options);
   if (age === "—") return age;
 
   const prefix = quote.dataSource === "delayed" ? "◷" : "";

@@ -30,6 +30,7 @@ import type { PluginRuntimeAccess } from "../../../runtime";
 import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
 import { portfolioListModule } from "..";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
+import { AGE_CLOCK_MS } from "../use-column-clock";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
@@ -1097,6 +1098,35 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("124.95");
     expect(frame).toContain("125.05");
     expect(frame).toContain("0.1");
+  });
+
+  test("ages quotes on a once-a-second clock while AGE is shown", async () => {
+    let clock = Date.parse("2026-09-14T18:00:00Z");
+    quoteClock = spyOn(Date, "now").mockImplementation(() => clock);
+    const config = createPortfolioConfigWithColumns(
+      "broker:ibkr-flex:DU12345",
+      ["ticker", "price", "latency"],
+      [createBrokerInstance("flex")],
+    );
+
+    testSetup = await testRender(
+      <PortfolioHarness
+        config={config}
+        collectionId="broker:ibkr-flex:DU12345"
+        quote={makeQuote({ lastUpdated: clock - 3_000, receivedAt: clock - 2_000 })}
+      />,
+      { width: 60, height: 8 },
+    );
+    await flushFrame();
+    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\s+2s/);
+
+    // A quote received since the clock last ticked reads its true age on the next tick.
+    clock += 5_000;
+    await act(async () => {
+      await Bun.sleep(AGE_CLOCK_MS + 50);
+    });
+    await flushFrame();
+    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\s+7s/);
   });
 
   test("warms full financials for visible rows when only quote data is loaded", async () => {
