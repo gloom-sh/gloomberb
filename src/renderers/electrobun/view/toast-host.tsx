@@ -64,15 +64,13 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
                 onClick={toast.action ? activate : undefined}
               >
                 <span className="gloom-toast-indicator" aria-hidden="true" />
-                <div className="gloom-toast-content">
-                  {(toast.title || toast.subtitle) && (
-                    <div className="gloom-toast-heading">
-                      {toast.title && <span className="gloom-toast-title">{toast.title}</span>}
-                      {toast.subtitle && <span className="gloom-toast-subtitle">{toast.subtitle}</span>}
-                    </div>
-                  )}
-                  <div className="gloom-toast-body">{toast.body}</div>
-                </div>
+                {(toast.title || toast.subtitle) && (
+                  <div className="gloom-toast-heading">
+                    {toast.title && <span className="gloom-toast-title">{toast.title}</span>}
+                    {toast.subtitle && <span className="gloom-toast-subtitle">{toast.subtitle}</span>}
+                  </div>
+                )}
+                <div className="gloom-toast-body">{toast.body}</div>
                 <div className="gloom-toast-controls">
                   {toast.action && (
                     <WebButton label={toast.action.label} onPress={activate} stopPropagation />
