@@ -53,7 +53,7 @@ const EXTRA_COLUMNS: MarketBoardStackProps<CryptoMarketBoardRow>["extraColumns"]
     },
   },
   {
-    column: { id: "baseVolume", label: "ALPACA VOL", width: 15, align: "right" },
+    column: { id: "baseVolume", label: "BASE VOL", width: 15, align: "right" },
     sortValue: (row) => row.observation.volume.value,
     renderCell: (row) => ({ text: cryptoVolume(row.observation), color: colors.textMuted }),
   },
@@ -253,7 +253,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
                     labelWidth={24}
                     label="Completed UTC day"
                     value={completedDate}
-                    detail="7D returns and Alpaca volume"
+                    detail="7D returns and base volume"
                   />
                 </Box>
               ) : undefined

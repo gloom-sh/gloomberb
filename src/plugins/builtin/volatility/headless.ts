@@ -7,7 +7,7 @@ function formattedPercentile(value: unknown): string { return typeof value === "
 export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
   return { sections: [
     { title: "Cash VIX tenor curve", entries: [
-      { label: "Source", value: data.curve.source }, { label: "As of", value: data.curve.date },
+      { label: "As of", value: data.curve.date },
       { label: "State", value: data.curve.termState }, { label: "3M / 30D", value: data.curve.ratio, formatted: formattedValue(data.curve.ratio) },
       { label: "3M / 30D 1Y percentile", value: data.curve.ratioPercentile1y, formatted: formattedPercentile(data.curve.ratioPercentile1y) }, { label: "3M / 30D 1Y sample", value: data.curve.ratioSampleSize },
       { label: "3M spread (points)", value: data.curve.slope, formatted: formattedValue(data.curve.slope) },
@@ -15,7 +15,7 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
     { title: "Aligned curve observations", columns: [
       { key: "label", header: "Index" }, { key: "tenor", header: "Tenor" },
       { key: "value", header: "Level", align: "right", format: formattedValue },
-      { key: "sourceId", header: "Source ID" }, { key: "source", header: "Provider" },
+      { key: "sourceId", header: "Series" },
     ], rows: data.curve.points.map((point) => ({ ...point, date: data.curve.date })) },
     { title: "FRED 30D/3M history", entries: [
       { label: "As of", value: data.fred.termDate }, { label: "3M / 30D", value: data.fred.ratio, formatted: formattedValue(data.fred.ratio) },
@@ -26,7 +26,7 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
       { key: "value", header: "Level", align: "right", format: formattedValue },
-      { key: "date", header: "As of" }, { key: "source", header: "Provider" },
+      { key: "date", header: "As of" },
       { key: "change1d", header: "1D points", align: "right", format: formattedValue },
       { key: "change1dPercent", header: "1D %", align: "right", format: formattedValue },
       { key: "percentile1y", header: "1Y percentile", align: "right", format: formattedPercentile },

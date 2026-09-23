@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox } from "../../../ui";
 import {
   useAsyncResource,
@@ -263,7 +264,7 @@ function HistoryDetail({
 
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const { ticker } = usePaneTicker();
-  const symbol = ticker?.metadata.ticker?.trim().toUpperCase() ?? null;
+  const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const session = useResearchCloudSession();
   const loader = useCallback(
     (force: boolean) => loadDebtMaturities(symbol!, force),

@@ -2,11 +2,24 @@ import { useCallback } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneTicker } from "../../../state/app/context";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isCloudSessionRequired } from "./research-cloud-session";
 
 function discardDeniedResearch(error: unknown): boolean {
   return (error instanceof ApiRequestError && [401, 402, 403].includes(error.status ?? 0))
     || isCloudSessionRequired(error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * The bare symbol and exchange behind a ticker key. A listing chosen from
+ * search is keyed "AMD:XNAS"; Cloud research endpoints take "AMD" plus the
+ * exchange, and the key's exchange wins over saved metadata.
+ */
+export function listingIdentity(key: string | null | undefined, savedExchange = ""): { symbol: string; exchange: string } | null {
+  const value = key?.trim();
+  if (!value) return null;
+  const parsed = parsePublicTickerKey(value);
+  return { symbol: parsed.symbol.toUpperCase(), exchange: parsed.exchange ?? savedExchange };
 }
 
 export function useBoundTicker() {

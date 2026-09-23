@@ -9,7 +9,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
-import { boardOrder, sourceLabel, type VolatilityBoardRow } from "./model";
+import { boardOrder, type VolatilityBoardRow } from "./model";
 import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityRatioChart, VolatilityIndexHistoryChart } from "./charts";
 import { useVolatilityEvidence } from "./evidence";
 
@@ -27,7 +27,6 @@ const BOARD_COLUMNS: DataTableColumn[] = [
 const CURVE_COLUMNS: DataTableColumn[] = [
   { id: "tenor", label: "Tenor", width: 12, align: "left" },
   { id: "value", label: "IV %", width: 12, align: "right" },
-  { id: "source", label: "Source", width: 22, align: "left" },
 ];
 const number = (value: number | null | undefined, signed = false) => value == null || !Number.isFinite(value)
   ? "--" : `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}`;
@@ -83,13 +82,12 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const asOf = tab === "history" ? data?.fred.termDate : tab === "board" ? selected?.date : data?.curve.date;
   const observationTime = selected?.sampleSize === 1 ? selected.history.at(-1)?.observedAt : null;
   const observationBasis = tab === "history" ? "daily close" : tab === "board" && selected?.sampleSize === 1 ? "observation" : "daily history";
-  const source = !data ? null : tab === "history" ? "FRED" : tab === "board" ? sourceLabel(selected?.source) : data?.curve.source === "fred" ? "FRED" : "market history";
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ...(source ? [{ id: "source", parts: [{ text: `${source} · ${observationBasis}`, tone: "muted" as const }] }] : []),
+    ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
     ...(asOf ? [{ id: "date", parts: [{ text: observationTime && tab === "board" ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, source, asOf, observationTime, observationBasis, tab]);
+  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, tab]);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
   const contentHeight = Math.max(5, height - tabRows);
@@ -115,7 +113,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
           onActivate={(row) => { setSelectedId(row.id); setTab("board"); }} onRootKeyDown={handleKey}
           sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}}
           getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source], ["units", "IV percent"], ["warnings", ...notices]]}
-          renderCell={(row, column) => ({ text: column.id === "value" ? number(row.value) : column.id === "source" ? sourceLabel(row.source) : String(row.tenor),
+          renderCell={(row, column) => ({ text: column.id === "value" ? number(row.value) : String(row.tenor),
             color: row.value == null ? colors.textMuted : column.id === "value" ? colors.warning : colors.text })} />
       </>}
       {data && tab === "history" && <>
@@ -139,7 +137,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             color: column.id.startsWith("change") && row.change1d != null ? row.change1d > 0 ? colors.warning : row.change1d < 0 ? colors.positive : colors.text
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
-          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"} · ${sourceLabel(selected.source)}`}</Text></Box>
+          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>
           <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} />
         </>}
       </>}

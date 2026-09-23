@@ -98,7 +98,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
-    ...(history.data?.source ? [{ id: "source", parts: [{ text: `${history.data.source} · daily`, tone: "muted" as const }] }] : []),
+    ...(history.data ? [{ id: "cadence", parts: [{ text: "daily closes", tone: "muted" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf.toISOString().slice(0, 10), tone: "muted" as const }] }] : []),
     ...(showIv && iv.loading ? [{ id: "iv-loading", parts: [{ text: "loading ATM IV", tone: "muted" as const }] }] : []),
   ], hints: [
@@ -133,7 +133,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       { id: "estimator", label: "Estimator", value: estimator, options: ESTIMATOR_OPTIONS, onChange: (value: string) => setEstimator(value as RealizedVolatilityEstimator) },
       { id: "lookback", label: "Lookback", value: String(lookback), options: [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }], onChange: setLookback },
     ]} meta={showIv && iv.data?.reference
-      ? `${view === "cone" ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} ·` : "ATM IV observed"} ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC · ${iv.data.reference.source ?? "options"}`
+      ? `${view === "cone" ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} ·` : "ATM IV observed"} ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC`
       : `Annualized % · ${Number(lookback) === 2 ? "2Y" : "1Y"} history`} />
     {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="realized volatility" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.history.length}>

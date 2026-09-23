@@ -150,7 +150,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   usePaneFooter("osa", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-    ...(position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ?? "input assumptions"}`, tone: "muted" as const }] }] : []),
+    ...(position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}`, tone: "muted" as const }] }] : []),
   ], hints }), [hints, position, market?.source, resource.loading, error]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.

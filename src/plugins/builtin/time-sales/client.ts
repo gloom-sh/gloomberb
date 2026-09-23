@@ -61,6 +61,21 @@ export async function fetchTape(symbol: string, exchange: string, signal?: Abort
   try { return validateTape(await client.getCloudTape(symbol, exchange, signal), symbol, exchange); }
   catch (error) {
     if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("Time and sales is not available on this Gloom Cloud server yet");
+    // A rejected request answers with an unavailable snapshot; show its reason, not the JSON body.
+    if (error instanceof ApiRequestError) {
+      const reason = tapeRejection(error.message);
+      if (reason) throw new Error(reason);
+    }
     throw error;
+  }
+}
+
+/** The first stated gap of an unavailable tape snapshot sent as an error body. */
+export function tapeRejection(body: string): string | null {
+  try {
+    const value = JSON.parse(body) as { gaps?: unknown };
+    return Array.isArray(value?.gaps) && typeof value.gaps[0] === "string" ? value.gaps[0] : null;
+  } catch {
+    return null;
   }
 }

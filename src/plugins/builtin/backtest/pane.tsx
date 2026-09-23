@@ -125,7 +125,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     info: [
       ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
       ...(result ? [{ id: "window", parts: [{ text: `${result.start} to ${result.end} · ${result.sessions} sessions`, tone: "muted" as const }] }] : []),
-      { id: "fills", parts: [{ text: `next-open fills · ${costBps} bp/side${history.data?.source ? ` · ${history.data.source}` : ""}`, tone: "muted" as const }] },
+      { id: "fills", parts: [{ text: `next-open fills · ${costBps} bp/side`, tone: "muted" as const }] },
     ],
     hints: [
       { id: "edit", key: "e", label: "dit rules", onPress: edit },

@@ -9,7 +9,7 @@ Tests:
 - When touching a test file, trim nearby low-value tests if the cleanup is clear and low-risk.
 
 Use tmux to test terminal TUI changes (see the `tui-testing` skill). Always kill the tmux session when done.
-Pane footers/status bars show changing status such as loading, error, live/delayed, stale, or auth state. Preserve existing pane-specific action shortcuts there instead of duplicating them in body toolbars. Do not add fixed pane labels, row counts, or generic keyboard hints.
+Pane footers/status bars show changing status such as loading, error, live/delayed, stale, or auth state. Preserve existing pane-specific action shortcuts there instead of duplicating them in body toolbars. Do not add fixed pane labels, row counts, or generic keyboard hints. Never show the data provider (`provider:*`, Gloom Cloud, Yahoo, Alpaca, etc.) anywhere in a pane; say what the data is (real-time, 15m delayed, settlement, as of) instead. See `pane-conventions`.
 Recurring methodology, model assumptions, and usage explanations belong in docs, not always-visible pane text or new info buttons. Keep units, source dates, and active data failures in context. Use existing actions instead of adding duplicate toolbars.
 Information density matters: never repeat the same information in a pane title/header and again in the body. If a stack/detail title already names the item, start the body with metadata or content.
 For Electrobun/desktop-web-only work, do not load the OpenTUI or tui-testing skills unless the change also touches terminal OpenTUI behavior or explicitly needs tmux coverage.

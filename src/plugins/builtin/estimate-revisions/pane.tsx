@@ -23,6 +23,7 @@ import {
   type DataTableColumn,
 } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
+import { listingIdentity } from "../shared/ticker-request";
 import type {
   EstimatePeriod,
   EstimateSurprise,
@@ -122,13 +123,13 @@ function EstimateDetail({
     () => [
       staticSeries(estimatePoints(period.recorded), {
         id: "recorded",
-        label: "Cloud observations",
+        label: "Recorded",
         color: colors.positive,
         calendarSpaced: true,
       }),
       staticSeries(estimatePoints(period.lookbacks), {
         id: "lookbacks",
-        label: "Provider lookbacks",
+        label: "Reported lookbacks",
         color: colors.warning,
         calendarSpaced: true,
       }),
@@ -213,8 +214,8 @@ function EstimateDetail({
               ? row.date
               : column.id === "source"
                 ? row.source === "yahoo"
-                  ? "Collected"
-                  : "Provider lookback"
+                  ? "Recorded"
+                  : "Reported lookback"
                 : number(
                     row[column.id as "average" | "low" | "high" | "analysts"],
                   ),
@@ -226,10 +227,12 @@ function EstimateDetail({
   );
 }
 export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
-  const { ticker, symbol } = usePaneTicker(),
+  const { ticker, symbol: boundSymbol } = usePaneTicker(),
     session = useResearchCloudSession(),
     colors = useThemeColors();
-  const exchange = canonicalExchange(ticker?.metadata.exchange ?? "");
+  const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");
+  const symbol = identity?.symbol ?? null;
+  const exchange = canonicalExchange(identity?.exchange ?? "");
   const loader = useCallback(
     (force: boolean) => loadEstimates(symbol!, exchange, force),
     [symbol, exchange, session.requestKey],

@@ -195,16 +195,6 @@ function fredHistory(inputs: VolatilityInputs["fred"]): FredVolatilityHistory {
   return { metrics, termDate, ratio: latest?.value ?? null, slope: front != null && back != null ? back - front : null,
     ratioHistory, termState: classifyTermState(front, back), warnings };
 }
-/** Internal routing ids are not sources a reader can act on. */
-export function sourceLabel(source: string | null | undefined): string {
-  if (!source) return "--";
-  if (source === "asset-data-router") return "market data";
-  if (source === "gloomberb-cloud") return "Gloom Cloud";
-  if (source === "yahoo") return "Yahoo";
-  if (source === "fred") return "FRED";
-  return source;
-}
-
 /** Declared order (tenor curve, then broad and asset-class indices, then single names), with unavailable rows last. */
 export function boardOrder(rows: readonly VolatilityBoardRow[]): VolatilityBoardRow[] {
   const rank = new Map(VOLATILITY_INDICES.map((definition, index) => [definition.id, index]));

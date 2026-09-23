@@ -334,8 +334,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   usePaneFooter("options-enrichment", () => ({ info: [
     ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),
     ...(enrichment?.asOf ? [{ id: "enrichment-asof",
-      title: [`Selected: ${enrichment.asOf} (${enrichment.source ?? "options"})`,
-        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"} (${enrichment.neighbourSource ?? "options"})`,
+      title: [`Selected: ${enrichment.asOf}`,
+        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"}`,
         `Treasury: ${enrichment.rateAsOf.join(", ") || "unavailable"}`,
         `Underlying mark: ${enrichment.spot} as of ${enrichment.spotAsOf ?? "unavailable"}`].join("\n"),
       parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),

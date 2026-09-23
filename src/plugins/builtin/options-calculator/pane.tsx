@@ -205,7 +205,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       ...(problem ? [{ id: "input", parts: [{ text: problem, tone: "warning" as const }] }] : []),
       ...(implied.note ? [{ id: "iv", parts: [{ text: implied.note, tone: "warning" as const }] }] : []),
       ...(surfaceSource && surfaceResource.loading ? [{ id: "loading", parts: [{ text: "loading surface", tone: "muted" as const }] }] : []),
-      ...(surfaceSource && surface?.asOf ? [{ id: "source", parts: [{ text: `${surface.source} · ${surface.asOf}`, tone: "muted" as const }] }] : []),
+      ...(surfaceSource && surface?.asOf ? [{ id: "surface-asof", parts: [{ text: `surface · ${surface.asOf}`, tone: "muted" as const }] }] : []),
       ...(effectiveSteps && effectiveSteps !== (draft.steps ?? 400) ? [{ id: "refined", parts: [{ text: `tree refined to ${effectiveSteps} steps`, tone: "muted" as const }] }] : []),
     ],
     hints: activeFieldId ? [] : [

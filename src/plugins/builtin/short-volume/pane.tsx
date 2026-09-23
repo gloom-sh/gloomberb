@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTicker, type DataTableCell } from "../../../components";
@@ -37,7 +38,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const [sourceSymbol] = usePaneSettingValue("finraSymbol", "");
   const [scopeValue] = usePaneSettingValue("shortVolumeScope", "nms");
   const scope = scopeValue === "otc" ? "otc" : "nms";
-  const symbol = sourceSymbol.trim() || ticker?.metadata.ticker || null;
+  const symbol = sourceSymbol.trim() || listingIdentity(ticker?.metadata.ticker)?.symbol || null;
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadShortVolume(symbol!, scope, force), [symbol, scope, session.requestKey]);
   const resource = useAsyncResource(symbol ? loader : null, {

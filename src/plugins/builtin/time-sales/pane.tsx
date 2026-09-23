@@ -6,6 +6,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
 import { canonicalExchange } from "../../../utils/exchanges";
+import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tradeKey } from "./model";
@@ -37,9 +38,10 @@ type TapeRow = { id: string; trade?: TapeTrade; quote?: TapeQuote };
 export function TimeSalesPane(props: PaneProps) {
   const { symbol, ticker } = usePaneTicker();
   const session = useResearchCloudSession();
-  const exchange = canonicalExchange(ticker?.metadata.exchange ?? "");
-  if (!symbol) return <PaneStatusBody empty emptyTitle="Select a US equity." subject="time and sales" />;
-  return <TimeSalesView key={`${symbol}:${exchange}:${session.requestKey}`} {...props} symbol={symbol} exchange={exchange} />;
+  const identity = listingIdentity(symbol, ticker?.metadata.exchange ?? "");
+  const exchange = canonicalExchange(identity?.exchange ?? "");
+  if (!identity) return <PaneStatusBody empty emptyTitle="Select a US equity." subject="time and sales" />;
+  return <TimeSalesView key={`${identity.symbol}:${exchange}:${session.requestKey}`} {...props} symbol={identity.symbol} exchange={exchange} />;
 }
 function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps & { symbol: string; exchange: string }) {
   const colors = useThemeColors();
@@ -68,7 +70,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneFooter("time-sales:actions", () => ({ hints: [{ id: "pause", key: "space", label: frozen ? "resume" : "pause", onPress: freeze }] }), [frozen, resource.data, resource.epoch]);
   usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : [])] });
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "feed", parts: [{ text: `Alpaca ${data.feed === "sip" ? "SIP" : "SIP 15m delayed"} · ${tapeTime(data.asOf)} UTC`, tone: "muted" }] },
+    info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeTime(data.asOf)} UTC`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };

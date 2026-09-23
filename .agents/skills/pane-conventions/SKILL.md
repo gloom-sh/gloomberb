@@ -58,7 +58,21 @@ never goes there.
 
 Nowhere: a row count as its own line, in the footer, or as "showing N of M";
 the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
-`r to refresh`); explanatory paragraphs. The one count the kit draws is the
+`r to refresh`); explanatory paragraphs; the data provider.
+
+**The data provider is invisible.** Never show which vendor or internal
+route served the data: no `provider:gloomberb-cloud`, `gloomberb-cloud`,
+Gloom Cloud, Yahoo, Alpaca, Twelve Data, OPRA, SIP or `entry.source` values
+in a footer, status line, header meta, table column, legend, tooltip or
+headless report column. Say what the data is instead: `real-time`,
+`15m delayed`, `settlement`, `daily closes`, `trade closes since …`, `as of`
+date, `stale`. `QueryEntry.source` and `providerId` are for routing, caches
+and tests, never for display. Two things are not providers and may appear:
+the user's own account or imported source (a broker account, a statement
+file), and the official publisher of a statistic in a detail view or its
+`o` link (a FRED series id, BIS, CFTC report type, SEC form). Gloom Cloud is
+named only for account and plan state (sign in, verify, upgrade), never as
+the origin of a number. The one count the kit draws is the
 `Label (n)` of a sectioned table header, and that is the kit's, not yours.
 
 ## 3. Footer
@@ -89,10 +103,10 @@ the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
 
 - Say each thing once. The header names the pane; the body does not. A
   detail's `detailTitle` names the item; the detail body starts with metadata
-  or content. If the footer leads with the ticker, its source segment does
-  not repeat it.
+  or content. If the footer leads with the ticker, its freshness segment
+  (`15m delayed · 14:47 UTC`) does not repeat it.
 - Units, dates and failures stay in context: currency and as-of beside the
-  value, a failed source as a footer warning or a chart gap, not a paragraph.
+  value, a failed input as a footer warning or a chart gap, not a paragraph.
 - No standing explanations; docs are linked from README and Help.
 - No count lines. The table shows the rows; scrolling shows the rest.
 - Compact controls: `Button compact` with `displayLabel`, `Tabs dense` in

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listingIdentity } from "../shared/ticker-request";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -44,7 +45,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const current = new AbortController();
     controller.current = current;
     const [payload, prices] = await Promise.all([
-      loadIvHistory(instrument!.symbol, { signal: current.signal }),
+      loadIvHistory(listingIdentity(instrument!.symbol)!.symbol, { signal: current.signal }),
       loadRealizedVolatilityHistory({ instrument: instrument!, forceRefresh: force, signal: current.signal }),
     ]);
     return { payload, prices };
@@ -80,7 +81,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   useShortcut((event) => { if (focused && !model) handleKey(event); });
   usePaneFooter("iv-history", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(model?.since ? [{ id: "since", parts: [{ text: `OPRA trade closes since ${model.since}`, tone: "muted" as const }] }] : []),
+    ...(model?.since ? [{ id: "since", parts: [{ text: `trade closes since ${model.since}`, tone: "muted" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf, tone: "muted" as const }] }] : []),
   ], hints: [
     { id: "lookback", key: "l", label: "ookback", onPress: cycleLookback },

@@ -65,7 +65,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
     info: data ? [
-      { id: "source", parts: [{ text: `${data.source === "cboe" ? "Cboe settlement" : `Yahoo ${delay > 0 ? `${delay}m delayed` : "dated quotes"}`} · ${data.quoteUnit ?? data.currency ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
+      { id: "source", parts: [{ text: `${data.source === "cboe" ? "settlement" : delay > 0 ? `${delay}m delayed` : "dated quotes"} · ${data.quoteUnit ?? data.currency ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
       ...(staleCount ? [{ id: "stale", parts: [{ text: `${staleCount} of ${data.contracts.length} stale`, tone: "warning" as const }] }] : []),
       ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : []),
     ] : [],
