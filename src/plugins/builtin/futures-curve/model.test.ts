@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
-import { curveRank, futuresCurveSeries, newestQuote } from "./model";
+import { curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote } from "./model";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
@@ -72,4 +72,17 @@ test("charts the strip within the horizon and dates it by its freshest quote, no
   expect(all[0]!.points).toHaveLength(3);
   expect(all[0]!.asOf).toBe(first.asOf);
   expect(newestQuote([])).toBeNull();
+});
+
+test("Treasury prices stay on their 32nd tick grid and contracts read by delivery month", () => {
+  expect(curvePrice(105.265625, "ZN")).toBe("105.265625");
+  expect(curvePrice(101.6796875, "ZT")).toBe("101.6796875");
+  expect(curvePrice(108, "ZB")).toBe("108.00");
+  expect(curvePrice(-0.1875, "ZN")).toBe("-0.1875");
+  expect(curvePrice(0.00635, "6J")).toBe("0.0063500");
+  // Crude's November contract expires in October.
+  expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 26");
+  expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 26");
+  expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 27");
+  expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 26");
 });

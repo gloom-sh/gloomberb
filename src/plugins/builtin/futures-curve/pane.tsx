@@ -10,7 +10,7 @@ import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedFuturesCurve, loadFuturesCurve } from "./client";
-import { curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
+import { curveAxisPrice, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 const COLUMNS: DataTableColumn[] = [
@@ -50,6 +50,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const newest = data ? newestQuote(data.contracts) : null;
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
+  const sameWindow = !!selectedRow && !!data && selectedRow.samples === data.slope.samples
+    && selectedRow.historyStart === data.slope.historyStart && selectedRow.historyEnd === data.slope.historyEnd;
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
   const bodyHeight = Math.max(9, height - tabRows - 2);
@@ -88,13 +90,15 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
           {selectedRow ? <KeyValueRow labelWidth={16} label={selectedRow.symbol} value={curvePrice(selectedRow.price, root)}
             detail={`${tab === "curve" && selectedRow.asOf === curves[0]?.asOf ? "" : `${curveTimestamp(selectedRow.asOf)} · `}${curveRank(selectedRow.percentile, selectedRow.samples, selectedRow.historyStart, selectedRow.historyEnd)}`} /> : null}
           <KeyValueRow labelWidth={16} label="Ann. roll yield" value={signedPercent(data.slope.annualizedRollYield)}
-            detail={`${tab === "curve" ? "" : `${curveTimestamp(data.slope.asOf)} · `}${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd)}`} />
+            detail={`${tab === "curve" ? "" : `${curveTimestamp(data.slope.asOf)} · `}${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd, !sameWindow)}`} />
         </Box>
         {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
-          formatValue={(value) => curvePrice(value, root)} formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(2, 10)}
+          formatValue={(value) => curvePrice(value, root)} formatAxisValue={(value, domain) => curveAxisPrice(value, domain, root)}
+          formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(0, 10)}
           selectedPointId={selected} onSelectedPointChange={setSelected}
           slope={{ label: `M2-M1 ${data.slope.state}`, value: data.slope.value,
-            percentile: data.slope.samples < 2 ? null : data.slope.percentile, window: `${data.slope.samples} obs`,
+            // The roll-yield line above states this spread's sample window.
+            percentile: data.slope.samples < 2 ? null : data.slope.percentile,
             asOf: data.slope.asOf, formatValue: (value) => curvePrice(value, root) }} /> : null}
         <DataTableView columns={COLUMNS} items={rows} focused={focused}
           rootWidth={width} rootHeight={tableHeight}

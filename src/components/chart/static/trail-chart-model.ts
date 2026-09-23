@@ -82,3 +82,24 @@ export function buildTrailChart(
     fromDate: (date: Date) => min + date.getTime() / SCALE,
   };
 }
+
+/**
+ * Round gridline labels across the strength axis (90, 95, 100, ...), as the
+ * value axis has. Only interior multiples are labelled: the domain's own edges
+ * are arbitrary and an edge label is pinned against the pane border.
+ */
+export function trailAxisTicks(min: number, max: number): Array<{ ratio: number; label: string }> {
+  const span = max - min;
+  if (!Number.isFinite(span) || span <= 0) return [];
+  const raw = span / 5;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = Number(([1, 2, 2.5, 5, 10].find((factor) => factor * power >= raw - 1e-9)! * power).toPrecision(12));
+  const decimals = Math.max(0, -Math.floor(Math.log10(step) + 1e-9) + (String(step).includes("25") ? 1 : 0));
+  const ticks: Array<{ ratio: number; label: string }> = [];
+  for (let index = Math.ceil(min / step); index * step <= max; index++) {
+    const value = Number((index * step).toPrecision(12));
+    const ratio = (value - min) / span;
+    if (ratio > 0.03 && ratio < 0.97) ticks.push({ ratio, label: value.toFixed(decimals) });
+  }
+  return ticks;
+}

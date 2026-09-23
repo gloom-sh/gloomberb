@@ -10,7 +10,7 @@ import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotRank, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotRank, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -34,6 +34,7 @@ const POSITION_COLUMNS: DataTableColumn[] = [
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const rank = (value: number | null) => value == null ? "--" : value.toFixed(0);
 const noop = () => {};
+const cotDetailTitle = (name: string | undefined, code: string | null) => name ? cotMarketName(name) : code ?? undefined;
 
 export function CotPane(props: PaneProps) {
   const pane = usePaneInstance();
@@ -68,7 +69,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     const result = (data?.rows ?? []).filter((row) => query ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase())
       : scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     if (!sort.id) return result;
-    const value = (row: CotBoardRow) => ({ name: row.marketName, code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
+    const value = (row: CotBoardRow) => ({ name: cotMarketName(row.marketName), code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
       one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, asOf: row.reportDate })[sort.id as "name"];
     return [...result].sort((a, b) => {
       const left = value(a), right = value(b);
@@ -101,7 +102,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     getItemKey={(row) => row.contractCode} onActivate={(row) => setOpen(row.contractCode)} freezeFirstColumn
     sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "desc" ? "asc" : "desc" }))}
     renderCell={(row, column) => {
-      if (column.id === "name") return { text: row.marketName };
+      if (column.id === "name") return { text: cotMarketName(row.marketName) };
       if (column.id === "code") return { text: row.contractCode, color: colors.textMuted };
       if (column.id === "net") return { text: cotInteger(row.position.net, true) };
       if (column.id === "change") return { text: cotInteger(row.position.weeklyChange, true) };
@@ -116,7 +117,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
         { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },
       ]} />}
     emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen(null)}
-    detailTitle={data?.rows.find((row) => row.contractCode === open)?.marketName ?? open ?? undefined}
+    detailTitle={cotDetailTitle(data?.rows.find((row) => row.contractCode === open)?.marketName, open)}
     detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 2)} focused={focused}
       code={open} family={family} traderClass={traderClass} onClassChange={setClass} /> : null} />;
 }

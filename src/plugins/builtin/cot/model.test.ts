@@ -27,6 +27,9 @@ test("position charts retain missing-week gaps, zero net and alphanumeric identi
   expect(cotNetPoints(data.history, "noncommercial").map((point) => [point.date.toISOString().slice(0, 10), point.value])).toEqual([
     ["2026-09-01", 0], ["2026-09-08", null], ["2026-09-15", -20],
   ]);
+  // A holiday-shifted report eight days on is the next week, not a missing one.
+  const shifted = { ...data, history: [data.history[0]!, { ...data.history[1]!, reportDate: "2026-09-09" }] };
+  expect(cotNetPoints(shifted.history, "noncommercial").map((point) => point.value)).toEqual([0, -20]);
   expect(cotContractCode("001602")).toBe("001602");
   expect(cotContractCode("1170e1")).toBe("1170E1");
   expect(cotContractCode("13874+")).toBe("13874+");

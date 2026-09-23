@@ -6,6 +6,7 @@ import { DataTableView } from "../../data-table/view";
 import { EmptyState } from "../../ui";
 import { displayWidth } from "../../../utils/format";
 import { CompositeChart } from "../composite/composite-chart";
+import type { CompositeAxisValueFormatter } from "../composite/format";
 import { buildCurveChart, curveTableRows, type CurvePoint, type CurveSeries, type CurveTableRow } from "./model";
 
 export interface CurveSlopeReadout {
@@ -27,6 +28,8 @@ export interface CurveSurfaceProps {
   onSelectedPointChange?: (id: string, point: CurvePoint) => void;
   display?: "chart" | "table" | "both";
   formatValue?: (value: number) => string;
+  /** Gridline labels; defaults to formatValue. */
+  formatAxisValue?: CompositeAxisValueFormatter;
   formatX?: (value: number) => string;
   valueLabel?: string;
   slope?: CurveSlopeReadout;
@@ -41,7 +44,7 @@ const sourceTime = (value: string) => value.replace("T", " ").slice(0, 16);
 /** One numeric-axis curve surface across terminal bitmap, text and desktop.
  * Each ghost owns its coordinates and nulls, so missing months stay gaps. */
 export function CurveSurface({ series, width, height, focused = false, primarySeriesId, selectedPointId,
-  onSelectedPointChange, display = "chart", formatValue = formatNumber, formatX = formatNumber,
+  onSelectedPointChange, display = "chart", formatValue = formatNumber, formatAxisValue, formatX = formatNumber,
   valueLabel = "Value", slope }: CurveSurfaceProps) {
   const colors = useThemeColors();
   const [localSelection, setLocalSelection] = useState<string | null>(null);
@@ -118,7 +121,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     </Box> : null}
     {showChart ? <CompositeChart series={chart.series} panels={PANELS} width={totalWidth} height={chartHeight}
       focused={focused && !showTable} navigable={false} showLegend={false} showTimeAxis xAxis={xAxis}
-      formatAxisValue={formatValue} cursorDate={cursorDate} onCursorDateChange={onCursorDateChange} remoteKind="curve-chart" /> : null}
+      formatAxisValue={formatAxisValue ?? formatValue} cursorDate={cursorDate} onCursorDateChange={onCursorDateChange} remoteKind="curve-chart" /> : null}
     {showChart ? <Box height={1} flexShrink={0} paddingX={1}>
       <Text fg={colors.textMuted}>{cursorRow ? `${cursorRow.label} · ${series.map((entry) => {
         const point = cursorRow.points[entry.id];

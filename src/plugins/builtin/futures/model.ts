@@ -32,11 +32,21 @@ export function futuresRowId(row: FuturesTableRow): string {
   return row.type === "header" ? `header-${row.sector}` : row.contract.symbol;
 }
 
-/** The alias stays the row identity while its provider-selected contract can roll. */
+const CONTRACT_MONTH = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ -](\d{4}|\d{2})$/i;
+
+/**
+ * The alias stays the row identity while its quoted contract rolls, so the
+ * label is the catalog name plus the quoted contract's month ("30-Year T-Bond
+ * Dec 26"). Quote names arrive as "Crude Oil Nov 26", "Corn Futures,Dec-2026"
+ * or cut off mid-month ("Futures,Dec-"); a month without a year is dropped
+ * rather than guessed.
+ */
 export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
-  return quote?.symbol?.trim().toUpperCase() === contract.symbol.toUpperCase()
-    ? quote.name?.trim() || contract.name
-    : contract.name;
+  if (quote?.symbol?.trim().toUpperCase() !== contract.symbol.toUpperCase()) return contract.name;
+  const match = CONTRACT_MONTH.exec(quote.name?.trim() ?? "");
+  if (!match) return contract.name;
+  const month = match[1]!;
+  return `${contract.name} ${month[0]!.toUpperCase()}${month.slice(1).toLowerCase()} ${match[2]!.slice(-2)}`;
 }
 
 function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: Quote | null): boolean {

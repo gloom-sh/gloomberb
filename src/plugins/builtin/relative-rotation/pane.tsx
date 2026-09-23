@@ -39,18 +39,20 @@ import {
   type RotationRow,
 } from "./model";
 
+// One hue per sector ETF, in the sector board's order (XLK, XLV, XLF, XLY,
+// XLC, XLI, XLP, XLE, XLU, XLRE, XLB): no two trails share a colour family.
 const PALETTE = [
-  "#73b7ff",
-  "#eab676",
-  "#c398ff",
-  "#7ed7be",
-  "#f28ca9",
-  "#cddc85",
-  "#f3c46a",
-  "#81cbe3",
-  "#de97d0",
-  "#b6bdcf",
-  "#e9a08c",
+  "#4da3ff",
+  "#ff9933",
+  "#a78bfa",
+  "#4ade80",
+  "#ff5c5c",
+  "#facc15",
+  "#22d3ee",
+  "#f472b6",
+  "#a3e635",
+  "#b5835a",
+  "#e5e7eb",
 ];
 const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "ETF", width: 7, align: "left" },

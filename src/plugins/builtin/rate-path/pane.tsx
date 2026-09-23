@@ -57,7 +57,9 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const tabRows = tabsInHeader ? 0 : 1;
   const data = resource.data;
   const curves = useMemo(() => data ? ratePathCurves(data, {
-    path: colors.positive, ghosts: [colors.textMuted, colors.textDim], band: colors.warning, projection: colors.negative,
+    // Ghosts fade with age: last week a dimmed path colour, last month grey,
+    // so the two stay apart where the theme's muted and dim greys coincide.
+    path: colors.positive, ghosts: [blendHex(colors.bg, colors.positive, 0.5), colors.textMuted], band: colors.warning, projection: colors.negative,
   }) : [], [data]);
   const meetings = useMemo(() => [...(data?.meetings ?? [])].sort((a, b) => {
     const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.id] as keyof RateMeeting | undefined;
