@@ -77,6 +77,14 @@ export interface DataTableProps<
     index: number,
     rowState: DataTableRowState,
   ) => DataTableCell;
+  /**
+   * What a row's cells were drawn from, compared by identity. Visible rows are
+   * memoized: one re-renders when its item, selection, version or `renderCell`
+   * changes. A table whose cells read fast-changing data (quotes) keeps
+   * `renderCell` stable and returns a version that changes with that row's
+   * data, so one symbol's tick redraws one row instead of every visible cell.
+   */
+  getRowVersion?: (item: T, index: number) => unknown;
   renderSectionHeader?: (
     item: T,
     index: number,

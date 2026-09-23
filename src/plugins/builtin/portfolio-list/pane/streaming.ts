@@ -54,12 +54,17 @@ export function usePortfolioPaneStreaming({
   // still fetches the same rows keeps its timer instead of restarting it, or
   // it would never fire while the tape is busy.
   const pendingWarmupRef = useRef<{ key: string; timeoutId: ReturnType<typeof setTimeout> } | null>(null);
+  // What the warmup currently asks for, re-run when a tick may have changed it.
+  const evaluateWarmupRef = useRef<() => void>(() => {});
+  const warmupRecheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
       if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
       pendingWarmupRef.current = null;
+      if (warmupRecheckRef.current) clearTimeout(warmupRecheckRef.current);
+      warmupRecheckRef.current = null;
     };
   }, []);
 
@@ -101,6 +106,8 @@ export function usePortfolioPaneStreaming({
     () => sortedTickers.slice(streamWindow.start, streamWindow.end),
     [sortedTickers, streamWindow.end, streamWindow.start],
   );
+  // Quote ticks replace the financials map many times a second. The warmup and
+  // the watchdog read it here instead of re-running on every tick.
   const watchdogInputsRef = useRef<{
     financialsMap: Map<string, TickerFinancials>;
     instrumentOptions: typeof instrumentOptions;
@@ -115,125 +122,149 @@ export function usePortfolioPaneStreaming({
     };
   }, [financialsMap, instrumentOptions, visibleFinancialTickers]);
 
+  // A tick can start a need (a first quote makes a row's snapshot due, a
+  // quote goes stale) or settle one. Re-check at most once per warmup delay.
   useEffect(() => {
-    if (!appActive) return;
-    if (!sharedCoordinator) return;
+    if (warmupRecheckRef.current) return;
+    warmupRecheckRef.current = setTimeout(() => {
+      warmupRecheckRef.current = null;
+      if (mountedRef.current) evaluateWarmupRef.current();
+    }, VISIBLE_FINANCIAL_WARMUP_DELAY_MS);
+  }, [financialsMap]);
 
-    const nowTimestamp = Date.now();
-    const quoteQueue: TickerRecord[] = [];
-    const quoteSnapshotQueue: TickerRecord[] = [];
-    const snapshotQueue: TickerRecord[] = [];
-    const snapshotQueueSymbols = new Set<string>();
-    const useSnapshotForQuoteWarmup = liveStreaming && sortPreferenceUsesQuote(activeSort);
-    const quoteWarmupTickers = liveStreaming
-      ? selectQuoteWarmupTickers(
-        sortedTickers,
-        streamWindow,
-        financialsMap,
-        activeSort,
-        nowTimestamp,
-      )
-      : [];
-    for (const ticker of quoteWarmupTickers) {
-      const financials = financialsMap.get(ticker.metadata.ticker);
-      const quoteKey = visibleWarmupKey("quote", ticker);
-      const warmupWithSnapshot = useSnapshotForQuoteWarmup && ticker.metadata.assetCategory !== "OPT";
-      const warmupKey = warmupWithSnapshot ? visibleWarmupKey("snapshot", ticker) : quoteKey;
-      if (
-        needsVisibleQuoteWarmup(financials, nowTimestamp)
-        && !warmupInFlightRef.current.has(warmupKey)
-        && nowTimestamp - (warmupAttemptRef.current.get(warmupKey) ?? 0) >= VISIBLE_QUOTE_REFRESH_COOLDOWN_MS
-      ) {
-        if (warmupWithSnapshot) {
-          quoteSnapshotQueue.push(ticker);
-          snapshotQueueSymbols.add(ticker.metadata.ticker);
-        } else {
-          quoteQueue.push(ticker);
-        }
-      }
-    }
-
-    for (const ticker of visibleFinancialTickers) {
-      const financials = financialsMap.get(ticker.metadata.ticker);
-      if (snapshotQueueSymbols.has(ticker.metadata.ticker)) continue;
-      const snapshotKey = visibleWarmupKey("snapshot", ticker);
-      if (
-        needsVisibleSnapshotWarmup(ticker, financials, visibleWarmupRequirements)
-        && !warmupInFlightRef.current.has(snapshotKey)
-        && nowTimestamp - (warmupAttemptRef.current.get(snapshotKey) ?? 0) >= VISIBLE_SNAPSHOT_REFRESH_COOLDOWN_MS
-      ) {
-        snapshotQueue.push(ticker);
-        snapshotQueueSymbols.add(ticker.metadata.ticker);
-      }
-    }
-    const limitedQuoteSnapshotQueue = quoteSnapshotQueue.slice(0, SORT_QUOTE_WARMUP_BATCH_LIMIT);
-    const limitedSnapshotQueue = snapshotQueue.slice(0, VISIBLE_SNAPSHOT_WARMUP_BATCH_LIMIT);
-    if (quoteQueue.length === 0 && limitedQuoteSnapshotQueue.length === 0 && limitedSnapshotQueue.length === 0) {
-      if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
-      pendingWarmupRef.current = null;
+  useEffect(() => {
+    if (!appActive || !sharedCoordinator) {
+      evaluateWarmupRef.current = () => {};
       return;
     }
-    const batchKey = [
-      ...quoteQueue.map((ticker) => `q:${ticker.metadata.ticker}`),
-      ...limitedQuoteSnapshotQueue.map((ticker) => `f:${ticker.metadata.ticker}`),
-      ...limitedSnapshotQueue.map((ticker) => `s:${ticker.metadata.ticker}`),
-    ].join("|");
-    if (pendingWarmupRef.current?.key === batchKey) return;
 
-    const runBatch = async (): Promise<void> => {
-      const quoteEntries = quoteQueue.flatMap((ticker) => {
-        const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
-        if (!instrument) return [];
-        const key = visibleWarmupKey("quote", ticker);
-        warmupInFlightRef.current.add(key);
-        warmupAttemptRef.current.set(key, nowTimestamp);
-        return [{ key, instrument }];
-      });
-      const forcedSnapshotEntries = limitedQuoteSnapshotQueue.flatMap((ticker) => {
-        const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
-        if (!instrument) return [];
-        const key = visibleWarmupKey("snapshot", ticker);
-        warmupInFlightRef.current.add(key);
-        warmupAttemptRef.current.set(key, nowTimestamp);
-        return [{ key, instrument }];
-      });
-      const normalSnapshotEntries = limitedSnapshotQueue.flatMap((ticker) => {
-        const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
-        if (!instrument) return [];
-        const key = visibleWarmupKey("snapshot", ticker);
-        warmupInFlightRef.current.add(key);
-        warmupAttemptRef.current.set(key, nowTimestamp);
-        return [{ key, instrument }];
-      });
-      if (quoteEntries.length === 0 && forcedSnapshotEntries.length === 0 && normalSnapshotEntries.length === 0) return;
-      try {
-        await Promise.allSettled([
-          quoteEntries.length > 0
-            ? sharedCoordinator.loadQuotesBatch(quoteEntries.map((entry) => entry.instrument), { forceRefresh: true })
-            : Promise.resolve(),
-          forcedSnapshotEntries.length > 0
-            ? sharedCoordinator.loadSnapshotsBatch(forcedSnapshotEntries.map((entry) => entry.instrument), { forceRefresh: true })
-            : Promise.resolve(),
-          normalSnapshotEntries.length > 0
-            ? sharedCoordinator.loadSnapshotsBatch(normalSnapshotEntries.map((entry) => entry.instrument))
-            : Promise.resolve(),
-        ]);
-      } catch {
-        // Best-effort warmup for visible rows only.
-      } finally {
-        for (const entry of [...quoteEntries, ...forcedSnapshotEntries, ...normalSnapshotEntries]) {
-          warmupInFlightRef.current.delete(entry.key);
+    const evaluate = () => {
+      const financialsMap = watchdogInputsRef.current.financialsMap;
+      const nowTimestamp = Date.now();
+      const quoteQueue: TickerRecord[] = [];
+      const quoteSnapshotQueue: TickerRecord[] = [];
+      const snapshotQueue: TickerRecord[] = [];
+      const snapshotQueueSymbols = new Set<string>();
+      const useSnapshotForQuoteWarmup = liveStreaming && sortPreferenceUsesQuote(activeSort);
+      const quoteWarmupTickers = liveStreaming
+        ? selectQuoteWarmupTickers(
+          sortedTickers,
+          streamWindow,
+          financialsMap,
+          activeSort,
+          nowTimestamp,
+        )
+        : [];
+      for (const ticker of quoteWarmupTickers) {
+        const financials = financialsMap.get(ticker.metadata.ticker);
+        const quoteKey = visibleWarmupKey("quote", ticker);
+        const warmupWithSnapshot = useSnapshotForQuoteWarmup && ticker.metadata.assetCategory !== "OPT";
+        const warmupKey = warmupWithSnapshot ? visibleWarmupKey("snapshot", ticker) : quoteKey;
+        if (
+          needsVisibleQuoteWarmup(financials, nowTimestamp)
+          && !warmupInFlightRef.current.has(warmupKey)
+          && nowTimestamp - (warmupAttemptRef.current.get(warmupKey) ?? 0) >= VISIBLE_QUOTE_REFRESH_COOLDOWN_MS
+        ) {
+          if (warmupWithSnapshot) {
+            quoteSnapshotQueue.push(ticker);
+            snapshotQueueSymbols.add(ticker.metadata.ticker);
+          } else {
+            quoteQueue.push(ticker);
+          }
         }
       }
+
+      for (const ticker of visibleFinancialTickers) {
+        const financials = financialsMap.get(ticker.metadata.ticker);
+        if (snapshotQueueSymbols.has(ticker.metadata.ticker)) continue;
+        const snapshotKey = visibleWarmupKey("snapshot", ticker);
+        if (
+          needsVisibleSnapshotWarmup(ticker, financials, visibleWarmupRequirements)
+          && !warmupInFlightRef.current.has(snapshotKey)
+          && nowTimestamp - (warmupAttemptRef.current.get(snapshotKey) ?? 0) >= VISIBLE_SNAPSHOT_REFRESH_COOLDOWN_MS
+        ) {
+          snapshotQueue.push(ticker);
+          snapshotQueueSymbols.add(ticker.metadata.ticker);
+        }
+      }
+      const limitedQuoteSnapshotQueue = quoteSnapshotQueue.slice(0, SORT_QUOTE_WARMUP_BATCH_LIMIT);
+      const limitedSnapshotQueue = snapshotQueue.slice(0, VISIBLE_SNAPSHOT_WARMUP_BATCH_LIMIT);
+      if (quoteQueue.length === 0 && limitedQuoteSnapshotQueue.length === 0 && limitedSnapshotQueue.length === 0) {
+        if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
+        pendingWarmupRef.current = null;
+        return;
+      }
+      const batchKey = [
+        ...quoteQueue.map((ticker) => `q:${ticker.metadata.ticker}`),
+        ...limitedQuoteSnapshotQueue.map((ticker) => `f:${ticker.metadata.ticker}`),
+        ...limitedSnapshotQueue.map((ticker) => `s:${ticker.metadata.ticker}`),
+      ].join("|");
+      if (pendingWarmupRef.current?.key === batchKey) return;
+
+      const runBatch = async (): Promise<void> => {
+        // Rows a tick settled while the batch waited are left out.
+        const latestFinancials = watchdogInputsRef.current.financialsMap;
+        const firedAt = Date.now();
+        const stillNeedsQuote = (ticker: TickerRecord) => needsVisibleQuoteWarmup(latestFinancials.get(ticker.metadata.ticker), firedAt);
+        const quoteEntries = quoteQueue.filter(stillNeedsQuote).flatMap((ticker) => {
+          const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
+          if (!instrument) return [];
+          const key = visibleWarmupKey("quote", ticker);
+          warmupInFlightRef.current.add(key);
+          warmupAttemptRef.current.set(key, nowTimestamp);
+          return [{ key, instrument }];
+        });
+        const forcedSnapshotEntries = limitedQuoteSnapshotQueue.filter(stillNeedsQuote).flatMap((ticker) => {
+          const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
+          if (!instrument) return [];
+          const key = visibleWarmupKey("snapshot", ticker);
+          warmupInFlightRef.current.add(key);
+          warmupAttemptRef.current.set(key, nowTimestamp);
+          return [{ key, instrument }];
+        });
+        const normalSnapshotEntries = limitedSnapshotQueue.filter((ticker) => (
+          needsVisibleSnapshotWarmup(ticker, latestFinancials.get(ticker.metadata.ticker), visibleWarmupRequirements)
+        )).flatMap((ticker) => {
+          const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, instrumentOptions);
+          if (!instrument) return [];
+          const key = visibleWarmupKey("snapshot", ticker);
+          warmupInFlightRef.current.add(key);
+          warmupAttemptRef.current.set(key, nowTimestamp);
+          return [{ key, instrument }];
+        });
+        if (quoteEntries.length === 0 && forcedSnapshotEntries.length === 0 && normalSnapshotEntries.length === 0) return;
+        try {
+          await Promise.allSettled([
+            quoteEntries.length > 0
+              ? sharedCoordinator.loadQuotesBatch(quoteEntries.map((entry) => entry.instrument), { forceRefresh: true })
+              : Promise.resolve(),
+            forcedSnapshotEntries.length > 0
+              ? sharedCoordinator.loadSnapshotsBatch(forcedSnapshotEntries.map((entry) => entry.instrument), { forceRefresh: true })
+              : Promise.resolve(),
+            normalSnapshotEntries.length > 0
+              ? sharedCoordinator.loadSnapshotsBatch(normalSnapshotEntries.map((entry) => entry.instrument))
+              : Promise.resolve(),
+          ]);
+        } catch {
+          // Best-effort warmup for visible rows only.
+        } finally {
+          for (const entry of [...quoteEntries, ...forcedSnapshotEntries, ...normalSnapshotEntries]) {
+            warmupInFlightRef.current.delete(entry.key);
+          }
+        }
+      };
+
+      if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
+      const timeoutId = setTimeout(() => {
+        pendingWarmupRef.current = null;
+        if (mountedRef.current) void runBatch();
+      }, VISIBLE_FINANCIAL_WARMUP_DELAY_MS);
+      pendingWarmupRef.current = { key: batchKey, timeoutId };
     };
 
-    if (pendingWarmupRef.current) clearTimeout(pendingWarmupRef.current.timeoutId);
-    const timeoutId = setTimeout(() => {
-      pendingWarmupRef.current = null;
-      if (mountedRef.current) void runBatch();
-    }, VISIBLE_FINANCIAL_WARMUP_DELAY_MS);
-    pendingWarmupRef.current = { key: batchKey, timeoutId };
-  }, [activeSort, appActive, financialsMap, instrumentOptions, liveStreaming, sharedCoordinator, sortedTickers, streamWindow, visibleFinancialTickers, visibleWarmupRequirements]);
+    evaluateWarmupRef.current = evaluate;
+    evaluate();
+  }, [activeSort, appActive, instrumentOptions, liveStreaming, sharedCoordinator, sortedTickers, streamWindow, visibleFinancialTickers, visibleWarmupRequirements]);
 
   useEffect(() => {
     if (!liveStreaming || !appActive) return;

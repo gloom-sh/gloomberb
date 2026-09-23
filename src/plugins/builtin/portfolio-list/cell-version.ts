@@ -18,20 +18,6 @@ const FX_COLUMN_IDS = new Set([
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn"]);
 const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn"]);
 
-const objectVersions = new WeakMap<object, number>();
-let nextObjectVersion = 1;
-
-/** Identity version of a record that is replaced rather than mutated. */
-export function objectVersion(value: object | null | undefined): number {
-  if (!value) return 0;
-  const existing = objectVersions.get(value);
-  if (existing != null) return existing;
-  const next = nextObjectVersion;
-  nextObjectVersion += 1;
-  objectVersions.set(value, next);
-  return next;
-}
-
 const exchangeRateVersions = new WeakMap<ReadonlyMap<string, number>, string>();
 
 /** Content version: a rebuilt map with the same rates is the same version. */

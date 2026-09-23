@@ -195,6 +195,8 @@ function WebDataTableRowInner<
   rowContextMenuSurface,
   selected,
 }: {
+  /** Only compared by the row memo; see `getRowVersion`. */
+  rowVersion?: unknown;
   columns: C[];
   freezeFirstColumn?: boolean;
   scrollLeft?: number;

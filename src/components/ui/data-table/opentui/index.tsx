@@ -74,6 +74,8 @@ function OpenTuiDataTableRowInner<
   rowContextMenuSurface,
   selected,
 }: {
+  /** Only compared by the row memo; see `getRowVersion`. */
+  rowVersion?: unknown;
   colors: ReturnType<typeof useThemeColors>;
   columnGap: number;
   contentWidth: number;
@@ -232,6 +234,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   onRowContextMenu,
   rowContextMenuSurface = false,
   renderCell,
+  getRowVersion,
   renderSectionHeader,
   getRowBackgroundColor,
   emptyContent,
@@ -624,6 +627,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     renderCell={renderCell}
                     renderSectionHeader={renderSectionHeader}
                     rowContextMenuSurface={rowContextMenuSurface}
+                    rowVersion={getRowVersion?.(item, index)}
                     selected={isSelected(item, index)}
                   />
                 );

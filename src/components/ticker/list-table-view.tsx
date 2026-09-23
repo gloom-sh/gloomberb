@@ -22,8 +22,9 @@ import type { ColumnConfig } from "../../types/config";
 import type { TickerFinancials, PricePoint } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { PRICE_SPARKLINE_COLUMN_ID, PriceSparkline } from "../price-sparkline/view";
-import { DataTableView, type DataTableKeyEvent } from "../data-table/view";
+import { DataTableView, type DataTableKeyEvent, type DataTableSelection } from "../data-table/view";
 import type { QuoteFlashDirection } from "../quote-flash";
+import { objectVersion } from "../../utils/object-version";
 
 export interface TickerTableCell {
   text: string;
@@ -114,6 +115,12 @@ function getPriceHistory(financials: TickerFinancials | undefined): PricePoint[]
   return financials?.priceHistory;
 }
 
+function getTickerKey(ticker: TickerRecord): string {
+  return ticker.metadata.ticker;
+}
+
+function ignoreHeaderClick(): void {}
+
 export function TickerListTableView({
   focused = false,
   rootBefore,
@@ -190,13 +197,28 @@ export function TickerListTableView({
     queueMicrotask(emitVisibleRange);
   }, [emitVisibleRange]);
 
+  // A quote tick replaces the financials map and the flash set. The cell
+  // renderer reads both through refs so it keeps one identity, and each row's
+  // version carries its own records and flash, so one symbol's tick redraws
+  // one row. A new `resolveCell` (another column context: FX, weights, the
+  // AGE clock) still redraws every visible row through its epoch.
+  const financialsRef = useRef(financialsMap);
+  financialsRef.current = financialsMap;
+  const flashSymbolsRef = useRef(safeFlashSymbols);
+  flashSymbolsRef.current = safeFlashSymbols;
+  const resolveCellRef = useRef({ resolve: resolveCell, epoch: 0 });
+  if (resolveCellRef.current.resolve !== resolveCell) {
+    resolveCellRef.current = { resolve: resolveCell, epoch: resolveCellRef.current.epoch + 1 };
+  }
+  const resolveEpoch = resolveCellRef.current.epoch;
+
   const renderCell = useCallback((
     ticker: TickerRecord,
     column: ColumnConfig,
     _index: number,
     rowState: { selected: boolean },
   ) => {
-    const financials = financialsMap.get(ticker.metadata.ticker);
+    const financials = financialsRef.current.get(ticker.metadata.ticker);
     if (column.id === PRICE_SPARKLINE_COLUMN_ID) {
       return {
         text: ticker.metadata.ticker,
@@ -204,21 +226,39 @@ export function TickerListTableView({
       };
     }
 
-    const { text, color } = resolveCell(column, ticker, financials);
-    const shouldFlash = safeFlashSymbols.has(ticker.metadata.ticker)
+    const { text, color } = resolveCellRef.current.resolve(column, ticker, financials);
+    const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
       && FLASHABLE_QUOTE_COLUMN_IDS.has(column.id);
     return {
       text,
       color: color || (rowState.selected ? colors.selectedText : undefined),
       attributes: shouldFlash ? TextAttributes.DIM : TextAttributes.NONE,
     };
-  }, [financialsMap, resolveCell, safeFlashSymbols]);
+  }, []);
+
+  const getRowVersion = useCallback((ticker: TickerRecord) => {
+    const symbol = ticker.metadata.ticker;
+    return `${resolveEpoch}|${objectVersion(financialsMap.get(symbol))}|${safeFlashSymbols.get(symbol) ?? ""}`;
+  }, [financialsMap, resolveEpoch, safeFlashSymbols]);
+
+  const selection = useMemo<DataTableSelection<TickerRecord>>(() => ({
+    kind: "id",
+    selectedId: cursorSymbol,
+    getId: getTickerKey,
+    onChange: (symbol) => {
+      setCursorSymbol(symbol);
+    },
+  }), [cursorSymbol, setCursorSymbol]);
+
+  const handleActivate = useCallback((ticker: TickerRecord) => {
+    onRowActivate?.(ticker);
+  }, [onRowActivate]);
 
   const showTickerContextMenu = useCallback((
     ticker: TickerRecord,
     event: TableMouseEvent,
   ) => {
-    const financials = financialsMap.get(ticker.metadata.ticker);
+    const financials = financialsRef.current.get(ticker.metadata.ticker);
     const registry = getSharedRegistry() ?? null;
     void showContextMenu(
       {
@@ -235,7 +275,7 @@ export function TickerListTableView({
       }),
       event,
     );
-  }, [financialsMap, renderer, showContextMenu]);
+  }, [renderer, showContextMenu]);
 
   const handleRowMouseDown = useCallback((ticker: TickerRecord, _index: number, event: TableMouseEvent) => {
     if (event.button !== 2) return false;
@@ -256,24 +296,16 @@ export function TickerListTableView({
       items={tickers}
       sortColumnId={sortColumnId ?? null}
       sortDirection={sortDirection}
-      onHeaderClick={onHeaderClick ?? (() => {})}
-      getItemKey={(ticker) => ticker.metadata.ticker}
-      selection={{
-        kind: "id",
-        selectedId: cursorSymbol,
-        getId: (ticker) => ticker.metadata.ticker,
-        onChange: (symbol) => {
-          setCursorSymbol(symbol);
-        },
-      }}
+      onHeaderClick={onHeaderClick ?? ignoreHeaderClick}
+      getItemKey={getTickerKey}
+      selection={selection}
       onCursorChange={onCursorChange}
-      onActivate={(ticker) => {
-        onRowActivate?.(ticker);
-      }}
+      onActivate={handleActivate}
       onRowMouseDown={handleRowMouseDown}
       onRowContextMenu={handleRowContextMenu}
       rowContextMenuSurface
       renderCell={renderCell}
+      getRowVersion={getRowVersion}
       emptyStateTitle={emptyTitle}
       emptyStateHint={resolvedEmptyHint}
       virtualize={virtualize}

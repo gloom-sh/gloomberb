@@ -11,7 +11,8 @@ import { createRowValueCache } from "../../../components/ui/row-value-cache";
 import type { ColumnConfig } from "../../../types/config";
 import type { PricePoint, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { columnContextVersion, objectVersion } from "./cell-version";
+import { objectVersion } from "../../../utils/object-version";
+import { columnContextVersion } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
 import { portfolioPnlLabel } from "./position-metrics";
 

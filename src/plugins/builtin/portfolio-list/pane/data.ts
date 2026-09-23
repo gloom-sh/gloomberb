@@ -9,7 +9,8 @@ import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/fr
 import { resolveQuoteAgeTimestamp } from "../../../../market-data/quotes/time";
 import { compareSortValues } from "../../../../utils/sort-values";
 import { getSortValue, type ColumnContext } from "../metrics";
-import { columnContextVersion, objectVersion } from "../cell-version";
+import { objectVersion } from "../../../../utils/object-version";
+import { columnContextVersion } from "../cell-version";
 import type { ResolvedPortfolioAccountState } from "../summary";
 
 export const VISIBLE_QUOTE_REFRESH_COOLDOWN_MS = 15_000;

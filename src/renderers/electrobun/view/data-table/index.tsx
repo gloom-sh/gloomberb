@@ -66,6 +66,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   onRowContextMenu,
   rowContextMenuSurface = false,
   renderCell,
+  getRowVersion,
   renderSectionHeader,
   getRowBackgroundColor,
   emptyContent,
@@ -425,6 +426,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     renderCell={renderCell}
                     renderSectionHeader={renderSectionHeader}
                     rowContextMenuSurface={rowContextMenuSurface}
+                    rowVersion={getRowVersion?.(item, row.index)}
                     selected={selected}
                   />
                 );

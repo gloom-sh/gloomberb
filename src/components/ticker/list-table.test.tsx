@@ -37,10 +37,16 @@ function resolveCell(_column: ColumnConfig, ticker: TickerRecord, _financials: T
   return { text: ticker.metadata.ticker };
 }
 
+const testDispatch = () => {};
+
 function TickerTableTestProviders({ children }: { children: ReactNode }) {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-ticker-table-test"));
+  // A stable store like the app's, so row memoization is what the tests see.
+  const [value] = useState(() => ({
+    state: createInitialState(createDefaultConfig("/tmp/gloomberb-ticker-table-test")),
+    dispatch: testDispatch,
+  }));
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={value}>
       <PaneInstanceProvider paneId="ticker-table-test">
         {children}
       </PaneInstanceProvider>
@@ -106,6 +112,38 @@ function ReorderingTickerListTableViewHarness() {
   );
 }
 
+const TICKING_SYMBOLS = manyTickers.slice(0, 20);
+const tickingColumns: ColumnConfig[] = [
+  { id: "ticker", label: "Ticker", width: 6, align: "left" },
+  { id: "price", label: "Price", width: 8, align: "right" },
+  { id: "change", label: "Chg", width: 8, align: "right" },
+];
+let setTickingFinancials: ((map: Map<string, TickerFinancials>) => void) | null = null;
+const stableSetCursor = () => {};
+
+function tickingFinancials(symbol: string, price: number): TickerFinancials {
+  return { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { symbol, price } as TickerFinancials["quote"] };
+}
+
+function TickingTickerListTableHarness() {
+  const [map, setMap] = useState(() => new Map(TICKING_SYMBOLS.map((ticker, index) => [
+    ticker.metadata.ticker, tickingFinancials(ticker.metadata.ticker, 100 + index),
+  ])));
+  setTickingFinancials = setMap;
+  return (
+    <TickerTableTestProviders>
+      <TickerListTableView
+        columns={tickingColumns}
+        tickers={TICKING_SYMBOLS}
+        cursorSymbol="T0"
+        setCursorSymbol={stableSetCursor}
+        resolveCell={resolveCell}
+        financialsMap={map}
+      />
+    </TickerTableTestProviders>
+  );
+}
+
 afterEach(async () => {
   if (testSetup) {
     await act(async () => {
@@ -115,6 +153,7 @@ afterEach(async () => {
   }
   resolveCellCallCount = 0;
   setHarnessTickers = null;
+  setTickingFinancials = null;
   tableScrollRef = null;
 });
 
@@ -145,6 +184,32 @@ describe("TickerListTableView", () => {
     const scrollTop = tableScrollRef?.scrollTop ?? 0;
     expect(scrollTop).toBeGreaterThan(0);
     expect(testSetup.captureCharFrame()).toContain(`T${scrollTop}`);
+  });
+
+  test("a quote tick on one symbol redraws only that symbol's row", async () => {
+    testSetup = await testRender(<TickingTickerListTableHarness />, { width: 40, height: 24 });
+    await act(async () => {
+      await testSetup!.renderOnce();
+    });
+    expect(testSetup.captureCharFrame()).toContain("T19");
+
+    resolveCellCallCount = 0;
+    await act(async () => {
+      const next = new Map(TICKING_SYMBOLS.map((ticker, index) => [
+        ticker.metadata.ticker, tickingFinancials(ticker.metadata.ticker, 100 + index),
+      ]));
+      setTickingFinancials?.(next);
+      await testSetup!.renderOnce();
+    });
+    // Every row got new records: all visible cells resolve again.
+    expect(resolveCellCallCount).toBe(20 * tickingColumns.length);
+
+    resolveCellCallCount = 0;
+    await act(async () => {
+      setTickingFinancials?.((current: Map<string, TickerFinancials>) => new Map(current).set("T7", tickingFinancials("T7", 250)) as never);
+      await testSetup!.renderOnce();
+    });
+    expect(resolveCellCallCount).toBe(tickingColumns.length);
   });
 
   test("preserves manual scroll when market data reorders rows around the same cursor", async () => {
