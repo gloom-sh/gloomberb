@@ -72,5 +72,6 @@ test("major scope keeps only verified codes and never invents a market", () => {
 test("legend values stay exact without the float32 tail of price bars", () => {
   expect(cotLegendValue(Math.fround(4346.3), { id: "price" })).toBe("4,346.3");
   expect(cotLegendValue(7765.25, { id: "price" })).toBe("7,765.25");
+  expect(cotLegendValue(112.640625, { id: "price" })).toBe("112.640625");
   expect(cotLegendValue(-100461, { id: "net" })).toBe("-100,461");
 });

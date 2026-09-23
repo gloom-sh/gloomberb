@@ -3,6 +3,7 @@ import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
 import { formatPriceObservation } from "../../../market-data/market/format";
+import { cleanFloat32Price } from "../../../cli/history-rows";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
@@ -68,8 +69,8 @@ export function cotRank(position: CotClassSummary, years: 1 | 3): string {
 
 /** Legend values stay exact: a compact 7.8K hides the futures price and -100K the net position. */
 export function cotLegendValue(value: number, series: Pick<ResolvedSeries, "id">): string {
-  // Seven significant digits keep every tick while dropping the float32 tail of provider bars.
-  return series.id === "price" ? formatPriceObservation(Number(value.toPrecision(7))) : cotInteger(value, true);
+  // Drop the float32 tail of provider bars without rounding away a 1/128 Treasury tick.
+  return series.id === "price" ? formatPriceObservation(cleanFloat32Price(value)) : cotInteger(value, true);
 }
 
 /** Add explicit gaps so absent weeks are not silently joined across a release gap. */
