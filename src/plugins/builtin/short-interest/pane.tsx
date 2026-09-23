@@ -14,11 +14,10 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { blendHex, colors } from "../../../theme/colors";
-import type { TickerRecord } from "../../../types/ticker";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { usePluginPaneState } from "../../runtime";
 import { loadShortInterest } from "./client";
 import {
@@ -34,16 +33,6 @@ import {
 import type { ShortInterestRecord } from "./types";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
-
-function hasClassifiableUsEquityMetadata(ticker: TickerRecord): boolean {
-  const contract = ticker.metadata.broker_contracts?.[0];
-  const currency = (contract?.currency ?? ticker.metadata.currency ?? "").trim();
-  const type = (contract?.secType ?? ticker.metadata.assetCategory ?? "").trim();
-  return currency.length > 0
-    || type.length > 0
-    || [contract?.primaryExchange, contract?.exchange, ticker.metadata.exchange]
-      .some((value) => (value ?? "").trim().length > 0);
-}
 
 function recordsToChartPoints(records: ShortInterestRecord[]): ProjectedChartPoint[] {
   return records.map((record) => ({
@@ -61,7 +50,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const { ticker } = usePaneTicker();
   const symbol = ticker?.metadata.ticker ?? null;
 
-  const skipNonUs = !!(ticker && hasClassifiableUsEquityMetadata(ticker) && !isUsEquityTicker(ticker));
+  const skipNonUs = isKnownNonUsEquityTicker(ticker);
   const request = useCallback(() => loadShortInterest(symbol!), [symbol]);
   const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
   const { error, updatedAt, reload: refresh } = resource;
@@ -146,7 +135,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   }
 
   if (status === "loaded" && records.length === 0) {
-    const usEquitiesOnly = hasClassifiableUsEquityMetadata(ticker) && !isUsEquityTicker(ticker);
+    const usEquitiesOnly = isKnownNonUsEquityTicker(ticker);
     return (
       <EmptyState
         title={usEquitiesOnly ? "US equities only" : "No short interest data"}

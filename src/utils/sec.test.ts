@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { isUsEquityTicker } from "./sec";
+import { isKnownNonUsEquityTicker, isUsEquityTicker } from "./sec";
 
 function makeTicker(overrides: Partial<TickerRecord["metadata"]>): TickerRecord {
   return {
@@ -47,5 +47,14 @@ describe("isUsEquityTicker", () => {
     for (const assetCategory of ["OPT", "ETF", "Mutual Fund", "Preferred Stock"]) {
       expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(false);
     }
+  });
+});
+
+describe("isKnownNonUsEquityTicker", () => {
+  test("treats a USD ticker without an exchange as unknown, not foreign", () => {
+    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "GME", exchange: "" }))).toBe(false);
+    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "7203", exchange: "", currency: "JPY" }))).toBe(true);
+    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "SHOP", exchange: "TSX", currency: "USD" }))).toBe(true);
+    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "SPY", exchange: "", assetCategory: "ETF" }))).toBe(true);
   });
 });

@@ -44,3 +44,19 @@ export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boole
     && currency === "USD"
     && exchangeCandidates.some((exchange) => isUsExchange(exchange));
 }
+
+/**
+ * The metadata shows the ticker is not a US equity: a non-USD currency, a
+ * non-equity type, or only non-US exchanges. A USD ticker with no exchange is
+ * unknown rather than foreign, e.g. an unsaved symbol from a quote without a
+ * listing exchange.
+ */
+export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {
+  if (!ticker || isUsEquityTicker(ticker)) return false;
+  const primaryContract = ticker.metadata.broker_contracts?.[0];
+  const currency = normalize(primaryContract?.currency ?? ticker.metadata.currency);
+  if (currency && currency !== "USD") return true;
+  if (!isEquityType(primaryContract?.secType ?? ticker.metadata.assetCategory)) return true;
+  return [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
+    .some((exchange) => normalize(exchange).length > 0);
+}
