@@ -5,10 +5,9 @@ export const SURFACE_LIVE_RELOAD_MS = 15_000;
 
 export type SurfaceSheetTenors = ReadonlyArray<{ label: string; years: number }>;
 
-/** The rows the 3D sheet drew for one settled set of listed expiries. */
+/** The constant maturities the 3D sheet drew for one settled set of listed expiries. */
 export interface SurfaceSheetAxes {
   identity: string;
-  expirations: readonly number[];
   /** Constant maturities of a delta sheet; null draws the listed expiries. */
   tenors: SurfaceSheetTenors | null;
 }
@@ -26,28 +25,21 @@ function sheetIdentity(snapshot: SurfaceSnapshot): string {
 }
 
 /**
- * The 3D sheet's rows and constant maturities. A reload over the same listed
- * expiries keeps the rows and tenors it drew before, even when one smile's fit
- * falls back or moves the edge of the supported range, so the renderer can
- * morph the sheet instead of swapping it. Another underlying, a different set
- * of expiries or a snapshot still loading chooses afresh.
+ * The 3D sheet's rows and constant maturities. Rows are always the smiles the
+ * sheet rule accepts, so a fit that falls back never draws a hole or a wall.
+ * A reload over the same listed expiries keeps the constant maturities it drew
+ * before, even when an edge smile drops out, so a delta sheet keeps its shape
+ * and the renderer can morph it; listed rows change only when a fit does.
+ * Another underlying, a different set of expiries or a snapshot still loading
+ * chooses afresh.
  */
 export function stableSurfaceSheet<T extends SurfaceSnapshot>(snapshot: T, previous: SurfaceSheetAxes | null): StableSurfaceSheet<T> {
   const settled = snapshot.loaded >= snapshot.requested;
   const identity = sheetIdentity(snapshot);
-  if (settled && previous?.identity === identity) {
-    const kept = new Set(previous.expirations);
-    return {
-      snapshot: { ...snapshot, expiries: snapshot.expiries.filter((entry) => kept.has(entry.expiration)) },
-      omitted: snapshot.expiries.filter((entry) => !kept.has(entry.expiration) && entry.fit != null && entry.fit.method !== "svi"),
-      tenors: previous.tenors,
-      axes: previous,
-    };
-  }
   const sheet = surfaceSheetSnapshot(snapshot);
-  const tenors = surfaceSheetTenors(sheet.snapshot);
-  return { ...sheet, tenors,
-    axes: settled ? { identity, expirations: sheet.snapshot.expiries.map((entry) => entry.expiration), tenors } : null };
+  const held = settled && previous?.identity === identity ? previous : null;
+  const tenors = held ? held.tenors : surfaceSheetTenors(sheet.snapshot);
+  return { ...sheet, tenors, axes: held ?? (settled ? { identity, tenors } : null) };
 }
 
 const UTC_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });

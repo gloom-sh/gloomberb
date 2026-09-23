@@ -63,6 +63,18 @@ test("a reload over the same expiries keeps the sheet's rows and columns so it c
   expect(stableSurfaceSheet(snapshot(100, [], expirations.length + 1), first.axes).axes).toBeNull();
 });
 
+test("a smile whose fit falls back on reload leaves the sheet instead of drawing a hole", () => {
+  const first = stableSurfaceSheet(snapshot(100), null);
+  const reloaded = snapshot(100);
+  const fellBack = { ...reloaded, expiries: reloaded.expiries.map((entry, index) => index === 2
+    ? { ...entry, fit: { ...entry.fit!, method: "monotone-cubic" as const } } : entry) };
+  const kept = stableSurfaceSheet(fellBack, first.axes);
+  expect(kept.snapshot.expiries.map((entry) => entry.expiration)).not.toContain(expirations[2]);
+  expect(kept.omitted.map((entry) => entry.expiration)).toEqual([expirations[2]!]);
+  // The delta sheet keeps its constant maturities, interpolated across the gap.
+  expect(deltaGrid(kept).tenors).toEqual(deltaGrid(first).tenors);
+});
+
 test("a reloaded sheet inside the drawn range keeps the box and colour scale", () => {
   const grid = (lift: number) => ({ tenors: [0.1, 0.5], moneyness: [0.9, 1, 1.1],
     volatilities: [[0.3 + lift, 0.25 + lift, 0.27 + lift], [0.29 + lift, 0.26 + lift, 0.28 + lift]] });
