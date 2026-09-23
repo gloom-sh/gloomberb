@@ -397,6 +397,17 @@ carry their unit, date and a percentile of the same statistic over up to one
 year of readings, shown once at least 20 readings exist. Delivery history records what the push service
 accepted, not what the phone displayed.
 
+Options flow rules (Pro) match the prints the FLOW scanner records: aggregated
+fills of $50K or more on the contracts it streams. Cloud checks new prints about
+every 10 seconds and pushes the largest match of each pass, at most one flow
+alert every five minutes, within the shared daily cap. Prints older than ten
+minutes are never pushed, and a rule never fires on prints from before it was
+created. The scanner streams 500 contracts ranked by premium; names with an
+active flow rule are always fetched and get part of that budget (up to 100
+contracts, 3 to 10 of each name's busiest), so a rule on a quieter name watches
+its most active contracts, not every strike. A portfolio-and-watchlist rule
+covers up to 20 of your names, held names first.
+
 ## Annual risk-factor reports (RISK)
 
 Risk reports use the filing year of a company's Form 10-K, rather than an assumed fiscal year. The filing date identifies the source document; “Report updated” identifies the derived risk report. Risk headings and source excerpts come from the filing, while the overview and notes are analysis. The available comparison is the report's supplied change analysis; a missing annual filing is not synthesized. Foreign issuers filing Form 20-F are not covered by this 10-K report service.

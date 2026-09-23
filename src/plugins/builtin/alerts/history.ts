@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { RESEARCH_LABELS } from "./research-builder";
+import { formatPremium, RESEARCH_LABELS } from "./research-builder";
 import { isResearchAlertKind } from "./research-rules";
 
 export interface AlertHistoryItem {
@@ -67,6 +67,16 @@ export async function fetchAlertHistory(offset = 0) {
 export function ruleStateText(state: AlertRuleState | undefined): string {
   if (!state) return "--";
   if (state.value == null || !state.asOf) return state.warning ?? "Waiting for a source observation";
+  // Options flow keeps its latest matching print: premium and when it traded.
+  if (state.unit === "USD") {
+    const time = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(state.asOf));
+    return `last ${formatPremium(state.value)} print \u00b7 ${state.asOf.slice(0, 10)} ${time} ET`;
+  }
   const value = Math.abs(state.value) >= 100 ? state.value.toFixed(0) : state.value.toFixed(2);
   return [
     `${value}${state.unit ? ` ${state.unit}` : ""}`,

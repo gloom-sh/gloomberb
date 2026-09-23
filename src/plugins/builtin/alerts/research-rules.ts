@@ -9,6 +9,7 @@ export const RESEARCH_ALERT_KINDS = [
   "short_interest_change",
   "insider_trade",
   "iv_spike",
+  "options_flow",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -21,6 +22,8 @@ export interface ResearchAlertConfig {
   threshold?: number
   leadDays?: number
   contract?: string
+  /** Options flow: which prints count (any, sweep or block). */
+  print?: string
 }
 export const RESEARCH_ALERT_FORMS = [
   "8-K",
@@ -81,7 +84,10 @@ export function normalizeResearchRule(
       result.symbol = identity.symbol
       result.exchange = "US"
       result.contract = identity.contract
-    } else if (kind !== "news_keyword" || input.symbol) {
+    } else if (
+      (kind !== "news_keyword" && kind !== "options_flow") ||
+      input.symbol
+    ) {
       const symbol =
         typeof input.symbol === "string"
           ? input.symbol.trim().toUpperCase()
@@ -173,6 +179,19 @@ export function normalizeResearchRule(
       case "iv_spike":
         numeric("threshold", 5, 0.1, 100)
         break
+      case "options_flow": {
+        // Premium in dollars; Cloud records nothing under $50K.
+        numeric("threshold", 1_000_000, 50_000, 1_000_000_000)
+        direction(["any", "calls", "puts"], "any")
+        const print = input.print ?? "any"
+        if (
+          typeof print !== "string" ||
+          !["any", "sweep", "block"].includes(print)
+        )
+          throw new Error()
+        result.print = print
+        break
+      }
     }
     return JSON.stringify(result)
   } catch {
