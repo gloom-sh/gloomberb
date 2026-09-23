@@ -190,7 +190,7 @@ const COLUMN_SPECS: Array<CryptoColumn & { optional?: number }> = [
   { id: "changePercent", label: "CHG%", width: 8, align: "right" },
   { id: "return7d", label: "7D%", width: 8, align: "right" },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 3 },
-  { id: "return1y", label: "1Y%", width: 9, align: "right", optional: 5 },
+  { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 5 },
   { id: "trend", label: "30D", width: 12, align: "left", optional: 4 },
   { id: "volume24h", label: "VOL 24H", width: 8, align: "right", optional: 2 },
   { id: "marketCap", label: "MCAP", width: 8, align: "right" },
