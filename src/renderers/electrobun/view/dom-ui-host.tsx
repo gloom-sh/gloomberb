@@ -16,6 +16,7 @@ import {
 import { WebPopover } from "./desktop/popover";
 import { WebBox } from "./host/box";
 import { WebChartSurface } from "./host/chart-surface";
+import { WebSurface3D } from "./host/surface-3d";
 import { WebInput, WebTextarea } from "./host/input";
 import { WebMediaSurface } from "./host/media-surface";
 import { WebScrollBox } from "./host/scroll-box";
@@ -97,6 +98,7 @@ export function createDomUiHost(
     DataTable: WebDataTable,
     Tabs: WebTabs,
     ChartSurface: WebChartSurface,
+    Surface3D: WebSurface3D,
     ImageSurface: ({ children, src, alt = "", objectFit = "contain", ...props }) => {
       const imageSrc = typeof src === "string" ? src.trim() : "";
       const [failed, setFailed] = useState(false);

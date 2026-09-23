@@ -233,6 +233,22 @@ export interface ChartSurfaceProps extends BoxProps {
   vectors?: readonly ChartVectorShape[] | null;
   nativeBitmapsEnabled?: boolean;
 }
+/** GPU surface plot. Geometry arrives prebuilt; the host owns camera interaction between commits. */
+export interface Surface3DHostProps {
+  width: number;
+  height: number;
+  scene: import("../components/chart/surface3d/model").Surface3DScene;
+  camera: import("../components/chart/surface3d/model").Surface3DCamera;
+  colors: import("../components/chart/surface3d/software").Surface3DColors;
+  /** Fraction of the width kept for the colour bar. */
+  reserveRight: number;
+  /** Called once the camera settles after a drag, inertia, zoom or reset. */
+  onCameraChange: (camera: import("../components/chart/surface3d/model").Surface3DCamera) => void;
+  onSelect: (cell: import("../components/chart/surface3d/model").Surface3DCell) => void;
+  ariaLabel?: string;
+  /** Rendered when the GPU context is unavailable. */
+  fallback?: ReactNode;
+}
 export interface ImageSurfaceProps extends BoxProps {
   src?: string;
   alt?: string;
@@ -367,6 +383,8 @@ export interface UiHost {
   Input: ComponentType<InputProps>;
   Textarea: ComponentType<TextareaProps>;
   ChartSurface: ComponentType<ChartSurfaceProps>;
+  /** Optional GPU 3D surface; hosts without it use the software raster. */
+  Surface3D?: ComponentType<Surface3DHostProps>;
   ImageSurface: ComponentType<ImageSurfaceProps>;
   MediaSurface: ComponentType<MediaSurfaceProps>;
   SpinnerMark: ComponentType<SpinnerMarkProps>;

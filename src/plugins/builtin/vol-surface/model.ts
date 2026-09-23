@@ -21,6 +21,8 @@ export const DEFAULT_SURFACE_SETTINGS: SurfaceSettings = {
 };
 export const SURFACE_MONEYNESS = [0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2] as const;
 export const SURFACE_DELTAS = [-0.1, -0.25, 0, 0.25, 0.1] as const;
+/** 3D delta axis: 10-delta put through ATM (spot strike) to 10-delta call, in 5-delta steps. */
+export const SURFACE_3D_DELTAS = [-0.1, -0.15, -0.2, -0.25, -0.3, -0.35, -0.4, -0.45, 0, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1] as const;
 
 export type SurfaceFilterReason = "invalid-contract" | "expiry-mismatch" | "zero-bid" | "crossed"
   | "wide-spread" | "no-interest" | "stale-duplicate" | "duplicate" | "itm" | "iv-unavailable";

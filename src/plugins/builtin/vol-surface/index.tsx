@@ -11,6 +11,8 @@ export const volSurfaceModule: PluginModule = {
     settings: {
       title: "Volatility Surface Settings",
       fields: [
+        { key: "surfaceAxis", label: "3D surface axis", type: "select", options: [
+          { value: "delta", label: "Delta (10P to 10C)" }, { value: "moneyness", label: "Forward moneyness" }] },
         { key: "axis", label: "Table / smile axis", type: "select", options: [
           { value: "spot", label: "Spot %" }, { value: "forward", label: "Forward %" },
           { value: "delta", label: "Delta" }, { value: "strike", label: "Strike" },

@@ -428,6 +428,9 @@ async function capturePageScreenshot({
     chrome,
     "--headless=new",
     "--disable-gpu",
+    // Software WebGL for GPU-drawn panes (the 3D volatility surface).
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
     "--no-sandbox",
     "--disable-dev-shm-usage",
     "--disable-background-networking",
