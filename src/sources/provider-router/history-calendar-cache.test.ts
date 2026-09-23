@@ -275,3 +275,27 @@ test("a copy fetched before the close is re-asked at most every five minutes whi
     expect(calls).toHaveLength(4);
   } finally { store.close(); }
 });
+
+test("a failed re-check answers from the copy the ranking chose", async () => {
+  let load = () => upTo("2026-09-23", 1_236_003);
+  const store = new AppPersistence(createTempDbPath("calendar-fallback"));
+  const router = new AssetDataRouter(source(() => load(), []), [], store.resources);
+  const last = async (range: "1Y" | "5Y") => new Date((await router.getPriceHistory("TSLA", "NASDAQ", range)).at(-1)!.date)
+    .toISOString().slice(0, 10);
+  try {
+    // The 1Y copy is fetched in session with today's unfinished bar.
+    setSystemTime(new Date("2026-09-23T17:00:00Z"));
+    expect(await last("1Y")).toBe("2026-09-23");
+    // A 5Y copy fetched after the close settles does not have today yet.
+    load = () => upTo("2026-09-22");
+    setSystemTime(new Date("2026-09-23T20:40:00Z"));
+    expect(await last("5Y")).toBe("2026-09-22");
+    // The 1Y re-check fails: the answer is the ranked copy, and it does not
+    // flip back to the unfinished bar on the failing request.
+    load = () => { throw new Error("offline"); };
+    for (const time of ["2026-09-23T20:45:00Z", "2026-09-23T20:46:00Z"]) {
+      setSystemTime(new Date(time));
+      expect(await last("1Y")).toBe("2026-09-22");
+    }
+  } finally { store.close(); }
+});

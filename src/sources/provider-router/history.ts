@@ -679,10 +679,13 @@ export class ProviderRouterHistoryRoutes {
     });
     if (providerResult && hasUsablePriceHistory(providerResult.value.points)) return withReportedGaps(providerResult.value);
     if (providerResult) reportedGaps.push(providerResult.value);
-    const fallbackValue = cachedRecords
+    // A failed refetch falls back in the same order the cache hit used, so a
+    // failing request answers what the next request will.
+    const fallbackValue = ranked
+      .map((entry) => entry.record)
       .filter((record) => !supersededCacheSources.has(record.sourceKey))
       .map((record) => record.value)
-      .find((value) => hasUsablePriceHistory(value.points) && !request.isCachedValueStale(value));
+      .find((value) => !request.isCachedValueStale(value));
     if (fallbackValue) {
       return request.requestedRange
         ? clip(withReportedGaps(fallbackValue))
