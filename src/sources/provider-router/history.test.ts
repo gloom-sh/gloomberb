@@ -12,11 +12,13 @@ import {
 } from "./test-support";
 
 const originalConsoleError = console.error;
+const originalDateNow = Date.now;
 
 useRegularMarketSession();
 
 afterEach(() => {
   console.error = originalConsoleError;
+  Date.now = originalDateNow;
   cleanupProviderRouterTestFiles();
 });
 
