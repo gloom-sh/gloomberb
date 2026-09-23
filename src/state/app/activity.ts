@@ -1,5 +1,5 @@
 import { type NativeRendererHost as CliRenderer } from "../../ui";
-import { useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import { debugLog } from "../../utils/debug-log";
 
 const activityLog = debugLog.createLogger("app-activity");
@@ -168,4 +168,31 @@ export function useAppActive(): boolean {
     () => controller.isActive(),
     () => true,
   );
+}
+
+/**
+ * Whether the pane around the caller is on screen inside the layout: not
+ * buried under floating windows. The pane host provides it; code outside a
+ * pane (the header, the status bar, app services) reads the default, true.
+ * This ignores app visibility; `usePaneVisible` combines the two.
+ */
+const PaneInViewContext = createContext(true);
+
+export const PaneInViewProvider = PaneInViewContext.Provider;
+
+/** Layout-level pane visibility alone, without the app's own visibility. */
+export function usePaneInView(): boolean {
+  return useContext(PaneInViewContext);
+}
+
+/**
+ * Gate a pane's market data (stream priority, polls, refresh clocks) on this:
+ * the app can be seen and the pane is on screen. A covered pane should keep
+ * its subscriptions at a lower priority rather than drop them, so totals stay
+ * current when it comes back; a hidden app pauses everything.
+ */
+export function usePaneVisible(): boolean {
+  const appVisible = useAppVisible();
+  const inView = usePaneInView();
+  return appVisible && inView;
 }

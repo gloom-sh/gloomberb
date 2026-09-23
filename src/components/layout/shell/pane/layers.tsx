@@ -95,13 +95,12 @@ export function ShellPaneLayers({
   windowModeDockResizePathKey,
   windowModePaneId,
 }: ShellPaneLayersProps) {
-  // Desktop pane chrome is DOM, where the compositor already skips covered
-  // windows; a transient focus shows one pane; a drag keeps everything drawn
-  // so the preview never reveals a blank spot.
-  const occludedPaneIds = useMemo(() => {
-    if (nativePaneChrome || transientFocusActive || dragFloatingRect || visibleFloatingPanes.length === 0) {
-      return EMPTY_OCCLUSION;
-    }
+  // Panes whose every cell sits under floating windows. Their streams drop to
+  // the off-screen cadence on every renderer; a transient focus unmounts the
+  // other panes, so there is nothing to cover. The floating rects here are the
+  // committed ones, so a drag in progress does not churn subscriptions.
+  const coveredPaneIds = useMemo(() => {
+    if (transientFocusActive || visibleFloatingPanes.length === 0) return EMPTY_OCCLUSION;
     return resolveOccludedPaneIds([
       ...dockLeafLayouts.map((leaf, order) => ({ paneId: leaf.instanceId, rect: leaf.rect, zIndex: null, order })),
       ...visibleFloatingPanes.map(({ pane, rect }, order) => ({
@@ -111,7 +110,11 @@ export function ShellPaneLayers({
         order: dockLeafLayouts.length + order,
       })),
     ], { width, height: contentHeight });
-  }, [contentHeight, dockLeafLayouts, dragFloatingRect, nativePaneChrome, transientFocusActive, visibleFloatingPanes, width]);
+  }, [contentHeight, dockLeafLayouts, transientFocusActive, visibleFloatingPanes, width]);
+  // Skipping the draw is a terminal concern: desktop pane chrome is DOM, where
+  // the compositor already skips covered windows, and a drag keeps everything
+  // drawn so the preview never reveals a blank spot.
+  const occludedPaneIds = nativePaneChrome || dragFloatingRect ? EMPTY_OCCLUSION : coveredPaneIds;
 
   return (
     <>
@@ -175,6 +178,7 @@ export function ShellPaneLayers({
                       focused={focused}
                       width={bodyFrame.width ?? 1}
                       height={bodyFrame.height ?? 1}
+                      inView={!coveredPaneIds.has(leaf.instanceId)}
                     />
                   </PaneWrapper>
                 );
@@ -242,6 +246,7 @@ export function ShellPaneLayers({
                     focused={focused}
                     width={bodyFrame.width ?? 1}
                     height={bodyFrame.height ?? 1}
+                    inView={!coveredPaneIds.has(pane.instance.instanceId)}
                     onClose={handleFloatingClose}
                   />
                 </FloatingPaneWrapper>

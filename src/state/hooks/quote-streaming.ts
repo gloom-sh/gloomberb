@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAppVisible } from "../app/activity";
+import { useAppVisible, usePaneInView } from "../app/activity";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import { debugLog } from "../../utils/debug-log";
@@ -12,6 +12,13 @@ import { buildInstrumentKey, buildQuoteKey } from "../../market-data/selectors";
 
 const quoteStreamLog = debugLog.createLogger("quote-stream");
 export const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
+/**
+ * Priority weight for targets of a pane that is covered on screen. The stream
+ * stays open so the pane is current the moment it comes back, but it ranks
+ * below anything the user can see and the server sends it at its off-screen
+ * cadence.
+ */
+export const OFFSCREEN_QUOTE_WEIGHT = 10;
 
 export interface QuoteStreamingOptions {
   enabled?: boolean;
@@ -31,6 +38,15 @@ export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscription
     symbol,
     exchange: target.exchange?.trim().toUpperCase() ?? "",
   };
+}
+
+/** The same target, ranked as off screen: not visible, not selected, low weight. */
+export function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget {
+  const weight = Number.isFinite(target.weight)
+    ? Math.min(target.weight ?? OFFSCREEN_QUOTE_WEIGHT, OFFSCREEN_QUOTE_WEIGHT)
+    : OFFSCREEN_QUOTE_WEIGHT;
+  if (target.visible === false && target.selected !== true && target.weight === weight) return target;
+  return { ...target, visible: false, selected: false, weight };
 }
 
 export function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
@@ -88,12 +104,16 @@ export function useQuoteStreaming(
   { enabled = true }: QuoteStreamingOptions = {},
 ): void {
   const appActive = useAppVisible();
+  // A covered pane keeps its subscription, downgraded, instead of dropping it:
+  // only a hidden app pauses the stream.
+  const paneInView = usePaneInView();
   const coordinator = getSharedMarketDataCoordinator();
 
   const normalizedEntries = new Map<string, QuoteSubscriptionTarget>();
   for (const target of targets) {
-    const normalized = normalizeQuoteStreamSubscriptionTarget(target);
-    if (!normalized) continue;
+    const resolved = normalizeQuoteStreamSubscriptionTarget(target);
+    if (!resolved) continue;
+    const normalized = paneInView ? resolved : downgradeOffscreenQuoteTarget(resolved);
     const key = buildQuoteStreamSubscriptionKey(normalized);
     normalizedEntries.set(key, normalized);
   }
@@ -222,13 +242,27 @@ export function useQuoteUpdates(
 
   useQuoteStreaming(targets, { enabled: liveStreaming });
 
+  // Polling feeds a display, so a covered pane stops asking and catches up the
+  // moment it is back on screen if a poll came due meanwhile.
+  const paneInView = usePaneInView();
+  const lastPollRef = useRef<{ key: string; at: number } | null>(null);
   useEffect(() => {
-    if (liveStreaming || !appActive || !coordinator || instruments.length === 0) return;
+    if (liveStreaming || !appActive || !paneInView || !coordinator || instruments.length === 0) return;
     let cancelled = false;
     let inFlight = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = (delayMs: number) => {
+      timer = setTimeout(() => {
+        timer = null;
+        void refresh();
+      }, Math.max(0, delayMs));
+    };
     const refresh = async () => {
-      if (cancelled || inFlight) return;
+      if (cancelled) return;
+      schedule(pollIntervalMs);
+      if (inFlight) return;
       inFlight = true;
+      lastPollRef.current = { key: instrumentKey, at: Date.now() };
       try {
         await coordinator.loadQuotesBatch(instruments, { forceRefresh: true });
       } catch {
@@ -237,13 +271,15 @@ export function useQuoteUpdates(
         inFlight = false;
       }
     };
-    void refresh();
-    const intervalId = setInterval(() => void refresh(), pollIntervalMs);
+    const last = lastPollRef.current;
+    const dueIn = last?.key === instrumentKey ? last.at + pollIntervalMs - Date.now() : 0;
+    if (dueIn <= 0) void refresh();
+    else schedule(dueIn);
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
+      if (timer) clearTimeout(timer);
     };
-  }, [appActive, coordinator, instrumentKey, instruments, liveStreaming, pollIntervalMs]);
+  }, [appActive, coordinator, instrumentKey, instruments, liveStreaming, paneInView, pollIntervalMs]);
 }
 
 /**
@@ -297,12 +333,14 @@ export function useLiveQuoteEntries(
     return [...unique.values()];
   }, [targetKey]);
 
+  // The freshness clock only drives labels, so it stops while the pane is covered.
+  const paneInView = usePaneInView();
   useEffect(() => {
     setFreshnessNow(Date.now());
-    if (!appActive || normalizedTargets.length === 0) return;
+    if (!appActive || !paneInView || normalizedTargets.length === 0) return;
     const interval = setInterval(() => setFreshnessNow(Date.now()), 15_000);
     return () => clearInterval(interval);
-  }, [appActive, targetKey]);
+  }, [appActive, paneInView, targetKey]);
 
   useQuoteUpdates(targets, options);
   return {

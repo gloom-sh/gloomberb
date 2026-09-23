@@ -7,7 +7,7 @@ import { AppProvider, PaneInstanceProvider } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { useLiveStreamingSetting } from "../../plugins/builtin/shared/live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
-import { setAppActive, setAppVisible } from "../app/activity";
+import { PaneInViewProvider, setAppActive, setAppVisible } from "../app/activity";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
@@ -52,6 +52,24 @@ function QuoteStreamingPriorityHarness() {
     weight: selected ? 100 : 10,
   }]);
   return <text>{selected ? "selected" : "idle"}</text>;
+}
+
+let setHarnessPaneInView: ((inView: boolean) => void) | null = null;
+
+/** A selected, visible board row inside a pane that can be covered. */
+function CoverablePaneHarness() {
+  const [inView, setInView] = useState(true);
+  setHarnessPaneInView = setInView;
+  return (
+    <PaneInViewProvider value={inView}>
+      <CoverablePaneStream />
+    </PaneInViewProvider>
+  );
+}
+
+function CoverablePaneStream() {
+  useQuoteStreaming([{ symbol: "AAPL", exchange: "NASDAQ", surface: "screener", visible: true, selected: true, weight: 100 }]);
+  return <text>stream</text>;
 }
 
 function QuotePollingHarness() {
@@ -109,6 +127,7 @@ afterEach(async () => {
     testSetup = undefined;
   }
   bumpHarness = null;
+  setHarnessPaneInView = null;
   toggleStreamingPriority = null;
   togglePollingPriority = null;
   updateLiveTargets = null;
@@ -191,6 +210,47 @@ describe("useQuoteStreaming", () => {
 
     expect(subscribeCalls).toBe(1);
     expect(unsubscribeCalls).toBe(0);
+  });
+
+  test("a covered pane keeps its stream at the off-screen priority instead of dropping it", async () => {
+    type CoordinatorTargets = Parameters<MarketDataCoordinator["subscribeQuotes"]>[0];
+    const subscribed: CoordinatorTargets[] = [];
+    const updates: CoordinatorTargets[] = [];
+    let unsubscribeCalls = 0;
+    setSharedMarketDataCoordinator({
+      subscribeQuotes: (targets: CoordinatorTargets) => {
+        subscribed.push(targets);
+        return Object.assign(
+          () => { unsubscribeCalls += 1; },
+          { update: (nextTargets: CoordinatorTargets) => updates.push(nextTargets) },
+        );
+      },
+    } as unknown as MarketDataCoordinator);
+    testSetup = await testRender(<CoverablePaneHarness />, { width: 20, height: 1 });
+    await act(async () => testSetup!.renderOnce());
+    expect(subscribed[0]?.[0]?.priority).toMatchObject({ visible: true, selected: true, weight: 100 });
+
+    await act(async () => {
+      setHarnessPaneInView?.(false);
+      await testSetup!.renderOnce();
+    });
+    // Same subscription, so totals stay current and nothing reconnects.
+    expect(subscribed).toHaveLength(1);
+    expect(unsubscribeCalls).toBe(0);
+    expect(updates.at(-1)?.[0]?.priority).toMatchObject({ visible: false, selected: false, weight: 10 });
+
+    await act(async () => {
+      setHarnessPaneInView?.(true);
+      await testSetup!.renderOnce();
+    });
+    expect(updates.at(-1)?.[0]?.priority).toMatchObject({ visible: true, selected: true, weight: 100 });
+
+    // Only a hidden app drops the stream.
+    await act(async () => {
+      setAppVisible(false);
+      await testSetup!.renderOnce();
+    });
+    expect(unsubscribeCalls).toBe(1);
   });
 
   test("updates priorities without replacing the hook subscription", async () => {

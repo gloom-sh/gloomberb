@@ -1,6 +1,7 @@
 import { memo, Profiler, useCallback, type ReactNode } from "react";
 import { useAppLanguage } from "../../../i18n/react";
 import { isPerfTraceEnabled, recordPerfSample } from "../../../utils/perf-marks";
+import { PaneInViewProvider } from "../../../state/app/activity";
 import { PaneInstanceProvider } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
@@ -31,6 +32,8 @@ interface PaneContentProps {
   focused: boolean;
   width: number;
   height: number;
+  /** False while the pane is covered on screen; its streams drop to the off-screen cadence. */
+  inView?: boolean;
   onClose?: (paneId: string) => void;
 }
 
@@ -41,6 +44,7 @@ export const PaneContent = memo(function PaneContent({
   focused,
   width,
   height,
+  inView = true,
   onClose,
 }: PaneContentProps) {
   useAppLanguage();
@@ -51,28 +55,30 @@ export const PaneContent = memo(function PaneContent({
 
   return (
     <PaneInstanceProvider paneId={paneId}>
-      <PaneKeyboardScrollController paneId={paneId} focused={focused} />
-      <Box
-        flexDirection="column"
-        flexGrow={1}
-        flexShrink={1}
-        flexBasis={0}
-        minWidth={0}
-        minHeight={0}
-        overflow="hidden"
-        data-gloom-role="pane-content"
-      >
-        <PaneRenderTrace paneId={paneId} paneType={paneType}>
-          <Component
-            paneId={paneId}
-            paneType={paneType}
-            focused={focused}
-            width={width}
-            height={height}
-            close={onClose ? close : undefined}
-          />
-        </PaneRenderTrace>
-      </Box>
+      <PaneInViewProvider value={inView}>
+        <PaneKeyboardScrollController paneId={paneId} focused={focused} />
+        <Box
+          flexDirection="column"
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          minWidth={0}
+          minHeight={0}
+          overflow="hidden"
+          data-gloom-role="pane-content"
+        >
+          <PaneRenderTrace paneId={paneId} paneType={paneType}>
+            <Component
+              paneId={paneId}
+              paneType={paneType}
+              focused={focused}
+              width={width}
+              height={height}
+              close={onClose ? close : undefined}
+            />
+          </PaneRenderTrace>
+        </Box>
+      </PaneInViewProvider>
     </PaneInstanceProvider>
   );
 });
