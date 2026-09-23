@@ -1,5 +1,6 @@
 import type { Quote } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
+import { quoteFutureToleranceMs } from "./clock";
 import {
   activeUsExtendedHoursSession,
   isTimestampStaleForExchangeSession,
@@ -8,11 +9,14 @@ import {
 
 const EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 
-/** Receipt time cannot establish when the source observed a quoted price. */
+/**
+ * Receipt time cannot establish when the source observed a quoted price. A
+ * stamp slightly ahead of local time is clock skew, not a bad observation.
+ */
 export function hasValidQuoteObservationTime(quote: Pick<Quote, "lastUpdated">, now = Date.now()): boolean {
   const timestamp = quote.lastUpdated;
   return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
-    && Number.isFinite(now) && timestamp <= now
+    && Number.isFinite(now) && timestamp <= now + quoteFutureToleranceMs()
     && Number.isFinite(new Date(timestamp).getTime()) && Number.isFinite(new Date(now).getTime());
 }
 

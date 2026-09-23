@@ -2,6 +2,7 @@ import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
 import { isPublishedJpxClosure } from "../published-jpx-sessions";
 import { getPublishedUsEquityCalendarDay } from "../published-us-sessions";
+import { quoteFutureToleranceMs } from "../quotes/clock";
 
 const US_EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
@@ -190,7 +191,7 @@ export function isUsPriorSessionPremarketQuote(
 ): boolean {
   const canonical = canonicalExchange(exchange);
   if (marketState !== "PRE" || !isUsExtendedHoursExchange(canonical)) return false;
-  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
   if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "PRE") return false;
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);

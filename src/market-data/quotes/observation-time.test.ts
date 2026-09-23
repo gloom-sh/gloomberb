@@ -1,8 +1,11 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import { isProviderQuoteUsableForCurrentSession } from "../../sources/provider-router/financials";
+import { recordServerClockSample, resetServerClockForTests } from "./clock";
 import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "./freshness";
 import { isQuoteContributionStaleForCurrentSession } from "./resolution";
+
+afterEach(() => resetServerClockForTests());
 
 const quote = (lastUpdated: unknown, overrides: Partial<Quote> = {}): Quote => ({
   symbol: "TEST", currency: "USD", price: 100, change: 1, changePercent: 1,
@@ -26,7 +29,7 @@ test("invalid source observation times remain unavailable across sessions and se
     for (const scenario of scenarios) {
       const now = Date.parse(scenario.now);
       clock.mockReturnValue(now);
-      for (const invalid of [NaN, Infinity, -Infinity, -1e20, 1e20, 0, -1, undefined, null, "2026-09-11", now + 1]) {
+      for (const invalid of [NaN, Infinity, -Infinity, -1e20, 1e20, 0, -1, undefined, null, "2026-09-11", now + 60_000]) {
         const input = Object.freeze(quote(invalid, {
           listingExchangeName: scenario.venue, marketState: scenario.marketState,
           instrumentType: "instrumentType" in scenario ? scenario.instrumentType : "EQUITY",
@@ -66,9 +69,30 @@ test("valid delayed, live, last-session and unknown/index observations retain th
     expect(isQuoteStaleForCurrentSession(null)).toBe(false);
     expect(isQuoteStaleForCurrentSession(undefined)).toBe(false);
     expect(hasFreshQuoteForCurrentSession([null, undefined])).toBe(false);
-    expect(hasFreshQuoteForCurrentSession([quote(NaN), quote(weekend + 1)])).toBe(false);
+    expect(hasFreshQuoteForCurrentSession([quote(NaN), quote(weekend + 60_000)])).toBe(false);
     expect(hasFreshQuoteForCurrentSession([quote(NaN), retained])).toBe(true);
     expect(isQuoteStaleForCurrentSession(quote(weekend), NaN)).toBe(true);
     expect(isQuoteStaleForCurrentSession(quote(weekend), 1e20)).toBe(true);
+  } finally { clock.mockRestore(); }
+});
+
+test("a tick stamped slightly ahead of a lagging local clock is still a current observation", () => {
+  const now = Date.parse("2026-09-14T15:00:00Z");
+  const clock = spyOn(Date, "now").mockReturnValue(now);
+  try {
+    const tick = (offset: number) => quote(now + offset, { listingExchangeName: "NASDAQ", marketState: "REGULAR", dataSource: "live" });
+    for (const offset of [50, 300, 1_500]) {
+      expect(isQuoteStaleForCurrentSession(tick(offset), now)).toBe(false);
+      expect(isProviderQuoteUsableForCurrentSession(tick(offset), "NASDAQ", "TEST")).toBe(true);
+      expect(isQuoteContributionStaleForCurrentSession({ ...tick(offset), marketState: undefined }, now)).toBe(false);
+    }
+    expect(isQuoteStaleForCurrentSession(tick(4_000), now)).toBe(true);
+
+    // A server measured 5 s ahead widens the window by its offset, not without bound.
+    recordServerClockSample(now + 5_000, now);
+    expect(isQuoteStaleForCurrentSession(tick(5_500), now)).toBe(false);
+    expect(isQuoteStaleForCurrentSession(tick(7_000), now)).toBe(true);
+    recordServerClockSample(now + 10 * 24 * 3_600_000, now);
+    expect(isQuoteStaleForCurrentSession(tick(2 * 3_600_000), now)).toBe(true);
   } finally { clock.mockRestore(); }
 });
