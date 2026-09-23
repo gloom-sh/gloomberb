@@ -39,7 +39,10 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
           { label: "R&D", key: "researchAndDevelopment", format: "compact", growthDirection: LOWER_IS_BETTER },
           { label: "SG&A", key: "sellingGeneralAndAdministration", format: "compact", growthDirection: LOWER_IS_BETTER },
           {
-            label: "D&A",
+            // Only the D&A presented as its own operating expense line; most
+            // companies carry the rest in cost of revenue. Total D&A is on the
+            // cash flow statement.
+            label: "D&A in OpEx",
             key: "depreciationAndAmortizationInIncomeStatement",
             format: "compact",
             growthDirection: LOWER_IS_BETTER,
