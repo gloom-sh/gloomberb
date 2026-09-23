@@ -2,7 +2,7 @@ import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { blendPixel, clamp, drawCircle, drawLine, fillOpaque, parseHex, type RgbaColor } from "../native/raster/primitives";
 import { blendHex } from "../../../theme/color-utils";
 import {
-  FLOOR, projectSurface3D, surface3DBox, surface3DLabels, surface3DLayout, surface3DLighting, surface3DViewport, turbo,
+  FLOOR, FLOOR_PROJECTION_ALPHA, projectSurface3D, surface3DBox, surface3DLabels, surface3DLayout, surface3DLighting, surface3DViewport, turbo,
   SURFACE3D_AMBIENT, SURFACE3D_DIFFUSE, SURFACE3D_SHININESS, SURFACE3D_SPECULAR,
   type Surface3DCamera, type Surface3DLabel, type Surface3DScene, type Surface3DViewport,
 } from "./model";
@@ -278,7 +278,7 @@ export function renderSurface3DSoftware(
   const indices = scene.indices;
   for (let index = 0; index + 2 < indices.length; index += 3) {
     const a = floor[indices[index]!], b = floor[indices[index + 1]!], c = floor[indices[index + 2]!];
-    if (a && b && c) fillTriangle(raster, a, b, c, 0.3, false);
+    if (a && b && c) fillTriangle(raster, a, b, c, FLOOR_PROJECTION_ALPHA, false);
   }
   for (let index = 0; index + 2 < indices.length; index += 3) {
     const a = projected[indices[index]!], b = projected[indices[index + 1]!], c = projected[indices[index + 2]!];

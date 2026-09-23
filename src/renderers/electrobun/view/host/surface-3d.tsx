@@ -2,7 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 import type { Surface3DHostProps } from "../../../../ui/host";
 import {
-  clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, FLOOR, hitTestSurface3D, projectSurface3D, surface3DBox, surface3DLayout, surface3DLighting,
+  clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, FLOOR, FLOOR_PROJECTION_ALPHA, hitTestSurface3D, projectSurface3D, surface3DBox, surface3DLayout, surface3DLighting,
   surface3DViewport, turbo, SURFACE3D_AMBIENT, SURFACE3D_DIFFUSE, SURFACE3D_SHININESS, SURFACE3D_SPECULAR,
   type Surface3DCamera, type Surface3DScene, type Surface3DViewport,
 } from "../../../../components/chart/surface3d/model";
@@ -327,7 +327,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.indices);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.uniform1f(uLit, 0); gl.uniform1f(uAlpha, 0.3); gl.uniform1f(uFlatten, 1);
+    gl.uniform1f(uLit, 0); gl.uniform1f(uAlpha, FLOOR_PROJECTION_ALPHA); gl.uniform1f(uFlatten, 1);
     gl.drawElements(gl.TRIANGLES, r.indexCount, r.indexType, 0);
     gl.disable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true);
