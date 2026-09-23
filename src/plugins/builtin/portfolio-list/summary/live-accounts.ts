@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { AppState } from "../../../../state/app/context";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
+import type { Portfolio } from "../../../../types/ticker";
 import type { BrokerAccount } from "../../../../types/trading";
+import { getBrokerInstance } from "../../../../utils/broker-instances";
+import { usePluginBrokerActions } from "../../../runtime";
+import { resolvePortfolioAccountState, type ResolvedPortfolioAccountState } from "./index";
 
 const EMPTY_ACCOUNTS = { instanceId: null, accounts: [] as BrokerAccount[], error: null };
 
@@ -73,4 +78,38 @@ export function useLiveBrokerAccounts(
 
   const current = connected && loaded.instanceId === instanceId ? loaded : EMPTY_ACCOUNTS;
   return { status, accounts: current.accounts, error: current.error };
+}
+
+export interface PortfolioAccountStateResult {
+  accountState: ResolvedPortfolioAccountState | null;
+  /** Set when the broker refused to list accounts, so "no cash" is not mistaken for a clean empty. */
+  accountsError: string | null;
+}
+
+/**
+ * The broker account behind a portfolio: live while its broker is connected,
+ * the last synced one otherwise. Live accounts reload on connect and when a
+ * sync or connect replaces the stored accounts, never on a status rewrite.
+ */
+export function usePortfolioAccountState(
+  portfolio: Portfolio | null,
+  state: Pick<AppState, "config" | "brokerAccounts">,
+): PortfolioAccountStateResult {
+  const instanceId = portfolio?.brokerInstanceId;
+  const brokerInstance = useMemo(
+    () => instanceId ? getBrokerInstance(state.config.brokerInstances, instanceId) : null,
+    [instanceId, state.config.brokerInstances],
+  );
+  const { getBrokerAdapter } = usePluginBrokerActions();
+  const broker = brokerInstance ? getBrokerAdapter(brokerInstance.brokerType) : null;
+  const live = useLiveBrokerAccounts(broker, brokerInstance, instanceId ? state.brokerAccounts[instanceId] : undefined);
+  const snapshot = useMemo(
+    () => ({ status: live.status, accounts: live.accounts }),
+    [live.accounts, live.status],
+  );
+  const accountState = useMemo(
+    () => resolvePortfolioAccountState(portfolio, state, snapshot),
+    [portfolio, snapshot, state.brokerAccounts, state.config],
+  );
+  return useMemo(() => ({ accountState, accountsError: live.error }), [accountState, live.error]);
 }
