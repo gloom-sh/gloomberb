@@ -30,6 +30,7 @@ import {
   normalizeFreshChartData,
 } from "./chart";
 import { MarketDataCoordinatorEvents } from "./events";
+import type { DataFrameScheduler } from "../frame-scheduler";
 import {
   CHART_CACHE_TTL_MS,
   OPTIONS_CACHE_TTL_MS,
@@ -68,6 +69,12 @@ import {
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
 const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
+/**
+ * A repeat of an unchanged quote only moves its arrival time. Writing that
+ * would re-render every reader per heartbeat, so it is recorded at most this
+ * often: often enough that quote ages and the stream watchdog see a live feed.
+ */
+const STREAM_RECEIPT_REFRESH_MS = 5_000;
 /** Keeps a long session of browsing from holding a baseline per visited symbol. */
 const STREAM_QUOTE_BASELINE_LIMIT = 256;
 
@@ -77,8 +84,13 @@ function sameQueryEntry<T>(left: QueryEntry<T>, right: QueryEntry<T>): boolean {
   return left === right || (left.phase === "idle" && right.phase === "idle" && left.data === null && right.data === null);
 }
 
+export interface MarketDataCoordinatorOptions {
+  /** The frame clock for stream applies and notifications; tests inject a manual one. */
+  frames?: DataFrameScheduler;
+}
+
 export class MarketDataCoordinator {
-  private readonly events = new MarketDataCoordinatorEvents();
+  private readonly events: MarketDataCoordinatorEvents;
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly optionsLoads = new Map<string, Promise<QueryEntry<OptionsChain>>>();
   private readonly chartRequests = new Map<string, ChartRequest>();
@@ -102,10 +114,12 @@ export class MarketDataCoordinator {
     chartStore: this.chartStore,
   };
 
-  constructor(private readonly dataProvider: DataProvider) {
+  constructor(private readonly dataProvider: DataProvider, options: MarketDataCoordinatorOptions = {}) {
+    this.events = new MarketDataCoordinatorEvents(options.frames);
     this.quoteSubscriptionManager = new QuoteSubscriptionManager(
       dataProvider,
       (instrument, quote) => this.applyStreamQuote(instrument, quote),
+      options.frames,
     );
   }
 
@@ -487,6 +501,8 @@ export class MarketDataCoordinator {
 
   destroy(): void {
     this.destroyed = true;
+    this.quoteSubscriptionManager.dispose();
+    this.events.dispose();
     for (const { dispose } of this.cachedQueries.values()) dispose();
     this.cachedQueries.clear();
     this.streamQuoteBaselines.clear();
@@ -503,7 +519,11 @@ export class MarketDataCoordinator {
     const startedAt = Date.now();
     const receivedAt = resolvedQuote.stale === true ? resolvedQuote.receivedAt : startedAt;
     const storedQuote = receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt };
-    if (areStreamQuotesEquivalent(current.data ?? current.lastGoodData, storedQuote)) return;
+    const currentQuote = current.data ?? current.lastGoodData;
+    if (areStreamQuotesEquivalent(currentQuote, storedQuote)) {
+      const previousReceipt = currentQuote?.receivedAt;
+      if (receivedAt == null || (previousReceipt != null && receivedAt - previousReceipt < STREAM_RECEIPT_REFRESH_MS)) return;
+    }
     const attempts = [createAttempt(resolvedQuote.providerId ?? this.dataProvider.id, startedAt, "success")];
     this.quoteStore.set(key, readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts));
   }

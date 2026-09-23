@@ -1,13 +1,7 @@
 import { createRoot as openTuiCreateRoot, useRenderer } from "@opentui/react";
 import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
 import { act, useMemo, type ReactNode } from "react";
-import { setMarketDataNotifyThrottle } from "../../market-data/coordinator/events";
 import { colors } from "../../theme/colors";
-
-// Pane tests emit a quote, await one timer tick, and assert the frame. The
-// production pacing of coordinator notifications would put the second tick
-// of a test 100ms out; the events unit test covers the pacing itself.
-setMarketDataNotifyThrottle(0);
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
 import { ToastHostProvider } from "../../ui/toast";
 import { OpenTuiDialogHostProvider } from "./dialog-host";

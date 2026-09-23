@@ -1,8 +1,7 @@
 import { describe, expect, jest, test } from "bun:test";
 import { MarketDataCoordinator } from "./index";
-import { MARKET_DATA_NOTIFY_THROTTLE_MS } from "./events";
 import { buildQuoteKey } from "../selectors";
-import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
+import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -50,10 +49,14 @@ async function flushCoordinator(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-/** Waits out the notify throttle too, so consecutive stream ticks each reach listeners. */
-async function flushCoordinatorNotify(): Promise<void> {
-  await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, MARKET_DATA_NOTIFY_THROTTLE_MS + 10));
+const flushCoordinatorNotify = flushCoordinator;
+
+/** A coordinator on a manual 100 ms frame clock, so frame tiers can be stepped exactly. */
+function createFramedCoordinator() {
+  const clock = createManualFrameDriver(100);
+  const { provider, emitQuote } = createProvider();
+  const coordinator = new MarketDataCoordinator(provider, { frames: new DataFrameScheduler(clock.driver) });
+  return { clock, coordinator, emitQuote };
 }
 
 describe("MarketDataCoordinator key subscriptions", () => {
@@ -394,36 +397,98 @@ describe("MarketDataCoordinator key subscriptions", () => {
     expect(coordinator.getVersion()).toBe(1);
   });
 
-  test("coalesces bursty stream quotes into one readable update cadence", () => {
-    jest.useFakeTimers();
-    const originalDateNow = Date.now;
-    let now = 1_700_000_000_000;
-    Date.now = () => now;
+  test("applies visible keys every frame and off-screen keys at most once a second, latest tick winning", () => {
+    const { clock, coordinator, emitQuote } = createFramedCoordinator();
+    const amd = { symbol: "AMD", exchange: "NASDAQ" };
+    const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+    coordinator.subscribeQuotes([
+      { instrument: amd, priority: { visible: true } },
+      { instrument: msft, priority: { visible: false, weight: 10 } },
+    ]);
+    const price = (instrument: typeof amd) => coordinator.getQuoteEntry(instrument).data?.price;
 
-    try {
-      const { provider, emitQuote } = createProvider();
-      const coordinator = new MarketDataCoordinator(provider);
-      const amd = { symbol: "AMD", exchange: "NASDAQ" };
-      const msft = { symbol: "MSFT", exchange: "NASDAQ" };
-      coordinator.subscribeQuotes([{ instrument: amd }, { instrument: msft }]);
+    emitQuote(amd, quote("AMD", 100));
+    emitQuote(msft, quote("MSFT", 200));
+    expect(price(amd)).toBeUndefined();
+    clock.advance(0);
+    // First data for a key never waits, whatever its tier.
+    expect(price(amd)).toBe(100);
+    expect(price(msft)).toBe(200);
 
-      emitQuote(amd, quote("AMD", 100));
-      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(100);
-
-      now += 100;
-      emitQuote(msft, quote("MSFT", 200));
-      emitQuote(amd, quote("AMD", 101));
-      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(100);
-      expect(coordinator.getQuoteEntry(msft).data).toBeNull();
-
-      now += QUOTE_STREAM_UPDATE_THROTTLE_MS - 100;
-      jest.advanceTimersByTime(QUOTE_STREAM_UPDATE_THROTTLE_MS - 100);
-      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(101);
-      expect(coordinator.getQuoteEntry(msft).data?.price).toBe(200);
-    } finally {
-      Date.now = originalDateNow;
-      jest.useRealTimers();
+    for (let tick = 1; tick <= 5; tick += 1) {
+      emitQuote(amd, quote("AMD", 100 + tick));
+      emitQuote(msft, quote("MSFT", 200 + tick));
+      clock.advance(100);
+      expect(price(amd)).toBe(100 + tick);
+      expect(price(msft)).toBe(200);
     }
+
+    clock.advance(500);
+    expect(price(msft)).toBe(205);
+
+    // A held-back tick shows on the next frame once its row scrolls into view.
+    emitQuote(msft, quote("MSFT", 206));
+    clock.advance(100);
+    expect(price(msft)).toBe(205);
+    coordinator.subscribeQuotes([{ instrument: msft, priority: { visible: true } }]);
+    clock.advance(100);
+    expect(price(msft)).toBe(206);
+  });
+
+  test("applies a frame's quotes and notifies their readers in one pass", () => {
+    const { clock, coordinator, emitQuote } = createFramedCoordinator();
+    const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+    const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+    const seen: Array<[number | undefined, number | undefined]> = [];
+    coordinator.subscribeKeys([buildQuoteKey(aapl), buildQuoteKey(msft)], () => {
+      seen.push([coordinator.getQuoteEntry(aapl).data?.price, coordinator.getQuoteEntry(msft).data?.price]);
+    });
+    coordinator.subscribeQuotes([{ instrument: aapl }, { instrument: msft }]);
+
+    emitQuote(aapl, quote("AAPL", 100));
+    emitQuote(msft, quote("MSFT", 200));
+    emitQuote(aapl, quote("AAPL", 101));
+    clock.advance(0);
+
+    expect(seen).toEqual([[101, 200]]);
+  });
+
+  test("a repeat that only moves the arrival time does not notify readers", () => {
+    const realDateNow = Date.now;
+    const { clock, coordinator, emitQuote } = createFramedCoordinator();
+    const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+    const firstTimestamp = 1_800_000_000_000;
+    let calls = 0;
+    try {
+      coordinator.subscribeKeys([buildQuoteKey(aapl)], () => { calls += 1; });
+      coordinator.subscribeQuotes([{ instrument: aapl }]);
+      const tick = quote("AAPL", 100, { lastUpdated: firstTimestamp, change: Number.NaN, dataSource: "live", delivery: "stream" });
+
+      Date.now = () => firstTimestamp;
+      emitQuote(aapl, tick);
+      clock.advance(100);
+      expect(calls).toBe(1);
+
+      Date.now = () => firstTimestamp + 1_000;
+      emitQuote(aapl, { ...tick });
+      clock.advance(100);
+      expect(calls).toBe(1);
+      expect(coordinator.getQuoteEntry(aapl).data?.receivedAt).toBe(firstTimestamp);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  test("applies a tick stamped slightly ahead of the local clock", async () => {
+    const { provider, emitQuote } = createProvider();
+    const coordinator = new MarketDataCoordinator(provider);
+    const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+    coordinator.subscribeQuotes([{ instrument: aapl }]);
+
+    emitQuote(aapl, quote("AAPL", 123, { lastUpdated: Date.now() + 300, dataSource: "live", delivery: "stream" }));
+    await flushCoordinator();
+
+    expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(123);
   });
 
   test("applies repeated stream quotes that refresh quote freshness", async () => {

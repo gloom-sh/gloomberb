@@ -1,39 +1,24 @@
 import { measurePerf } from "../../utils/perf-marks";
+import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
 
 /**
- * Each streamed quote arrives in its own task, so a busy tape would otherwise
- * commit and paint once per tick. Listeners hear about the first change at
- * once and about the rest of a burst at most this often; a quote landing
- * 100ms late is invisible, a render per tick is not.
+ * Store writes mark their keys changed; listeners hear about every change of
+ * a frame in one pass after that frame's stream quotes are applied, so a
+ * batch of ticks costs one React commit. The frame driver sets the pace.
  */
-export const MARKET_DATA_NOTIFY_THROTTLE_MS = 100;
-
-let notifyThrottleMs = MARKET_DATA_NOTIFY_THROTTLE_MS;
-
-/**
- * Pane tests drive the coordinator tick by tick and assert after a zero
- * timer; the test harness turns pacing off so they keep that precision.
- */
-export function setMarketDataNotifyThrottle(ms: number): void {
-  notifyThrottleMs = Math.max(0, ms);
-}
-
 export class MarketDataCoordinatorEvents {
   private version = 0;
-  private pendingVersionBump = false;
   private pendingChangedKeys = new Set<string>();
-  private pendingNotify = false;
-  private lastNotifyAt = Number.NEGATIVE_INFINITY;
-  private pendingListeners = new Set<() => void>();
   private readonly listeners = new Set<() => void>();
   private readonly keyListeners = new Map<string, Set<() => void>>();
   private readonly keyVersions = new Map<string, number>();
+  private readonly notifyFrame = () => this.flushNotify();
+
+  constructor(private readonly frames: DataFrameScheduler = marketDataFrames) {}
 
   bump(changeKey?: string): void {
     if (changeKey) this.pendingChangedKeys.add(changeKey);
-    if (this.pendingVersionBump) return;
-    this.pendingVersionBump = true;
-    queueMicrotask(() => this.flushBump());
+    this.frames.request(this.notifyFrame, { phase: "notify" });
   }
 
   subscribe(listener: () => void): () => void {
@@ -72,48 +57,25 @@ export class MarketDataCoordinatorEvents {
     return version;
   }
 
-  private flushBump(): void {
-    this.pendingVersionBump = false;
-    const changedKeys = this.pendingChangedKeys;
-    this.pendingChangedKeys = new Set();
-    measurePerf("market-data.bump", () => {
-      this.version += 1;
-      for (const key of changedKeys) {
-        this.keyVersions.set(key, (this.keyVersions.get(key) ?? 0) + 1);
-      }
-      for (const listener of this.listeners) {
-        this.pendingListeners.add(listener);
-      }
-      for (const key of changedKeys) {
-        for (const listener of this.keyListeners.get(key) ?? []) {
-          this.pendingListeners.add(listener);
-        }
-      }
-
-      this.scheduleNotify();
-    }, { changedKeyCount: changedKeys.size });
-  }
-
-  private scheduleNotify(): void {
-    if (this.pendingNotify) return;
-    this.pendingNotify = true;
-    const sinceLastNotify = performance.now() - this.lastNotifyAt;
-    const delay = sinceLastNotify >= notifyThrottleMs
-      ? 0
-      : Math.ceil(notifyThrottleMs - sinceLastNotify);
-    setTimeout(() => this.flushNotify(), delay);
+  dispose(): void {
+    this.frames.remove(this.notifyFrame);
   }
 
   private flushNotify(): void {
-    this.pendingNotify = false;
-    this.lastNotifyAt = performance.now();
-    const listeners = [...this.pendingListeners];
-    this.pendingListeners.clear();
-    for (const listener of listeners) {
-      listener();
-    }
-    if (this.pendingListeners.size > 0) {
-      this.scheduleNotify();
-    }
+    const changedKeys = this.pendingChangedKeys;
+    this.pendingChangedKeys = new Set();
+    measurePerf("market-data.notify", () => {
+      this.version += 1;
+      const listeners = new Set(this.listeners);
+      for (const key of changedKeys) {
+        this.keyVersions.set(key, (this.keyVersions.get(key) ?? 0) + 1);
+        for (const listener of this.keyListeners.get(key) ?? []) {
+          listeners.add(listener);
+        }
+      }
+      for (const listener of listeners) {
+        listener();
+      }
+    }, { changedKeyCount: changedKeys.size });
   }
 }

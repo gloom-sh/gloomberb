@@ -10,6 +10,7 @@ import { UiHostProvider } from "../../ui/host";
 import { WebDialogHostProvider } from "../electrobun/view/dialog-host";
 import { BrowserErrorBoundary } from "./error-boundary";
 import { installFocusScopeRelease } from "../electrobun/view/host/focus-scope";
+import { installDomMarketDataFrames } from "../electrobun/view/data-frames";
 import { WebInputHostProvider } from "../electrobun/view/input-host";
 import { webNativeRenderer } from "../electrobun/view/native-renderer";
 import { WebToastHostProvider } from "../electrobun/view/toast-host";
@@ -47,6 +48,7 @@ async function boot(): Promise<void> {
   installBrowserFetchTransports();
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
+  installDomMarketDataFrames();
   // Started before the session restore so the plugin modules download while
   // that request is in flight, and awaited before the first render so their
   // panes are registered by the time a saved layout asks for one. A failure

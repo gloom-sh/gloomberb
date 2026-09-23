@@ -1,7 +1,7 @@
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import type { InstrumentRef } from "../request-types";
-import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
+import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
 import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
@@ -48,47 +48,17 @@ interface PendingStreamQuote {
 
 export const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
 export const QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS = 100;
+/** Keys nobody is looking at still feed totals and alerts, just not every frame. */
+export const BACKGROUND_QUOTE_APPLY_INTERVAL_MS = 1_000;
 
-const STREAM_QUOTE_FIELDS: Array<keyof Quote> = [
-  "symbol",
-  "providerId",
-  "price",
-  "currency",
-  "change",
-  "changePercent",
-  "previousClose",
-  "changeSessionDate",
-  "high52w",
-  "low52w",
-  "marketCap",
-  "volume",
-  "name",
-  "exchangeName",
-  "fullExchangeName",
-  "listingExchangeName",
-  "listingExchangeFullName",
-  "routingExchangeName",
-  "routingExchangeFullName",
-  "marketState",
-  "sessionConfidence",
-  "preMarketPrice",
-  "preMarketChange",
-  "preMarketChangePercent",
-  "postMarketPrice",
-  "postMarketChange",
-  "postMarketChangePercent",
-  "bid",
-  "ask",
-  "bidSize",
-  "askSize",
-  "open",
-  "high",
-  "low",
-  "mark",
-  "dataSource",
-  "delivery",
-  "stale",
-];
+/**
+ * Visible and selected keys apply every data frame. Only a target explicitly
+ * marked off-screen waits for the background interval; a consumer that gives
+ * no hint is treated as on screen.
+ */
+export function isForegroundQuoteTarget(target: Pick<QuoteSubscriptionTarget, "visible" | "selected">): boolean {
+  return target.selected === true || target.visible !== false;
+}
 
 function quoteTargetFromInstrument(
   instrument: InstrumentRef,
@@ -214,8 +184,8 @@ export async function loadQuoteBatchEntries({
 export class QuoteSubscriptionManager {
   private readonly quoteSubscriptions = new Map<string, QuoteSubscriptionEntry>();
   private readonly pendingStreamQuotes = new Map<string, PendingStreamQuote>();
-  private lastStreamQuoteBatchAppliedAt: number | null = null;
-  private pendingStreamQuoteTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly lastStreamQuoteAppliedAt = new Map<string, number>();
+  private readonly streamQuoteFrame = () => this.flushPendingStreamQuotes();
   private pendingPriorityUpdateTimer: ReturnType<typeof setTimeout> | null = null;
   private nextQuoteSubscriptionId = 1;
   private quoteSubscriptionDispose: (() => void) | null = null;
@@ -225,6 +195,7 @@ export class QuoteSubscriptionManager {
   constructor(
     private readonly dataProvider: DataProvider,
     private readonly applyQuote: (instrument: InstrumentRef, quote: Quote) => void,
+    private readonly frames: DataFrameScheduler = marketDataFrames,
   ) {}
 
   subscribe(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
@@ -302,6 +273,10 @@ export class QuoteSubscriptionManager {
       if (mergedTarget) {
         entry.target = mergedTarget;
         shouldFlush = true;
+        // A row scrolled into view shows its held-back tick on the next frame.
+        if (this.pendingStreamQuotes.has(key) && isForegroundQuoteTarget(mergedTarget)) {
+          this.frames.request(this.streamQuoteFrame);
+        }
         continue;
       }
       this.scheduleSubscriptionRemoval(key, entry);
@@ -322,6 +297,7 @@ export class QuoteSubscriptionManager {
       if (!current || current.targets.size > 0) return;
       this.quoteSubscriptions.delete(key);
       this.clearPendingStreamQuote(key);
+      this.lastStreamQuoteAppliedAt.delete(key);
       this.flush();
     }, QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS);
   }
@@ -409,64 +385,81 @@ export class QuoteSubscriptionManager {
     const subscription = this.quoteSubscriptions.get(key);
     if (!subscription || subscription.targets.size === 0) return;
 
+    // Latest tick per key wins; the frame applies whatever is newest.
     this.pendingStreamQuotes.set(key, { instrument, quote });
-    const elapsed = this.lastStreamQuoteBatchAppliedAt == null
-      ? Number.POSITIVE_INFINITY
-      : Date.now() - this.lastStreamQuoteBatchAppliedAt;
-    if (elapsed >= QUOTE_STREAM_UPDATE_THROTTLE_MS) {
-      this.flushPendingStreamQuotes();
-      return;
-    }
-    this.schedulePendingStreamQuoteFlush(QUOTE_STREAM_UPDATE_THROTTLE_MS - elapsed);
+    this.frames.request(this.streamQuoteFrame, { notBefore: this.streamQuoteDueAt(key, subscription.target) });
   }
 
-  private schedulePendingStreamQuoteFlush(delayMs: number): void {
-    if (this.pendingStreamQuoteTimer !== null) return;
-    this.pendingStreamQuoteTimer = setTimeout(() => {
-      this.pendingStreamQuoteTimer = null;
-      this.flushPendingStreamQuotes();
-    }, Math.max(0, delayMs));
+  private streamQuoteDueAt(key: string, target: QuoteSubscriptionTarget): number {
+    if (isForegroundQuoteTarget(target)) return Number.NEGATIVE_INFINITY;
+    const lastAppliedAt = this.lastStreamQuoteAppliedAt.get(key);
+    return lastAppliedAt == null ? Number.NEGATIVE_INFINITY : lastAppliedAt + BACKGROUND_QUOTE_APPLY_INTERVAL_MS;
   }
 
   private flushPendingStreamQuotes(): void {
-    const pendingQuotes = [...this.pendingStreamQuotes.entries()];
-    this.pendingStreamQuotes.clear();
-    if (this.pendingStreamQuoteTimer !== null) clearTimeout(this.pendingStreamQuoteTimer);
-    this.pendingStreamQuoteTimer = null;
-    if (pendingQuotes.length === 0) return;
+    if (this.pendingStreamQuotes.size === 0) return;
+    const now = this.frames.now();
+    const due: PendingStreamQuote[] = [];
+    let nextDueAt = Number.POSITIVE_INFINITY;
+    for (const [key, pending] of this.pendingStreamQuotes) {
+      const subscription = this.quoteSubscriptions.get(key);
+      if (!subscription?.targets.size) {
+        this.pendingStreamQuotes.delete(key);
+        continue;
+      }
+      const dueAt = this.streamQuoteDueAt(key, subscription.target);
+      if (dueAt > now) {
+        nextDueAt = Math.min(nextDueAt, dueAt);
+        continue;
+      }
+      this.pendingStreamQuotes.delete(key);
+      this.lastStreamQuoteAppliedAt.set(key, now);
+      due.push(pending);
+    }
+    if (nextDueAt !== Number.POSITIVE_INFINITY) {
+      this.frames.request(this.streamQuoteFrame, { notBefore: nextDueAt });
+    }
+    if (due.length === 0) return;
 
-    this.lastStreamQuoteBatchAppliedAt = Date.now();
     // One mark for the whole batch: a single tick is never slow, but a batch
     // applies every subscribed symbol in one synchronous pass, so this is the
     // section that can hold the frame.
     measurePerf("market-data.stream-quote-flush", () => {
-      for (const [key, pending] of pendingQuotes) {
-        const subscription = this.quoteSubscriptions.get(key);
-        if (subscription?.targets.size) {
-          this.applyQuote(pending.instrument, pending.quote);
-        }
+      for (const pending of due) {
+        this.applyQuote(pending.instrument, pending.quote);
       }
-    }, { count: pendingQuotes.length });
+    }, { count: due.length });
   }
 
   private clearPendingStreamQuote(key: string): void {
     this.pendingStreamQuotes.delete(key);
-    if (this.pendingStreamQuotes.size === 0 && this.pendingStreamQuoteTimer !== null) {
-      clearTimeout(this.pendingStreamQuoteTimer);
-      this.pendingStreamQuoteTimer = null;
-    }
-    if (![...this.quoteSubscriptions.values()].some((entry) => entry.targets.size > 0)) {
-      this.lastStreamQuoteBatchAppliedAt = null;
-    }
+  }
+
+  dispose(): void {
+    this.frames.remove(this.streamQuoteFrame);
+    this.cancelPendingPriorityUpdate();
+    this.pendingStreamQuotes.clear();
   }
 }
 
+/**
+ * Whether a tick would change nothing but its arrival time. Unavailable
+ * numbers are NaN on the wire and count as equal to each other; key order and
+ * absent-versus-undefined keys do not matter.
+ */
 export function areStreamQuotesEquivalent(current: Quote | null | undefined, next: Quote): boolean {
   if (!current) return false;
-  for (const field of STREAM_QUOTE_FIELDS) {
-    if (current[field] !== next[field]) return false;
+  if (current === next) return true;
+  const left = current as unknown as Record<string, unknown>;
+  const right = next as unknown as Record<string, unknown>;
+  for (const key in left) {
+    if (key === "receivedAt" || key === "provenance") continue;
+    if (!Object.is(left[key], right[key])) return false;
   }
-  return current.lastUpdated === next.lastUpdated
-    && current.receivedAt === next.receivedAt
-    && JSON.stringify(current.provenance ?? null) === JSON.stringify(next.provenance ?? null);
+  for (const key in right) {
+    if (key === "receivedAt" || key === "provenance") continue;
+    if (!(key in left) && right[key] !== undefined) return false;
+  }
+  return current.provenance === next.provenance
+    || JSON.stringify(current.provenance ?? null) === JSON.stringify(next.provenance ?? null);
 }

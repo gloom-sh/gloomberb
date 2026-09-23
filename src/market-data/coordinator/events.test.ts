@@ -1,18 +1,16 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { MARKET_DATA_NOTIFY_THROTTLE_MS, MarketDataCoordinatorEvents, setMarketDataNotifyThrottle } from "./events";
+import { describe, expect, test } from "bun:test";
+import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
+import { MarketDataCoordinatorEvents } from "./events";
 
-// Test files share one process; the render harness turns pacing off, and
-// this file is the one that verifies it.
-beforeAll(() => setMarketDataNotifyThrottle(MARKET_DATA_NOTIFY_THROTTLE_MS));
-afterAll(() => setMarketDataNotifyThrottle(0));
-
-const waitMicrotask = () => Promise.resolve();
-const waitTimer = () => new Promise((resolve) => setTimeout(resolve, 0));
-const waitThrottle = () => new Promise((resolve) => setTimeout(resolve, MARKET_DATA_NOTIFY_THROTTLE_MS + 20));
+function createEvents(minIntervalMs = 100) {
+  const clock = createManualFrameDriver(minIntervalMs);
+  const frames = new DataFrameScheduler(clock.driver);
+  return { clock, events: new MarketDataCoordinatorEvents(frames) };
+}
 
 describe("MarketDataCoordinatorEvents", () => {
-  test("coalesces version bumps before notifying external-store listeners", async () => {
-    const events = new MarketDataCoordinatorEvents();
+  test("coalesces a frame's bumps into one notification", () => {
+    const { clock, events } = createEvents();
     const calls: number[] = [];
     events.subscribeKeys(["quote:AMD"], () => {
       calls.push(events.getKeysVersion(["quote:AMD"]));
@@ -20,20 +18,14 @@ describe("MarketDataCoordinatorEvents", () => {
 
     events.bump("quote:AMD");
     events.bump("quote:AMD");
-
-    expect(events.getKeysVersion(["quote:AMD"])).toBe(0);
     expect(calls).toEqual([]);
 
-    await waitMicrotask();
-    expect(events.getKeysVersion(["quote:AMD"])).toBe(1);
-    expect(calls).toEqual([]);
-
-    await waitTimer();
+    clock.advance(0);
     expect(calls).toEqual([1]);
   });
 
-  test("delivers bumps scheduled during notification in a later notification pass", async () => {
-    const events = new MarketDataCoordinatorEvents();
+  test("delivers bumps made while notifying on the next frame, not the same one", () => {
+    const { clock, events } = createEvents();
     const order: string[] = [];
     events.subscribeKeys(["quote:AMD"], () => {
       order.push("AMD");
@@ -44,36 +36,33 @@ describe("MarketDataCoordinatorEvents", () => {
     });
 
     events.bump("quote:AMD");
-    await waitMicrotask();
-    await waitTimer();
+    clock.advance(0);
     expect(order).toEqual(["AMD"]);
 
-    await waitThrottle();
+    clock.advance(99);
+    expect(order).toEqual(["AMD"]);
+    clock.advance(1);
     expect(order).toEqual(["AMD", "NVDA"]);
   });
 
-  test("a burst of ticks notifies once at the leading edge and once when the window closes", async () => {
-    const events = new MarketDataCoordinatorEvents();
+  test("a burst of ticks notifies at most once per frame interval", () => {
+    const { clock, events } = createEvents();
     const calls: number[] = [];
     events.subscribeKeys(["quote:AMD"], () => {
       calls.push(events.getKeysVersion(["quote:AMD"]));
     });
 
     events.bump("quote:AMD");
-    await waitMicrotask();
-    await waitTimer();
+    clock.advance(0);
     expect(calls).toEqual([1]);
 
-    // Ticks inside the window each land in their own task, as streamed quotes do.
     for (let tick = 0; tick < 5; tick += 1) {
       events.bump("quote:AMD");
-      await waitMicrotask();
-      await waitTimer();
+      clock.advance(10);
     }
-    expect(events.getKeysVersion(["quote:AMD"])).toBe(6);
     expect(calls).toEqual([1]);
 
-    await waitThrottle();
-    expect(calls).toEqual([1, 6]);
+    clock.advance(50);
+    expect(calls).toEqual([1, 2]);
   });
 });

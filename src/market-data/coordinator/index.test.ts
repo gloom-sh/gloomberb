@@ -1,12 +1,16 @@
 import { useRegularMarketSession } from "../../test-support/market-session";
 import { describe, expect, it } from "bun:test";
+import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 import { MarketDataCoordinator } from "./index";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import type { NewsArticle } from "../../news/types";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
+
+// Stream ticks apply on a data frame; these tests step that frame directly.
+const streamClock = createManualFrameDriver(0);
+const streamFrames = new DataFrameScheduler(streamClock.driver);
 
 useRegularMarketSession();
 
@@ -367,7 +371,7 @@ describe("MarketDataCoordinator", () => {
         return () => {};
       },
     });
-    const coordinator = new MarketDataCoordinator(provider);
+    const coordinator = new MarketDataCoordinator(provider, { frames: streamFrames });
     const instrument = { symbol: "MSFT", exchange: "NASDAQ" };
 
     coordinator.subscribeQuotes([{ instrument }]);
@@ -386,6 +390,7 @@ describe("MarketDataCoordinator", () => {
       },
     );
 
+    streamClock.advance(0);
     expect(coordinator.getQuoteEntry(instrument).data?.price).toBe(412.5);
   });
 
@@ -443,7 +448,7 @@ describe("MarketDataCoordinator", () => {
         return () => {};
       },
     });
-    const coordinator = new MarketDataCoordinator(provider);
+    const coordinator = new MarketDataCoordinator(provider, { frames: streamFrames });
     const instrument = {
       symbol: "VICR",
       exchange: "NASDAQ",
@@ -484,6 +489,7 @@ describe("MarketDataCoordinator", () => {
       },
     );
 
+    streamClock.advance(0);
     const quote = coordinator.getQuoteEntry(instrument).data;
     expect(quote?.price).toBe(293.07);
     expect(quote?.previousClose).toBe(282.95);
@@ -544,7 +550,7 @@ describe("MarketDataCoordinator", () => {
         marketState: "REGULAR",
         dataSource: "live",
       });
-      await Bun.sleep(QUOTE_STREAM_UPDATE_THROTTLE_MS + 20);
+      await Bun.sleep(20);
     }
 
     expect(cacheReads).toBe(1);
@@ -722,7 +728,7 @@ describe("MarketDataCoordinator", () => {
         return () => {};
       },
     });
-    const coordinator = new MarketDataCoordinator(provider);
+    const coordinator = new MarketDataCoordinator(provider, { frames: streamFrames });
     const instrument = { symbol: "AAPL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "ibkr-live" };
 
     await coordinator.loadSnapshot(instrument);
@@ -751,6 +757,7 @@ describe("MarketDataCoordinator", () => {
       },
     );
 
+    streamClock.advance(0);
     const quote = coordinator.getTickerFinancialsSync(instrument)?.quote;
     expect(quote?.marketState).toBe("PRE");
     expect(quote?.preMarketPrice).toBe(103.5);
@@ -818,7 +825,7 @@ describe("MarketDataCoordinator", () => {
         return () => {};
       },
     });
-    const coordinator = new MarketDataCoordinator(provider);
+    const coordinator = new MarketDataCoordinator(provider, { frames: streamFrames });
     const instrument = { symbol: "IQE", exchange: "LSE" };
 
     await coordinator.loadSnapshot(instrument);
@@ -839,6 +846,7 @@ describe("MarketDataCoordinator", () => {
       },
     );
 
+    streamClock.advance(0);
     expect(coordinator.getQuoteEntry(instrument).data?.price).toBe(24.5);
     expect(coordinator.getTickerFinancialsSync(instrument)?.quote?.price).toBe(0.245);
   });

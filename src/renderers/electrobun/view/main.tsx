@@ -24,6 +24,7 @@ import {
 import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
+import { installDomMarketDataFrames } from "./data-frames";
 import { DesktopFatalScreen, ElectrobunErrorBoundary } from "./fatal-screen";
 import { WebInputHostProvider } from "./input-host";
 import { webNativeRenderer } from "./native-renderer";
@@ -106,6 +107,7 @@ async function boot() {
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();
+  installDomMarketDataFrames();
   installScreenshotWatermark();
   const desktopSnapshot = init.windowKind === "detached" && init.paneId && init.desktopSnapshot
     ? prepareDetachedSnapshot(init.desktopSnapshot, init.paneId)
