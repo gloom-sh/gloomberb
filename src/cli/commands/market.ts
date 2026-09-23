@@ -7,7 +7,6 @@ import type {
   CorporateActionsData,
   HolderData,
   OptionsChain,
-  PricePoint,
   TickerFinancials,
 } from "../../types/financials";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
@@ -23,6 +22,7 @@ import {
 } from "../helpers";
 import { cliStyles } from "../../utils/cli-output";
 import { renderFundamentalsReport } from "./ticker";
+import { historyPriceDecimals, historyRows } from "../history-rows";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const EXCHANGE_OPTION = {
@@ -38,9 +38,10 @@ type FinancialsCliData = TickerFinancials & {
   providerId: string | null;
 };
 
-function parseRange(value: string | undefined): TimeRange {
+function parseRange(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): TimeRange {
   const range = (value ?? "1Y").toUpperCase() as TimeRange;
-  return VALID_RANGES.has(range) ? range : "1Y";
+  if (!VALID_RANGES.has(range)) ctx.fail(`Unknown range "${value}".`, `Use one of ${TIME_RANGES.join(", ")}.`);
+  return range;
 }
 
 function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined {
@@ -132,17 +133,6 @@ function quoteRows(results: QuoteCliRecord[]) {
       error: result.error ?? "",
     };
   });
-}
-
-function historyRows(points: PricePoint[]) {
-  return points.map((point) => ({
-    date: isoDate(point.date).slice(0, 10),
-    open: point.open ?? null,
-    high: point.high ?? null,
-    low: point.low ?? null,
-    close: point.close,
-    volume: point.volume ?? null,
-  }));
 }
 
 function financialStatementRows(financials: FinancialsCliData) {
@@ -284,23 +274,26 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
-  const range = parseRange(takeOption(args, "--range"));
+  const range = parseRange(takeOption(args, "--range"), ctx);
   const requestedExchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range <range>]", ctx);
   await withMarketData(ctx, async (market) => {
     const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
     const exchange = requestedExchange || localTicker?.metadata.exchange || "";
-    const points = await market.dataProvider.getPriceHistory(symbol, exchange, range, {
-      cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
-    });
-    const data = historyRows(points);
-    ctx.printResult({ data, metadata: { symbol, range, exchange } }, {
+    const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
+    const { points, resolution } = market.dataProvider.getPriceHistoryWithMetadata
+      ? await market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
+      : { points: await market.dataProvider.getPriceHistory(symbol, exchange, range, context), resolution: null };
+    const data = historyRows(points, resolution);
+    const decimals = historyPriceDecimals(data);
+    const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
+    ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
       columns: [
         { key: "date", header: "Date" },
-        { key: "open", header: "Open", align: "right" },
-        { key: "high", header: "High", align: "right" },
-        { key: "low", header: "Low", align: "right" },
-        { key: "close", header: "Close", align: "right" },
+        { key: "open", header: "Open", align: "right", format: price },
+        { key: "high", header: "High", align: "right", format: price },
+        { key: "low", header: "Low", align: "right", format: price },
+        { key: "close", header: "Close", align: "right", format: price },
         { key: "volume", header: "Volume", align: "right", format: formatCountCell },
       ],
     });

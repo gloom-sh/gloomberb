@@ -10,6 +10,10 @@ import {
 } from "../../plugins/builtin/market-movers/screener";
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
 import { isoDate, requireArg, takeOption } from "./command-utils";
+import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
+import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -190,28 +194,21 @@ async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["exe
   const left = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
   const right = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
   await withCliServices(ctx, async (services) => {
-    const [leftHistory, rightHistory] = await Promise.all([
-      services.dataProvider.getPriceHistory(left, "", "1Y"),
-      services.dataProvider.getPriceHistory(right, "", "1Y"),
-    ]);
-    const rightByDate = new Map(rightHistory.map((point) => [isoDate(point.date).slice(0, 10), point.close]));
-    const pairs = leftHistory
-      .map((point) => [point.close, rightByDate.get(isoDate(point.date).slice(0, 10))] as const)
-      .filter((pair): pair is readonly [number, number] => pair[1] != null);
-    const leftMean = pairs.reduce((sum, pair) => sum + pair[0], 0) / Math.max(1, pairs.length);
-    const rightMean = pairs.reduce((sum, pair) => sum + pair[1], 0) / Math.max(1, pairs.length);
-    const numerator = pairs.reduce((sum, pair) => sum + ((pair[0] - leftMean) * (pair[1] - rightMean)), 0);
-    const leftVariance = pairs.reduce((sum, pair) => sum + ((pair[0] - leftMean) ** 2), 0);
-    const rightVariance = pairs.reduce((sum, pair) => sum + ((pair[1] - rightMean) ** 2), 0);
-    const correlation = leftVariance > 0 && rightVariance > 0
-      ? numerator / Math.sqrt(leftVariance * rightVariance)
-      : null;
-    ctx.printResult({ data: [{ left, right, samples: pairs.length, correlation }] }, {
+    // Same daily-return model as the CORR pane: price levels of two trending
+    // assets correlate spuriously, often with the opposite sign.
+    const loadSeries = async (key: string) => {
+      const parsed = parsePublicTickerKey(key);
+      const exchange = parsed.exchange ?? (await services.store.loadTicker(key))?.metadata.exchange ?? "";
+      return buildCorrelationSeries(key, await loadCorrelationHistory(services.dataProvider, parsed.symbol, exchange, "1Y"));
+    };
+    const [leftSeries, rightSeries] = await Promise.all([loadSeries(left), loadSeries(right)]);
+    const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
+    ctx.printResult({ data: [{ left, right, samples: sampleSize, correlation }], metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS } }, {
       layout: "record",
       textColumns: [
         { key: "left", header: "Symbols", value: (row) => `${row.left} / ${row.right}` },
         { key: "correlation", header: "Correlation", format: (value) => typeof value === "number" ? value.toFixed(3) : "n/a" },
-        { key: "samples", header: "Trading days" },
+        { key: "samples", header: "Daily returns" },
       ],
     });
   });
@@ -281,7 +278,7 @@ export const overviewCliCommands: CliCommandDef[] = [
   {
     name: "correlation",
     aliases: ["relationship"],
-    description: "Correlate two symbols' daily closes over the past year",
+    description: "Correlate two symbols' daily returns over the past year",
     help: {
       group: CLI_COMMAND_GROUPS.research,
       usage: ["correlation <symbol-a> <symbol-b>"],
