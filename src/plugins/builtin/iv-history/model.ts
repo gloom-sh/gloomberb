@@ -161,6 +161,14 @@ export interface RichCheapRow {
   verdict: RichCheap;
 }
 
+/** The one reading date every screened row shares, shown once instead of per row. */
+export function sharedReading(rows: readonly RichCheapRow[]): { date: string; method: IvMethod | null } | null {
+  const dated = rows.filter((row) => row.date);
+  const first = dated[0];
+  return first && dated.every((row) => row.date === first.date && row.method === first.method)
+    ? { date: first.date!, method: first.method } : null;
+}
+
 /** Rich or cheap against the symbol's own year: IV30 percentile at or above 80, or at or below 20. */
 export function verdictFor(percentile: number | null): RichCheap {
   if (percentile == null) return null;

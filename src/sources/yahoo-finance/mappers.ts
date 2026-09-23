@@ -408,13 +408,21 @@ export function mapYahooEarningsCalendarEvent(
   };
 }
 
+/**
+ * Yahoo gives venues outside the Americas a post window (Xetra to 20:30 CEST)
+ * with no after-hours session in it, only the closing auction; they are closed
+ * after the regular session, as Cloud quotes them. A pre window stays: most
+ * venues take orders for an opening auction then.
+ */
 export function deriveMarketState(meta: NonNullable<ChartResult["meta"]>): MarketState {
   const ctp = meta.currentTradingPeriod;
   if (!ctp) return "CLOSED";
   const now = Math.floor(Date.now() / 1000);
   if (ctp.regular?.start && ctp.regular?.end && now >= ctp.regular.start && now < ctp.regular.end) return "REGULAR";
   if (ctp.pre?.start && ctp.pre?.end && now >= ctp.pre.start && now < ctp.pre.end) return "PRE";
-  if (ctp.post?.start && ctp.post?.end && now >= ctp.post.start && now < ctp.post.end) return "POST";
+  const timeZone = meta.exchangeTimezoneName?.trim();
+  const afterHoursVenue = !timeZone || timeZone.startsWith("America/");
+  if (afterHoursVenue && ctp.post?.start && ctp.post?.end && now >= ctp.post.start && now < ctp.post.end) return "POST";
   return "CLOSED";
 }
 

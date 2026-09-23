@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fetchYahooChart } from "./requests";
+import { fetchYahooChart, fetchYahooQuoteSupplement } from "./requests";
 import type { YahooHttpClient } from "./http";
 
 function chart(granularity: unknown) {
@@ -96,4 +96,24 @@ test("the trailing trade row of an intraday chart has no known volume", async ()
   }] } };
   const history = (await fetchYahooChart(http(raw, []), "AAPL", "1d", "1m")).history;
   expect(history.map((point) => point.volume)).toEqual([24863, undefined]);
+});
+
+test("a continuous futures alias is named after the contract its price belongs to", async () => {
+  const supplement = async (symbol: string, price: Record<string, string>) => {
+    const urls: URL[] = [];
+    const client = { fetchJsonWithCrumb: async (url: string) => {
+      urls.push(new URL(url));
+      return { quoteSummary: { result: [{ summaryDetail: { previousClose: { raw: 18.56 } }, price }] } };
+    } } as unknown as YahooHttpClient;
+    return { result: await fetchYahooQuoteSupplement(client, symbol), modules: urls[0]!.searchParams.get("modules") };
+  };
+  // SB=F kept "Oct 26" in its name while quoting the March contract.
+  expect(await supplement("SB=F", { shortName: "Sugar #11 Oct 26", underlyingSymbol: "SBH27.NYB" }))
+    .toEqual({ result: { previousClose: 18.56, name: "Sugar #11 Mar 27" }, modules: "summaryDetail,price" });
+  expect((await supplement("ZB=F", { shortName: "U.S. Treasury Bond Futures,Dec-", underlyingSymbol: "ZBH27.CBT" })).result.name)
+    .toBe("U.S. Treasury Bond Futures Mar 27");
+  // No month in the underlying, another root, or a plain listing: the chart name stands.
+  expect((await supplement("BZ=F", { shortName: "Brent Crude Oil Last Day Financ", underlyingSymbol: "BZ.NYM" })).result.name).toBeUndefined();
+  expect((await supplement("SB=F", { shortName: "Sugar #11 Oct 26", underlyingSymbol: "KCZ26.NYB" })).result.name).toBeUndefined();
+  expect(await supplement("AAPL", { shortName: "Apple Inc." })).toEqual({ result: { previousClose: 18.56 }, modules: "summaryDetail" });
 });

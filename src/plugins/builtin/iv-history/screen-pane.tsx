@@ -4,11 +4,11 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, shortDate, verdictLabel } from "./format";
-import { projectRichCheap, type RichCheapRow, VCA_LIMIT, VCA_PRESETS, type VcaPreset } from "./model";
+import { projectRichCheap, type RichCheapRow, sharedReading, VCA_LIMIT, VCA_PRESETS, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
 type SortId = keyof RichCheapRow;
@@ -60,6 +60,10 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
       return sort.direction === "asc" ? order : -order;
     });
   }, [resource.data, hv, sort]);
+  const shared = useMemo(() => sharedReading(rows), [rows]);
+  // A shared reading date moves to the footer, and a column no row fills is left out.
+  const columns = useMemo(() => COLUMNS.filter((column) => !(column.id === "date" && shared)
+    && !(column.id === "skew" && rows.every((row) => row.skew == null))), [rows, shared]);
   const [selected, setSelected] = useState<string | null>(null);
   const queued = rows.filter((row) => row.status === "queued").length;
   const notices = [universe.error, resource.error,
@@ -70,8 +74,9 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
   usePaneFooter("iv-screen", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
     { id: "count", parts: [{ text: `${rows.filter((row) => row.iv30 != null).length} of ${rows.length} covered`, tone: "muted" as const }] },
-    ...(resource.data?.asOf ? [{ id: "date", parts: [{ text: resource.data.asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "open", key: "enter", label: "IV history" }] }), [resource.loading, rows, resource.data?.asOf]);
+    ...(shared ? [{ id: "date", parts: [{ text: readingLabel(shared.date, shared.method), tone: "muted" as const }] }]
+      : resource.data?.asOf ? [{ id: "date", parts: [{ text: resource.data.asOf, tone: "muted" as const }] }] : []),
+  ], hints: [{ id: "open", key: "enter", label: "IV history" }] }), [resource.loading, rows, shared, resource.data?.asOf]);
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.alt || event.meta || event.name !== "r") return false;
     void resource.reload();
@@ -81,7 +86,7 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "symbol": return { text: row.symbol, color: colors.textBright };
       case "iv30": return { text: formatVol(row.iv30), color: colors.warning };
-      case "date": return { text: row.date ? `${shortDate(row.date)} ${row.method === "quote-mid" ? "live" : "close"}` : row.status === "queued" ? "queued" : "--",
+      case "date": return { text: row.date ? readingLabel(row.date, row.method) : row.status === "queued" ? "queued" : "--",
         color: colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
@@ -94,11 +99,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     }
   };
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>
-      {`${universe.label} · IV rank and percentile of each latest close against its own 52 weeks · Rich at P80+, cheap at P20 or below`}
-    </Text></Box>
     <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
-      <DataTableView<RichCheapRow> focused={focused} columns={COLUMNS} items={rows} rootWidth={width} rootHeight={Math.max(3, height - 1)}
+      <DataTableView<RichCheapRow> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={height}
         getItemKey={(row) => row.symbol} sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
         onHeaderClick={(id) => setSort({ id: id as SortId, direction: sort.id === id && sort.direction === "desc" ? "asc" : "desc" })}
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
@@ -108,6 +110,10 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         renderCell={(row, column) => cell(row, column.id)} />
     </PaneStatusBody>
   </Box>;
+}
+
+function readingLabel(date: string, method: RichCheapRow["method"]): string {
+  return `${shortDate(date)} ${method === "quote-mid" ? "live" : "close"}`;
 }
 
 export const VCA_SCOPE_OPTIONS = [

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cleanYahooDividendAmounts, extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooDividends, mapYahooEarningsHistory, mapYahooSplits, yahooRawDate } from "./mappers";
+import { cleanYahooDividendAmounts, deriveMarketState, extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooDividends, mapYahooEarningsHistory, mapYahooSplits, yahooRawDate } from "./mappers";
 import { loadYahooCorporateActions } from "./quote-summary";
 import type { ChartResult } from "./types";
 
@@ -133,6 +133,22 @@ describe("Yahoo mappers", () => {
     });
     expect(data).toMatchObject({ currency: "GBP", coverage: { dividends: "available", splits: "available", earnings: "unavailable" } });
     expect(data.dividends[0]?.amount).toBeCloseTo(0.020301435, 9);
+  });
+  test("a venue outside the Americas is closed in Yahoo's post window, while US listings are after hours", () => {
+    // SAP.DE at 19:25 CEST: Yahoo's post window runs to 20:30, but Xetra closed with its 17:35 auction.
+    const now = Date.parse("2026-09-23T17:25:00Z") / 1000;
+    const currentTradingPeriod = { pre: { start: now - 36_000, end: now - 34_000 }, regular: { start: now - 34_000, end: now - 7_000 },
+      post: { start: now - 7_000, end: now + 4_000 } };
+    const realNow = Date.now;
+    Date.now = () => now * 1000;
+    try {
+      expect(deriveMarketState({ exchangeTimezoneName: "Europe/Berlin", currentTradingPeriod })).toBe("CLOSED");
+      expect(deriveMarketState({ exchangeTimezoneName: "America/New_York", currentTradingPeriod })).toBe("POST");
+      expect(deriveMarketState({ exchangeTimezoneName: "Europe/Berlin", currentTradingPeriod: { ...currentTradingPeriod,
+        pre: { start: now - 10, end: now + 10 } } })).toBe("PRE");
+    } finally {
+      Date.now = realNow;
+    }
   });
   test("derives premarket change from the prior regular close", () => {
     const meta: NonNullable<ChartResult["meta"]> = {

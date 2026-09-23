@@ -22,6 +22,7 @@ import type { YahooHttpClient } from "./http";
 import { applyYahooHistoryCoverage } from "../history-coverage";
 import { coverFxOpenClose, reconcileYahooCurrentPeriod, withoutLiveRowVolume } from "./chart-period";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "../../time-series/resolution";
+import { yahooFuturesAliasName, yahooSecurityName } from "./names";
 
 /**
  * Yahoo stamps calendar bars at midnight in the instrument's zone, so an FX
@@ -181,14 +182,21 @@ export async function fetchYahooQuoteSupplement(
     | "open"
     | "high"
     | "low"
+    | "name"
   >
 > {
   try {
-    const params = new URLSearchParams({ modules: "summaryDetail" });
+    // A continuous futures alias also needs the contract its price belongs to.
+    const futuresAlias = /=F$/i.test(symbol);
+    const params = new URLSearchParams({ modules: futuresAlias ? "summaryDetail,price" : "summaryDetail" });
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
     const data = await http.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
     const summaryDetail = data.quoteSummary?.result?.[0]?.summaryDetail;
     if (!summaryDetail) return {};
+    const price = data.quoteSummary?.result?.[0]?.price;
+    const name = futuresAlias
+      ? yahooFuturesAliasName(symbol, yahooSecurityName(price?.shortName, price?.longName), price?.underlyingSymbol)
+      : undefined;
 
     const bid = normalizePositiveMarketValue(
       financeRawNumber(summaryDetail.bid),
@@ -226,6 +234,7 @@ export async function fetchYahooQuoteSupplement(
       open,
       high,
       low,
+      ...(name ? { name } : {}),
     };
   } catch {
     return {};

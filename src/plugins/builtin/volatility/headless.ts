@@ -4,6 +4,8 @@ import type { VolatilityData } from "./model";
 
 function formattedValue(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--"; }
 function formattedPercentile(value: unknown): string { return typeof value === "number" && Number.isFinite(value) ? value.toFixed(0) : "--"; }
+/** The full ratio history stays in the JSON metadata. */
+const RECENT_RATIO_SESSIONS = 20;
 export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
   return { sections: [
     { title: "Cash VIX tenor curve", entries: [
@@ -21,8 +23,8 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
       { label: "As of", value: data.fred.termDate }, { label: "3M / 30D", value: data.fred.ratio, formatted: formattedValue(data.fred.ratio) },
       { label: "3M spread (points)", value: data.fred.slope, formatted: formattedValue(data.fred.slope) },
     ] },
-    { title: "FRED 3M / 30D ratio", columns: [{ key: "date", header: "Date" }, { key: "value", header: "3M / 30D", format: formattedValue }],
-      rows: data.fred.ratioHistory.map((point) => ({ ...point })) },
+    { title: "FRED 3M / 30D ratio, recent sessions", columns: [{ key: "date", header: "Date" }, { key: "value", header: "3M / 30D", format: formattedValue }],
+      rows: data.fred.ratioHistory.slice(-RECENT_RATIO_SESSIONS).map((point) => ({ ...point })) },
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
       { key: "value", header: "Level", align: "right", format: formattedValue },
@@ -30,8 +32,8 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
       { key: "change1d", header: "1D points", align: "right", format: formattedValue },
       { key: "change1dPercent", header: "1D %", align: "right", format: formattedValue },
       { key: "percentile1y", header: "1Y percentile", align: "right", format: formattedPercentile },
-      { key: "sampleSize", header: "Samples", align: "right" }, { key: "status", header: "Coverage" },
-    ], rows: data.board.map((row) => ({ ...row })) },
+      { key: "sampleSize", header: "Samples", align: "right" },
+    ], rows: data.board.filter((row) => row.value != null).map((row) => ({ ...row })) },
   ] };
 }
 export interface VolatilityHeadlessDependencies {
