@@ -12,6 +12,7 @@ import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors"
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES,
@@ -66,7 +67,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     : tab === "board" ? VOLATILITY_INDICES.filter((definition) => !(definition.id in IMPLIED_CORRELATION_ROWS)) : [])
     .map((definition) => ({ symbol: definition.symbol, exchange: "", surface: "monitor", visible: true,
       selected: definition.id === selectedId, weight: 40 })), [tab, selectedId]);
-  const { entries: liveEntries } = useLiveQuoteEntries(liveTargets);
+  const liveStreaming = useLiveStreamingSetting();
+  const { entries: liveEntries } = useLiveQuoteEntries(liveTargets, { liveStreaming });
   const liveEntriesRef = useRef(liveEntries);
   liveEntriesRef.current = liveEntries;
   // Where an index does not stream, its level is re-read every 15 seconds in
@@ -81,7 +83,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     if (!coordinator || quiet.length === 0) return;
     await coordinator.loadQuotesBatch(quiet.map((target) => ({ symbol: target.symbol, exchange: "" })), { forceRefresh: true });
   }, [liveTargets]);
-  useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveTargets.length > 0);
+  // With streaming off the quote layer already polls every minute.
+  useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveStreaming && liveTargets.length > 0);
   const liveLevels = useThrottledValue(useMemo(() => {
     const levels = new Map<VolatilityIndexId, VolatilityLiveLevel>();
     for (const definition of VOLATILITY_INDICES) {
