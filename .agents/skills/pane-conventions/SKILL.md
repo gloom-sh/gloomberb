@@ -33,6 +33,11 @@ never goes there.
   settings (`quickSettings`, `zap` icon) sit beside it; the `...` menu opens
   settings, lock, share, close.
 - Body: content only. Tabs, tables, details, forms, charts.
+- Header zone: the top of the body, in this order and nothing else: the
+  `QueryBar` (search, filters, view), then a `StatGrid` of summary figures,
+  then content. On the desktop the title-bar tab takes the colour of whatever
+  sits under it, so the tab, the bar and the figures read as one surface.
+  No loose text lines, blank rows or button rows above or between them.
 - Footer, registered with `usePaneFooter`: `info` on the left (changing
   status), `hints` on the right (pane actions with their keys, visible only
   while focused). When AGENTS.md says "pane status bar" it means this footer.
@@ -43,6 +48,8 @@ never goes there.
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
+| Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
+| A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
 | Nothing can render yet (first load, hard failure, no data) | Body, replacing content | `PaneStatusBody` |
 | No ticker, no selection, empty result | Body | `EmptyState` |
@@ -56,7 +63,7 @@ never goes there.
 | Per-instance configuration | Pane settings via the `...` menu | `settings` on the pane def, `usePaneSettingValue` |
 | Methodology, assumptions, how to use the pane | `docs/*.md` | never body text or an info button |
 
-Nowhere: a row count as its own line, in the footer, or as "showing N of M";
+Nowhere: a row count as its own line, in the footer, in a tab label, or as "showing N of M";
 the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
 `r to refresh`); explanatory paragraphs; the data provider.
 
@@ -97,7 +104,9 @@ the origin of a number. The one count the kit draws is the
 - No toolbars in the body. A row of buttons above a table is a set of footer
   hints. Query controls are the exception: search, filters and sort go in one
   `QueryBar` in `rootBefore` (chart range and interval pickers sit above the
-  plot).
+  plot). A body `Button` belongs only to a form (Save, Cancel) or to an empty
+  or failed state's `actions`; never full width, never beside a heading. A
+  toggle that acts on click looks like one (`Checkbox`, a query bar toggle).
 
 ## 4. Information density
 
@@ -109,11 +118,21 @@ the origin of a number. The one count the kit draws is the
   value, a failed input as a footer warning or a chart gap, not a paragraph.
 - No standing explanations; docs are linked from README and Help.
 - No count lines. The table shows the rows; scrolling shows the rest.
+- Summary figures are a `StatGrid`, not stacked `KeyValueRow`s or `Text`
+  lines: a short label, the value, muted `detail` (percentile, date,
+  window). Drop sample sizes ("252 obs"), dates the footer already carries,
+  and anything the title, the active tab or the selected row shows.
 - Compact controls: `Button compact` with `displayLabel`, `Tabs dense` in
   narrow panes, `KeyValueRow`, `Badge` for a state word.
 - Empty states are one line plus an optional `hint`.
 
 ## 5. Lists and tables
+
+Header labels and section headings are uppercased by the kit; write them in
+any case. Pass `onHeaderClick` only when the table sorts (without it headers
+are not interactive), and `selection={{ kind: "none" }}` for a static table.
+Never build a table from padded `Text` rows: the kit gives the header band,
+gutters and fill to the footer.
 
 Pick by interaction: `DataTableView` (sortable columns, cursor, Enter opens),
 `DataTableStackView` (same, detail in the pane), `FeedDataTableStackView`
@@ -158,7 +177,11 @@ more of what is loaded" uses the same helper.
   early return): the desktop draws it in the pane title bar and the hook
   returns true; the terminal draws the pane's own `Tabs` as the first row of
   the body. Subtract the tab row only when it is in the body. Never in the
-  footer.
+  footer. Register `null` while a sign-in wall or any state makes every tab
+  show the same thing.
+- A strip inside content that already has a title-bar strip (a Ticker
+  Research tab, a stack detail) becomes a `QueryBar` view or inline filter on
+  the desktop; the terminal keeps its `Tabs` row.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
@@ -267,7 +290,7 @@ more of what is loaded" uses the same helper.
 
 ## 9. Checklist for a new pane or tab
 
-1. The title is the only place the pane names itself; the body starts with content.
+1. The title is the only place the pane names itself; the body starts with the header zone (query bar, figures) or content.
 2. Every pane action is a footer hint with a key and works by mouse; no button row in the body.
 3. Footer info is changing state only: no labels, counts, generic hints, `r`.
 4. Warnings via `usePaneNoticeFooter`; blocking states via `PaneStatusBody`/`EmptyState`; refresh failures keep the last data.
@@ -280,6 +303,7 @@ more of what is loaded" uses the same helper.
 11. Data panes have a `headless` definition; fetching is in `client.ts`.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
+14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
 
 ## Reference implementations
 
@@ -294,6 +318,7 @@ All under `src/plugins/builtin/` unless noted.
 | Tabs, lazy mount, `PaneFooterScope`, `hideTabs`, header tabs | `ticker-detail/pane.tsx` |
 | Query bar: search, selects, toggle, header tabs | `cot/pane.tsx`, `congress-trades/filters.tsx` |
 | Query bar: multi, text field, inline, view | `research-search/pane.tsx` |
+| Query bar + stat grid over a table, per-tab figures | `time-sales/pane.tsx` |
 | Tabs as a query over one table | `market-movers/index.tsx` |
 | Tabs with forms, Save per form, Ctrl+S | `account-management/pane.tsx`, `footer.ts` |
 | Form in a stack detail, empty footer while editing | `broker-manager/detail.tsx`, `footer.ts` |

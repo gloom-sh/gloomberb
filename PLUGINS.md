@@ -1051,6 +1051,7 @@ Choose the existing control that owns the interaction you need:
 | Search, filters, sort above a list | `QueryBar` |
 | Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |
 | Calculator and sizer inputs | `FieldGrid` (`GridField`: number, text, wide, action) |
+| Summary figures under the query bar | `StatGrid` (`StatItem`: label, value, detail, tone), `statGridRows` |
 | Choices inside forms | `SegmentedControl`, `SelectButton`, `SelectField`, `Checkbox` |
 | Actions and inputs | `Button`, `IconButton`, `Icon`, `TextField`, `NumberField` |
 | Clickable/expandable summaries | `ActionRow` |
@@ -1072,6 +1073,10 @@ Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book 
 A pane's primary tab strip goes through `usePaneHeaderTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. On the desktop the strip moves into the pane title bar and the hook returns true; the terminal returns false and the pane keeps drawing its own `Tabs`. Subtract the tab row from heights only when it is in the body.
 
 Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself.
+
+A pane's summary figures (a VWAP, a spread, a percentile, a range) go in a `StatGrid` directly under the `QueryBar`: one band of label, value and muted detail cells that the desktop draws like the query bar, so the title-bar tab, the bar and the figures read as one surface. Use it at the top of a stack detail too. Do not stack `KeyValueRow`s or text lines above a table for this. `statGridRows(items, width)` gives the rows it takes for terminal height budgeting.
+
+Table header labels and `SectionHeading` titles are uppercased by the kit. Pass `onHeaderClick` only when the table sorts; without it the headers are not interactive.
 
 A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells, with the pane owning which field is active and the Tab order. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
 
