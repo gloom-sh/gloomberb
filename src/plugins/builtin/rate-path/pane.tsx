@@ -7,6 +7,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedRatePath, loadRatePath } from "./client";
 import { meetingProbability, percentileText, probabilityTargets, ratePathCurves, rateText } from "./model";
@@ -74,7 +75,9 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const bodyHeight = Math.max(9, height - 3 - tabRows);
   const meetingTableHeight = Math.max(3, Math.min((data?.meetings.length ?? 0) + 2, Math.floor(bodyHeight * 0.5)));
   const pathHeight = Math.max(6, bodyHeight - meetingTableHeight);
-  useAutoRefresh(resource.updatedAt, resource.load);
+  // Delayed contract quotes move all session; the curve follows them once a
+  // minute while Globex trades and on the research cadence otherwise.
+  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
   useShortcut((event) => {
     if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); }
   });

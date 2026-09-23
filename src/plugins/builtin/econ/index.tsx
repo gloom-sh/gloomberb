@@ -9,6 +9,7 @@ import {
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { usePaneVisible } from "../../../state/app/activity";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
@@ -95,11 +96,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const refresh = useCallback(() => { void load(false); }, [load]);
   useAutoRefresh(stale ? null : fetchedAt, refresh);
 
-  // Tick every 30s to update staleness + countdown
+  // Tick every 30s to update staleness + countdown, only while the pane can be seen.
+  const paneVisible = usePaneVisible();
   useEffect(() => {
+    if (!paneVisible) return;
+    setNow(Date.now());
     const interval = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [paneVisible]);
 
   const filtered = useMemo(() => events
     .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))

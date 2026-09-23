@@ -8,6 +8,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedFuturesCurve, loadFuturesCurve } from "./client";
 import { curveAxisPrice, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
@@ -57,7 +58,12 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const bodyHeight = Math.max(9, height - tabRows - 2);
   const tableHeight = tab === "curve" ? Math.max(3, Math.min(rows.length + 2, Math.floor(bodyHeight * 0.4))) : bodyHeight;
   const curveHeight = tab === "curve" ? Math.max(6, bodyHeight - tableHeight) : 0;
-  useAutoRefresh(resource.updatedAt, resource.load);
+  // Delayed contract quotes move all session; the curve follows them once a
+  // minute while Globex trades and on the research cadence otherwise. A
+  // settlement curve changes once a day.
+  useAutoRefresh(resource.updatedAt, resource.load, {
+    intervalMs: data?.source === "cboe" ? null : futuresSessionRefreshInterval(),
+  });
   useShortcut((event) => {
     if (focused && !event.targetEditable && !event.ctrl && !event.meta && event.name === "r") {
       event.preventDefault(); void resource.reload();

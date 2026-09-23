@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type {
   ScannerFlowPayload,
@@ -10,6 +10,7 @@ import { tf } from "../../../i18n";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import { useAppVisible } from "../../../state/app/activity";
 
 export interface ScannerFeedState<T extends ScannerPayload> {
   payload: T | null;
@@ -22,15 +23,23 @@ const INITIAL_STATE = { payload: null, denied: false, deniedReason: null } as co
 
 function useScannerFeed<T extends ScannerPayload>(scanner: "hilo" | "flow"): ScannerFeedState<T> {
   const [state, setState] = useState<ScannerFeedState<T>>(INITIAL_STATE);
+  // A hidden app drops the subscription like every other stream; the last
+  // payload stays on screen until the server resends on return.
+  const appVisible = useAppVisible();
+  const subscribedScannerRef = useRef(scanner);
 
   useEffect(() => {
-    setState(INITIAL_STATE);
+    if (subscribedScannerRef.current !== scanner) {
+      subscribedScannerRef.current = scanner;
+      setState(INITIAL_STATE);
+    }
+    if (!appVisible) return;
     return apiClient.subscribeScanner(scanner, (event) => {
       setState(event.type === "denied"
         ? { payload: null, denied: true, deniedReason: event.reason }
         : { payload: event.payload as unknown as T, denied: false, deniedReason: null });
     });
-  }, [scanner]);
+  }, [appVisible, scanner]);
 
   return state;
 }
