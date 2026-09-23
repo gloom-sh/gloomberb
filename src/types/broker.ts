@@ -69,6 +69,11 @@ export interface BrokerConnectionStatus {
   state: "disconnected" | "connecting" | "connected" | "error";
   message?: string;
   mode?: string;
+  /**
+   * Timeliness of the quotes this session streams, when the broker knows it.
+   * A "delayed" session never outranks a real-time cloud quote.
+   */
+  quoteData?: "realtime" | "delayed";
   updatedAt: number;
 }
 
@@ -127,6 +132,12 @@ export interface BrokerAdapter {
     instrument?: BrokerContractRef | null,
   ): Promise<ManualChartResolution[]> | ManualChartResolution[];
   getOptionsChain?(ticker: string, instance: BrokerInstanceConfig, exchange?: string, expirationDate?: number, instrument?: BrokerContractRef | null): Promise<OptionsChain>;
+  /**
+   * Whether this profile can stream quotes at all. Return false for modes that
+   * only sync statements, so their positions stream from the cloud instead.
+   * Quotes are also only routed to a broker whose status is "connected".
+   */
+  canStreamQuotes?(instance: BrokerInstanceConfig): boolean;
   subscribeQuotes?(
     instance: BrokerInstanceConfig,
     targets: QuoteSubscriptionTarget[],

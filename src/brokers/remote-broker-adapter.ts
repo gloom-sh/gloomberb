@@ -57,8 +57,10 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
     searchInstruments: (query, instance) => invoke(instance, "searchInstruments", [query]),
     getTickerFinancials: (ticker, instance, exchange?: string, instrument?: BrokerContractRef | null) =>
       invoke(instance, "getTickerFinancials", [ticker, exchange, instrument]),
-    getQuote: (ticker, instance, exchange?: string, instrument?: BrokerContractRef | null) =>
-      invoke(instance, "getQuote", [ticker, exchange, instrument]),
+    getQuote: adapter.getQuote
+      ? (ticker, instance, exchange?: string, instrument?: BrokerContractRef | null) =>
+        invoke(instance, "getQuote", [ticker, exchange, instrument])
+      : undefined,
     getPriceHistory: (ticker, instance, exchange: string, range: TimeRange, instrument?: BrokerContractRef | null) =>
       invoke(instance, "getPriceHistory", [ticker, exchange, range, instrument]),
     getPriceHistoryForResolution: (
@@ -84,7 +86,12 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
       invoke(instance, "getChartResolutionCapabilities", [ticker, exchange, instrument]),
     getOptionsChain: (ticker, instance, exchange?: string, expirationDate?: number, instrument?: BrokerContractRef | null) =>
       invoke(instance, "getOptionsChain", [ticker, exchange, expirationDate, instrument]),
-    subscribeQuotes: (instance, targets, onQuote) => getBrokerRemoteClient()?.subscribeQuotes(instance.id, targets, onQuote) ?? (() => {}),
+    // Mirror the host adapter's quote capability: a wrapper that always
+    // streams would claim quotes the backend broker cannot deliver.
+    canStreamQuotes: adapter.canStreamQuotes ? (instance) => adapter.canStreamQuotes!(instance) : undefined,
+    subscribeQuotes: adapter.subscribeQuotes
+      ? (instance, targets, onQuote) => getBrokerRemoteClient()?.subscribeQuotes(instance.id, targets, onQuote) ?? (() => {})
+      : undefined,
     listOpenOrders: (instance) => invoke(instance, "listOpenOrders"),
     listExecutions: (instance) => invoke(instance, "listExecutions"),
     previewOrder: (instance, request: BrokerOrderRequest) => invoke(instance, "previewOrder", [request]),
