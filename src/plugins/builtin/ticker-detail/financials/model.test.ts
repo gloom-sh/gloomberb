@@ -57,6 +57,31 @@ describe("financial statement table model", () => {
     expect(revenueRow?.cells.map((cell) => cell.value)).toEqual([100, 150, 100]);
   });
 
+  // REF: SEC fiscal year-end balance points sit among the quarterly rows.
+  test("omits periods with nothing on the selected statement", () => {
+    const financials = createFinancials();
+    financials.quarterlyStatements.splice(3, 0, { date: "2025-10-04", totalAssets: 900, totalEquity: 400, dateSource: "sec" });
+    const dates = (statement: string) => buildFinancialTableModel(financials, { period: "quarterly", statement, quarterlyLimit: 4 })
+      ?.statements.map((row) => row.date);
+    expect(dates("income")).toEqual(["2025-12-31", "2025-09-30", "2025-06-30", "2025-03-31"]);
+    expect(dates("balance")).toEqual(["2025-10-04"]);
+  });
+
+  test("hides lines that repeat their group's headline in every shown period", () => {
+    const labels = (netIncomeCommonStockholders: number) => buildFinancialTableModel({
+      annualStatements: [
+        { date: "2024-12-31", totalRevenue: 100, operatingRevenue: 100, netIncome: 25, netIncomeCommonStockholders: 25, eps: 1 },
+        { date: "2025-12-31", totalRevenue: 150, operatingRevenue: 150, netIncome: 45, netIncomeCommonStockholders, eps: 2 },
+      ],
+      quarterlyStatements: [],
+      priceHistory: [],
+    }, { period: "annual", statement: "income", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
+    expect(labels(45)).not.toContain("Operating Revenue");
+    expect(labels(45)).not.toContain("Income Common");
+    expect(labels(44)).toContain("Income Common");
+    expect(labels(45)).toContain("Diluted EPS");
+  });
+
   test("applies financial row semantics to growth color values", () => {
     const table = buildFinancialTableModel({
       financialCurrency: "USD",

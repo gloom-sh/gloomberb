@@ -39,6 +39,7 @@ import {
 import { getTimeSeriesField } from "../../time-series/field-catalog";
 import {
   buildFinancialTableModel,
+  financialStatementCurrency,
   formatFinancialHeader,
 } from "../../plugins/builtin/ticker-detail/financials/model";
 import type {
@@ -1796,7 +1797,20 @@ export function shotExpectedText(
       });
       const latestStatement = table?.statements[0];
       const firstMetric = table?.rows[0];
-      if (latestStatement) expected.push(formatFinancialHeader(latestStatement.date).trim());
+      // The pane prints the compact header: date, currency and an S/P source marker.
+      if (latestStatement) {
+        const currency = latestStatement.currency ?? financialStatementCurrency(
+          financials,
+          [...(financials.annualStatements ?? []), ...(financials.quarterlyStatements ?? [])],
+        );
+        expected.push(formatFinancialHeader(
+          latestStatement.date,
+          currency,
+          latestStatement.dateSource,
+          true,
+          latestStatement.aggregation?.periodEnd,
+        ).trim());
+      }
       if (firstMetric) expected.push(firstMetric.unitLabel);
     }
   }

@@ -405,7 +405,7 @@ describe("FinancialsTab", () => {
 
     await flushFrame();
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toContain("Operating Revenue");
+    expect(testSetup.captureCharFrame()).toContain("Cost of Revenue");
 
     await act(async () => {
       testSetup!.mockInput.pressArrow("down");
@@ -413,7 +413,7 @@ describe("FinancialsTab", () => {
     });
     await flushFrame();
 
-    expect(testSetup.captureCharFrame()).toContain("Operating Revenue");
+    expect(testSetup.captureCharFrame()).toContain("Cost of Revenue");
   });
 
   test("uses one hover background across financial group rows", async () => {

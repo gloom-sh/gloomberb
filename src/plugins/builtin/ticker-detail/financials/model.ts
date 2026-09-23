@@ -278,6 +278,34 @@ function hasFinancialRowValue(
   );
 }
 
+function repeatsHeadline(
+  line: Pick<MetricDef, "key" | "compute">,
+  headline: keyof FinancialStatement,
+  statements: FinancialStatement[],
+): boolean {
+  return statements.every((statement) => {
+    const value = statementMetricValue(line, statement);
+    return value === undefined || value === statementMetricValue({ key: headline }, statement);
+  });
+}
+
+/**
+ * Companies without minority interests or discontinued operations report the
+ * net income headline again on several lines. A line that equals its group's
+ * headline in every shown period where it is reported adds nothing.
+ */
+function distinctChildren(
+  group: FinancialGroupDef,
+  statements: FinancialStatement[],
+): FinancialRowDef[] {
+  const summaryKey = group.summaryKey;
+  return group.children.filter((child) => (
+    hasFinancialRowValue(child, statements)
+    && (isFinancialGroup(child) || !summaryKey || child.key === summaryKey
+      || !repeatsHeadline(child, summaryKey, statements))
+  ));
+}
+
 function resolveMetricUnit(
   statements: FinancialStatement[],
   def: Pick<MetricDef, "key" | "compute" | "format">,
@@ -323,7 +351,8 @@ export function buildFinancialRows(
       continue;
     }
 
-    const toggleable = def.children.some((child) => hasFinancialRowValue(child, statements));
+    const children = distinctChildren(def, statements);
+    const toggleable = children.length > 0;
     const expanded = toggleable && !collapsedGroups.has(def.id);
     const metricUnit = def.summaryKey
       ? resolveMetricUnit(statements, { key: def.summaryKey, format: def.format ?? "compact" }, def.label)
@@ -344,7 +373,7 @@ export function buildFinancialRows(
     });
 
     if (expanded) {
-      rows.push(...buildFinancialRows(def.children, statements, collapsedGroups, depth + 1));
+      rows.push(...buildFinancialRows(children, statements, collapsedGroups, depth + 1));
     }
   }
 
@@ -403,7 +432,13 @@ export function selectFinancialStatements(
   quarterlyStatements: FinancialStatement[],
   limit = period === "annual" ? 5 : 6,
 ) {
-  const rawStatements = (period === "annual" ? annualStatements : quarterlyStatements).slice(-limit).reverse();
+  // A period with nothing on this statement (a fiscal year-end balance point on
+  // the income statement) would render as an all-dash column.
+  const tabRows = FINANCIAL_SUB_TABS.find((tab) => tab.key === statement)?.rows;
+  const rawStatements = (period === "annual" ? annualStatements : quarterlyStatements)
+    .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
+    .slice(-limit)
+    .reverse();
   const ttm = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
   const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
   const statements: FinancialTableStatement[] = ttm ? [ttm, ...rawStatements] : rawStatements;
