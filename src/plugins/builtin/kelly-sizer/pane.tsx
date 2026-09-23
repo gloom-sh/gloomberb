@@ -18,7 +18,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
-import { formatCurrency } from "../../../utils/format";
+import { convertCurrency, formatCurrency } from "../../../utils/format";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import {
   useAppDispatch,
@@ -34,6 +34,7 @@ import { usePortfolioAccountState } from "../portfolio-list/summary/live-account
 import { getSharedRegistry } from "../../registry";
 import { resolveTickerOpenTarget } from "../../../tickers/open-target";
 import { calculatePortfolioSummaryTotals } from "../portfolio-list/metrics";
+import { resolvePortfolioNetLiquidation } from "../portfolio-list/account-metrics";
 import {
   buildTrackedCurrencies,
   getCollectionTickersFromConfig,
@@ -224,9 +225,16 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     ),
     [activePortfolioId, config.baseCurrency, exchangeRates, portfolioFinancials, portfolioTickers],
   );
-  const sourceBankroll = accountState?.account.netLiquidation
-    ?? portfolioSummary.totalMktValue
-    ?? 0;
+  // The broker's Net Liq in the base currency, moving with live quotes as in the portfolio header and PORT.
+  const netLiquidation = resolvePortfolioNetLiquidation(
+    portfolioSummary,
+    accountState?.account,
+    (value) => convertCurrency(value, accountState?.account.currency ?? "", config.baseCurrency, exchangeRates),
+    accountState?.snapshotBasis,
+  );
+  const sourceBankroll = netLiquidation != null && Number.isFinite(netLiquidation)
+    ? netLiquidation
+    : portfolioSummary.totalMktValue ?? 0;
   const sourceCurrentValue = getPortfolioPositionValue({
     ticker,
     financials: positionFinancials,
