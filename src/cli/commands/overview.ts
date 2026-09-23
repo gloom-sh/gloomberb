@@ -6,6 +6,7 @@ import {
   fetchScreener,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
+  rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
@@ -77,7 +78,10 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
     return;
   }
 
-  const rows = await fetchScreener(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
+  const rows = rankScreenerQuotes(
+    category,
+    await fetchScreener(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh }),
+  );
   ctx.printResult({ data: rows }, {
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),

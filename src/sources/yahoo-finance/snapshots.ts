@@ -25,6 +25,7 @@ import { yahooSecurityName } from "./names";
 type YahooChartSnapshot = {
   meta: NonNullable<ChartResult["meta"]>;
   history: PricePoint[];
+  missingCloses?: Date[];
 };
 
 type YahooQuoteSupplement = Pick<
@@ -113,14 +114,27 @@ const DAY_MS = 86_400_000;
 /**
  * The close the regular-market price moved from: the row before the session
  * that regularMarketTime falls in, or the latest row when Yahoo has not added
- * that session's row yet.
+ * that session's row yet. When Yahoo left a session between that row and the
+ * current one without a close, the row is two sessions old, so the quote
+ * summary's previous close is used instead.
  */
-function previousSessionClose(history: PricePoint[], meta: YahooChartSnapshot["meta"]): number | undefined {
+function previousSessionClose(
+  { history, meta, missingCloses = [] }: YahooChartSnapshot,
+  summaryPreviousClose: number | undefined,
+): number | undefined {
   const time = (meta.regularMarketTime ?? Number.NaN) * 1000;
   const index = Number.isFinite(time) ? history.findLastIndex((point) => point.date.getTime() <= time) : -1;
   if (index < 0) return history.length > 1 ? history[history.length - 2]!.close : meta.chartPreviousClose;
-  if (time >= history[index]!.date.getTime() + DAY_MS) return history[index]!.close;
-  return index > 0 ? history[index - 1]!.close : meta.chartPreviousClose;
+  const completed = time >= history[index]!.date.getTime() + DAY_MS;
+  const reference = completed ? history[index] : history[index - 1];
+  if (!reference) return meta.chartPreviousClose;
+  const sessionStart = completed ? time : history[index]!.date.getTime();
+  const skipped = missingCloses.some((date) => (
+    date.getTime() > reference.date.getTime()
+    && date.getTime() < sessionStart
+    && (!completed || date.getTime() + DAY_MS <= time)
+  ));
+  return skipped && summaryPreviousClose != null && summaryPreviousClose > 0 ? summaryPreviousClose : reference.close;
 }
 
 /**
@@ -167,7 +181,7 @@ export async function loadYahooTickerFinancials(
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
 
   const currentPrice = meta.regularMarketPrice ?? history[history.length - 1]!.close;
-  const prev = previousSessionClose(history, meta);
+  const prev = previousSessionClose(chart, quoteSupplement.previousClose);
   const change = prev != null ? currentPrice - prev : 0;
   const changePct = prev ? (change / prev) * 100 : 0;
 
@@ -256,7 +270,7 @@ export async function loadYahooQuote(
   const { normalizedCurrency, currencyDivisor } = normalizeChartCurrency(chart);
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);
   const latest = history[history.length - 1]!;
-  const prev = previousSessionClose(history, meta);
+  const prev = previousSessionClose(chart, quoteSupplement.previousClose);
   const price = meta.regularMarketPrice ?? latest.close;
   const change = prev != null ? price - prev : 0;
 

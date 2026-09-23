@@ -51,6 +51,8 @@ export async function fetchYahooChart(
 ): Promise<{
   meta: NonNullable<ChartResult["meta"]>;
   history: PricePoint[];
+  /** Dates of rows Yahoo listed without a close, which history omits. */
+  missingCloses: Date[];
   events: ChartResult["events"];
   observedAt: number;
   regularHoursOnly: boolean;
@@ -82,14 +84,16 @@ export async function fetchYahooChart(
     close: quote.close?.[i] ?? Number.NaN,
     volume: quote.volume?.[i] ?? undefined,
   }));
-  const history = dateCalendarBars(
-    reconcileYahooCurrentPeriod(rows, interval, result.meta)
-      .filter((point) => Number.isFinite(point.close) && point.close > 0),
+  const dated = dateCalendarBars(
+    reconcileYahooCurrentPeriod(rows, interval, result.meta),
     interval,
     result.meta?.exchangeTimezoneName,
   );
+  const hasClose = (point: PricePoint) => Number.isFinite(point.close) && point.close > 0;
+  const history = dated.filter(hasClose);
   return { meta: result.meta || {},
     history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
+    missingCloses: dated.filter((point) => !hasClose(point)).map((point) => point.date),
     events: result.events, observedAt, regularHoursOnly: !includePrePost };
 }
 

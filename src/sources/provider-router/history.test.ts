@@ -176,6 +176,27 @@ describe("AssetDataRouter chart history", () => {
     } finally { persistence.close(); }
   });
 
+  test("a 1D answer from a broader cached range keeps only the latest session", async () => {
+    Date.now = () => Date.parse("2026-09-15T14:00:00Z");
+    const persistence = new AppPersistence(createTempDbPath("latest-session-cache"));
+    const FIVE_MIN = 300_000;
+    const session = (open: string, count: number) => Array.from({ length: count }, (_, index) =>
+      ({ date: new Date(Date.parse(open) + index * FIVE_MIN), close: 100 + index, volume: 1_000 }));
+    const calls: string[] = [];
+    const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", name: "Cloud",
+      async getPriceHistory(_symbol, _exchange, range) {
+        calls.push(range);
+        return [...session("2026-09-14T13:30:00Z", 78), ...session("2026-09-15T13:30:00Z", 6)];
+      } };
+    try {
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      await router.getPriceHistory("QQQ", "", "1W");
+      const day = await router.getPriceHistory("QQQ", "", "1D");
+      expect(calls).toEqual(["1W"]);
+      expect(day.map((point) => new Date(point.date).toISOString().slice(0, 10))).toEqual(Array(6).fill("2026-09-15"));
+    } finally { persistence.close(); }
+  });
+
   test("sorts reversed chart history into chronological order", async () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,

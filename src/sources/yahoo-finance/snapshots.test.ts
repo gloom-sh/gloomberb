@@ -169,3 +169,23 @@ test("Yahoo quote measures session moves from the right close when the latest da
   expect(quote.marketState).toBe("PRE");
   expect(extendedBase).toBe(102);
 });
+
+test("Yahoo quote does not measure the move from two sessions back when the prior session has no close", async () => {
+  const day = 86_400_000;
+  const today = Date.parse("2026-09-23T13:30:00Z");
+  const quote = await loadYahooQuote("XLB", {
+    providerId: "yahoo",
+    fetchChart: async () => ({
+      meta: { currency: "USD", regularMarketPrice: 50.21, regularMarketTime: (today + 3_600_000) / 1000 },
+      history: [
+        { date: new Date(today - 2 * day), close: 49.71 },
+        { date: new Date(today), close: 50.21 },
+      ],
+      missingCloses: [new Date(today - day)],
+    }),
+    fetchExtendedHoursData: async () => ({}),
+    fetchQuoteSupplement: async () => ({ previousClose: 50.53 }),
+  });
+  expect(quote.change).toBeCloseTo(50.21 - 50.53, 8);
+  expect(quote.changePercent).toBeCloseTo((50.21 - 50.53) / 50.53 * 100, 8);
+});

@@ -67,6 +67,7 @@ import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/ext
 import type { ResolvedSeries } from "../../time-series/types";
 import { readRealizedVolEvidence, type RealizedVolEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { selectedWindows } from "../../plugins/builtin/realized-vol/settings";
+import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
 import { readVolSurfaceEvidence, type VolSurfaceEvidence } from "../../plugins/builtin/vol-surface/evidence";
 import { readVolatilityEvidence, type VolatilityEvidence } from "../../plugins/builtin/volatility/evidence";
 import { readScenarioEvidence, type ScenarioEvidence } from "../../plugins/builtin/options-scenario/evidence";
@@ -696,6 +697,8 @@ function resolveShotTheme(requested: string): string {
 }
 
 function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null {
+  // Captured history is authoritative, and the generic 5Y capture is weekly.
+  if (resolved.pane.id === "quote-monitor") return getQuoteMonitorPaneSettings(resolved.instance.settings).chartPeriod;
   switch (resolved.capability.id) {
     case "return-correlation":
       return (resolved.options.rangePreset ?? "1Y") as TimeRange;

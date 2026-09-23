@@ -278,6 +278,22 @@ function resultIsStale(value: PriceHistoryResult, exchange: string, intervalMs?:
   });
 }
 
+// Longer than any intraday break (lunch, futures maintenance), shorter than a night.
+const SESSION_BREAK_MS = 3 * 3_600_000;
+
+/**
+ * 1D is the latest session. A broader cached range clipped to the trailing
+ * 24 hours would otherwise also keep the previous session's afternoon, so cut
+ * at the last overnight break. Round-the-clock markets have none.
+ */
+function clipHistoryToRange(value: PriceHistoryResult, range: TimeRange): PriceHistoryResult {
+  const points = clipPriceHistoryToRange(value.points, range);
+  if (range !== "1D") return { ...value, points };
+  const times = points.map(getPricePointTimestamp);
+  const breakIndex = times.findLastIndex((time, index) => index > 0 && time - times[index - 1]! >= SESSION_BREAK_MS);
+  return { ...value, points: breakIndex > 0 ? points.slice(breakIndex) : points };
+}
+
 function historyCoverage(request: HistoryRequestDescriptor) {
   return {
     isUsable: (value: PriceHistoryResult) => hasUsablePriceHistory(value.points),
@@ -548,7 +564,7 @@ export class ProviderRouterHistoryRoutes {
       .filter((value) => !hasUsablePriceHistory(value.points));
     const withReportedGaps = (value: PriceHistoryResult) => historyCoverage(request).merge(value, reportedGaps);
     const clip = (value: PriceHistoryResult) => request.requestedRange
-      ? { ...value, points: clipPriceHistoryToRange(value.points, request.requestedRange) } : value;
+      ? clipHistoryToRange(value, request.requestedRange) : value;
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
     // A background revalidation cannot correct bars from before a close in
