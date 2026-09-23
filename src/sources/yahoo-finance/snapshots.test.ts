@@ -213,12 +213,13 @@ test("Yahoo futures quote measures its move from the current contract's settleme
     providerId: "yahoo",
     // The continuous chart's earlier rows are the expiring October contract.
     fetchChart: async () => ({
-      meta: { currency: "USD", instrumentType: "FUTURE", regularMarketPrice: 18.76, regularMarketTime: time },
+      meta: { currency: "USD", instrumentType: "FUTURE", regularMarketPrice: 18.76, regularMarketTime: time, shortName: "Sugar #11 Oct 26" },
       history: [{ date: new Date("2026-09-22T04:00:00Z"), close: 17.59 }, { date: new Date("2026-09-23T04:00:00Z"), close: 18.76 }],
     }),
     fetchExtendedHoursData: async () => ({}),
-    fetchQuoteSupplement: async () => ({ previousClose: 18.56 }),
+    fetchQuoteSupplement: async () => ({ previousClose: 18.56, name: "Sugar #11 Mar 27" }),
   });
+  expect(quote.name).toBe("Sugar #11 Mar 27");
   expect(quote.previousClose).toBe(18.56);
   expect(quote.change).toBeCloseTo(0.2, 8);
 });

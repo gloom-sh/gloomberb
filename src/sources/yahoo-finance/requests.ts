@@ -167,24 +167,17 @@ export async function fetchYahooAssetProfile(
     : undefined;
 }
 
+/** Summary fields layered over the chart quote; name is set only when it corrects the chart's (a rolled futures alias). */
+export type YahooQuoteSupplement = Pick<
+  Quote,
+  "bid" | "ask" | "bidSize" | "askSize" | "previousClose" | "open" | "high" | "low" | "name"
+>;
+
 export async function fetchYahooQuoteSupplement(
   http: YahooHttpClient,
   symbol: string,
   currencyDivisor = 1,
-): Promise<
-  Pick<
-    Quote,
-    | "bid"
-    | "ask"
-    | "bidSize"
-    | "askSize"
-    | "previousClose"
-    | "open"
-    | "high"
-    | "low"
-    | "name"
-  >
-> {
+): Promise<YahooQuoteSupplement> {
   try {
     // A continuous futures alias also needs the contract its price belongs to.
     const futuresAlias = /=F$/i.test(symbol);

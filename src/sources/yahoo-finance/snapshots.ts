@@ -18,6 +18,7 @@ import {
   type ExtendedHoursData,
 } from "./mappers";
 import type { ChartResult } from "./types";
+import type { YahooQuoteSupplement } from "./requests";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { isShopOperatingTarget } from "../../utils/operating-result";
 import { yahooSecurityName } from "./names";
@@ -27,18 +28,6 @@ type YahooChartSnapshot = {
   history: PricePoint[];
   missingCloses?: Date[];
 };
-
-type YahooQuoteSupplement = Pick<
-  Quote,
-  | "bid"
-  | "ask"
-  | "bidSize"
-  | "askSize"
-  | "previousClose"
-  | "open"
-  | "high"
-  | "low"
->;
 
 interface YahooSnapshotLoaders {
   fetchAssetProfile: (symbol: string) => Promise<CompanyProfile | undefined>;
@@ -238,7 +227,7 @@ export async function loadYahooTickerFinancials(
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
     marketCap: currentMarketCap(metrics, history, currentPrice),
-    name: yahooSecurityName(meta.shortName, meta.longName),
+    name: quoteSupplement.name ?? yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,
@@ -326,7 +315,7 @@ export async function loadYahooQuote(
     changePercent: prev ? (change / prev) * 100 : 0,
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
-    name: yahooSecurityName(meta.shortName, meta.longName),
+    name: quoteSupplement.name ?? yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,
