@@ -397,6 +397,17 @@ carry their unit, date and a percentile of the same statistic over up to one
 year of readings, shown once at least 20 readings exist. Delivery history records what the push service
 accepted, not what the phone displayed.
 
+Options flow rules (Pro) match the prints the FLOW scanner records: aggregated
+fills of $50K or more on the contracts it streams. Cloud checks new prints about
+every 10 seconds and pushes the largest match of each pass, at most one flow
+alert every five minutes, within the shared daily cap. Prints older than ten
+minutes are never pushed, and a rule never fires on prints from before it was
+created. The scanner streams 500 contracts ranked by premium; names with an
+active flow rule are always fetched and get part of that budget (up to 100
+contracts, 3 to 10 of each name's busiest), so a rule on a quieter name watches
+its most active contracts, not every strike. A portfolio-and-watchlist rule
+covers up to 20 of your names, held names first.
+
 ## Annual risk-factor reports (RISK)
 
 Risk reports use the filing year of a company's Form 10-K, rather than an assumed fiscal year. The filing date identifies the source document; “Report updated” identifies the derived risk report. Risk headings and source excerpts come from the filing, while the overview and notes are analysis. The available comparison is the report's supplied change analysis; a missing annual filing is not synthesized. Foreign issuers filing Form 20-F are not covered by this 10-K report service.
@@ -605,9 +616,9 @@ History is bounded to the latest 4,000 stored rows within one year, with truncat
 
 ## Crypto
 
-`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins on their own tab. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, prices, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload that the pane refreshes every 30 seconds.
+`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins on their own tab. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, prices, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload that the pane refreshes every 15 seconds.
 
-On top of that, the rows on screen subscribe to the shared market socket like any watchlist. A real-time quote moves the price, day change, market cap, 7D, 30D and 1Y returns and the end of the sparkline as it arrives; a streamed quote older than the board's own price is ignored, so a delayed plan's 15-minute-old crypto quotes never replace a current price. The footer shows whether the stream is live, mixed or polling, and the time of the newest price.
+On top of that, the rows on screen subscribe to the shared market socket like any watchlist. A real-time quote moves the price, day change, market cap, 7D, 30D and 1Y returns and the end of the sparkline as it arrives; a streamed quote older than the board's own price is ignored, so a delayed plan's 15-minute-old crypto quotes never replace a current price. The footer shows the time of the newest price. Streaming runs in the background whether or not the window has focus, and pauses only while it is hidden or minimized.
 
 CHG% is the change since the 00:00 UTC open. 7D% and 30D% compare the price with the close 7 and 30 UTC days earlier, the same basis, so a 7D move includes today's. 1Y% uses the price a year ago implied by the source's 52-week change. VOL 24H is aggregate USD volume across venues. A missing close shows as a dash rather than a zero return.
 

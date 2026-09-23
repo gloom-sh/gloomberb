@@ -10,7 +10,8 @@ import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type 
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
-import type { TickerFinancials, PricePoint } from "../../../types/financials";
+import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
+import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
@@ -46,8 +47,20 @@ export async function loadChartPaneModel(
   const primaryHistories = new Map<string, { key: string; rank: number }>();
   const instruments = new Map<string, InstrumentRef>();
   const resolvedSeries = new Map<string, ChartSeriesSpec>();
+  // The pane extends settled bars with streamed quotes. A report has no
+  // stream, so a current window takes the latest quote once instead.
+  const quoteOverrides = new Map<string, Quote>();
+  const getQuote = context.marketData.getQuote?.bind(context.marketData);
+  if (getQuote && !spec.viewport.dateWindow) {
+    await Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
+      const quote = await getQuote(target.symbol, target.exchange ?? "",
+        context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context).catch(() => null);
+      if (quote) quoteOverrides.set(chartQuoteOverrideKeyForTarget(target), quote);
+    }));
+  }
   const chart = await resolveChartSpecData(spec, {
     dataProvider: context.marketData,
+    quoteOverrides,
     onSecurityData(series, data, includesHistory) {
       const { source } = series;
       if (source.kind !== "security") return;

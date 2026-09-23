@@ -27,6 +27,7 @@ import {
   fetchYahooExtendedHoursData,
   fetchYahooQuoteSupplement,
   fetchYahooTimeseries,
+  type YahooQuoteSupplement,
 } from "./yahoo-finance/requests";
 import {
   getYahooChartResolutionCapabilities,
@@ -155,7 +156,7 @@ export class YahooFinanceClient implements DataProvider {
   private async fetchQuoteSupplement(
     symbol: string,
     currencyDivisor = 1,
-  ): Promise<Pick<Quote, "bid" | "ask" | "bidSize" | "askSize" | "previousClose" | "open" | "high" | "low">> {
+  ): Promise<YahooQuoteSupplement> {
     return fetchYahooQuoteSupplement(this.http, symbol, currencyDivisor);
   }
 

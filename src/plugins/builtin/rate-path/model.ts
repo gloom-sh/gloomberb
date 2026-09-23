@@ -17,8 +17,8 @@ export function percentileText(value: number | null, samples: number): string {
  */
 export const CHART_GHOST_LABELS: ReadonlySet<string> = new Set(["1W", "1M"]);
 
-/** Colours by role, so the target band never shares the implied path's colour. */
-export interface RatePathPalette { path: string; ghosts: readonly string[]; band: string; projection: string }
+/** Colours by role, so the target band never shares the implied path's colour. Ghosts are keyed by look-back. */
+export interface RatePathPalette { path: string; ghosts: Readonly<Record<string, string>>; band: string; projection: string }
 
 export function ratePathCurves(data: RatePathPayload, palette?: RatePathPalette): CurveSeries[] {
   const points = data.meetings.map((meeting) => ({
@@ -26,10 +26,9 @@ export function ratePathCurves(data: RatePathPayload, palette?: RatePathPalette)
     value: meeting.impliedRate, asOf: meeting.asOf,
   }));
   const series: CurveSeries[] = [{ id: "implied", label: "Implied EFFR", asOf: data.asOf, color: palette?.path, points }];
-  let ghostIndex = 0;
   for (const ghost of data.ghosts) {
     if (CHART_GHOST_LABELS.has(ghost.label) && ghost.points.some((point) => point.impliedRate != null)) series.push({
-      id: ghost.label, label: ghost.label, asOf: ghost.asOf, color: palette?.ghosts[ghostIndex++ % Math.max(1, palette.ghosts.length)],
+      id: ghost.label, label: ghost.label, asOf: ghost.asOf, color: palette?.ghosts[ghost.label],
       points: ghost.points.map((point) => ({
         id: point.date, label: point.date.slice(5), x: Date.parse(point.date),
         value: point.impliedRate, asOf: ghost.asOf,

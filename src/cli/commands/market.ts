@@ -9,7 +9,7 @@ import type {
   OptionsChain,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyMinorDigits, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateLabel } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
@@ -111,10 +111,18 @@ function quoteRows(results: QuoteCliRecord[]) {
     const quote = result.quote;
     // Same price and move as the quote monitor: the live session's print against the daily reference.
     const display = getActiveQuoteDisplay(quote);
+    // An index level is in points, not in the currency its members trade in.
+    const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
-    const options = { ...quoteFormatOptions(quote), minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) };
+    // Points have no minor unit, so a yen-listed index still pads to two.
+    const options = {
+      ...quoteFormatOptions(quote),
+      minimumFractionDigits: indexPoints ? 2 : Math.min(2, currencyMinorDigits(quote?.currency)),
+    };
     const price = (value: number | undefined) => (
-      quote && value != null ? formatMarketPriceWithCurrency(value, quote.currency, options) : ""
+      quote && value != null
+        ? indexPoints ? formatMarketPrice(value, options) : formatMarketPriceWithCurrency(value, quote.currency, options)
+        : ""
     );
     return {
       symbol: result.target.symbol,
@@ -128,7 +136,9 @@ function quoteRows(results: QuoteCliRecord[]) {
       session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
       // The close the shown move is measured from; a pre-market move starts at the last close.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
-      dayRange: quote?.low != null && quote.high != null ? formatPriceRange(quote.low, quote.high, quote.currency, options, "-") : "",
+      dayRange: quote?.low != null && quote.high != null
+        ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
+        : "",
       volume: quote?.volume ?? null,
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
@@ -350,9 +360,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const data = historyRows(points, resolution);
     const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
+    // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
+    const intraday = data.some((row) => row.date.length > 10);
     ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
       columns: [
-        { key: "date", header: "Date" },
+        intraday
+          ? { key: "date", header: "Time (UTC)", format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "" }
+          : { key: "date", header: "Date" },
         { key: "open", header: "Open", align: "right", format: price },
         { key: "high", header: "High", align: "right", format: price },
         { key: "low", header: "Low", align: "right", format: price },
@@ -424,7 +438,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.printResult({ data: articles, metadata: { ticker: ticker ?? null, feed: feed ?? null } }, {
       rows: newsRows,
       columns: [
-        { key: "publishedAt", header: "Published" },
+        // UTC, as the news panes print it, rather than the host zone unlabeled.
+        {
+          key: "publishedAt",
+          header: "Published (UTC)",
+          format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "",
+        },
         { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },
         { key: "tickers", header: "Tickers", maxWidth: 16 },
@@ -453,6 +472,20 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+/**
+ * Holder lists name institutions and funds; individual insiders rarely appear.
+ * The insider share of the company is reported either way, so say it.
+ */
+function insiderSummary(data: HolderData, ownerTypes: Set<string>): string {
+  const held = data.summary?.insidersPercentHeld;
+  const share = held == null || !Number.isFinite(held)
+    ? ""
+    : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
+  const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
+  const transactions = listed ? "" : `Form 4 transactions: gloomberb fn INS ${data.symbol}`;
+  return [share, transactions].filter(Boolean).join("\n");
+}
+
 async function runHolders(
   rawArgs: string[],
   ctx: Parameters<CliCommandDef["execute"]>[1],
@@ -474,6 +507,9 @@ async function runHolders(
         { key: "value", header: "Value", align: "right", value: (row) => row.value == null ? "" : formatCompact(Number(row.value)) },
         { key: "percentHeld", header: "% Held", align: "right", format: formatFractionPercentCell },
       ],
+      ...(commandName === "insider" && ownerTypes
+        ? { summary: (holderData: HolderData) => insiderSummary(holderData, ownerTypes) }
+        : {}),
       empty: `No holders reported for ${symbol}.`,
     });
   });

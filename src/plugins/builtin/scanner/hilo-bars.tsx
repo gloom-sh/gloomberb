@@ -47,21 +47,30 @@ function RowLabel({ row }: { row: HiloBarRow }) {
 }
 
 /** Terminal bars are block runs at half-cell resolution, the densest option in cells. */
+/** Counts sit beside the label, so an empty window reads as zero rather than a missing bar. */
+function countWidthFor(rows: readonly HiloBarRow[]): number {
+  return Math.max(...rows.flatMap((row) => [String(row.lows).length, String(row.highs).length]), 1) + 1;
+}
+
 function TerminalHiloBars({ rows, halfWidth, width }: { rows: HiloBarRow[]; halfWidth: number; width: number }) {
+  const countWidth = countWidthFor(rows);
+  const barWidth = Math.max(0, halfWidth - countWidth);
   return (
     <Box flexDirection="column" width={width}>
       {rows.map((row) => {
-        const low = terminalBarCells(row.lowRatio, halfWidth);
-        const high = terminalBarCells(row.highRatio, halfWidth);
+        const low = terminalBarCells(row.lowRatio, barWidth);
+        const high = terminalBarCells(row.highRatio, barWidth);
         const lowBar = `${low.half ? "▐" : ""}${"█".repeat(low.full)}`;
         const highBar = `${"█".repeat(high.full)}${high.half ? "▌" : ""}`;
         return (
           <Box key={row.key} flexDirection="row" height={1} paddingX={1}>
-            <Box width={halfWidth} flexShrink={0} justifyContent="flex-end">
+            <Box width={halfWidth} flexShrink={0} flexDirection="row" justifyContent="flex-end">
               <Text fg={colors.negative}>{lowBar}</Text>
+              <Text fg={colors.textDim}>{String(row.lows).padStart(countWidth)}</Text>
             </Box>
             <RowLabel row={row} />
-            <Box width={halfWidth} flexShrink={0}>
+            <Box width={halfWidth} flexShrink={0} flexDirection="row">
+              <Text fg={colors.textDim}>{String(row.highs).padEnd(countWidth)}</Text>
               <Text fg={colors.positive}>{highBar}</Text>
             </Box>
           </Box>
@@ -77,7 +86,7 @@ function DesktopHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number })
     <Box flexDirection="column" width={width}>
       {rows.map((row) => (
         <Box key={row.key} flexDirection="row" height={1} paddingX={1} alignItems="center">
-          <Box flexGrow={1} flexDirection="row" justifyContent="flex-end" overflow="hidden">
+          <Box flexGrow={1} flexDirection="row" justifyContent="flex-end" overflow="hidden" alignItems="center">
             <Box
               backgroundColor={colors.negative}
               style={{
@@ -87,9 +96,11 @@ function DesktopHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number })
                 minWidth: row.lows > 0 ? "2px" : "0",
               }}
             />
+            <Text fg={colors.textDim}>{` ${row.lows}`}</Text>
           </Box>
           <RowLabel row={row} />
-          <Box flexGrow={1} flexDirection="row" overflow="hidden">
+          <Box flexGrow={1} flexDirection="row" overflow="hidden" alignItems="center">
+            <Text fg={colors.textDim}>{`${row.highs} `}</Text>
             <Box
               backgroundColor={colors.positive}
               style={{

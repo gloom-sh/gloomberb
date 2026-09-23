@@ -14,7 +14,7 @@ import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useAppActive } from "../../../state/app/activity";
+import { useAppVisible } from "../../../state/app/activity";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { colors, priceColor } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -27,7 +27,6 @@ import { formatCompact } from "../../../utils/format";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { resolveScreenerQuoteFeedStatus } from "../shared/screener-live-quotes";
 import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {
   buildCryptoColumns,
@@ -47,7 +46,7 @@ import {
  * feed does not carry, and every coin on a delayed plan, whose streamed quotes
  * trail it by 15 minutes. It refreshes on this clock, not the app's data one.
  */
-export const CRYPTO_BOARD_REFRESH_MS = 30_000;
+export const CRYPTO_BOARD_REFRESH_MS = 15_000;
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const STREAM_OVERSCAN = 8;
 /** Before the table reports its window, stream what a full-height pane shows. */
@@ -103,9 +102,9 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
         content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
       };
     case "volume24h":
-      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h), color: selectedColor ?? colors.textDim };
+      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
     case "marketCap":
-      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap), color: selectedColor ?? colors.textDim };
+      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
   }
 }
 
@@ -120,13 +119,13 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
-  const appActive = useAppActive();
+  const appVisible = useAppVisible();
   const reloadBoard = resource.load;
   useEffect(() => {
-    if (!appActive) return;
+    if (!appVisible) return;
     const timer = setInterval(() => void reloadBoard(false), CRYPTO_BOARD_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [appActive, reloadBoard]);
+  }, [appVisible, reloadBoard]);
 
   const tabAssets = useMemo(
     () => data?.assets.filter((asset) => asset.kind === activeTab) ?? [],
@@ -144,7 +143,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     return selected && !window.includes(selected) ? [...window, selected] : window;
   }, [activeTab, selectedId, sort, tabAssets, visibleRange]);
   const targets = useMemo(() => quoteTargets(streamedAssets, selectedId), [selectedId, streamedAssets]);
-  const { entries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(targets, {
+  const { entries, freshnessNow } = useLiveQuoteEntries(targets, {
     freshnessScopeKey: `crypto-board:${activeTab}`,
     liveStreaming,
   });
@@ -158,10 +157,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
   }, [rows, selectedId, setSelectedId]);
 
-  const feedStatus = useMemo(
-    () => resolveScreenerQuoteFeedStatus(targets, entries, { now: freshnessNow, subscriptionStartedAt }),
-    [entries, freshnessNow, subscriptionStartedAt, targets],
-  );
   const latestUpdate = rows.reduce<number | null>(
     (latest, row) => (row.updatedAt != null && (latest == null || row.updatedAt > latest) ? row.updatedAt : latest),
     null,
@@ -186,13 +181,9 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   });
   usePaneFooter("crypto-board", () => ({
     info: [
-      // Background refreshes run every 30s; only the first load is worth a label.
+      // Background refreshes run every 15s; only the first load is worth a label.
       ...(resource.loading && !data ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(data && resource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
-      ...(feedStatus ? [{
-        id: "feed",
-        parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
-      }] : []),
       ...(latestUpdate != null ? [{
         id: "updated",
         parts: [{
@@ -202,7 +193,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
       }] : []),
       ...(resource.data?.stale ? [{ id: "cached", parts: [{ text: "cached", tone: "warning" as const }] }] : []),
     ],
-  }), [data, feedStatus, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
+  }), [data, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (event.name !== "r") return false;

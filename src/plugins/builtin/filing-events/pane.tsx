@@ -60,6 +60,7 @@ function FilingEntry({
       marginTop={1}
       backgroundColor={selected ? hoverBg(colors) : undefined}
       data-gloom-role="filing-event"
+      data-gloom-row="true"
       data-gloom-interactive="true"
       onMouseDown={onSelect}
     >

@@ -148,7 +148,7 @@ export async function loadHeadlessPaneModel(
  */
 export async function loadResolvedHeadlessPaneModel(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store"> & { dataProvider: HeadlessPaneContext["marketData"] },
+  context: Pick<MarketContext, "config" | "store" | "refresh"> & { dataProvider: HeadlessPaneContext["marketData"] },
   rawArgument: string,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<LoadedHeadlessPaneModel> {
@@ -160,6 +160,7 @@ export async function loadResolvedHeadlessPaneModel(
     apiClient,
     config: context.config,
     signal,
+    ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? undefined,
     async resolvePortfolio(id) {

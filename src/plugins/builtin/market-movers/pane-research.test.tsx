@@ -111,7 +111,7 @@ test("actual routed live snapshots update the ratio and clear missing fields; ex
   const quote = { symbol: "LIVE", price: 11, currency: "USD", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.now() - 60_000, dataSource: "live", delivery: "stream", stale: false };
   const update = async (patch: object) => { await act(async () => { deliver({ ...quote, ...patch }); await new Promise(resolve => setTimeout(resolve, 520)); }); await settleFrame(setup!, 4); };
   await update({ volume: 1000, change: 1, changePercent: 10 });
-  expect(await csv()).toContain("1k,10x");
+  expect(await csv()).toContain("1.0k,10x");
   await update({ price: 12, lastUpdated: quote.lastUpdated + 1000 });
   expect(await csv()).toContain("$12.00,—,—,—");
   await update({ volume: 0, change: 0, changePercent: 0, lastUpdated: quote.lastUpdated + 2000 });

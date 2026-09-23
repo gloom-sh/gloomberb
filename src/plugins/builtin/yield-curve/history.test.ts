@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudFredSeriesPayload } from "../../../api-client";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
-import { curveAsOf, spreadBasisPoints } from "./treasury-data";
+import { curveAsOf, spreadBasisPoints, TREASURY_MATURITIES } from "./treasury-data";
 
 function payload(id: string, observations: CloudFredSeriesPayload["observations"]): CloudFredSeriesPayload {
   return {
@@ -24,9 +24,9 @@ describe("historical Treasury curves", () => {
         { date: "2024-02-29", value: 4.25 },
       ]);
     });
-    expect(requests).toHaveLength(10);
+    expect(requests).toHaveLength(TREASURY_MATURITIES.length);
     expect(requests[0]).toEqual({ startDate: "2024-02-21", endDate: "2024-03-02", limit: 10, sortOrder: "desc" });
-    expect(points).toHaveLength(10);
+    expect(points).toHaveLength(TREASURY_MATURITIES.length);
     expect(curveAsOf(points)).toBe("2024-03-01");
     expect(spreadBasisPoints(points)).toBe(-35);
     expect(points.every((point) => point.asOf === "2024-03-01")).toBe(true);
@@ -73,7 +73,7 @@ describe("historical Treasury curves", () => {
       { maturity: "2Y", maturityYears: 2, yield: Number.NaN, asOf: "2024-02-29" },
       { maturity: "10Y", maturityYears: 100, yield: 0, asOf: "2024-02-29" },
     ]);
-    expect(points).toHaveLength(10);
+    expect(points).toHaveLength(TREASURY_MATURITIES.length);
     expect(points.find((point) => point.maturity === "2Y")).toMatchObject({ yield: null, asOf: null });
     expect(points.find((point) => point.maturity === "10Y")).toMatchObject({ yield: 0, maturityYears: 10 });
   });

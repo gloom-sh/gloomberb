@@ -9,6 +9,7 @@ import {
   rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
+import { formatMoverPrice } from "../../plugins/builtin/market-movers/model";
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
 import { isoDate, requireArg, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
@@ -28,10 +29,14 @@ const BASKET_NAMES = new Map<string, string>([
   ...WORLD_INDICES.map((entry) => [entry.symbol, entry.name] as const),
   ...SECTOR_COLLECTIONS.flatMap((collection) => collection.items.map((item) => [item.etf, item.name] as const)),
 ]);
+// Priced like the MOST pane. Index and yield levels (^GSPC, ^TNX) carry no currency sign.
+const PRICE_COLUMN = { key: "price", header: "Last", align: "right" as const,
+  format: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
+    ? formatMoverPrice(value, typeof row.currency === "string" && !String(row.symbol ?? "").startsWith("^") ? row.currency : "") : "" };
 const MOVER_COLUMNS = [
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },
-  { key: "price", header: "Last", align: "right" as const },
+  PRICE_COLUMN,
   { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
   { key: "volume", header: "Volume", align: "right" as const, format: formatCompactCell },
   { key: "marketCap", header: "Mkt Cap", align: "right" as const, format: formatCompactCell },
@@ -101,7 +106,7 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
-        { key: "price", header: "Last", align: "right" },
+        PRICE_COLUMN,
         { key: "changePercent", header: "Chg%", align: "right", format: formatChangePercentCell },
         { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
       ],

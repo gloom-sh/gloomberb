@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "events";
 import { CliRenderEvents } from "@opentui/core";
-import { bindAppActivity, isAppActive, setAppActive } from "./activity";
+import { bindAppActivity, isAppActive, isAppVisible, setAppActive, setAppVisible } from "./activity";
 
 afterEach(() => {
   setAppActive(true);
+  setAppVisible(true);
 });
 
 describe("app activity", () => {
@@ -37,5 +38,17 @@ describe("app activity", () => {
 
     unbind();
     expect(isAppActive()).toBe(true);
+  });
+
+  test("losing focus leaves the app visible, so market data keeps flowing", () => {
+    const renderer = new EventEmitter() as any;
+    const unbind = bindAppActivity(renderer);
+    renderer.emit(CliRenderEvents.FOCUS);
+    renderer.emit(CliRenderEvents.BLUR);
+    expect(isAppActive()).toBe(false);
+    expect(isAppVisible()).toBe(true);
+    setAppVisible(false);
+    expect(isAppVisible()).toBe(false);
+    unbind();
   });
 });

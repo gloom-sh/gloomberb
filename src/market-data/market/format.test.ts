@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   quoteFormatOptions,
+  withCurrencyMinorDigits,
   formatMarketChangeWithCurrency,
   formatMarketCost,
   formatMarketCostWithCurrency,
@@ -138,6 +139,9 @@ describe("formatMarketPriceWithCurrency", () => {
   test("formats position cost values with tighter equity precision", () => {
     expect(formatMarketCostWithCurrency(119.3687, "HKD", { assetCategory: "STK" })).toBe("HK$119.37");
     expect(formatMarketCostWithCurrency(50.9507, "USD", { assetCategory: "OPT", multiplier: 100 })).toBe("$50.9507");
+    // Money costs keep the currency's minor unit.
+    expect(formatMarketCostWithCurrency(189.2, "USD", { assetCategory: "STK" })).toBe("$189.20");
+    expect(formatMarketCostWithCurrency(1520, "JPY", { assetCategory: "STK" })).toBe("¥1,520");
   });
 });
 
@@ -212,4 +216,15 @@ test("untyped observations retain source decimals with bounded widths and missin
   expect(formatPriceObservation(.0000051, { maxWidth: 7 })).toBe("5.1e-6");
   expect(formatPriceObservation(1.234e-25, { maxWidth: 10 })).toBe("1.234e-25");
   expect(formatPriceObservation(1234567.891, { maxWidth: 8 }).length).toBeLessThanOrEqual(8);
+});
+
+test("money prices pad to the currency's minor unit without cutting crypto, FX or par precision", () => {
+  const pad = (value: number, currency: string, options = {}) =>
+    formatMarketPriceWithCurrency(value, currency, withCurrencyMinorDigits(options, currency));
+  expect(pad(309.9, "USD", { assetCategory: "EQUITY" })).toBe("$309.90");
+  expect(pad(83859.3, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("$83,859.30");
+  expect(pad(0.00000563, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("$0.00000563");
+  expect(pad(1.138045, "USD", { assetCategory: "CURRENCY" })).toBe("$1.138045");
+  expect(pad(3025, "JPY", { assetCategory: "EQUITY" })).toBe("¥3,025");
+  expect(pad(87, "USD", { assetCategory: "BOND", priceBasis: "percent-of-par" })).toBe("87% par");
 });

@@ -389,6 +389,20 @@ describe("ticker-search utilities", () => {
     expect(results.find((item) => item.kind === "search" && item.symbol === "AAPL")?.primaryExchangeLabel).toBe("BUE");
   });
 
+  test("a saved listing keeps its own venue and type when only another venue's line matches", () => {
+    const results = buildTickerSearchCandidates({
+      query: "Microsoft",
+      tickers: new Map([["MSFT", makeTicker("MSFT", "Microsoft Corporation", { exchange: "NASDAQ", assetCategory: "STK" })]]),
+      providerResults: [makeSearchResult("MSFT", "Microsoft Corporation", {
+        exchange: "BYMA", primaryExchange: "BYMA", currency: "ARS", type: "Depositary Receipt",
+      })],
+    });
+    const saved = results.find((item) => item.id === "goto:MSFT")!;
+    // Selecting it must not bind the BYMA receipt, and the row must not say so.
+    expect(saved.result).toBeUndefined();
+    expect(saved).toMatchObject({ right: "NASDAQ", instrumentType: "STK" });
+  });
+
   for (const savedSymbol of ["SHOP", "SHOP:XNAS"]) {
     test(`saved ${savedSymbol} deduplicates venue aliases while retaining the unsaved TSX listing`, () => {
       const results = buildTickerSearchCandidates({

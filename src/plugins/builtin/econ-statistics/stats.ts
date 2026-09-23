@@ -147,7 +147,6 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: WEEKLY,
     note: "Weekly filings for unemployment benefits, the fastest labour signal.",
-    limit: 2000,
   }),
   stat({
     id: "job-openings",
@@ -376,19 +375,18 @@ export const STATS: readonly StatDef[] = [
   // ---- Rates & money ---------------------------------------------------
   stat({
     id: "fed-funds",
-    measurementBasis: "Monthly average · overnight",
+    measurementBasis: "Daily · overnight",
     label: "Effective Federal Funds Rate",
-    shortLabel: "Effective fed funds",
+    shortLabel: "Fed funds",
     category: "rates",
-    seriesId: "FEDFUNDS",
+    seriesId: "EFFR",
     transform: "level",
     direction: "neutral",
     axisUnit: "%",
     formatValue: pct2,
     reference: null,
-    staleAfterMs: MONTHLY,
-    note: "Monthly average effective overnight rate; the FOMC sets a separate target range.",
-    limit: 900,
+    staleAfterMs: DAILY,
+    note: "Daily effective overnight rate; the FOMC sets a separate target range.",
   }),
   stat({
     id: "ten-year",
@@ -403,7 +401,6 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: DAILY,
     note: "The benchmark long rate that discounts almost everything else.",
-    limit: 3000,
   }),
   stat({
     id: "two-year",
@@ -418,7 +415,6 @@ export const STATS: readonly StatDef[] = [
     reference: null,
     staleAfterMs: DAILY,
     note: "The short end, which tracks where policy is expected to go.",
-    limit: 3000,
   }),
   stat({
     id: "curve-spread",
@@ -427,6 +423,7 @@ export const STATS: readonly StatDef[] = [
     shortLabel: "2s10s",
     category: "rates",
     seriesId: "T10Y2Y",
+    derivedFrom: ["ten-year", "two-year"],
     transform: "level",
     direction: "higher-is-good",
     axisUnit: "%",
@@ -434,7 +431,6 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "inversion" },
     staleAfterMs: DAILY,
     note: "The curve spread. Below zero it has preceded every modern recession.",
-    limit: 3000,
   }),
   stat({
     id: "real-ten-year",
@@ -450,7 +446,6 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "zero" },
     staleAfterMs: DAILY,
     note: "The inflation-protected long rate, the real cost of money.",
-    limit: 3000,
   }),
   stat({
     id: "m2-yoy",

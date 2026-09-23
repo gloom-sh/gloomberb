@@ -11,6 +11,12 @@ export const HILO_WINDOW_ROWS: ReadonlyArray<{ key: HiloWindowKey; label: string
   { key: "s30", label: "30 sec" },
 ];
 
+/** Two decimals, four under a dollar, so a price column lines up. */
+export function formatHiloPrice(price: number): string {
+  if (!Number.isFinite(price)) return "--";
+  return price.toLocaleString("en-US", { minimumFractionDigits: price < 1 ? 4 : 2, maximumFractionDigits: price < 1 ? 4 : 2 });
+}
+
 export interface HiloBarRow {
   key: HiloWindowKey;
   label: string;

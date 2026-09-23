@@ -168,10 +168,13 @@ export function PriceAreaSparklineBackground({
   priceHistory,
   trend,
   period = "1M",
+  insetTop = 0,
 }: {
   priceHistory: PricePoint[] | undefined;
   trend?: PriceSparklineTrend;
   period?: PriceSparklinePeriod;
+  /** Pixels kept clear above the chart, so the line never crosses header text. */
+  insetTop?: number;
 }) {
   const colors = useThemeColors();
   const uiHost = useUiHost();
@@ -194,9 +197,13 @@ export function PriceAreaSparklineBackground({
       focusable="false"
       style={{
         position: "absolute",
-        inset: 0,
+        // The bottom inset keeps the stroke at the period low inside the card edge.
+        top: insetTop,
+        bottom: 2,
+        left: 0,
+        right: 0,
         width: "100%",
-        height: "100%",
+        height: `calc(100% - ${insetTop + 2}px)`,
         display: "block",
         pointerEvents: "none",
       }}

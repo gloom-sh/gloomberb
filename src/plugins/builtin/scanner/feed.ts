@@ -53,6 +53,7 @@ export function useScannerStatusFooter(
   registrationId: string,
   state: ScannerFeedState<ScannerPayload>,
   focused: boolean,
+  extra: PaneFooterSegment | null = null,
 ): void {
   const { hint: upgradeHint, segment } = useCloudAccessFooter({
     delayLabel: tf("{count}m", { count: state.payload?.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES }),
@@ -73,9 +74,8 @@ export function useScannerStatusFooter(
       }];
     }
     const status = state.payload?.status;
-    if (!status || status === "starting") {
-      return [{ id: "scanner-status", parts: [{ text: "connecting", tone: "muted" as const }] }];
-    }
+    // The feed connects in the background; nothing to report until it answers.
+    if (!status || status === "starting") return [];
     if (status === "live") {
       return [{ id: "scanner-status", parts: [{ text: "live", tone: "positive" as const }] }];
     }
@@ -85,9 +85,16 @@ export function useScannerStatusFooter(
     return [{ id: "scanner-status", parts: [{ text: "degraded", tone: "warning" as const }] }];
   }, [state.denied, state.deniedReason, state.payload?.status]);
 
-  const info = useMemo(
-    () => (segment ? [segment, ...status] : status),
-    [segment, status],
+  // The upgrade segment carries the delay for free accounts; a delayed feed reaching Pro still says so.
+  const delayMinutes = state.payload?.access === "delayed" ? state.payload.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;
+  const info = useMemo<PaneFooterSegment[]>(
+    () => {
+      const base = segment ? [segment, ...status]
+        : delayMinutes != null ? [{ id: "scanner-delay", parts: [{ text: tf("{delay} delayed", { delay: tf("{count}m", { count: delayMinutes }) }), tone: "muted" as const }] }, ...status]
+          : status;
+      return extra ? [...base, extra] : base;
+    },
+    [delayMinutes, extra, segment, status],
   );
 
   usePaneStatusFooter({ registrationId, info, hints: upgradeHint ? [upgradeHint] : undefined });

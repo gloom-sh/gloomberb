@@ -9,7 +9,7 @@ import {
   useAppStateRef,
   type AppState,
 } from "./state/app/context";
-import { bindAppActivity, useAppActive } from "./state/app/activity";
+import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useLinkedLayoutSync } from "./layout-marketplace/linked-sync";
@@ -165,6 +165,7 @@ function AppInner({
     updateProgress,
   ]);
   const appActive = useAppActive();
+  const appVisible = useAppVisible();
   const appActiveRef = useRef(appActive);
   const rendererHost = useRendererHost();
   const dialog = useDialog();
@@ -236,7 +237,7 @@ function AppInner({
     refreshTicker,
     refreshTickersBatch,
   } = useTickerRefreshRuntime({
-    appActive,
+    appVisible,
     baseCurrency: state.config.baseCurrency,
     dispatch,
     marketData,

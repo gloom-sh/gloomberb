@@ -135,4 +135,15 @@ describe("ticker news headless", () => {
     expect(result.items).toHaveLength(1);
     expect(result.metadata).toMatchObject({ truncated: true });
   });
+
+  test("asks for the saved listing of a bare symbol listed on several exchanges", async () => {
+    const seen: NewsQuery[] = [];
+    const definition = createTickerNewsHeadless(dependencies(seen));
+
+    await definition.load(args("NVDA", { sentiment: "any", minImportance: 0, limit: 5 }), {
+      resolveInstrument: async (symbol: string) => ({ symbol, exchange: "NASDAQ" }),
+    } as unknown as HeadlessPaneContext);
+
+    expect(seen[0]).toMatchObject({ feed: "ticker", ticker: "NVDA", exchange: "NASDAQ" });
+  });
 });

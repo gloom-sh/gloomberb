@@ -28,7 +28,7 @@ function contract(overrides: Partial<OptionContract> = {}): OptionContract {
 }
 
 function row(overrides: Partial<OptionTableRow> = {}): OptionTableRow {
-  return { strike: 230, call: contract(), put: contract(), isPositionStrike: false, ...overrides };
+  return { strike: 230, call: contract(), put: contract(), impliedVolatility: 0.284, isPositionStrike: false, ...overrides };
 }
 
 describe("resolveCalcSide", () => {

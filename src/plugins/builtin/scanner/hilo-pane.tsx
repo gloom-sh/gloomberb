@@ -12,12 +12,12 @@ import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatCompact } from "../../../utils/format";
 import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
 import { HiloBars } from "./hilo-bars";
-import { filterHiloRows, type HiloMinPrice, type HiloSort } from "./hilo-model";
+import { filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type Side = "lows" | "highs";
 
@@ -74,7 +74,7 @@ function renderCell(
       };
     case "price":
       return {
-        text: row.price >= 1000 ? formatNumber(row.price, 2) : row.price.toFixed(4).replace(/0+$/, "").replace(/\.$/, ""),
+        text: formatHiloPrice(row.price),
         color: selectedColor,
       };
     default:

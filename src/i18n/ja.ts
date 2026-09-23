@@ -662,7 +662,6 @@ export const ja: Record<string, string> = {
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "gloom.sh/cloud で Pro にアップグレードするとリアルタイムデータを 7 日間無料で利用できます。",
   "real-time options": "リアルタイムオプション",
   "mixed real-time and delayed options": "リアルタイムと遅延の混在オプション",
-  "connecting real-time options": "リアルタイムオプションに接続中",
   "options delayed fallback": "オプション遅延フォールバック",
   "crossed quote": "クロス気配",
   "one-sided quote": "片側気配",

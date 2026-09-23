@@ -66,7 +66,9 @@ function formatFiled(event: CloudFilingEventPayload): string {
 function itemsLabel(event: CloudFilingEventPayload): string {
   const named = event.labels.filter((label) => label !== EXHIBITS_LABEL);
   const labels = named.length > 0 ? named : event.labels;
-  return labels.join(" · ") || UNCLASSIFIED_LABEL;
+  const items = labels.join(" · ") || UNCLASSIFIED_LABEL;
+  // An amendment restates or completes an earlier 8-K; say so before its items.
+  return event.form?.trim().toUpperCase() === "8-K/A" ? `8-K/A · ${items}` : items;
 }
 
 function personDetail(person: CloudFilingEventPayload["people"][number]): string {

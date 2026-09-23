@@ -58,7 +58,25 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
   return { stat: def, points, trend: fitTrend(points), ...(cache ? { cache } : {}) };
 }
 
-function bundleFrom(builds: StatBuild[], errors: string[]): StatsBundle {
+/**
+ * FRED can post a spread before its legs (T10Y2Y for a day DGS10 and DGS2 do
+ * not have yet), which printed a 2s10s that disagreed with the 2Y and 10Y rows.
+ * A derived stat is cut back to the newest date every loaded leg has.
+ */
+function alignDerivedBuilds(builds: StatBuild[]): StatBuild[] {
+  const byId = new Map(builds.map((entry) => [entry.stat.id, entry]));
+  return builds.map((entry) => {
+    const legs = entry.stat.derivedFrom?.map((id) => byId.get(id)?.points.at(-1)?.date);
+    if (!legs || legs.length === 0 || legs.some((date) => date == null)) return entry;
+    const cap = (legs as string[]).reduce((oldest, date) => date < oldest ? date : oldest);
+    if ((entry.points.at(-1)?.date ?? "") <= cap) return entry;
+    const points = entry.points.filter((point) => point.date <= cap);
+    return points.length > 0 ? { ...entry, points, trend: fitTrend(points) } : entry;
+  });
+}
+
+function bundleFrom(unaligned: StatBuild[], errors: string[]): StatsBundle {
+  const builds = alignDerivedBuilds(unaligned);
   const knownTimes = builds.flatMap(({ cache }) =>
     typeof cache?.fetchedAt === "number" && Number.isFinite(cache.fetchedAt) ? [cache.fetchedAt] : []);
   return {

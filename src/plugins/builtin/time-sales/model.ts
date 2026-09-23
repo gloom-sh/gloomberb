@@ -12,7 +12,12 @@ export const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace
 export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 /** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
 export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
-export const tapePrice = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+/** Fixed decimals keep a column aligned: pass tapePriceDigits of the prices shown together. */
+export const tapePrice = (value: number | null, digits?: number) => value == null ? "--"
+  : value.toLocaleString("en-US", { minimumFractionDigits: digits ?? 2, maximumFractionDigits: digits ?? 4 });
+/** Two decimals, or four once any print in view is sub-penny. */
+export const tapePriceDigits = (prices: readonly (number | null)[]) =>
+  prices.some((price) => price != null && Math.abs(price * 100 - Math.round(price * 100)) > 1e-6) ? 4 : 2;
 export const tapeQuantity = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
 const tradeDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 export const tradeKey = (row: TapeTrade) => `${tradeDate.format(new Date(row.timestamp))}:${row.exchange}:${row.id}`;

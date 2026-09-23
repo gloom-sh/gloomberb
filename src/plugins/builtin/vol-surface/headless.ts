@@ -1,7 +1,15 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
-import { buildSurfaceGrid, type SurfaceSettings } from "./model";
+import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings } from "./model";
+
+type SurfaceAxis = NonNullable<SurfaceGridOptions["axis"]>;
+
+/** Column label for a surface coordinate: strike/spot or strike/forward ratio, delta bucket, or listed strike. */
+export function surfaceCoordinateLabel(axis: SurfaceAxis, coordinate: number, index: number): string {
+  return axis === "delta" ? ["10dP", "25dP", "ATM", "25dC", "10dC"][index] ?? String(coordinate)
+    : axis === "strike" ? formatStrikeLabel(coordinate) : `${Math.round(coordinate * 100)}%`;
+}
 
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
@@ -28,23 +36,31 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       limit: Number(args.options.limit), signal: ctx.signal,
       requiredExpiries: typeof args.options.expiration === "number" ? [args.options.expiration] : [],
     }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
-    const grid = buildSurfaceGrid(snapshot, { axis: args.options.axis as "spot" | "forward" | "delta" | "strike", tenors: args.options.tenors as "listed" | "fixed" });
+    const axis = args.options.axis as SurfaceAxis;
+    const grid = buildSurfaceGrid(snapshot, { axis, tenors: args.options.tenors as "listed" | "fixed" });
     const available = snapshot.expiries.some((expiry) => expiry.fit);
+    const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
+      ({ expiry: new Date(expiry.expiration * 1000).toISOString().slice(0, 10), warning })));
+    const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
+    // Calendar arbitrage compares expiries, so it belongs to the whole surface.
+    const warnings = [...expiryWarnings, ...snapshot.warnings.filter((warning) => !perExpiry.has(warning))
+      .map((warning) => ({ expiry: "All", warning }))];
     return {
       sections: [
+        // One row per tenor, one IV column per coordinate, as the pane's Table tab lays it out.
         { title: "Surface", columns: [
-          { key: "tenor", header: "Tenor" }, { key: "coordinate", header: String(args.options.axis) },
-          { key: "strike", header: "Strike", format: (value) => typeof value === "number" ? formatStrikeLabel(value) : "--" }, { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
-          { key: "interpolated", header: "Interpolated" }, { key: "extrapolated", header: "Extrapolated" },
-        ], rows: grid.rows.flatMap((row) => row.cells.map((cell) => ({ tenor: row.label, coordinate: cell.coordinate,
-          strike: cell.strike, volatility: cell.volatility, interpolated: row.interpolated, extrapolated: row.extrapolated }))) },
+          { key: "tenor", header: "Expiry / tenor" },
+          ...(grid.rows[0]?.cells.map((cell, index) => ({ key: String(index), header: surfaceCoordinateLabel(axis, cell.coordinate, index),
+            format: (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--" })) ?? []),
+        ], rows: grid.rows.map((row) => ({ tenor: `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`,
+          ...Object.fromEntries(row.cells.map((cell, index) => [String(index), cell.volatility])) })) },
         { title: "Expiries", columns: [
           { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--" },
           { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
         ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: new Date(expiry.expiration * 1000).toISOString().slice(0, 10), fit: expiry.fit?.method ?? null })) },
-        // The pane lists these (arbitrage, SVI fallback) beside the surface.
-        ...(snapshot.warnings.length ? [{ title: "Warnings", columns: [{ key: "warning", header: "Warning" }],
-          rows: snapshot.warnings.map((warning) => ({ warning })) }] : []),
+        // The pane lists these (arbitrage, SVI fallback) beside the surface; here each names its expiry.
+        ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }],
+          rows: warnings }] : []),
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol], errors: snapshot.failures.map((failure) => failure.message),

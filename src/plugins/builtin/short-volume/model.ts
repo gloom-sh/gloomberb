@@ -4,7 +4,7 @@ import { formatCompact } from "../../../utils/format";
 
 export const volumePercent = (value: number | null) => value == null ? "--" : `${value.toFixed(2)}%`;
 export const volumeChange = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}pp`;
-export const volumeQuantity = (value: string | null) => value == null ? "--" : formatCompact(Number(value));
+export const volumeQuantity = (value: string | null) => value == null ? "--" : formatCompact(Number(value), { fixedDecimals: true });
 export function exactQuantity(value: string | null): string {
   if (value == null) return "--";
   const [integer, fraction = ""] = value.split(".");

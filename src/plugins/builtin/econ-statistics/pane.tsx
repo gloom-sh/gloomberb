@@ -29,7 +29,9 @@ const loadBundle = (force: boolean) => loadStatsBundle({ force });
 const noop = () => {};
 
 const SPLIT_MIN_WIDTH = 108;
-const LIST_WIDTH = 46;
+const LIST_WIDTH = 53;
+const NAME_MIN_WIDTH = 13;
+const PERIOD_WIDTH = 6;
 
 const RANGE_OPTIONS = [
   { value: "5Y" as const, label: "5Y" },
@@ -37,7 +39,7 @@ const RANGE_OPTIONS = [
   { value: "ALL" as const, label: "All" },
 ];
 
-type ColumnId = "name" | "latest" | "previous" | "percentile";
+type ColumnId = "name" | "latest" | "previous" | "period" | "percentile";
 interface Column extends DataTableColumn { id: ColumnId }
 
 /**
@@ -76,12 +78,19 @@ function matchesQuery(view: StatViewModel, query: string): boolean {
 function buildColumns(width: number, stacked: boolean): Column[] {
   const withPercentile = !stacked || width >= 100;
   const trailing = 19 + (withPercentile ? 6 : 0);
+  // Rows print at different cadences, so each value keeps its own period
+  // whenever the name column can spare the room.
+  const withPeriod = width - trailing - 6 - (PERIOD_WIDTH + 1) >= NAME_MIN_WIDTH;
+  const nameWidth = width - trailing - 6 - (withPeriod ? PERIOD_WIDTH + 1 : 0);
   return [
-    { id: "name", label: "INDICATOR", width: Math.max(13, width - trailing - 6), align: "left" },
+    { id: "name", label: "INDICATOR", width: Math.max(NAME_MIN_WIDTH, nameWidth), align: "left" },
     { id: "latest", label: "LATEST", width: 10, align: "right" },
     { id: "previous", label: "PREV", width: 9, align: "right" },
     ...(withPercentile
       ? [{ id: "percentile" as const, label: "%ILE", width: 6, align: "right" as const }]
+      : []),
+    ...(withPeriod
+      ? [{ id: "period" as const, label: "DATE", width: PERIOD_WIDTH, align: "right" as const }]
       : []),
   ];
 }
@@ -101,6 +110,7 @@ function cellsFor(view: StatViewModel): Record<ColumnId, DataTableCell> {
       text: view.previous ? view.stat.formatValue(view.previous.value) : "--",
       color: colors.textMuted,
     },
+    period: { text: view.period, color: colors.textMuted },
     percentile: { text: formatNumber(view.percentile, 0), color: colors.textMuted },
   };
 }

@@ -1,4 +1,3 @@
-import type { PriceBasis } from "../types/instrument";
 import {
   formatCompact,
   formatCurrency,
@@ -119,17 +118,14 @@ export function formatBidAsk(
   bidSize: number | undefined,
   askSize: number | undefined,
   currency: string,
-  assetCategory?: string,
-  priceBasis?: PriceBasis,
+  options: MarketFormatOptions = {},
 ): string {
   if (bid == null && ask == null) return "—";
-  const bidText = bid != null
-    ? `${formatMarketPriceWithCurrency(bid, currency, { assetCategory, priceBasis })}${bidSize != null ? ` x ${formatNumber(bidSize, 0)}` : ""}`
+  // A zero size is the vendor's placeholder outside the session, not a quoted size.
+  const side = (price: number | undefined, size: number | undefined) => price != null
+    ? `${formatMarketPriceWithCurrency(price, currency, options)}${size ? ` x ${formatNumber(size, 0)}` : ""}`
     : "—";
-  const askText = ask != null
-    ? `${formatMarketPriceWithCurrency(ask, currency, { assetCategory, priceBasis })}${askSize != null ? ` x ${formatNumber(askSize, 0)}` : ""}`
-    : "—";
-  return `${bidText} / ${askText}`;
+  return `${side(bid, bidSize)} / ${side(ask, askSize)}`;
 }
 
 export function formatWatchlistNames(config: AppConfig, watchlistIds: string[]): string[] {

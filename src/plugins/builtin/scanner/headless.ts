@@ -17,7 +17,7 @@ import {
   filterFlowEvents,
   type FlowFilters,
 } from "./flow-model";
-import { buildHiloBarRows, filterHiloRows, type HiloMinPrice, type HiloSort } from "./hilo-model";
+import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type ScannerName = "hilo" | "flow";
 
@@ -151,7 +151,7 @@ export function createHiloHeadless(
     columns: [
       { key: "side", header: "Side" },
       { key: "symbol", header: "Symbol" },
-      { key: "price", header: "Price", align: "right" },
+      { key: "price", header: "Price", align: "right", format: (value: unknown) => typeof value === "number" ? formatHiloPrice(value) : "" },
       { key: "count", header: "Count", align: "right" },
       {
         key: "at",

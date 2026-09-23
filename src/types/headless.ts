@@ -65,6 +65,8 @@ export interface HeadlessPaneContext {
   apiClient: HeadlessPaneApiClient;
   config: AppConfig;
   signal: AbortSignal;
+  /** The caller asked for fresh data (`--refresh`) instead of cached copies. */
+  refresh?: boolean;
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;

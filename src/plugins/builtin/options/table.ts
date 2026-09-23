@@ -265,7 +265,7 @@ function formatOptionContractCell(
     case "openInterest":
       return formatCompact(contract.openInterest);
     case "iv":
-      return formatIv(contract.impliedVolatility);
+      return formatIv(row.impliedVolatility);
     case "delta":
       return formatGreek(greeks?.delta);
     case "gamma":

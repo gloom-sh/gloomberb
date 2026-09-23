@@ -767,8 +767,11 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const calculatorSnapshot = renderedInstance?.settings?.calculatorSnapshot as CalculatorScreenshotSnapshot | undefined;
+  // The sizer carries portfolio members to value holdings but shows only the requested ticker.
   const symbols = isCalculatorScreenshot(resolved) && calculatorSnapshot?.draft.symbol
-    ? [calculatorSnapshot.draft.symbol] : payload.financials.map(([symbol]) => symbol);
+    ? [calculatorSnapshot.draft.symbol]
+    : resolved.pane.id === "kelly-sizer" ? collectShotSymbols(resolved, rawArg)
+      : payload.financials.map(([symbol]) => symbol);
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom"
     && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved)
     && !isScenarioScreenshot(resolved) && !isCalculatorScreenshot(resolved);

@@ -31,7 +31,7 @@ import {
 } from "../options-calculator/model";
 import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
 import { useOptionsCatalogue } from "./expiry-catalogue";
-import { calculateOptionGreeks, calculateOptionsSummary, type OptionsSummary } from "./analytics";
+import { calculateOptionGreeks, calculateOptionsSummary, solveChainVolatilities, type OptionsSummary } from "./analytics";
 import {
   DEFAULT_OPTION_FIELD_IDS,
   buildStrikeList,
@@ -311,26 +311,28 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
     () => new Map(strikeChain?.puts.map((p) => [p.strike, p]) ?? []),
     [strikeChain],
   );
-  const snapshotRows = useMemo<OptionTableRow[]>(() => {
-    const now = Date.now();
-    return strikes.map((strike) => {
-      const call = callsByStrike.get(strike);
-      const put = putsByStrike.get(strike);
-      return {
-        strike,
-        call,
-        put,
-        callGreeks: calculateOptionGreeks(call, "call", spot, dividendYield, now),
-        putGreeks: calculateOptionGreeks(put, "put", spot, dividendYield, now),
-        isPositionStrike: !!parsed && strike === parsed.strike,
-      };
-    });
-  }, [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes]);
+  const volatilities = useMemo(
+    () => strikeChain ? solveChainVolatilities(strikeChain, spot, dividendYield) : null,
+    [dividendYield, spot, strikeChain],
+  );
+  const snapshotRows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
+    const call = callsByStrike.get(strike);
+    const put = putsByStrike.get(strike);
+    return {
+      strike,
+      call,
+      put,
+      impliedVolatility: volatilities?.byStrike.get(strike),
+      callGreeks: volatilities ? calculateOptionGreeks(call, "call", spot, dividendYield, volatilities) : undefined,
+      putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
+      isPositionStrike: !!parsed && strike === parsed.strike,
+    };
+  }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);
   const summary = useMemo(
-    () => strikeChain
-      ? calculateOptionsSummary(strikeChain, spot, dailyHistory ?? [])
+    () => strikeChain && volatilities
+      ? calculateOptionsSummary(strikeChain, spot, dailyHistory ?? [], volatilities)
       : null,
-    [spot, strikeChain, dailyHistory],
+    [spot, strikeChain, dailyHistory, volatilities],
   );
   const enrichmentState = useOptionsEnrichment({
     instrument: baseRequest?.instrument ?? null, expiration: selectedExpiration,
@@ -428,20 +430,20 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
 
   const scenarioContract = selectedSide === "put" ? selectedRow?.put : selectedSide === "call" ? selectedRow?.call : null;
   const scenarioMid = scenarioContract ? optionMid(scenarioContract) : null;
+  const scenarioVolatility = selectedRow?.impliedVolatility ?? 0;
   const scenarioAvailable = !!calcParams && scenarioMid != null && !!scenarioContract
-    && Number.isFinite(scenarioContract.impliedVolatility) && scenarioContract.impliedVolatility >= 0
     && !!scenarioContract.currency && scenarioContract.currency === underlying?.quote?.currency;
   const openScenario = useCallback(() => {
     const contract = scenarioContract;
     if (!contract || !scenarioAvailable || !selectedSide || scenarioMid == null) return;
     const leg = { id: crypto.randomUUID(), side: selectedSide, quantity: 1, strike: contract.strike,
-      expiration: contract.expiration, price: scenarioMid, volatility: contract.impliedVolatility, multiplier: 100 };
+      expiration: contract.expiration, price: scenarioMid, volatility: scenarioVolatility, multiplier: 100 };
     createPaneFromTemplate("options-scenario-pane", { symbol: canonicalTickerKey(effectiveTicker, effectiveExchange),
       values: { seedLeg: JSON.stringify(leg), spot: String(spot),
         currency: contract.currency,
         ...(dividendYield == null ? {} : { dividendYield: String(dividendYield * 100) }),
         asOf: new Date(underlying?.quote?.lastUpdated ?? Date.now()).toISOString() } });
-  }, [scenarioContract, scenarioAvailable, scenarioMid, createPaneFromTemplate, dividendYield, effectiveTicker,
+  }, [scenarioContract, scenarioAvailable, scenarioMid, scenarioVolatility, createPaneFromTemplate, dividendYield, effectiveTicker,
     effectiveExchange, selectedSide, spot, underlying?.quote?.lastUpdated]);
 
   const openSurface = useCallback(() => {

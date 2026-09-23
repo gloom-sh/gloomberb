@@ -75,7 +75,7 @@ test("date submission hides the previous curve while pending and keeps controls 
   await emitKeypress(setup!, { name: "d" });
   await act(async () => { await setup!.mockInput.typeText("2024-03-02"); setup!.mockInput.pressEnter(); });
   await frame();
-  expect(historySpy).toHaveBeenCalledTimes(10);
+  expect(historySpy).toHaveBeenCalledTimes(TREASURY_MATURITIES.length);
   expect(setup!.captureCharFrame()).toContain("2024-03-02");
   expect(setup!.captureCharFrame()).toContain("Loading yield curve");
   expect(setup!.captureCharFrame()).not.toContain("2026-09-08");
@@ -107,7 +107,7 @@ test("the transient date editor can be submitted with the mouse", async () => {
   await frame();
   await act(async () => { await controls.clickFrameText("View"); });
   await frame(); await frame();
-  expect(historySpy).toHaveBeenCalledTimes(10);
+  expect(historySpy).toHaveBeenCalledTimes(TREASURY_MATURITIES.length);
   expect(setup!.captureCharFrame()).toContain("2024-03-01");
   expect(setup!.captureCharFrame()).toContain("requested 2024-03-02");
   expect(setup!.captureCharFrame()).not.toContain("As-of date");

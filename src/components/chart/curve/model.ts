@@ -25,6 +25,11 @@ export interface CurvePalette {
   ghosts: Readonly<Record<string, string>>;
 }
 
+/** One colour per look-back in every curve pane, so a 1M ghost reads the same in CTM and WIRP. */
+export function curveGhostColors(colors: { textMuted: string; textDim: string; warning: string }): Readonly<Record<string, string>> {
+  return { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim };
+}
+
 export interface HistoryObservation {
   date: string | Date;
   value: number | null;

@@ -16,6 +16,7 @@ import {
   formatMarketCostWithCurrency,
   formatMarketPriceWithCurrency,
   formatMarketQuantity,
+  withCurrencyMinorDigits,
 } from "../../../../market-data/market/format";
 import type { PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
@@ -152,19 +153,20 @@ export function buildPositionRows({
       account: compactPositionAccount(position),
       qty: `${formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency, maxWidth: metrics.priceBasis === "percent-of-par" ? 11 : undefined })}${unit}`,
       quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : undefined,
-      avg: formatMarketCostWithCurrency(position.avgCost, positionCurrency, {
+      // Avg and Mark sit side by side, so both keep the currency's minor unit ($118.40 beside $224.36).
+      avg: formatMarketCostWithCurrency(position.avgCost, positionCurrency, withCurrencyMinorDigits({
         assetCategory: ticker.metadata.assetCategory,
         multiplier: position.multiplier,
         priceBasis: metrics.priceBasis,
-        maxWidth: metrics.priceBasis === "percent-of-par" ? 9 : undefined,
-      }),
+        maxWidth: 9,
+      }, positionCurrency)),
       mark: fallbackMarkPrice != null && Number.isFinite(fallbackMarkPrice)
-        ? formatMarketPriceWithCurrency(fallbackMarkPrice, fallbackMarkCurrency, {
+        ? formatMarketPriceWithCurrency(fallbackMarkPrice, fallbackMarkCurrency, withCurrencyMinorDigits({
             assetCategory: ticker.metadata.assetCategory,
             multiplier: position.multiplier,
             priceBasis: currentPrice != null ? quote?.priceBasis : metrics.priceBasis,
-            maxWidth: (currentPrice != null ? quote?.priceBasis : metrics.priceBasis) === "percent-of-par" ? 9 : undefined,
-          })
+            maxWidth: 9,
+          }, fallbackMarkCurrency))
         : "—",
       cost: costBasisBase != null ? formatCurrency(costBasisBase, baseCurrency) : "—",
       value: marketValueBase != null ? formatCurrency(marketValueBase, baseCurrency) : "—",

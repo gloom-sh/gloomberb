@@ -13,11 +13,11 @@ const COLUMNS = [
   { key: "name", header: "Name" },
   { key: "price", header: "Last", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "") },
   { key: "changePercent", header: "Change %", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatPercentRaw(Number(value)) },
-  { key: "volume", header: "Volume", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value)) },
+  { key: "volume", header: "Volume", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value), { fixedDecimals: true }) },
   { key: "volumeRatio", header: "Vol / Avg", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatNumber(Number(value), 1) },
   // A position within the range, not a change, so it carries no sign.
   { key: "rangePositionPercent", header: "52W pos", align: "right" as const, format: (value: unknown) => value == null ? "—" : `${Math.round(Number(value))}%` },
-  { key: "marketCap", header: "Market cap", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value)) },
+  { key: "marketCap", header: "Market cap", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value), { fixedDecimals: true }) },
 ];
 
 export interface MarketMoversHeadlessDependencies {

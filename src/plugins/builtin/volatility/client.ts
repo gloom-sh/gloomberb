@@ -92,9 +92,15 @@ function cachedInputs(dependencies: VolatilityLoaderDependencies, now: number): 
 function hasValues(data: VolatilityData): boolean {
   return data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null);
 }
+/** Named like the board row; a source-routing miss reads as the missing history it is. */
+function historyError(id: string, error: string): string {
+  const definition = VOLATILITY_INDICES.find((entry) => entry.id === id);
+  const name = definition ? `${definition.label} ${definition.symbol}` : id;
+  return `${name}: ${/^No (?:resolution-aware )?history provider available/i.test(error) ? "no daily history" : error}`;
+}
 function project(inputs: VolatilityInputs, loaded: number, total: number, pending: boolean): VolatilityLoadResult {
   const data = buildVolatilityData(inputs);
-  const errors = [...Object.entries(inputs.history ?? {}).flatMap(([id, value]) => value.error ? [`${id}: ${value.error}`] : []),
+  const errors = [...Object.entries(inputs.history ?? {}).flatMap(([id, value]) => value.error ? [historyError(id, value.error)] : []),
     ...Object.entries(inputs.fred ?? {}).flatMap(([id, value]) => value.error ? [`${id}: ${value.error}`] : [])];
   const stale = [...Object.values(inputs.history ?? {}), ...Object.values(inputs.fred ?? {})].some((value) => value.stale);
   const phase = pending ? hasValues(data) ? "partial" : "loading" : !hasValues(data) ? "error"

@@ -13,7 +13,6 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
-import { formatStrikeLabel } from "../options/table";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadVolatilitySurface } from "./client";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
@@ -25,6 +24,7 @@ import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, windowSu
 import { DEFAULT_SURFACE_CAMERA, rotateSurfaceCamera, zoomSurfaceCamera, type SurfaceCamera } from "./raster";
 import { VolatilitySurface } from "./surface";
 import { expiryLabel, formatIv, formatPrice, SmileChart, TermChart } from "./charts";
+import { surfaceCoordinateLabel } from "./headless";
 
 const TABS = [
   { value: "surface", label: "3D surface" }, { value: "table", label: "Table" },
@@ -262,8 +262,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       expiry.fit?.method, expiry.fit?.residual, expiry.rateMethod, JSON.stringify(expiry.filterCounts)]) ?? [])];
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry / tenor", width: 18, align: "left" },
     ...(grid?.rows[0]?.cells.map((cell, index) => ({ id: String(index), width: 10, align: "right" as const,
-      label: axis === "delta" ? ["10dP", "25dP", "ATM", "25dC", "10dC"][index] ?? String(cell.coordinate)
-        : axis === "strike" ? formatStrikeLabel(cell.coordinate) : `${Math.round(cell.coordinate * 100)}%` })) ?? [])];
+      label: surfaceCoordinateLabel(axis, cell.coordinate, index) })) ?? [])];
   const sortedRows = [...(grid?.rows ?? [])].sort((a, b) => {
     const delta = sort.id === "tenor" ? a.years - b.years : (a.cells[Number(sort.id)]?.volatility ?? -1) - (b.cells[Number(sort.id)]?.volatility ?? -1);
     return sort.direction === "asc" ? delta : -delta;

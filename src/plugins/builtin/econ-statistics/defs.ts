@@ -53,7 +53,16 @@ export interface StatDef {
   note: string;
   /** Concise measurement identity that must remain beside the values. */
   measurementBasis?: string;
-  limit: number;
+  /**
+   * Stats this one is computed from. Its newest print is held to their common
+   * date, so a published spread never runs ahead of the legs shown beside it.
+   */
+  derivedFrom?: readonly string[];
+  /**
+   * Newest observations to request. Omitted for daily and weekly series, whose
+   * 20Y and full-history windows need every observation since the series began.
+   */
+  limit?: number;
 }
 
 export function categoryLabel(id: StatCategoryId): string {

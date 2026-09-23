@@ -15,9 +15,12 @@ export function policyHistory(row: CentralBankRow) {
   return row.history.filter((point) => (!row.percentile.windowStart || point.date >= row.percentile.windowStart)
     && (!row.percentile.windowEnd || point.date <= row.percentile.windowEnd));
 }
+/** Members with no policy rate to publish, kept out of the board and listed in the notices. */
+export const hasNoPolicyRate = (row: CentralBankRow) => row.status === "unavailable"
+  && (row.unavailableReason === "no-policy-rate" || row.unavailableReason === "no-unified-rate");
 export interface PolicyBoardRow extends MarketBoardRow { observation: CentralBankRow }
 export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
-  return { id: row.id, label: row.label, value: row.value, valueText: policyLevel(row),
+  return { id: row.id, label: row.label, labelDetail: row.instrument, value: row.value, valueText: policyLevel(row),
     change: row.changeBps, changeText: policyChange(row), changeAsOf: row.lastChangeDate,
     percentile: row.percentile.value, asOf: row.asOf, status: row.status, observation: row,
     history: policyHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]) };

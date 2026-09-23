@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAppActive } from "../app/activity";
+import { useAppVisible } from "../app/activity";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import { debugLog } from "../../utils/debug-log";
@@ -87,7 +87,7 @@ export function useQuoteStreaming(
   targets: QuoteSubscriptionTarget[],
   { enabled = true }: QuoteStreamingOptions = {},
 ): void {
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const coordinator = getSharedMarketDataCoordinator();
 
   const normalizedEntries = new Map<string, QuoteSubscriptionTarget>();
@@ -189,7 +189,7 @@ export function useQuoteUpdates(
     pollIntervalMs = DEFAULT_QUOTE_POLL_INTERVAL_MS,
   }: QuoteUpdateOptions = {},
 ): void {
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const coordinator = getSharedMarketDataCoordinator();
   const normalizedTargets = targets.flatMap((target) => {
     const normalized = normalizeQuoteStreamSubscriptionTarget(target);
@@ -258,7 +258,7 @@ export function useLiveQuoteEntries(
   freshnessNow: number;
   subscriptionStartedAt: number;
 } {
-  const appActive = useAppActive();
+  const appActive = useAppVisible();
   const normalizedTargets = targets.flatMap((target) => {
     const normalized = normalizeQuoteStreamSubscriptionTarget(target);
     return normalized ? [normalized] : [];

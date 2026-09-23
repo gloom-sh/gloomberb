@@ -60,3 +60,16 @@ export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined
   return [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
     .some((exchange) => normalize(exchange).length > 0);
 }
+
+/**
+ * The item codes in EDGAR's `items` field ("2.02,9.01"). EDGAR fills the same
+ * field with other values for some forms, such as the order dates of a CT
+ * ORDER ("20250123,20250123"); those are not items and are dropped.
+ */
+export function secFilingItemCodes(items: string | null | undefined): string | null {
+  const codes = (items ?? "")
+    .split(",")
+    .map((code) => code.trim())
+    .filter((code) => /^\d{1,2}\.\d{2}$/.test(code));
+  return codes.length > 0 ? codes.join(",") : null;
+}

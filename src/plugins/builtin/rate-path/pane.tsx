@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
+import { CurveSurface, curveGhostColors, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -57,7 +57,8 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const tabRows = tabsInHeader ? 0 : 1;
   const data = resource.data;
   const curves = useMemo(() => data ? ratePathCurves(data, {
-    path: colors.positive, ghosts: [colors.textMuted, colors.textDim], band: colors.warning, projection: colors.negative,
+    // Ghosts match CTM's look-back colours, so the policy band takes the accent instead of yellow.
+    path: colors.positive, ghosts: curveGhostColors(colors), band: colors.borderFocused, projection: colors.negative,
   }) : [], [data]);
   const meetings = useMemo(() => [...(data?.meetings ?? [])].sort((a, b) => {
     const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.id] as keyof RateMeeting | undefined;

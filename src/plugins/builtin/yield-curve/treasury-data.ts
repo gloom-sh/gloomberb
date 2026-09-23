@@ -1,8 +1,8 @@
 import { apiClient } from "../../../api-client";
 
 export interface YieldPoint {
-  maturity: string;      // "1M", "3M", "6M", "1Y", "2Y", "5Y", "7Y", "10Y", "20Y", "30Y"
-  maturityYears: number; // 0.083, 0.25, 0.5, 1, 2, 5, 7, 10, 20, 30
+  maturity: string;      // "1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"
+  maturityYears: number; // 0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30
   yield: number | null;  // percent, e.g., 4.29
   asOf?: string | null;  // FRED observation date, absent on older servers
   stale?: boolean;
@@ -26,6 +26,7 @@ export const TREASURY_MATURITIES: Array<{ maturity: string; years: number; serie
   { maturity: "6M",  years: 0.5,   seriesId: "DGS6MO" },
   { maturity: "1Y",  years: 1,     seriesId: "DGS1" },
   { maturity: "2Y",  years: 2,     seriesId: "DGS2" },
+  { maturity: "3Y",  years: 3,     seriesId: "DGS3" },
   { maturity: "5Y",  years: 5,     seriesId: "DGS5" },
   { maturity: "7Y",  years: 7,     seriesId: "DGS7" },
   { maturity: "10Y", years: 10,    seriesId: "DGS10" },

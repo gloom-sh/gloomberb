@@ -97,6 +97,71 @@ export function setAppActive(active: boolean): void {
   controller.setActive(active);
 }
 
+/**
+ * Whether the app can be seen, as opposed to whether it has focus. Focus is
+ * attention (chat read state, notifications, account polling). Market data
+ * follows visibility: a user watches quotes in a window while typing in another
+ * app, so streams and refreshes pause only when the window is hidden or
+ * minimized. A terminal cannot report visibility and always counts as visible.
+ */
+class AppVisibilityController {
+  private visible = true;
+  private watching = false;
+  private readonly listeners = new Set<() => void>();
+
+  private watchDocument(): void {
+    if (this.watching) return;
+    this.watching = true;
+    const doc = (globalThis as { document?: Document }).document;
+    if (!doc || typeof doc.addEventListener !== "function" || typeof doc.visibilityState !== "string") return;
+    const update = () => this.setVisible(doc.visibilityState !== "hidden");
+    doc.addEventListener("visibilitychange", update);
+    update();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.watchDocument();
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  isVisible(): boolean {
+    this.watchDocument();
+    return this.visible;
+  }
+
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    activityLog.info("visibility changed", { visible });
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+}
+
+const visibility = new AppVisibilityController();
+
+export function isAppVisible(): boolean {
+  return visibility.isVisible();
+}
+
+export function setAppVisible(visible: boolean): void {
+  visibility.setVisible(visible);
+}
+
+/** Gate market data (streams, polling, refresh clocks) on this, not on focus. */
+export function useAppVisible(): boolean {
+  return useSyncExternalStore(
+    (listener) => visibility.subscribe(listener),
+    () => visibility.isVisible(),
+    () => true,
+  );
+}
+
+/** Focus: gate attention (read state, notifications), not market data. */
 export function useAppActive(): boolean {
   return useSyncExternalStore(
     (listener) => controller.subscribe(listener),

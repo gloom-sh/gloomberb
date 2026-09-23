@@ -7,6 +7,7 @@ import { AppProvider, PaneInstanceProvider } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { useLiveStreamingSetting } from "../../plugins/builtin/shared/live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
+import { setAppActive, setAppVisible } from "../app/activity";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
@@ -114,9 +115,47 @@ afterEach(async () => {
   updateFreshnessScope = null;
   observedSubscriptionStartedAt = 0;
   setSharedMarketDataCoordinator(null);
+  setAppActive(true);
+  setAppVisible(true);
 });
 
 describe("useQuoteStreaming", () => {
+  test("keeps streaming while another app has focus and pauses only while hidden", async () => {
+    let subscribeCalls = 0;
+    let unsubscribeCalls = 0;
+    const coordinator = {
+      subscribeQuotes: () => {
+        subscribeCalls += 1;
+        return () => {
+          unsubscribeCalls += 1;
+        };
+      },
+    };
+    setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
+    testSetup = await testRender(<QuoteStreamingHarness />, { width: 20, height: 1 });
+    await act(async () => testSetup!.renderOnce());
+    expect(subscribeCalls).toBe(1);
+
+    // Watching quotes from a second screen while typing elsewhere.
+    await act(async () => {
+      setAppActive(false);
+      await testSetup!.renderOnce();
+    });
+    expect(unsubscribeCalls).toBe(0);
+
+    await act(async () => {
+      setAppVisible(false);
+      await testSetup!.renderOnce();
+    });
+    expect(unsubscribeCalls).toBe(1);
+
+    await act(async () => {
+      setAppVisible(true);
+      await testSetup!.renderOnce();
+    });
+    expect(subscribeCalls).toBe(2);
+  });
+
   test("does not resubscribe when the component rerenders with the same targets", async () => {
     let subscribeCalls = 0;
     let unsubscribeCalls = 0;

@@ -18,6 +18,7 @@ import {
   type ExtendedHoursData,
 } from "./mappers";
 import type { ChartResult } from "./types";
+import type { YahooQuoteSupplement } from "./requests";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { isShopOperatingTarget } from "../../utils/operating-result";
 import { yahooSecurityName } from "./names";
@@ -27,18 +28,6 @@ type YahooChartSnapshot = {
   history: PricePoint[];
   missingCloses?: Date[];
 };
-
-type YahooQuoteSupplement = Pick<
-  Quote,
-  | "bid"
-  | "ask"
-  | "bidSize"
-  | "askSize"
-  | "previousClose"
-  | "open"
-  | "high"
-  | "low"
->;
 
 interface YahooSnapshotLoaders {
   fetchAssetProfile: (symbol: string) => Promise<CompanyProfile | undefined>;
@@ -169,6 +158,26 @@ function extendedHoursReference(
   return fallback;
 }
 
+/**
+ * Yahoo's trailingMarketCap series is dated at the last completed session, so
+ * after a close it still holds the session before: 0700.HK on 2026-09-23 read
+ * 4.07T HKD from the 451.6 close of 09-22 while it closed at 441 (3.97T). The
+ * value moves to the quote's price by the close on its own date, which keeps
+ * Yahoo's share basis (every class for GOOGL). Without that close it stays as
+ * dated. Daily bars are dated in the exchange's zone (see fetchYahooChart).
+ */
+function currentMarketCap(
+  metrics: ReturnType<typeof parseYahooTimeseries>,
+  history: PricePoint[],
+  price: number,
+): number | undefined {
+  const point = latestFinancialPeriod(metrics.trailingMarketCap, (row) => row.asOfDate);
+  const value = point?.value;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const close = history.findLast((bar) => bar.date.toISOString().slice(0, 10) === point!.asOfDate)?.close;
+  return close != null && close > 0 && Number.isFinite(price) && price > 0 ? value * (price / close) : value;
+}
+
 export async function loadYahooTickerFinancials(
   symbol: string,
   loaders: YahooSnapshotLoaders,
@@ -217,8 +226,8 @@ export async function loadYahooTickerFinancials(
     changePercent: changePct,
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
-    marketCap: latest("trailingMarketCap"),
-    name: yahooSecurityName(meta.shortName, meta.longName),
+    marketCap: currentMarketCap(metrics, history, currentPrice),
+    name: quoteSupplement.name ?? yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,
@@ -306,7 +315,7 @@ export async function loadYahooQuote(
     changePercent: prev ? (change / prev) * 100 : 0,
     high52w: meta.fiftyTwoWeekHigh,
     low52w: meta.fiftyTwoWeekLow,
-    name: yahooSecurityName(meta.shortName, meta.longName),
+    name: quoteSupplement.name ?? yahooSecurityName(meta.shortName, meta.longName),
     lastUpdated: yahooMarketTimestamp(meta),
     exchangeName: meta.exchangeName,
     fullExchangeName: meta.fullExchangeName,

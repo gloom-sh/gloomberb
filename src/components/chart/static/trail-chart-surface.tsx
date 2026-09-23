@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Box, Text } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { CompositeChart } from "../composite/composite-chart";
-import { buildTrailChart, type ScatterTrail } from "./trail-chart-model";
+import { buildTrailChart, trailAxisTicks, type ScatterTrail } from "./trail-chart-model";
 
 const PANELS = [{ id: "main" }];
 export function ScatterTrailSurface({
@@ -40,10 +40,7 @@ export function ScatterTrailSurface({
   );
   const xAxis = useMemo(
     () => ({
-      ticks: [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
-        ratio,
-        label: (model.min + ratio * (model.max - model.min)).toFixed(1),
-      })),
+      ticks: trailAxisTicks(model.min, model.max),
       formatCursor: (ratio: number) =>
         (model.min + ratio * (model.max - model.min)).toFixed(2),
     }),

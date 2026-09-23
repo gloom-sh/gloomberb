@@ -8,6 +8,7 @@ import type { MarketContext } from "../types";
 import { cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
+import { toMarketDataContext } from "../../market-data/selectors";
 
 const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
@@ -44,7 +45,12 @@ export async function withShotPriceHistory(
     ?? financials.quote?.exchangeName
     ?? "";
   try {
-    const priceHistory = await context.dataProvider.getPriceHistory(instrument.symbol, exchange, SHOT_PRICE_HISTORY_RANGE);
+    // The app backs ticker panes with its all-history weekly baseline. A 5Y
+    // window starts after the 5Y return's baseline bar and left it blank.
+    const priceHistory = context.dataProvider.getPriceHistoryForResolution
+      ? await context.dataProvider.getPriceHistoryForResolution(instrument.symbol, exchange, "ALL", "1wk",
+        toMarketDataContext({ symbol: instrument.symbol, exchange }))
+      : await context.dataProvider.getPriceHistory(instrument.symbol, exchange, SHOT_PRICE_HISTORY_RANGE);
     return priceHistory.length > 0 ? { ...financials, priceHistory } : financials;
   } catch {
     return financials;

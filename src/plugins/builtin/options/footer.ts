@@ -15,10 +15,11 @@ export interface OptionsCoverageState {
 }
 
 /** Stream coverage the pane reports once the account is entitled to real-time options. */
-export function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState {
+export function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState | null {
   if (status === "live") return { text: t("real-time options"), tone: "positive" };
   if (status === "mixed") return { text: t("mixed real-time and delayed options"), tone: "warning" };
-  if (status === "connecting") return { text: t("connecting real-time options"), tone: "muted" };
+  // The stream connects in the background; nothing to report until it answers.
+  if (status === "connecting") return null;
   return { text: t("options delayed fallback"), tone: "warning" };
 }
 

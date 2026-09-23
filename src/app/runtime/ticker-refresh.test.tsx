@@ -41,7 +41,7 @@ async function fixture() {
   function Harness() {
     const [active, setActive] = useState(false);
     activate = () => setActive(true);
-    runtime = useTickerRefreshRuntime({ appActive: active, baseCurrency: "USD", marketData: coordinator,
+    runtime = useTickerRefreshRuntime({ appVisible: active, baseCurrency: "USD", marketData: coordinator,
       pluginRegistry: { events: { emit: () => {} } } as unknown as PluginRegistry,
       dispatch: (action) => { if (action.type === "SET_REFRESHING") actions.push(action); }, tickers: new Map([["DUAL", ticker]]) });
     return null;

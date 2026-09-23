@@ -147,7 +147,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `HM` | Market heatmap for large US stocks and ETFs ([Market Heatmap plugin](https://github.com/gloom-sh/gloom-market-heatmap)) |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
-| `FLOW` | Unusual options activity: sweeps, blocks, and large premium; Vol/OI divides the contract's day volume by its latest reported open interest |
+| `FLOW` | Unusual options activity: sweeps, blocks, and large premium; Vol/OI divides the contract's day volume by its latest reported open interest. Cloud records every print, for options flow alerts and the assistant |
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
@@ -212,7 +212,7 @@ additional windows and trades.
 
 `CBR`, `ECFC` and `CBRT` open the same Central Bank Rates board. Each row shows its policy rate or target range, last observed move and date, one-year percentile, history and latest observation date. Select a row and press Enter or click for the source instrument, reporting lag, one-year range and history; Back returns to the board. `o` opens its official source and `r` refreshes. The US detail includes its verified next FOMC meeting; other meeting dates remain unavailable. Reports support `gloomberb fn CBR --json` and its aliases.
 
-`CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 30 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
+`CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows, moving every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
 
 ### Workspace and App Controls
 
@@ -270,9 +270,13 @@ confirmed earnings date (days before), SEC filing type (8-K, 10-K, 10-Q, S-1,
 SC 13D/G, 6-K, 20-F), news keyword (symbol optional), analyst upgrade or
 downgrade, new 52-week high or low, unusual volume (multiple of the prior
 20-session average), short interest change (percent between FINRA settlements),
-open-market insider buy or sell, and an option IV spike for one OCC contract
-(Pro). The **Events** tab shows each rule's last checked value with its one-year
-percentile and date when the pane is wide enough. **History** lists the alerts
+open-market insider buy or sell, an option IV spike for one OCC contract
+(Pro), and options flow (Pro): a print at or above a premium (default $1M,
+typed as `1,000,000`, `$250k` or `1.5m`) on one symbol, or on any name in your
+portfolio and watchlists when the symbol is blank, optionally calls or puts only
+and sweeps or blocks only. The **Events** tab shows each rule's last checked value with its one-year
+percentile and date when the pane is wide enough; a flow rule shows its latest
+matching print, or how many of its contracts are being watched. **History** lists the alerts
 delivered to your phone over the last 90 days; `r` refreshes it. The phone's
 notification settings have one switch for these market and research alerts.
 

@@ -2,7 +2,8 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { overlayScreenerQuoteEntries } from "../shared/screener-live-quotes";
 import type { Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
-import { formatCurrency, formatNumber } from "../../../utils/format";
+import { formatNumber } from "../../../utils/format";
+import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { MARKET_SUMMARY_SYMBOLS, convertScreenerPriceUnit, screenerNumber, screenerVolume, screenerVolumeRatio, type MarketSummaryQuote, type ScreenerCategory, type ScreenerQuote } from "./screener";
@@ -168,11 +169,17 @@ export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; p
 }
 
 /** A missing listing currency cannot be represented by a USD symbol. */
+function currencyMinorDigits(currency: string): number {
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2; }
+  catch { return 2; }
+}
+
+/** Listing currency at its minor unit (¥ none, $ two), keeping a sub-cent coin's digits. */
 export function formatMoverPrice(price: number | null, currency: string): string {
   if (!currency) return formatNumber(price ?? undefined);
   const unit = resolveCurrencyUnit(currency);
-  try { return formatCurrency(price == null ? undefined : price / unit.divisor, unit.currency); }
-  catch { return formatNumber(price ?? undefined); }
+  return formatMarketPriceWithCurrency(price == null ? undefined : price / unit.divisor, unit.currency,
+    { minimumFractionDigits: currencyMinorDigits(unit.currency) });
 }
 
 

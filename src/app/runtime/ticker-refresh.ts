@@ -36,14 +36,15 @@ function resolveRefreshEntries(entries: RefreshEntry[]): InstrumentRefreshEntry[
 }
 
 export function useTickerRefreshRuntime({
-  appActive,
+  appVisible,
   baseCurrency,
   dispatch,
   marketData,
   pluginRegistry,
   tickers,
 }: {
-  appActive: boolean;
+  /** Refreshes run while the app can be seen, focused or not. */
+  appVisible: boolean;
   baseCurrency: string;
   dispatch: Dispatch<AppAction>;
   marketData: MarketDataCoordinator;
@@ -54,8 +55,8 @@ export function useTickerRefreshRuntime({
   const pendingRefreshesRef = useRef({ financials: new Set<string>(), quotes: new Set<string>() });
 
   useEffect(() => {
-    refreshQueueRef.current.queue.setPaused(!appActive);
-  }, [appActive]);
+    refreshQueueRef.current.queue.setPaused(!appVisible);
+  }, [appVisible]);
 
   const setRefreshing = useCallback((symbol: string, active: boolean) => {
     const count = Math.max(0, (refreshingSymbols.get(symbol) ?? 0) + (active ? 1 : -1));

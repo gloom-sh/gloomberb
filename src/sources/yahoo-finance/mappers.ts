@@ -201,14 +201,36 @@ export function mapYahooAnalystResearchResponse(
   };
 }
 
+/**
+ * Yahoo's chart dividends carry float and adjustment residue: 2330.TW's
+ * declared NT$7.00, 4.00 and 3.50 arrive as 7.000001, 3.999637 and 3.49979.
+ * Amounts converted from another currency are legitimately that fine
+ * (VOD.L's 2.0301435p), so only a series whose every fine amount sits within
+ * 0.01% of a whole cent is read in cents; a lone amount needs 0.001%.
+ */
+export function cleanYahooDividendAmounts(amounts: number[]): number[] {
+  const residue = (amount: number) => {
+    const text = String(amount);
+    const cents = Math.round(amount * 100) / 100;
+    return !text.includes("e") && (text.split(".")[1]?.length ?? 0) >= 5 && cents !== 0
+      ? Math.abs(amount - cents) / Math.abs(amount) : undefined;
+  };
+  const fine = amounts.map(residue).filter((value): value is number => value !== undefined);
+  const limit = fine.length >= 3 && fine.every((value) => value <= 1e-4) ? 1e-4 : 1e-5;
+  return amounts.map((amount) => (residue(amount) ?? 1) <= limit ? Math.round(amount * 100) / 100 : amount);
+}
+
 export function mapYahooDividends(events: ChartResult["events"], meta?: ChartResult["meta"]): DividendAction[] {
-  return Object.values(events?.dividends ?? {})
+  const dividends = Object.values(events?.dividends ?? {})
     .map((dividend): DividendAction | null => {
       const date = yahooTimestampDate(dividend.date, meta?.exchangeTimezoneName);
       if (!date || dividend.amount == null || !Number.isFinite(dividend.amount)) return null;
       return { exDate: date, amount: dividend.amount };
     })
     .filter((dividend): dividend is DividendAction => dividend !== null);
+  const amounts = cleanYahooDividendAmounts(dividends.map((dividend) => dividend.amount));
+  return dividends.map((dividend, index) =>
+    amounts[index] === dividend.amount ? dividend : { ...dividend, amount: amounts[index]! });
 }
 
 export function mapYahooSplits(events: ChartResult["events"], meta?: ChartResult["meta"]): SplitAction[] {
@@ -386,13 +408,21 @@ export function mapYahooEarningsCalendarEvent(
   };
 }
 
+/**
+ * Yahoo gives venues outside the Americas a post window (Xetra to 20:30 CEST)
+ * with no after-hours session in it, only the closing auction; they are closed
+ * after the regular session, as Cloud quotes them. A pre window stays: most
+ * venues take orders for an opening auction then.
+ */
 export function deriveMarketState(meta: NonNullable<ChartResult["meta"]>): MarketState {
   const ctp = meta.currentTradingPeriod;
   if (!ctp) return "CLOSED";
   const now = Math.floor(Date.now() / 1000);
   if (ctp.regular?.start && ctp.regular?.end && now >= ctp.regular.start && now < ctp.regular.end) return "REGULAR";
   if (ctp.pre?.start && ctp.pre?.end && now >= ctp.pre.start && now < ctp.pre.end) return "PRE";
-  if (ctp.post?.start && ctp.post?.end && now >= ctp.post.start && now < ctp.post.end) return "POST";
+  const timeZone = meta.exchangeTimezoneName?.trim();
+  const afterHoursVenue = !timeZone || timeZone.startsWith("America/");
+  if (afterHoursVenue && ctp.post?.start && ctp.post?.end && now >= ctp.post.start && now < ctp.post.end) return "POST";
   return "CLOSED";
 }
 

@@ -3,7 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatStat, formatVol, verdictLabel } from "./format";
-import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, VCA_LIMIT, VCA_PRESETS } from "./model";
+import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, sharedReading, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
@@ -71,14 +71,17 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     ]);
     const rows = projectRichCheap(payload.rows, hv).sort((a, b) => (b.percentile ?? -1) - (a.percentile ?? -1));
     const queued = rows.filter((row) => row.status === "queued").map((row) => row.symbol);
+    const shared = sharedReading(rows);
+    const hasSkew = rows.some((row) => row.skew != null);
     return {
-      sections: [{ title: `Rich/cheap · ${universe.label}`, columns: [
-        { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent }, { key: "date", header: "As of" },
+      sections: [{ title: `Rich/cheap · ${universe.label}${shared ? ` · ${shared.date} ${shared.method === "quote-mid" ? "live" : "close"}` : ""}`, columns: [
+        { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
+        ...(shared ? [] : [{ key: "date", header: "As of" }]),
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },
         { key: "verdict", header: "Rich/Cheap", format: (value: unknown) => verdictLabel(value as never) },
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
-        { key: "skew", header: "25D skew", format: (value: unknown) => formatPoints(value as number | null) },
+        ...(hasSkew ? [{ key: "skew", header: "25D skew", format: (value: unknown) => formatPoints(value as number | null) }] : []),
         { key: "hv", header: "HV20", format: percent },
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
       ], rows: rows.map((row) => ({ ...row })) }],

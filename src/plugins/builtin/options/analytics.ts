@@ -1,13 +1,21 @@
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
-import { realizedVolatilityCadenceIssue, realizedVolatilityResult } from "../shared/volatility";
+import {
+  extractImpliedForward,
+  forwardFromCarry,
+  optionMid,
+  realizedVolatilityCadenceIssue,
+  realizedVolatilityResult,
+} from "../shared/volatility";
 import {
   DEFAULT_OPTION_CALC_DRAFT,
   daysToExpiryFrom,
+  solveImpliedVolatility,
   valueOption,
   type OptionSide,
   type OptionValuation,
 } from "../options-calculator/model";
+import { optionQuoteValuationTime } from "../vol-surface/model";
 
 const HISTORICAL_VOLATILITY_SESSIONS = 30;
 
@@ -40,14 +48,90 @@ function sum(contracts: readonly OptionContract[], field: "volume" | "openIntere
   return Number.isFinite(total) ? total : null;
 }
 
-function atmImpliedVolatility(chain: OptionsChain, spot: number | undefined): number | null {
+/** Implied volatility per strike of one expiry, shared by its call and put. */
+export interface ChainVolatilities {
+  /** Valuation instant the volatilities were solved at, reused for the Greeks. */
+  valuationTime: number;
+  byStrike: ReadonlyMap<number, number>;
+}
+
+function tightestQuotes(contracts: readonly OptionContract[], expiration: number): Map<number, OptionContract> {
+  const quotes = new Map<number, OptionContract>();
+  for (const contract of contracts) {
+    if (contract.expiration !== expiration || !positive(contract.strike) || optionMid(contract) == null) continue;
+    const current = quotes.get(contract.strike);
+    if (!current || contract.ask - contract.bid < current.ask - current.bid) quotes.set(contract.strike, contract);
+  }
+  return quotes;
+}
+
+/**
+ * Solve IV from quote midpoints the way OVDV does: calendar time to the 16:00 ET
+ * close, the put-call parity forward, and the out-of-the-money side of each
+ * strike, so a call and put share one volatility. Vendor IVs are not used: they
+ * can be placeholders (1e-5) and, for same-day expiries, sit on a trading-time
+ * basis that reads well under half the calendar-time value.
+ */
+export function solveChainVolatilities(
+  chain: OptionsChain,
+  spot: number | undefined,
+  dividendYield: number | undefined,
+  now: number = Date.now(),
+): ChainVolatilities {
+  const valuationTime = optionQuoteValuationTime(chain, now);
+  const byStrike = new Map<number, number>();
+  if (!positive(spot)) return { valuationTime, byStrike };
+  const rate = DEFAULT_OPTION_CALC_DRAFT.rate;
+  const carry = Number.isFinite(dividendYield) ? dividendYield! : 0;
+  const expirations = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
+  for (const expiration of expirations) {
+    const years = daysToExpiryFrom(expiration, valuationTime) / 365;
+    if (!(years > 0)) continue;
+    const calls = tightestQuotes(chain.calls, expiration);
+    const puts = tightestQuotes(chain.puts, expiration);
+    const forward = extractImpliedForward([...calls.values()], [...puts.values()], spot, years, rate, chain.underlyingSymbol).forward
+      ?? forwardFromCarry(spot, years, rate, carry);
+    if (forward == null) continue;
+    // q=r turns the shared spot pricer into discounted forward pricing.
+    const solve = (side: OptionSide, contract: OptionContract | undefined): number | null => {
+      const mid = contract ? optionMid(contract) : null;
+      if (mid == null) return null;
+      const solved = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: forward, strike: contract!.strike,
+        daysToExpiry: years * 365, rate, dividendYield: rate }, mid).volatility;
+      return solved != null && Number.isFinite(solved) && solved > 0 ? solved : null;
+    };
+    const strikes = [...new Set([...calls.keys(), ...puts.keys()])].sort((a, b) => a - b);
+    const solved = strikes.map((strike) => strike >= forward
+      ? solve("call", calls.get(strike)) : solve("put", puts.get(strike)));
+    // Without a two-sided out-of-the-money quote a strike's time value sits inside
+    // the tick, and the in-the-money quote is intrinsic plus spread noise. Read its
+    // volatility off the neighbouring solved strikes so delta stays monotonic.
+    strikes.forEach((strike, index) => {
+      let volatility = solved[index];
+      if (volatility == null) {
+        let below = index - 1, above = index + 1;
+        while (below >= 0 && solved[below] == null) below -= 1;
+        while (above < strikes.length && solved[above] == null) above += 1;
+        const low = below >= 0 ? solved[below]! : null;
+        const high = above < strikes.length ? solved[above]! : null;
+        volatility = low != null && high != null
+          ? low + (high - low) * (strike - strikes[below]!) / (strikes[above]! - strikes[below]!)
+          : low ?? high;
+      }
+      if (volatility != null) byStrike.set(strike, volatility);
+    });
+  }
+  return { valuationTime, byStrike };
+}
+
+function atmImpliedVolatility(volatilities: ChainVolatilities, spot: number | undefined): number | null {
   if (!positive(spot)) return null;
-  const contracts = [...chain.calls, ...chain.puts].filter((contract) => positive(contract.impliedVolatility));
-  if (contracts.length === 0) return null;
-  const distance = Math.min(...contracts.map((contract) => Math.abs(contract.strike - spot)));
-  const atTheMoney = contracts
-    .filter((contract) => Math.abs(Math.abs(contract.strike - spot) - distance) < 1e-8)
-    .map((contract) => contract.impliedVolatility);
+  const strikes = [...volatilities.byStrike].filter(([, volatility]) => volatility > 0);
+  if (strikes.length === 0) return null;
+  const distance = Math.min(...strikes.map(([strike]) => Math.abs(strike - spot)));
+  const atTheMoney = strikes
+    .filter(([strike]) => Math.abs(Math.abs(strike - spot) - distance) < 1e-8)
+    .map(([, volatility]) => volatility);
   return atTheMoney.reduce((total, value) => total + value, 0) / atTheMoney.length;
 }
 
@@ -79,8 +163,9 @@ export function calculateOptionsSummary(
   chain: OptionsChain,
   spot: number | undefined,
   priceHistory: readonly PricePoint[],
+  volatilities: ChainVolatilities,
 ): OptionsSummary {
-  const atmIv = atmImpliedVolatility(chain, spot);
+  const atmIv = atmImpliedVolatility(volatilities, spot);
   const historical = historicalVolatilityResult(priceHistory);
   const historicalVolatility = historical.value;
   const callVolume = sum(chain.calls, "volume");
@@ -102,14 +187,17 @@ export function calculateOptionsSummary(
   };
 }
 
+/** Greeks at the displayed spot, from the strike's solved volatility (0 when the market prices no time value). */
 export function calculateOptionGreeks(
   contract: OptionContract | undefined,
   side: OptionSide,
   spot: number | undefined,
   dividendYield: number | undefined,
-  now: number = Date.now(),
+  volatilities: ChainVolatilities,
 ): OptionValuation | undefined {
-  if (!contract || !positive(spot) || !positive(contract.strike) || !positive(contract.impliedVolatility)) {
+  const volatility = contract ? volatilities.byStrike.get(contract.strike) : undefined;
+  // A side nobody bids has no market to measure sensitivity against.
+  if (!contract || optionMid(contract) == null || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {
     return undefined;
   }
   return valueOption({
@@ -117,8 +205,8 @@ export function calculateOptionGreeks(
     side,
     spot,
     strike: contract.strike,
-    daysToExpiry: daysToExpiryFrom(contract.expiration, now),
-    volatility: contract.impliedVolatility,
+    daysToExpiry: daysToExpiryFrom(contract.expiration, volatilities.valuationTime),
+    volatility,
     dividendYield: Number.isFinite(dividendYield) ? dividendYield! : 0,
   });
 }

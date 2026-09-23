@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fetchYahooChart } from "./requests";
+import { fetchYahooChart, fetchYahooQuoteSupplement } from "./requests";
 import type { YahooHttpClient } from "./http";
 
 function chart(granularity: unknown) {
@@ -75,4 +75,45 @@ test("FX calendar bars take the London date Yahoo stamps at 23:00 UTC the evenin
   expect(result.history.map((p) => p.date.toISOString())).toEqual([
     "2026-09-18T00:00:00.000Z", "2026-09-21T00:00:00.000Z", "2026-12-07T00:00:00.000Z",
   ]);
+});
+
+test("FX daily ranges cover an open and close a few pips outside them, so close-to-close risk keeps the pair", async () => {
+  // EURUSD=X as Yahoo served 2025-10-08: open and close above the high.
+  const raw = { chart: { result: [{
+    meta: { symbol: "EURUSD=X", currency: "USD", instrumentType: "CURRENCY", exchangeTimezoneName: "Europe/London", dataGranularity: "1d" },
+    timestamp: [Date.parse("2025-10-07T23:00:00Z") / 1000],
+    indicators: { quote: [{ open: [1.16546], high: [1.1653], low: [1.16036], close: [1.16546], volume: [0] }] },
+  }] } };
+  const [bar] = (await fetchYahooChart(http(raw, []), "EURUSD=X", "1y", "1d")).history;
+  expect([bar!.open, bar!.high, bar!.low, bar!.close]).toEqual([1.16546, 1.16546, 1.16036, 1.16546]);
+});
+
+test("the trailing trade row of an intraday chart has no known volume", async () => {
+  const raw = { chart: { result: [{
+    meta: { symbol: "AAPL", currency: "USD", dataGranularity: "1m" },
+    timestamp: ["2026-09-23T17:44:00Z", "2026-09-23T17:45:24Z"].map((date) => Date.parse(date) / 1000),
+    indicators: { quote: [{ open: [337.3, 337.46], high: [337.4, 337.46], low: [337.2, 337.46], close: [337.35, 337.46], volume: [24863, 0] }] },
+  }] } };
+  const history = (await fetchYahooChart(http(raw, []), "AAPL", "1d", "1m")).history;
+  expect(history.map((point) => point.volume)).toEqual([24863, undefined]);
+});
+
+test("a continuous futures alias is named after the contract its price belongs to", async () => {
+  const supplement = async (symbol: string, price: Record<string, string>) => {
+    const urls: URL[] = [];
+    const client = { fetchJsonWithCrumb: async (url: string) => {
+      urls.push(new URL(url));
+      return { quoteSummary: { result: [{ summaryDetail: { previousClose: { raw: 18.56 } }, price }] } };
+    } } as unknown as YahooHttpClient;
+    return { result: await fetchYahooQuoteSupplement(client, symbol), modules: urls[0]!.searchParams.get("modules") };
+  };
+  // SB=F kept "Oct 26" in its name while quoting the March contract.
+  expect(await supplement("SB=F", { shortName: "Sugar #11 Oct 26", underlyingSymbol: "SBH27.NYB" }))
+    .toEqual({ result: { previousClose: 18.56, name: "Sugar #11 Mar 27" }, modules: "summaryDetail,price" });
+  expect((await supplement("ZB=F", { shortName: "U.S. Treasury Bond Futures,Dec-", underlyingSymbol: "ZBH27.CBT" })).result.name)
+    .toBe("U.S. Treasury Bond Futures Mar 27");
+  // No month in the underlying, another root, or a plain listing: the chart name stands.
+  expect((await supplement("BZ=F", { shortName: "Brent Crude Oil Last Day Financ", underlyingSymbol: "BZ.NYM" })).result.name).toBeUndefined();
+  expect((await supplement("SB=F", { shortName: "Sugar #11 Oct 26", underlyingSymbol: "KCZ26.NYB" })).result.name).toBeUndefined();
+  expect(await supplement("AAPL", { shortName: "Apple Inc." })).toEqual({ result: { previousClose: 18.56 }, modules: "summaryDetail" });
 });

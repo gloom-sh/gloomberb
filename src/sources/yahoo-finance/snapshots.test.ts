@@ -54,6 +54,23 @@ test("Yahoo preserves report currency and calculates operating margin from opera
 });
 
 
+test("Yahoo market cap moves from its dated session to the quote's price", async () => {
+  // 0700.HK after the 2026-09-23 close: the series still holds 09-22's close.
+  const load = (asOfDate: string) => loadYahooTickerFinancials("0700.HK", {
+    providerId: "yahoo", fetchAssetProfile: async () => undefined,
+    fetchChart: async () => ({ meta: { currency: "HKD", regularMarketPrice: 441 }, history: [
+      { date: new Date("2026-09-22T01:30:00Z"), close: 451.6 }, { date: new Date("2026-09-23T01:30:00Z"), close: 441 },
+    ] }),
+    fetchExtendedHoursData: async () => ({}), fetchQuoteSupplement: async () => ({}),
+    fetchTimeseries: async () => [{ meta: { type: ["trailingMarketCap"] }, trailingMarketCap: [
+      { asOfDate, currencyCode: "HKD", reportedValue: { raw: 4_068_146_293_411 } },
+    ] }],
+  });
+  expect((await load("2026-09-22")).quote?.marketCap).toBeCloseTo(3_972_658_626_560, -7);
+  // Without a close on the series' date the value stays as dated.
+  expect((await load("2026-09-19")).quote?.marketCap).toBe(4_068_146_293_411);
+});
+
 test("Yahoo never overwrites statement currency while adding another metric", () => {
   expect(buildYahooStatements({
     annualTotalRevenue: [{ asOfDate: "2025-12-31", value: 3000, currency: "TWD" }],
@@ -196,12 +213,13 @@ test("Yahoo futures quote measures its move from the current contract's settleme
     providerId: "yahoo",
     // The continuous chart's earlier rows are the expiring October contract.
     fetchChart: async () => ({
-      meta: { currency: "USD", instrumentType: "FUTURE", regularMarketPrice: 18.76, regularMarketTime: time },
+      meta: { currency: "USD", instrumentType: "FUTURE", regularMarketPrice: 18.76, regularMarketTime: time, shortName: "Sugar #11 Oct 26" },
       history: [{ date: new Date("2026-09-22T04:00:00Z"), close: 17.59 }, { date: new Date("2026-09-23T04:00:00Z"), close: 18.76 }],
     }),
     fetchExtendedHoursData: async () => ({}),
-    fetchQuoteSupplement: async () => ({ previousClose: 18.56 }),
+    fetchQuoteSupplement: async () => ({ previousClose: 18.56, name: "Sugar #11 Mar 27" }),
   });
+  expect(quote.name).toBe("Sugar #11 Mar 27");
   expect(quote.previousClose).toBe(18.56);
   expect(quote.change).toBeCloseTo(0.2, 8);
 });

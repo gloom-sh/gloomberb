@@ -844,6 +844,8 @@ export interface CloudFilingEventPayload {
   filedAt: string;
   /** Verified SEC filing calendar date; filedAt may instead be an acceptance instant. */
   filingDate?: string | null;
+  /** "8-K", or "8-K/A" for an amendment. Older servers omit it. */
+  form?: string;
   docUrl: string;
   items: string[];
   labels: string[];
@@ -1485,6 +1487,25 @@ export interface ScannerFlowPayload extends ScannerAccessInfo {
   status: ScannerStatus;
   asOf: number;
   events: ScannerFlowEvent[];
+}
+
+/** Filters for recorded flow prints, matching the FLOW pane's own. */
+export interface ScannerFlowHistoryQuery {
+  /** Page before this print (newest first); omit for the latest prints. */
+  before?: { at: number; id: string };
+  limit?: number;
+  minPremium?: number;
+  right?: "C" | "P";
+  kind?: "sweep" | "block";
+  minVolOi?: number;
+  maxExpiryDays?: number;
+  /** Only these listed symbols (the pane's "mine" universe). */
+  symbols?: string[];
+}
+
+export interface ScannerFlowHistoryPage {
+  events: ScannerFlowEvent[];
+  hasMore: boolean;
 }
 
 export type ScannerPayload = ScannerHiloPayload | ScannerFlowPayload;

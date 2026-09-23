@@ -1,4 +1,5 @@
 import type { SecFilingItem } from "../../../types/data-provider";
+import { secFilingItemCodes } from "../../../utils/sec";
 
 export function getDisplayFormLabel(form: string): string {
   const trimmed = form.trim();
@@ -82,7 +83,7 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
       filing: formDescription ? `${displayTitle} | ${formDescription}` : displayTitle,
-      items: filing.items ?? null,
+      items: secFilingItemCodes(filing.items),
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,
       cik: filing.cik,

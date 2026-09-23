@@ -30,28 +30,25 @@ function quoteMap(entries: Record<string, Partial<Quote>>): BoardQuoteMap {
 }
 
 describe("buildFuturesRows search", () => {
-  test("search and name sorting follow the quoted contract while its alias and catalog search remain stable", () => {
+  test("labels each alias with its catalog name and the quoted contract's month", () => {
     const quotes = quoteMap({
       "CL=F": { symbol: "CL=F", name: "Crude Oil Oct 26" },
-      "BZ=F": { symbol: "BZ=F", name: "Brent Crude Oil Dec 26" },
+      "BZ=F": { symbol: "BZ=F", name: "Brent Crude Oil Last Day Financ" },
     });
-    const filtered = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 26" });
-    expect(rowIds(filtered)).toEqual(["header:energy", "CL=F"]);
-    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "WTI" })))
+    const contract = (symbol: string) => [...contractsBySector.values()].flat().find((row) => row.symbol === symbol)!;
+    const name = (symbol: string, quoteName: string) => futuresContractName(contract(symbol), { symbol, name: quoteName } as Quote);
+    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 26" })))
       .toEqual(["header:energy", "CL=F"]);
-    const contract = contractsBySector.get("energy")!.find((row) => row.symbol === "CL=F")!;
-    expect(futuresContractName(contract, quotes.get("CL=F")!.quote)).toBe("Crude Oil Oct 26");
     quotes.get("CL=F")!.quote!.name = "Crude Oil Nov 26";
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 26" }))).toEqual([]);
-    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "nov 26" })))
-      .toEqual(["header:energy", "CL=F"]);
-    // Reverse catalog/name order explicitly to catch sorting by the old labels.
-    quotes.get("CL=F")!.quote!.name = "A contract";
-    quotes.get("BZ=F")!.quote!.name = "Z contract";
-    expect(rowIds(buildFuturesRows(contractsBySector, { columnId: "name", direction: "asc" }, quotes, { query: "contract" })))
-      .toEqual(["header:energy", "CL=F", "BZ=F"]);
-    expect(futuresContractName(contract, { symbol: "OTHER", name: "Wrong contract" } as Quote)).toBe(contract.name);
-    expect(futuresContractName(contract, { symbol: "CL=F", name: " " } as Quote)).toBe(contract.name);
+    expect(futuresContractName(contract("CL=F"), quotes.get("CL=F")!.quote)).toBe("WTI Crude Oil Nov 26");
+    expect(futuresContractName(contract("BZ=F"), quotes.get("BZ=F")!.quote)).toBe("Brent Crude Oil");
+    expect(name("ZC=F", "Corn Futures,Dec-2026")).toBe("Corn Dec 26");
+    expect(name("ZB=F", "30-Year T-Bond Dec 26")).toBe("30-Year T-Bond Dec 26");
+    // Cut off inside the year: the month alone could be a year out.
+    expect(name("ZW=F", "Chicago SRW Wheat Futures,Dec-2")).toBe("Chicago SRW Wheat");
+    expect(name("6C=F", "Canadian Dollar Futures,Dec-202")).toBe("Canadian Dollar");
+    expect(futuresContractName(contract("CL=F"), { symbol: "OTHER", name: "Crude Oil Nov 26" } as Quote)).toBe("WTI Crude Oil");
   });
 
   test("matches contract code, name, and Yahoo symbol case-insensitively", () => {

@@ -59,6 +59,16 @@ export function cotPriceMapping(code: string) { return Object.values(ROOTS).find
 export function cotClass(family: CotFamily, value: unknown): CotClass {
   return COT_CLASSES[family].find((row) => row.value === value)?.value ?? COT_CLASSES[family][0]!.value;
 }
+/**
+ * CFTC names every market "COMMODITY - EXCHANGE" ("JAPANESE YEN - CHICAGO
+ * MERCANTILE EXCHANGE"). The exchange repeats down the board; the market is
+ * the part a reader scans for. CFTC spelling is kept, since title-casing would
+ * mangle its abbreviations (UST, WTI, SOFR, ULSD).
+ */
+export function cotMarketName(name: string): string {
+  const cut = name.lastIndexOf(" - ");
+  return cut > 0 ? name.slice(0, cut).trim() : name.trim();
+}
 export function cotInteger(value: number | null, signed = false): string {
   return value == null ? "--" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 }
@@ -73,13 +83,20 @@ export function cotLegendValue(value: number, series: Pick<ResolvedSeries, "id">
   return series.id === "price" ? formatPriceObservation(cleanFloat32Price(value)) : cotInteger(value, true);
 }
 
+/**
+ * A holiday moves a report date a day or two (2025-11-10 then 2025-11-18), so
+ * consecutive weekly reports can sit eight or nine days apart. Only a gap that
+ * leaves room for a whole missing week is one.
+ */
+const COT_MISSING_WEEK_MS = 11 * 86_400_000;
+
 /** Add explicit gaps so absent weeks are not silently joined across a release gap. */
 export function cotNetPoints(history: readonly CotHistoryPoint[], traderClass: CotClass) {
   const points: Array<{ date: Date; observedAt: Date; value: number | null }> = [];
   let previous: number | null = null;
   for (const row of history) {
     const time = Date.parse(row.reportDate);
-    if (previous != null && time - previous > 7 * 86_400_000) {
+    if (previous != null && time - previous >= COT_MISSING_WEEK_MS) {
       const date = new Date(previous + 7 * 86_400_000);
       points.push({ date, observedAt: date, value: null });
     }

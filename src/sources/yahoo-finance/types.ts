@@ -40,6 +40,8 @@ export type QuoteSummaryResponse = {
         shortName?: string;
         longName?: string;
         exchangeName?: string;
+        /** A continuous futures alias's priced contract, such as SBH27.NYB for SB=F. */
+        underlyingSymbol?: string;
       };
       quoteType?: {
         exchange?: string;

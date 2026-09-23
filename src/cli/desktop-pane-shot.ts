@@ -608,8 +608,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
             });
           });
         });
+      // Panes that lay out entries as prose rather than a table, such as the
+      // 8-K feed, mark each entry as a row so the capture can count it.
       if (rows.length === 0) {
-        [...root.querySelectorAll('[data-gloom-role="desktop-list-row"]')]
+        [...root.querySelectorAll('[data-gloom-role="desktop-list-row"], [data-gloom-row="true"]')]
           .filter(isVisible)
           .forEach((row, rowIndex) => {
             const text = normalize(row.innerText || row.textContent);

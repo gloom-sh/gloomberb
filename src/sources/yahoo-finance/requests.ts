@@ -20,7 +20,9 @@ import type {
 } from "./types";
 import type { YahooHttpClient } from "./http";
 import { applyYahooHistoryCoverage } from "../history-coverage";
-import { reconcileYahooCurrentPeriod } from "./chart-period";
+import { coverFxOpenClose, reconcileYahooCurrentPeriod, withoutLiveRowVolume } from "./chart-period";
+import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "../../time-series/resolution";
+import { yahooFuturesAliasName, yahooSecurityName } from "./names";
 
 /**
  * Yahoo stamps calendar bars at midnight in the instrument's zone, so an FX
@@ -84,11 +86,14 @@ export async function fetchYahooChart(
     close: quote.close?.[i] ?? Number.NaN,
     volume: quote.volume?.[i] ?? undefined,
   }));
-  const dated = dateCalendarBars(
-    reconcileYahooCurrentPeriod(rows, interval, result.meta),
-    interval,
-    result.meta?.exchangeTimezoneName,
-  );
+  let reconciled = reconcileYahooCurrentPeriod(rows, interval, result.meta);
+  const resolution = interval as ManualChartResolution;
+  if (Object.hasOwn(CHART_RESOLUTION_STEP_MS, interval) && isIntradayResolution(resolution)) {
+    reconciled = withoutLiveRowVolume(reconciled, CHART_RESOLUTION_STEP_MS[resolution]);
+  } else if (result.meta?.instrumentType === "CURRENCY") {
+    reconciled = coverFxOpenClose(reconciled);
+  }
+  const dated = dateCalendarBars(reconciled, interval, result.meta?.exchangeTimezoneName);
   const hasClose = (point: PricePoint) => Number.isFinite(point.close) && point.close > 0;
   const history = dated.filter(hasClose);
   return { meta: result.meta || {},
@@ -162,29 +167,29 @@ export async function fetchYahooAssetProfile(
     : undefined;
 }
 
+/** Summary fields layered over the chart quote; name is set only when it corrects the chart's (a rolled futures alias). */
+export type YahooQuoteSupplement = Pick<
+  Quote,
+  "bid" | "ask" | "bidSize" | "askSize" | "previousClose" | "open" | "high" | "low" | "name"
+>;
+
 export async function fetchYahooQuoteSupplement(
   http: YahooHttpClient,
   symbol: string,
   currencyDivisor = 1,
-): Promise<
-  Pick<
-    Quote,
-    | "bid"
-    | "ask"
-    | "bidSize"
-    | "askSize"
-    | "previousClose"
-    | "open"
-    | "high"
-    | "low"
-  >
-> {
+): Promise<YahooQuoteSupplement> {
   try {
-    const params = new URLSearchParams({ modules: "summaryDetail" });
+    // A continuous futures alias also needs the contract its price belongs to.
+    const futuresAlias = /=F$/i.test(symbol);
+    const params = new URLSearchParams({ modules: futuresAlias ? "summaryDetail,price" : "summaryDetail" });
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
     const data = await http.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
     const summaryDetail = data.quoteSummary?.result?.[0]?.summaryDetail;
     if (!summaryDetail) return {};
+    const price = data.quoteSummary?.result?.[0]?.price;
+    const name = futuresAlias
+      ? yahooFuturesAliasName(symbol, yahooSecurityName(price?.shortName, price?.longName), price?.underlyingSymbol)
+      : undefined;
 
     const bid = normalizePositiveMarketValue(
       financeRawNumber(summaryDetail.bid),
@@ -222,6 +227,7 @@ export async function fetchYahooQuoteSupplement(
       open,
       high,
       low,
+      ...(name ? { name } : {}),
     };
   } catch {
     return {};

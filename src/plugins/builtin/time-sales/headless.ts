@@ -1,9 +1,9 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { fetchTape } from "./client";
-import { newestFirst, quoteSpread, tapePrice, tapeStatistics } from "./model";
+import { newestFirst, quoteSpread, tapePrice, tapePriceDigits, tapeStatistics } from "./model";
 
 type Format = NonNullable<HeadlessPaneColumn["format"]>;
-const price: Format = (value) => tapePrice(typeof value === "number" ? value : null);
+const fixedPrice = (digits: number): Format => (value) => tapePrice(typeof value === "number" ? value : null, digits);
 const bps: Format = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "--";
 
 /** Every row key in order, with the pane's rounding where the report would otherwise print raw floats. */
@@ -26,10 +26,13 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const window = [{ from: statistics.from, asOf: statistics.asOf, prints: statistics.count, shares: statistics.volume,
       vwap: statistics.vwap, low: statistics.low, high: statistics.high, pricePercentile: statistics.pricePercentile }];
     const quotes = newestFirst(data.quotes).slice(0, Number(args.options.limit ?? 100)).map((row) => ({ ...row, ...quoteSpread(row), conditions: row.conditions.join(" ") }));
+    // One decimal count per column, as the pane shows it, so sub-penny prints align.
+    const price = fixedPrice(tapePriceDigits(data.trades.map((row) => row.price)));
+    const trades = newestFirst(data.trades).slice(0, Number(args.options.limit ?? 100)).map((row) => ({ ...row, conditions: row.conditions.join(" ") }));
     return { sections: [
       { title: "Observed window", columns: formattedColumns(window, { vwap: price, low: price, high: price }), rows: window },
-      { title: "Regular session", rows: [data.session] },
-      { title: "Trades", rows: newestFirst(data.trades).slice(0, Number(args.options.limit ?? 100)).map((row) => ({ ...row, conditions: row.conditions.join(" ") })) },
+      { title: "Regular session", columns: formattedColumns([data.session], { high: price, low: price }), rows: [data.session] },
+      { title: "Trades", columns: formattedColumns(trades, { price }), rows: trades },
       { title: "NBBO", columns: formattedColumns(quotes, { bps }), rows: quotes },
     ], errors: data.gaps, metadata: { source: data.source, feed: data.feed, delaySeconds: data.delaySeconds,
       asOf: data.asOf, observedFrom: data.observedFrom, generatedAt: data.generatedAt, status: data.status,

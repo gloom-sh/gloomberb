@@ -112,6 +112,7 @@ import type {
   CloudTweetSearchResponse,
   CloudWorldVenueMapPayload,
   CloudYieldPointPayload,
+  ScannerFlowHistoryPage,
 } from "./types";
 
 type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -374,6 +375,11 @@ export class CloudDataApi {
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {
     return this.request<CentralBankRatesPayload>("/cloud/econ/central-bank-rates", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** Recorded FLOW prints older than the live tape (Pro); the plugin builds `search`. */
+  getScannerFlowHistory(search: string, signal?: AbortSignal) {
+    return this.request<ScannerFlowHistoryPage>(`/market/scanner/flow/history?${search}`, { signal });
   }
 
   getMobileAlertHistory<T>(offset = 0) {

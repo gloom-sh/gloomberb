@@ -1,4 +1,4 @@
-import type { ScannerFlowEvent, ScannerStatus } from "../../../api-client";
+import type { ScannerFlowEvent, ScannerFlowHistoryQuery, ScannerStatus } from "../../../api-client";
 
 export type FlowMinPremium = "50000" | "250000" | "1000000";
 export type FlowSide = "calls" | "puts" | "both";
@@ -71,6 +71,16 @@ function expiryDaysFromNow(expiry: string, now: number): number | null {
   return (parsed - now) / MS_PER_DAY;
 }
 
+/** The OSI root a listed symbol's options trade under: BRK.B trades as BRKB. */
+export function flowOptionRoot(symbol: string): string {
+  return symbol.trim().toUpperCase().replace(/[.\-/ ]/g, "");
+}
+
+/** Adjusted contracts carry a numbered root (SOXS1) for the same name. */
+function printRoot(underlying: string): string {
+  return underlying.toUpperCase().replace(/\d+$/, "");
+}
+
 /**
  * The shared feed is published once for everyone, so every user preference is a
  * local predicate over the same events. Never push these upstream.
@@ -84,6 +94,7 @@ export function filterFlowEvents(
   const minPremium = Number(filters.minPremium);
   const minVolOi = filters.volOi === "off" ? null : Number(filters.volOi);
   const maxExpiryDays = filters.expiry === "all" ? null : Number(filters.expiry);
+  const roots = filters.universe === "watchlist" ? new Set([...watchlist].map(flowOptionRoot)) : null;
 
   return (events ?? []).filter((event) => {
     if (!(event.premium >= minPremium)) return false;
@@ -96,7 +107,7 @@ export function filterFlowEvents(
       const days = expiryDaysFromNow(event.expiry, now);
       if (days == null || days > maxExpiryDays || days < -1) return false;
     }
-    if (filters.universe === "watchlist" && !watchlist.has(event.underlying.toUpperCase())) return false;
+    if (roots && !roots.has(printRoot(event.underlying))) return false;
     return true;
   });
 }
@@ -154,8 +165,108 @@ export function formatFlowExpiry(expiry: string): string {
   return parts.length === 3 ? `${parts[1]}/${parts[2]}` : expiry;
 }
 
-export function formatFlowTime(at: number): string {
+/** Today's prints to the second; earlier days carry their date. */
+export function formatFlowTime(at: number, now = Date.now()): string {
   const date = new Date(at);
   const pad = (value: number) => String(value).padStart(2, "0");
+  if (localDay(at) !== localDay(now)) {
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/** Rows per page of recorded prints below the live tape. */
+export const FLOW_HISTORY_PAGE = 100;
+/** Live prints a pane keeps once they scroll off the shared tape. */
+export const FLOW_KEPT_PRINTS = 20_000;
+
+/** Newest first; ties keep the server's byte order on id so pages line up. */
+export function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {
+  if (left.at !== right.at) return right.at - left.at;
+  return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
+}
+
+/**
+ * The shared tape holds its latest prints only. A pane keeps every print it
+ * has received, so a print that rolls off the tape does not leave a hole
+ * above the recorded pages loaded below it.
+ */
+export function keepFlowPrints(
+  kept: readonly ScannerFlowEvent[],
+  incoming: readonly ScannerFlowEvent[] | undefined,
+  limit = FLOW_KEPT_PRINTS,
+): readonly ScannerFlowEvent[] {
+  if (!incoming?.length) return kept;
+  const ids = new Set(kept.map((event) => event.id));
+  const fresh = incoming.filter((event) => !ids.has(event.id));
+  if (fresh.length === 0) return kept;
+  return [...fresh, ...kept].sort(compareFlowDesc).slice(0, limit);
+}
+
+/** Every print once, newest first. */
+export function mergeFlowRows(
+  live: readonly ScannerFlowEvent[],
+  older: readonly ScannerFlowEvent[],
+): ScannerFlowEvent[] {
+  if (older.length === 0) return [...live];
+  const byId = new Map<string, ScannerFlowEvent>();
+  for (const event of [...live, ...older]) {
+    if (!byId.has(event.id)) byId.set(event.id, event);
+  }
+  return [...byId.values()].sort(compareFlowDesc);
+}
+
+/** The pane's filters as a query for recorded prints, so each page is rows it will show. */
+export function flowHistoryQuery(
+  filters: FlowFilters,
+  watchlist: ReadonlySet<string>,
+  before?: { at: number; id: string },
+  limit = FLOW_HISTORY_PAGE,
+): ScannerFlowHistoryQuery {
+  return {
+    ...(before ? { before } : {}),
+    limit,
+    minPremium: Number(filters.minPremium),
+    ...(filters.side === "calls" ? { right: "C" as const } : filters.side === "puts" ? { right: "P" as const } : {}),
+    ...(filters.kind === "sweeps" ? { kind: "sweep" as const } : filters.kind === "blocks" ? { kind: "block" as const } : {}),
+    ...(filters.volOi === "off" ? {} : { minVolOi: Number(filters.volOi) }),
+    ...(filters.expiry === "all" ? {} : { maxExpiryDays: Number(filters.expiry) }),
+    ...(filters.universe === "watchlist" ? { symbols: [...watchlist].map((symbol) => symbol.toUpperCase()).sort() } : {}),
+  };
+}
+
+function localDay(at: number): string {
+  const date = new Date(at);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/** True when any row is from an earlier day, so the time column needs its date. */
+export function flowRowsSpanDays(events: readonly ScannerFlowEvent[], now = Date.now()): boolean {
+  const today = localDay(now);
+  return events.some((event) => localDay(event.at) !== today);
+}
+
+/** The recorded-print query as the Cloud route reads it. */
+export function flowHistorySearch(query: ScannerFlowHistoryQuery): string {
+  const params = new URLSearchParams();
+  if (query.before) {
+    params.set("beforeAt", String(query.before.at));
+    params.set("beforeId", query.before.id);
+  }
+  const optional: Array<[string, string | number | undefined]> = [
+    ["limit", query.limit],
+    ["minPremium", query.minPremium],
+    ["right", query.right],
+    ["kind", query.kind],
+    ["minVolOi", query.minVolOi],
+    ["maxExpiryDays", query.maxExpiryDays],
+  ];
+  for (const [key, value] of optional) {
+    if (value != null) params.set(key, String(value));
+  }
+  if (query.symbols) {
+    params.set("universe", "symbols");
+    params.set("symbols", query.symbols.join(","));
+  }
+  return params.toString();
 }

@@ -126,9 +126,28 @@ function newsOptions() {
   ];
 }
 
-function queryFor(args: HeadlessPaneLoadArgs, feed: "latest" | "ticker"): NewsQuery {
+/**
+ * A bare symbol listed on several exchanges is ambiguous to the news service.
+ * The pane asks with the saved listing's exchange, so the report does too.
+ */
+async function resolveTicker(
+  args: HeadlessPaneLoadArgs,
+  context: HeadlessPaneContext,
+): Promise<{ symbol: string; exchange?: string } | null> {
+  const key = args.symbols[0];
+  if (!key) return null;
+  const parsed = parsePublicTickerKey(key);
+  if (parsed.exchange || !context.resolveInstrument) return parsed;
+  const saved = await context.resolveInstrument(key);
+  return { symbol: parsed.symbol, exchange: saved.exchange || undefined };
+}
+
+function queryFor(
+  args: HeadlessPaneLoadArgs,
+  feed: "latest" | "ticker",
+  ticker: { symbol: string; exchange?: string } | null = null,
+): NewsQuery {
   const sentiment = selectedSentiment(args);
-  const ticker = args.symbols[0] ? parsePublicTickerKey(args.symbols[0]) : null;
   return {
     feed,
     ...(feed === "ticker"
@@ -178,7 +197,10 @@ export function createTickerNewsHeadless(
     describe: (args) => `Ticker News | ${String(args.argument)}`,
     async load(args, context) {
       return projectNewsHeadless(
-        await dependencies.loadNews(queryFor(args, "ticker"), context),
+        await dependencies.loadNews(
+          queryFor(args, "ticker", await resolveTicker(args, context)),
+          context,
+        ),
         args,
         dependencies.now(),
       );
