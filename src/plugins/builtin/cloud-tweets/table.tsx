@@ -79,7 +79,7 @@ function TweetDetail({
   const imageUrls = tweetImageUrls(tweet);
   const imageWidth = Math.min(lineWidth, 72);
   const imageHeight = Math.max(6, Math.min(14, Math.floor(imageWidth * 0.35)));
-  const { catalog, openTicker } = useInlineTickers([tweetText]);
+  const { catalog, openTicker } = useInlineTickers([tweetText], { badgeQuotes: true });
 
   return (
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>

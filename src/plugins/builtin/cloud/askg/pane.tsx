@@ -804,7 +804,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     () => state.turns.map((turn) => turn.answer).filter(Boolean),
     [state.turns],
   );
-  const { catalog, openTicker } = useInlineTickers(answerTexts);
+  const { catalog, openTicker } = useInlineTickers(answerTexts, { badgeQuotes: true });
 
   usePaneFooter(`askg:${paneId}`, () => ({
     info: [

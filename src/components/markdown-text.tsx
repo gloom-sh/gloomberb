@@ -1,7 +1,7 @@
 import { Box, Span, Text } from "../ui";
 import { useState } from "react";
 import { TextAttributes } from "../ui";
-import { TickerBadge } from "./ticker/badge";
+import { InlineTickerBadge } from "./ticker/badge";
 import { tokenizeTickerText } from "../tickers/tokenizer";
 import type { InlineTickerCatalogEntry } from "../state/hooks/inline-tickers";
 import { colors } from "../theme/colors";
@@ -212,11 +212,10 @@ function MarkdownLine({
             );
           }
           return (
-            <TickerBadge
+            <InlineTickerBadge
               key={`badge:${segIdx}:${tokIdx}:${token.symbol}`}
               symbol={token.symbol}
-              status={entry.status}
-              quote={entry.quote}
+              entry={entry}
               hovered={hoveredSymbol === token.symbol}
               onHoverStart={() => onHover(token.symbol)}
               onHoverEnd={() => onHover(null)}

@@ -3,6 +3,7 @@ import { TextAttributes } from "../../../ui";
 import { blendHex, colors, priceColor } from "../../../theme/colors";
 import { getSharedRegistry } from "../../../plugins/registry";
 import type { Quote } from "../../../types/financials";
+import { useInlineTickerQuote, type InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { getTickerBadgeText, type TickerBadgeStatus } from "./format";
 
 export interface TickerBadgeProps {
@@ -87,4 +88,24 @@ export function TickerBadge({
       </Box>
     </Box>
   );
+}
+
+export interface InlineTickerBadgeProps extends Omit<TickerBadgeProps, "status" | "quote"> {
+  entry: InlineTickerCatalogEntry;
+}
+
+function inlineBadgeStatus(entry: InlineTickerCatalogEntry): TickerBadgeStatus {
+  if (entry.status === "ambiguous" || entry.status === "loading") return entry.status;
+  return "ready";
+}
+
+/**
+ * The badge for one catalog entry in running text. A catalog built with
+ * `badgeQuotes` leaves the price to this badge, which follows its own symbol's
+ * quote, so a tick re-renders the chip instead of the message or document
+ * around it.
+ */
+export function InlineTickerBadge({ entry, ...props }: InlineTickerBadgeProps) {
+  const liveQuote = useInlineTickerQuote(entry.liveBadge ? props.symbol : null, entry.ticker);
+  return <TickerBadge {...props} status={inlineBadgeStatus(entry)} quote={liveQuote ?? entry.quote} />;
 }

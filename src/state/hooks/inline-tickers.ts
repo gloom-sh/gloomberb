@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getSharedRegistry } from "../../plugins/registry";
 import { useAppDispatch, useAppSelector } from "../app/context";
 import {
@@ -35,6 +35,11 @@ export interface InlineTickerCatalogEntry {
   status: InlineTickerStatus;
   ticker: TickerRecord | null;
   quote: Quote | null;
+  /**
+   * Set by `badgeQuotes`: the badge reads its own live quote, and `quote` is
+   * only the price known when the catalog was built (enough to size a layout).
+   */
+  liveBadge?: boolean;
 }
 
 export interface UseInlineTickersOptions {
@@ -46,7 +51,23 @@ export interface UseInlineTickersOptions {
    * or a quote subscription.
    */
   settleMs?: number;
+  /**
+   * Leave live prices to the badges. The catalog then changes only when a
+   * symbol resolves or its first quote lands, so a host that lays out a whole
+   * document (a chat transcript, an answer, a detail page) does not re-render
+   * on every tick; each badge re-renders on its own symbol's quote instead.
+   * Render the entries with `InlineTickerBadge`.
+   */
+  badgeQuotes?: boolean;
 }
+
+/**
+ * Badges print the day's change rounded to 0.1%, so they gain nothing from the
+ * fast lane a portfolio row or a detail price gets. They stream as off-screen,
+ * low-weight targets: about one update a second, and they give way to the
+ * symbols a user is watching when a plan's symbol budget runs out.
+ */
+export const INLINE_TICKER_STREAM_WEIGHT = 20;
 
 const NO_INSTRUMENTS: InstrumentRef[] = [];
 const resolutionInFlight = new Map<string, Promise<void>>();
@@ -142,6 +163,61 @@ async function loadInlineQuotes(requests: Map<string, QuoteRequest>): Promise<vo
   }));
 }
 
+function subscribeQuoteKeys(keys: readonly string[], listener: () => void): () => void {
+  const coordinator = getSharedMarketDataCoordinator();
+  if (!coordinator || keys.length === 0) return () => {};
+  if (typeof coordinator.subscribeKeys === "function") return coordinator.subscribeKeys(keys, listener);
+  return coordinator.subscribe(listener);
+}
+
+function quoteKeysVersion(keys: readonly string[]): number {
+  const coordinator = getSharedMarketDataCoordinator();
+  if (!coordinator || keys.length === 0) return 0;
+  if (typeof coordinator.getKeysVersion === "function") return coordinator.getKeysVersion(keys);
+  return coordinator.getVersion();
+}
+
+function readQuote(instrument: InstrumentRef): Quote | null {
+  const entry = getSharedMarketDataCoordinator()?.getQuoteEntry(instrument);
+  return entry ? resolveEntryValue(entry) : null;
+}
+
+/**
+ * Which of the instruments have any quote yet, as a string that only changes
+ * when one arrives or goes away. Ticks leave it alone, so the host holding the
+ * catalog does not re-render with the market.
+ */
+function useQuotePresence(instruments: readonly InstrumentRef[]): string {
+  const keys = useMemo(() => instruments.map((instrument) => buildQuoteKey(instrument)), [instruments]);
+  const subscribe = useCallback((listener: () => void) => subscribeQuoteKeys(keys, listener), [keys]);
+  const getSnapshot = useCallback(
+    () => instruments.map((instrument) => (readQuote(instrument) ? "1" : "0")).join(""),
+    [instruments],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, () => "");
+}
+
+/**
+ * One badge's live quote. Subscribes to that symbol's quote key only, so a tick
+ * re-renders this badge and nothing around it. The stream itself is opened by
+ * `useInlineTickers`; this only reads what it fills.
+ */
+export function useInlineTickerQuote(
+  symbol: string | null,
+  ticker: TickerRecord | null | undefined,
+): Quote | null {
+  const instrument = useMemo(
+    () => (symbol ? instrumentFromTicker(ticker ?? null, symbol) : null),
+    [symbol, ticker],
+  );
+  const key = instrument ? buildQuoteKey(instrument) : null;
+  const keys = useMemo(() => (key ? [key] : []), [key]);
+  const subscribe = useCallback((listener: () => void) => subscribeQuoteKeys(keys, listener), [keys]);
+  const getSnapshot = useCallback(() => quoteKeysVersion(keys), [keys]);
+  const version = useSyncExternalStore(subscribe, getSnapshot, () => 0);
+  return useMemo(() => (instrument ? readQuote(instrument) : null), [instrument, version]);
+}
+
 export function useInlineTickerOpener(): (symbol: string) => void {
   const registry = getSharedRegistry();
   return useCallback((symbol: string) => {
@@ -157,6 +233,7 @@ export function useInlineTickers(
   openTicker: (symbol: string) => void;
 } {
   const liveQuotes = options.liveQuotes ?? true;
+  const badgeQuotes = liveQuotes && options.badgeQuotes === true;
   const settleMs = Math.max(0, options.settleMs ?? 0);
   const dispatch = useAppDispatch();
   const tickers = useAppSelector((state) => state.tickers);
@@ -191,8 +268,8 @@ export function useInlineTickers(
       symbol: instrument.symbol,
       exchange: instrument.exchange,
       surface: "inline" as const,
-      visible: true,
-      weight: 40,
+      visible: false,
+      weight: INLINE_TICKER_STREAM_WEIGHT,
       context: instrument.instrument
         ? {
           brokerId: instrument.brokerId,
@@ -205,15 +282,20 @@ export function useInlineTickers(
 
   useQuoteStreaming(streamingTargets);
   // The stream fills the coordinator, so reading it here is what makes a badge
-  // tick with the market instead of freezing on its first snapshot.
-  const quoteEntries = useQuoteEntries(settled ? instruments : NO_INSTRUMENTS);
+  // tick with the market instead of freezing on its first snapshot. With
+  // `badgeQuotes` the host only learns when a first quote lands; the badges
+  // follow the ticks themselves.
+  const observed = settled ? instruments : NO_INSTRUMENTS;
+  const quoteEntries = useQuoteEntries(badgeQuotes ? NO_INSTRUMENTS : observed);
+  const quotePresence = useQuotePresence(badgeQuotes ? observed : NO_INSTRUMENTS);
   const readStreamedQuote = useCallback((symbol: string): Quote | null => {
     const ticker = latestRef.current.tickers.get(symbol);
     const instrument = ticker ? instrumentFromTicker(ticker, symbol) : null;
     if (!instrument) return null;
+    if (badgeQuotes) return readQuote(instrument);
     const entry = quoteEntries.get(buildQuoteKey(instrument));
     return entry ? resolveEntryValue(entry) : null;
-  }, [quoteEntries]);
+  }, [badgeQuotes, quoteEntries, quotePresence]);
 
   useEffect(() => {
     if (!settled) return;
@@ -372,10 +454,10 @@ export function useInlineTickers(
           : resolutionFailure
             ? "missing"
             : "loading";
-      entries[symbol] = { status, ticker, quote };
+      entries[symbol] = badgeQuotes ? { status, ticker, quote, liveBadge: true } : { status, ticker, quote };
     }
     return entries;
-  }, [financials, liveQuotes, readStreamedQuote, refreshVersion, symbols, tickers]);
+  }, [badgeQuotes, financials, liveQuotes, readStreamedQuote, refreshVersion, symbols, tickers]);
 
   return { catalog, openTicker };
 }

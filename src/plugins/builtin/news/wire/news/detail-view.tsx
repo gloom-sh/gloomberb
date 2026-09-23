@@ -4,7 +4,7 @@ import { useShortcut } from "../../../../../react/input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
-import { TickerBadge } from "../../../../../components/ticker/badge";
+import { InlineTickerBadge } from "../../../../../components/ticker/badge";
 import { ExternalLinkText } from "../../../../../components/ui";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
@@ -228,7 +228,7 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
     [item.tickers],
   );
   const tickerTexts = useMemo(() => tickers.map((ticker) => `$${ticker}`), [tickers]);
-  const { catalog, openTicker } = useInlineTickers(tickerTexts);
+  const { catalog, openTicker } = useInlineTickers(tickerTexts, { badgeQuotes: true });
   const [hoveredTicker, setHoveredTicker] = useState<string | null>(null);
   const timelineItems = useMemo(() => sortStoryItems(item.items), [item.items]);
   const categoryLabels = useMemo(
@@ -304,11 +304,10 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
                 }
 
                 return (
-                  <TickerBadge
+                  <InlineTickerBadge
                     key={ticker}
                     symbol={ticker}
-                    status={entry.status}
-                    quote={entry.quote}
+                    entry={entry}
                     hovered={hoveredTicker === ticker}
                     onHoverStart={() => setHoveredTicker(ticker)}
                     onHoverEnd={() => {

@@ -3,7 +3,7 @@ import type { ChatMessage } from "../../../api-client";
 import { splitLongTextSegmentByDisplayWidth, truncateWithEllipsis } from "../../../utils/text-wrap";
 import { tokenizeInlineContent, type InlineContentToken } from "../../../utils/inline-content-tokenizer";
 import { displayWidth } from "../../../utils/format";
-import { getTickerBadgeCellWidth } from "../../../components/ticker/badge/format";
+import { getTickerBadgeCellWidth, getTickerBadgeReservedCellWidth } from "../../../components/ticker/badge/format";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
@@ -68,7 +68,9 @@ function inlineTokenWidth(
   const entry = catalog[token.symbol];
   if (!entry || entry.status === "missing") return displayWidth(token.value);
 
-  const baseWidth = getTickerBadgeCellWidth({
+  // A live badge's change moves with every tick; reserving its widest form
+  // keeps the wrapped lines (and the transcript's scroll offsets) stable.
+  const baseWidth = getTickerBadgeReservedCellWidth({
     symbol: token.symbol,
     status: entry.status,
     quote: entry.quote,

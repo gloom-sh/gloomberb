@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Box, Text } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { ExternalLinkText } from "../../../../components/ui";
-import { TickerBadge } from "../../../../components/ticker/badge";
+import { InlineTickerBadge } from "../../../../components/ticker/badge";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { blendHex, colors } from "../../../../theme/colors";
 import type { ChatUserSummary } from "../../../../api-client";
@@ -105,11 +105,10 @@ export function ResponsiveTickerBadgeText({
         }
 
         return (
-          <TickerBadge
+          <InlineTickerBadge
             key={`badge:${index}:${token.symbol}`}
             symbol={token.symbol}
-            status={entry.status}
-            quote={entry.quote}
+            entry={entry}
             hovered={hoveredSymbol === token.symbol}
             onHoverStart={() => setHoveredSymbol(token.symbol)}
             onHoverEnd={() => {

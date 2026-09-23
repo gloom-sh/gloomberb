@@ -1,6 +1,6 @@
 import { Box, Text, TextAttributes } from "../../../ui";
 import { useState } from "react";
-import { TickerBadge } from "./index";
+import { InlineTickerBadge } from "./index";
 import { ExternalLinkText, openUrl } from "../../ui";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
@@ -133,11 +133,10 @@ export function TickerBadgeText({
               }
 
               return (
-                <TickerBadge
+                <InlineTickerBadge
                   key={`badge:${lineIndex}:${index}:${token.symbol}`}
                   symbol={token.symbol}
-                  status={entry.status}
-                  quote={entry.quote}
+                  entry={entry}
                   hovered={hoveredSymbol === token.symbol}
                   onHoverStart={() => setHoveredSymbol(token.symbol)}
                   onHoverEnd={() => {

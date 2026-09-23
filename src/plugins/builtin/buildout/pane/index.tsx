@@ -15,6 +15,7 @@ import type { PaneProps } from "../../../../types/plugin";
 import { useShortcut } from "../../../../react/input";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
+import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
 import { BuildoutDetail } from "../detail";
 import type {
   BuildoutColumn,
@@ -59,6 +60,24 @@ import { useBuildoutDataRuntime } from "../data-runtime";
 
 const BUILDOUT_UPGRADE_URL = "https://thebuildout.ai/pricing";
 
+
+const NO_TICKER_TEXTS: string[] = [];
+
+/** Every string in a detail item that could hold a `$TICKER`. */
+function collectTickerTexts(value: unknown, out: string[], depth: number): void {
+  if (value == null || depth > 6) return;
+  if (typeof value === "string") {
+    if (value.includes("$")) out.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectTickerTexts(item, out, depth + 1);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value)) collectTickerTexts(item, out, depth + 1);
+  }
+}
 export function BuildoutPane({ focused, width, height }: PaneProps) {
   const rendererHost = useRendererHost();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -136,17 +155,25 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   );
   const columns = useMemo(() => columnsForTab(activeTab, selectedList, canFavorite), [activeTab, canFavorite, selectedList]);
   const selectedRow = rows[selectedIndex] ?? rows[0] ?? null;
+  // The table's cells carry their own badges; this catalog only serves the open
+  // detail: its row's tickers, plus the loaded rows' tickers its text mentions.
+  // Streaming every loaded row here would subscribe pages of symbols nobody sees.
   const tickerTexts = useMemo(() => {
-    const symbols = new Set<string>();
-    for (const row of rows) {
-      for (const symbol of rowTickerSymbols(row)) symbols.add(symbol);
-    }
-    if (detailRow) {
-      for (const symbol of rowTickerSymbols(detailRow)) symbols.add(symbol);
+    if (!detailRow) return NO_TICKER_TEXTS;
+    const symbols = new Set<string>(rowTickerSymbols(detailRow));
+    const texts: string[] = [];
+    collectTickerTexts(detailRow.item, texts, 0);
+    const mentioned = new Set(collectUniqueTickerSymbols(texts));
+    if (mentioned.size > 0) {
+      for (const row of rows) {
+        for (const symbol of rowTickerSymbols(row)) {
+          if (mentioned.has(symbol)) symbols.add(symbol);
+        }
+      }
     }
     return [tickerSearchText([...symbols])];
   }, [detailRow, rows]);
-  const { catalog: tickerCatalog, openTicker } = useInlineTickers(tickerTexts);
+  const { catalog: tickerCatalog, openTicker } = useInlineTickers(tickerTexts, { badgeQuotes: true });
   const detailCompanyTicker = detailRow?.kind === "company" ? tickerSymbol(detailRow.item.ticker) : null;
   const openDetailTicker = useCallback(() => {
     if (!detailCompanyTicker) return;

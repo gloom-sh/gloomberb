@@ -202,7 +202,7 @@ export function ChatContent({
   }, [updateComposerRows]);
 
   const messageContents = useMemo(() => messages.map((message) => message.content), [messages]);
-  const { catalog, openTicker } = useInlineTickers(messageContents);
+  const { catalog, openTicker } = useInlineTickers(messageContents, { badgeQuotes: true });
   const userByUsername = useMemo(() => buildChatUserByUsername(channels, messages), [channels, messages]);
   const activeChannel = useMemo(() => channels.find((channel) => channel.id === channelId), [channelId, channels]);
   const activeChannelTitle = useMemo(() => formatChatPaneTitle(activeChannel, channelId), [activeChannel, channelId]);
