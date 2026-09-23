@@ -20,6 +20,7 @@ import type {
 } from "./types";
 import type { YahooHttpClient } from "./http";
 import { applyYahooHistoryCoverage } from "../history-coverage";
+import { reconcileYahooCurrentPeriod } from "./chart-period";
 
 export async function fetchYahooChart(
   http: YahooHttpClient,
@@ -53,19 +54,16 @@ export async function fetchYahooChart(
   const quote = result.indicators?.quote?.[0];
   if (!quote) throw new Error(`Missing indicators for ${symbol}`);
 
-  const history: PricePoint[] = [];
-  for (let i = 0; i < result.timestamp.length; i++) {
-    const close = quote.close?.[i];
-    if (close == null || !Number.isFinite(close) || close <= 0) continue;
-    history.push({
-      date: new Date((result.timestamp[i]!) * 1000),
-      open: quote.open?.[i] ?? undefined,
-      high: quote.high?.[i] ?? undefined,
-      low: quote.low?.[i] ?? undefined,
-      close,
-      volume: quote.volume?.[i] ?? undefined,
-    });
-  }
+  const rows: PricePoint[] = result.timestamp.map((timestamp, i) => ({
+    date: new Date(timestamp * 1000),
+    open: quote.open?.[i] ?? undefined,
+    high: quote.high?.[i] ?? undefined,
+    low: quote.low?.[i] ?? undefined,
+    close: quote.close?.[i] ?? Number.NaN,
+    volume: quote.volume?.[i] ?? undefined,
+  }));
+  const history = reconcileYahooCurrentPeriod(rows, interval, result.meta)
+    .filter((point) => Number.isFinite(point.close) && point.close > 0);
   return { meta: result.meta || {},
     history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
     events: result.events, observedAt, regularHoursOnly: !includePrePost };
