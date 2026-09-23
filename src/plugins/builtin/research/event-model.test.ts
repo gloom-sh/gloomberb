@@ -159,7 +159,7 @@ test("spinoff adjustment factors are not presented as verified share splits", ()
     splits: [{ date: "2024-04-02", fromFactor: 1000, toFactor: 1253, description: "1253:1000 split" }],
   }, null, null, "USD");
   expect(row).toMatchObject({ status: "Factor", value: "1253:1000", adjustmentFactor: 1.253,
-    detail: "Provider split/adjustment", providerDescription: "1253:1000 split" });
+    detail: "Split/adjustment", providerDescription: "1253:1000 split" });
   expect(row?.qEps).toBeUndefined();
 
 });

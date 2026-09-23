@@ -15,29 +15,6 @@ function halfWidthFor(width: number): number {
   return Math.max(MIN_HALF_WIDTH, Math.floor((width - LABEL_WIDTH - 2) / 2));
 }
 
-/** Desktop gets a real swatch element; the terminal gets the densest glyph. */
-function Swatch({ color, isDesktopWeb }: { color: string; isDesktopWeb: boolean }) {
-  if (!isDesktopWeb) return <Text fg={color}>■</Text>;
-  return (
-    <Box
-      backgroundColor={color}
-      style={{ width: "9px", height: "9px", borderRadius: "2px", alignSelf: "center" }}
-    />
-  );
-}
-
-function Legend({ width, isDesktopWeb }: { width: number; isDesktopWeb: boolean }) {
-  return (
-    <Box flexDirection="row" height={1} paddingX={1} width={width} alignItems="center">
-      <Swatch color={colors.negative} isDesktopWeb={isDesktopWeb} />
-      <Text fg={colors.textDim}> New Lows</Text>
-      <Box flexGrow={1} />
-      <Text fg={colors.textDim}>New Highs </Text>
-      <Swatch color={colors.positive} isDesktopWeb={isDesktopWeb} />
-    </Box>
-  );
-}
-
 function RowLabel({ row }: { row: HiloBarRow }) {
   return (
     <Box width={LABEL_WIDTH} flexShrink={0} justifyContent="center" alignItems="center">
@@ -123,7 +100,6 @@ export function HiloBars({ windows, width }: HiloBarsProps) {
 
   return (
     <Box flexDirection="column" width={width} flexShrink={0}>
-      <Legend width={width} isDesktopWeb={isDesktopWeb} />
       {isDesktopWeb
         ? <DesktopHiloBars rows={rows} width={width} />
         : <TerminalHiloBars rows={rows} halfWidth={halfWidthFor(width)} width={width} />}

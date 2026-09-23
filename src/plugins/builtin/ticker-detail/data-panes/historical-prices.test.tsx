@@ -35,7 +35,7 @@ test("historical table preserves tiny prices and signed changes inside its numer
     expect(frame).toContain("0.00000532");
     expect(frame).toContain("0.00000542");
     expect(frame).toContain("0.00000501");
-    expect(frame).toContain("-2e-8");
+    expect(frame).toContain("-0.00000002");
     expect(frame).toContain("0.00000001");
   } finally { await act(async () => { setup.renderer.destroy(); }); }
 });

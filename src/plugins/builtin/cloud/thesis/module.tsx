@@ -12,7 +12,7 @@ import { ThesisTickerTab } from "./ticker-tab";
 export const thesisModule: PluginModule = {
   panes: [{
     id: THESIS_PANE_ID,
-    name: "THESIS",
+    name: "Theses",
     icon: "Θ",
     component: ThesisBoardPane,
     defaultPosition: "right",

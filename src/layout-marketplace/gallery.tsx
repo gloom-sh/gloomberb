@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { usePaneFooter, type PaneHint } from "../components/layout/pane/footer";
 import { ChoiceDialog } from "../components/ui/choice-dialog";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useShortcut } from "../react/input";
+import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { selectActiveLayoutIndex, selectSavedLayouts } from "../state/selectors-ui";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
@@ -23,6 +25,7 @@ import {
   buildTeamEntries,
   filterGalleryEntries,
   missingPaneIds,
+  resolvePreviewEntry,
   type GalleryEntry,
 } from "./model";
 import { computeLayoutRequirements, LayoutRevisionConflictError, type CloudLayoutEntry } from "./cloud";
@@ -59,6 +62,7 @@ export interface LayoutGalleryController {
   discover: ReturnType<typeof useLayoutMarketplace>;
   signedIn: boolean;
   requestSignIn: () => void;
+  requestSignUp: () => void;
   publishCurrent: () => void;
   copyLink: (entry: GalleryEntry) => void;
   publishing: boolean;
@@ -154,6 +158,12 @@ export function LayoutMarketplaceGallery({
   const requestSignIn = useCallback(() => {
     if (!requestAuthDialog({ mode: "login" })) {
       pluginRegistry.notify({ body: "Open Account Management to log in.", type: "info" });
+    }
+  }, [pluginRegistry]);
+
+  const requestSignUp = useCallback(() => {
+    if (!requestAuthDialog({ mode: "signup" })) {
+      pluginRegistry.notify({ body: "Open Account Management to sign up.", type: "info" });
     }
   }, [pluginRegistry]);
 
@@ -492,11 +502,14 @@ export function LayoutMarketplaceGallery({
     }
   }, [activeIndex, currentLayout, currentPaneState, dialog, discover, layouts, panes, pluginRegistry, renderer, requestSignIn, signedIn]);
 
+  const search = useGallerySearch();
   useShortcut((event) => {
     if (event.name !== "escape") return;
     event.preventDefault();
     event.stopPropagation();
-    if (detailId) setDetailId(null);
+    // Leaving the search field is the first Escape; the gallery closes on the next.
+    if (search.active) search.blur();
+    else if (detailId) setDetailId(null);
     else close();
   }, { enabled: focused && !dialogOpen, phase: "before", allowEditable: true, scope: "layout-gallery" });
 
@@ -525,6 +538,7 @@ export function LayoutMarketplaceGallery({
     teams,
     signedIn,
     requestSignIn,
+    requestSignUp,
     publishCurrent,
     copyLink,
     publishing,
@@ -538,11 +552,25 @@ export function LayoutMarketplaceGallery({
     missingPaneIds: (layout) => missingPaneIds(layout, panes),
   };
 
-  return useUiHost().kind === "desktop-web"
+  const desktop = useUiHost().kind === "desktop-web";
+  // The desktop always previews something, so with no pick its actions follow
+  // the layout in use; the terminal list always has an explicit row.
+  const selected = desktop ? resolvePreviewEntry(controller) : controller.entries.find((entry) => entry.id === selectedId) ?? null;
+  useLayoutGalleryActions({
+    controller,
+    selected,
+    focused,
+    dialogOpen,
+    searchActive: search.active,
+    focusSearch: search.focus,
+  });
+
+  return desktop
     ? (
       <LayoutGalleryDesktop
         controller={controller}
-        focused={focused}
+        search={search}
+        focused={focused && !dialogOpen}
         width={width}
         height={height}
       />
@@ -550,10 +578,154 @@ export function LayoutMarketplaceGallery({
     : (
       <LayoutGalleryTerminal
         controller={controller}
+        search={search}
         dialogOpen={dialogOpen}
         focused={focused}
         width={width}
         height={height}
       />
     );
+}
+
+/** The search field's focus, shared so the gallery's `/` reaches either renderer's field. */
+export interface GallerySearchState {
+  active: boolean;
+  focusToken: number;
+  focus: () => void;
+  blur: () => void;
+  setActive: (active: boolean) => void;
+}
+
+function useGallerySearch(): GallerySearchState {
+  const [active, setActive] = useState(false);
+  const [focusToken, setFocusToken] = useState(0);
+  const focus = useCallback(() => {
+    setActive(true);
+    setFocusToken((current) => current + 1);
+  }, []);
+  const blur = useCallback(() => setActive(false), []);
+  return { active, focusToken, focus, blur, setActive };
+}
+
+/**
+ * The gallery's actions, as footer hints and single keys, for both renderers.
+ * They follow the selected entry: your own layouts open, rename, copy, delete
+ * and sync with a team; a team layout opens as a linked tab; a community
+ * layout is added as a copy or its link copied.
+ */
+function useLayoutGalleryActions({
+  controller,
+  selected,
+  focused,
+  dialogOpen,
+  searchActive,
+  focusSearch,
+}: {
+  controller: LayoutGalleryController;
+  selected: GalleryEntry | null;
+  focused: boolean;
+  dialogOpen: boolean;
+  searchActive: boolean;
+  focusSearch: () => void;
+}) {
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+
+  const withSelected = useCallback((action: (entry: GalleryEntry, gallery: LayoutGalleryController) => void) => () => {
+    const entry = selectedRef.current;
+    if (entry) action(entry, controllerRef.current);
+  }, []);
+  const open = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned") gallery.activate(entry);
+    else gallery.install(entry);
+  }), [withSelected]);
+  const rename = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned") gallery.renameLayout(entry);
+  }), [withSelected]);
+  const copy = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "community") gallery.copyLink(entry);
+    else if (entry.kind === "owned") gallery.duplicateLayout(entry);
+  }), [withSelected]);
+  const remove = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned" && gallery.canDelete) gallery.deleteLayout(entry);
+  }), [withSelected]);
+  const publishTeam = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned") gallery.publishToTeam(entry);
+  }), [withSelected]);
+  const pull = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned" && entry.linked?.updateAvailable) gallery.pullTeamUpdates(entry);
+  }), [withSelected]);
+  const unlink = useMemo(() => withSelected((entry, gallery) => {
+    if (entry.kind === "owned" && entry.linked) gallery.unlink(entry);
+  }), [withSelected]);
+
+  const { canDelete, newLayout, publishCurrent, publishing } = controller;
+  const teamsAvailable = controller.teamSections.length > 0;
+  const kind = selected?.kind ?? null;
+  const linked = selected?.kind === "owned" ? selected.linked ?? null : null;
+  const openTab = selected?.kind === "team" && selected.index !== null;
+
+  usePaneFooter("layout-marketplace", () => {
+    const hints: PaneHint[] = [
+      { id: "search", key: "/", label: "search", onPress: focusSearch },
+      { id: "new", key: "n", label: "ew", onPress: newLayout },
+    ];
+    if (kind === "owned") {
+      hints.push(
+        { id: "open", key: "o", label: "pen", onPress: open },
+        // `r` refreshes every pane, so rename takes `e`.
+        { id: "rename", key: "e", label: " rename", onPress: rename },
+        { id: "copy", key: "c", label: "opy", onPress: copy },
+        { id: "delete", key: "d", label: "elete", onPress: remove, disabled: !canDelete },
+      );
+      if (teamsAvailable) {
+        hints.push({ id: "team", key: "t", label: linked ? "eam publish" : "eam", onPress: publishTeam, disabled: publishing });
+      }
+      if (linked) {
+        hints.push(
+          { id: "pull", key: "u", label: "pdate", onPress: pull, disabled: publishing || !linked.updateAvailable },
+          { id: "unlink", key: "x", label: " unlink", onPress: unlink },
+        );
+      }
+    } else if (kind === "team") {
+      hints.push({ id: "open-team", key: "a", label: openTab ? " open" : "dd linked tab", onPress: open });
+    } else if (kind === "community") {
+      hints.push(
+        { id: "add", key: "a", label: "dd layout", onPress: open },
+        { id: "copy-link", key: "c", label: "opy link", onPress: copy },
+      );
+    }
+    hints.push({ id: "publish", key: "p", label: "ublish", onPress: publishCurrent, disabled: publishing });
+    return {
+      info: publishing ? [{ id: "publishing", parts: [{ text: "publishing", tone: "muted" as const }] }] : [],
+      hints,
+    };
+  }, [canDelete, copy, focusSearch, kind, linked, newLayout, open, openTab, publishCurrent, publishTeam, publishing, pull, remove, rename, teamsAvailable, unlink]);
+
+  useShortcut((event) => {
+    if (event.targetEditable || searchActive) return;
+    const entry = selectedRef.current;
+    const entryKind = entry?.kind ?? null;
+    const entryLinked = entry?.kind === "owned" ? entry.linked ?? null : null;
+    const gallery = controllerRef.current;
+    const run = (action: () => void) => {
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+    };
+    if (isPlainKey(event, "enter", "return") && entry) run(open);
+    else if (isPlainKey(event, "/")) run(focusSearch);
+    else if (isPlainKey(event, "n")) run(gallery.newLayout);
+    else if (isPlainKey(event, "p") && !gallery.publishing) run(gallery.publishCurrent);
+    else if (isPlainKey(event, "o") && entryKind === "owned") run(open);
+    else if (isPlainKey(event, "a") && (entryKind === "community" || entryKind === "team")) run(open);
+    else if (isPlainKey(event, "t") && entryKind === "owned" && gallery.teamSections.length > 0 && !gallery.publishing) run(publishTeam);
+    else if (isPlainKey(event, "u") && entryLinked?.updateAvailable && !gallery.publishing) run(pull);
+    else if (isPlainKey(event, "x") && entryLinked) run(unlink);
+    else if (isPlainKey(event, "e") && entryKind === "owned") run(rename);
+    else if (isPlainKey(event, "c") && (entryKind === "owned" || entryKind === "community")) run(copy);
+    else if (isPlainKey(event, "d") && entryKind === "owned" && gallery.canDelete) run(remove);
+  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
 }

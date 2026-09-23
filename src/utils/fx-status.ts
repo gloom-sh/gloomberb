@@ -7,7 +7,6 @@ export interface FxRateStatus {
   unknownTime: number;
   oldestAsOf: number | null;
   latestFetchedAt: number | null;
-  sources: string[];
 }
 
 /** A fetched timestamp never stands in for a source observation timestamp. */
@@ -17,8 +16,7 @@ export function summarizeFxRates(
   read: (currency: string) => QueryEntry<number> | null | undefined,
   now = Date.now(),
 ): FxRateStatus {
-  const status: FxRateStatus = { loading: 0, unavailable: 0, stale: 0, unknownTime: 0, oldestAsOf: null, latestFetchedAt: null, sources: [] };
-  const sources = new Set<string>();
+  const status: FxRateStatus = { loading: 0, unavailable: 0, stale: 0, unknownTime: 0, oldestAsOf: null, latestFetchedAt: null };
   for (const currency of new Set(currencies.map((value) => value.trim().toUpperCase()))) {
     if (currency === "USD") continue;
     const entry = read(currency);
@@ -30,9 +28,7 @@ export function summarizeFxRates(
     else status.oldestAsOf = Math.min(status.oldestAsOf ?? Infinity, entry.asOf);
     if (entry?.error || (entry?.staleAt != null && entry.staleAt <= now)) status.stale++;
     if (entry?.fetchedAt != null) status.latestFetchedAt = Math.max(status.latestFetchedAt ?? 0, entry.fetchedAt);
-    if (entry?.source && entry.source !== "static" && entry.source !== "identity") sources.add(entry.source);
   }
-  status.sources = [...sources].sort();
   return status;
 }
 

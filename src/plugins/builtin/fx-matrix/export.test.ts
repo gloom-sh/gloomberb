@@ -10,9 +10,9 @@ test("cross exports keep each leg's observation, receipt, raw rate and stale fai
     fetchedAt: now - 1000, staleAt: currency === "EUR" ? now + 60_000 : now - 60_000,
     error: currency === "GBP" ? { reasonCode: "TIMEOUT", message: "=provider,failed" } : null });
   const metadata = createFxExportMetadata(["USD", "EUR", "GBP"], new Map([["USD", 1], ["EUR", 1.2], ["GBP", 1.5]]), read, now);
-  expect(metadata[2]).toEqual(["USD", 1, "", "", "identity", "identity", ""]);
-  expect(metadata[3]).toEqual(["EUR", 1.2, new Date(now - 600_000).toISOString(), new Date(now - 1000).toISOString(), "EUR", "current", ""]);
-  expect(metadata[4]).toEqual(["GBP", 1.5, new Date(now - 10_800_000).toISOString(), new Date(now - 1000).toISOString(), "GBP", "stale", "=provider,failed"]);
+  expect(metadata[2]).toEqual(["USD", 1, "", "", "identity", ""]);
+  expect(metadata[3]).toEqual(["EUR", 1.2, new Date(now - 600_000).toISOString(), new Date(now - 1000).toISOString(), "current", ""]);
+  expect(metadata[4]).toEqual(["GBP", 1.5, new Date(now - 10_800_000).toISOString(), new Date(now - 1000).toISOString(), "stale", "=provider,failed"]);
   const csv = createDataTableCsv({ columns: [{ id: "rate", label: "EUR/GBP", width: 10 }], items: ["0.8000"],
     renderCell: (text) => ({ text }), getExportMetadata: () => metadata });
   expect(csv).toStartWith("\uFEFFEUR/GBP\n0.8000\n\nCross rate,");
@@ -24,7 +24,7 @@ test("missing and unknown times remain explicit, including invalid Date bounds",
     (currency) => currency === "EUR" ? { ...createIdleEntry<number>(), phase: "loading" } : {
       ...createIdleEntry<number>(), asOf: currency === "GBP" ? 9e15 : NaN, fetchedAt: Infinity,
     });
-  expect(rows[2]).toEqual(["EUR", "", "", "", "", "unavailable; loading", ""]);
-  expect(rows[3]).toEqual(["GBP", 1.5, "", "", "", "time unknown", ""]);
-  expect(rows[4]).toEqual(["JPY", 1 / 150, "", "", "", "time unknown", ""]);
+  expect(rows[2]).toEqual(["EUR", "", "", "", "unavailable; loading", ""]);
+  expect(rows[3]).toEqual(["GBP", 1.5, "", "", "time unknown", ""]);
+  expect(rows[4]).toEqual(["JPY", 1 / 150, "", "", "time unknown", ""]);
 });

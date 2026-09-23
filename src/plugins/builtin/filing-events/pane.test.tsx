@@ -86,7 +86,7 @@ test("same-company refresh preserves selection and source during transient failu
     mode = "recovered";
     await emitKeypress(setup, { name: "r", sequence: "r" });
     await settleFrame(setup, 8);
-    expect(capture("refresh-recovered")).toContain("2 filings");
+    expect(capture("refresh-recovered").split("FIRST acquisition terms").length - 1).toBe(2);
     expect(JSON.stringify(footer)).not.toContain("Controlled refresh outage");
     await emitKeypress(setup, { name: "o", sequence: "o" });
     expect(opened.at(-1)).toContain("/kept.htm");

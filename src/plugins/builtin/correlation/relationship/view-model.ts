@@ -3,9 +3,9 @@ import type { MultiLineChartSeries } from "../../../../components/chart/static";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
 import { formatNumber } from "../../../../utils/format";
+import type { StatItem } from "../../../../components/ui";
 import type {
   RelationshipAlignedPoint,
-  RelationshipAnalysis,
   RelationshipRegressionStats,
   RelationshipReturnPoint,
 } from "./model";
@@ -64,7 +64,7 @@ export function buildRelationshipCorrelationSeries(
   const correlationByTime = new Map(correlationPoints.map((point) => [point.date.getTime(), point.close] as const));
   return [{
     id: "correlation",
-    label: "Rolling Corr",
+    label: "Rolling corr",
     color: "#f6c85f",
     points: aligned.map((entry) => ({
       date: entry.date,
@@ -104,17 +104,16 @@ export function findRelationshipCorrelationAtDate(
   return points.find((point) => point.date.getTime() === cursorDate.getTime())?.close ?? null;
 }
 
-export function buildRelationshipMetricsRows(
-  stats: RelationshipRegressionStats | null,
-  analysis: RelationshipAnalysis,
-): Array<{ label: string; value: string }> {
+/**
+ * The regression of the first ticker's daily returns on the second's, as the
+ * pane's summary figures. R² rides with R; sample counts are left out.
+ */
+export function buildRelationshipStatItems(stats: RelationshipRegressionStats | null): StatItem[] {
+  if (!stats) return [];
   return [
-    { label: "Beta", value: formatNullableNumber(stats?.beta, 3) },
-    { label: "Alpha", value: `${formatNullableNumber(stats?.alpha, 3)}%` },
-    { label: "R", value: formatNullableNumber(stats?.r, 3) },
-    { label: "R2", value: formatNullableNumber(stats?.rSquared, 3) },
-    { label: "Std Err", value: formatNullableNumber(stats?.stdError, 3) },
-    { label: "Obs", value: String(stats?.sampleSize ?? analysis.returns.length) },
-    { label: "Aligned", value: String(analysis.aligned.length) },
+    { id: "beta", label: "Beta", value: formatNullableNumber(stats.beta, 3) },
+    { id: "alpha", label: "Alpha", value: `${formatNullableNumber(stats.alpha, 3)}%`, detail: "daily" },
+    { id: "r", label: "R", value: formatNullableNumber(stats.r, 3), detail: `R² ${formatNullableNumber(stats.rSquared, 3)}` },
+    { id: "stdErr", label: "Std err", value: formatNullableNumber(stats.stdError, 3) },
   ];
 }

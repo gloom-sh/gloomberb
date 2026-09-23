@@ -283,9 +283,10 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
               />
             </Box>
           )}
-          <Box height={1} flexDirection="row">
-            <Text fg={colors.textDim}>
-              {`${item.source} · last updated at ${lastUpdatedStr} · score ${item.importance}/100`}
+          {/* The source is the footer's [o]pen link; without a link the footer has no source, so it stays here. */}
+          <Box height={nativePaneChrome ? undefined : 1} flexDirection="row">
+            <Text fg={colors.textDim} wrapText={nativePaneChrome}>
+              {`${item.url?.trim() || !item.source ? "" : `${item.source} · `}Last updated ${lastUpdatedStr} · score ${item.importance}/100`}
             </Text>
           </Box>
           <TextLines text={item.summary} width={innerW} color={colors.text} nativePaneChrome={nativePaneChrome === true} />

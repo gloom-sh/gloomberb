@@ -69,9 +69,10 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height }: {
       <Text fg={palette.lineColor}>Fitted smile</Text>
       <Text fg={colors.warning}>Clean quotes</Text>
       {model.overlays.filter((entry) => entry.id !== "Clean quotes").map((entry) => <Text key={entry.id} fg={entry.color}>{entry.id}</Text>)}
+      <Text fg={colors.textDim}>{`IV % · ${axisLabel}`}</Text>
     </Box>
     <StaticChartSurface points={model.points} overlays={model.overlays} calendarSpaced width={width} height={Math.max(3, height - 1)}
-      colors={palette} yAxisLabel={`IV % · ${axisLabel}`} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
+      colors={palette} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
       xAxisTicks={model.ticks} formatXAxisCursorValue={(ratio) => `${axisLabel} ${(model.left + ratio * (model.right - model.left)).toFixed(2)}`} />
   </Box>;
 }
@@ -96,9 +97,10 @@ export function TermChart({ snapshot, width, height }: { snapshot: SurfaceSnapsh
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} flexDirection="row" gap={3} paddingX={1}>
       <Text fg={colors.positive}>ATM spot</Text><Text fg={colors.warning}>25d put</Text><Text fg={colors.negative}>25d call</Text>
+      <Text fg={colors.textDim}>IV % · calendar days (log)</Text>
     </Box>
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced width={width} height={Math.max(3, height - moveHeight - 1)}
-      colors={resolveChartPalette(colors)} yAxisLabel="IV % · calendar days (log)" formatYAxisValue={(value) => `${value.toFixed(1)}%`}
+      colors={resolveChartPalette(colors)} formatYAxisValue={(value) => `${value.toFixed(1)}%`}
       xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: dayLabel(i / 4) }))}
       formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} />
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} scrollY focusable={false}>

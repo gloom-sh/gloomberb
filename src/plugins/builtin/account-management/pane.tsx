@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Button, ConfirmDialog, Tabs, usePaneHeaderTabs } from "../../../components";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  ConfirmDialog,
+  DataTableView,
+  StatGrid,
+  Tabs,
+  usePaneHeaderTabs,
+  type DataTableCell,
+  type DataTableColumn,
+  type StatItem,
+} from "../../../components";
 import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
@@ -7,7 +17,7 @@ import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hook
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, Textarea, TextAttributes, type TextareaRenderable, useRendererHost, useUiHost } from "../../../ui";
+import { Box, ScrollBox, Text, Textarea, TextAttributes, type TextareaRenderable, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
@@ -110,229 +120,51 @@ const PLAN_COMPARISON_ROWS = [
   { capability: "AI Screener", free: "No", pro: "Soon", proTone: "muted" },
 ] as const;
 
+type PlanColumn = DataTableColumn & { id: "capability" | "free" | "pro" };
+type PlanRow = typeof PLAN_COMPARISON_ROWS[number];
+
+/** Free against Pro, one row per capability, with the Pro column tinted. */
 function PlanComparison({
   width,
   activePlan,
-  proNote,
-  price,
-  upgradeButton,
 }: {
   width: number;
   activePlan: "free" | "pro";
-  /** Pro-column detail such as the free-trial offer; null once entitled. */
-  proNote: string | null;
-  price: PlanPriceDisplay;
-  upgradeButton: ReactNode;
 }) {
-  const isDesktop = useUiHost().kind === "desktop-web";
-  const comparisonWidth = Math.min(width, 58);
-  const capabilityWidth = Math.max(13, Math.min(16, Math.floor(comparisonWidth * 0.32)));
-  const valueWidth = Math.max(10, Math.floor((comparisonWidth - capabilityWidth - 2) / 2));
-  const rowWidth = capabilityWidth + valueWidth * 2 + 2;
+  const valueWidth = Math.max(10, Math.min(16, Math.floor((width - 16) / 2)));
+  const columns = useMemo<PlanColumn[]>(() => [
+    { id: "capability", label: t("Capability"), width: 14, align: "left", flexGrow: 1 },
+    { id: "free", label: t("Free"), width: valueWidth, align: "left" },
+    { id: "pro", label: t("Pro"), width: valueWidth, align: "left" },
+  ], [valueWidth]);
   const proCellBg = blendHex(colors.panel, colors.selected, activePlan === "pro" ? 0.42 : 0.26);
-  const freeFg = activePlan === "free" ? colors.text : colors.textDim;
-  const proHeadingFg = activePlan === "pro" ? colors.textBright : colors.text;
-  const proValueColor = (tone: typeof PLAN_COMPARISON_ROWS[number]["proTone"]) => {
-    if (tone === "positive") return colors.positive;
-    if (tone === "muted") return colors.textMuted;
-    return colors.text;
-  };
-
-  if (isDesktop) {
-    const gridStyle: CSSProperties = {
-      display: "grid",
-      gridTemplateColumns: width >= 86
-        ? "minmax(220px, 1fr) minmax(120px, 0.42fr) minmax(300px, 1.05fr)"
-        : "minmax(150px, 0.95fr) minmax(86px, 0.42fr) minmax(180px, 1fr)",
-      columnGap: width >= 86 ? "clamp(30px, 5vw, 72px)" : "22px",
-      alignItems: "center",
-      width: "100%",
+  const renderCell = useCallback((row: PlanRow, column: PlanColumn): DataTableCell => {
+    if (column.id === "capability") return { text: t(row.capability), color: colors.textDim };
+    if (column.id === "free") return { text: t(row.free), color: activePlan === "free" ? colors.text : colors.textDim };
+    return {
+      text: t(row.pro),
+      backgroundColor: proCellBg,
+      color: row.proTone === "positive" ? colors.positive : row.proTone === "muted" ? colors.textMuted : colors.text,
+      attributes: row.proTone === "positive" ? TextAttributes.BOLD : 0,
     };
-    const desktopProBg = blendHex(colors.panel, colors.selected, activePlan === "pro" ? 0.34 : 0.24);
-    const desktopProAltBg = blendHex(colors.panel, colors.selected, activePlan === "pro" ? 0.39 : 0.28);
-    const desktopText = {
-      lineHeight: "22px",
-      fontSize: "15px",
-    } satisfies CSSProperties;
-    return (
-      <Box
-        flexDirection="column"
-        width="100%"
-        maxWidth={width >= 86 ? "980px" : "100%"}
-        style={{
-          marginTop: 18,
-          paddingLeft: width >= 86 ? 12 : 4,
-          paddingRight: width >= 86 ? 10 : 4,
-        }}
-      >
-        <Box
-          style={{
-            ...gridStyle,
-            marginBottom: 12,
-          }}
-        >
-          <Text fg={colors.textDim} style={{ ...desktopText, fontWeight: 650 }}>
-            {t("Capability")}
-          </Text>
-          <Text
-            fg={activePlan === "free" ? colors.textBright : colors.textDim}
-            attributes={activePlan === "free" ? TextAttributes.BOLD : 0}
-            style={{ ...desktopText, fontWeight: activePlan === "free" ? 700 : 650 }}
-          >
-            {t("Free")}
-          </Text>
-          <Box flexDirection="column">
-            <Box flexDirection="row" alignItems="baseline" gap={1}>
-              <Text
-                fg={colors.borderFocused}
-                attributes={TextAttributes.BOLD}
-                style={{ ...desktopText, fontWeight: 750 }}
-              >
-                {t("Pro")}
-              </Text>
-              {price.anchor ? (
-                <Text
-                  fg={colors.textMuted}
-                  attributes={TextAttributes.STRIKETHROUGH}
-                  style={desktopText}
-                >
-                  {price.anchor}
-                </Text>
-              ) : null}
-              <Text fg={colors.textBright} style={desktopText}>
-                {price.price}
-              </Text>
-              {price.note ? (
-                <Text fg={colors.positive} style={desktopText}>{price.note}</Text>
-              ) : null}
-            </Box>
-            {proNote ? (
-              <Text fg={colors.textMuted} style={desktopText}>{proNote}</Text>
-            ) : null}
-          </Box>
-        </Box>
-        {PLAN_COMPARISON_ROWS.map((row, index) => {
-          const first = index === 0;
-          const last = index === PLAN_COMPARISON_ROWS.length - 1;
-          return (
-            <Box
-              key={row.capability}
-              style={{
-                ...gridStyle,
-                minHeight: 48,
-              }}
-            >
-              <Box flexDirection="row" alignItems="center" style={{ minWidth: 0 }}>
-                <Box
-                  aria-hidden="true"
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 999,
-                    marginRight: 18,
-                    flexShrink: 0,
-                    backgroundColor: colors.borderFocused,
-                    boxShadow: `0 0 0 2px ${blendHex(colors.bg, colors.borderFocused, 0.14)}`,
-                  }}
-                />
-                <Text fg={colors.textBright} style={{ ...desktopText, fontWeight: 520 }}>
-                  {t(row.capability)}
-                </Text>
-              </Box>
-              <Text fg={freeFg} style={desktopText}>
-                {t(row.free)}
-              </Text>
-              <Box
-                flexDirection="row"
-                alignItems="center"
-                backgroundColor={index % 2 === 0 ? desktopProBg : desktopProAltBg}
-                style={{
-                  minHeight: 48,
-                  paddingLeft: width >= 86 ? 24 : 16,
-                  paddingRight: width >= 86 ? 24 : 14,
-                  borderTopLeftRadius: first ? 2 : 0,
-                  borderTopRightRadius: first ? 2 : 0,
-                  borderBottomLeftRadius: last ? 2 : 0,
-                  borderBottomRightRadius: last ? 2 : 0,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.025)",
-                }}
-              >
-                <Text
-                  fg={proValueColor(row.proTone)}
-                  attributes={row.proTone === "positive" ? TextAttributes.BOLD : 0}
-                  style={{
-                    ...desktopText,
-                    fontWeight: row.proTone === "positive" ? 720 : 560,
-                  }}
-                >
-                  {t(row.pro)}
-                </Text>
-              </Box>
-            </Box>
-          );
-        })}
-        <Box
-          style={{
-            ...gridStyle,
-            marginTop: 14,
-          }}
-        >
-          <Box />
-          <Box />
-          <Box flexDirection="row" justifyContent="center">
-            {upgradeButton}
-          </Box>
-        </Box>
-      </Box>
-    );
-  }
+  }, [activePlan, proCellBg]);
+  const height = PLAN_COMPARISON_ROWS.length + 1;
 
   return (
-    <Box flexDirection="column" width={rowWidth}>
-      <Box height={1} flexDirection="row" gap={1}>
-        <Text width={capabilityWidth} fg={colors.textDim}>{t("Capability")}</Text>
-        <Text width={valueWidth} fg={activePlan === "free" ? colors.textBright : colors.textDim} attributes={activePlan === "free" ? TextAttributes.BOLD : 0}>
-          {t("Free")}
-        </Text>
-        <Box width={valueWidth} backgroundColor={proCellBg} paddingX={1}>
-          <Text fg={proHeadingFg} attributes={TextAttributes.BOLD}>
-            {`${t("Pro")} ${price.price}`}
-          </Text>
-        </Box>
-      </Box>
-      {PLAN_COMPARISON_ROWS.map((row) => (
-        <Box key={row.capability} height={1} flexDirection="row" gap={1}>
-          <Text width={capabilityWidth} fg={colors.textDim}>{t(row.capability)}</Text>
-          <Text width={valueWidth} fg={freeFg}>{t(row.free)}</Text>
-          <Box width={valueWidth} backgroundColor={proCellBg} paddingX={1}>
-            <Text fg={proValueColor(row.proTone)} attributes={row.proTone === "positive" ? TextAttributes.BOLD : 0}>
-              {t(row.pro)}
-            </Text>
-          </Box>
-        </Box>
-      ))}
-      {price.anchor ? (
-        <Box height={1} flexDirection="row" gap={1}>
-          <Text fg={colors.textMuted} attributes={TextAttributes.STRIKETHROUGH}>{price.anchor}</Text>
-          {price.note ? <Text fg={colors.positive}>{price.note}</Text> : null}
-        </Box>
-      ) : null}
-      {proNote ? (
-        <Box height={1} flexDirection="row" gap={1}>
-          <Box width={capabilityWidth} />
-          <Box width={valueWidth} />
-          <Box width={valueWidth} paddingX={1}>
-            <Text fg={colors.textMuted}>{proNote}</Text>
-          </Box>
-        </Box>
-      ) : null}
-      <Box height={1} flexDirection="row" gap={1}>
-        <Box width={capabilityWidth} />
-        <Box width={valueWidth} />
-        <Box width={valueWidth} flexDirection="row" paddingLeft={1}>
-          {upgradeButton}
-        </Box>
-      </Box>
+    <Box flexDirection="column" width={width} height={height}>
+      <DataTableView<PlanRow, PlanColumn>
+        columns={columns}
+        items={[...PLAN_COMPARISON_ROWS]}
+        selection={{ kind: "none" }}
+        rootWidth={width}
+        rootHeight={height}
+        virtualize={false}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={(row) => row.capability}
+        renderCell={renderCell}
+        emptyStateTitle=""
+      />
     </Box>
   );
 }
@@ -357,7 +189,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dialog = useDialog();
   const renderer = useRendererHost();
-  const isDesktop = useUiHost().kind === "desktop-web";
+  const { nativePaneChrome } = useUiCapabilities();
   const config = usePaneAppConfig();
   const portfolios = config.portfolios;
   const baseCurrency = config.baseCurrency;
@@ -395,7 +227,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   draftRef.current = draft;
 
   const formWidth = Math.max(24, Math.min(70, width - 2));
-  const contentWidth = activeTab === "pro" && isDesktop ? Math.max(formWidth, width - 2) : formWidth;
+  const contentWidth = formWidth;
   const twoColumns = formWidth >= 60;
   const fieldWidth = twoColumns ? Math.max(22, Math.floor((formWidth - 3) / 2)) : Math.max(18, Math.min(46, formWidth - 2));
   const formLabelWidth = accountFieldLabelWidth(formWidth);
@@ -410,6 +242,23 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     const trialEnd = planAccess.isTrialActive ? formatTrialEnd(planAccess.trialEndsAt) : null;
     return trialEnd ? tf("Pro trial — ends {date}", { date: trialEnd }) : formatPlan(profile?.plan);
   }, [language, planAccess.isTrialActive, planAccess.trialEndsAt, profile?.plan]);
+
+  const planStats = useMemo<StatItem[]>(() => {
+    const priceDetail = planPrice.anchor
+      ? [planPrice.note, tf("list {price}", { price: planPrice.anchor })].filter(Boolean).join(", ")
+      : planPrice.note ?? undefined;
+    return [
+      {
+        id: "plan",
+        label: "Plan",
+        value: planStatusLabel,
+        tone: planAccess.hasProAccess ? "positive" : "neutral",
+        detail: profile?.email ?? undefined,
+      },
+      { id: "price", label: "Price", value: planPrice.price, detail: priceDetail },
+      ...(planAccess.hasProAccess ? [] : [{ id: "trial", label: "Trial", value: trialOffer }]),
+    ];
+  }, [planAccess.hasProAccess, planPrice, planStatusLabel, profile?.email, trialOffer]);
 
   const portfolioHoldingCounts = useMemo(() => countPortfolioHoldings(tickers), [tickers]);
   const portfolioChoices = useMemo(
@@ -655,13 +504,14 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveTab(nextTab);
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[nextTab][0] ?? "username");
   }, []);
-  const tabsInHeader = usePaneHeaderTabs({
+  // Signed out, every tab is the same sign-in wall, so the strip stays away.
+  const tabsInHeader = usePaneHeaderTabs(hasSession || apiClient.isSignedIn() ? {
     tabs: accountTabs,
     activeValue: activeTab,
     onSelect: selectTab,
     focused,
     keyboardNavigation: false,
-  });
+  } : null);
   // The strip and the gap the column puts under it.
   const tabRows = tabsInHeader ? 0 : 2;
 
@@ -992,7 +842,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                   fg={activeField === "bio" ? colors.textBright : colors.textDim}
                   attributes={activeField === "bio" ? TextAttributes.BOLD : 0}
                 >
-                  {activeField === "bio" ? `> ${t("Bio")}` : `  ${t("Bio")}`}
+                  {nativePaneChrome ? t("Bio") : `${activeField === "bio" ? "> " : "  "}${t("Bio")}`}
                 </Text>
                 <Box
                   height={3}
@@ -1090,33 +940,20 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
           {activeTab === "pro" ? (
             <>
-              <Box flexDirection="row" gap={1}>
-                <Text fg={colors.textDim}>{t("Status")}</Text>
-                <Text
-                  fg={planAccess.hasProAccess ? colors.positive : colors.textBright}
-                  attributes={TextAttributes.BOLD}
-                >
-                  {planStatusLabel}
-                </Text>
-                {profile?.email ? <Text fg={colors.textMuted}>{profile.email}</Text> : null}
-              </Box>
+              <StatGrid items={planStats} width={contentWidth} />
               <PlanComparison
                 width={contentWidth}
                 activePlan={planAccess.hasProAccess ? "pro" : "free"}
-                proNote={planAccess.hasProAccess ? null : trialOffer}
-                price={planPrice}
-                upgradeButton={(
-                  <Button
-                    label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
-                    variant={planAccess.isPayingPro ? "secondary" : "primary"}
-                    width={isDesktop ? 28 : undefined}
-                    height={isDesktop ? "28px" : undefined}
-                    active={activeField === "upgradeAction"}
-                    onPress={openUpgrade}
-                    disabled={!!busy}
-                  />
-                )}
               />
+              <Box flexDirection="row">
+                <Button
+                  label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
+                  variant={planAccess.isPayingPro ? "secondary" : "primary"}
+                  active={activeField === "upgradeAction"}
+                  onPress={openUpgrade}
+                  disabled={!!busy}
+                />
+              </Box>
             </>
           ) : null}
 

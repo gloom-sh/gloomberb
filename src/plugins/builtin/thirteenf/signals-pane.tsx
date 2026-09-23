@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint } from "../../../components";
+import { DataTableStackView, DataTableView, EmptyState, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint, StatGrid, type StatItem } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -27,7 +27,8 @@ export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, 
  */
 export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, queryBar, hints, onRootKeyDown, onUnavailable, onDetailChange }: Pick<PaneProps, "focused" | "width" | "height"> & {
   symbol: string;
-  queryBar?: ReactNode;
+  /** The pane's query bar, given the report period for its meta. */
+  queryBar?: (period: string | undefined) => ReactNode;
   hints?: PaneHint[];
   onRootKeyDown?: (event: DataTableKeyEvent, context: DataTableRootKeyContext) => boolean;
   /** The first page failed, e.g. a ticker without a mapped CUSIP. */
@@ -74,7 +75,7 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints });
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
-    { id: "fund", label: "FUND", width: Math.max(20, width - 57), align: "left" },
+    { id: "fund", label: "FUND", width: 20, align: "left", flexGrow: 1 },
     { id: "type", label: "TYPE", width: 6, align: "left" },
     { id: "value", label: "VALUE", width: 12, align: "right" },
     { id: "shares", label: "SHARES", width: 12, align: "right" },
@@ -83,15 +84,21 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   ];
   const [sort, setSort] = usePluginPaneState<{ id: string; desc: boolean }>("13f-ticker:sort", { id: "value", desc: true });
   const rows = useMemo(() => [...(data?.rows ?? [])].sort((a, b) => compareCells(a, b, sort.id, sort.desc)), [data?.rows, sort]);
-  const summary = data ? <Box flexDirection="column" paddingX={1}>
-    <KeyValueRow label={data.period} value={`${data.holderCount} holders · ${formatMoneyCompact(data.totalValue)} loaded · ${data.newCount - data.exitCount >= 0 ? "+" : ""}${data.newCount - data.exitCount} net funds`} />
-  </Box> : null;
+  // The period is the as-of: the query bar's meta where there is one, else a
+  // cell. Holder counts and the loaded rows' value total say how much of the
+  // list has paged in, not something about the ticker, so they stay out.
+  const net = data ? data.newCount - data.exitCount : 0;
+  const statItems: StatItem[] = data ? [
+    ...(queryBar ? [] : [{ id: "period", label: "Period", value: data.period }]),
+    { id: "net", label: "Net funds", value: `${net > 0 ? "+" : ""}${net}`, detail: `${data.newCount} new, ${data.exitCount} exited`, tone: net > 0 ? "positive" : net < 0 ? "negative" : undefined },
+  ] : [];
+  const header = queryBar || data ? <>{queryBar?.(data?.period)}<StatGrid items={statItems} width={width} /></> : undefined;
   return <DataTableStackView<TickerHolderRow, DataTableColumn>
     focused={focused} detailOpen={!!fund} onBack={() => setFund(null)} detailTitle={fund?.name}
     detailContent={fund ? <FundDetailView focused={focused} seed={fund} width={width} /> : <Box />}
     rootWidth={width} rootHeight={height} scrollRef={scrollRef} onBodyScrollActivity={more}
     onRootKeyDown={onRootKeyDown}
-    rootBefore={queryBar || summary ? <>{queryBar}{summary}</> : undefined}
+    rootBefore={header}
     columns={columns} items={rows} getItemKey={row => row.id}
     selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}
     onActivate={row => setFund({ cik: row.cik, name: row.fund })}
@@ -109,6 +116,12 @@ function compareCells(a: object, b: object, id: string, desc: boolean) {
   return desc ? -compared : compared;
 }
 
+const CROWDING_RANKS = ["newCount", "exitCount", "weightChange", "decreases"] as const;
+type CrowdingRank = typeof CROWDING_RANKS[number];
+function crowdingRank(value: string): CrowdingRank {
+  return (CROWDING_RANKS as readonly string[]).includes(value) ? value as CrowdingRank : "newCount";
+}
+
 export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
   const [data, setData] = useState<Crowding | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +129,9 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("13f-crowding:selected", null);
   const mine = useMineTickers();
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("13f-crowding:mine", false);
-  const [ranking, setRanking] = usePluginPaneState<string>("13f-crowding:ranking", "newCount");
+  const [storedRanking, setRanking] = usePluginPaneState<string>("13f-crowding:ranking", "newCount");
+  // Header clicks used to store any column id; only the four views rank.
+  const ranking = crowdingRank(storedRanking);
   const controller = useRef<AbortController | null>(null);
   const { pinTicker } = usePluginTickerActions();
   const load = useCallback(() => {
@@ -125,9 +140,19 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
     void loadCrowding(request.signal).then(result => { if (!request.signal.aborted) setData(result); }).catch(cause => { if (!request.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (!request.signal.aborted) setLoading(false); });
   }, []);
   useEffect(() => { load(); return () => { controller.current?.abort(); }; }, [load]);
-  useShortcut(event => { if (!focused) return; if (isPlainKey(event, "r")) { event.preventDefault?.(); load(); } if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => { const ranks = ["newCount", "exitCount", "weightChange", "decreases"]; return ranks[(ranks.indexOf(value) + 1) % ranks.length]!; }); } });
-  usePaneStatusFooter({ registrationId: "13f-crowding", loading, error, hints: [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", onPress: () => setMineOnly(value => !value) }, { id: "ranking", key: "c", label: "rank", onPress: () => setRanking(value => { const ranks = ["newCount", "exitCount", "weightChange", "decreases"]; return ranks[(ranks.indexOf(value) + 1) % ranks.length]!; }) }] });
-  usePaneNoticeFooter({ registrationId: "13f-crowding-notice", focused, notices: data?.warnings ?? [] });
+  useShortcut(event => { if (!focused) return; if (isPlainKey(event, "r")) { event.preventDefault?.(); load(); } if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
+  // Mine and the ranking sit in the query bar; m and c stay as their keys.
+  usePaneStatusFooter({ registrationId: "13f-crowding", loading, error });
+  usePaneNoticeFooter({ registrationId: "13f-crowding-notice", focused, notices: [
+    ...(data && data.loadedFunds < data.sourceFunds ? [`The ranking covers ${data.loadedFunds} of ${data.sourceFunds} funds.`] : []),
+    ...(data?.warnings ?? []),
+  ] });
+  // Only the ranked columns sort, and each maps to its view; DELTA PP flips
+  // between increases and decreases.
+  const rankByHeader = useCallback((columnId: string) => {
+    if (columnId === "newCount" || columnId === "exitCount") setRanking(columnId);
+    else if (columnId === "weightChange") setRanking(value => crowdingRank(value) === "weightChange" ? "decreases" : "weightChange");
+  }, [setRanking]);
   const rows = useMemo(() => [...(data?.rows ?? [])].filter(row => !mineOnly || mine.has(row.ticker)).sort((a, b) => compareCells(a, b, ranking === "decreases" ? "weightChange" : ranking, ranking !== "decreases")), [data?.rows, ranking, mineOnly, mine]);
   const columns: DataTableColumn[] = [
     { id: "mine", label: "MINE", width: 5, align: "left" }, { id: "ticker", label: "TICKER", width: 10, align: "left" }, { id: "issuer", label: "ISSUER", width: Math.max(18, width - 82), align: "left" }, { id: "type", label: "TYPE", width: 5, align: "left" },
@@ -136,12 +161,12 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
   ];
   return <Box flexDirection="column" width={width} height={height}>
     <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]}
-      view={{ value: ranking, options: [{ label: "New", value: "newCount" }, { label: "Exits", value: "exitCount" }, { label: "Increases", value: "weightChange" }, { label: "Decreases", value: "decreases" }], onChange: setRanking }} />
-    {data ? <KeyValueRow label={data.period} value={`${data.loadedFunds}/${data.sourceFunds} ranked funds`} /> : null}
+      view={{ value: ranking, options: [{ label: "New", value: "newCount" }, { label: "Exits", value: "exitCount" }, { label: "Increases", value: "weightChange" }, { label: "Decreases", value: "decreases" }], onChange: setRanking }}
+      meta={data?.period} />
     <DataTableView<CrowdingRow, DataTableColumn> focused={focused} columns={columns} items={rows} getItemKey={row => row.id}
       selection={{ kind: "id", selectedId, getId: row => row.id, onChange: setSelectedId }}
       onActivate={row => { if (row.ticker && row.ticker !== row.cusip) pinTicker(row.ticker, { floating: true }); }}
-      onHeaderClick={setRanking} sortColumnId={ranking === "decreases" ? "weightChange" : ranking} sortDirection={ranking === "decreases" ? "asc" : "desc"}
+      onHeaderClick={rankByHeader} sortColumnId={ranking === "decreases" ? "weightChange" : ranking} sortDirection={ranking === "decreases" ? "asc" : "desc"}
       renderCell={(row, column, _index, state) => ({ text: column.id === "mine" ? mine.has(row.ticker) ? "yes" : "" : column.id === "totalValue" ? formatMoneyCompact(row.totalValue) : column.id === "weightChange" ? row.weightChange == null ? "--" : `${row.weightChange > 0 ? "+" : ""}${(row.weightChange * 100).toFixed(2)}` : String(row[column.id as keyof CrowdingRow] ?? "--"), color: state.selected ? colors.selectedText : colors.text })}
       emptyStateTitle={loading ? "Loading 13F crowding..." : error ? "13F crowding unavailable." : "No comparable positions."}
     />

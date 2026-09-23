@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "../../../components";
+import { CompositeChart, CurveSurface, EmptyState, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -34,17 +34,19 @@ function ObservationChart({ row, width, height }: { row: MoneyMarketRow; width: 
 
 function ObservationDetail({ row, width, height }: { row: MoneyMarketRow; width: number; height: number }) {
   const p = row.percentile;
+  // The chart below shows the 1Y window, so the range carries no sample count or window dates.
+  const items: StatItem[] = [
+    { id: "level", label: row.unit === "percent" ? "Rate" : "USD billions", value: moneyMarketValue(row.value, row.unit),
+      detail: `${p.value == null ? "--" : p.value.toFixed(0)} pctl 1Y · ${row.asOf ?? "--"}` },
+    { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? "--"}` },
+    { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
+    { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
+  ];
+  const statRows = statGridRows(items, width);
   return <Box flexDirection="column" width={width} height={height}>
-    <Box paddingX={1} flexShrink={0} flexDirection="column">
-      <KeyValueRow label={row.unit === "percent" ? "Rate" : "USD billions"} value={moneyMarketValue(row.value, row.unit)}
-        detail={`${p.value == null ? "--" : p.value.toFixed(0)} pctl 1Y · ${row.asOf ?? "--"}`} />
-      <KeyValueRow label="Change" value={moneyMarketChange(row.change, row.changeUnit)} detail={`since ${row.previousAsOf ?? "--"}`} />
-      <KeyValueRow label="1Y range" value={`${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}`}
-        detail={`${p.sampleCount} observations · ${p.windowStart ?? "--"} to ${p.windowEnd ?? "--"}`} />
-      <KeyValueRow label="FRED" value={row.sourceSeriesIds.join(", ")} detail={row.frequency} />
-    </Box>
+    <StatGrid items={items} width={width} />
     <PaneStatusBody empty={row.history.every((point) => point.value == null)} subject="history" emptyTitle="No history available.">
-      <ObservationChart row={row} width={width} height={Math.max(3, height - 4)} />
+      <ObservationChart row={row} width={width} height={Math.max(3, height - statRows)} />
     </PaneStatusBody>
   </Box>;
 }
@@ -61,6 +63,13 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const rows = useMemo(() => data ? moneyMarketRows(data, tab).map(boardRow) : [], [data, tab]);
   const curves = useMemo(() => data ? moneyMarketCurves(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
+  const slope = data?.billsCurve.slope;
+  // The curve's slope is the Bills tab's summary figure; the legend dates the latest curve.
+  const billsItems: StatItem[] = slope ? [{ id: "slope", label: "1Y-4W",
+    value: slope.valueBps == null ? "--" : `${slope.valueBps > 0 ? "+" : ""}${slope.valueBps.toFixed(1)}bp`,
+    detail: [`${slope.percentile.value == null ? "--" : slope.percentile.value.toFixed(0)} pctl 1Y`,
+      slope.asOf && slope.asOf !== data?.billsCurve.asOf ? slope.asOf : null].filter(Boolean).join(" · ") }] : [];
+  const rateChartRow = tab === "rates" ? (selected ?? rows[0])?.observation : undefined;
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
@@ -85,12 +94,15 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
       {data ? <MarketBoardStack rows={rows} width={width} height={Math.max(3, height - tabRows)} focused={focused}
         selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
         changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, height - tabRows - 2)} />}
-        rootBefore={tab === "bills" ? <CurveSurface series={curves} width={width} height={curveHeight} display="chart"
-          selectedPointId={data.billsCurve.points.find((point) => point.seriesId === selected?.observation.seriesId)?.tenor ?? null}
-          valueLabel="Discount yield (%)" formatValue={(value) => `${value.toFixed(2)}%`} formatX={(value) => `${(value * 12).toFixed(1)} months`}
-          slope={{ label: "1Y-4W", value: data.billsCurve.slope.valueBps, percentile: data.billsCurve.slope.percentile.value,
-            window: "1Y", asOf: data.billsCurve.slope.asOf, formatValue: (value) => `${value > 0 ? "+" : ""}${value.toFixed(1)}bp` }} />
-          : tab === "liquidity" ? <ObservationChart row={data.netLiquidity} width={width} height={curveHeight} /> : undefined} /> : null}
+        rootBefore={tab === "bills" ? <>
+          <StatGrid items={billsItems} width={width} />
+          <CurveSurface series={curves} width={width} height={Math.max(6, curveHeight - statGridRows(billsItems, width))} display="chart"
+            selectedPointId={data.billsCurve.points.find((point) => point.seriesId === selected?.observation.seriesId)?.tenor ?? null}
+            valueLabel="Discount yield (%)" formatValue={(value) => `${value.toFixed(2)}%`} formatX={(value) => `${(value * 12).toFixed(1)} months`} />
+        </>
+          : tab === "liquidity" ? <ObservationChart row={data.netLiquidity} width={width} height={curveHeight} />
+          // Rates charts the selected funding rate's year, like Liquidity.
+          : rateChartRow ? <ObservationChart row={rateChartRow} width={width} height={curveHeight} /> : undefined} /> : null}
     </PaneStatusBody>
   </Box>;
 }

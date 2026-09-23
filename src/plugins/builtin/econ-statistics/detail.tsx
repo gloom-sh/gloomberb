@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react";
 import { CompositeChart } from "../../../components/chart/composite";
-import { ExternalLinkText } from "../../../components/ui";
+import { ExternalLinkText, StatGrid, statGridRows, type StatItem } from "../../../components/ui";
 import { blendHex, colors } from "../../../theme/colors";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { Box, Text } from "../../../ui";
-import { formatNumber } from "../../../utils/format";
-import { categoryLabel, type StatDef } from "./defs";
+import type { StatDef } from "./defs";
 import type { StatPoint } from "./transform";
 import type { StatViewModel } from "./view";
 
 const AXIS_WIDTH = 8;
 const PANELS = [{ id: "main" }];
+const MIN_CHART_ROWS = 8;
+const SOURCE_ROWS = 1;
 
 function seriesFor(
   stat: StatDef,
@@ -54,6 +55,11 @@ function flatSeries(
   ]);
 }
 
+/**
+ * The selected statistic: its range figures, the chart filling the column, and
+ * the official series it comes from. The mean is in the chart legend and the
+ * percentile in the table row, so neither repeats here.
+ */
 export function StatDetail({
   view,
   width,
@@ -67,9 +73,16 @@ export function StatDetail({
 }) {
   const stat = view.stat;
   const [userViewport, setUserViewport] = useState<{ start: Date; end: Date } | null>(null);
-  const chartWidth = Math.max(24, width - 2);
-  const chartHeight = Math.max(8, Math.min(26, height - 14));
+  const chartWidth = Math.max(24, width);
   const visible = view.visible;
+  const stats = useMemo<StatItem[]>(() => [
+    { id: "year-ago", label: "1Y ago", value: view.yearAgo ? stat.formatValue(view.yearAgo.value) : "--" },
+    { id: "high", label: "High", value: stat.formatValue(view.high.value), detail: view.high.date },
+    { id: "low", label: "Low", value: stat.formatValue(view.low.value), detail: view.low.date },
+  ], [stat, view.high, view.low, view.yearAgo]);
+  const statRows = statGridRows(stats, width);
+  // The source line under the chart; the chart takes every other row.
+  const chartHeight = Math.max(MIN_CHART_ROWS, height - statRows - SOURCE_ROWS);
 
   const series = useMemo(() => {
     const markers = [
@@ -93,7 +106,8 @@ export function StatDetail({
   }, [userViewport, visible]);
 
   return (
-    <Box flexDirection="column" width={width} paddingX={1} gap={1}>
+    <Box flexDirection="column" width={width}>
+      <StatGrid items={stats} width={width} />
       {visible.length >= 2 ? (
         <CompositeChart
           series={series}
@@ -116,37 +130,13 @@ export function StatDetail({
           <Text fg={colors.textMuted}>Not enough chart data</Text>
         </Box>
       )}
-
-      <Box flexDirection="column" gap={0}>
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>1Y ago </Text>
-          <Text fg={colors.text}>
-            {view.yearAgo ? stat.formatValue(view.yearAgo.value) : "--"}
-          </Text>
-          <Text fg={colors.textDim}>{"  mean "}</Text>
-          <Text fg={colors.text}>{stat.formatValue(view.mean)}</Text>
-          <Text fg={colors.textDim}>{"  %ile "}</Text>
-          <Text fg={colors.textBright}>{formatNumber(view.percentile, 0)}</Text>
-        </Box>
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          <Box flexDirection="row" flexShrink={0} height={1}>
-            <Text fg={colors.textDim}>High </Text>
-            <Text fg={colors.text}>{`${stat.formatValue(view.high.value)} ${view.high.date}`}</Text>
-          </Box>
-          <Box flexDirection="row" flexShrink={0} height={1}>
-            <Text fg={colors.textDim}>Low </Text>
-            <Text fg={colors.text}>{`${stat.formatValue(view.low.value)} ${view.low.date}`}</Text>
-          </Box>
-        </Box>
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>{`${categoryLabel(stat.category)} · `}</Text>
-          <ExternalLinkText
-            url={`https://fred.stlouisfed.org/series/${stat.seriesId}`}
-            label={`FRED ${stat.seriesId}`}
-            color={colors.text}
-          />
-        </Box>
-        {stat.measurementBasis && <Text fg={colors.textDim} wrapMode="word" wrapText>{stat.measurementBasis}</Text>}
+      <Box flexDirection="row" flexWrap="wrap" paddingX={1} flexShrink={0}>
+        <ExternalLinkText
+          url={`https://fred.stlouisfed.org/series/${stat.seriesId}`}
+          label={`FRED ${stat.seriesId}`}
+          color={colors.text}
+        />
+        {stat.measurementBasis ? <Text fg={colors.textDim}>{` · ${stat.measurementBasis}`}</Text> : null}
       </Box>
     </Box>
   );

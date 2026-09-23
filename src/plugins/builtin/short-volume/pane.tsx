@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
-import { Box, ScrollBox } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell } from "../../../components";
+import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -12,10 +12,11 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedShortVolume, loadShortVolume } from "./client";
-import { exactQuantity, percentileCaption, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
+import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const PANELS = [{ id: "main" }];
+const DETAIL_LABEL_WIDTH = 26;
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
@@ -24,14 +25,16 @@ function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: n
     : row.unavailableReason ? colors.textMuted : colors.text };
 }
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {
-  return <ScrollBox width={width} height={height} contentOptions={{ paddingX: 1 }}>
-    <KeyValueRow labelWidth={26} label="Off-exchange short ratio" value={volumePercent(row.ratioPercent)} detail={row.date} />
-    <KeyValueRow label="Short shares" value={exactQuantity(row.shortVolume)} />
-    <KeyValueRow label="Exempt shares" value={exactQuantity(row.shortExemptVolume)} detail="included in short shares" />
-    <KeyValueRow label="Total shares" value={exactQuantity(row.totalVolume)} />
-    <KeyValueRow labelWidth={26} label="Reporting facilities" value={row.markets.join(", ") || "--"} />
-    <KeyValueRow label="Observation" value={volumePointStatus(row)} />
-    <KeyValueRow label="Retrieved" value={row.fetchedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? "--"} />
+  const { nativePaneChrome } = useUiCapabilities();
+  // The stack title is the date, so the rows start with the figures.
+  return <ScrollBox width={width} height={nativePaneChrome ? undefined : height} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Off-exchange short ratio" value={volumePercent(row.ratioPercent)} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Short shares" value={exactQuantity(row.shortVolume)} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Exempt shares" value={exactQuantity(row.shortExemptVolume)} detail="included in short shares" />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Total shares" value={exactQuantity(row.totalVolume)} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Reporting facilities" value={row.markets.join(", ") || "--"} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Observation" value={volumePointStatus(row)} />
+    <KeyValueRow labelWidth={DETAIL_LABEL_WIDTH} label="Retrieved" value={row.fetchedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? "--"} />
   </ScrollBox>;
 }
 export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
@@ -88,14 +91,18 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as VolumeSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<Box flexDirection="column" flexShrink={0}>
-          <Box paddingX={1} flexDirection="column">
-            <KeyValueRow labelWidth={26} label={scope === "otc" ? "OTC short ratio" : "Off-exchange short ratio"} value={volumePercent(latest?.ratioPercent ?? null)} detail={percentileCaption(data)} />
-            <KeyValueRow label="Daily change" value={volumeChange(latest?.changePp ?? null)} detail={latest?.previousDate ? `since ${latest.previousDate}` : undefined} />
-            <KeyValueRow label={stats?.completeWindow ? "1Y range" : "Sample range"} value={`${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`}
-              detail={stats ? `${stats.sampleCount} observations · ${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined} />
-          </Box>
-          {chartHeight && data.history.some((point) => point.ratioPercent !== null) ? <CompositeChart series={series} panels={PANELS}
-            width={width} height={chartHeight} showLegend={false} showTimeAxis navigable={false} formatAxisValue={(value) => `${value.toFixed(0)}%`} remoteKind="short-volume-history" /> : null}
+          {/* "Short ratio" reads as days to cover, so the band names the table's SHORT % column. */}
+          <StatGrid width={width} items={[
+            { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
+              detail: `${stats?.value == null ? "--" : stats.value.toFixed(0)} pctl ${stats?.completeWindow ? "1Y" : "sample"}` },
+            { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
+            { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
+              detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },
+          ]} />
+          {chartHeight && data.history.some((point) => point.ratioPercent !== null) ? <Box paddingX={1} flexShrink={0}>
+            <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={chartHeight} showLegend={false} showTimeAxis navigable={false}
+              formatAxisValue={(value) => `${value.toFixed(0)}%`} remoteKind="short-volume-history" />
+          </Box> : null}
         </Box>}
       /> : null}
     </PaneStatusBody>

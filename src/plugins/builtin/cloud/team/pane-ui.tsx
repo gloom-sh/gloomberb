@@ -311,16 +311,6 @@ export function AccentRow({
   );
 }
 
-export function StatusLine({ message }: { message: { tone: "info" | "success" | "error"; text: string } | null }) {
-  if (!message) return null;
-  const fg = message.tone === "error" ? colors.negative : message.tone === "success" ? colors.positive : colors.textDim;
-  return (
-    <Box height={1}>
-      <Text fg={fg}>{message.text}</Text>
-    </Box>
-  );
-}
-
 export function teamHeaderColor(team: Pick<TeamSummary, "accentColor">): string {
   return teamAccentHex(team.accentColor);
 }

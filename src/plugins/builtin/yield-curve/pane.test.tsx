@@ -71,7 +71,7 @@ test("date submission hides the previous curve while pending and keeps controls 
   historySpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(() => pending);
   await act(async () => { setup = await testRender(<Harness />, { width: 70, height: 30 }); });
   await frame(); await frame();
-  expect(setup!.captureCharFrame()).toContain("2026-09-08");
+  expect(setup!.captureCharFrame()).toContain("as of 2026-09-08");
   await emitKeypress(setup!, { name: "d" });
   await act(async () => { await setup!.mockInput.typeText("2024-03-02"); setup!.mockInput.pressEnter(); });
   await frame();
@@ -83,16 +83,12 @@ test("date submission hides the previous curve while pending and keeps controls 
   await frame();
   expect(setup!.captureCharFrame()).toContain("Treasury curve unavailable");
   const controls = createTestControls(() => setup!);
-  await act(async () => { await controls.clickFrameText("[d]ate"); });
-  await frame();
-  expect(setup!.captureCharFrame()).toContain("As-of date");
-  await emitKeypress(setup!, { name: "escape" });
   await act(async () => { await controls.clickFrameText("[l]atest"); });
-  await frame();
-  expect(setup!.captureCharFrame()).toContain("2026-09-08");
+  await frame(); await frame();
+  expect(setup!.captureCharFrame()).toContain("as of 2026-09-08");
 });
 
-test("the transient date editor can be submitted with the mouse", async () => {
+test("a typed date applies only on Enter, and leaving the field restores the shown date", async () => {
   latestSpy = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue(TREASURY_MATURITIES.map(({ maturity, years }) => ({ maturity, maturityYears: years, yield: 4.5, asOf: "2026-09-08" })));
   historySpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (id) => ({
     observations: [{ date: "2024-03-01", value: 4.2 }],
@@ -103,14 +99,20 @@ test("the transient date editor can be submitted with the mouse", async () => {
   const controls = createTestControls(() => setup!);
   await act(async () => { await controls.clickFrameText("[d]ate"); });
   await frame();
-  await act(async () => { await setup!.mockInput.typeText("2024-03-02"); });
-  await frame();
-  await act(async () => { await controls.clickFrameText("View"); });
+  await act(async () => { await setup!.mockInput.typeText("2024-03"); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+  await frame(); await frame();
+  expect(historySpy).not.toHaveBeenCalled();
+  await emitKeypress(setup!, { name: "escape" });
+  await frame(); await frame();
+  expect(historySpy).not.toHaveBeenCalled();
+  expect(setup!.captureCharFrame()).not.toContain("2024-03");
+  expect(setup!.captureCharFrame()).toContain("as of 2026-09-08");
+  await emitKeypress(setup!, { name: "d" });
+  await act(async () => { await setup!.mockInput.typeText("2024-03-02"); setup!.mockInput.pressEnter(); });
   await frame(); await frame();
   expect(historySpy).toHaveBeenCalledTimes(TREASURY_MATURITIES.length);
-  expect(setup!.captureCharFrame()).toContain("2024-03-01");
-  expect(setup!.captureCharFrame()).toContain("requested 2024-03-02");
-  expect(setup!.captureCharFrame()).not.toContain("As-of date");
+  expect(setup!.captureCharFrame()).toContain("as of 2024-03-01");
 });
 
 

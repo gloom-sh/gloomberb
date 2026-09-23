@@ -19,7 +19,7 @@ export const tabs: Array<{ label: string; value: BuildoutTabId }> = [
 
 const listColumns: BuildoutColumn[] = [
   { id: "listName", label: "List Name", width: 30, align: "left", flexGrow: 2 },
-  { id: "listDescription", label: "Description", width: 42, align: "left", flexGrow: 3 },
+  { id: "listDescription", label: "Description", width: 34, align: "left", flexGrow: 3 },
   { id: "companyCount", label: "Companies", width: 10, align: "right" },
   { id: "totalMarketCap", label: "Market Cap", width: 12, align: "right" },
   { id: "avgSectorGrowth", label: "Med Growth", width: 11, align: "right" },
@@ -47,14 +47,15 @@ const companyColumns: BuildoutColumn[] = [
 
 const siteColumns: BuildoutColumn[] = [
   { id: "site", label: "Site Name", width: 28, align: "left", flexGrow: 2 },
+  // The default sort, so it sits where it is always on screen.
+  { id: "capture", label: "Last Sat", width: 10, align: "left" },
   { id: "type", label: "Type", width: 14, align: "left" },
-  { id: "owner", label: "Owner", width: 18, align: "left", flexGrow: 1 },
-  { id: "location", label: "Location", width: 20, align: "left", flexGrow: 1 },
-  { id: "park", label: "Park", width: 20, align: "left", flexGrow: 1 },
+  { id: "owner", label: "Owner", width: 12, align: "left", flexGrow: 1 },
+  { id: "location", label: "Location", width: 16, align: "left", flexGrow: 1 },
+  { id: "park", label: "Park", width: 14, align: "left", flexGrow: 1 },
   { id: "power", label: "Power/Cap", width: 12, align: "right" },
   { id: "construction", label: "Construction", width: 12, align: "right" },
   { id: "parking", label: "Parking", width: 9, align: "right" },
-  { id: "capture", label: "Last Sat", width: 9, align: "left" },
   { id: "area", label: "Area", width: 9, align: "right" },
 ];
 

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text } from "../../../ui";
+import { Box, ScrollBox } from "../../../ui";
 import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, type GridField, type SelectControl } from "../../../components";
 import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -27,7 +27,6 @@ const SHOCK_COLUMNS = [
   { id: "priceChange", label: "Change / 100", width: 14, align: "right" as const },
   { id: "returnPercent", label: "Return %", width: 12, align: "right" as const },
 ];
-const noop = () => {};
 const loadBenchmark = () => loadBondBenchmark();
 const fixed = (value: number | null | undefined, digits = 4) => value == null ? "-" : value.toFixed(digits);
 
@@ -97,7 +96,11 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   const notices = [...data?.notices ?? [],
     ...(result && !result.spread && !loading && !error ? ["Treasury spread needs matching dated tenors bracketing remaining maturity. Older servers may lack observation dates."] : [])];
   usePaneNoticeFooter({ registrationId: "bond-calculator:notices", notices, focused: focused && !activeField });
-  usePaneStatusFooter({ registrationId: "bond-calculator", loading, error: error ? `Treasury: ${error}` : null,
+  // The tables' headers say "/ 100", so the settlement date is the context left to state.
+  const settlementInfo = useMemo(() => tab !== "valuation" && result
+    ? [{ id: "settlement", parts: [{ text: `settlement ${result.terms.settlement}`, tone: "muted" as const }] }] : undefined,
+  [result, tab]);
+  usePaneStatusFooter({ registrationId: "bond-calculator", loading, error: error ? `Treasury: ${error}` : null, info: settlementInfo,
     hints: [
       { id: "edit", key: "e", label: "dit", onPress: () => { setTab("valuation"); setActiveField("settlement"); } },
       ...(tab === "valuation" && !activeField ? [
@@ -133,10 +136,12 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
         { id: "endOfMonth", kind: "toggle", label: "End-of-month", value: draft.endOfMonth, onChange: (value) => update({ endOfMonth: value }) },
       ]} />
       <FieldGrid fields={gridFields} activeId={activeField} width={width} focused={focused}
+        // Four inputs sit on one row or two, never three and an orphan.
+        columns={width >= 100 ? 4 : width >= 42 ? 2 : 1}
         onActivate={(id) => setActiveField(id as (typeof FIELDS)[number])} onDeactivate={() => setActiveField(null)} />
       <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
         {evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <Box paddingX={1} flexDirection="column">
-          <Section title={`Settlement ${result.terms.settlement} · per 100 face`}>
+          <Section title="Per 100 face">
             {metricRows.map((row, index) => <Box key={index} flexDirection={paired ? "row" : "column"}>{row.map((metric) => <KeyValueRow key={metric.label} {...metric} width={metricWidth} color={index === 0 ? colors.textBright : undefined} />)}</Box>)}
           </Section>
           <Section title={result.spread ? `Treasury · as of ${result.spread.asOf}` : "Treasury"}>
@@ -146,10 +151,9 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
         </Box> : null}
       </ScrollBox>
     </> : evaluation.error ? <Notice tone="negative">{evaluation.error}</Notice> : result ? <>
-      <Box paddingX={1} height={1}><Text fg={colors.textMuted}>{`Settlement ${result.terms.settlement} · per 100 face`}</Text></Box>
-      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 1 - tabRows)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+      {tab === "cashflows" ? <DataTableView emptyStateTitle="No future cash flows" columns={FLOW_COLUMNS} items={result.analytics.cashFlows} getItemKey={(row) => row.date} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - tabRows)} sortColumnId={null} sortDirection="asc"
         renderCell={(row, column) => ({ text: column.id === "date" ? row.date : fixed(row[column.id as "amount" | "presentValue"]) })} />
-        : <DataTableView emptyStateTitle="No yield scenarios" columns={SHOCK_COLUMNS} items={result.sensitivity} getItemKey={(row) => String(row.shiftBps)} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - 1 - tabRows)} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+        : <DataTableView emptyStateTitle="No yield scenarios" columns={SHOCK_COLUMNS} items={result.sensitivity} getItemKey={(row) => String(row.shiftBps)} selection={{ kind: "none" }} focused={focused} rootHeight={Math.max(1, height - tabRows)} sortColumnId={null} sortDirection="asc"
           renderCell={(row, column) => { const value = row[column.id as keyof typeof row]; return { text: column.id === "shiftBps" ? `${value! > 0 ? "+" : ""}${value}` : fixed(value), color: column.id === "priceChange" && value != null ? value > 0 ? colors.positive : value < 0 ? colors.negative : colors.text : undefined }; }} />}
     </> : null}
   </Box>;

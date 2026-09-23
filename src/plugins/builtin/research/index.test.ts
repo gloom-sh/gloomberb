@@ -8,7 +8,7 @@ import {
   type RatingSortPreference,
 } from "./analyst-pane";
 import { ratingTargetDelta } from "./analyst-model";
-import { buildEventDetailBody, buildEventRows, matchEarningsSecFiling } from "./corporate-actions-pane";
+import { buildEventDetail, buildEventRows, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
 import { eventSourceNotice } from "./event-model";
 
 const ratings: AnalystRatingRecord[] = [
@@ -47,6 +47,15 @@ const ratings: AnalystRatingRecord[] = [
     prior: "Buy",
   },
 ];
+
+
+/** The detail as text, one line per heading, labelled figure or note. */
+function detailText(sections: EventDetailSection[]): string {
+  return sections.flatMap((section) => [
+    ...(section.title ? [section.title] : []),
+    ...section.blocks.map((block) => block.kind === "row" ? `${block.label}: ${block.value}` : block.text),
+  ]).join("\n");
+}
 
 describe("analyst rating sorting", () => {
   test("sorts date newest first by default", () => {
@@ -160,13 +169,14 @@ describe("event rows", () => {
       recommendations: [], ratings: [], earningsEstimates: [eps], revenueEstimates: [revenue] }, null, "USD");
     const row = JSON.parse(JSON.stringify(rows[0]));
     expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z" });
-    const detail = buildEventDetailBody({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
-      inlineContent: new Map(), primaryContent: null, primaryContentLoading: false });
-    expect(detail).toContain("Low: 4 USD | High: 5 USD");
-    expect(detail).toContain("Low: 1,400,000,000,000 TWD | High: 1,500,000,000,000 TWD");
-    expect(detail).toContain("Prior-year input: 0 USD");
-    expect(detail).toContain("Provider growth: 0.00%");
-    expect(detail).toContain("Provider growth: +45.00%");
+    const detail = detailText(buildEventDetail({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
+      inlineContent: new Map(), primaryContent: null, primaryContentLoading: false }));
+    expect(detail).toContain("EPS consensus\nAverage: 4.4 USD\nLow: 4 USD\nHigh: 5 USD\nPrior year: 0 USD\nGrowth: 0.00%");
+    expect(detail).toContain("Revenue consensus\nAverage: 1,450,000,000,000 TWD\nLow: 1,400,000,000,000 TWD\nHigh: 1,500,000,000,000 TWD");
+    expect(detail).toContain("Growth: +45.00%");
+    expect(detail).toContain("As of: 2026-09-11T12:00:00Z");
+    // The pane says what the figures are, never which feed served them.
+    expect(detail).not.toContain("yahoo");
   });
 
   test("combines EPS and revenue estimates into one estimate row", () => {
@@ -382,9 +392,9 @@ describe("event rows", () => {
     const periodRow = { ...row!, dateType: "fiscal-period-end" as const,
       dateEvidence: { accessionNumber: "0000320193-26-000010", filed: "2026-02-04", startDate: "2025-10-01" } };
     expect(matchEarningsSecFiling(periodRow, filings)?.form).toBe("10-Q");
-    const detail = buildEventDetailBody({ row: periodRow, secFilingsLoading: false,
+    const detail = detailText(buildEventDetail({ row: periodRow, secFilingsLoading: false,
       filing: filings[0]!, documents: [], documentsLoading: false, inlineContent: new Map(),
-      primaryContent: "Fiscal statement content", primaryContentLoading: false });
+      primaryContent: "Fiscal statement content", primaryContentLoading: false }));
     expect(detail).toContain("Fiscal statement content");
   });
 });

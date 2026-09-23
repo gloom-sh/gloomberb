@@ -54,8 +54,23 @@ export function buildInsiderDisclosureText(entry: ParsedInsiderFiling): string {
   ].filter(Boolean).join("\n\n");
 }
 
-/** Summarize only loaded non-derivative buys/sales, grouped by security. */
-export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.now(), context: readonly ParsedInsiderFiling[] = parsed): string | null {
+export interface InsiderSideTotal {
+  security: string;
+  side: "P" | "S";
+  shares: number;
+  value: number;
+  knownValue: boolean;
+  unreconciled: boolean;
+}
+
+export interface InsiderSummaryFigures {
+  totals: InsiderSideTotal[];
+  /** Some loaded filings could not be read into complete transactions. */
+  incomplete: boolean;
+}
+
+/** Totals of the loaded non-derivative buys and sales in the last 90 days, by security and side. */
+export function buildInsiderSummaryFigures(parsed: readonly ParsedInsiderFiling[], now = Date.now(), context: readonly ParsedInsiderFiling[] = parsed): InsiderSummaryFigures | null {
   if (parsed.some(({ isLoading }) => isLoading)) return null;
   const amendments = buildInsiderAmendmentScopes(context);
   const incomplete = parsed.some((entry) => {
@@ -64,7 +79,7 @@ export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.no
     return !transaction?.filingDate || transaction.shares == null || !transaction.transactionType || !transaction.securityTitle;
   });
   const cutoff = now - NINETY_DAYS_MS;
-  const totals = new Map<string, { security: string; side: string; shares: number; value: number; knownValue: boolean; unreconciled: boolean }>();
+  const totals = new Map<string, InsiderSideTotal>();
   for (const entry of parsed) {
     const { transaction } = entry;
     if (!transaction || transaction.isDerivative || transaction.shares == null || !transaction.securityTitle) continue;
@@ -80,10 +95,22 @@ export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.no
     total.value += transaction.totalValue ?? 0;
     totals.set(key, total);
   }
+  return { totals: [...totals.values()], incomplete };
+}
+
+/** The oldest filing date that the 90-day totals need loaded before they cover the whole window. */
+export function insiderSummaryCutoff(now = Date.now()): number {
+  return now - NINETY_DAYS_MS;
+}
+
+/** Summarize only loaded non-derivative buys/sales, grouped by security. */
+export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.now(), context: readonly ParsedInsiderFiling[] = parsed): string | null {
+  const figures = buildInsiderSummaryFigures(parsed, now, context);
+  if (!figures) return null;
   const prefix = "Loaded filings, last 90 days: ";
-  const coverage = incomplete ? " | Some transactions unavailable or incomplete." : "";
-  if (totals.size === 0) return `${prefix}no parsed non-derivative buys/sales.${coverage}`;
-  return prefix + [...totals.values()].map((total) => total.unreconciled
+  const coverage = figures.incomplete ? " | Some transactions unavailable or incomplete." : "";
+  if (figures.totals.length === 0) return `${prefix}no parsed non-derivative buys/sales.${coverage}`;
+  return prefix + figures.totals.map((total) => total.unreconciled
     ? `${total.security}: ${total.side === "P" ? "Buy" : "Sale"} total unavailable (unreconciled amendment)`
     : `${total.security}: ${total.side === "P" ? "Bought" : "Sold"} ${formatCompact(total.shares)} shares (${total.knownValue ? formatCurrency(total.value) : "value unavailable"})`).join(" | ") + coverage;
 }

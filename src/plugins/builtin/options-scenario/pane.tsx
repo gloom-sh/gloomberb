@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValueRow,
-  PageStackView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
+import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
+  Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
@@ -223,19 +223,37 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (hint) { event.preventDefault(); event.stopPropagation(); hint.onPress(); }
     else if (event.name === "r") void resource.reload();
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
-  const controlsHeight = 1;
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: focused && !volActive });
   const tabRows = tabsInHeader ? 0 : 1;
-  const bodyHeight = Math.max(3, height - 7 - tabRows - controlsHeight);
+  const risk = scenario?.expiryRisk;
+  const stats: StatItem[] = scenario ? [
+    { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
+      tone: scenario.valuation.pnl >= 0 ? "positive" : "negative" },
+    { id: "spot", label: "Spot", value: money(scenario.position.spot) },
+    { id: "value", label: "Value", value: money(scenario.valuation.price) },
+    { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
+    { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },
+    { id: "breakevens", label: "Breakevens", value: risk?.breakevens.map(money).join(", ") || "--" },
+    { id: "delta", label: "Delta", value: scenario.valuation.delta.toFixed(2) },
+    { id: "gamma", label: "Gamma", value: scenario.valuation.gamma.toFixed(3) },
+    { id: "theta", label: "Theta", value: money(scenario.valuation.thetaPerDay), detail: "per day" },
+    { id: "vega", label: "Vega", value: money(scenario.valuation.vegaPerPoint), detail: "per pt" },
+    { id: "rho", label: "Rho", value: money(scenario.valuation.rhoPerPoint), detail: "per pt" },
+  ] : [];
+  // The query bar and the stat band sit above the content only once a scenario prices.
+  const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0));
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
     { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / unit", width: 13, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
-  const risk = scenario?.expiryRisk;
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
-      rootHeight={Math.min(bodyHeight, scenario.grid.length + 1)} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.id === "spot" ? row.spot : gridSort.id === "move" ? row.move ?? 0 : row.values[Number(gridSort.id)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
-      sortColumnId={gridSort.id} sortDirection={gridSort.direction} onHeaderClick={(id) => setGridSort({ id, direction: gridSort.id === id && gridSort.direction === "asc" ? "desc" : "asc" })}
+      rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.id === "spot" ? row.spot : gridSort.id === "move" ? row.move ?? 0 : row.values[Number(gridSort.id)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
+      sortColumnId={gridSort.id} sortDirection={gridSort.direction} onHeaderClick={(id) => {
+        // The landmark column has no label and no order of its own.
+        if (id === "mark") return;
+        setGridSort({ id, direction: gridSort.id === id && gridSort.direction === "asc" ? "desc" : "asc" });
+      }}
       emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
         { id: "mark", label: "", width: 10, align: "left" },
@@ -250,8 +268,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         const peak = Math.max(1, ...scenario.grid.flatMap((entry) => entry.values.map(Math.abs)));
         return { text: money(value), color: value >= 0 ? colors.positive : colors.negative,
           backgroundColor: blendHex(colors.bg, value >= 0 ? colors.positive : colors.negative, 0.06 + 0.3 * Math.min(1, Math.abs(value) / peak)) };
-      }} selection={{ kind: "index", selectedIndex: gridIndex, onChange: setGridIndex }} onActivate={() => {}} />
-    : <DataTableView<ScenarioLeg> focused={focused && !volActive} rootWidth={width} rootHeight={Math.min(bodyHeight, (position?.legs.length ?? 0) + 1)}
+      }} selection={{ kind: "index", selectedIndex: gridIndex, onChange: setGridIndex }} />
+    : <DataTableView<ScenarioLeg> focused={focused && !volActive} rootWidth={width} rootHeight={bodyHeight}
       items={(position?.legs ?? []).toSorted((a, b) => { const x = a[sort.id as keyof ScenarioLeg], y = b[sort.id as keyof ScenarioLeg]; return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (sort.direction === "asc" ? 1 : -1); })}
       sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
       emptyStateTitle="No position legs." columns={legColumns} getItemKey={(leg) => leg.id}
@@ -270,26 +288,14 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
             options: [...new Set([...scenario.dates, scenario.controls.date])].sort((a, b) => a - b)
               .map((date) => ({ value: String(date), label: `${dateLabel(date)} +${((date - scenario.position.asOf) / 86_400_000).toFixed(1)}d` })),
             onChange: (value: string) => setControls({ ...scenario.controls, date: Number(value) }) },
-          { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "vol shift", debounceMs: 0,
+          // No shift reads as the "0" placeholder, so the field offers its reset only once there is a shift.
+          { id: "vol", kind: "text", label: "Vol shift (pts)", width: 12, placeholder: "0", debounceMs: 0,
             value: !volActive && volText === "0" ? "" : volText, focused, active: volActive,
             onActiveChange: (active: boolean) => { if (!active) shiftVol(volText); setVolActive(active); },
             onChange: (value: string) => { setVolText(value); shiftVol(value.trim() ? value : "0"); } },
         ]}
       />
-      <Box paddingX={1} height={1} flexDirection="row" gap={3}>
-        <KeyValueRow label={`P&L ${scenario.position.currency}`} value={money(scenario.valuation.pnl)} color={scenario.valuation.pnl >= 0 ? colors.positive : colors.negative} width={28} />
-        <KeyValueRow label="Spot" value={money(scenario.position.spot)} width={23} />
-        <KeyValueRow label="Value" value={money(scenario.valuation.price)} width={28} />
-      </Box>
-      <Box paddingX={1} height={1} flexDirection="row" gap={2}>
-        <KeyValueRow label="Max profit" labelWidth={12} value={risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null)} width={29} />
-        <KeyValueRow label="Max loss" labelWidth={11} value={risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null)} width={27} />
-        <KeyValueRow label="Breakevens" value={risk?.breakevens.map(money).join(", ") || "--"} width={Math.max(20, width - 63)} />
-      </Box>
-      <Box paddingX={1} height={1} flexDirection="row" gap={2}>
-        <Text fg={colors.textDim}>{`Delta ${scenario.valuation.delta.toFixed(2)}  Gamma ${scenario.valuation.gamma.toFixed(3)}  Theta ${money(scenario.valuation.thetaPerDay)}/day  Vega ${money(scenario.valuation.vegaPerPoint)}/pt  Rho ${money(scenario.valuation.rhoPerPoint)}/pt`}</Text>
-      </Box>
-      <Box height={1} />
+      <StatGrid items={stats} width={width} />
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
       <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>

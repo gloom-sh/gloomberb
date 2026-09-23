@@ -37,7 +37,8 @@ import {
   type AppState,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { publicTickerKey } from "../../../utils/exchanges";
+import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
@@ -72,6 +73,7 @@ import {
   CHART_STUDY_OPTIONS,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
+import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { usePluginAppActions } from "../../runtime";
@@ -223,8 +225,14 @@ function ChartComposerSurface({
     liveRefreshIntervalMs: desktopWeb ? 0 : LIVE_CHART_TERMINAL_FRAME_MS,
   });
   currentResolutionRef.current = resolution.resolution ?? currentResolutionRef.current;
+  // Intervals only resample market series. Quarterly revenue or a P/E line
+  // looks the same at every interval, so such a chart offers AUTO alone.
+  const hasMarketSeries = spec.series.some((entry) => (
+    entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
+  ));
   const availableResolutions = useMemo<ChartResolution[]>(() => {
     if (!resolution.resolutionSupport) {
+      if (!hasMarketSeries) return ["auto"];
       if (!resolution.loading) return RESOLUTIONS;
       return spec.viewport.resolution === "auto"
         ? ["auto"]
@@ -237,6 +245,7 @@ function ChartComposerSurface({
     ));
     return RESOLUTIONS.filter((value) => value === "auto" || supported.has(value));
   }, [
+    hasMarketSeries,
     resolution.loading,
     resolution.resolutionSupport,
     spec.viewport.dateWindow,
@@ -244,7 +253,7 @@ function ChartComposerSurface({
     spec.viewport.resolution,
   ]);
   const resolutionOptions = useMemo(
-    () => availableResolutions.map((value) => ({ label: value.toUpperCase(), value })),
+    () => availableResolutions.map((value) => ({ label: formatChartResolution(value), value })),
     [availableResolutions],
   );
   const selectedStudies = getSelectedBuiltinStudies(spec);
@@ -467,10 +476,8 @@ function ChartComposerSurface({
             selectedChoiceId={spec.viewport.resolution}
             choices={availableResolutions.map((value) => ({
               id: value,
-              label: value.toUpperCase(),
-              description: value === "auto"
-                ? "Choose an interval automatically for the active range."
-                : `Use ${value.toUpperCase()} observations.`,
+              label: formatChartResolution(value),
+              description: describeChartResolution(value),
             }))}
           />
         ),
@@ -523,7 +530,7 @@ function ChartComposerSurface({
         void openSeriesEditor();
         return;
       case "resolution":
-        void openResolutionPicker();
+        if (availableResolutions.length > 1) void openResolutionPicker();
     }
   }, { enabled: focused && !dialogOpen });
 
@@ -593,6 +600,17 @@ function ChartComposerSurface({
     ],
   }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, publicSharing, footerShare]);
 
+  // A fixed window (a GIP session) highlights no range, so the bar names it.
+  const dateWindowLabel = useMemo(() => {
+    const window = spec.viewport.dateWindow;
+    if (!window) return undefined;
+    const exchange = spec.series.find((entry) => entry.source.kind === "security")?.source;
+    const timeZone = exchange?.kind === "security"
+      ? resolveExchangeTimeZone(exchange.instrument.exchange) ?? "UTC"
+      : "UTC";
+    return formatChartDateWindow(window, timeZone);
+  }, [spec.series, spec.viewport.dateWindow]);
+
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
     : resolution.loading
@@ -609,11 +627,12 @@ function ChartComposerSurface({
             options: RANGE_OPTIONS,
             onChange: (value: string) => setRange(value as TimeRange) },
         ]}
-        view={{
+        view={resolutionOptions.length > 1 ? {
           value: spec.viewport.resolution,
           options: resolutionOptions,
           onChange: (value: string) => setResolution(value as ChartResolution),
-        }}
+        } : undefined}
+        meta={dateWindowLabel}
       />
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}

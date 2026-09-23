@@ -10,9 +10,9 @@ import { alignDailyCloses, dailyCloses, pearsonCorrelation } from "../compute";
 export type RelationshipRange = Extract<TimeRange, "1M" | "3M" | "6M" | "1Y" | "5Y" | "ALL">;
 
 export const RELATIONSHIP_GRAPH_PANE_ID = "relationship-graph";
-const RELATIONSHIP_RANGES: RelationshipRange[] = ["1M", "3M", "6M", "1Y", "5Y", "ALL"];
+export const RELATIONSHIP_RANGES: RelationshipRange[] = ["1M", "3M", "6M", "1Y", "5Y", "ALL"];
 export const DEFAULT_RELATIONSHIP_SECOND_SYMBOL = "SPY";
-const RELATIONSHIP_CORRELATION_WINDOWS = [30, 60, 120, 252] as const;
+export const RELATIONSHIP_CORRELATION_WINDOWS = [30, 60, 120, 252] as const;
 export const DEFAULT_RELATIONSHIP_CORRELATION_WINDOW = 120;
 
 export interface RelationshipAlignedPoint {

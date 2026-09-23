@@ -7,6 +7,7 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { t } from "../../../i18n";
 import { truncate } from "./model";
+import { useFieldLabel } from "./form-components";
 
 type PasswordDialogField = "current" | "new" | "confirm";
 
@@ -78,11 +79,12 @@ export function PasswordChangeDialog({
   }, { allowEditable: true });
 
   const fieldWidth = 42;
+  const fieldLabel = useFieldLabel();
   return (
     <DialogFrame title={t("Change Password")}>
       <Box flexDirection="column" gap={1}>
         <TextField
-          label={activeField === "current" ? `> ${t("Current Password")}` : `  ${t("Current Password")}`}
+          label={fieldLabel(t("Current Password"), activeField === "current")}
           value={currentPassword}
           focused={activeField === "current"}
           width={fieldWidth}
@@ -92,7 +94,7 @@ export function PasswordChangeDialog({
           onSubmit={() => { void submit(); }}
         />
         <TextField
-          label={activeField === "new" ? `> ${t("New Password")}` : `  ${t("New Password")}`}
+          label={fieldLabel(t("New Password"), activeField === "new")}
           value={newPassword}
           focused={activeField === "new"}
           width={fieldWidth}
@@ -102,7 +104,7 @@ export function PasswordChangeDialog({
           onSubmit={() => { void submit(); }}
         />
         <TextField
-          label={activeField === "confirm" ? `> ${t("Confirm Password")}` : `  ${t("Confirm Password")}`}
+          label={fieldLabel(t("Confirm Password"), activeField === "confirm")}
           value={confirmPassword}
           focused={activeField === "confirm"}
           width={fieldWidth}

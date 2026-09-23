@@ -51,7 +51,3 @@ export function volumeHistoryPoints(data: ShortVolumePayload) {
     return [...gap, { date: new Date(point.date), observedAt: new Date(point.date), value: point.ratioPercent }];
   });
 }
-export function percentileCaption(data: ShortVolumePayload): string {
-  const stats = data.latest?.percentile;
-  return `${stats?.value == null ? "--" : stats.value.toFixed(0)} pctl ${stats?.completeWindow ? "1Y" : "sample"} · ${data.asOf ?? "--"}`;
-}

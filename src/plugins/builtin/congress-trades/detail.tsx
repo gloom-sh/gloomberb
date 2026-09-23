@@ -4,10 +4,12 @@ import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRe
 import {
   DataTableView,
   KeyValueRow,
+  StatGrid,
   usePaneFooter,
   usePaneNoticeFooter,
   useTableLoadMore,
   type DataTableKeyEvent,
+  type StatItem,
 } from "../../../components";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
@@ -27,7 +29,6 @@ import {
   nextCongressPage,
   previousCongressYearPage,
   buildMemberTradeColumns,
-  formatAmountRange,
   formatCongressReturn,
   formatLag,
   nextSort,
@@ -332,19 +333,15 @@ export function MemberTradesDetail({
     status,
   ]);
 
-  const summary = (
-    <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1}>
-      <KeyValueRow label="Party" value={summaryMember.party ?? "--"} />
-      <KeyValueRow label="Median return" value={formatCongressReturn(summaryMember.medianReturn)} detail={`${summaryMember.pricedTradeCount ?? 0} priced trades`} />
-      <KeyValueRow label="Buy hit rate" value={summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`} detail={`${summaryMember.pricedBuyCount ?? 0} priced buys`} />
-      {(summaryMember.committees ?? []).map(committee => <KeyValueRow key={committee} label="Committee" value={committee} />)}
-      <Box height={1} flexDirection="row">
-        <Text fg={colors.textDim}>
-          {`${summaryMember.stateDistrict || "--"}  ${summaryMember.tradeCount} trades  ${summaryMember.buyCount} buys  ${summaryMember.sellCount} sells  ${formatAmountRange(summaryMember.estimatedLow, summaryMember.estimatedHigh)}`}
-        </Text>
-      </Box>
-    </Box>
-  );
+  // The member row already shows party, district, counts and the range. The
+  // detail adds what the row lacks: how many priced trades stand behind the
+  // return figures, and the committees.
+  const summaryItems: StatItem[] = [
+    { id: "median", label: "Median return", value: formatCongressReturn(summaryMember.medianReturn), detail: `${summaryMember.pricedTradeCount ?? 0} priced` },
+    { id: "hit", label: "Buy hit rate", value: summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`, detail: `${summaryMember.pricedBuyCount ?? 0} priced buys` },
+    ...(summaryMember.committees ?? []).map((committee): StatItem => ({ id: `committee:${committee}`, label: "Committee", value: committee, wide: true })),
+  ];
+  const summary = <StatGrid items={summaryItems} width={width} />;
   const emptyTitle = status === "loading"
     ? "Loading member trades..."
     : error ?? "No trades for this member.";

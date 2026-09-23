@@ -3,7 +3,7 @@ import type { CloudThesis, ThesisSignal } from "../../../../api-client";
 import { Badge, ListView, openUrl, usePaneFooter, type ListViewItem, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { displayWidth, truncateToDisplayWidth } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
@@ -102,7 +102,7 @@ function buildRows(thesis: CloudThesis, signals: readonly ThesisSignal[], width:
   for (const signal of open) rows.push({ kind: "signal", id: `s:${signal.id}`, section: "signals", item: signal });
 
   rows.push({ kind: "heading", id: "h:pillars", label: SECTION_LABEL.pillars, section: "pillars" });
-  if (document.pillars.length === 0) rows.push({ kind: "empty", id: "e:pillars", section: "pillars", text: "No pillars yet. Press n to add what must stay true." });
+  if (document.pillars.length === 0) rows.push({ kind: "empty", id: "e:pillars", section: "pillars", text: "No pillars yet." });
   for (const pillar of document.pillars) rows.push({ kind: "pillar", id: `p:${pillar.id}`, section: "pillars", item: pillar });
 
   rows.push({ kind: "heading", id: "h:kills", label: SECTION_LABEL.kills, section: "kills" });
@@ -152,6 +152,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
+  const { nativePaneChrome } = useUiCapabilities();
 
   const ctx = useMemo<flows.FlowContext>(() => ({ dialog, notify, hasProAccess: plan.hasProAccess, openUpgrade }), [dialog, notify, openUpgrade, plan.hasProAccess]);
 
@@ -309,7 +310,8 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     else if (isPlainKey(event, "s")) void cycleStatus();
     else if (isPlainKey(event, "d")) void remove();
     else if (isPlainKey(event, "c")) void challengeSelected();
-    else if (isPlainKey(event, "r")) void review();
+    // r stays the app-wide refresh.
+    else if (isPlainKey(event, "v")) void review();
     else if (isPlainKey(event, "e")) void editMenu();
     else if (isPlainKey(event, "o")) openSource();
     else return;
@@ -332,7 +334,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     }
     list.push({ id: "add", key: "n", label: "ew", onPress: () => void addToSection(sectionOf) });
     if (isTeam) list.push({ id: "challenge", key: "c", label: "hallenge", onPress: () => void challengeSelected() });
-    list.push({ id: "review", key: "r", label: plan.hasProAccess ? "eview" : "eview (Pro)", onPress: () => void review() });
+    list.push({ id: "review", key: "v", label: plan.hasProAccess ? " review" : " review (Pro)", onPress: () => void review() });
     list.push({ id: "edit", key: "e", label: "dit", onPress: () => void editMenu() });
     return list;
   }, [addToSection, challengeSelected, cycleStatus, editMenu, isTeam, openSource, plan.hasProAccess, remove, review, sectionOf, selectedRow]);
@@ -407,17 +409,18 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       );
     }
     const signal = row.item;
-    const marker = signal.verdict === "breaks" ? "‼" : signal.verdict === "challenges" ? "▲" : signal.verdict === "supports" ? "✓" : "·";
     const who = signal.origin === "user" ? `@${signal.createdBy?.username ?? signal.createdBy?.displayName ?? "teammate"}` : signal.origin === "rule" ? "rule" : "ai";
     const target = signalTargetText(thesis.document, signal);
-    const head = ` ${marker} ${signal.verdict} · ${target}`;
     const right = `${who} · ${relative(signal.createdAt)}`;
-    const { left, right: rightText } = twoColumn(head, right, contentWidth);
-    const tone = verdictTone(signal.verdict);
-    const toneColor = tone === "negative" ? colors.negative : tone === "warning" ? colors.warning : tone === "positive" ? colors.positive : dim;
+    // The verdict is a badge (its own padding plus a gap), the target the rest.
+    const badgeWidth = displayWidth(signal.verdict) + 3;
+    const { left, right: rightText } = twoColumn(target, right, contentWidth - badgeWidth);
     return (
       <Box flexDirection="row" width={contentWidth} justifyContent="space-between">
-        <Text fg={state.selected ? fg : toneColor}>{left}</Text>
+        <Box flexDirection="row" gap={1} flexShrink={1} minWidth={0} overflow="hidden">
+          <Badge label={signal.verdict} tone={verdictTone(signal.verdict)} />
+          <Text fg={fg}>{left}</Text>
+        </Box>
         <Text fg={dim}>{rightText}</Text>
       </Box>
     );
@@ -451,7 +454,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       const source = row.item.source;
       const sourceText = source?.title ?? (source?.kind === "user" ? "Filed by a teammate" : source?.kind ?? "");
       const when = source?.at ? ` · ${source.at.slice(0, 10)}` : "";
-      if (sourceText) lines.push({ text: truncateToDisplayWidth(`${sourceText}${when}${source?.url ? "  (o opens)" : ""}`, contentWidth), dim: true });
+      if (sourceText) lines.push({ text: truncateToDisplayWidth(`${sourceText}${when}`, contentWidth), dim: true });
       for (const line of wrap(row.item.reason, contentWidth, 3)) lines.push({ text: line, dim: false });
       if (row.item.confidence !== null) lines.push({ text: `confidence ${Math.round(row.item.confidence * 100)}%`, dim: true });
     } else if (row.kind === "pillar") {
@@ -488,26 +491,36 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
         </Box>
       )}
       <Box height={1} />
-      <ListView
-        items={items}
-        selectedIndex={selectedIndex}
-        onSelect={(index) => {
-          const row = rows[index];
-          if (row && isSelectable(row)) {
-            userPicked.current = true;
-            setSelectedId(row.id);
-          }
-        }}
-        onActivate={() => void activate()}
-        renderRow={renderRow}
-        scrollable
-        surface="plain"
-        rowGap={0}
-        height={Math.max(3, height - headerHeight - stripHeight)}
-        getRowBackgroundColor={(item, state) => (state.selected ? colors.selected : item.disabled ? colors.bg : undefined)}
-        remoteRole="thesis"
-        remoteLabel={thesis.title}
-      />
+      {/* The desktop list fills whatever the header and strip leave; the terminal still counts its rows. */}
+      <Box
+        flexDirection="column"
+        flexGrow={nativePaneChrome ? 1 : undefined}
+        flexBasis={nativePaneChrome ? 0 : undefined}
+        minHeight={nativePaneChrome ? 0 : undefined}
+        overflow="hidden"
+      >
+        <ListView
+          items={items}
+          selectedIndex={selectedIndex}
+          onSelect={(index) => {
+            const row = rows[index];
+            if (row && isSelectable(row)) {
+              userPicked.current = true;
+              setSelectedId(row.id);
+            }
+          }}
+          onActivate={() => void activate()}
+          renderRow={renderRow}
+          scrollable
+          surface="plain"
+          rowGap={0}
+          height={nativePaneChrome ? undefined : Math.max(3, height - headerHeight - stripHeight)}
+          flexGrow={nativePaneChrome ? 1 : undefined}
+          getRowBackgroundColor={(item, state) => (state.selected ? colors.selected : item.disabled ? colors.bg : undefined)}
+          remoteRole="thesis"
+          remoteLabel={thesis.title}
+        />
+      </Box>
       {stripLines.length > 0 && (
         <Box flexDirection="column" height={stripHeight} marginTop={1}>
           {stripLines.map((line, index) => (

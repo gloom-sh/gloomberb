@@ -12,6 +12,7 @@ import {
   StaticChartSurface,
   Tabs,
   usePaneFooter,
+  usePaneNoticeFooter,
   useTableLoadMore,
   type DataTableCell,
   type PaneFooterSegment,
@@ -64,26 +65,6 @@ const PENDING_POLL_MS = 20_000;
 const POSTINGS_PAGE = 100;
 const MOVERS_PAGE = 200;
 
-const VENDOR_LABELS: Record<string, string> = {
-  greenhouse: "Greenhouse",
-  lever: "Lever",
-  ashby: "Ashby",
-  smartrecruiters: "SmartRecruiters",
-  workable: "Workable",
-  workday: "Workday",
-  oracle: "Oracle",
-  eightfold: "Eightfold",
-  phenom: "Phenom",
-  bamboohr: "BambooHR",
-  recruitee: "Recruitee",
-  icims: "iCIMS",
-  successfactors: "SuccessFactors",
-  jobvite: "Jobvite",
-  jsonld: "careers site",
-  sitemap: "careers site",
-  amazon: "amazon.jobs",
-};
-
 type DetailTab = "roles" | "locations" | "seniority" | "salary";
 
 function toneColor(tone: "positive" | "negative" | "neutral"): string {
@@ -109,16 +90,14 @@ function ProWall({ action }: { action: string }) {
   const openUpgrade = useCloudUpgradeAction();
   const openPlan = useCloudPlanAction();
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <EmptyState
-        title="Hiring data is part of Gloom Cloud Pro."
-        message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges. ${action}`}
-        actions={<>
-          <Button label="Upgrade to Pro" onPress={openUpgrade} />
-          <Button label="Manage account" variant="secondary" onPress={openPlan} />
-        </>}
-      />
-    </Box>
+    <EmptyState
+      title="Hiring data is part of Gloom Cloud Pro."
+      message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges. ${action}`}
+      actions={<>
+        <Button label="Upgrade to Pro" onPress={openUpgrade} />
+        <Button label="Manage account" variant="secondary" onPress={openPlan} />
+      </>}
+    />
   );
 }
 
@@ -201,25 +180,18 @@ function Chart({ summary, width, height }: { summary: CloudJobsSummaryPayload; w
       </Box>
     );
   }
-  const daysLeft = Math.max(0, 7 - summary.series.length);
   return (
     <Box flexDirection="column" width={width} height={height} paddingX={1}>
-      <Box height={1} flexDirection="row">
+      <Box height={1}>
         <SectionHeading title="Open roles by posting age" />
-        {daysLeft > 0 ? (
-          <Text fg={colors.textMuted}>{`  history chart in ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`}</Text>
-        ) : null}
       </Box>
       {ageRows.length === 0 ? (
-        <Text fg={colors.textDim}>This careers system publishes no posting dates.</Text>
+        <Text fg={colors.textDim}>
+          {summary.datesReliable === false ? "No reliable posting dates." : "This careers system publishes no posting dates."}
+        </Text>
       ) : (
         <ShareBars rows={ageRows} width={Math.max(24, width - 2)} color={colors.borderFocused} />
       )}
-      {summary.datesReliable === false ? (
-        <Box marginTop={1}>
-          <Text fg={colors.textMuted}>Posting dates on this system move on every refresh, so they are not shown.</Text>
-        </Box>
-      ) : null}
     </Box>
   );
 }
@@ -353,10 +325,11 @@ function CompanyView({
     if (loading) info.push({ id: "loading", parts: [{ text: "refreshing", tone: "muted" }] });
     if (more.loadingMore) info.push({ id: "loading-more", parts: [{ text: "loading more roles", tone: "muted" }] });
     if (error) info.push({ id: "error", parts: [{ text: error.slice(0, 60), tone: "warning" }] });
-    const vendor = summary.coverage.vendor ? VENDOR_LABELS[summary.coverage.vendor] ?? summary.coverage.vendor : null;
+    // The careers platform is where the roles were read, not what they are,
+    // so the footer says only when; `c` opens the company's own site.
     const collected = formatCollectedAgo(summary.coverage.lastCollectedAt);
-    if (vendor || collected) {
-      info.push({ id: "source", parts: [{ text: [vendor, collected && `read ${collected}`].filter(Boolean).join(" · "), tone: "muted" }] });
+    if (collected) {
+      info.push({ id: "source", parts: [{ text: `read ${collected}`, tone: "muted" }] });
     }
     if (summary.coverage.daysObserved > 1) {
       info.push({ id: "history", parts: [{ text: `${summary.coverage.daysObserved}d of history`, tone: "muted" }] });
@@ -369,6 +342,16 @@ function CompanyView({
     ];
     return { info, hints };
   }, [loading, more.loadingMore, error, summary, tab, selected, openSelected, rendererHost]);
+
+  // Unstable dates are a limitation of every age on screen, so they sit
+  // behind the footer notice rather than a standing line under the chart.
+  usePaneNoticeFooter({
+    registrationId: `${registrationId}:notices`,
+    notices: summary.datesReliable === false
+      ? ["Posting dates on this careers system change on every read, so posting ages are not shown."]
+      : [],
+    focused,
+  });
 
   const renderCell = useCallback((row: PostingRow, column: PostingColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
@@ -442,11 +425,6 @@ function CompanyView({
             {countryRows.length === 0
               ? <Text fg={colors.textDim}>No locations in the postings collected so far.</Text>
               : <ShareBars rows={countryRows} width={Math.min(width - 2, 80)} color={colors.warning} showDelta />}
-            {countryRows.length > 0 && countryRows.every((row) => row.delta == null) ? (
-              <Box marginTop={1}>
-                <Text fg={colors.textMuted}>30-day changes by country appear once the history reaches back that far.</Text>
-              </Box>
-            ) : null}
           </Box>
         ) : tab === "seniority" ? (
           <Box flexDirection="column" paddingX={1} paddingTop={1}>

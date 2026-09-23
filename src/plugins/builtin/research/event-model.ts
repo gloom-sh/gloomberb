@@ -357,7 +357,7 @@ export function buildEventRows(
       date: split.date,
       status: "Factor",
       period: "-",
-      detail: "Provider split/adjustment",
+      detail: "Split/adjustment",
       providerDescription: split.description,
       adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor

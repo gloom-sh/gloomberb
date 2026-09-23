@@ -85,7 +85,8 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   await settle();
   await exportPaneTable(paneId, "rv-stale-fundamentals.csv");
   const csv = takeSavedTextFile()!.text;
-  expect(csv).toContain("PLD,Fundamentals source,yahoo,Retrieved,2026-09-11T23:52:16.139Z,Stale,true");
+  expect(csv).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,true");
+  expect(csv).not.toContain("yahoo");
   expect(csv).toContain("PLD,Fundamentals stale");
   stale = false;
   await act(async () => setup!.mockInput.pressKey("r"));
@@ -94,5 +95,5 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   await settle();
   expect(setup.captureCharFrame()).not.toContain("Fundamentals stale");
   await exportPaneTable(paneId, "rv-fresh-fundamentals.csv");
-  expect(takeSavedTextFile()!.text).toContain("PLD,Fundamentals source,yahoo,Retrieved,2026-09-11T23:52:16.139Z,Stale,false");
+  expect(takeSavedTextFile()!.text).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,false");
 });

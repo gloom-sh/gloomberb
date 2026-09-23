@@ -3,7 +3,7 @@ import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
-import { DataTableStackView } from "../../../components";
+import { Button, DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
@@ -170,7 +170,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   });
 
   const bodyHeight = Math.max(5, height);
-  const tableWidth = Math.max(24, width - 2);
+  const tableWidth = Math.max(24, width);
   const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
   const openSelectedDetail = useCallback((_index: number, row: BrokerProfileRow) => {
@@ -204,6 +204,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     saveEdit().catch(() => {});
   }, [saveEdit]);
 
+  // The detail insets one cell each side like the table cells.
   const detailContentWidth = Math.max(24, tableWidth - 2);
   const detailContent = (
     <BrokerDetailContent
@@ -225,7 +226,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   );
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={1}>
+    <Box flexDirection="column" flexGrow={1}>
       <Box height={bodyHeight} overflow="hidden">
         <DataTableStackView<BrokerProfileRow, BrokerColumn>
           focused={focused}
@@ -248,11 +249,18 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           items={rows}
           sortColumnId={null}
           sortDirection="asc"
-          onHeaderClick={() => {}}
           getItemKey={(row) => row.id}
           renderCell={renderBrokerCell}
+          emptyContent={(
+            <Box width="100%" paddingX={1} paddingY={1}>
+              <EmptyState
+                title={t("No broker profiles.")}
+                hint={t("Add a broker profile to test connections and sync positions.")}
+                actions={<Button label={t("Add broker")} variant="primary" compact onPress={openAddBroker} />}
+              />
+            </Box>
+          )}
           emptyStateTitle={t("No broker profiles.")}
-          emptyStateHint={t("Add a broker profile to test connections and sync positions.")}
         />
       </Box>
     </Box>

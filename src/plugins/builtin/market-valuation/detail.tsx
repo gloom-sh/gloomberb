@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CompositeChart } from "../../../components/chart/composite";
 import { blendHex, colors } from "../../../theme/colors";
+import { StatGrid, statGridRows, type StatItem } from "../../../components/ui";
 import { Box, Text } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { markerSeries, zoneSeriesFor } from "./chart-projection";
@@ -11,6 +12,17 @@ function formatTrillions(billions: number): string {
   return `${formatNumber(billions / 1000, 1)}T`;
 }
 
+const PANELS = [{ id: "main" }];
+const AXIS_WIDTH = 8;
+const MIN_CHART_ROWS = 8;
+/** Zone words, the bar, and its ticks. */
+const ZONE_SCALE_ROWS = 3;
+
+/**
+ * The selected indicator: its levels and range figures, the zone scale, and a
+ * chart filling the rest of the column. The mean is in the chart legend, so it
+ * does not repeat among the figures.
+ */
 export function IndicatorDetail({
   view,
   width,
@@ -22,14 +34,34 @@ export function IndicatorDetail({
   height: number;
   focused?: boolean;
 }) {
-  const PANELS = [{ id: "main" }];
   const indicator = view.indicator;
   const levels = indicator.input.kind === "ratio" ? indicator.input.levels : undefined;
   const [userViewport, setUserViewport] = useState<{ start: Date; end: Date } | null>(null);
-  const chartWidth = Math.max(24, width - 2);
-  const AXIS_WIDTH = 8;
-  // Give a tall pane a taller plot instead of leaving the space empty below.
-  const chartHeight = Math.max(8, Math.min(26, height - 16));
+  const chartWidth = Math.max(24, width);
+
+  const stats = useMemo<StatItem[]>(() => [
+    ...(levels && view.current.numeratorBillions != null && view.current.denominatorBillions != null
+      ? [
+        { id: "numerator", label: levels.numeratorLabel, value: formatTrillions(view.current.numeratorBillions) },
+        {
+          id: "denominator",
+          label: levels.denominatorLabel,
+          value: formatTrillions(view.current.denominatorBillions),
+          // "GDP as of 2026Q2" sits on the GDP cell, so the label is not said twice.
+          detail: view.vintageLabel?.replace(`${levels.denominatorLabel} `, "") || undefined,
+        },
+      ]
+      : []),
+    { id: "year-ago", label: "1Y ago", value: view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo) },
+    { id: "ath", label: "ATH", value: indicator.formatValue(view.allTimeHigh.ratio), detail: view.allTimeHigh.date },
+    { id: "atl", label: "ATL", value: indicator.formatValue(view.allTimeLow.ratio), detail: view.allTimeLow.date },
+  ], [indicator, levels, view]);
+  const statRows = statGridRows(stats, width);
+  const showZoneScale = view.current.ratio != null && !!view.zone;
+  const chartHeight = Math.max(
+    MIN_CHART_ROWS,
+    height - statRows - (showZoneScale ? ZONE_SCALE_ROWS : 0),
+  );
 
   const visible = view.chart.sourcePoints;
   const series = useMemo(() => {
@@ -69,20 +101,23 @@ export function IndicatorDetail({
     return { start: new Date(visible[0]!.date), end: new Date(visible.at(-1)!.date) };
   }, [userViewport, visible]);
 
-
   return (
-    <Box flexDirection="column" width={width} paddingX={1} gap={1}>
+    <Box flexDirection="column" width={width}>
+      <StatGrid items={stats} width={width} />
       {view.chart.points.length >= 2 ? (
-        <Box flexDirection="column" gap={0}>
-          {view.current.ratio != null && view.zone && <Box flexDirection="row" width={chartWidth} overflow="hidden">
-            <Text>{" ".repeat(AXIS_WIDTH)}</Text>
-            <ZoneColorScale
-              indicator={indicator}
-              value={view.current.ratio}
-              width={Math.max(1, chartWidth - AXIS_WIDTH)}
-              markerColor={view.zone.color}
-            />
-          </Box>}
+        <>
+          {showZoneScale ? (
+            // A value scale, not the chart's time axis: it takes the pane inset
+            // like the legend under it rather than guessing the axis width.
+            <Box width={chartWidth} paddingX={1} overflow="hidden">
+              <ZoneColorScale
+                indicator={indicator}
+                value={view.current.ratio!}
+                width={Math.max(1, chartWidth - 2)}
+                markerColor={view.zone!.color}
+              />
+            </Box>
+          ) : null}
           <CompositeChart
             series={series}
             legendSeries={legendSeries}
@@ -99,43 +134,12 @@ export function IndicatorDetail({
             formatValue={(value) => indicator.formatValue(value)}
             emptyMessage="Not enough chart data"
           />
-        </Box>
+        </>
       ) : (
         <Box height={chartHeight} justifyContent="center" alignItems="center">
           <Text fg={colors.textMuted}>Not enough chart data</Text>
         </Box>
       )}
-
-      <Box flexDirection="column" gap={0} width={Math.max(1, width - 2)}>
-        {levels && view.current.numeratorBillions != null
-          && view.current.denominatorBillions != null ? (
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2} rowGap={0}>
-            <Box flexDirection="row" flexShrink={0}>
-              <Text fg={colors.textDim}>{`${levels.numeratorLabel} `}</Text>
-              <Text fg={colors.textBright}>{formatTrillions(view.current.numeratorBillions)}</Text>
-            </Box>
-            <Box flexDirection="row" flexShrink={0}>
-              <Text fg={colors.textDim}>{`${levels.denominatorLabel} `}</Text>
-              <Text fg={colors.textBright}>{formatTrillions(view.current.denominatorBillions)}</Text>
-            </Box>
-            {view.vintageLabel ? <Text fg={colors.textDim}>{view.vintageLabel}</Text> : null}
-          </Box>
-        ) : null}
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2} rowGap={0}>
-          {[
-            ["1Y ago", view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo)],
-            ["mean", indicator.formatValue(view.mean)],
-            ["ATH", `${indicator.formatValue(view.allTimeHigh.ratio)} ${view.allTimeHigh.date}`],
-            ["ATL", `${indicator.formatValue(view.allTimeLow.ratio)} ${view.allTimeLow.date}`],
-          ].map(([label, value]) => (
-            <Box key={label} flexDirection="row" flexShrink={0}>
-              <Text fg={colors.textDim}>{`${label} `}</Text>
-              <Text fg={colors.text}>{value}</Text>
-            </Box>
-          ))}
-        </Box>
-      </Box>
-
     </Box>
   );
 }

@@ -1,38 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
-  DataTableView,
-  EmptyState, PaneStatusBody, usePaneFooter,
-  type DataTableCell,
-  type DataTableColumn,
-  type PaneFooterSegment
+  CompositeChart,
+  MarketBoardStack,
+  PaneStatusBody,
+  StatGrid,
+  statGridRows,
+  usePaneFooter,
+  usePaneNoticeFooter,
+  type MarketBoardRow,
+  type PaneFooterSegment,
+  type StatItem,
 } from "../../../components";
+import { staticSeries } from "../../../components/chart/static/series";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box } from "../../../ui";
+import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
-import {
-  CREDIT_SERIES,
-  type CreditConditionRow,
-  type CreditSeriesId,
-} from "./model";
+import { CREDIT_SERIES, type CreditConditionRow } from "./model";
 
 export { creditConditionsHeadless } from "./headless";
 
 const EMPTY_ROWS: CreditConditionRow[] = [];
-
-type SortId = "label" | "oas" | "change" | "date";
-interface Column extends DataTableColumn { id: SortId }
-
-const COLUMNS: readonly Column[] = [
-  { id: "label", label: "INDEX", width: 12, align: "left" },
-  { id: "oas", label: "OAS", width: 10, align: "right" },
-  { id: "change", label: "1D", width: 9, align: "right" },
-];
+const PANELS = [{ id: "main" }];
 
 function formatBp(value: number | null, signed = false): string {
   if (value == null) return "--";
@@ -40,40 +35,44 @@ function formatBp(value: number | null, signed = false): string {
   return `${sign}${value.toFixed(1)}bp`;
 }
 
-/** The index column orders by credit quality (IG, AAA to BBB, HY), not alphabetically. */
-const RATING_ORDER = new Map<CreditSeriesId, number>(CREDIT_SERIES.map((series, index) => [series.seriesId, index]));
+interface CreditBoardRow extends MarketBoardRow { spread: CreditConditionRow }
 
-function sortRows(rows: CreditConditionRow[], id: SortId, descending: boolean): CreditConditionRow[] {
-  return [...rows].sort((left, right) => {
-    let comparison = 0;
-    if (id === "label") comparison = (RATING_ORDER.get(left.seriesId) ?? 0) - (RATING_ORDER.get(right.seriesId) ?? 0);
-    else if (id === "date") comparison = left.date.localeCompare(right.date);
-    else if (id === "oas") comparison = left.oasBp - right.oasBp;
-    else comparison = (left.dailyChangeBp ?? -Infinity) - (right.dailyChangeBp ?? -Infinity);
-    return descending ? -comparison : comparison;
-  });
+function boardRow(row: CreditConditionRow): CreditBoardRow {
+  return {
+    id: row.seriesId, label: row.label, value: row.oasBp, valueText: formatBp(row.oasBp),
+    change: row.dailyChangeBp, changeText: formatBp(row.dailyChangeBp, true),
+    percentile: row.percentile1Y, asOf: row.date, status: row.stale ? "stale" : "available",
+    history: row.history.map((point) => ({ date: new Date(point.date), close: point.valueBp })),
+    spread: row,
+  };
 }
 
-function renderCell(
-  row: CreditConditionRow,
-  column: Column,
-  _index: number,
-  state: { selected: boolean },
-): DataTableCell {
-  const selected = state.selected ? colors.selectedText : undefined;
-  if (column.id === "label") return { text: row.label, color: selected ?? colors.text, attributes: TextAttributes.BOLD };
-  if (column.id === "oas") return { text: formatBp(row.oasBp), color: selected ?? colors.textBright };
-  if (column.id === "date") return { text: row.date, color: selected ?? colors.textDim };
-  return {
-    text: formatBp(row.dailyChangeBp, true),
-    color: selected ?? (row.dailyChangeBp == null
-      ? colors.textDim
-      : row.dailyChangeBp > 0
-        ? colors.negative
-        : row.dailyChangeBp < 0
-          ? colors.positive
-          : colors.textDim),
-  };
+function SpreadChart({ row, width, height }: { row: CreditConditionRow; width: number; height: number }) {
+  const series = useMemo(() => [staticSeries(row.history.map((point) => ({
+    date: new Date(point.date), observedAt: new Date(point.date), value: point.valueBp,
+  })), { id: row.seriesId, label: row.label, color: colors.positive, calendarSpaced: true })], [row]);
+  return <CompositeChart series={series} panels={PANELS} width={width} height={height} showLegend={false}
+    navigable={false} showTimeAxis formatAxisValue={(value) => formatBp(value)} remoteKind="credit-spread-history" />;
+}
+
+function SpreadDetail({ row, width, height }: { row: CreditConditionRow; width: number; height: number }) {
+  // The chart shows the year the rank and range come from.
+  const items: StatItem[] = [
+    { id: "oas", label: "OAS", value: formatBp(row.oasBp),
+      detail: `${row.percentile1Y == null ? "--" : row.percentile1Y.toFixed(0)} pctl 1Y · ${row.date}` },
+    { id: "change", label: "1D", value: formatBp(row.dailyChangeBp, true) },
+    { id: "range", label: "1Y range", value: `${formatBp(row.rangeLowBp)} to ${formatBp(row.rangeHighBp)}` },
+    { id: "series", label: "FRED", value: row.seriesId, detail: row.frequency },
+  ];
+  const statRows = statGridRows(items, width);
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <StatGrid items={items} width={width} />
+      <PaneStatusBody empty={row.history.length < 2} subject="spread history" emptyTitle="No spread history available.">
+        <SpreadChart row={row} width={width} height={Math.max(3, height - statRows)} />
+      </PaneStatusBody>
+    </Box>
+  );
 }
 
 export function CreditConditionsPane({ paneId, focused, width, height }: PaneProps) {
@@ -83,33 +82,14 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   const error = resource.error ?? resource.data?.errors[0] ?? null;
   const lastUpdated = stale ? null : resource.updatedAt;
   const rows = resource.data?.rows ?? EMPTY_ROWS;
+  const boardRows = useMemo(() => rows.map(boardRow), [rows]);
   const mixedDates = new Set(rows.map((row) => row.date)).size > 1;
-  const [selectedId, setSelectedId] = useState<CreditSeriesId | null>(rows[0]?.seriesId ?? null);
-  const [sort, setSort] = useState<{ id: SortId; descending: boolean }>({ id: "label", descending: false });
-  useEffect(() => {
-    setSelectedId((id) => id && rows.some((row) => row.seriesId === id) ? id : rows[0]?.seriesId ?? null);
-  }, [rows]);
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
+  const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   // The shared FRED cache decides whether a tick actually hits the network, so
   // the pane can follow the global cadence without refetching daily data.
   useAutoRefresh(lastUpdated, refresh);
 
-  const sorted = useMemo(() => sortRows(rows, sort.id, sort.descending), [rows, sort]);
-  const columns = useMemo<Column[]>(() => {
-    const labelWidth = Math.max(12, width - 23 - (mixedDates ? 11 : 0));
-    return [
-      ...COLUMNS.map((column) => column.id === "label" ? { ...column, width: labelWidth } : { ...column }),
-      ...(mixedDates ? [{ id: "date" as const, label: "AS OF", width: 10, align: "right" as const }] : []),
-    ];
-  }, [mixedDates, width]);
-  const renderRowCell = useCallback((
-    row: CreditConditionRow,
-    column: Column,
-    index: number,
-    state: { selected: boolean },
-  ): DataTableCell => ({
-    ...renderCell(row, column, index, state),
-    onMouseDown: () => setSelectedId(row.seriesId),
-  }), []);
   useShortcut((event) => {
     if (!focused || event.name !== "r" || loading) return;
     reload();
@@ -117,54 +97,40 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     event.stopPropagation?.();
   });
   const partial = rows.length > 0 && rows.length < CREDIT_SERIES.length;
-  const asOf = mixedDates ? null : rows[0]?.date;
+  // Each row carries its own date in the AS OF column; a spread between
+  // indexes from different sessions is a limitation behind the warning.
+  usePaneNoticeFooter({
+    registrationId: "credit-conditions:notices",
+    focused,
+    notices: mixedDates ? ["The indexes carry different observation dates, so the spreads are not one session."] : [],
+  });
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
-    ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
-    ...(mixedDates ? [{ id: "mixed-dates", parts: [{ text: "mixed dates", tone: "warning" as const }] }] : []),
     ...(rows.length > 0 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
     ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${CREDIT_SERIES.length}`, tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-  ], [asOf, mixedDates, error, loading, partial, rows.length, stale]);
+  ], [error, loading, partial, rows.length, stale]);
   usePaneFooter(paneId, () => ({ info: footerInfo }), [footerInfo, paneId]);
 
-  if (rows.length === 0 && loading) {
-    return (
-      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading credit spreads..." />
-    );
-  }
   if (rows.length === 0) {
     return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState status={error ? "error" : "empty"} title="Credit spreads unavailable." message={error ?? undefined} />
-      </Box>
+      <PaneStatusBody loading={loading} error={error} empty={!loading && !error}
+        loadingLabel="Loading credit spreads..." subject="Credit spreads" align="center" width={width} height={height} />
     );
   }
 
+  // Like the funding boards, the selected index's year fills the space above the board.
+  const selected = boardRows.find((row) => row.id === selectedId) ?? boardRows[0];
+  const boardHeight = Math.max(3, Math.min(boardRows.length + 2, Math.floor(height * 0.45)));
+  const chartHeight = height - boardHeight;
   return (
-    <DataTableView<CreditConditionRow, Column>
-      focused={focused}
-      rootWidth={width}
-      rootHeight={height}
-      selection={{
-        kind: "id",
-        selectedId,
-        getId: (row) => row.seriesId,
-        onChange: (id) => setSelectedId(id as CreditSeriesId),
-      }}
-      columns={columns}
-      items={sorted}
-      sortColumnId={sort.id}
-      sortDirection={sort.descending ? "desc" : "asc"}
-      onHeaderClick={(id) => setSort((current) => ({
-        id: id as SortId,
-        descending: current.id === id ? !current.descending : id !== "label",
-      }))}
-      getItemKey={(row) => row.seriesId}
-      renderCell={renderRowCell}
-      emptyStateTitle={loading ? "Loading credit spreads..." : error ?? "No credit spread data."}
-    />
+    <MarketBoardStack rows={boardRows} width={width} height={height} focused={focused}
+      rootBefore={selected && selected.spread.history.length >= 2 && chartHeight >= 8
+        ? <SpreadChart row={selected.spread} width={width} height={chartHeight} /> : undefined}
+      selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      labelHeader="INDEX" labelWidth={10} valueLabel="OAS" valueWidth={10}
+      renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} />} />
   );
 }
 

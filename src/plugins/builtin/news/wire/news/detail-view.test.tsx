@@ -259,7 +259,7 @@ test("older detail preserves the newer known headline and summary", async () => 
   expect(capture()).toContain("Acme acquisition terminated");
   expect(capture()).toContain("Acme cash consideration version 2");
   expect(capture()).toContain("Timeline cash consideration 1");
-  const updatedLine = capture().split("\n").find((line) => line.includes("last updated at"));
+  const updatedLine = capture().split("\n").find((line) => line.includes("Last updated"));
   expect(updatedLine).toContain(formatDetailDate(new Date("2026-09-11T12:00:00Z")));
   expect(capture()).toContain(formatDetailDate(new Date("2026-09-11T11:00:00Z")));
   expect(service.getQueryState(query).articles[0]?.title).toBe("Acme acquisition terminated");

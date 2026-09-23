@@ -62,8 +62,10 @@ test("opening a fiscal-period row cannot select a same-day pending announcement"
   await frame();
   await emitKeypress(setup!, { name: "return" });
   await frame();
-  expect(setup!.captureCharFrame()).toContain("Actual: 2 USD | Consensus: 1.8 USD");
-  expect(setup!.captureCharFrame()).not.toContain("Actual: - | Consensus: 2.2");
+  const detail = setup!.captureCharFrame();
+  expect(detail).toMatch(/Actual\s+2 USD/);
+  expect(detail).toMatch(/Consensus\s+1\.8 USD/);
+  expect(detail).not.toMatch(/Consensus\s+2\.2/);
 });
 
 test.each(["corporate-actions", "earnings-estimates"] as const)("%s preserves unavailable source status with no visible rows", async (variant) => {

@@ -1,4 +1,5 @@
 import type { CloudFredSeriesPayload } from "../../../api-client";
+import { historyStatistics } from "../../../components/chart/curve/model";
 
 export const CREDIT_SERIES = [
   { seriesId: "BAMLC0A0CM", label: "US IG" },
@@ -21,7 +22,15 @@ export interface CreditConditionRow {
   dailyChangeBp: number | null;
   date: string;
   stale: boolean;
+  /** Observations in the year to `date`, in basis points, oldest first. */
+  history: Array<{ date: string; valueBp: number }>;
+  /** Midrank of the latest spread within that year. */
+  percentile1Y: number | null;
+  rangeLowBp: number | null;
+  rangeHighBp: number | null;
 }
+
+const YEAR_DAYS = 365;
 
 function roundTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -51,15 +60,27 @@ export function normalizeCreditSeries(
   const latest = observations.at(-1);
   if (!latest) throw new Error(`${definition.seriesId}: no observations`);
   const previous = observations.at(-2);
+  const oasBp = roundTenth(latest.value * 100);
+  const windowStart = new Date(Date.parse(`${latest.date}T00:00:00Z`) - YEAR_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const history = observations
+    .filter((observation) => observation.date >= windowStart)
+    .map((observation) => ({ date: observation.date, valueBp: roundTenth(observation.value * 100) }));
+  const year = historyStatistics(history.map((point) => ({ date: point.date, value: point.valueBp })), oasBp,
+    { asOf: latest.date, windowDays: YEAR_DAYS });
 
   return {
     ...definition,
     title: info.title,
     units: info.units,
     frequency: info.frequency,
-    oasBp: roundTenth(latest.value * 100),
+    oasBp,
     dailyChangeBp: previous ? roundTenth((latest.value - previous.value) * 100) : null,
     date: latest.date,
     stale,
+    history,
+    // One observation ranks nothing.
+    percentile1Y: year.count >= 2 ? year.percentile : null,
+    rangeLowBp: year.min,
+    rangeHighBp: year.max,
   };
 }

@@ -266,8 +266,12 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     )));
   }, [activeFeedIdValue, updateFeeds]);
 
+  const addEmptyFeed = useCallback(() => { addFeed(); }, [addFeed]);
   useTwitterFeedFooter({
     activeFeed,
+    addFeed: addEmptyFeed,
+    focusSearch,
+    removeFeed,
   });
 
   const feedTabs = useMemo(() => feeds.map((feed) => ({

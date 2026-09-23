@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
-import { Button, Section, SectionHeading, Tabs, usePaneHeaderTabs, type TableSection } from "../../../components";
-import { ExternalLinkText } from "../../../components/ui";
+import { Notice, Section, SectionHeading, Tabs, usePaneFooter, usePaneHeaderTabs, type PaneHint, type TableSection } from "../../../components";
 import { t } from "../../../i18n";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -24,8 +24,6 @@ const HELP_TABS = [
 ] as const;
 
 type HelpTabId = typeof HELP_TABS[number]["value"];
-/** Tabs that are one full-height table and do their own scrolling. */
-const TABLE_TABS = new Set<HelpTabId>(["functions", "shortcuts"]);
 const GLOOMBERB_ISSUES_URL = "https://github.com/gloom-sh/gloomberb/issues";
 
 function entry(id: string, badges: string[], description: string): ShortcutTableEntry {
@@ -54,24 +52,63 @@ function HelpPane({ focused, width, height }: PaneProps) {
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
-  const selectTab = (value: string) => setActiveTabId(value as HelpTabId);
+  const [functionsSearching, setFunctionsSearching] = useState(false);
+  // The Functions search only owns the keyboard while its tab is showing.
+  const selectTab = (value: string) => {
+    setFunctionsSearching(false);
+    setActiveTabId(value as HelpTabId);
+  };
   const tabsInHeader = usePaneHeaderTabs({ tabs: [...HELP_TABS], activeValue: activeTabId, onSelect: selectTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
   const contentHeight = Math.max(0, height - tabRows);
   // The scrolling tab bodies pad by one cell, so their tables get the rest.
   const bodyWidth = Math.max(1, width - 2);
+  const rendererHost = useRendererHost();
 
-  const openDebugLog = () => {
+  const openDebugLog = useCallback(() => {
     showPane("debug");
-  };
+  }, [showPane]);
 
-  const openLayoutActions = () => {
+  const openLayoutActions = useCallback(() => {
     openCommandBar("LMA ");
-  };
+  }, [openCommandBar]);
 
-  const openPluginManager = () => {
+  const openPluginManager = useCallback(() => {
     openCommandBar("PL ");
-  };
+  }, [openCommandBar]);
+
+  const openIssues = useCallback(() => {
+    void rendererHost.openExternal(GLOOMBERB_ISSUES_URL);
+  }, [rendererHost]);
+
+  // Each tab's actions. `l` moves between tabs, so layout actions take `a`.
+  const tabHints = useMemo<PaneHint[]>(() => {
+    if (activeTabId === "basics") {
+      return [{ id: "layout-actions", key: "a", label: " layout actions", onPress: openLayoutActions }];
+    }
+    if (activeTabId === "functions") {
+      return [{ id: "plugins", key: "p", label: "lugins", onPress: openPluginManager }];
+    }
+    if (activeTabId === "issues") {
+      return [
+        { id: "debug-log", key: "d", label: "ebug log", onPress: openDebugLog },
+        { id: "issues", key: "o", label: "pen GitHub issues", onPress: openIssues },
+      ];
+    }
+    return [];
+  }, [activeTabId, openDebugLog, openIssues, openLayoutActions, openPluginManager]);
+
+  usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
+
+  useShortcut((event) => {
+    if (!focused || event.targetEditable || event.ctrl || event.meta || event.shift) return;
+    if (activeTabId === "functions" && functionsSearching) return;
+    const hint = tabHints.find((candidate) => candidate.key === event.name);
+    if (!hint) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    hint.onPress?.();
+  });
 
   const commandBarSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Command Bar",
@@ -156,17 +193,6 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const renderContent = () => {
     switch (activeTabId) {
       case "reference":
-        return (
-          <>
-            <ShortcutTable sections={referenceSections} width={bodyWidth} />
-            <Box marginTop={1}>
-              <Text fg={colors.textDim} wrapText>
-                {t("The chart tool icons sit over its top-left corner. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
-              </Text>
-            </Box>
-          </>
-        );
-
       case "functions":
       case "shortcuts":
         // Rendered outside the scroll box; these tabs are their own table.
@@ -175,15 +201,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       case "issues":
         return (
           <>
-            <Box flexDirection="row" gap={1}>
-              <Button label="Open Debug Log" onPress={openDebugLog} />
-              <ExternalLinkText
-                url={GLOOMBERB_ISSUES_URL}
-                label={t("GitHub Issues")}
-              />
-            </Box>
-
-            <Section title="If There Is A Bug">
+            <Section title="If There Is A Bug" marginTop={0}>
               <Text fg={colors.text} wrapText>{t("Open Debug Log, then run Export Debug Log from the command bar.")}</Text>
               <Text fg={colors.text} wrapText>{t("The file lands in ~/Downloads. Include steps, ticker or layout, plugin, and a screenshot if it is visual.")}</Text>
             </Section>
@@ -200,10 +218,6 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
                 <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>
               </Box>
-            </Box>
-
-            <Box flexDirection="row" gap={1} marginTop={1}>
-              <Button label="Layout Actions" onPress={openLayoutActions} />
             </Box>
 
             <Box marginTop={1}>
@@ -243,16 +257,26 @@ function HelpPane({ focused, width, height }: PaneProps) {
           focused={focused}
           width={width}
           height={contentHeight}
-          header={(
-            <Box flexDirection="row" gap={1} paddingX={1} flexShrink={0}>
-              <Button label="Manage Plugins" onPress={openPluginManager} />
+          searching={functionsSearching}
+          onSearchingChange={setFunctionsSearching}
+          onRunPrefix={openCommandBar}
+        />
+      ) : activeTabId === "reference" ? (
+        <ShortcutTable
+          sections={referenceSections}
+          width={width}
+          height={contentHeight}
+          after={(
+            <Box paddingX={1} flexShrink={0}>
+              <Notice tone="muted">
+                {t("The chart tool icons sit over its top-left corner. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
+              </Notice>
             </Box>
           )}
-          onRunPrefix={openCommandBar}
         />
       ) : (
         <ScrollBox key={activeTabId} width={width} height={contentHeight} scrollY>
-          <Box flexDirection="column" padding={1}>
+          <Box flexDirection="column" paddingX={1}>
             {renderContent()}
           </Box>
         </ScrollBox>

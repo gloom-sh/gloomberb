@@ -5,8 +5,8 @@ export function rateText(value: number | null): string {
   return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(2)}%`;
 }
 
-export function percentileText(value: number | null, samples: number): string {
-  return value == null || !Number.isFinite(value) ? "pctl --" : `${value.toFixed(0)} pctl 1Y (${samples})`;
+export function percentileText(value: number | null): string {
+  return value == null || !Number.isFinite(value) ? "pctl --" : `${value.toFixed(0)} pctl 1Y`;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, curveGhostColors, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
+import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -46,16 +46,24 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
-  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon) : [], [data, colors, horizon]);
   const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
   const newest = data ? newestQuote(data.contracts) : null;
+  // The footer carries the newest quote time, so the legend does not repeat it.
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon)
+    .map((series) => series.id === "current" && curveTimestamp(series.asOf ?? null) === curveTimestamp(newest) ? { ...series, asOf: undefined } : series) : [], [data, colors, horizon, newest]);
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
-  const sameWindow = !!selectedRow && !!data && selectedRow.samples === data.slope.samples
-    && selectedRow.historyStart === data.slope.historyStart && selectedRow.historyEnd === data.slope.historyEnd;
+  // The highlighted row carries the selected contract's price and rank.
+  const slopeDate = data?.slope.asOf && curveTimestamp(data.slope.asOf) !== curveTimestamp(newest) ? curveTimestamp(data.slope.asOf) : null;
+  const statItems: StatItem[] = data ? [
+    { id: "roll", label: "Ann. roll yield", value: signedPercent(data.slope.annualizedRollYield),
+      detail: curveRank(data.slope.rollPercentile, data.slope.samples) },
+    { id: "spread", label: "M2-M1", value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
+      detail: [data.slope.state, curveRank(data.slope.percentile, data.slope.samples), slopeDate].filter(Boolean).join(" · ") },
+  ] : [];
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
-  const bodyHeight = Math.max(9, height - tabRows - 2);
+  const bodyHeight = Math.max(9, height - tabRows - statGridRows(statItems, width));
   const tableHeight = tab === "curve" ? Math.max(3, Math.min(rows.length + 2, Math.floor(bodyHeight * 0.4))) : bodyHeight;
   const curveHeight = tab === "curve" ? Math.max(6, bodyHeight - tableHeight) : 0;
   // Delayed contract quotes move all session; the curve follows them once a
@@ -92,20 +100,11 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!!data && !data.contracts.length} subject="futures curve">
       {data ? <>
-        <Box flexDirection="column" paddingX={1} flexShrink={0}>
-          {selectedRow ? <KeyValueRow labelWidth={16} label={selectedRow.symbol} value={curvePrice(selectedRow.price, root)}
-            detail={`${tab === "curve" && selectedRow.asOf === curves[0]?.asOf ? "" : `${curveTimestamp(selectedRow.asOf)} · `}${curveRank(selectedRow.percentile, selectedRow.samples, selectedRow.historyStart, selectedRow.historyEnd)}`} /> : null}
-          <KeyValueRow labelWidth={16} label="Ann. roll yield" value={signedPercent(data.slope.annualizedRollYield)}
-            detail={`${tab === "curve" ? "" : `${curveTimestamp(data.slope.asOf)} · `}${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd, !sameWindow)}`} />
-        </Box>
+        <StatGrid items={statItems} width={width} />
         {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
           formatValue={(value) => curvePrice(value, root)} formatAxisValue={(value, domain) => curveAxisPrice(value, domain, root)}
           formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(0, 10)}
-          selectedPointId={selected} onSelectedPointChange={setSelected}
-          slope={{ label: `M2-M1 ${data.slope.state}`, value: data.slope.value,
-            // The roll-yield line above states this spread's sample window.
-            percentile: data.slope.samples < 2 ? null : data.slope.percentile,
-            asOf: data.slope.asOf, formatValue: (value) => curvePrice(value, root) }} /> : null}
+          selectedPointId={selectedRow?.symbol ?? null} onSelectedPointChange={setSelected} /> : null}
         <DataTableView columns={COLUMNS} items={rows} focused={focused}
           rootWidth={width} rootHeight={tableHeight}
           selection={{ kind: "id", selectedId: selectedRow?.symbol ?? null, getId: (row) => row.symbol, onChange: setSelected }}

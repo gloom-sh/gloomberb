@@ -83,15 +83,9 @@ export function buildModeFields({
   }
 
   if (mode === "prediction-market") {
+    // Side is the query bar's mode switch, not an input cell.
     const market = draft as KellySizerModeDrafts["prediction-market"];
     return [
-      {
-        id: "side",
-        label: "Side",
-        valueText: market.side.toUpperCase(),
-        tone: "positive",
-        onPress: () => updateDraft({ side: market.side === "yes" ? "no" : "yes" } as Partial<KellySizerDraft>),
-      },
       {
         id: "estimatedProbability",
         label: "Est p",

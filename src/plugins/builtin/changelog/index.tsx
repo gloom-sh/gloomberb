@@ -48,21 +48,16 @@ function formatReleaseDate(value: string): string {
   });
 }
 
-function buildColumns(width: number, releases: ChangelogRelease[]): ChangelogColumn[] {
+function buildColumns(releases: ChangelogRelease[]): ChangelogColumn[] {
   const dateWidth = 12;
   const versionWidth = Math.min(
     Math.max(7, ...releases.map((release) => release.version.length)),
     14,
   );
-  const titleWidth = Math.max(
-    18,
-    width - (dateWidth + 1) - (versionWidth + 1) - 3,
-  );
-
   return [
     { id: "date", label: "Date", width: dateWidth, align: "left" },
     { id: "version", label: "Version", width: versionWidth, align: "left" },
-    { id: "title", label: "Title", width: titleWidth, align: "left" },
+    { id: "title", label: "Title", width: 18, align: "left", flexGrow: 1 },
   ];
 }
 
@@ -104,7 +99,6 @@ function ChangelogDetail({
         <Box flexDirection="column" width={lineWidth}>
           {/* The stack title already carries the version. */}
           <Text fg={colors.textMuted}>{formatReleaseDate(release.publishedAt)}</Text>
-          <Text>{" "}</Text>
           <MarkdownText text={release.body} lineWidth={lineWidth} />
         </Box>
       </ScrollBox>
@@ -226,7 +220,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     void loadReleases(true);
   });
 
-  const columns = useMemo(() => buildColumns(width, releases), [releases, width]);
+  const columns = useMemo(() => buildColumns(releases), [releases]);
 
   const scrollDetailBy = useCallback((delta: number) => {
     const scrollBox = detailScrollRef.current;
@@ -309,12 +303,11 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     return segments;
   }, [status]);
 
+  // The stack title names the release, so the footer offers only [o]pen.
   useExternalLinkFooter({
     registrationId: "changelog",
     focused,
     url: openRelease?.url,
-    source: openRelease?.version,
-    label: "release",
     info: footerInfo,
   });
 

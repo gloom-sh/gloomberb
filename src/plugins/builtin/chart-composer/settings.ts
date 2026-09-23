@@ -1,5 +1,6 @@
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import { CHART_RESOLUTIONS, TIME_RANGES as CHART_RANGES } from "../../../time-series/range";
+import { formatChartResolution } from "./viewport-labels";
 import type {
   PaneSettingField,
   PaneSettingOption,
@@ -405,7 +406,7 @@ export function buildChartComposerPaneSettingsDef(
         type: "select",
         options: CHART_RESOLUTIONS.map((resolution) => ({
           value: resolution,
-          label: resolution.toUpperCase(),
+          label: formatChartResolution(resolution),
         })),
       },
       ...(inlineStyleTarget

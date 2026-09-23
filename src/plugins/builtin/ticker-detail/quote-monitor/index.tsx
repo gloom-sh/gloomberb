@@ -69,10 +69,13 @@ function resolveGridColumnCount(symbolCount: number, width: number, height: numb
   return bestColumns;
 }
 
-/** Desktop cards keep a 240px (30-cell) minimum, and the rows share the cards
+/** Desktop cards keep a 30-cell (240px) minimum, room for the symbol beside a
+ * four-figure price once the name gives way, and the rows share the cards
  * evenly: six tickers that fit five across lay out 3x2, not 5+1. */
+const DESKTOP_MIN_CARD_CELLS = 30;
+
 function resolveDesktopGridColumnCount(symbolCount: number, width: number): number {
-  const maxColumns = Math.max(1, Math.min(symbolCount, Math.floor(width / 30)));
+  const maxColumns = Math.max(1, Math.min(symbolCount, Math.floor(width / DESKTOP_MIN_CARD_CELLS)));
   return Math.ceil(symbolCount / Math.ceil(symbolCount / maxColumns));
 }
 
@@ -189,8 +192,8 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
             quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
             chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
-            width={width}
-            height={height}
+            width={Math.floor(width / desktopColumns)}
+            height={Math.floor(height / Math.ceil(symbols.length / desktopColumns))}
             showRightDivider={false}
             showBottomDivider
             chartPeriod={settings.chartPeriod}

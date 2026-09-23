@@ -1,4 +1,4 @@
-import type { CotClass, CotClassSummary, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
+import type { CotClass, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
@@ -71,10 +71,6 @@ export function cotMarketName(name: string): string {
 }
 export function cotInteger(value: number | null, signed = false): string {
   return value == null ? "--" : `${signed && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-export function cotRank(position: CotClassSummary, years: 1 | 3): string {
-  const rank = years === 1 ? position.percentile1Y : position.percentile3Y;
-  return `${rank.value == null ? "--" : rank.value.toFixed(0)} pctl ${years}Y · ${rank.sampleCount} obs${rank.completeWindow ? "" : " · partial"}`;
 }
 
 /** Legend values stay exact: a compact 7.8K hides the futures price and -100K the net position. */

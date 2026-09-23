@@ -590,18 +590,16 @@ export function nextSortPreference<TColumn extends string>(
   };
 }
 
-export function buildBrowserColumns(width: number, withEstimate = true): FundBrowserColumn[] {
+/** The name column takes the room the figures leave; the table lays it out. */
+export function buildBrowserColumns(withEstimate = true): FundBrowserColumn[] {
   const cikWidth = 12;
   const periodWidth = 10;
   const filedWidth = 9;
   const valueWidth = 11;
   const rowsWidth = 6;
   const retWidth = withEstimate ? 9 : 0;
-  const fixedWidth = cikWidth + periodWidth + filedWidth + valueWidth + rowsWidth + retWidth;
-  const separators = withEstimate ? 7 : 6;
-  const fundWidth = Math.max(18, width - fixedWidth - separators - 2);
   return [
-    { id: "fund", label: "FUND", width: fundWidth, align: "left" },
+    { id: "fund", label: "FUND", width: 18, align: "left", flexGrow: 1 },
     { id: "cik", label: "CIK", width: cikWidth, align: "left" },
     { id: "period", label: "PERIOD", width: periodWidth, align: "left" },
     ...(retWidth > 0 ? [{ id: "estQuarterReturn" as const, label: "EST 13F", width: retWidth, align: "right" as const }] : []),
@@ -611,7 +609,7 @@ export function buildBrowserColumns(width: number, withEstimate = true): FundBro
   ];
 }
 
-export function buildFilingPositionColumns(width: number): FilingPositionColumn[] {
+export function buildFilingPositionColumns(): FilingPositionColumn[] {
   const tickerWidth = 9;
   const typeWidth = 8;
   const valueWidth = 12;
@@ -619,12 +617,10 @@ export function buildFilingPositionColumns(width: number): FilingPositionColumn[
   const sharesWidth = 11;
   const cusipWidth = 10;
   const discretionWidth = 8;
-  const fixedWidth = tickerWidth + typeWidth + valueWidth + weightWidth + sharesWidth + cusipWidth + discretionWidth;
-  const issuerWidth = Math.max(16, width - fixedWidth - 9);
   return [
     { id: "ticker", label: "TICKER", width: tickerWidth, align: "left" },
     { id: "type", label: "TYPE", width: typeWidth, align: "left" },
-    { id: "issuer", label: "ISSUER", width: issuerWidth, align: "left" },
+    { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "value", label: "VALUE", width: valueWidth, align: "right" },
     { id: "weight", label: "13F %", width: weightWidth, align: "right" },
     { id: "shares", label: "SHARES", width: sharesWidth, align: "right" },
@@ -633,7 +629,7 @@ export function buildFilingPositionColumns(width: number): FilingPositionColumn[
   ];
 }
 
-export function buildHoldingColumns(width: number): FundHoldingColumn[] {
+export function buildHoldingColumns(): FundHoldingColumn[] {
   const tickerWidth = 9;
   const typeWidth = 8;
   const valueWidth = 12;
@@ -642,12 +638,10 @@ export function buildHoldingColumns(width: number): FundHoldingColumn[] {
   const sharesWidth = 11;
   const changeWidth = 11;
   const actionWidth = 7;
-  const fixedWidth = tickerWidth + typeWidth + valueWidth + pnlWidth + weightWidth + sharesWidth + changeWidth + actionWidth;
-  const issuerWidth = Math.max(18, width - fixedWidth - 10);
   return [
     { id: "ticker", label: "TICKER", width: tickerWidth, align: "left" },
     { id: "type", label: "TYPE", width: typeWidth, align: "left" },
-    { id: "issuer", label: "ISSUER", width: issuerWidth, align: "left" },
+    { id: "issuer", label: "ISSUER", width: 18, align: "left", flexGrow: 1 },
     { id: "value", label: "VALUE", width: valueWidth, align: "right" },
     { id: "estimatedPnl", label: "EST P&L", width: pnlWidth, align: "right" },
     { id: "weight", label: "13F %", width: weightWidth, align: "right" },

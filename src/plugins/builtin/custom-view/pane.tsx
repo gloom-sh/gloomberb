@@ -11,13 +11,12 @@ import { teamViewsStore } from "../cloud/team/views";
 import { setPaneSettings } from "../../../pane-settings";
 import { customViewInstanceSettings } from "./index";
 import type { DataTableColumn } from "../../../components/ui/data-table/types";
-import { EmptyState, PaneStatusBody, usePaneFooter } from "../../../components";
+import { Button, PaneStatusBody, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
 import { usePluginAppActions, usePluginPaneActions } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -40,6 +39,7 @@ import {
   applyViewProjection,
   formatViewValue,
   parseViewSpecOr,
+  viewColumnDecimals,
   type ViewColumn,
   type ViewRow,
   type ViewSort,
@@ -184,15 +184,20 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     }
     return bases;
   }, [columns, rows]);
+  const decimalsByColumn = useMemo(() => new Map(columns.flatMap((column) => {
+    if (column.transform) return [];
+    const decimals = viewColumnDecimals(rows, column.key);
+    return decimals === undefined ? [] : [[column.key, decimals] as const];
+  })), [columns, rows]);
   const activeSort = sort === undefined ? spec?.projection.sort ?? null : sort;
   // Memoized so the table's row memo holds while the selection moves.
   const rowKey = useCallback((row: ViewRow, index: number) => (
     `${symbolKey && typeof row[symbolKey] === "string" ? row[symbolKey] : ""}:${index}`
   ), [symbolKey]);
   const renderRowCell = useCallback((row: ViewRow, column: Column) => ({
-    text: formatViewValue(row[column.key], column.transform, baseByColumn.get(column.key)),
+    text: formatViewValue(row[column.key], column.transform, baseByColumn.get(column.key), decimalsByColumn.get(column.key)),
     color: column.key === symbolKey ? colors.textBright : undefined,
-  }), [baseByColumn, symbolKey]);
+  }), [baseByColumn, decimalsByColumn, symbolKey]);
 
   /**
    * Publishes this view to a team. An inline view becomes a new team view
@@ -328,16 +333,9 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   }), [data?.errors, publishToTeam, spec]);
 
   if (!spec) {
-    return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState
-          status={specError ? "error" : "empty"}
-          title={specError ? "This view's spec is invalid." : "This view is empty."}
-          message={specError ?? "Ask Gloom to build one: \"make a view of the top S&P movers sorted by change\"."}
-          hint="A view is a data function plus columns, a filter, and a sort. Publish it to a team from the gallery."
-        />
-      </Box>
-    );
+    return specError
+      ? <PaneStatusBody error={specError} errorTitle="This view's spec is invalid." />
+      : <PaneStatusBody empty emptyTitle="This view is empty." emptyMessage={'Ask Gloom: "make a view of the top S&P movers"'} />;
   }
 
   if (loading && !data) {
@@ -345,18 +343,16 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   }
   if (error && !data) {
     return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState status="error" title="This view could not load." message={error} hint="r to retry" />
-      </Box>
+      <PaneStatusBody
+        error={error}
+        errorTitle="This view could not load."
+        actions={<Button label="Retry" compact onPress={() => { void reload(); }} />}
+      />
     );
   }
   if (rows.length === 0) {
-    return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="No rows match this view." message={data?.errors[0]} />
-        {spec.presentation.title ? <Text fg={colors.textDim}>{spec.presentation.title}</Text> : null}
-      </Box>
-    );
+    // The footer carries the source's failure, if any.
+    return <PaneStatusBody empty emptyTitle="No rows match this view." />;
   }
 
   return (

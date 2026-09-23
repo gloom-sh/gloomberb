@@ -117,13 +117,13 @@ test.each(panes)("%s recovers from sign-in and verification while preserving pro
   state.failure = undefined;
   await emitKeypress(setup!, { name: "r" });
   for (let i = 0; i < 5; i++) await frame();
-  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM Cash/Share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
   expect(setup!.captureCharFrame()).not.toContain("Research provider timed out");
   // A usable non-Cloud source remains available without any signed-in account.
   state.cloudRequired = false;
   await setSession(null);
   expect(setup!.captureCharFrame()).not.toContain("Sign in to");
-  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM Cash/Share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
+  expect(setup!.captureCharFrame()).toContain(pane === "dividend-yield" ? "TTM/share" : pane === "analyst-research" ? "Fixture Research" : "Earnings");
 });
 
 test("partial event data keeps usable rows and reports an auth-denied source once", async () => {

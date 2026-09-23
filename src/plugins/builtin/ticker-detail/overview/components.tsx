@@ -10,6 +10,7 @@ import { portfolioPnlLabel } from "../../portfolio-list/position-metrics";
 
 const STAT_COLUMN_GAP = 2;
 const STAT_LABEL_WIDTH = 12;
+const FUNDAMENTALS_MAX_COLUMN_WIDTH = 40;
 const BOOK_LABEL_WIDTH = 4;
 const RANGE_ENDPOINT_WIDTH = 11;
 const POSITION_COLUMN_GAP = 1;
@@ -180,8 +181,18 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
   );
 }
 
-export function StatGrid({ fields, width }: { fields: StatField[]; width: number }) {
-  const columnCount = width >= 58 ? 2 : 1;
+/**
+ * The overview's fundamentals as label/value pairs in columns. Columns are
+ * capped at FUNDAMENTALS_MAX_COLUMN_WIDTH so a wide pane gets more of them
+ * instead of pushing each value half a pane away from its label.
+ */
+export function fundamentalsGridColumns(width: number): number {
+  if (width < 58) return 1;
+  return Math.max(2, Math.min(4, Math.ceil((width + STAT_COLUMN_GAP) / (FUNDAMENTALS_MAX_COLUMN_WIDTH + STAT_COLUMN_GAP))));
+}
+
+export function FundamentalsGrid({ fields, width }: { fields: StatField[]; width: number }) {
+  const columnCount = fundamentalsGridColumns(width);
   const availableWidth = width - STAT_COLUMN_GAP * (columnCount - 1);
   const baseColWidth = Math.floor(availableWidth / columnCount);
   const extraWidth = availableWidth - baseColWidth * columnCount;

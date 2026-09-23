@@ -36,6 +36,7 @@ export function SymbolLabelCell({
     <Box
       width={width}
       flexShrink={0}
+      flexDirection="row"
       justifyContent={align}
       paddingRight={align === "flex-end" ? 1 : undefined}
       overflow="hidden"

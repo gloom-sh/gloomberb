@@ -1,4 +1,4 @@
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { Button, NumberField, SectionHeading, SegmentedControl, TextField } from "../../../components";
 import {
   PRESERVED_PASSWORD_HINT,
@@ -15,8 +15,13 @@ import { isBrokerErrorMessage, stateColor, truncate } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | string;
 
-function brokerFieldLabel(field: BrokerConfigField, focused: boolean): string {
-  return focused ? `> ${t(field.label)}` : `  ${t(field.label)}`;
+/**
+ * The desktop field draws its own focus ring, so the label is plain there. The
+ * terminal field label does not change with focus, so it keeps the marker.
+ */
+function useFieldLabel(): (label: string, focused: boolean) => string {
+  const { nativePaneChrome } = useUiCapabilities();
+  return (label, focused) => nativePaneChrome ? label : `${focused ? "> " : "  "}${label}`;
 }
 
 function BrokerConfigFieldEditor({
@@ -40,6 +45,7 @@ function BrokerConfigFieldEditor({
   onChange: (key: string, value: string) => void;
   onSubmit: () => void;
 }) {
+  const fieldLabel = useFieldLabel();
   const value = draft.values[field.key] ?? "";
   const previousPassword = field.type === "password"
     ? String(((adapter.toConfigValues?.(previous) ?? previous.config)[field.key] ?? "") || "")
@@ -49,10 +55,11 @@ function BrokerConfigFieldEditor({
     return (
       <Box flexDirection="column" onMouseDown={onFocus}>
         <Text fg={focused ? colors.textBright : colors.textDim} attributes={focused ? TextAttributes.BOLD : 0}>
-          {brokerFieldLabel(field, focused)}
+          {fieldLabel(t(field.label), focused)}
         </Text>
         <SegmentedControl
           value={value}
+          focused={focused}
           options={(field.options ?? []).map((option) => ({ label: t(option.label), value: option.value }))}
           onChange={(nextValue) => onChange(field.key, nextValue)}
         />
@@ -64,7 +71,7 @@ function BrokerConfigFieldEditor({
   return (
     <Box onMouseDown={onFocus}>
       <Field
-        label={brokerFieldLabel(field, focused)}
+        label={fieldLabel(t(field.label), focused)}
         value={value}
         focused={focused}
         width={width}
@@ -118,6 +125,7 @@ export function BrokerDetailContent({
   onSaveEdit: () => void;
   onCancelEdit: () => void;
 }) {
+  const fieldLabel = useFieldLabel();
   if (!row) return <Box flexGrow={1} />;
 
   // Never wider than the detail pane, so a narrow floating pane shrinks instead of clipping.
@@ -127,7 +135,7 @@ export function BrokerDetailContent({
 
   return (
     <ScrollBox flexGrow={1} scrollY>
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
         <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
           {truncate(row.stateLabel, width)}
@@ -151,7 +159,7 @@ export function BrokerDetailContent({
             <SectionHeading title="Edit Profile" />
             <Box onMouseDown={() => onActiveEditKeyChange("label")}>
               <TextField
-                label={activeEditKey === "label" ? `> ${t("Profile Label")}` : `  ${t("Profile Label")}`}
+                label={fieldLabel(t("Profile Label"), activeEditKey === "label")}
                 value={editDraft.label}
                 focused={activeEditKey === "label"}
                 width={fieldWidth}
@@ -161,10 +169,11 @@ export function BrokerDetailContent({
             </Box>
             <Box flexDirection="column" onMouseDown={() => onActiveEditKeyChange("enabled")}>
               <Text fg={activeEditKey === "enabled" ? colors.textBright : colors.textDim} attributes={activeEditKey === "enabled" ? TextAttributes.BOLD : 0}>
-                {activeEditKey === "enabled" ? `> ${t("Enabled")}` : `  ${t("Enabled")}`}
+                {fieldLabel(t("Enabled"), activeEditKey === "enabled")}
               </Text>
               <SegmentedControl
                 value={editDraft.enabled ? "yes" : "no"}
+                focused={activeEditKey === "enabled"}
                 options={[
                   { label: t("Enabled"), value: "yes" },
                   { label: t("Disabled"), value: "no" },

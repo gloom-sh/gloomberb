@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody,
+  EmptyState, PaneStatusBody, StatGrid,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment
@@ -10,7 +10,7 @@ import {
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
@@ -269,12 +269,8 @@ export function CdsPane({
     );
   }
   if (!activity) {
-    return (
-      <Box width={width} height={height} padding={1} flexDirection="column">
-        {/* The reason lives in the footer, so the body never repeats it. */}
-        <EmptyState title="CDS activity unavailable." />
-      </Box>
-    );
+    // The reason lives in the footer, so the body never repeats it.
+    return <EmptyState title="CDS activity unavailable." />;
   }
 
   if (issuerQuery) {
@@ -282,11 +278,7 @@ export function CdsPane({
     // issuer name the backend was actually queried for, which is the expanded
     // company name once instrument search has resolved a bare symbol.
     const resolved = (
-      <Box height={1} paddingX={1}>
-        <Text fg={colors.textMuted} wrapMode="ellipsis">
-          {`${activity.issuer ?? issuerQuery} · ${activity.source}`}
-        </Text>
-      </Box>
+      <StatGrid items={[{ id: "issuer", label: "Issuer", value: activity.issuer ?? issuerQuery }]} width={width} />
     );
     return (
       <CdsTradeTable
@@ -304,7 +296,7 @@ export function CdsPane({
     );
   }
 
-  const issuerColumns = buildIssuerColumns(width);
+  const issuerColumns = buildIssuerColumns();
   return (
     <DataTableStackView<CdsIssuerSummary, IssuerColumn>
       focused={focused}

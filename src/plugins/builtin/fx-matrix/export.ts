@@ -14,9 +14,9 @@ export function createFxExportMetadata(
 ): readonly (readonly unknown[])[] {
   return [
     ["Cross rate", "Row currency USD leg / column currency USD leg; same-currency cells are identity"],
-    ["Currency", "USD per currency", "As of UTC", "Fetched at UTC", "Source", "Status", "Error"],
+    ["Currency", "USD per currency", "As of UTC", "Fetched at UTC", "Status", "Error"],
     ...currencies.map((currency) => {
-      if (currency === "USD") return [currency, 1, "", "", "identity", "identity", ""];
+      if (currency === "USD") return [currency, 1, "", "", "identity", ""];
       const entry = read(currency);
       const rate = rates.get(currency);
       const available = rate != null && Number.isFinite(rate) && rate > 0;
@@ -26,7 +26,7 @@ export function createFxExportMetadata(
       if (available && (entry?.error || (entry?.staleAt != null && entry.staleAt <= now))) status.push("stale");
       if (available && !iso(entry?.asOf)) status.push("time unknown");
       return [currency, available ? rate : "", iso(entry?.asOf), iso(entry?.fetchedAt),
-        entry?.source ?? "", status.join("; ") || "current", entry?.error?.message ?? ""];
+        status.join("; ") || "current", entry?.error?.message ?? ""];
     }),
   ];
 }

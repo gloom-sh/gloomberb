@@ -14,8 +14,6 @@ export const estimateCurrent = (period: EstimatePeriod) =>
   period.current ?? period.recorded.at(-1) ?? null;
 export const periodLabel = (period: EstimatePeriod) =>
   `${period.frequency === "annual" ? "FY" : "Q"} ${period.periodEnd}`;
-export const periodRank = (period: EstimatePeriod) =>
-  `${period.percentile.percentile == null ? "--" : period.percentile.percentile.toFixed(0)} pctl / ${period.percentile.samples} obs`;
 export function revisionNotices(data: EstimateRevisionsPayload) {
   return [
     ...Object.entries(data.sources).flatMap(([source, state]) =>

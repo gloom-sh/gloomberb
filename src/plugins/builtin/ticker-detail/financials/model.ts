@@ -169,11 +169,17 @@ export function formatFinancialValue(
   return formatWithDivisor(value, row.divisor);
 }
 
+/**
+ * A statement column's header. The compact form is what the table prints: the
+ * period and its S/P date marker, with no currency, because the table names a
+ * shared currency once above it and appends one only to columns that differ.
+ */
 export function formatFinancialHeader(date: string, currency?: string, dateSource?: FinancialStatement["dateSource"], compact = false, periodEnd?: string): string {
   const period = date === "TTM" ? (periodEnd ? `TTM ${periodEnd}` : "TTM") : date.slice(0, 10);
+  if (compact) return date === "TTM" ? period : `${period} ${dateSource === "sec" ? "S" : "P"}`;
   const label = currency ? `${period} ${currency}` : period;
   if (date === "TTM") return label;
-  return `${label} ${compact ? (dateSource === "sec" ? "S" : "P") : (dateSource === "sec" ? "(SEC date)" : "(provider date)")}`;
+  return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
 }
 
 export function financialStatementDateNotice(statements: readonly FinancialStatement[]): string {

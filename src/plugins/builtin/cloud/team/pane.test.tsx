@@ -118,7 +118,8 @@ describe("TeamPane", () => {
     const frame = setup!.captureCharFrame();
     if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("MD· Macro Desk");
-    expect(frame).toContain("Members (3)");
+    expect(frame).toContain("Members");
+    expect(frame).not.toContain("Members (3)");
     expect(frame).toContain("@vince");
     expect(frame).toContain("Owner");
     expect(frame).toContain("@lucas");

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { act } from "react";
+import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import {
@@ -7,14 +7,17 @@ import {
   resetFredSeriesPersistence,
   type FredSeriesCacheEntry,
 } from "../../../data/fred-series";
-import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
+import { testRender } from "../../../renderers/opentui/test-utils";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   AppContext,
+  appReducer,
   createInitialState,
   PaneInstanceProvider,
 } from "../../../state/app/context";
-import { createDefaultConfig } from "../../../types/config";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { cloneLayout, createDefaultConfig } from "../../../types/config";
+import { PluginRenderProvider } from "../../runtime";
 import { Box } from "../../../ui";
 import { CREDIT_SERIES } from "./model";
 import { CreditConditionsPane } from "./index";
@@ -66,7 +69,7 @@ beforeEach(() => {
   for (const [index, { seriesId }] of CREDIT_SERIES.entries()) {
     persistence.seedResource(
       "fred-series",
-      `${seriesId}:limit=45:sort=desc`,
+      `${seriesId}:limit=300:sort=desc`,
       entry(seriesId, index).data,
       { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
     );
@@ -84,20 +87,14 @@ afterEach(async () => {
   requestSpy = undefined;
 });
 
-test.each([80, 120])("mixed cached observation dates stay attached to credit values at %i columns", async (width) => {
-  const old = entry("BAMLC0A4CBBB", 4).data;
-  old.observations = old.observations.slice(0, 1);
-  persistence.seedResource("fred-series", "BAMLC0A4CBBB:limit=45:sort=desc", old,
-    { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
-  requestSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (seriesId) => {
-    const index = CREDIT_SERIES.findIndex((definition) => definition.seriesId === seriesId);
-    if (index < 0) throw new Error("Unknown fixture series");
-    return entry(seriesId, index).data;
-  });
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-credit-test"));
-  setup = await testRender(
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId="credit:test">
+function Harness({ width }: { width: number }) {
+  const config = createDefaultConfig("/tmp/gloomberb-credit-test");
+  config.layout = { dockRoot: { kind: "pane", instanceId: "credit:test" }, instances: [{ instanceId: "credit:test", paneId: "credit-conditions", binding: { kind: "none" } }], floating: [], detached: [] };
+  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
+  const [state, dispatch] = useReducer(appReducer, createInitialState(config));
+  return <AppContext value={{ state, dispatch }}>
+    <PaneInstanceProvider paneId="credit:test">
+      <PluginRenderProvider pluginId="macro" runtime={createTestPluginRuntime()}>
         <PaneFooterProvider>
           {(footer) => <Box width={width} height={18} flexDirection="column">
             <Box width={width} height={17}>
@@ -106,33 +103,34 @@ test.each([80, 120])("mixed cached observation dates stay attached to credit val
             <PaneFooterBar footer={footer} focused width={width} />
           </Box>}
         </PaneFooterProvider>
-      </PaneInstanceProvider>
-    </AppContext>,
-    { width, height: 18 },
-  );
+      </PluginRenderProvider>
+    </PaneInstanceProvider>
+  </AppContext>;
+}
+
+test.each([80, 120])("mixed cached observation dates stay attached to credit values at %i columns", async (width) => {
+  const old = entry("BAMLC0A4CBBB", 4).data;
+  old.observations = old.observations.slice(0, 1);
+  persistence.seedResource("fred-series", "BAMLC0A4CBBB:limit=300:sort=desc", old,
+    { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
+  requestSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (seriesId) => {
+    const index = CREDIT_SERIES.findIndex((definition) => definition.seriesId === seriesId);
+    if (index < 0) throw new Error("Unknown fixture series");
+    return entry(seriesId, index).data;
+  });
+  setup = await testRender(<Harness width={width} />, { width, height: 18 });
   await settle();
 
+  const rowLine = (frame: string, label: string) => frame.split("\n").find((line) => line.includes(label));
   const mixed = setup.captureCharFrame();
-  expect(mixed).toContain("mixed dates");
-  expect(mixed).not.toContain("as of 2026-08-18");
   expect(mixed).toContain("AS OF");
-  expect(mixed.split("\n").find((line) => line.includes("BBB"))).toContain("2026-08-17");
-  expect(mixed.split("\n").find((line) => line.includes("AAA"))).toContain("2026-08-18");
+  expect(rowLine(mixed, "BBB")).toContain("08-17");
+  expect(rowLine(mixed, "AAA")).toContain("08-18");
   expect(requestSpy).not.toHaveBeenCalled();
-
-  const controls = createTestControls(() => setup!);
-  await controls.clickFrameText("AS OF");
-  await settle();
-  await controls.clickFrameText("AS OF");
-  await settle();
-  const sorted = setup.captureCharFrame();
-  expect(sorted.indexOf("BBB")).toBeLessThan(sorted.indexOf("AAA"));
 
   await act(async () => { setup!.mockInput.pressKey("r"); });
   await settle();
   const common = setup.captureCharFrame();
   expect(requestSpy).toHaveBeenCalledTimes(CREDIT_SERIES.length);
-  expect(common).toContain("as of 2026-08-18");
-  expect(common).not.toContain("mixed dates");
-  expect(common).not.toContain("AS OF");
+  expect(rowLine(common, "BBB")).toContain("08-18");
 });

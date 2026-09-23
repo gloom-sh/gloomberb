@@ -147,8 +147,10 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   }
 
   const showChart = chartPoints.length >= 2;
-  const chartHeight = showChart ? Math.max(1, Math.floor((height - 1) * 0.35)) : 0;
-  const tableHeight = Math.max(1, height - chartHeight - 1 - (nativePaneChrome ? 1 : 0));
+  // The desktop runs the chart straight under the title bar and lets the table
+  // fill to the footer; the terminal keeps a blank row around the chart.
+  const chartHeight = showChart ? Math.max(1, Math.floor((height - (nativePaneChrome ? 0 : 1)) * 0.35)) : 0;
+  const tableHeight = Math.max(1, height - chartHeight - 1);
   const chartWidth = Math.max(24, width - 2);
   const palette = {
     ...resolveChartPalette(colors, "neutral"),
@@ -160,7 +162,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   return (
     <Box flexDirection="column" width={width} height={height}>
       {showChart ? (
-        <Box flexDirection="column" marginTop={1} paddingX={1} flexShrink={0}>
+        <Box flexDirection="column" marginTop={nativePaneChrome ? 0 : 1} paddingX={1} flexShrink={0}>
           <StaticChartSurface
             points={chartPoints}
             width={chartWidth}
@@ -174,7 +176,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
           />
         </Box>
       ) : null}
-      <Box flexGrow={1} marginTop={chartPoints.length >= 2 ? 1 : 0}>
+      <Box flexGrow={1} flexBasis={0} minHeight={0} marginTop={showChart && !nativePaneChrome ? 1 : 0}>
         <DataTableView<ShortInterestRow, ShortInterestColumn>
           focused={focused}
           selection={{

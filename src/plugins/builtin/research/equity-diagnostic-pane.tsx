@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CloudEquityDiagnosticCoverage,
   CloudEquityDiagnosticEvidence,
@@ -9,7 +9,7 @@ import type {
 } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { Button, EmptyState, SectionHeading, Spinner, usePaneFooter } from "../../../components";
+import { Button, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
 import { t, tf } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
@@ -29,10 +29,10 @@ const LABEL_WIDTH = 10;
 const STACK_BELOW_WIDTH = 44;
 const COVERAGE_LABEL_WIDTH = 16;
 const LOADING_STEPS = [
-  "Gloom Cloud market data",
+  "Market data",
   "SEC EDGAR filings",
   "FINRA short interest",
-  "Gloom News",
+  "News",
   "Reviewing evidence",
 ] as const;
 
@@ -183,13 +183,6 @@ function datasetLabel(dataset: string): string {
   return dataset.replaceAll("_", " ");
 }
 
-function providerLabel(provider?: string): string | undefined {
-  if (!provider) return undefined;
-  if (provider === "Gloomberb News") return "Gloom News";
-  if (provider.includes("Twelve Data") || provider === "Market data providers") return "Gloom Cloud";
-  return provider;
-}
-
 function sortFindings(findings: readonly CloudEquityDiagnosticFinding[]): CloudEquityDiagnosticFinding[] {
   return [...findings].sort((left, right) => (
     right.severity - left.severity || right.confidence - left.confidence
@@ -323,7 +316,6 @@ function CoverageSection({ coverage, width }: {
         const detail = [
           coverageLabel(entry.status),
           entry.asOf?.slice(0, 10),
-          providerLabel(entry.provider),
           entry.note,
         ]
           .filter(Boolean)
@@ -345,11 +337,9 @@ function CoverageSection({ coverage, width }: {
   );
 }
 
-function ReportView({ report, width, failure, onRetry }: {
+function ReportView({ report, width }: {
   report: CloudEquityDiagnosticResponse;
   width: number;
-  failure: DiagnosticFailure | null;
-  onRetry: () => void;
 }) {
   const evidenceById = useMemo(
     () => new Map(report.evidence.map((evidence) => [evidence.id, evidence])),
@@ -357,9 +347,9 @@ function ReportView({ report, width, failure, onRetry }: {
   );
   const sorted = useMemo(() => sortFindings(report.findings), [report.findings]);
   const byKind = (kind: CloudEquityDiagnosticFindingKind) => sorted.filter((finding) => finding.kind === kind);
+  // When the report was generated is status, so it lives in the footer.
   const meta = [
     report.companyName,
-    tf("generated {age}", { age: formatTimeAgo(report.generatedAt) }),
     tf("confidence {value}", { value: percent(report.confidence) }),
   ].filter(Boolean).join(" · ");
 
@@ -373,13 +363,6 @@ function ReportView({ report, width, failure, onRetry }: {
         </Box>
         <Paragraph text={meta} width={width} color={colors.textMuted} />
       </Box>
-
-      {failure && (
-        <Box flexDirection="row" gap={1} width={width}>
-          <Text fg={colors.warning}>{failureText(failure)}</Text>
-          <Button label="Retry" variant="secondary" onPress={onRetry} />
-        </Box>
-      )}
 
       {report.status === "insufficient_data"
         ? <EmptyState title="Not enough coverage to review this company yet." message={report.summary} />
@@ -422,7 +405,6 @@ function PreviewReportView({ report, width, onUpgrade, onPlan }: {
   const meta = [
     report.companyName,
     t("Free preview"),
-    tf("generated {age}", { age: formatTimeAgo(report.generatedAt) }),
   ].filter(Boolean).join(" · ");
 
   return (
@@ -490,67 +472,42 @@ export function EquityDiagnosticView({ focused, width }: {
         : []),
       ...(report?.stale ? [{ id: "stale", parts: [{ text: t("stale"), tone: "warning" as const }] }] : []),
       ...(report?.cached && !report.stale ? [{ id: "cached", parts: [{ text: t("cached"), tone: "muted" as const }] }] : []),
+      ...(report ? [{ id: "generated", parts: [{ text: tf("generated {age}", { age: formatTimeAgo(report.generatedAt) }), tone: "muted" as const }] }] : []),
     ],
-    hints: canRefresh
-      ? [{ id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: loading }]
-      : [],
-  }), [canRefresh, failure, loading, refresh, report]);
+  }), [failure, loading, report]);
 
   const contentWidth = Math.max(12, width - 2);
 
-  const body = (): ReactNode => {
-    if (!symbol) {
-      return (
-        <EmptyState
-          title="No ticker selected."
-          hint="Move the cursor in a list pane to populate this view."
-        />
-      );
-    }
-    if (signInRequired || verificationRequired) {
-      return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
-    }
-    if (proRequired) {
-      return (
-        <Box flexDirection="column">
-          <EmptyState
-            title="The Equity Diagnostic is part of Gloom Cloud Pro."
-            message="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
-          />
-          <Box flexDirection="row" marginTop={1} gap={1}>
-            <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
-            <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
-          </Box>
-        </Box>
-      );
-    }
-    if (loading && !report) {
-      return <DiagnosticLoading step={loadingStep} />;
-    }
-    if (!report) {
-      return (
-        <Box flexDirection="column">
-          <EmptyState
-            title={failure ? failureText(failure) : t("No diagnostic available yet.")}
-          />
-          <Box flexDirection="row" marginTop={1}>
-            <Button label="Retry" variant="secondary" onPress={retry} />
-          </Box>
-        </Box>
-      );
-    }
-    if (report.access === "preview") {
-      return (
-        <PreviewReportView
-          report={report}
-          width={contentWidth}
-          onUpgrade={openUpgrade}
-          onPlan={openPlan}
-        />
-      );
-    }
-    return <ReportView report={report} width={contentWidth} failure={failure} onRetry={retry} />;
-  };
+  // Walls and empty states are drawn straight into the pane, like every other
+  // pane's; only a report sits in the padded scroll area.
+  if (!symbol) {
+    return <PaneStatusBody empty emptyTitle="No ticker selected." emptyMessage="Move the cursor in a list pane to populate this view." />;
+  }
+  if (signInRequired || verificationRequired) {
+    return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
+  }
+  if (proRequired) {
+    return (
+      <PaneStatusBody
+        empty
+        emptyTitle="The Equity Diagnostic is part of Gloom Cloud Pro."
+        emptyMessage="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
+        actions={<>
+          <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
+          <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
+        </>}
+      />
+    );
+  }
+  if (loading && !report) {
+    return <Box paddingX={1} paddingY={1}><DiagnosticLoading step={loadingStep} /></Box>;
+  }
+  if (!report) {
+    const retryAction = <Button label="Retry" variant="secondary" onPress={retry} />;
+    return failure
+      ? <PaneStatusBody error={failureText(failure)} actions={retryAction} />
+      : <PaneStatusBody empty emptyTitle={t("No diagnostic available yet.")} actions={retryAction} />;
+  }
 
   return (
     <Box
@@ -563,7 +520,9 @@ export function EquityDiagnosticView({ focused, width }: {
     >
       <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
         <Box flexDirection="column" paddingX={1} paddingY={1} width={nativePaneChrome ? "100%" : width}>
-          {body()}
+          {report.access === "preview"
+            ? <PreviewReportView report={report} width={contentWidth} onUpgrade={openUpgrade} onPlan={openPlan} />
+            : <ReportView report={report} width={contentWidth} />}
         </Box>
       </ScrollBox>
     </Box>

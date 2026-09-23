@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Box, Span, Text } from "../../../../ui";
+import { Box, Text } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
@@ -66,30 +66,28 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         <Box
           {...rowProps}
           flexDirection="row"
+          height={1}
           paddingLeft={2}
           onMouseDown={() => {
             if (msg.replyToId) jumpToMessage(msg.replyToId);
           }}
-          style={{ minWidth: 0, alignItems: "flex-start", cursor: "pointer" }}
+          style={{ minWidth: 0, alignItems: "flex-start", cursor: "pointer", overflow: "hidden" }}
         >
+          {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
+          <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>reply </Text>
+          <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
           <Text
             fg={state.replyMetaColor}
-            wrapText
             style={{
+              flex: "1 1 0",
               minWidth: 0,
-              width: "100%",
-              display: "-webkit-box",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 2,
+              display: "block",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              whiteSpace: "normal",
-              overflowWrap: "anywhere",
+              whiteSpace: "nowrap",
             }}
           >
-            <Span fg={state.replyMetaColor}>reply </Span>
-            <Span fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Span>
-            <Span fg={state.replyMetaColor}>{normalizeInlinePreview(msg.replyTo.content)}</Span>
+            {normalizeInlinePreview(msg.replyTo.content)}
           </Text>
         </Box>
       )}

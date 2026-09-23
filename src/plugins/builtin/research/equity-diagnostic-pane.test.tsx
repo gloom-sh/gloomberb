@@ -205,7 +205,8 @@ test("shows a cited preview to free accounts and gates the rest", async () => {
   expect(frame).not.toContain("Risk skewed");
   expect(frame).toContain("UNLOCK THE FULL DIAGNOSTIC");
   expect(frame).toContain("Upgrade to Pro");
-  expect(frame).toContain("Gloom Cloud");
+  // Coverage says what each dataset is, never which vendor served it.
+  expect(frame).not.toContain("Gloom Cloud");
   expect(frame).not.toContain("Twelve Data");
   expect(frame).not.toContain("efresh");
 });
@@ -242,7 +243,8 @@ test("renders a stale partial report with severity order, split observation, and
   // Footer carries changing state only, and the model stays an implementation detail.
   expect(frame).toContain("partial");
   expect(frame).toContain("stale");
-  expect(frame).toContain("efresh");
+  // r refreshes every pane, so the footer carries no refresh hint.
+  expect(frame).not.toContain("efresh");
   expect(frame).not.toContain("luna");
 });
 
@@ -253,7 +255,7 @@ test("adds data sources line by line while the diagnostic generates", async () =
   await renderHarness();
 
   const frame = testSetup!.captureCharFrame();
-  expect(frame).toContain("Gloom Cloud market data");
+  expect(frame).toContain("Market data");
   expect(frame).toContain("SEC EDGAR filings");
   expect(frame).not.toContain("FINRA short interest");
 });
@@ -296,5 +298,6 @@ test("asks for a refresh on r and keeps the last report when the retry is rate l
   const frame = testSetup!.captureCharFrame();
   expect(frame).toContain("Rate limited");
   expect(frame).toContain("Gross margin fell for three quarters");
-  expect(frame).toContain("Retry");
+  // With a report on screen the failure is footer status; r retries.
+  expect(frame).not.toContain("Retry");
 });

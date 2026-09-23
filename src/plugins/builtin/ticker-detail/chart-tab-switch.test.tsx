@@ -205,7 +205,7 @@ describe("Ticker detail chart tab switching", () => {
     const chartTabFrame = testSetup.captureCharFrame();
     expect(chartTabFrame).toContain("AAPL:XNAS Price");
     expect(chartTabFrame).toContain("5Y");
-    expect(chartTabFrame).toContain("AUTO");
+    expect(chartTabFrame.toUpperCase()).toContain("AUTO");
     expect(chartTabFrame).not.toContain("AAPL -");
     expect(hasVisibleCompositeSurface(manager, TEST_PANE_ID)).toBe(true);
 

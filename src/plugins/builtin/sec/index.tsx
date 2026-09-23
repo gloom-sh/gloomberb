@@ -7,8 +7,8 @@ import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
-import { Box, type ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Prose, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
+import type { ScrollBoxRenderable } from "../../../ui";
+import { EmptyState, FeedDataTableStackView, Spinner, StatGrid, useTableLoadMore, type FeedDataTableItem, type StatItem } from "../../../components";
 import { isUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -343,6 +343,14 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     showOpenHint: !!openFiling?.filingUrl,
   });
 
+  // One cell per filer: a ticker can map to more than one CIK.
+  const issuerItems = useMemo<StatItem[]>(() => secFilingIssuers(filings).map((issuer) => ({
+    id: issuer.cik,
+    label: "Issuer",
+    value: issuer.companyName || "Name unavailable",
+    detail: `CIK ${issuer.cik}`,
+  })), [filings]);
+
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
@@ -372,9 +380,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       openItemId={openItemId}
       onOpenItemIdChange={setOpenItemId}
       prefetchDetail={prefetchDocuments}
-      rootBefore={<Box flexDirection="column" paddingX={1}>
-        {secFilingIssuers(filings).map((issuer) => <Prose key={issuer.cik} text={secIssuerLabel(issuer)} width={Math.max(width - 2, 12)} />)}
-      </Box>}
+      rootBefore={<StatGrid items={issuerItems} width={width} />}
       sourceLabel="Form"
       titleLabel="Filing"
       emptyStateTitle="No SEC filings."

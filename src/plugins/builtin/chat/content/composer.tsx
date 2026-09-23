@@ -103,7 +103,8 @@ export function ChatComposerArea({
     const fitText = (value: string) => truncateToDisplayWidth(value, contentWidth);
     const fitLine = (value: string) => fitText(t(value));
     return (
-      <Box width={contentWidth} height={2} flexDirection="column">
+      // Inset like the transcript above it, so the prompt lines up with the messages.
+      <Box width={contentWidth + 2} paddingX={1} height={2} flexDirection="column">
         {!user && !hasSavedSession ? (
           <>
             <Text fg={colors.textDim}>{fitLine("Read-only chat. Log in or sign up to send.")}</Text>

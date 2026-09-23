@@ -160,7 +160,7 @@ describe("NewsArticleStackView", () => {
     expect(lines[1]).toContain("Politics");
     expect(lines[1]).not.toContain("macro_politics");
     // The headline takes every cell the fixed columns leave, clipped behind one mark.
-    expect(lines[1]).toContain("Fed officials signal caution on further rat\u2026");
+    expect(lines[1]).toContain("Fed officials signal caution on further r\u2026");
   });
 
   test("narrowing gives up category, then ticker room, before the headline", () => {

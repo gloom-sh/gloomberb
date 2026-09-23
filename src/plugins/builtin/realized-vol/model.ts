@@ -123,7 +123,7 @@ export function projectCurrentAtmIv(surface: SurfaceSnapshot): CurrentAtmIvSnaps
   if (surface.spotAsOf == null) warnings.push("Underlying quote observation date unavailable");
   return { reference: {
     value: expiry.atmIV!, date: new Date(expiry.asOf!),
-    label: `ATM IV ${Math.round(daysToExpiry)}d (${surface.settings.ivSource})`,
+    label: `ATM IV ${Math.round(daysToExpiry)}d`,
     daysToExpiry, expiration: expiry.expiration, source: expiry.source, stale: expiry.stale,
     ivSource: surface.settings.ivSource, spot: surface.spot, spotAsOf: surface.spotAsOf ?? null,
   }, error: errors.join("; ") || null, warnings: [...new Set(warnings)] };

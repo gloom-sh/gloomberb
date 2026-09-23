@@ -177,9 +177,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     initialScrollDone.current = true;
   }, [filtered.length]);
 
-  // Next upcoming event for countdown
-  const nextEvent = nextUpcomingEventIdx >= 0 ? filtered[nextUpcomingEventIdx] : undefined;
-  const nextCountdown = nextEvent ? formatCountdown(nextEvent.date.getTime() - now) : null;
   const selectImpactFilter = useCallback((value: ImpactFilter) => {
     setImpactFilter(value);
     setSelectedKey(null);
@@ -254,10 +251,17 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ].filter(Boolean).join(" · ") || undefined
     : undefined;
 
+  // Next upcoming event for countdown
+  const nextEvent = nextUpcomingEventIdx >= 0 ? filtered[nextUpcomingEventIdx] : undefined;
+  const nextCountdown = nextEvent ? formatCountdown(nextEvent.date.getTime() - now) : null;
+  // The countdown changes every tick, so it is footer status, not query bar
+  // context; the footer ellipsizes a long event name.
+  const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
+    ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [stale, staleness]);
+  ], [detailEvent, nextText, stale, staleness]);
   usePaneStatusFooter({
     registrationId: "econ-calendar",
     loading,
@@ -265,7 +269,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     info: calendarStatus,
   });
 
-  const handleHeaderClick = useCallback(() => {}, []);
   const openDisplayRow = useCallback((row: DisplayRow) => {
     if (row.kind !== "event") return;
     setOpenKey(row.event.id);
@@ -331,10 +334,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const selectedEvent = filtered[selectedIdx];
-  const metaParts = [
-    nextEvent && nextCountdown && width >= 88 ? `next ${nextEvent.event.slice(0, 16).trimEnd()} ${nextCountdown}` : null,
-    selectedEvent ? dayLabel(selectedEvent.date, today) : null,
-  ].filter((part): part is string => !!part);
   const filterControls = (
     <QueryBar
       width={width}
@@ -346,7 +345,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
           options: COUNTRY_CYCLE.map((value) => ({ value, label: value === "all" ? "All" : value })),
           onChange: (value: string) => selectCountryFilter(value as CountryFilter) },
       ]}
-      meta={metaParts.join(" · ") || undefined}
+      meta={selectedEvent ? dayLabel(selectedEvent.date, today) : undefined}
     />
   );
 
@@ -366,6 +365,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       focused={focused}
       detailOpen={!!detailEvent}
       onBack={() => setOpenKey(null)}
+      detailTitle={detailEvent?.event}
       detailContent={detailContent}
       rootWidth={width}
       rootHeight={Math.max(1, height - 1)}
@@ -383,7 +383,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       isNavigable={(row) => row.kind === "event"}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={handleHeaderClick}
       headerScrollRef={headerScrollRef}
       scrollRef={scrollRef}
       getItemKey={(row) => row.key}

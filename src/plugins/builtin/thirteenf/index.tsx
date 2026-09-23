@@ -77,7 +77,8 @@ export const thirteenFModule: PluginModule = {
           instanceId: initialCik
             ? `${THIRTEENF_PANE_ID}:${initialCik}`
             : `${THIRTEENF_PANE_ID}:${browserMode}:${encodeURIComponent(query || "performance").replace(/%/g, "~")}`,
-          title: query ? `13F ${query}` : "13F Funds",
+          // The title bar already shows the Funds tab, so the bare pane is just "13F".
+          title: query ? `13F ${query}` : "13F",
           placement: "floating",
           settings: {
             query,

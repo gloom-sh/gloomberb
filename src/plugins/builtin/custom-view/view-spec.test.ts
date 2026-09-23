@@ -7,6 +7,7 @@ import {
   parseViewSpecOr,
   serializeViewSpec,
   validateViewSpec,
+  viewColumnDecimals,
 } from "./view-spec";
 
 const good = {
@@ -103,5 +104,13 @@ describe("formatViewValue", () => {
     expect(formatViewValue(3.14159, undefined)).toBe("3.14");
     expect(formatViewValue("text", "percent")).toBe("text");
     expect(formatViewValue(null, "compact")).toBe("");
+  });
+
+  test("reads midnight ISO stamps as dates and gives a numeric column one decimal count", () => {
+    expect(formatViewValue("2026-09-01T00:00:00.000Z", undefined)).toBe("2026-09-01");
+    expect(formatViewValue("2026-09-01T14:30:00Z", undefined)).toBe("2026-09-01 14:30 UTC");
+    const rows = [{ close: 236 }, { close: 232.1 }, { close: null }];
+    const decimals = viewColumnDecimals(rows, "close");
+    expect(rows.map((row) => formatViewValue(row.close, undefined, undefined, decimals))).toEqual(["236.0", "232.1", ""]);
   });
 });

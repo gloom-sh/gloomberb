@@ -45,13 +45,13 @@ import {
 } from "./flow-model";
 
 function buildColumns(width: number, dated: boolean): DataTableColumn[] {
-  // EXP is right aligned and SIDE is left aligned, so EXP needs an extra cell or
-  // the two header labels read as one "EXP SIDE" word. Prints from earlier days
-  // carry their date ("09/22 15:04"), so the time column widens for them.
-  const fixed = { time: dated ? 11 : 8, ticker: 7, type: 8, strike: 8, exp: 7, side: 5, size: 7, prem: 7, volOi: 6 };
+  // Prints from earlier days carry their date ("09/22 15:04"), so the time
+  // column widens for them.
+  const fixed = { time: dated ? 11 : 8, ticker: 7, type: 8, strike: 8, exp: 6, side: 5, size: 7, prem: 7, volOi: 6 };
   const total = Object.values(fixed).reduce((sum, value) => sum + value, 0);
-  // Table chrome is one gap per column, two cells of padding, and the scrollbar.
-  const slack = Math.max(0, width - total - 9 - 2 - 1);
+  // Table chrome is one gap per column, the table's extra gutter where
+  // right-aligned EXP meets left-aligned SIDE, two cells of padding, and the scrollbar.
+  const slack = Math.max(0, width - total - 9 - 1 - 2 - 1);
   return [
     { id: "time", label: "TIME", width: fixed.time, align: "left" },
     { id: "ticker", label: "TICKER", width: fixed.ticker + Math.min(4, slack), align: "left" },
@@ -176,7 +176,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
 
   const historyFooter = useMemo<PaneFooterSegment | null>(() => {
     if (history.error) {
-      return { id: "flow-history", parts: [{ text: "older prints unavailable · r retry", tone: "warning" }] };
+      return { id: "flow-history", parts: [{ text: "older prints unavailable", tone: "warning" }] };
     }
     if (history.loading) return { id: "flow-history", parts: [{ text: "loading older prints", tone: "muted" }] };
     return null;
@@ -236,7 +236,6 @@ function FlowPane({ focused, width, height }: PaneProps) {
         items={events}
         sortColumnId={null}
         sortDirection="desc"
-        onHeaderClick={() => {}}
         getItemKey={eventKey}
         onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
         renderCell={renderRow}

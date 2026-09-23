@@ -10,7 +10,7 @@ import { CREDIT_SERIES, type CreditSeriesId } from "./model";
 function payload(seriesId: CreditSeriesId, count = 3) {
   return {
     observations: Array.from({ length: count }, (_, index) => ({
-      date: `2026-07-${String(index + 1).padStart(2, "0")}`,
+      date: new Date(Date.UTC(2026, 6, 1) + index * 86_400_000).toISOString().slice(0, 10),
       value: 0.8 + index / 100,
     })),
     info: {
@@ -53,7 +53,7 @@ describe("loadCreditConditions", () => {
       payload(seriesId === aaa ? CREDIT_SERIES[5].seriesId : seriesId));
     expect(result.rows.some((row) => row.seriesId === aaa)).toBe(false);
     expect(result.errors).toEqual([`${aaa}: unexpected FRED metadata`]);
-    expect(persistence.getResource("fred-series", `${aaa}:limit=45:sort=desc`,
+    expect(persistence.getResource("fred-series", `${aaa}:limit=300:sort=desc`,
       { sourceKey: "gloomberb-cloud", schemaVersion: 2 })).toBeNull();
   });
 
@@ -62,7 +62,7 @@ describe("loadCreditConditions", () => {
     attachFredSeriesPersistence(persistence);
     const aaa = CREDIT_SERIES[1].seriesId;
     const readCached = () => persistence.getResource<ReturnType<typeof payload>>(
-      "fred-series", `${aaa}:limit=45:sort=desc`, { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
+      "fred-series", `${aaa}:limit=300:sort=desc`, { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
     await loadCreditConditions(false, async (seriesId) => payload(seriesId));
     const before = readCached();
     for (const change of ["units", "identity"] as const) {
@@ -97,13 +97,13 @@ describe("loadCreditConditions", () => {
       Date.now = () => Date.UTC(2026, 7, 18, 23, 58);
       await loadCreditConditions(false, async (seriesId) => {
         calls += 1;
-        return payload(seriesId, 60);
+        return payload(seriesId, 320);
       });
       expect(persistence.getResource<{ observations: unknown[] }>(
         "fred-series",
-        `${CREDIT_SERIES[0].seriesId}:limit=45:sort=desc`,
+        `${CREDIT_SERIES[0].seriesId}:limit=300:sort=desc`,
         { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
-      )?.value.observations).toHaveLength(45);
+      )?.value.observations).toHaveLength(300);
 
       resetFredSeriesPersistence();
       attachFredSeriesPersistence(persistence);

@@ -4,7 +4,7 @@ import { CompanyLogo } from "../../../components/company-logo";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
-import { formatMarketPriceWithCurrency, formatSignedMarketPrice, quoteFormatOptions } from "../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, formatSignedMarketPrice, quoteFormatOptions, withCurrencyMinorDigits } from "../../../market-data/market/format";
 import { exchangeShortName, marketStateColor, marketStateLabel } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
 import { useViewport } from "../../../react/input";
@@ -17,7 +17,7 @@ import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../.
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
-import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
+import { CompactRangeBar, FundamentalsGrid, PositionTable, QuoteBook } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
@@ -109,17 +109,20 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
   const quoteOptions = quoteFormatOptions(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
-  const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, quoteOptions) : "";
-  const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, quoteOptions) : "";
+  // Prices and changes padded to the currency's minor unit, like the bid and ask beside them.
+  const moneyOptions = withCurrencyMinorDigits(quoteOptions, quote?.currency);
+  const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, moneyOptions) : "";
+  const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, moneyOptions) : "";
   const quotePercentText = quote ? `(${formatPercentRaw(quote.changePercent)})` : "";
   const quoteTextWidth = Math.max(1, quoteSummaryWidth - (nativePaneChrome ? 6 : 0));
   const stackQuoteChange = displayWidth(quoteChangeText) + 1 + displayWidth(quotePercentText) > quoteTextWidth;
   const stackQuoteSummary = displayWidth(quotePriceText) + 3 + displayWidth(quoteChangeText) + displayWidth(quotePercentText) > quoteTextWidth;
-  const companyName = ticker.metadata.name || quote?.name || "";
+  // The pane title already names the ticker, so the line leads with the company.
+  const companyName = ticker.metadata.name || quote?.name || ticker.metadata.ticker;
   const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
-  const companyNameWidth = Math.max(0, quoteSummaryWidth - (nativePaneChrome ? 6 : 0)
-    - ticker.metadata.ticker.length - (listingVenue ? listingVenue.length + 3 : 0)
-    - (marketStateText ? marketStateText.length + 1 : 0) - 3);
+  const companyNameWidth = Math.max(8, quoteSummaryWidth - (nativePaneChrome ? 6 : 0)
+    - (listingVenue ? listingVenue.length + 3 : 0)
+    - (marketStateText ? marketStateText.length + 1 : 0));
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
   const hasYearRange = yearRange != null;
@@ -150,7 +153,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
 
   return (
     <ScrollBox flexGrow={1} flexBasis={0} scrollY focusable={false}>
-      <Box flexDirection="column" paddingX={1} paddingTop={nativePaneChrome ? 1 : 0} paddingBottom={1} gap={1}>
+      <Box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
           <Box flexDirection="row" width={quoteSummaryWidth} flexShrink={0} minWidth={0} overflow="hidden">
             <CompanyLogo
@@ -160,14 +163,9 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
             />
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             <Box flexDirection="row" minWidth={0} overflow="hidden">
-              <Text flexShrink={0} attributes={TextAttributes.BOLD} fg={colors.textBright}>
-                {ticker.metadata.ticker}
+              <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
+                {truncateToDisplayWidth(companyName, companyNameWidth)}
               </Text>
-              {companyName && companyName !== ticker.metadata.ticker && companyNameWidth > 0 && (
-                <Text fg={colors.textDim}>
-                  {" "}- {truncateToDisplayWidth(companyName, companyNameWidth)}
-                </Text>
-              )}
               {listingVenue && (
                 <Text flexShrink={0} fg={colors.textDim}>{" "}({listingVenue})</Text>
               )}
@@ -193,10 +191,10 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
               <Box flexDirection="row" gap={2}>
                 <Text fg={colors.textDim}>{t("Pre-Market")}:</Text>
                 <Text fg={priceColor(quote.preMarketChange ?? 0)}>
-                  {formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, quoteOptions)}
+                  {formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, moneyOptions)}
                 </Text>
                 <Text fg={priceColor(quote.preMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.preMarketChange, quoteOptions)} ({formatPercentRaw(quote.preMarketChangePercent)})
+                  {formatSignedMarketPrice(quote.preMarketChange, moneyOptions)} ({formatPercentRaw(quote.preMarketChangePercent)})
                 </Text>
               </Box>
             )}
@@ -204,10 +202,10 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
               <Box flexDirection="row" gap={2}>
                 <Text fg={colors.textDim}>{t("After-Hours")}:</Text>
                 <Text fg={priceColor(quote.postMarketChange ?? 0)}>
-                  {formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, quoteOptions)}
+                  {formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, moneyOptions)}
                 </Text>
                 <Text fg={priceColor(quote.postMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.postMarketChange, quoteOptions)} ({formatPercentRaw(quote.postMarketChangePercent)})
+                  {formatSignedMarketPrice(quote.postMarketChange, moneyOptions)} ({formatPercentRaw(quote.postMarketChangePercent)})
                 </Text>
               </Box>
             )}
@@ -288,7 +286,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
         {stats.length > 0 && (
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
-            <StatGrid fields={stats} width={contentWidth} />
+            <FundamentalsGrid fields={stats} width={contentWidth} />
           </Box>
         )}
 

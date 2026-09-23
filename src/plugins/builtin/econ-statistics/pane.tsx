@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
   PaneStatusBody, QueryBar, usePaneNoticeFooter, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -13,7 +12,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -26,7 +25,6 @@ import { DEFAULT_STAT_ID } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 
 const loadBundle = (force: boolean) => loadStatsBundle({ force });
-const noop = () => {};
 
 const SPLIT_MIN_WIDTH = 108;
 const LIST_WIDTH = 53;
@@ -81,9 +79,8 @@ function buildColumns(width: number, stacked: boolean): Column[] {
   // Rows print at different cadences, so each value keeps its own period
   // whenever the name column can spare the room.
   const withPeriod = width - trailing - 6 - (PERIOD_WIDTH + 1) >= NAME_MIN_WIDTH;
-  const nameWidth = width - trailing - 6 - (withPeriod ? PERIOD_WIDTH + 1 : 0);
   return [
-    { id: "name", label: "INDICATOR", width: Math.max(NAME_MIN_WIDTH, nameWidth), align: "left" },
+    { id: "name", label: "INDICATOR", width: NAME_MIN_WIDTH, flexGrow: 1, align: "left" },
     { id: "latest", label: "LATEST", width: 10, align: "right" },
     { id: "previous", label: "PREV", width: 9, align: "right" },
     ...(withPercentile
@@ -152,6 +149,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const [range, setRange] = usePaneSettingValue<StatRangeId>("range", "20Y");
   const resource = useAsyncResource(loadBundle, { initialData: () => getCachedStatsBundle() });
   const { data: bundle, load: refresh, reload, updatedAt: lastUpdated } = resource;
+  const { nativePaneChrome } = useUiCapabilities();
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
@@ -217,11 +215,8 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     if (selected.observationStale || selected.cacheStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
-    if (normalizedQuery) {
-      info.push({ id: "filter", parts: [{ text: `filter: ${normalizedQuery}`, tone: "value" }] });
-    }
     return info;
-  }, [normalizedQuery, selected]);
+  }, [selected]);
 
   usePaneStatusFooter({
     registrationId: "econ-statistics",
@@ -245,22 +240,28 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
 
   if (!selected) {
     return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState status={error ? "error" : "empty"} title="Economic statistics unavailable." message={error ?? undefined} />
-      </Box>
+      <PaneStatusBody
+        error={error}
+        errorTitle="Economic statistics unavailable."
+        empty
+        emptyTitle="Economic statistics unavailable."
+      />
     );
   }
 
   const split = width >= SPLIT_MIN_WIDTH;
   const listWidth = split ? Math.min(LIST_WIDTH, Math.floor(width * 0.4)) : width;
   const detailWidth = split ? width - listWidth : width;
+  // The terminal scroller draws its bar in the last column; the detail stays clear of it.
+  const detailContentWidth = Math.max(1, detailWidth - (nativePaneChrome ? 0 : 1));
   const columns = buildColumns(listWidth, !split);
+  // Everything under the query bar. The split table fills it to the footer.
+  const bodyHeight = Math.max(1, height - 1);
   const tableHeight = split
-    ? Math.max(3, height - 2)
+    ? Math.max(3, bodyHeight)
     : Math.min(rows.length + 2, Math.max(3, height - 12));
   // The stacked list consumes real rows. Giving its detail scroller the whole
   // pane height leaves its lower content clipped outside the scroll viewport.
-  const bodyHeight = Math.max(1, height - 1 - (error ? 1 : 0));
   const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight);
 
   return (
@@ -298,7 +299,6 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
                 onChange: (id, _item, _index, reason) => chooseStat(String(id), reason),
               }}
               isNavigable={isStatRow}
-              onHeaderClick={noop}
               onRootKeyDown={handlePaneKey}
               getItemKey={rowKey}
               renderCell={renderRowCell}
@@ -310,14 +310,12 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
 
         <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
           <ScrollBox height={detailHeight} scrollY focusable={false}>
-            <Box flexDirection="column" paddingBottom={1}>
-              <StatDetail
-                view={selected}
-                width={detailWidth}
-                height={Math.max(12, height - (split ? 3 : tableHeight + 3))}
-                focused={focused && !searchFocused}
-              />
-            </Box>
+            <StatDetail
+              view={selected}
+              width={detailContentWidth}
+              height={detailHeight}
+              focused={focused && !searchFocused}
+            />
           </ScrollBox>
         </Box>
       </Box>

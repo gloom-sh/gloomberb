@@ -1,20 +1,26 @@
-import type { ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getPaneSidebarWidth,
   PaneSidebar,
   PaneSidebarRow,
 } from "../components/layout/pane/sidebar";
+import { ActionRow } from "../components/ui/action-row";
 import { Button } from "../components/ui/button";
-import { TextField } from "../components/ui/fields";
+import { Badge } from "../components/ui/display";
 import { Spinner } from "../components/ui/loading";
+import { QueryBar } from "../components/ui/query-bar";
+import { EmptyState } from "../components/ui/status";
+import { useShortcut } from "../react/input";
 import { t, tf } from "../i18n";
 import { useThemeColors } from "../theme/theme-context";
-import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../ui";
-import type { LayoutGalleryController } from "./gallery";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../ui";
+import { isPlainKey } from "../utils/keyboard";
+import type { GallerySearchState, LayoutGalleryController } from "./gallery";
 import { MiniWorkspace } from "./mini-workspace";
 import {
   describeArrangement,
   formatPublishedAt,
+  resolvePreviewEntry,
   summarizeLayoutPanes,
   type GalleryEntry,
 } from "./model";
@@ -22,13 +28,28 @@ import {
 const PREVIEW = { width: 640, height: 320 };
 const ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
-function SidebarSection({ title, count }: { title: string; count: number }) {
-  const colors = useThemeColors();
+/** A collapsible group header, the same row the chat sidebar uses. */
+function SidebarSection({
+  title,
+  count,
+  expanded,
+  width,
+  onToggle,
+}: {
+  title: string;
+  count: number;
+  expanded: boolean;
+  width: number;
+  onToggle: () => void;
+}) {
   return (
-    <Box height={1} flexDirection="row" alignItems="center" paddingX={1} flexShrink={0}>
-      <Text fg={colors.textMuted} attributes={TextAttributes.BOLD}>
-        {`${t(title).toUpperCase()} ${count}`}
-      </Text>
+    <Box height={1} width={width} flexDirection="row" flexShrink={0}>
+      <ActionRow
+        label={tf("{title} ({count})", { title: t(title), count: String(count) })}
+        expanded={expanded}
+        width={width}
+        onPress={onToggle}
+      />
     </Box>
   );
 }
@@ -42,32 +63,12 @@ function SidebarNote({ children }: { children: ReactNode }) {
   );
 }
 
-function SidebarActionRow({ label, onPress }: { label: string; onPress: () => void }) {
+/** A state inside the sidebar with its own action (log in, retry). */
+function SidebarState({ children }: { children: ReactNode }) {
   return (
-    <PaneSidebarRow active={false} ariaLabel={label} onSelect={onPress}>
-      {({ foregroundColor, listWidth, onMouseDown }) => (
-        <Box
-          width={listWidth}
-          height={1}
-          flexDirection="row"
-          role="button"
-          tabIndex={0}
-          aria-label={label}
-          data-gloom-role="layout-gallery-row"
-          data-gloom-interactive="true"
-          onMouseDown={onMouseDown}
-          onKeyDown={(event: { key?: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault?.();
-            event.stopPropagation?.();
-            onPress();
-          }}
-          style={{ cursor: "pointer" }}
-        >
-          <Text fg={foregroundColor}>{`  ${label}`}</Text>
-        </Box>
-      )}
-    </PaneSidebarRow>
+    <Box flexDirection="column" paddingX={1} paddingY={1} flexShrink={0}>
+      {children}
+    </Box>
   );
 }
 
@@ -90,7 +91,11 @@ function EntryRow({
     <PaneSidebarRow
       active={selected}
       ariaLabel={tf("{name}, {panes} panes", { name: entry.name, panes: String(panes.length) })}
-      onSelect={select}
+      onSelect={(event?: { detail?: number }) => {
+        select();
+        // A double click opens the layout, like Enter.
+        if ((event?.detail ?? 0) >= 2) activate();
+      }}
     >
       {({ foregroundColor, listWidth, onMouseDown }) => (
         <Box
@@ -142,10 +147,14 @@ function DiscoverStatus({ controller }: { controller: LayoutGalleryController })
 
   if (!controller.signedIn) {
     return (
-      <>
-        <SidebarNote>{t("A Gloom account is required to browse community layouts.")}</SidebarNote>
-        <SidebarActionRow label={t("Log in")} onPress={controller.requestSignIn} />
-      </>
+      <SidebarState>
+        <EmptyState title="Log in to browse community layouts." />
+        {/* The sidebar is narrow, so the pair wraps instead of running under the divider. */}
+        <Box flexDirection="row" flexWrap="wrap" gap={1} marginTop={1}>
+          <Button label={t("Log in")} variant="primary" compact onPress={controller.requestSignIn} />
+          <Button label={t("Sign up free")} variant="secondary" compact onPress={controller.requestSignUp} />
+        </Box>
+      </SidebarState>
     );
   }
   if (discover.state.status === "loading" || discover.state.status === "idle") {
@@ -158,10 +167,13 @@ function DiscoverStatus({ controller }: { controller: LayoutGalleryController })
   }
   if (discover.state.status === "error") {
     return (
-      <>
-        <SidebarNote><Text fg={colors.negative} wrapText>{discover.state.error}</Text></SidebarNote>
-        <SidebarActionRow label={t("Retry")} onPress={discover.refresh} />
-      </>
+      <SidebarState>
+        <EmptyState
+          title={discover.state.error}
+          status="error"
+          actions={<Button label={t("Retry")} compact onPress={discover.refresh} />}
+        />
+      </SidebarState>
     );
   }
   if (controller.community.length === 0) {
@@ -174,6 +186,23 @@ function DiscoverStatus({ controller }: { controller: LayoutGalleryController })
     );
   }
   return null;
+}
+
+function TeamStatus({ controller }: { controller: LayoutGalleryController }) {
+  const { state, refresh } = controller.teamLayouts;
+  if (state.status === "loading") return <SidebarNote>{t("Loading team layouts…")}</SidebarNote>;
+  if (state.status === "error") {
+    return (
+      <SidebarState>
+        <EmptyState
+          title={state.error}
+          status="error"
+          actions={<Button label={t("Retry")} compact onPress={refresh} />}
+        />
+      </SidebarState>
+    );
+  }
+  return <SidebarNote>{t("No team layouts yet.")}</SidebarNote>;
 }
 
 function PreviewEmpty({ controller }: { controller: LayoutGalleryController }) {
@@ -194,10 +223,13 @@ function PreviewEmpty({ controller }: { controller: LayoutGalleryController }) {
   );
 }
 
+/**
+ * The picked layout: its name, a badge when it is the one in use, what it is
+ * and where it came from, then the arrangement. Its actions are the gallery's
+ * footer hints and keys, which follow this selection.
+ */
 function PreviewPane({ controller, entry }: { controller: LayoutGalleryController; entry: GalleryEntry }) {
   const colors = useThemeColors();
-  const community = entry.kind === "community";
-  const teamEntry = entry.kind === "team";
   const linked = entry.kind === "owned" ? entry.linked ?? null : null;
   const metadata = [
     entry.team ? `${entry.team.shortName}· ${entry.team.name}` : null,
@@ -224,7 +256,7 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
         flexShrink={0}
         style={{ borderBottom: `1px solid ${colors.border}` }}
       >
-        <Box height={1} flexDirection="row" alignItems="center" minWidth={0}>
+        <Box height={1} flexDirection="row" alignItems="center" gap={1} minWidth={0}>
           <Text
             fg={colors.textBright}
             attributes={TextAttributes.BOLD}
@@ -232,21 +264,12 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
           >
             {entry.name}
           </Text>
-          {entry.active && <Text fg={colors.borderFocused}>{`  ${t("ACTIVE")}`}</Text>}
-          <Box flexGrow={1} minWidth={0} />
-          <Button label="New Layout" variant="secondary" onPress={controller.newLayout} />
-          <Box width={1} />
-          <Button
-            label={controller.publishing ? "Publishing…" : "Publish Current"}
-            variant="secondary"
-            disabled={controller.publishing}
-            onPress={controller.publishCurrent}
-          />
+          {entry.active && <Badge label={t("Active")} tone="accent" />}
         </Box>
         <Text fg={colors.textMuted} style={ELLIPSIS}>{metadata}</Text>
       </Box>
 
-      <Box flexGrow={2} minWidth={0} minHeight={8} overflow="hidden" padding={1}>
+      <Box flexGrow={1} minWidth={0} minHeight={8} overflow="hidden" padding={1}>
         <MiniWorkspace
           layout={entry.layout}
           panes={controller.panes}
@@ -255,118 +278,94 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
           detail
         />
       </Box>
-
-      <Box
-        height={2}
-        flexDirection="row"
-        alignItems="center"
-        paddingX={1}
-        flexShrink={0}
-        style={{ borderTop: `1px solid ${colors.border}` }}
-      >
-        <Button
-          label={community ? "Add Layout" : teamEntry ? (entry.index !== null ? "Open Tab" : "Open as Linked Tab") : "Use Layout"}
-          variant="primary"
-          onPress={() => (entry.kind === "owned" ? controller.activate(entry) : controller.install(entry))}
-        />
-        {community && (
-          <>
-            <Box width={1} />
-            <Button label="Copy Link" variant="secondary" onPress={() => controller.copyLink(entry)} />
-          </>
-        )}
-        {entry.kind === "owned" && (
-          <>
-            <Box width={1} />
-            <Button label="Rename" variant="secondary" onPress={() => controller.renameLayout(entry)} />
-            <Box width={1} />
-            <Button label="Duplicate" variant="secondary" onPress={() => controller.duplicateLayout(entry)} />
-            <Box width={1} />
-            <Button
-              label="Delete"
-              variant="secondary"
-              disabled={!controller.canDelete}
-              onPress={() => controller.deleteLayout(entry)}
-            />
-            {controller.teams.length > 0 && (
-              <>
-                <Box width={1} />
-                <Button
-                  label={linked ? "Publish to Team" : "Publish to Team…"}
-                  variant="secondary"
-                  disabled={controller.publishing}
-                  onPress={() => controller.publishToTeam(entry)}
-                />
-              </>
-            )}
-            {linked && (
-              <>
-                <Box width={1} />
-                <Button
-                  label={linked.updateAvailable ? `Pull r${linked.updateAvailable}` : "Pull"}
-                  variant="secondary"
-                  disabled={controller.publishing || !linked.updateAvailable}
-                  onPress={() => controller.pullTeamUpdates(entry)}
-                />
-                <Box width={1} />
-                <Button label="Unlink" variant="secondary" onPress={() => controller.unlink(entry)} />
-              </>
-            )}
-          </>
-        )}
-        <Box flexGrow={1} minWidth={0} />
-        {community && (
-          <Text fg={colors.textMuted} style={{ ...ELLIPSIS, minWidth: 0 }}>
-            {t("Adds an editable copy")}
-          </Text>
-        )}
-        {teamEntry && entry.index === null && (
-          <Text fg={colors.textMuted} style={{ ...ELLIPSIS, minWidth: 0 }}>
-            {t("Opens a tab that follows the team layout")}
-          </Text>
-        )}
-      </Box>
     </Box>
   );
 }
 
 export function LayoutGalleryDesktop({
   controller,
+  search,
   focused = true,
   width = 118,
   height = 34,
 }: {
   controller: LayoutGalleryController;
+  /** Search focus lives with the gallery, whose `/` key focuses it. */
+  search?: GallerySearchState;
   focused?: boolean;
   width?: number;
   height?: number;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const sidebarWidth = getPaneSidebarWidth(width, !!nativePaneChrome);
-  const selected = controller.entries.find((entry) => entry.id === controller.selectedId)
-    ?? controller.owned.find((entry) => entry.active)
-    ?? controller.entries[0]
-    ?? null;
+  const selected = resolvePreviewEntry(controller);
+  const inputRef = useRef<InputRenderable | null>(null);
+  const [localSearchActive, setLocalSearchActive] = useState(false);
+  const searchActive = search?.active ?? localSearchActive;
+  const setSearchActive = search?.setActive ?? setLocalSearchActive;
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleSection = useCallback((id: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // The rows the keyboard walks, in the order the sidebar shows them.
+  const visibleEntries = useMemo(() => [
+    ...(collapsed.has("owned") ? [] : controller.owned),
+    ...controller.teamSections.flatMap(({ team, entries }) => (collapsed.has(`team:${team.id}`) ? [] : entries)),
+    ...(collapsed.has("discover") ? [] : controller.community),
+  ], [collapsed, controller.community, controller.owned, controller.teamSections]);
+
+  useShortcut((event) => {
+    if (event.targetEditable || searchActive) return;
+    const delta = isPlainKey(event, "down", "j") ? 1 : isPlainKey(event, "up", "k") ? -1 : 0;
+    if (!delta || visibleEntries.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const index = visibleEntries.findIndex((entry) => entry.id === selected?.id);
+    const next = visibleEntries[Math.max(0, Math.min(visibleEntries.length - 1, index < 0 ? 0 : index + delta))];
+    if (next) controller.select(next.id);
+  }, { enabled: focused, phase: "before", scope: "layout-gallery" });
+
+  const section = (id: string, title: string, count: number, listWidth: number) => (
+    <SidebarSection
+      title={title}
+      count={count}
+      expanded={!collapsed.has(id)}
+      width={listWidth}
+      onToggle={() => toggleSection(id)}
+    />
+  );
 
   return (
     <Box
       width={width}
       height={height}
-      flexDirection="row"
+      flexDirection="column"
       overflow="hidden"
       data-gloom-role="layout-gallery"
     >
-      <PaneSidebar width={sidebarWidth} height={height} focused={focused}>
-        {({ listWidth }) => (
-          <>
-            <Box height={2} paddingX={1} justifyContent="center" flexShrink={0}>
-              <TextField
-                value={controller.query}
-                placeholder={t("Search layouts")}
-                onChange={controller.setQuery}
-                width={Math.max(1, listWidth - 2)}
-              />
-            </Box>
+      <QueryBar
+        width={width}
+        search={{
+          value: controller.query,
+          onChange: controller.setQuery,
+          placeholder: t("layouts and panes"),
+          focused,
+          active: searchActive,
+          onActiveChange: setSearchActive,
+          focusToken: search?.focusToken,
+          inputRef,
+          debounceMs: 80,
+        }}
+      />
+      <Box flexDirection="row" flexGrow={1} flexBasis={0} minHeight={0} minWidth={0}>
+        <PaneSidebar width={sidebarWidth} height={Math.max(1, height - 1)} focused={focused}>
+          {({ listWidth }) => (
             <ScrollBox
               scrollY
               flexGrow={1}
@@ -374,8 +373,8 @@ export function LayoutGalleryDesktop({
               focusable={false}
               data-gloom-role="layout-gallery-sidebar"
             >
-              <SidebarSection title="Your Layouts" count={controller.owned.length} />
-              {controller.owned.length === 0 ? (
+              {section("owned", "Your layouts", controller.owned.length, listWidth)}
+              {collapsed.has("owned") ? null : controller.owned.length === 0 ? (
                 <SidebarNote>
                   {controller.query.trim()
                     ? t("No saved layouts match this search.")
@@ -392,15 +391,9 @@ export function LayoutGalleryDesktop({
 
               {controller.teamSections.map(({ team, entries }) => (
                 <Box key={team.id} flexDirection="column">
-                  <SidebarSection title={`${team.shortName}· ${team.name}`} count={entries.length} />
-                  {entries.length === 0 ? (
-                    <SidebarNote>
-                      {controller.teamLayouts.state.status === "loading"
-                        ? t("Loading team layouts…")
-                        : controller.teamLayouts.state.status === "error"
-                          ? controller.teamLayouts.state.error
-                          : t("No team layouts yet.")}
-                    </SidebarNote>
+                  {section(`team:${team.id}`, `${team.shortName}· ${team.name}`, entries.length, listWidth)}
+                  {collapsed.has(`team:${team.id}`) ? null : entries.length === 0 ? (
+                    <TeamStatus controller={controller} />
                   ) : entries.map((entry) => (
                     <EntryRow
                       key={entry.id}
@@ -412,25 +405,29 @@ export function LayoutGalleryDesktop({
                 </Box>
               ))}
 
-              <SidebarSection title="Discover" count={controller.community.length} />
-              <DiscoverStatus controller={controller} />
-              {controller.community.map((entry) => (
-                <EntryRow
-                  key={entry.id}
-                  entry={entry}
-                  controller={controller}
-                  selected={entry.id === selected?.id}
-                />
-              ))}
+              {section("discover", "Discover", controller.community.length, listWidth)}
+              {collapsed.has("discover") ? null : (
+                <>
+                  <DiscoverStatus controller={controller} />
+                  {controller.community.map((entry) => (
+                    <EntryRow
+                      key={entry.id}
+                      entry={entry}
+                      controller={controller}
+                      selected={entry.id === selected?.id}
+                    />
+                  ))}
+                </>
+              )}
             </ScrollBox>
-          </>
-        )}
-      </PaneSidebar>
+          )}
+        </PaneSidebar>
 
-      <Box flexDirection="column" flexGrow={1} minWidth={0} minHeight={0}>
-        {selected
-          ? <PreviewPane controller={controller} entry={selected} />
-          : <PreviewEmpty controller={controller} />}
+        <Box flexDirection="column" flexGrow={1} minWidth={0} minHeight={0}>
+          {selected
+            ? <PreviewPane controller={controller} entry={selected} />
+            : <PreviewEmpty controller={controller} />}
+        </Box>
       </Box>
     </Box>
   );

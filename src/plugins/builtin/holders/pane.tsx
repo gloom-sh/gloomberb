@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import {
+  Badge,
   DataTableView,
+  QueryBar,
   Tabs,
   usePaneFooter,
   usePaneHeaderTabs,
@@ -12,7 +14,7 @@ import {
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
-import { formatCompact } from "../../../utils/format";
+import { clipToDisplayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
@@ -39,6 +41,9 @@ import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
 import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 
 const HOLDER_MARKET_CAP_SAMPLE_MS = 5_000;
+
+/** The "13F" badge: the label and its padding. */
+const FUND_BADGE_WIDTH = 5;
 
 export function HoldersView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -240,12 +245,23 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   ): DataTableCell => {
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
-      case "holder":
+      case "holder": {
+        const color = selectedColor ?? colors.textBright;
+        if (!fundMatches.has(row.id)) return { text: row.name, color, attributes: TextAttributes.BOLD };
+        // A fund with a 13F opens on Enter or o. The name gives way first, so
+        // the marker survives a narrow column.
         return {
-          text: fundMatches.has(row.id) ? `${row.name} 13F` : row.name,
-          color: selectedColor ?? colors.textBright,
-          attributes: TextAttributes.BOLD,
+          text: `${row.name} 13F`,
+          content: (
+            <Box flexDirection="row" gap={1} width={column.width} overflow="hidden">
+              <Text fg={color} attributes={TextAttributes.BOLD}>
+                {clipToDisplayWidth(row.name, Math.max(1, column.width - FUND_BADGE_WIDTH - 1))}
+              </Text>
+              <Badge label="13F" tone="accent" />
+            </Box>
+          ),
         };
+      }
       case "value":
         return { text: formatMoneyCompact(row.value, currency), color: selectedColor ?? colors.text };
       case "shares":
@@ -278,13 +294,14 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(error && data ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
+      // The title-bar tabs (or the query bar inside Ticker Research) switch
+      // views, so the footer only carries the fund action.
       hints: [
-        { id: "view", key: "s", label: "witch", onPress: toggleView },
         // `f` is the filter key in sibling panes, so opening a fund uses `o`.
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, toggleView]);
+  }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   const tabsInHeader = usePaneHeaderTabs({ tabs: VIEW_TABS, activeValue: viewMode, onSelect: selectView, focused });
@@ -301,7 +318,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {!tabsInHeader && (
+      {!tabsInHeader && nativePaneChrome && (
+        <QueryBar width={width} view={{ value: viewMode, options: VIEW_TABS, onChange: selectView }} />
+      )}
+      {!tabsInHeader && !nativePaneChrome && (
         <Box height={1} paddingX={1}>
           <Tabs
             tabs={VIEW_TABS}

@@ -1,22 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PaneStatusBody, usePaneFooter, usePaneNoticeFooter } from "../../../../components";
-import { resolveChartPalette } from "../../../../components/chart/core/palette";
-import { StaticMultiLineChartSurface, StaticScatterChartSurface } from "../../../../components/chart/static";
+import {
+  CompositeChart,
+  PaneStatusBody,
+  QueryBar,
+  StatGrid,
+  statGridRows,
+  usePaneFooter,
+  usePaneNoticeFooter,
+  type CompositeAxisDomain,
+} from "../../../../components";
+import { StaticScatterChartSurface, type MultiLineChartSeries } from "../../../../components/chart/static";
+import { scalarPoint, staticSeries } from "../../../../components/chart/static/series";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import { formatTickerListInput } from "../../../../tickers/list";
+import type { ResolvedSeries } from "../../../../time-series/types";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
-import { Box, Text } from "../../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { formatNumber } from "../../../../utils/format";
 import { usePluginPaneState } from "../../../runtime";
-import { formatDateTime, useBoundTicker } from "../../shared/ticker-request";
-import { RelationshipMetricsTable } from "./controls";
+import { useBoundTicker } from "../../shared/ticker-request";
 import { useRelationshipHistories } from "./history";
 import {
   DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
   DEFAULT_RELATIONSHIP_SECOND_SYMBOL,
+  RELATIONSHIP_CORRELATION_WINDOWS,
   RELATIONSHIP_GRAPH_PANE_ID,
+  RELATIONSHIP_RANGES,
   buildRelationshipAnalysis,
   buildRelationshipGraphPaneTitle,
   nextRelationshipRange,
@@ -28,12 +39,9 @@ import {
 import {
   buildIndexedPriceSeries,
   buildRelationshipCorrelationSeries,
-  buildRelationshipMetricsRows,
   buildRelationshipRatioSeries,
   buildRelationshipScatterPointsForDate,
-  findRelationshipAlignedPoint,
-  findRelationshipCorrelationAtDate,
-  formatNullableNumber,
+  buildRelationshipStatItems,
 } from "./view-model";
 
 export {
@@ -41,18 +49,26 @@ export {
   buildRelationshipGraphSettingsDef
 } from "./model";
 
-type RelationshipGraphShortcut = "range" | "window" | "correlation" | "regression" | "refresh";
+type RelationshipGraphShortcut =
+  | "range"
+  | "window"
+  | "correlation"
+  | "regression"
+  | "refresh"
+  | { range: RelationshipRange };
 
 /**
- * Keys are the first letter of their hint label: [t]ime range, [p]eriod, [c]orr,
- * [f]it line. `r` refreshes this pair's history.
+ * [t]ime range cycles and 1-6 pick a range, [p]eriod cycles the correlation
+ * window, [c]orr and [f]it toggle their panels. The query bar shows all four,
+ * so none needs a footer hint. `r` refreshes this pair's history.
  */
 export function resolveRelationshipGraphShortcut(
   event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "shift" | "alt" | "meta" | "super">,
 ): RelationshipGraphShortcut | null {
   if (event.ctrl || event.shift || event.alt || event.meta || event.super) return null;
 
-  switch ((event.name ?? event.key ?? "").toLowerCase()) {
+  const key = (event.name ?? event.key ?? "").toLowerCase();
+  switch (key) {
     case "r":
       return "refresh";
     case "t":
@@ -63,9 +79,68 @@ export function resolveRelationshipGraphShortcut(
       return "correlation";
     case "f":
       return "regression";
-    default:
-      return null;
   }
+  const range = /^[1-9]$/.test(key) ? RELATIONSHIP_RANGES[Number(key) - 1] : undefined;
+  return range ? { range } : null;
+}
+
+const RANGE_OPTIONS = RELATIONSHIP_RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+const WINDOW_OPTIONS = RELATIONSHIP_CORRELATION_WINDOWS.map((window) => ({ label: `${window} obs`, value: String(window) }));
+const REGRESSION_COLOR = "#ffd43b";
+/** The ratio shares one legend with both price lines, so it takes its own hue. */
+const RATIO_COLOR = "#e599f7";
+/** Legend and time axis around the stacked panels. */
+const CHART_CHROME_ROWS = 2;
+/** The scatter's two label rows around a readable plot. */
+const MIN_SCATTER_ROWS = 8;
+const MIN_PANEL_ROWS = 3;
+
+/** Each panel's axis reads at its own precision: whole index points, a ratio, a correlation. */
+function formatAxisValue(value: number, domain: CompositeAxisDomain): string {
+  if (domain.seriesIds.includes("ratio")) return formatNumber(value, Math.abs(value) >= 10 ? 1 : 3);
+  if (domain.seriesIds.includes("correlation")) return formatNumber(value, 2);
+  return formatNumber(value, 0);
+}
+
+function formatLegendValue(value: number, series: ResolvedSeries): string {
+  if (series.id === "ratio") return formatNumber(value, 3);
+  if (series.id === "correlation") return formatNumber(value, 2);
+  return formatNumber(value, 1);
+}
+
+function panelSeries(series: MultiLineChartSeries[], panelId: string): ResolvedSeries[] {
+  return series.map((entry) => ({
+    ...staticSeries(
+      entry.points.map((point) => scalarPoint(point.date, point.value)),
+      { id: entry.id, label: entry.label, color: entry.color },
+    ),
+    panelId,
+  }));
+}
+
+/**
+ * Rows for the stacked chart and the scatter under it, in priority order:
+ * price, ratio, rolling correlation, then the scatter. A short pane drops the
+ * lowest-priority piece instead of squeezing every plot, and anything hidden
+ * hands its rows to the chart.
+ */
+export function relationshipLayout(
+  rows: number,
+  { showCorrelation, showScatter }: { showCorrelation: boolean; showScatter: boolean },
+): { chartRows: number; scatterRows: number; ratio: boolean; correlation: boolean } {
+  const available = Math.max(0, rows);
+  const panelRowsFor = (panels: number) => CHART_CHROME_ROWS + MIN_PANEL_ROWS * panels;
+  const ratio = available >= panelRowsFor(2);
+  const correlation = showCorrelation && available >= panelRowsFor(3);
+  const panelCount = 1 + Number(ratio) + Number(correlation);
+  const scatterRows = Math.max(MIN_SCATTER_ROWS, Math.floor(available * 0.3));
+  const scatter = showScatter && available - scatterRows >= panelRowsFor(panelCount) + MIN_PANEL_ROWS;
+  return {
+    chartRows: scatter ? available - scatterRows : available,
+    scatterRows: scatter ? scatterRows : 0,
+    ratio,
+    correlation,
+  };
 }
 
 export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
@@ -80,6 +155,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const [showCorrelation, setShowCorrelation] = usePluginPaneState<boolean>("showCorrelation", true);
   const [showRegression, setShowRegression] = usePluginPaneState<boolean>("showRegression", true);
   const [cursorDateMs, setCursorDateMs] = useState<number | null>(null);
+  const { nativePaneChrome } = useUiCapabilities();
   const { data, loading, error, reload, updatedAt } = useRelationshipHistories(pair, range, exchange);
   const left = data?.[0] ?? null;
   const right = data?.[1] ?? null;
@@ -92,35 +168,13 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const toggleRegression = useCallback(() => setShowRegression((current) => !current), [setShowRegression]);
   const leftSymbol = pair?.[0] ?? left?.symbol ?? "";
   const rightSymbol = pair?.[1] ?? right?.symbol ?? "";
-  const ratioTrend = (analysis?.ratioPoints.at(-1)?.close ?? 0) >= (analysis?.ratioPoints[0]?.close ?? 0)
-    ? "positive"
-    : "negative";
-  const ratioPalette = useMemo(() => resolveChartPalette(colors, ratioTrend), [ratioTrend]);
-  const chartWidth = Math.max(20, width - 2);
-  // Panels are allocated in priority order out of the rows that actually exist, so
-  // a short pane drops the lowest-priority chart instead of clipping every axis.
-  const headerRows = 1;
-  const availableChartRows = Math.max(0, height - headerRows);
-  const railWidth = chartWidth >= 68 ? Math.min(34, Math.floor(chartWidth * 0.3)) : 0;
-  const statsBelowRows = railWidth === 0 ? 1 : 0;
-  let remainingRows = availableChartRows;
-  const priceHeight = Math.min(remainingRows, Math.max(5, Math.floor(availableChartRows * 0.28)));
-  remainingRows -= priceHeight;
-  const ratioHeight = remainingRows >= 4
-    ? Math.min(remainingRows, Math.max(4, Math.floor(availableChartRows * 0.24)))
-    : 0;
-  remainingRows -= ratioHeight;
-  const showCorrelationChart = showCorrelation && remainingRows >= 4;
-  const correlationHeight = showCorrelationChart
-    ? Math.min(remainingRows, Math.max(4, Math.floor(availableChartRows * 0.24)))
-    : 0;
-  remainingRows -= correlationHeight;
-  // Scatter needs its own two label rows on top of a usable plot.
-  const showScatter = showRegression && remainingRows >= 7 + statsBelowRows;
-  const scatterHeight = showScatter ? remainingRows - statsBelowRows : 0;
-  const statsRailWidth = showScatter ? railWidth : 0;
-  const scatterWidth = statsRailWidth > 0 ? Math.max(20, chartWidth - statsRailWidth - 1) : chartWidth;
   const stats = analysis?.stats ?? null;
+  const statItems = useMemo(() => buildRelationshipStatItems(stats), [stats]);
+  const statRows = statItems.length > 0 ? statGridRows(statItems, width) : 0;
+  const layout = relationshipLayout(height - 1 - statRows, {
+    showCorrelation,
+    showScatter: showRegression,
+  });
   const alignedDates = useMemo(() => analysis?.aligned.map((entry) => entry.date) ?? [], [analysis]);
   const cursorDate = useMemo(() => {
     if (alignedDates.length === 0) return null;
@@ -129,61 +183,31 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     }
     return alignedDates.at(-1) ?? null;
   }, [alignedDates, cursorDateMs]);
-  const selectedAligned = useMemo(
-    () => analysis ? findRelationshipAlignedPoint(analysis.aligned, cursorDate) : null,
-    [analysis, cursorDate],
-  );
-  const selectedCorrelation = useMemo(
-    () => analysis ? findRelationshipCorrelationAtDate(analysis.correlationPoints, cursorDate) : null,
-    [analysis, cursorDate],
-  );
-  const priceSeries = useMemo(
-    () => analysis ? buildIndexedPriceSeries(analysis.aligned, leftSymbol, rightSymbol) : [],
-    [analysis, leftSymbol, rightSymbol],
-  );
-  const ratioSeries = useMemo(
-    () => analysis ? buildRelationshipRatioSeries(analysis.aligned, leftSymbol, rightSymbol, ratioPalette.lineColor) : [],
-    [analysis, leftSymbol, ratioPalette.lineColor, rightSymbol],
-  );
-  const correlationSeries = useMemo(
-    () => analysis ? buildRelationshipCorrelationSeries(analysis.aligned, analysis.correlationPoints) : [],
-    [analysis],
-  );
+  const chartSeries = useMemo(() => {
+    if (!analysis) return [];
+    return [
+      ...panelSeries(buildIndexedPriceSeries(analysis.aligned, leftSymbol, rightSymbol), "price"),
+      ...(layout.ratio
+        ? panelSeries(buildRelationshipRatioSeries(analysis.aligned, leftSymbol, rightSymbol, RATIO_COLOR), "ratio")
+        : []),
+      ...(layout.correlation
+        ? panelSeries(buildRelationshipCorrelationSeries(analysis.aligned, analysis.correlationPoints), "correlation")
+        : []),
+    ];
+  }, [analysis, layout.correlation, layout.ratio, leftSymbol, rightSymbol]);
+  const panels = useMemo(() => [
+    { id: "price", height: 0.4 },
+    ...(layout.ratio ? [{ id: "ratio", height: 0.3 }] : []),
+    ...(layout.correlation ? [{ id: "correlation", height: 0.3 }] : []),
+  ], [layout.correlation, layout.ratio]);
   const scatterPoints = useMemo(
     () => analysis ? buildRelationshipScatterPointsForDate(analysis.returns, cursorDate) : [],
     [analysis, cursorDate],
   );
-  const selectedPriceBase = analysis?.aligned[0] ?? null;
-  const selectedLeftIndex = selectedAligned && selectedPriceBase
-    ? (selectedAligned.leftClose / selectedPriceBase.leftClose) * 100
-    : null;
-  const selectedRightIndex = selectedAligned && selectedPriceBase
-    ? (selectedAligned.rightClose / selectedPriceBase.rightClose) * 100
-    : null;
-  const selectedRatio = selectedAligned?.ratio ?? analysis?.latestRatio ?? null;
-  const selectCursorDate = useCallback((date: Date) => setCursorDateMs(date.getTime()), []);
-  const metricsRows = useMemo(
-    () => analysis ? buildRelationshipMetricsRows(stats, analysis) : [],
-    [analysis, stats],
-  );
-  const footerSummary = useMemo(() => {
-    const parts = [
-      cursorDate ? formatDateTime(cursorDate).slice(0, 10) : "latest",
-      `ratio ${formatNullableNumber(selectedRatio, 3)}`,
-      `corr ${formatNullableNumber(selectedCorrelation, 3)}`,
-      ...(leftSymbol ? [`${leftSymbol} ${formatNullableNumber(selectedLeftIndex, 1)}`] : []),
-      ...(rightSymbol ? [`${rightSymbol} ${formatNullableNumber(selectedRightIndex, 1)}`] : []),
-    ];
-    return parts.join("  ");
-  }, [
-    cursorDate,
-    leftSymbol,
-    rightSymbol,
-    selectedCorrelation,
-    selectedLeftIndex,
-    selectedRatio,
-    selectedRightIndex,
-  ]);
+  const selectCursorDate = useCallback((date: Date | null) => {
+    // Leaving the plot keeps the last date, so the scatter highlight stays put.
+    if (date) setCursorDateMs(date.getTime());
+  }, []);
 
   useEffect(() => {
     if (!analysis?.aligned.length) return;
@@ -195,30 +219,28 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
 
   useShortcut((event) => {
     if (!focused) return;
-    switch (resolveRelationshipGraphShortcut(event)) {
+    const shortcut = resolveRelationshipGraphShortcut(event);
+    if (!shortcut) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof shortcut === "object") {
+      setRange(shortcut.range);
+      return;
+    }
+    switch (shortcut) {
       case "refresh":
-        event.preventDefault();
-        event.stopPropagation();
         void reload();
         return;
       case "range":
-        event.preventDefault();
-        event.stopPropagation();
         cycleRange();
         return;
       case "window":
-        event.preventDefault();
-        event.stopPropagation();
         cycleWindow();
         return;
       case "correlation":
-        event.preventDefault();
-        event.stopPropagation();
         toggleCorrelation();
         return;
       case "regression":
-        event.preventDefault();
-        event.stopPropagation();
         toggleRegression();
         return;
     }
@@ -233,33 +255,11 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     ],
   });
 
+  // The legend reads the values at the cursor and the axis carries its date,
+  // so the footer only reports loading.
   usePaneFooter("relationship-graph", () => ({
-    info: loading
-        ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
-        : [{ id: "summary", parts: [{ text: footerSummary, tone: "muted" as const }] }],
-    hints: [
-      { id: "range", key: "t", label: width < 80 ? range : `ime ${range}`, onPress: cycleRange },
-      { id: "window", key: "p", label: width < 80 ? `${correlationWindow}obs` : `eriod ${correlationWindow} obs`, onPress: cycleWindow },
-      { id: "correlation", key: "c", label: width < 60 ? `orr${showCorrelation ? "+" : "−"}` : `orr ${showCorrelation ? "on" : "off"}`, onPress: toggleCorrelation },
-      { id: "regression", key: "f", label: width < 60 ? `it${showRegression ? "+" : "−"}` : `it ${showRegression ? "on" : "off"}`, onPress: toggleRegression },
-      { id: "refresh", key: "r", label: "efresh", onPress: () => { void reload(); } },
-    ],
-  }), [
-    cycleRange,
-    cycleWindow,
-    analysis,
-    correlationWindow,
-    error,
-    footerSummary,
-    loading,
-    range,
-    showCorrelation,
-    showRegression,
-    width,
-    toggleCorrelation,
-    toggleRegression,
-    reload,
-  ]);
+    info: loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : [],
+  }), [loading]);
 
   if (!pair) {
     return (
@@ -267,92 +267,65 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     );
   }
 
+  const queryBar = (
+    <QueryBar
+      width={width}
+      filters={[
+        // Six segments need most of a narrow bar; below that the range is a menu so
+        // Corr and Fit stay on screen. Digits and `t` pick a range either way.
+        { id: "range", label: "Range", inline: width >= (nativePaneChrome ? 72 : 90), value: range, options: RANGE_OPTIONS,
+          onChange: (value: string) => setRange(value as RelationshipRange) },
+        { id: "window", label: "Window", title: "Rolling correlation window", value: String(correlationWindow),
+          options: WINDOW_OPTIONS, onChange: (value: string) => setCorrelationWindow(Number(value)) },
+        { id: "correlation", kind: "toggle", label: "Corr", value: showCorrelation, defaultValue: true, onChange: setShowCorrelation },
+        { id: "regression", kind: "toggle", label: "Fit", value: showRegression, defaultValue: true, onChange: setShowRegression },
+      ]}
+      // The index base is the unit of the price panel; it gives way first when the bar is full.
+      meta={width >= 110 ? "Indexed to 100" : undefined}
+    />
+  );
+
   if (!analysis || analysis.aligned.length < 2) {
     return (
-      <PaneStatusBody loading={loading} error={loading ? null : analysis?.unavailableReason ?? error} subject="relationship history" empty emptyTitle="No overlapping price history." />
+      <Box flexDirection="column" width={width} height={height}>
+        {queryBar}
+        <PaneStatusBody loading={loading} error={loading ? null : analysis?.unavailableReason ?? error} subject="relationship history" empty emptyTitle="No overlapping price history." />
+      </Box>
     );
   }
 
   return (
-    <Box
-      flexDirection="column"
-      width={width}
-      height={height}
-      overflow="hidden"
-      paddingX={1}
-    >
-      <Box height={1} flexDirection="row" gap={2}>
-        {priceSeries.map((series) => (
-          <Box key={series.id} flexDirection="row" gap={1}>
-            <Box width={2} height={1} backgroundColor={series.color} />
-            <Text fg={colors.textDim}>{series.label}</Text>
-          </Box>
-        ))}
-      </Box>
-      <StaticMultiLineChartSurface
-        series={priceSeries}
-        width={chartWidth}
-        height={priceHeight}
-        cursorDate={cursorDate}
-        showTimeAxis
-        timeAxisColor={colors.textDim}
-        yAxisLabel={`Indexed price (${leftSymbol}, ${rightSymbol})`}
-        yAxisColor={colors.textDim}
-        formatYAxisValue={(value) => formatNumber(value, 0)}
-        onCursorDateChange={selectCursorDate}
-      />
-      {ratioHeight > 0 ? (
-      <StaticMultiLineChartSurface
-        series={ratioSeries}
-        width={chartWidth}
-        height={ratioHeight}
-        cursorDate={cursorDate}
-        showTimeAxis
-        timeAxisColor={colors.textDim}
-        yAxisLabel={`${leftSymbol}/${rightSymbol} ratio`}
-        yAxisColor={colors.textDim}
-        formatYAxisValue={(value) => formatNumber(value, Math.abs(value) >= 10 ? 1 : 3)}
-        onCursorDateChange={selectCursorDate}
-      />
-      ) : null}
-      {showCorrelationChart ? (
-        <StaticMultiLineChartSurface
-          series={correlationSeries}
-          width={chartWidth}
-          height={correlationHeight}
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      {queryBar}
+      {statItems.length > 0 ? <StatGrid items={statItems} width={width} /> : null}
+      {/* The desktop query bar is a few pixels taller than a row; the chart absorbs
+          them rather than clipping the scatter's axis label. */}
+      <Box height={layout.chartRows} flexShrink={1} minHeight={0} overflow="hidden">
+        <CompositeChart
+          series={chartSeries}
+          panels={panels}
+          width={width}
+          height={layout.chartRows}
           cursorDate={cursorDate}
-          showTimeAxis
-          timeAxisColor={colors.textDim}
-          yAxisLabel={`Rolling corr (${correlationWindow} obs)`}
-          yAxisColor={colors.textDim}
-          formatYAxisValue={(value) => formatNumber(value, 2)}
           onCursorDateChange={selectCursorDate}
+          navigable={false}
+          showTimeAxis
+          formatAxisValue={formatAxisValue}
+          formatValue={formatLegendValue}
+          emptyMessage="No chart data"
         />
-      ) : null}
-      {showScatter ? (
-        <Box flexDirection="row" width={chartWidth} height={scatterHeight}>
+      </Box>
+      {layout.scatterRows > 0 ? (
+        <Box flexDirection="column" height={layout.scatterRows} flexShrink={0}>
+          <Box paddingX={1} height={1}><Text fg={colors.textDim}>{`${leftSymbol} returns (%)`}</Text></Box>
           <StaticScatterChartSurface
             points={scatterPoints}
-            width={scatterWidth}
-            height={scatterHeight}
-            regression={showRegression && stats ? { slope: stats.beta, intercept: stats.alpha, color: "#ffd43b" } : null}
-            xLabel={`${rightSymbol} returns (%)`}
-            yLabel={`${leftSymbol} returns (%)`}
+            width={width}
+            height={layout.scatterRows - 2}
+            regression={stats ? { slope: stats.beta, intercept: stats.alpha, color: REGRESSION_COLOR } : null}
           />
-          {statsRailWidth > 0 ? (
-            <>
-              <Box width={1} />
-              <Box width={statsRailWidth} height={scatterHeight} flexDirection="column">
-                <RelationshipMetricsTable rows={metricsRows} width={statsRailWidth} height={scatterHeight} />
-              </Box>
-            </>
-          ) : null}
+          <Box paddingX={1} height={1}><Text fg={colors.textDim}>{`${rightSymbol} returns (%)`}</Text></Box>
         </Box>
-      ) : null}
-      {showScatter && statsRailWidth === 0 ? (
-        <Text fg={colors.textDim}>
-          {metricsRows.map((row) => `${row.label} ${row.value}`).join("  ")}
-        </Text>
       ) : null}
     </Box>
   );

@@ -252,9 +252,9 @@ test("shows volatility statistics and mirrored default Greeks", async () => {
   await renderSettled();
 
   const frame = testSetup!.captureCharFrame();
-  expect(frame).toContain("ATM IV 90.1%");
-  expect(frame).toContain("HV30 —");
-  expect(frame).toContain("EXP VOL");
+  expect(frame).toMatch(/ATM IV\s+90\.1%/);
+  expect(frame).toMatch(/HV30\s+--/);
+  expect(frame).toMatch(/Volume\s+4k/);
   expect(frame).toContain("C Δ");
   expect(frame).toContain("C Γ");
   expect(frame).toContain("P Γ");
@@ -374,7 +374,7 @@ test("a standalone chain subscribes to its underlying and resolves ATM without a
   await renderSettled();
   const scrollBox = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable;
   expect(scrollBox.scrollTop).toBeGreaterThan(0);
-  expect(testSetup!.captureCharFrame()).toContain("ATM IV 89.3%");
+  expect(testSetup!.captureCharFrame()).toMatch(/ATM IV\s+89\.3%/);
 });
 
 test("lets the expiration tab row use the full available width", async () => {
@@ -608,7 +608,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   await renderSettled();
   const frame = testSetup!.captureCharFrame();
   if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/stale-underlying.txt`, frame);
-  expect(frame).toContain("ATM IV —");
+  expect(frame).toMatch(/ATM IV\s+--/);
   expect(frame).toContain("Underlying quote stale");
   expect(frame).not.toContain("[c]alc");
   await exportPaneTable(TEST_PANE_ID, "stale-options.csv");
@@ -622,7 +622,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   await act(async () => { setStale(false); });
   await renderSettled();
   const recovered = testSetup!.captureCharFrame();
-  expect(recovered).toContain("ATM IV 90.1%");
+  expect(recovered).toMatch(/ATM IV\s+90\.1%/);
   expect(recovered).toContain("[c]alc");
   expect(recovered).not.toContain("Underlying quote stale");
   if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/underlying-recovery.txt`, recovered);
@@ -649,9 +649,9 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   await renderSettled();
   const frame = testSetup!.captureCharFrame();
   if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/rejected-history.txt`, frame);
-  expect(frame).toContain("ATM IV 90.1%");
-  expect(frame).toContain("HV30 —");
-  expect(frame).toContain("IV/HV --");
+  expect(frame).toMatch(/ATM IV\s+90\.1%/);
+  expect(frame).toMatch(/HV30\s+--/);
+  expect(frame).toMatch(/IV\/HV\s+--/);
   expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
   expect(frame).toContain("HV30 unavailable: inconsistent OHLC history");
   expect(frame).toContain("[c]alc");

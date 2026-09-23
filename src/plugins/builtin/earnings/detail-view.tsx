@@ -1,6 +1,7 @@
 import { useMemo } from "react";
+import { SectionHeading } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import type { EarningsEvent } from "../../../types/data-provider";
 import { buildEarningsDetail, formatGrowth, rangeBar, type EstimateBlock } from "./detail-model";
 
@@ -15,15 +16,38 @@ function signColor(value: number | null): string {
   return value > 0 ? colors.positive : value < 0 ? colors.negative : colors.textDim;
 }
 
+/**
+ * Where the consensus sits between the low and high estimates. The desktop
+ * draws a real track and dot; box-drawing glyphs are for the terminal only.
+ */
+function EstimateRangeTrack({ position, width }: { position: number; width: number }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  if (nativePaneChrome) {
+    return (
+      <Box width={width} height={1} marginLeft={1} marginRight={1} style={{ position: "relative", justifyContent: "center" }}>
+        <Box style={{ position: "absolute", left: 0, right: 0, height: "2px", borderRadius: "1px", backgroundColor: colors.border }} />
+        <Box style={{
+          position: "absolute",
+          left: `${Math.max(0, Math.min(1, position)) * 100}%`,
+          width: "8px",
+          height: "8px",
+          marginLeft: "-4px",
+          borderRadius: "50%",
+          backgroundColor: colors.borderFocused,
+        }} />
+      </Box>
+    );
+  }
+  return <Text fg={colors.borderFocused}>{` ${rangeBar(position, width)} `}</Text>;
+}
+
 /** One estimate: the consensus, where it sits in the range, and how it moved. */
 function EstimatePanel({ block, width }: { block: EstimateBlock; width: number }) {
-  const labelWidth = 13;
+  const labelWidth = 14;
   const barWidth = Math.max(12, width - block.lowText.length - block.highText.length - 4);
   return (
     <Box flexDirection="column" width={width} overflow="hidden">
-      <Box height={1}>
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{block.label.toUpperCase()}</Text>
-      </Box>
+      <SectionHeading title={block.label} />
       <Box height={1} flexDirection="row">
         <Text fg={block.consensus ? colors.textBright : colors.textDim} attributes={TextAttributes.BOLD}>
           {block.consensus ?? "no consensus"}
@@ -33,10 +57,10 @@ function EstimatePanel({ block, width }: { block: EstimateBlock; width: number }
         ) : null}
       </Box>
       {block.position != null ? (
-        <Box height={1} flexDirection="row">
-          <Text fg={colors.textDim}>{`${block.lowText} `}</Text>
-          <Text fg={colors.borderFocused}>{rangeBar(block.position, barWidth)}</Text>
-          <Text fg={colors.textDim}>{` ${block.highText}`}</Text>
+        <Box height={1} flexDirection="row" alignItems="center">
+          <Text fg={colors.textDim}>{block.lowText}</Text>
+          <EstimateRangeTrack position={block.position} width={barWidth} />
+          <Text fg={colors.textDim}>{block.highText}</Text>
         </Box>
       ) : block.lowText || block.highText ? (
         <Box height={1}>

@@ -5,19 +5,23 @@
  * argument and the description get their own columns. The prefix keeps its
  * badge, which is how the command bar draws it too.
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   buildSectionedRows,
   DataTableView,
   EMPTY_TABLE_CELL,
   isSectionedItemRow,
+  QueryBar,
   renderSectionedRowHeader,
   type DataTableCell,
   type DataTableColumn,
   type SectionedRow,
 } from "../../../components";
 import { t } from "../../../i18n";
+import { useShortcut } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
+import type { InputRenderable } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
 import type { HelpShortcutEntry } from "./components";
 import { groupShortcutEntries } from "./shortcut-model";
 import { badgeCell, badgeColumnWidth } from "./table-cells";
@@ -54,13 +58,21 @@ function toEntries(entries: HelpShortcutEntry[], namespace: string): FunctionEnt
   }));
 }
 
+/** Matches the typed text against FN, ARG and OPENS, as the user reads them. */
+function matchesQuery(entry: FunctionEntry, needle: string): boolean {
+  if (!needle) return true;
+  return [entry.prefix.join(" "), entry.argument, t(entry.description)]
+    .some((text) => text.toLowerCase().includes(needle));
+}
+
 export function FunctionsTable({
   commandShortcuts,
   windowTemplates,
   focused,
   width,
   height,
-  header,
+  searching,
+  onSearchingChange,
   onRunPrefix,
 }: {
   commandShortcuts: HelpShortcutEntry[];
@@ -68,22 +80,43 @@ export function FunctionsTable({
   focused: boolean;
   width: number;
   height: number;
-  /** Sits above the table inside the same frame, so the table keeps the rest. */
-  header?: ReactNode;
+  /** The search field owns the keyboard; the pane's own keys stand down. */
+  searching: boolean;
+  onSearchingChange: (searching: boolean) => void;
   /** Opens the command bar on the prefix, so a row is one Enter from running. */
   onRunPrefix: (prefix: string) => void;
 }) {
   const colors = useThemeColors();
-  const rows = useMemo<FunctionsRow[]>(() => buildSectionedRows<FunctionEntry>([
-    ...groupShortcutEntries(commandShortcuts).map((group) => ({
-      label: group.title,
-      items: toEntries(group.entries, "command"),
-    })),
-    ...groupShortcutEntries(windowTemplates).map((group) => ({
-      label: group.title,
-      items: toEntries(group.entries, "template"),
-    })),
-  ], (entry) => entry.id), [commandShortcuts, windowTemplates]);
+  const [query, setQuery] = useState("");
+  const [searchFocus, setSearchFocus] = useState(0);
+  const searchInput = useRef<InputRenderable | null>(null);
+  const needle = query.trim().toLowerCase();
+  const rows = useMemo<FunctionsRow[]>(() => {
+    // Commands and pane templates can share a category; one section per name
+    // keeps the section keys unique, so a filtered list drops its old headers.
+    const sections = new Map<string, FunctionEntry[]>();
+    const add = (entries: HelpShortcutEntry[], namespace: string) => {
+      for (const group of groupShortcutEntries(entries)) {
+        sections.set(group.title, [...(sections.get(group.title) ?? []), ...toEntries(group.entries, namespace)]);
+      }
+    };
+    add(commandShortcuts, "command");
+    add(windowTemplates, "template");
+    return buildSectionedRows<FunctionEntry>(
+      [...sections]
+        .map(([label, items]) => ({ label, items: items.filter((entry) => matchesQuery(entry, needle)) }))
+        .filter((section) => section.items.length > 0),
+      (entry) => entry.id,
+    );
+  }, [commandShortcuts, needle, windowTemplates]);
+
+  useShortcut((event) => {
+    // Plain `/` only: Shift+/ is `?`, which opens Help.
+    if (!focused || searching || event.targetEditable || !isPlainKey(event, "/")) return;
+    event.preventDefault?.();
+    onSearchingChange(true);
+    setSearchFocus((value) => value + 1);
+  });
 
   const entries = useMemo(() => rows.filter(isSectionedItemRow).map((row) => row.item), [rows]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -126,10 +159,25 @@ export function FunctionsTable({
 
   return (
     <DataTableView<FunctionsRow, FunctionsColumn>
-      focused={focused}
+      focused={focused && !searching}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={header}
+      rootBefore={(
+        <QueryBar
+          width={width}
+          search={{
+            value: query,
+            onChange: setQuery,
+            placeholder: "function or description",
+            focused,
+            active: searching,
+            onActiveChange: onSearchingChange,
+            focusToken: searchFocus,
+            inputRef: searchInput,
+            onNavigateDown: () => onSearchingChange(false),
+          }}
+        />
+      )}
       columns={columns}
       items={rows}
       selection={{
@@ -148,11 +196,10 @@ export function FunctionsTable({
       }}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(row) => row.key}
       renderSectionHeader={renderSectionedRowHeader}
       renderCell={renderCell}
-      emptyStateTitle="No command prefixes are registered."
+      emptyStateTitle={needle ? "No functions match." : "No command prefixes are registered."}
     />
   );
 }

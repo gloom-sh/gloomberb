@@ -1,5 +1,6 @@
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
@@ -229,20 +230,20 @@ const MAX_NAME_WIDTH = 24;
  * sparkline, 30D, volume and the name); the name takes what width is left.
  */
 export function buildCryptoColumns(width: number): CryptoColumn[] {
-  const available = Math.max(0, width - 2);
   const optional = COLUMN_SPECS.flatMap((column) => column.optional ?? []).sort((a, b) => b - a);
   let dropped = new Set<number>();
-  const fits = (columns: typeof COLUMN_SPECS) =>
-    columns.reduce((sum, column) => sum + column.width + 1, 0) <= available;
+  // Measured the way the table draws them (header floors, gaps, padding and the
+  // extra gutter after a right-aligned column), so the last column never clips.
+  const fits = (columns: typeof COLUMN_SPECS) => getTableWidth(columns) <= width;
   const visible = () => COLUMN_SPECS.filter((column) => !column.optional || !dropped.has(column.optional));
   for (const priority of optional) {
     if (fits(visible())) break;
     dropped = new Set([...dropped, priority]);
   }
   const columns = visible();
-  const used = columns.reduce((sum, column) => sum + column.width + 1, 0);
+  const spare = Math.max(0, width - getTableWidth(columns));
   return columns.map(({ optional: _optional, ...column }) =>
     column.id === "name"
-      ? { ...column, width: Math.min(MAX_NAME_WIDTH, column.width + Math.max(0, available - used)) }
+      ? { ...column, width: Math.min(MAX_NAME_WIDTH, column.width + spare) }
       : column);
 }

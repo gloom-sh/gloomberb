@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, KeyValueRow, PaneStatusBody, QueryBar, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
-  type DataTableRootKeyContext, type PaneFooterSegment
+  EmptyState, PaneStatusBody, QueryBar, StatGrid, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
+  type DataTableRootKeyContext, type PaneFooterSegment, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -12,7 +12,6 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
-  Text,
   useRendererHost,
   type InputRenderable,
   type ScrollBoxRenderable,
@@ -20,7 +19,6 @@ import {
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
@@ -249,10 +247,10 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
   const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort]);
   const columns = useMemo(() => {
-    if (browserMode !== "performance") return buildBrowserColumns(width, false);
+    if (browserMode !== "performance") return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];
-    return [...buildBrowserColumns(width - history.length * 10).filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const }))];
-  }, [width, browserMode, rows]);
+    return [...buildBrowserColumns().filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const }))];
+  }, [browserMode, rows]);
 
   useEffect(() => {
     if (selectedId && sortedRows.some((row) => row.id === selectedId)) return;
@@ -301,9 +299,10 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     hints: searchHints,
   });
 
-  const rootBefore = (
+  const renderQueryBar = (meta?: string) => (
     <QueryBar
       width={width}
+      meta={meta}
       search={{
         value: query,
         onChange: updateQuery,
@@ -319,6 +318,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       }}
     />
   );
+  const rootBefore = renderQueryBar();
 
   const emptyTitle = status === "loading" || status === "idle"
     ? "Loading 13F funds..."
@@ -368,7 +368,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
           focused={focused && !searchFocused}
           width={width}
           height={height}
-          queryBar={rootBefore}
+          queryBar={renderQueryBar}
           hints={searchHints}
           onRootKeyDown={handleTickerRootKeyDown}
           onUnavailable={() => setTickerFallbackQuery(query)}
@@ -598,6 +598,16 @@ export function FundDetailView({
     }
   });
 
+  const holdingStats: StatItem[] = [
+    { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--", detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}` },
+    data && hasComparable13FQuarter(data)
+      ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
+      : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
+    ...(data?.latestReport && data.latestReport.filings.length > 1
+      ? [{ id: "combined", label: "Combined", value: `${data.latestReport.filings.length} filings` }]
+      : []),
+  ];
+
   usePaneNoticeFooter({
     registrationId: "thirteenf-holdings-notices",
     notices: data?.warnings ?? [],
@@ -619,7 +629,6 @@ export function FundDetailView({
     error: activeTab === "overlap" ? null : error,
     info: activeTab === "overlap" ? [] : detailStatusInfo,
     showOpenHint: true,
-    hints: activeTab === "holdings" ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", onPress: () => setMineOnly(value => !value) }] : [],
   });
 
   if ((status === "loading" || status === "idle") && !data) {
@@ -699,16 +708,8 @@ export function FundDetailView({
             onChange: (id) => setHoldingSelectedId(id),
           }}
           rootWidth={width}
-          rootBefore={(
-            <Box flexDirection="column" paddingX={1}>
-              <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
-              <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
-              {data?.latestReport && data.latestReport.filings.length > 1 ? (
-                <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
-              ) : null}
-            </Box>
-          )}
-          columns={[{ id: "mine", label: "MINE", width: 5, align: "left" }, ...buildHoldingColumns(width - 6)]}
+          rootBefore={<StatGrid items={holdingStats} width={width} />}
+          columns={[{ id: "mine", label: "MINE", width: 5, align: "left" }, ...buildHoldingColumns()]}
           items={visibleHoldingRows}
           sortColumnId={holdingSort.columnId}
           sortDirection={holdingSort.direction}
@@ -831,7 +832,7 @@ function FilingDetailView({
       sortPreference,
     )
   ), [filing.tableValueTotal, holdings, sortPreference]);
-  const columns = useMemo(() => buildFilingPositionColumns(width), [width]);
+  const columns = useMemo(() => buildFilingPositionColumns(), []);
 
   useEffect(() => {
     if (selectedPositionId && positionRows.some((row) => row.id === selectedPositionId)) return;
@@ -854,27 +855,15 @@ function FilingDetailView({
 
   usePaneNoticeFooter({ registrationId: "thirteenf-filing-notices", notices: [...new Set([...sourceWarnings, ...warnings])], focused });
 
-  const summaryRows = [
-    ["Filer", filing.companyName || "--"],
-    ["CIK", filing.cik],
-    ["Filed", filing.filedAsOfDate || "--"],
-    ["Form", filing.submissionType || "--"],
-    ...(filing.isAmendment ? [["Amendment", filing.amendmentType ?? "amended"]] : []),
-    ["Accession", filing.accessionNumber],
-    ["Source", filing.url ? truncateWithEllipsis(filing.url, Math.max(12, width - 14)) : "--"],
+  // The fund names the stack and `o` opens the filing, so neither repeats here.
+  const summaryItems: StatItem[] = [
+    { id: "filed", label: "Filed", value: filing.filedAsOfDate || "--" },
+    { id: "form", label: "Form", value: filing.submissionType || "--" },
+    ...(filing.isAmendment ? [{ id: "amendment", label: "Amendment", value: filing.amendmentType ?? "amended", tone: "warning" as const }] : []),
+    { id: "cik", label: "CIK", value: filing.cik },
+    { id: "accession", label: "Accession", value: filing.accessionNumber },
   ];
-  const summary = (
-    <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1}>
-      {summaryRows.map(([label, value]) => (
-        <Box key={label} height={1} flexDirection="row">
-          <Box width={12}>
-            <Text fg={colors.textDim}>{label}</Text>
-          </Box>
-          <Text fg={colors.text}>{value}</Text>
-        </Box>
-      ))}
-    </Box>
-  );
+  const summary = <StatGrid items={summaryItems} width={width} />;
   const emptyTitle = status === "loading" || status === "idle"
     ? "Loading filing positions..."
     : error ?? "No positions in filing.";

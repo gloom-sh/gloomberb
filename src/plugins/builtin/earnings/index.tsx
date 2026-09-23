@@ -230,7 +230,6 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
       items={rows}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(row) => row.key}
       renderSectionHeader={renderEarningsSectionHeader}
       renderCell={renderCell}

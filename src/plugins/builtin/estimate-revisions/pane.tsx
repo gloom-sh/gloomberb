@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { Box, ScrollBox } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -15,11 +15,14 @@ import {
   KeyValueRow,
   PaneStatusBody,
   Prose,
+  StatGrid,
+  statGridRows,
   Tabs,
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   type DataTableColumn,
+  type StatItem,
 } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import { listingIdentity } from "../shared/ticker-request";
@@ -46,7 +49,6 @@ import {
   estimatePoints,
   PERIOD_COLUMNS,
   periodLabel,
-  periodRank,
   pinnedEstimatePeriods,
   revisionNotices,
   sortPeriods,
@@ -136,44 +138,63 @@ function EstimateDetail({
     ],
     [period, colors],
   );
-  const chartHeight = Math.max(4, Math.floor((height - 6) * 0.6));
+  const { nativePaneChrome } = useUiCapabilities();
   const breadth = period.breadth.find((row) => row.days === 30);
+  const asOf = current?.date;
+  // The latest observation date is said once, on the consensus; the other
+  // figures name a date only when theirs differs.
+  const otherDate = (date: string | null | undefined) => date && date !== asOf ? date : undefined;
+  const pctl = period.percentile.percentile;
+  const figures: StatItem[] = [
+    {
+      id: "eps",
+      label: "EPS",
+      value: `${number(current?.average)}${period.currency ? ` ${period.currency}` : ""}`,
+      detail: [pctl == null ? null : `${pctl.toFixed(0)} pctl`, asOf].filter(Boolean).join(" · ") || undefined,
+    },
+    {
+      id: "change",
+      label: "Change",
+      value: percent(period.change.percent),
+      tone: period.change.percent == null || period.change.percent === 0 ? "neutral" : period.change.percent > 0 ? "positive" : "negative",
+      detail: `${period.change.fromDate ?? "--"} to ${period.change.toDate ?? "--"}`,
+    },
+    {
+      id: "range",
+      label: "Range",
+      value: `${number(current?.low)} to ${number(current?.high)}`,
+      detail: current?.analysts == null ? undefined : `${number(current.analysts)} analysts`,
+    },
+    {
+      id: "breadth",
+      label: "Up/down 30D",
+      value: `${number(breadth?.up)} / ${number(breadth?.down)}`,
+      detail: [
+        breadth?.ratio == null ? null : `breadth ${percent(breadth.ratio * 100)}`,
+        otherDate(breadth?.asOf),
+      ].filter(Boolean).join(" · ") || undefined,
+    },
+    ...(period.revenue ? [{
+      id: "revenue",
+      label: "Revenue",
+      value: `${number(period.revenue.average)}${period.revenue.currency ? ` ${period.revenue.currency}` : ""}`,
+      detail: otherDate(period.revenue.asOf),
+    }] : []),
+  ];
+  const figureRows = statGridRows(figures, width);
+  const chartHeight = Math.max(4, Math.floor((height - figureRows - 2) * 0.6));
+  // The desktop table takes whatever the chart leaves, down to the footer; the
+  // terminal splits its rows by count.
   return (
-    <Box width={width} height={height} flexDirection="column">
-      <Box paddingX={1} flexDirection="column" flexShrink={0}>
-        <KeyValueRow
-          labelWidth={16}
-          label={`EPS ${period.currency ?? "?"}`}
-          value={number(current?.average)}
-          detail={`${periodRank(period)} · ${current?.date ?? "--"}`}
-        />
-        <KeyValueRow
-          labelWidth={16}
-          label="Change"
-          value={percent(period.change.percent)}
-          detail={`${period.change.fromDate ?? "--"} to ${period.change.toDate ?? "--"}`}
-        />
-        <KeyValueRow
-          labelWidth={16}
-          label="Analyst range"
-          value={`${number(current?.low)} to ${number(current?.high)}`}
-          detail={`${number(current?.analysts)} analysts · ${current?.date ?? "--"}`}
-        />
-        <KeyValueRow
-          labelWidth={16}
-          label="Up/down 30D"
-          value={`${number(breadth?.up)} / ${number(breadth?.down)}`}
-          detail={`${breadth?.asOf ?? "--"} · breadth ${breadth?.ratio == null ? "--" : percent(breadth.ratio * 100)}`}
-        />
-        {period.revenue ? (
-          <KeyValueRow
-            labelWidth={16}
-            label={`Revenue ${period.revenue.currency ?? "?"}`}
-            value={number(period.revenue.average)}
-            detail={period.revenue.asOf ?? "--"}
-          />
-        ) : null}
-      </Box>
+    <Box
+      width={width}
+      height={nativePaneChrome ? undefined : height}
+      flexGrow={nativePaneChrome ? 1 : undefined}
+      flexBasis={nativePaneChrome ? 0 : undefined}
+      minHeight={nativePaneChrome ? 0 : undefined}
+      flexDirection="column"
+    >
+      <StatGrid items={figures} width={width} />
       {rows.some((row) => row.average != null) ? (
         <CompositeChart
           series={series}
@@ -194,7 +215,7 @@ function EstimateDetail({
         items={rows}
         focused={focused}
         rootWidth={width}
-        rootHeight={Math.max(3, height - chartHeight - 5)}
+        rootHeight={Math.max(3, height - figureRows - chartHeight - 1)}
         selection={{
           kind: "id",
           selectedId: selected,
@@ -356,7 +377,9 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         ]
       : [],
   });
-  const tabsInHeader = usePaneHeaderTabs({
+  const signInWall = !data && isCloudSessionRequired(resource.error);
+  // Every tab would show the same wall, so the strip waits for data.
+  const tabsInHeader = usePaneHeaderTabs(!symbol || signInWall ? null : {
     tabs: TABS,
     activeValue: tab,
     onSelect: setTab,
@@ -364,7 +387,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   });
   const tabRows = tabsInHeader ? 0 : 1;
   if (!symbol) return <EmptyState title="Select a ticker." />;
-  if (!data && isCloudSessionRequired(resource.error))
+  if (signInWall)
     return (
       <SignInWall
         action="view estimate revisions"
@@ -515,14 +538,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
                     labelWidth={16}
                     label="Call"
                     value={data.guidance.callDate?.slice(0, 10) ?? "--"}
-                    detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter}`}
-                  />
-                  <KeyValueRow
-                    labelWidth={16}
-                    label="Summary updated"
-                    value={data.guidance.publishedAt
-                      .replace("T", " ")
-                      .slice(0, 16)}
+                    detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter} · summary ${data.guidance.publishedAt.replace("T", " ").slice(0, 16)}`}
                   />
                   <Prose
                     text={data.guidance.text}

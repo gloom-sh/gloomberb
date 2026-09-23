@@ -1,5 +1,7 @@
 import type { StaticChartOverlay } from "../../../components/chart/static/chart-surface";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import { staticSeries } from "../../../components/chart/static/series";
+import type { ResolvedSeries } from "../../../time-series/types";
 
 const DAY_MS = 86_400_000;
 
@@ -86,6 +88,36 @@ export function volatilityRatioChartModel(fred: FredChartInput, referenceColor: 
       points: [{ index: 0, value: 1 }, ...(dates.length > 1 ? [{ index: dates.length - 1, value: 1 }] : [])],
     } satisfies StaticChartOverlay] : [],
   };
+}
+
+export interface VolatilityHistoryColors { spot: string; threeMonth: string; ratio: string; flat: string }
+
+/**
+ * VIX 30D and 3M levels over their 3M/30D ratio, one panel each on one date
+ * axis. Every series spans the same dates, so a close either index lacks is a
+ * gap in all of them, as in the separate level and ratio models.
+ */
+export function volatilityHistorySeries(fred: FredChartInput, colors: VolatilityHistoryColors): ResolvedSeries[] {
+  const { spot, threeMonth, dates } = fredTimeline(fred);
+  const ratios = observationMap(fred.ratioHistory);
+  const line = (id: string, label: string, color: string, panelId: string, unitGroup: string, values: Map<string, number | null>): ResolvedSeries => ({
+    ...staticSeries(dates.map((date) => {
+      const value = values.get(date);
+      return { date: new Date(date), observedAt: new Date(date), value: value != null && Number.isFinite(value) ? value : null };
+    }), { id, label, color, calendarSpaced: true }),
+    unit: unitGroup === "volatility" ? "%" : "", unitGroup, panelId,
+  });
+  const first = dates[0], last = dates.at(-1);
+  return [
+    line("vix", "VIX 30D", colors.spot, "vol", "volatility", spot),
+    line("vix3m", "VIX 3M", colors.threeMonth, "vol", "volatility", threeMonth),
+    line("ratio", "3M/30D", colors.ratio, "ratio", "ratio", ratios),
+    ...(first && last ? [{
+      ...staticSeries([...new Set([first, last])].map((date) => ({ date: new Date(date), observedAt: new Date(date), value: 1 })),
+        { id: "flat", label: "1.00 flat", color: colors.flat, calendarSpaced: true }),
+      unit: "", unitGroup: "ratio", panelId: "ratio",
+    }] : []),
+  ];
 }
 
 export function volatilityIndexHistoryPoints(history: readonly VolatilityHistoryDatum[], missingDates: readonly string[] = []): ProjectedChartPoint[] {

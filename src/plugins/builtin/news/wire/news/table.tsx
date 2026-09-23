@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
   type StackSortPreference,
 } from "../../../../../components";
-import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../../../components/ui/table-layout";
+import { getTableWidth } from "../../../../../components/ui/table-layout";
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
@@ -156,7 +156,8 @@ function nextSortPreference(current: NewsSortPreference, columnId: NewsColumnId)
 
 const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
   rank: 4,
-  time: 4,
+  // The label and its sort mark.
+  time: 6,
   source: 12,
   tickers: 18,
   categories: 10,
@@ -167,9 +168,7 @@ const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
 
 const COLUMN_LABELS: Record<NewsColumnId, string> = {
   rank: "#",
-  // "25m" and "13h" read as times on their own, and a label would widen the
-  // column to fit itself and the sort mark, pushing the headline away.
-  time: "",
+  time: "TIME",
   source: "SOURCE",
   title: "HEADLINE",
   tickers: "TICKERS",
@@ -177,6 +176,9 @@ const COLUMN_LABELS: Record<NewsColumnId, string> = {
   sentiment: "SENT",
   importance: "SCORE",
 };
+
+const columnAlign = (id: NewsColumnId): "left" | "right" =>
+  id === "rank" || id === "importance" ? "right" : "left";
 
 /** Below this the headline takes room back from the other columns. */
 const MIN_HEADLINE_WIDTH = 40;
@@ -200,19 +202,15 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsT
   const widths = { ...FIXED_COLUMN_WIDTHS };
   let columnIds = requestedIds;
 
-  // A column occupies its header-floored width plus the gap, and the table adds
-  // one cell of padding on each side. Anything the fixed columns do not take is
-  // the headline's, so the last column never falls off the right edge.
-  const headlineWidth = () => {
-    const fixedTotal = columnIds
-      .filter((id): id is Exclude<NewsColumnId, "title"> => id !== "title")
-      .reduce((sum, id) => sum + tableColumnWidth({
-        width: widths[id],
-        label: COLUMN_LABELS[id],
-      }) + TABLE_COLUMN_GAP, 0);
-    const tablePadding = 2;
-    return width - fixedTotal - tablePadding - TABLE_COLUMN_GAP;
-  };
+  // Measured the way the table lays columns out (header floors, gaps, padding,
+  // the extra gutter after a right-aligned column), with a one-cell headline.
+  // Anything the other columns do not take is the headline's, so the last
+  // column never falls off the right edge.
+  const headlineWidth = () => width + 1 - getTableWidth(columnIds.map((id) => (
+    id === "title"
+      ? { width: 1, align: columnAlign(id) }
+      : { width: widths[id], label: COLUMN_LABELS[id], align: columnAlign(id) }
+  )));
 
   if (columnIds.includes("title")) {
     for (const step of NARROW_STEPS) {
@@ -231,7 +229,7 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsT
     id,
     label: COLUMN_LABELS[id],
     width: id === "title" ? titleWidth : widths[id],
-    align: id === "rank" || id === "importance" ? "right" : "left",
+    align: columnAlign(id),
     flexGrow: id === "title" ? 1 : undefined,
   }));
 }

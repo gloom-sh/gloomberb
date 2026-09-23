@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, type ScrollBoxRenderable, useRendererHost } from "../../../../ui";
 import {
   DataTableStackView,
-  EmptyState,
   PageStackView,
-  Spinner,
+  PaneStatusBody,
   useTableLoadMore,
   usePaneFooter,
   usePaneHeaderTabs,
@@ -187,16 +186,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     if (!detailCompanyTicker) return;
     openTicker(detailCompanyTicker);
   }, [detailCompanyTicker, openTicker]);
-  const footerHints = useMemo<PaneHint[]>(() => {
-    const hints: PaneHint[] = [];
-    if (state.status === "ready" && state.access !== "pro") {
-      hints.push({ id: "upgrade", key: "u", label: "pgrade", onPress: startUpgrade });
-    }
-    if (detailCompanyTicker) {
-      hints.push({ id: "open-ticker", key: "o", label: "pen", onPress: openDetailTicker });
-    }
-    return hints;
-  }, [detailCompanyTicker, openDetailTicker, startUpgrade, state]);
 
   // The free tier sees the head of a list; the footer says so, the `u` hint
   // is the way out, and no count of what is hidden is drawn.
@@ -207,17 +196,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     && !state.companies.hasMore
     && !state.companies.error
     && state.companies.blurredCompanyCount > 0;
-
-  usePaneFooter("buildout", () => ({
-    info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
-      favoriteMessage,
-      upgradeMessage,
-      partialList,
-      onUpgrade: startUpgrade,
-      quoteFreshness: detailQuoteFreshness,
-    }),
-    hints: footerHints,
-  }), [activeTab, detailQuoteFreshness, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     const nextColumnId = columnId as BuildoutColumnId;
@@ -298,6 +276,40 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     return true;
   }, [canFavorite, toggleFavorite]);
 
+  // Favoriting follows what the keys act on: the open detail, else the cursor row.
+  const favoriteTarget = detailRow ?? selectedRow;
+  const favoriteTargetKey = canFavorite && favoriteTarget ? favoriteKey(favoriteTarget) : null;
+  const footerHints = useMemo<PaneHint[]>(() => {
+    const hints: PaneHint[] = [];
+    if (state.status === "ready" && state.access !== "pro") {
+      hints.push({ id: "upgrade", key: "u", label: "pgrade", onPress: startUpgrade });
+    }
+    if (favoriteTarget && favoriteTargetKey) {
+      hints.push({
+        id: "favorite",
+        key: "s",
+        label: rowStarred(favoriteTarget) ? " unstar" : "tar",
+        onPress: () => { toggleFavoriteRow(favoriteTarget); },
+        disabled: favoriteBusyKey === favoriteTargetKey,
+      });
+    }
+    if (detailCompanyTicker) {
+      hints.push({ id: "open-ticker", key: "o", label: "pen", onPress: openDetailTicker });
+    }
+    return hints;
+  }, [detailCompanyTicker, favoriteBusyKey, favoriteTarget, favoriteTargetKey, openDetailTicker, startUpgrade, state, toggleFavoriteRow]);
+
+  usePaneFooter("buildout", () => ({
+    info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
+      favoriteMessage,
+      upgradeMessage,
+      partialList,
+      onUpgrade: startUpgrade,
+      quoteFreshness: detailQuoteFreshness,
+    }),
+    hints: footerHints,
+  }), [activeTab, detailQuoteFreshness, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
+
   const activePage = state.status === "ready" ? activeBuildoutPage(state, activeTab, selectedList) : null;
   const loadMoreActiveRows = useTableLoadMore(
     tableScrollRef,
@@ -375,15 +387,11 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const tabRows = tabsInHeader ? 0 : 1;
 
   if (state.status === "loading") {
-    return <Box padding={1}><Spinner label={`Loading ${BUILDOUT_NAME}...`} /></Box>;
+    return <PaneStatusBody loading subject={BUILDOUT_NAME} width={width} height={height} />;
   }
 
   if (state.status === "error") {
-    return (
-      <Box padding={1}>
-        <EmptyState title={`Could not load ${BUILDOUT_NAME}.`} message={state.message} />
-      </Box>
-    );
+    return <PaneStatusBody error={state.message} subject={BUILDOUT_NAME} width={width} height={height} />;
   }
 
   const listOpen = activeTab === "companies" && !!selectedList;
@@ -401,9 +409,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
           height={height}
           catalog={tickerCatalog}
           openTicker={openTicker}
-          canFavorite={canFavorite}
-          favoriteBusyKey={favoriteBusyKey}
-          onToggleFavorite={toggleFavorite}
         />
       )}
       rootWidth={width}

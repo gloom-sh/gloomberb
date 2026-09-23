@@ -210,9 +210,6 @@ export function FilingEventsPane({
       minHeight={0}
       overflow="hidden"
     >
-      <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
-        <Text fg={colors.textDim}>{feed.summaryLine}</Text>
-      </Box>
       <ScrollBox
         ref={scrollRef}
         flexGrow={1}
@@ -227,9 +224,9 @@ export function FilingEventsPane({
           flexDirection="column"
           width={nativePaneChrome ? "100%" : bodyWidth}
         >
-          {feed.sections.map((section) => (
+          {feed.sections.map((section, index) => (
             <Box key={section.id} flexDirection="column">
-              <SectionHeading marginTop={1} title={section.title} />
+              <SectionHeading marginTop={index === 0 ? 0 : 1} title={section.title} />
               {section.entries.map((entry) => (
                 <FilingEntry
                   key={entry.id}

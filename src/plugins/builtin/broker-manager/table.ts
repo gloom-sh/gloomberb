@@ -19,17 +19,6 @@ export function stateColor(state: BrokerDisplayState): string {
   }
 }
 
-function stateGlyph(state: BrokerDisplayState): string {
-  switch (state) {
-    case "connected": return "*";
-    case "connecting": return "~";
-    case "error": return "!";
-    case "disabled": return "-";
-    case "unavailable": return "x";
-    default: return "o";
-  }
-}
-
 export function truncate(value: string, width: number): string {
   return truncateToDisplayWidth(value, width);
 }
@@ -39,26 +28,20 @@ export function isBrokerErrorMessage(message: string | null | undefined): boolea
   return normalized.includes("failed") || normalized.includes("required");
 }
 
-export function buildBrokerColumns(width: number): BrokerColumn[] {
-  const usableWidth = Math.max(48, width - 4);
-  const statusWidth = 13;
-  const modeWidth = 11;
-  const accountWidth = 14;
-  const updatedWidth = 9;
-  const brokerWidth = usableWidth >= 84 ? 22 : 18;
-  const separators = 6;
-  const profileWidth = Math.max(
-    16,
-    usableWidth - statusWidth - modeWidth - accountWidth - updatedWidth - brokerWidth - separators,
-  );
+/** Below this the mode column folds away rather than pushing SYNCED off the edge. */
+const MODE_COLUMN_MIN_WIDTH = 84;
 
+export function buildBrokerColumns(width: number): BrokerColumn[] {
+  // PROFILE takes whatever the fixed columns leave; the kit spreads it.
   return [
-    { id: "profile", label: t("PROFILE"), width: profileWidth, align: "left" },
-    { id: "status", label: t("STATUS"), width: statusWidth, align: "left" },
-    { id: "broker", label: t("BROKER"), width: brokerWidth, align: "left" },
-    { id: "mode", label: t("MODE"), width: modeWidth, align: "left" },
-    { id: "accounts", label: t("ACCOUNTS"), width: accountWidth, align: "right" },
-    { id: "updated", label: t("SYNCED"), width: updatedWidth, align: "right" },
+    { id: "profile", label: t("PROFILE"), width: 14, align: "left", flexGrow: 1 },
+    { id: "status", label: t("STATUS"), width: 12, align: "left" },
+    { id: "broker", label: t("BROKER"), width: width >= 110 ? 20 : 16, align: "left" },
+    ...(width >= MODE_COLUMN_MIN_WIDTH
+      ? [{ id: "mode" as const, label: t("MODE"), width: 11, align: "left" as const }]
+      : []),
+    { id: "accounts", label: t("ACCOUNTS"), width: 12, align: "right" },
+    { id: "updated", label: t("SYNCED"), width: 9, align: "right" },
   ];
 }
 
@@ -72,7 +55,7 @@ export function renderBrokerCell(row: BrokerProfileRow, column: BrokerColumn): D
       };
     case "status":
       return {
-        text: `${stateGlyph(row.state)} ${row.stateLabel}`,
+        text: row.stateLabel,
         color: stateColor(row.state),
       };
     case "broker":

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
+  usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
 import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -12,7 +12,7 @@ import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "..
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
+import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
 import { useAutoRefresh } from "../shared/auto-refresh";
@@ -22,7 +22,7 @@ import { useLiveSessionRefresh } from "../shared/volatility/live-session";
 import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
 import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
-import { formatIvRank, useIvRank } from "../iv-history/rank";
+import { useIvRank } from "../iv-history/rank";
 import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
@@ -51,8 +51,6 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const [activeTab, setActiveTab] = usePluginPaneState("activeTabId", "surface");
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab, focused: focused && activeTab !== "surface" });
   const tabRows = tabsInHeader ? 0 : 1;
-  const tableHeight = Math.max(3, height - 3 - tabRows);
-  const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   const [axis] = usePaneSettingValue<Axis>("axis", "spot");
   const [tenors] = usePaneSettingValue<"listed" | "fixed">("tenors", "listed");
   const [ivSource] = usePaneSettingValue<SurfaceSettings["ivSource"]>("ivSource", "recomputed");
@@ -160,6 +158,14 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const stored = useAsyncResource(underlying && shownDate ? storedLoader : null);
   const active = shownDate ? stored : resource;
   const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
+  // IV30 and its rank rate the latest stored close, so they sit beside the live surface only.
+  const ivStats: StatItem[] = ivRank && snapshot && !snapshot.stored ? [
+    { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
+    { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
+    { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
+  ] : [];
+  const tableHeight = Math.max(3, height - 1 - tabRows - statGridRows(ivStats, width));
+  const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   useEffect(() => {
     // Existing slices only change selection. A new pin causes one load and then
     // remains in the request identity after its partial snapshots arrive.
@@ -288,16 +294,22 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
     : surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES);
-  const arbitrageWarnings = snapshot?.warnings.filter((warning) => /calendar|butterfly/i.test(warning)).length ?? 0;
+  // The cell under the cursor on the views that have one: the quoted contract it came from, or the fitted value.
+  const selectionStatus = !snapshot || !["surface", "table", "smile"].includes(activeTab) ? null
+    : selectedCell?.point
+      ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest} · residual ${formatIv(selectedCell.fitResidual)}`
+      : selectedCell?.volatility != null
+        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatPrice(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
+        : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   usePaneFooter("ovdv", () => ({
     info: [
-      ...(arbitrageWarnings ? [{ id: "arbitrage", parts: [{ text: `${arbitrageWarnings} arbitrage warnings`, tone: "warning" as const }] }] : []),
-      ...(snapshot ? [{ id: "progress", parts: [{ text: `${snapshot.loaded}/${snapshot.requested} expiries`, tone: "muted" as const }] }] : []),
-      ...(active.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(active.loading ? [{ id: "loading", parts: [{ text: snapshot && snapshot.loaded < snapshot.requested
+        ? `loading ${snapshot.loaded}/${snapshot.requested} expiries` : "loading", tone: "muted" as const }] }] : []),
       ...(freshness ? [{ id: "source", parts: [{ text: freshness, tone: "muted" as const }] }] : []),
       ...(snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(selectedExpiry?.fit && activeTab === "smile" ? [{ id: "fit", parts: [{ text: `${selectedExpiry.fit.method} · RMSE ${(selectedExpiry.fit.residual * 100).toFixed(3)} vol pts`, tone: "muted" as const }] }] : []),
+      ...(selectionStatus ? [{ id: "selection", parts: [{ text: selectionStatus, tone: "muted" as const }] }] : []),
     ],
     hints: [
       { id: "view", key: "v", label: "iew", onPress: cycleTab },
@@ -309,7 +321,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         { id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
       ...(storedDates.length ? [{ id: "history", key: "t", label: historyDate ? " live" : " stored dates", onPress: toggleHistory }] : []),
     ],
-  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain, deltaSurface]);
+  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, selectionStatus, openChain, deltaSurface]);
   const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
     ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
@@ -367,18 +379,17 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
             onChange: (value: string) => setHistoryDate(value || null) }] : []),
         ]}
         meta={snapshot?.stored
-          ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York · mid IV`
-          : `Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}${ivRank ? ` · IV30 ${(ivRank.value * 100).toFixed(1)}% IVR ${formatIvRank(ivRank)} close` : ""}`} />
+          ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
+          : [`Spot ${formatPrice(snapshot?.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} />
+      <StatGrid items={ivStats} width={width} />
       {content}
-      <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>{selectedCell?.point
-        ? `Nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest} · residual ${formatIv(selectedCell.fitResidual)}`
-        : selectedCell?.volatility != null ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatPrice(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}` : "No clean quoted cell selected"}</Text></Box>
     </PaneStatusBody>}
   </Box>;
 }
 
 function noRefresh(): void {}
 
+const wholeNumber = (value: number | null) => value == null ? "--" : String(Math.round(value));
 const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 function formatCaptureTime(iso: string): string {
   const time = Date.parse(iso);

@@ -7,7 +7,8 @@ import type { CorrelationRangePreset } from "../settings";
 import { clipPriceHistoryToRange } from "../../../../time-series/history-window";
 
 export const ROW_HEADER_WIDTH = 7;
-export const MATRIX_CELL_WIDTH = 10;
+/** Cells grow with the pane up to this, so a small matrix still reads at a comfortable size. */
+export const MATRIX_CELL_WIDTH = 15;
 export const MIN_MATRIX_CELL_WIDTH = 7;
 const MIN_CORRELATION_OBSERVATIONS = 5;
 

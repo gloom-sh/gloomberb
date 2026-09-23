@@ -219,7 +219,7 @@ describe("ResearchSearchPane", () => {
 
     testSetup = await testRender(<Harness mode="saved" />, { width: 110, height: 20 });
     await renderFrames();
-    expect(testSetup.captureCharFrame()).toContain("off");
+    expect(testSetup.captureCharFrame()).toContain("[ ]");
 
     await pressKey("a");
     await renderFrames();
@@ -227,6 +227,6 @@ describe("ResearchSearchPane", () => {
     const write = requests.find((request) => request.method === "PATCH");
     expect(write?.path).toBe("/cloud/search/saved/saved-1");
     expect(write?.body).toEqual({ alertEnabled: true });
-    expect(testSetup.captureCharFrame()).toContain("on");
+    expect(testSetup.captureCharFrame()).toContain("[\u2713]");
   });
 });

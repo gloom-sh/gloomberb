@@ -84,8 +84,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     ...(model?.since ? [{ id: "since", parts: [{ text: `trade closes since ${model.since}`, tone: "muted" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: model.asOf, tone: "muted" as const }] }] : []),
   ], hints: [
-    { id: "lookback", key: "l", label: "ookback", onPress: cycleLookback },
-    { id: "hv", key: "h", label: "v window", onPress: toggleHv },
+    // Lookback (l) and realized window (h) keep their keys; the query bar shows them.
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
   ] }), [resource.loading, model?.since, model?.asOf, lookback, hvWindow, symbol]);
 
@@ -115,12 +114,12 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       emptyTitle={model?.status === "queued" || model?.status === "backfilling" ? `Backfilling ${symbol} implied volatility history...` : undefined}>
       {model ? <>
         <DataTableView<IvStatRow> focused={focused} columns={STAT_COLUMNS} items={model.stats} rootWidth={width} rootHeight={statsHeight}
-          getItemKey={(row) => row.id} emptyStateTitle="No statistics." sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}}
+          getItemKey={(row) => row.id} emptyStateTitle="No statistics." sortColumnId={null} sortDirection="asc"
           selection={{ kind: "id", selectedId: statSelection, getId: (row) => row.id, onChange: (id) => setStatSelection(id) }}
           getExportMetadata={() => [["symbol", model.symbol], ["as of", model.asOf], ["history since", model.since],
             ["IV", "ATM, constant maturity, annualized"], ["HV", `${hvWindow}-session close-to-close`], ["warnings", ...notices]]}
           onRootKeyDown={handleKey} renderCell={(row, column) => statCell(row, column.id)} />
-        <IvHistoryChart model={model} width={width} height={Math.max(6, height - 2 - statsHeight)} hvLabel={`HV ${hvWindow}`} />
+        <IvHistoryChart model={model} width={width} height={Math.max(6, height - 1 - statsHeight)} hvLabel={`HV ${hvWindow}`} />
       </> : null}
     </PaneStatusBody>}
   </Box>;

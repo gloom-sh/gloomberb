@@ -71,11 +71,16 @@ export function FinancialsTab({
   );
 }
 
-const noop = () => {};
 const financialRowKey = (row: FinancialTableRow) => row.id;
 const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
 );
+
+/** The compact header, plus the column's currency when the table has no single one. */
+function financialColumnHeader(statement: FinancialTableStatement, sharedCurrency: string | undefined): string {
+  const header = formatFinancialHeader(statement.date, undefined, statement.dateSource, true, statement.aggregation?.periodEnd);
+  return !sharedCurrency && statement.currency ? `${header} ${statement.currency}` : header;
+}
 
 export function ResolvedFinancialsTab({
   width,
@@ -275,11 +280,14 @@ export function ResolvedFinancialsTab({
     () => selectFinancialStatements(resolvedPeriod, subTab.key, annualStatements, quarterlyStatements),
     [annualStatements, quarterlyStatements, resolvedPeriod, subTab.key],
   );
+  // One currency for every column goes in the query bar with the growth basis;
+  // a column in a different currency (or none) says so in its own header.
+  const growthBasis = isAnnual ? "YoY" : "QoQ";
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
       kind: "metric",
-      label: isAnnual ? "Annual · YoY" : "Quarterly · QoQ",
+      label: "Metric",
       width: FINANCIAL_LABEL_W,
       align: "left",
     },
@@ -287,7 +295,7 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(formatFinancialHeader(statement.date, statement.currency ?? comparisonCurrency, statement.dateSource, true, statement.aggregation?.periodEnd), FINANCIAL_COL_W, "center"),
+      label: padTo(financialColumnHeader(statement, comparisonCurrency), FINANCIAL_COL_W, "center"),
       width: FINANCIAL_COL_W,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
@@ -431,7 +439,6 @@ export function ResolvedFinancialsTab({
         }}
         sortColumnId={null}
         sortDirection="desc"
-        onHeaderClick={noop}
         getItemKey={financialRowKey}
         onActivate={(row) => {
           if (row.kind === "group" && row.toggleable) toggleGroup(row.id);
@@ -439,6 +446,10 @@ export function ResolvedFinancialsTab({
         getRowBackgroundColor={financialRowBackground}
         renderCell={renderCell}
         emptyStateTitle="No financial data"
+        getExportMetadata={() => [
+          ["Currency", comparisonCurrency ?? "per column"],
+          ["Growth", growthBasis],
+        ]}
         showHorizontalScrollbar
         resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
         rootBefore={(
@@ -458,6 +469,7 @@ export function ResolvedFinancialsTab({
               ],
               onChange: (value: string) => setPeriod(value as FinancialPeriod),
             }}
+            meta={[comparisonCurrency, growthBasis].filter(Boolean).join(" · ")}
           />
         )}
       />

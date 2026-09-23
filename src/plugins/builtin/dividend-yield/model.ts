@@ -18,15 +18,12 @@ export const DEFAULT_SORT_PREFERENCE: DividendSortPreference = {
   direction: "desc",
 };
 
-export function buildDividendColumns(width: number): DividendColumn[] {
-  const dateWidth = 14;
-  const currencyWidth = 6;
-  const amountWidth = 10;
-  const leftover = Math.max(dateWidth, width - 2 - amountWidth - currencyWidth);
+/** The ex-date takes the room the fixed amount and currency leave; the kit adds the gutters. */
+export function buildDividendColumns(): DividendColumn[] {
   return [
-    { id: "exDate", label: "EX-DATE", width: leftover, align: "left" },
-    { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
-    { id: "currency", label: "CCY", width: currencyWidth, align: "left" },
+    { id: "exDate", label: "EX-DATE", width: 10, align: "left", flexGrow: 1 },
+    { id: "amount", label: "AMOUNT", width: 10, align: "right" },
+    { id: "currency", label: "CCY", width: 6, align: "left" },
   ];
 }
 

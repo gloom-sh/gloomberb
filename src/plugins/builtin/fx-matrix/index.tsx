@@ -153,10 +153,9 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = [];
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
-    if (status.sources.length) info.push({ id: "sources", parts: [{ text: status.sources.join("/"), tone: "muted" }] });
     if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [status.loading, statusText, status.sources.join("/"), updatedAgo]);
+  }, [status.loading, statusText, updatedAgo]);
 
   return (
     <DataTableView<MajorCurrency>
@@ -176,7 +175,6 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       items={dataProvider ? currencies : []}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(row) => row}
       renderCell={renderCell}
       onRootKeyDown={handleKeyDown}

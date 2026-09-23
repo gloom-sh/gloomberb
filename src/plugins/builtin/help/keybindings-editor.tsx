@@ -422,7 +422,6 @@ export function KeybindingsEditor({
       onRootKeyDown={handleRootKey}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(row) => row.key}
       renderSectionHeader={renderSectionedRowHeader}
       renderCell={renderCell}

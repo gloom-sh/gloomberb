@@ -703,12 +703,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (proRequired || transcriptProRequired) {
         info.push({ id: "pro", parts: [{ text: "pro required", tone: "warning" }] });
       }
-      if (searchQuery.trim()) {
-        info.push({
-          id: "filter",
-          parts: [{ text: `"${searchQuery.trim()}"`, tone: "muted" }],
-        });
-      }
 
       const hints = detailOpen
         ? [
@@ -736,7 +730,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       transcriptProRequired,
       detailOpen,
       selected,
-      searchQuery,
       focusSearch,
       openSource,
       fetchCalls,
@@ -754,16 +747,14 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   if (proRequired) {
     return (
-      <Box flexDirection="column" paddingX={1}>
-        <EmptyState
-          title="Earnings call transcripts are part of Gloom Cloud Pro."
-          message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
-          actions={<>
-            <Button label="Upgrade to Pro" onPress={openUpgrade} />
-            <Button label="Manage account" variant="secondary" onPress={openPlan} />
-          </>}
-        />
-      </Box>
+      <EmptyState
+        title="Earnings call transcripts are part of Gloom Cloud Pro."
+        message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
+        actions={<>
+          <Button label="Upgrade to Pro" onPress={openUpgrade} />
+          <Button label="Manage account" variant="secondary" onPress={openPlan} />
+        </>}
+      />
     );
   }
 
@@ -793,16 +784,14 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }
 
   const detailContent = transcriptProRequired ? (
-    <Box flexDirection="column" paddingX={1}>
-      <EmptyState
-        title="Earnings call transcripts are part of Gloom Cloud Pro."
-        message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
-        actions={<>
-          <Button label="Upgrade to Pro" onPress={openUpgrade} />
-          <Button label="Manage account" variant="secondary" onPress={openPlan} />
-        </>}
-      />
-    </Box>
+    <EmptyState
+      title="Earnings call transcripts are part of Gloom Cloud Pro."
+      message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
+      actions={<>
+        <Button label="Upgrade to Pro" onPress={openUpgrade} />
+        <Button label="Manage account" variant="secondary" onPress={openPlan} />
+      </>}
+    />
   ) : selected && !selectedTranscript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
     <Box flexDirection="column" flexGrow={1} paddingX={1} gap={1}>
       <Box height={1}>

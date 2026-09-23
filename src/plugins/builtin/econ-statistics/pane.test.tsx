@@ -53,8 +53,8 @@ test.each([
   const scrolled = setup!.captureCharFrame();
   expect(scrolled).toContain("FRED T10Y2Y");
   expect(scrolled).toContain("10Y minus 2Y");
-  expect(scrolled).toContain("High 124.00% 2021-01-01");
-  expect(scrolled).toContain("Low 100.00% 2019-01-01");
+  expect(scrolled).toMatch(/High\s+124\.00%\s+2021-01-01/);
+  expect(scrolled).toMatch(/Low\s+100\.00%\s+2019-01-01/);
   expect(scrolled).toContain("20Y");
   expect(scrolled).toContain("All");
   if (partial) {

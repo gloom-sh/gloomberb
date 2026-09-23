@@ -226,16 +226,10 @@ describe("shouldPersistSelection", () => {
 });
 
 
-test("a short stacked pane scrolls to monetary basis and extrema dates", async () => {
-  await renderPane({ indicator: "tobins-q" }, 48, 25);
-  for (let i = 0; i < 10; i += 1) {
-    await act(async () => { await setup!.mockMouse.scroll(47, 20, "down"); });
-  }
-  await settle();
-  const frame = setup!.captureCharFrame();
+test("a short stacked pane leads its detail with monetary basis and extrema dates", async () => {
+  const frame = await renderPane({ indicator: "tobins-q" }, 48, 25);
   expect(frame).toContain("38.0T");
-  expect(frame).toContain("40.0T");
-  expect(frame).toContain("Net worth as of 2026Q1");
+  expect(frame).toMatch(/Net worth\s+40\.0T\s+as of 2026Q1/);
   expect(frame).toContain("2024-01-01");
   expect(frame).toContain("2026-01-01");
 });

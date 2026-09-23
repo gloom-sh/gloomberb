@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  Checkbox,
   DataTableView,
   type DataTableCell,
   type DataTableColumn,
@@ -103,11 +104,14 @@ export function SavedSearchesView({
           text: search.alertEnabled ? "on" : "off",
           color: selectedColor ?? (search.alertEnabled ? colors.positive : colors.textMuted),
           // The cell is the switch, so alerts can be flipped without the keyboard.
-          onMouseDown: (event: any) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-            onToggleAlert(search);
-          },
+          content: (
+            <Checkbox
+              label="Alert"
+              displayLabel=""
+              checked={search.alertEnabled}
+              onChange={() => onToggleAlert(search)}
+            />
+          ),
         };
       case "last":
         return {

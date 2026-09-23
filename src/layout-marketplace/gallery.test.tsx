@@ -87,7 +87,7 @@ test("lists owned layouts before Discover and details the selected layout", asyn
   expect(frame).toContain("[/]search");
   expect(frame).toContain("[n]ew");
   expect(frame).toContain("[o]pen");
-  expect(frame).toContain("[r]ename");
+  expect(frame).toContain("[e] rename");
   expect(frame).toContain("[c]opy");
   expect(frame).toContain("[d]elete");
   expect(frame).toContain("[p]ublish");

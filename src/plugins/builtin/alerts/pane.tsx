@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Tabs, PaneFooterScope, usePaneHeaderTabs } from "../../../components";
+import { Button, EmptyState, Tabs, PaneFooterScope, usePaneHeaderTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -55,7 +55,7 @@ type AlertColumnId =
 type AlertColumn = DataTableColumn & { id: AlertColumnId };
 
 const ALERT_COLUMNS: AlertColumn[] = [
-  { id: "status", label: "State", width: 6, align: "left" },
+  { id: "status", label: "State", width: 9, align: "left" },
   { id: "symbol", label: "Symbol", width: 7, align: "left" },
   { id: "current", label: "Current", width: 9, align: "right" },
   { id: "target", label: "Target", width: 9, align: "right" },
@@ -313,7 +313,7 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
     switch (column.id) {
       case "status":
         return {
-          text: alert.status === "triggered" ? "Trig" : "Active",
+          text: alert.status === "triggered" ? "Triggered" : "Active",
           color: selectedColor ?? (alert.status === "triggered" ? colors.positive : colors.textDim),
           attributes: alert.status === "triggered" ? TextAttributes.BOLD : TextAttributes.NONE,
         };
@@ -369,14 +369,18 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
       items={displayRows}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(alert) => alert.id}
       onActivate={(alert) => {
         if (alert.status === "triggered") rearmAlert(alert.id);
       }}
       renderCell={renderCell}
-      emptyStateTitle={storeError ? "Saved alerts could not be read." : "No alerts"}
-      emptyStateHint={storeError ?? "Press a to add a price alert."}
+      emptyStateTitle="Saved alerts could not be read."
+      emptyStateHint={storeError ?? undefined}
+      emptyContent={storeError ? undefined : (
+        <Box paddingX={1} paddingY={1}>
+          <EmptyState title="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
+        </Box>
+      )}
       showHorizontalScrollbar={showHorizontalScrollbar}
     />
   );

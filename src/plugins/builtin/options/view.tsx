@@ -10,12 +10,15 @@ import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinan
 import {
   DataTableView,
   EmptyState,
-  KeyValueRow,
   usePaneFooter,
   usePaneNoticeFooter,
   QueryBar,
   Spinner,
+  StatGrid,
+  statGridColumns,
+  statGridRows,
   type DataTableKeyEvent,
+  type StatItem,
   type QueryBarFilter,
   type DataTableVisibleRange,
 } from "../../../components";
@@ -61,13 +64,11 @@ import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
 import { optionMid } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
 import type { IvStats } from "../iv-history/client";
-import { formatIvRank, useIvRank } from "../iv-history/rank";
+import { useIvRank } from "../iv-history/rank";
 import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
 
 /** The summary strip and analytics recompute from live quotes at most this often. */
 const OPTIONS_SUMMARY_THROTTLE_MS = 1_000;
-
-type SummaryMetric = { label: string; value: string };
 
 function formatRatio(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
@@ -78,52 +79,41 @@ function transientTicker(symbol: string, exchange: string, currency: string): Ti
   return { metadata: { ticker: symbol, exchange, currency, name: symbol, portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
 }
 
-function SummaryRow({ metrics }: { metrics: SummaryMetric[] }) {
-  return <Box flexDirection="row" height={1} gap={3} overflow="hidden">
-    {metrics.map((metric) => <KeyValueRow key={metric.label} label={metric.label}
-      labelWidth={metric.label.length + 1} value={metric.value} color={colors.textBright} />)}
-  </Box>;
-}
-
-function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency, ivRank }: {
+/** The chain's volatility, expected move and flow figures, in the order the stat band reads them. */
+function optionsSummaryItems({ summary, enrichment, currency, ivRank }: {
   summary: OptionsSummary | null;
-  ivRank?: { stats: IvStats | null } | null;
   enrichment: OptionsEnrichmentSnapshot | null;
-  width: number;
-  rowCount: number;
   currency: string;
-}) {
-  const volatility: SummaryMetric[] = [
-    { label: "ATM IV", value: formatIv(summary?.atmImpliedVolatility ?? undefined) },
-    { label: "HV30", value: formatIv(summary?.historicalVolatility30d ?? undefined) },
-    { label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
-    ...(ivRank ? [{ label: "IVR", value: formatIvRank(ivRank.stats) }] : []),
-  ];
-  const move = (amount: number | null | undefined, percent: number | null | undefined) =>
-    amount == null || percent == null ? "--" : `${amount.toFixed(2)} ${currency} (${percent.toFixed(2)}%)`;
-  const points = (value: number | null | undefined) => value == null ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}`;
-  const moves: SummaryMetric[] = [
-    { label: "Straddle", value: move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
-    { label: "1σ fit", value: move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
-  ];
-  const skew: SummaryMetric = { label: "25d P-C", value: `${points(enrichment?.skew25)} pp` };
+  ivRank?: { stats: IvStats | null } | null;
+}): StatItem[] {
+  // The chain columns draw an empty IV as a dash; a summary figure reads "--" like its neighbours.
+  const iv = (value: number | null | undefined) => value == null || !(value > 0) ? "--" : formatIv(value);
+  const whole = (value: number | null | undefined) => value == null ? "--" : String(Math.round(value));
+  const rank = ivRank?.stats ?? null;
+  const move = (amount: number | null | undefined, percent: number | null | undefined): Pick<StatItem, "value" | "detail"> =>
+    amount == null || percent == null ? { value: "--" } : { value: `${amount.toFixed(2)} ${currency}`.trim(), detail: `${percent.toFixed(2)}%` };
+  const points = (value: number | null | undefined) => value == null ? null : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}`;
+  const skew = points(enrichment?.skew25);
+  const slope = points(enrichment?.termSlope);
   const slopeAnnualized = enrichment?.termSlopeAnnualized === true;
-  const slopeDates = enrichment?.neighbourExpiration == null ? ""
-    : slopeAnnualized ? ` to ${formatExpDate(enrichment.neighbourExpiration)}`
-      : ` ${new Date(enrichment.expiration * 1000).getUTCFullYear() === new Date(enrichment.neighbourExpiration * 1000).getUTCFullYear()
-        ? formatExpDate(enrichment.expiration).replace(/ '\d{2}$/, "") : formatExpDate(enrichment.expiration)} to ${formatExpDate(enrichment.neighbourExpiration)}`;
-  const slope: SummaryMetric = { label: "Slope", value: `${points(enrichment?.termSlope)} ${slopeAnnualized ? "pp/y" : "pts"}${slopeDates}` };
-  const flow: SummaryMetric[] = [
-    { label: "EXP VOL", value: formatCompact(summary?.expirationVolume ?? undefined) },
-    { label: "P/C VOL", value: formatRatio(summary?.putCallVolumeRatio) },
-    { label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
+  // The selected expiry is the active choice in the bar above, so the slope names only the one it runs to.
+  const slopeTo = enrichment?.neighbourExpiration == null ? undefined : `to ${formatExpDate(enrichment.neighbourExpiration)}`;
+  return [
+    { id: "atm-iv", label: "ATM IV", value: iv(summary?.atmImpliedVolatility) },
+    { id: "hv30", label: "HV30", value: iv(summary?.historicalVolatility30d) },
+    { id: "iv-hv", label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
+    ...(ivRank ? [{
+      id: "ivr", label: "IVR", value: whole(rank?.rank),
+      detail: rank ? `pctl ${whole(rank.percentile)} · ${rank.date.slice(5)}` : undefined,
+    }] : []),
+    { id: "straddle", label: "Straddle", ...move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
+    { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
+    { id: "skew", label: "Skew", value: skew == null ? "--" : `${skew} pp`, detail: "25d P-C" },
+    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pts"}`, detail: slopeTo },
+    { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? "--" : formatCompact(summary.expirationVolume) },
+    { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio) },
+    { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
   ];
-  const rows = width >= 110 ? [[...volatility, skew], [...moves, slope], flow]
-    : width >= 65 ? [volatility, moves, [skew, slope], flow]
-      : [volatility, [moves[0]!], [moves[1]!], [skew], [slope], flow];
-  return <Box flexDirection="column" height={rowCount}>
-    {rows.slice(0, rowCount).map((metrics, index) => <SummaryRow key={index} metrics={metrics} />)}
-  </Box>;
 }
 
 export function OptionsView({ width, height, focused, onCapture = () => {}, ivRank: showIvRank = false }: OptionsViewProps) {
@@ -679,8 +669,18 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
   const positionContracts = isOpt && parsed
     ? ticker.metadata.positions.reduce((sum, p) => sum + Math.abs(p.shares) * signedPositionDirection(p), 0)
     : 0;
-  const desiredSummaryRows = width >= 110 ? 3 : width >= 65 ? 4 : 6;
-  const summaryRowCount = Math.min(desiredSummaryRows, Math.max(0, height - 6));
+  // The root insets the terminal body, so the band gets the width inside it.
+  const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
+  const statItems = optionsSummaryItems({
+    summary, enrichment, currency: underlying?.quote?.currency ?? ticker.metadata.currency ?? "",
+    ivRank: showIvRank ? { stats: ivRank } : null,
+  });
+  // The band keeps the chain's row budget (3, 4 or 6 rows by width). A live
+  // Slope or IVR detail is the widest cell and would otherwise halve the
+  // columns and push the chain down; the detail is cut short instead.
+  const statRowBudget = width >= 110 ? 3 : width >= 65 ? 4 : 6;
+  const statColumns = Math.max(statGridColumns(statItems, statWidth), Math.ceil(statItems.length / statRowBudget));
+  const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.
@@ -691,15 +691,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={nativePaneChrome ? 0 : 1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
-      {summaryRowCount > 0 && (
-        <Box paddingX={inset} flexShrink={0}>
-          <OptionsSummaryStrip summary={summary} enrichment={enrichment} width={width}
-            rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""}
-            ivRank={showIvRank ? { stats: ivRank } : null} />
-        </Box>
-      )}
-
       <QueryBar width={Math.max(1, width - 2)} filters={expirationFilters} />
+
+      {summaryRowCount > 0 && (
+        <StatGrid items={statItems.slice(0, summaryRowCount * statColumns)} width={statWidth} columns={statColumns} />
+      )}
 
       {isOpt && parsed && (
         <Box height={1} paddingX={inset}>
@@ -734,7 +730,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {}, ivRa
         items={rows}
         sortColumnId={null}
         sortDirection="asc"
-        onHeaderClick={() => {}}
         onTableMouseDown={enterInteractive}
         onBodyScrollActivity={(source) => {
           if (source !== "programmatic") userSelectedStrikeRef.current = true;

@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { Section } from "../../../../components";
 import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
 import { useInlineTickerQuote } from "../../../../state/hooks/inline-tickers";
@@ -88,13 +87,11 @@ export function CompanyDetail({
   bodyWidth,
   catalog,
   openTicker,
-  favoriteToggle,
 }: {
   company: BuildoutCompany;
   bodyWidth: number;
   catalog: InlineTickerCatalog;
   openTicker: (symbol: string) => void;
-  favoriteToggle: ReactNode;
 }) {
   const categoryAnchor = [company.primarySector, company.primarySubsector, company.primaryTechnology];
   const sectors = detailListValues(company.sectors ?? [], [company.primarySector]);
@@ -112,13 +109,9 @@ export function CompanyDetail({
 
   return (
     <>
-      {favoriteToggle || company.ticker ? (
-        <Box flexDirection="row" height={1} gap={1}>
-          {favoriteToggle}
-          {company.ticker ? tickerBadges({
-            symbols: [company.ticker],
-            width: Math.min(bodyWidth - (favoriteToggle ? 3 : 0), 16),
-          }) : null}
+      {company.ticker ? (
+        <Box flexDirection="row" height={1}>
+          {tickerBadges({ symbols: [company.ticker], width: Math.min(bodyWidth, 16) })}
         </Box>
       ) : null}
       <CompanyOverviewGrid

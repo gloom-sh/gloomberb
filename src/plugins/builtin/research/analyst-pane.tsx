@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import {
   DataTableView,
+  StatGrid,
   StaticChartSurface,
   usePaneFooter,
   type DataTableCell,
@@ -13,8 +14,8 @@ import type { AnalystResearchData } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financials";
-import { blendHex, colors, priceColor } from "../../../theme/colors";
-import { displayWidth, formatPercent } from "../../../utils/format";
+import { blendHex, colors } from "../../../theme/colors";
+import { formatPercent } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, useClampSelectedIndex } from "../shared/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -84,11 +85,13 @@ interface AnalystQuoteBinding {
  * The reported target and its upside stay in the body because the chart under
  * them is a different measure: the rest of the consensus context lives in the
  * status bar rather than in a fixed block above the actions. The upside moves
- * with the live price, so this line (not the ratings table) re-renders on it.
+ * with the live price, so this band (not the ratings table) re-renders on it.
+ * The firm count belongs to the chart line, which averages each rated firm's
+ * latest target.
  */
-function AnalystHeadline({ data, legend, width, binding }: {
+function AnalystHeadline({ data, chartFirms, width, binding }: {
   data: AnalystResearchData | null;
-  legend: string | null;
+  chartFirms: number | null;
   width: number;
   binding: AnalystQuoteBinding;
 }) {
@@ -100,25 +103,24 @@ function AnalystHeadline({ data, legend, width, binding }: {
   // The table body already reports loading, error, and empty states.
   if (!data) return null;
 
-  const averageText = formatAnalystPrice(target?.average, currency);
-  const upsideText = upside != null ? formatPercent(upside) : "-";
-  const headlineWidth = displayWidth(`${averageText} avg target ${upsideText} upside`);
-  // A legend the row cannot hold would crowd the number it explains.
-  const fittedLegend = legend && width - 2 - headlineWidth - 2 >= displayWidth(legend) ? legend : null;
-
   return (
-    <Box flexDirection="row" paddingX={1} height={1} flexShrink={0} overflow="hidden">
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{averageText}</Text>
-      <Text fg={colors.textDim}> avg target </Text>
-      <Text fg={upside == null ? colors.textDim : priceColor(upside)}>{upsideText}</Text>
-      <Text fg={colors.textDim}> upside</Text>
-      {fittedLegend ? (
-        <>
-          <Box flexGrow={1} />
-          <Text fg={colors.textMuted}>{fittedLegend}</Text>
-        </>
-      ) : null}
-    </Box>
+    <StatGrid
+      width={width}
+      items={[
+        {
+          id: "target",
+          label: "Avg target",
+          value: formatAnalystPrice(target?.average, currency),
+          detail: chartFirms ? `${chartFirms} firms` : undefined,
+        },
+        {
+          id: "upside",
+          label: "Upside",
+          value: upside != null ? formatPercent(upside) : "-",
+          tone: upside == null || upside === 0 ? "muted" : upside > 0 ? "positive" : "negative",
+        },
+      ]}
+    />
   );
 }
 
@@ -290,7 +292,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
               data={data}
               binding={binding}
               width={width}
-              legend={showChart ? `mean of ${chartFirms} rated firms' latest targets` : null}
+              chartFirms={showChart ? chartFirms : null}
             />
             {showChart ? (
               <TargetHistoryChart

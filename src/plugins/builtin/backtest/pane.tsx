@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import {
+  Button,
   CompositeChart,
   DataTableView,
   EmptyState,
@@ -21,7 +22,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -48,7 +49,15 @@ const TRADE_COLUMNS: DataTableColumn[] = [
   { id: "sessions", label: "Sessions", width: 9, align: "right" },
 ];
 const SUMMARY_WIDTH = SUMMARY_COLUMNS.reduce((sum, column) => sum + column.width + 1, 4);
-const noop = () => {};
+const LOOKBACK_FILTER_OPTIONS = [
+  { value: "5", label: "5Y" },
+  { value: "10", label: "10Y" },
+  { value: "max", label: "Max" },
+];
+/** Stacked below 120 cells: the equity chart keeps at least this many rows and the metrics scroll under it. */
+const MIN_STACKED_CHART_ROWS = 8;
+/** The metrics table needs its header and a few rows to be worth showing beside a squeezed chart. */
+const MIN_STACKED_TABLE_ROWS = 4;
 
 function readRules(preset: string, entryText: string, exitText: string) {
   const rules = resolveRules(preset, entryText, exitText);
@@ -61,13 +70,14 @@ function readRules(preset: string, entryText: string, exitText: string) {
 
 export function BacktestPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const { openPaneSettings } = usePluginAppActions();
   const { symbol, ticker, error: identityError } = usePaneTicker();
   const [preset, setPreset] = usePaneSettingValue("preset", DEFAULT_PRESET.id);
   const [entryText] = usePaneSettingValue("entry", DEFAULT_PRESET.entry);
   const [exitText] = usePaneSettingValue("exit", DEFAULT_PRESET.exit);
-  const [lookback] = usePaneSettingValue("lookback", "10");
+  const [lookback, setLookback] = usePaneSettingValue("lookback", "10");
   const [costText] = usePaneSettingValue<string | number>("cost", "5");
   const [view, setView] = usePluginPaneState("backtest:view", "summary");
   const [selectedTrade, setSelectedTrade] = usePluginPaneState("backtest:trade", 0);
@@ -125,18 +135,22 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     info: [
       ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
       ...(result ? [{ id: "window", parts: [{ text: `${result.start} to ${result.end} · ${result.sessions} sessions`, tone: "muted" as const }] }] : []),
-      { id: "fills", parts: [{ text: `next-open fills · ${costBps} bp/side`, tone: "muted" as const }] },
     ],
     hints: [
       { id: "edit", key: "e", label: "dit rules", onPress: edit },
       { id: "view", key: "v", label: "iew", onPress: cycleView },
     ],
-  }), [history.loading, history.data?.source, result, costBps, view, paneId]);
+  }), [history.loading, result, view, paneId]);
 
   const tabsInHeader = usePaneHeaderTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused } : null);
   if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
   const bodyHeight = Math.max(4, height - 1 - (tabsInHeader ? 0 : 1));
   const wide = width >= 120;
+  // The equity chart is the pane's main output, so a short pane keeps a
+  // minimum chart and lets the metrics scroll rather than dropping it.
+  const stackedChartRows = bodyHeight >= MIN_STACKED_CHART_ROWS + MIN_STACKED_TABLE_ROWS
+    ? Math.max(MIN_STACKED_CHART_ROWS, bodyHeight - SUMMARY_ROWS.length - 1)
+    : 0;
   const summaryTable = (tableWidth: number, tableHeight: number) => (
     <DataTableView<SummaryRow, DataTableColumn>
       focused={false}
@@ -145,10 +159,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
       columns={SUMMARY_COLUMNS}
       items={SUMMARY_ROWS}
       getItemKey={(row) => row.id}
-      selection={{ kind: "index", selectedIndex: -1, onChange: noop }}
+      selection={{ kind: "none" }}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={noop}
       emptyStateTitle="No statistics"
       renderCell={(row, column) => {
         if (column.id === "metric") return { text: row.label };
@@ -185,17 +198,27 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
           value: STRATEGY_OPTIONS.some((option) => option.value === preset) ? preset : "custom",
           options: STRATEGY_OPTIONS,
           onChange: (value: string) => setPreset(value),
+        }, {
+          id: "lookback",
+          label: "Lookback",
+          inline: true,
+          value: LOOKBACK_FILTER_OPTIONS.some((option) => option.value === String(lookback)) ? String(lookback) : "10",
+          options: LOOKBACK_FILTER_OPTIONS,
+          onChange: (value: string) => setLookback(value),
         }]}
-        meta={`entry ${ruleStrings.entry} · exit ${ruleStrings.exit}`}
+        // Cost first: the Strategy filter already names a preset's rules, so a
+        // narrow bar should cut the rule text rather than the cost.
+        meta={`${costBps} bp/side · entry ${ruleStrings.entry} · exit ${ruleStrings.exit}`}
       />
       <PaneStatusBody
         loading={history.loading && !history.data}
         error={!history.data ? history.error : null}
+        empty={!result}
+        emptyTitle={rules.error ?? run.error ?? "No backtest yet."}
+        actions={rules.error ? <Button label="Edit rules" compact onPress={edit} /> : undefined}
         subject="price history"
       >
-        {!result ? (
-          <EmptyState title={rules.error ?? run.error ?? "No backtest yet."} hint={rules.error ? "Press e to edit the rules." : undefined} />
-        ) : view === "trades" ? (
+        {!result ? null : view === "trades" ? (
           <DataTableView<BacktestTrade, DataTableColumn>
             focused={focused}
             rootWidth={width}
@@ -207,7 +230,6 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             onRootKeyDown={handleKey}
             sortColumnId={null}
             sortDirection="desc"
-            onHeaderClick={noop}
             renderCell={(trade, column) => ({
               text: column.id === "entryDate" ? trade.entryDate
                 : column.id === "entryPrice" ? trade.entryPrice.toFixed(2)
@@ -227,9 +249,18 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             {summaryTable(SUMMARY_WIDTH, bodyHeight)}
           </Box>
         ) : (
-          <Box flexDirection="column" width={width} height={bodyHeight}>
-            {bodyHeight - SUMMARY_ROWS.length - 1 >= 8 ? chart(width, bodyHeight - SUMMARY_ROWS.length - 1) : null}
-            {summaryTable(width, Math.min(bodyHeight, SUMMARY_ROWS.length + 1))}
+          // The desktop bar and table header are taller than a cell, so there
+          // the stack fills what is left and the metrics scroll inside it.
+          <Box
+            flexDirection="column"
+            width={width}
+            height={nativePaneChrome ? undefined : bodyHeight}
+            flexGrow={nativePaneChrome ? 1 : undefined}
+            flexBasis={nativePaneChrome ? 0 : undefined}
+            minHeight={nativePaneChrome ? 0 : undefined}
+          >
+            {stackedChartRows > 0 ? chart(width, stackedChartRows) : null}
+            {summaryTable(width, bodyHeight - stackedChartRows)}
           </Box>
         )}
       </PaneStatusBody>

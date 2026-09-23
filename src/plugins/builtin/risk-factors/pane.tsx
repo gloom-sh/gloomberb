@@ -3,11 +3,12 @@ import type {
   CloudRiskNotePayload,
 } from "../../../api-client";
 import {
-  EmptyState, PaneStatusBody, Prose, SectionHeading, Spinner,
+  EmptyState, PaneStatusBody, Prose, QueryBar, SectionHeading, Spinner, StatGrid,
   Tabs,
   usePaneFooter,
   usePaneHeaderTabs,
-  type PaneFooterSegment
+  type PaneFooterSegment,
+  type QueryBarFilter,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -167,22 +168,33 @@ export function RiskFactorsPane({
     focused,
   } : null);
 
+  // Nested in Ticker Research the years stay in the body: the terminal keeps
+  // its tab row, the desktop picks the year from the query bar.
+  const yearStrip = years.length > 1 && !tabsInHeader;
+  const yearFilters: QueryBarFilter[] = yearStrip && nativePaneChrome ? [{
+    id: "year",
+    label: "10-K",
+    inline: years.length <= 4,
+    value: year === null ? "" : String(year),
+    options: years.map((entry) => ({ label: String(entry.reportYear), value: String(entry.reportYear) })),
+    onChange: selectYear,
+  }] : [];
+
   if (!ticker) return <EmptyState title="Pick a ticker to see its risk factors." />;
   if (!list.data && list.loading) return <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />;
   if (!list.data && listError && year === null) return <PaneStatusBody error={listError} errorTitle="Could not load risk reports." />;
   if (year === null) return <EmptyState title={`No 10-K risk factors on file for ${ticker}.`} />;
 
   const diff = report?.diff ?? null;
-  const summaryLine = report
+  // A choice of years names the year in the tabs or the filter; a single
+  // report says which one it is here.
+  const meta = report
     ? [
-        `${report.reportYear} 10-K`,
+        years.length > 1 ? null : `${report.reportYear} 10-K`,
         `Filed ${report.filedAt?.slice(0, 10) || "unavailable"}`,
-        `Report updated ${report.updatedAt?.slice(0, 10) || "unavailable"}`,
-        `${report.riskCount} risks in ${report.groupCount} groups`,
-        diff
-          ? `${diff.added.length} new, ${diff.removed.length} dropped, ${diff.reworded.length} reworded vs prior year`
-          : "no prior year on file",
-      ].join("  ·  ")
+        `updated ${report.updatedAt?.slice(0, 10) || "unavailable"}`,
+        diff ? null : "no prior year on file",
+      ].filter(Boolean).join(" · ")
     : "";
 
   return (
@@ -194,7 +206,7 @@ export function RiskFactorsPane({
       minHeight={0}
       overflow="hidden"
     >
-      {years.length > 1 && !tabsInHeader && (
+      {yearStrip && !nativePaneChrome && (
         <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
           <Tabs
             tabs={yearTabs}
@@ -206,6 +218,14 @@ export function RiskFactorsPane({
           />
         </Box>
       )}
+      {(yearFilters.length > 0 || meta) && <QueryBar width={width} filters={yearFilters} meta={meta || undefined} />}
+      {report && diff ? (
+        <StatGrid width={width} items={[
+          { id: "new", label: "New", value: String(diff.added.length) },
+          { id: "dropped", label: "Dropped", value: String(diff.removed.length) },
+          { id: "reworded", label: "Reworded", value: String(diff.reworded.length) },
+        ]} />
+      ) : null}
       <ScrollBox
         ref={scrollRef}
         flexGrow={1}
@@ -219,14 +239,9 @@ export function RiskFactorsPane({
             flexDirection="column"
             width={nativePaneChrome ? "100%" : bodyWidth}
           >
-            <Prose
-              text={summaryLine}
-              width={proseWidth}
-              color={colors.textDim}
-            />
             {report.overview ? (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1}
+                <SectionHeading
                   title={diff ? "WHAT THE CHANGES SAY" : "WHAT DOMINATES"}
                 />
                 {report.overview.split("\n").map((point) => (
@@ -242,7 +257,7 @@ export function RiskFactorsPane({
             ) : null}
             {diff ? (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="WHAT CHANGED" />
+                <SectionHeading marginTop={report.overview ? 1 : 0} title="WHAT CHANGED" />
                 {diff.added.length === 0 &&
                 diff.removed.length === 0 &&
                 diff.reworded.length === 0 ? (
@@ -285,7 +300,7 @@ export function RiskFactorsPane({
               </Box>
             ) : report.notes.top.length > 0 ? (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="MOST SPECIFIC TO THE COMPANY" />
+                <SectionHeading marginTop={report.overview ? 1 : 0} title="MOST SPECIFIC TO THE COMPANY" />
                 {report.notes.top.map((note) => (
                   <RiskLine
                     key={`top-${note.index}`}
@@ -299,7 +314,7 @@ export function RiskFactorsPane({
               </Box>
             ) : null}
             <Box flexDirection="column">
-              <SectionHeading marginTop={1} title={`ALL ${report.riskCount} RISK FACTORS`} />
+              <SectionHeading marginTop={1} title="ALL RISK FACTORS" />
               {report.risks.map((risk, index) => (
                 <Prose
                   key={`${index}-${risk.heading}`}

@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { listingIdentity } from "../shared/ticker-request";
-import { Box, ScrollBox } from "../../../ui";
+import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -16,11 +16,14 @@ import {
   KeyValueRow,
   PageStackView,
   PaneStatusBody,
+  StatGrid,
+  statGridRows,
   Tabs,
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   type DataTableCell,
+  type StatItem,
 } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type {
@@ -85,6 +88,23 @@ function MetricRow({ label, metric }: { label: string; metric: DebtMetric }) {
     />
   );
 }
+/** A detail sheet: the terminal sizes it in rows, the desktop fills to the footer. */
+function DetailScroll({ width, height, children }: { width: number; height: number; children: ReactNode }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  return (
+    <ScrollBox
+      width={width}
+      height={nativePaneChrome ? undefined : height}
+      flexGrow={1}
+      flexBasis={0}
+      minHeight={0}
+      scrollY
+      contentOptions={{ paddingX: 1 }}
+    >
+      {children}
+    </ScrollBox>
+  );
+}
 function FactDetail({
   fact,
   width,
@@ -102,12 +122,7 @@ function FactDetail({
       />
     );
   return (
-    <ScrollBox
-      width={width}
-      height={height}
-      scrollY
-      contentOptions={{ paddingX: 1 }}
-    >
+    <DetailScroll width={width} height={height}>
       <KeyValueRow
         labelWidth={20}
         label="Principal"
@@ -122,7 +137,7 @@ function FactDetail({
       />
       <KeyValueRow labelWidth={20} label="Accession" value={fact.accession} />
       <KeyValueRow labelWidth={20} label="SEC concept" value={fact.tag} />
-    </ScrollBox>
+    </DetailScroll>
   );
 }
 function FilingDetail({
@@ -137,12 +152,7 @@ function FilingDetail({
   const expense = latest.interestExpenseFact,
     evidence = latest.borrowingCostEvidence;
   return (
-    <ScrollBox
-      width={width}
-      height={height}
-      scrollY
-      contentOptions={{ paddingX: 1 }}
-    >
+    <DetailScroll width={width} height={height}>
       <KeyValueRow
         labelWidth={20}
         label="As of"
@@ -197,7 +207,7 @@ function FilingDetail({
         value={String(latest.totalPrincipal.percentile.sampleCount)}
         detail={`${latest.totalPrincipal.percentile.historyStart ?? "--"} to ${latest.totalPrincipal.percentile.historyEnd ?? "--"}`}
       />
-    </ScrollBox>
+    </DetailScroll>
   );
 }
 function HistoryDetail({
@@ -210,12 +220,7 @@ function HistoryDetail({
   height: number;
 }) {
   return (
-    <ScrollBox
-      width={width}
-      height={height}
-      scrollY
-      contentOptions={{ paddingX: 1 }}
-    >
+    <DetailScroll width={width} height={height}>
       <KeyValueRow
         labelWidth={20}
         label="Currency"
@@ -232,7 +237,6 @@ function HistoryDetail({
         labelWidth={20}
         label="Principal total"
         value={debtAmount(point.totalPrincipal)}
-        detail={point.asOf}
       />
       <KeyValueRow
         labelWidth={20}
@@ -258,11 +262,12 @@ function HistoryDetail({
         value={debtPercent(point.borrowingCostPercent)}
         detail={point.borrowingCostDebtTags ?? undefined}
       />
-    </ScrollBox>
+    </DetailScroll>
   );
 }
 
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
+  const { nativePaneChrome } = useUiCapabilities();
   const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const session = useResearchCloudSession();
@@ -357,14 +362,40 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     latest ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused } : null,
   );
   const tabRows = tabsInHeader ? 0 : 1;
-  const bodyHeight = Math.max(3, height - tabRows - 1);
+  // The desktop footer is chrome outside the body; the terminal gives it a row.
+  const bodyHeight = Math.max(3, height - tabRows - (nativePaneChrome ? 0 : 1));
+  // The as-of date is said once; a figure from another date carries its own.
+  const statItems = useMemo<StatItem[]>(() => {
+    if (!latest) return [];
+    const metric = (id: string, label: string, value: DebtMetric): StatItem => ({
+      id, label, value: debtMetricValue(value),
+      detail: `${value.percentile.value === null ? "--" : value.percentile.value.toFixed(0)} pctl 10Y${value.asOf === latest.asOf ? "" : ` · ${value.asOf}`}`,
+    });
+    return [
+      metric("principal", "Principal total", latest.totalPrincipal),
+      metric("next12", "Due next 12 months", latest.next12MonthsShare),
+      metric("next3", "Due next 3 years", latest.next3YearsShare),
+      { id: "as-of", label: "As of", value: latest.asOf },
+    ];
+  }, [latest]);
+  const statRows = statGridRows(statItems, width);
+  // The desktop fills to the footer with flex; the terminal keeps fixed rows.
+  const fill = (rows: number) => nativePaneChrome
+    ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 0 }
+    : { height: rows, flexShrink: 0 };
+  // The terminal sizes the table to its rows and gives the chart the rest; the
+  // desktop gives the chart a share and lets the table fill to the footer.
   const tableHeight = Math.min(9, Math.max(4, bodyHeight - 3));
-  const chartHeight = Math.max(0, bodyHeight - tableHeight - 4);
+  const chartHeight = nativePaneChrome
+    ? Math.max(0, Math.floor((bodyHeight - statRows) * 0.55))
+    : Math.max(0, bodyHeight - tableHeight - statRows);
   const historyTableHeight = Math.min(
     history.length + 3,
     Math.max(4, Math.floor(bodyHeight * 0.6)),
   );
-  const historyChartHeight = Math.max(0, bodyHeight - historyTableHeight - 1);
+  const historyChartHeight = nativePaneChrome
+    ? Math.max(0, Math.floor((bodyHeight - 1) * 0.5))
+    : Math.max(0, bodyHeight - historyTableHeight - 1);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && isPlainKey(event, "r")) {
@@ -510,47 +541,25 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                   ) : null
                 }
                 rootContent={
-                  <Box width={width} height={bodyHeight} flexDirection="column">
-                    <Box
-                      paddingX={1}
-                      height={4}
-                      flexShrink={0}
-                      flexDirection="column"
-                    >
-                      <MetricRow
-                        label="Principal total"
-                        metric={latest.totalPrincipal}
-                      />
-                      <MetricRow
-                        label="Due next 12 months"
-                        metric={latest.next12MonthsShare}
-                      />
-                      <MetricRow
-                        label="Due next 3 years"
-                        metric={latest.next3YearsShare}
-                      />
-                      <KeyValueRow
-                        labelWidth={20}
-                        label="Filed"
-                        value={latest.filed}
-                        detail={latest.form}
-                      />
-                    </Box>
+                  <Box width={width} {...fill(bodyHeight)} flexDirection="column">
+                    <StatGrid items={statItems} width={width} />
                     {chartHeight >= 4 ? (
-                      <CompositeChart
-                        series={series}
-                        panels={PANELS}
-                        width={width}
-                        height={chartHeight}
-                        showLegend={false}
-                        navigable={false}
-                        showTimeAxis
-                        xAxis={BUCKET_AXIS}
-                        formatAxisValue={amountAxis}
-                        remoteKind="debt-maturity-wall"
-                      />
+                      <Box paddingX={1} flexShrink={0}>
+                        <CompositeChart
+                          series={series}
+                          panels={PANELS}
+                          width={Math.max(1, width - 2)}
+                          height={chartHeight}
+                          showLegend={false}
+                          navigable={false}
+                          showTimeAxis
+                          xAxis={BUCKET_AXIS}
+                          formatAxisValue={amountAxis}
+                          remoteKind="debt-maturity-wall"
+                        />
+                      </Box>
                     ) : null}
-                    <Box height={tableHeight} flexShrink={0}>
+                    <Box {...fill(tableHeight)}>
                       <DataTableView<DebtBucket, BucketColumn>
                         emptyStateTitle="No maturity buckets available."
                         focused={focused && !openBucketRow}
@@ -604,29 +613,28 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                   ) : null
                 }
                 rootContent={
-                  <Box width={width} height={bodyHeight} flexDirection="column">
-                    <Box paddingX={1} height={1} flexShrink={0}>
-                      <KeyValueRow
-                        labelWidth={20}
-                        label="Principal total"
-                        value={latest.currency}
-                        detail={`${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`}
-                      />
+                  <Box width={width} {...fill(bodyHeight)} flexDirection="column">
+                    {/* What the bars are and the window they span, as the chart's unit line. */}
+                    <Box paddingX={1} height={1} flexShrink={0} flexDirection="row" gap={2}>
+                      <Text fg={colors.textDim}>{`Principal total (${latest.currency})`}</Text>
+                      <Text fg={colors.textMuted}>{`${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`}</Text>
                     </Box>
                     {historyChartHeight >= 4 ? (
-                      <CompositeChart
-                        series={historySeries}
-                        panels={PANELS}
-                        width={width}
-                        height={historyChartHeight}
-                        showLegend={false}
-                        navigable={false}
-                        showTimeAxis
-                        formatAxisValue={amountAxis}
-                        remoteKind="debt-filing-history"
-                      />
+                      <Box paddingX={1} flexShrink={0}>
+                        <CompositeChart
+                          series={historySeries}
+                          panels={PANELS}
+                          width={Math.max(1, width - 2)}
+                          height={historyChartHeight}
+                          showLegend={false}
+                          navigable={false}
+                          showTimeAxis
+                          formatAxisValue={amountAxis}
+                          remoteKind="debt-filing-history"
+                        />
+                      </Box>
                     ) : null}
-                    <Box height={historyTableHeight} flexShrink={0}>
+                    <Box {...fill(historyTableHeight)}>
                       <DataTableView<DebtHistoryPoint, HistoryColumn>
                         emptyStateTitle="No comparable filing history."
                         focused={focused && !openHistoryRow}

@@ -2,10 +2,11 @@
  * A reference table of keys: badge, then what the key does.
  *
  * Used for the parts of Help that describe fixed keys rather than rebindable
- * ones, and sized to its rows so it can sit inside the scrolling tab body next
- * to prose, the way other panes embed a short table.
+ * ones. Without a `height` it is sized to its rows so it can sit inside the
+ * scrolling tab body next to prose, the way other panes embed a short table;
+ * with one it is the whole tab and scrolls itself, like Functions.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import {
   buildSectionedRows,
   DataTableView,
@@ -35,12 +36,18 @@ type ShortcutRow = SectionedRow<ShortcutTableEntry>;
 export function ShortcutTable({
   sections,
   width,
+  height: fillHeight,
+  after,
   keyLabel = "KEY",
   descriptionLabel = "DOES",
 }: {
   sections: ReadonlyArray<TableSection<ShortcutTableEntry>>;
   /** Content width available inside the tab body. */
   width: number;
+  /** Fill this many rows and scroll, instead of growing to fit every row. */
+  height?: number;
+  /** Sits under a full-height table inside the same frame. */
+  after?: ReactNode;
   keyLabel?: string;
   descriptionLabel?: string;
 }) {
@@ -64,6 +71,25 @@ export function ShortcutTable({
     return { text: t(row.item.description), color: colors.text };
   }, [colors]);
 
+  if (fillHeight !== undefined) {
+    return (
+      <DataTableView<ShortcutRow, ShortcutColumn>
+        columns={columns}
+        items={rows}
+        selection={{ kind: "none" }}
+        rootWidth={width}
+        rootHeight={fillHeight}
+        rootAfter={after}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={(row) => row.key}
+        renderSectionHeader={renderSectionedRowHeader}
+        renderCell={renderCell}
+        emptyStateTitle="Nothing to show"
+      />
+    );
+  }
+
   const height = sectionedRowsHeight(rows);
 
   return (
@@ -79,7 +105,6 @@ export function ShortcutTable({
         virtualize={false}
         sortColumnId={null}
         sortDirection="asc"
-        onHeaderClick={() => {}}
         getItemKey={(row) => row.key}
         renderSectionHeader={renderSectionedRowHeader}
         renderCell={renderCell}

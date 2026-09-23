@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -28,8 +28,9 @@ const COLUMNS: DataTableColumn[] = [
 
 export function IvScreenPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
-  const [scope] = usePaneSettingValue("scope", "etfs");
-  const [symbolsText] = usePaneSettingValue("symbols", "");
+  const [scope, setScope] = usePaneSettingValue("scope", "etfs");
+  const [symbolsText, setSymbolsText] = usePaneSettingValue("symbols", "");
+  const [symbolsActive, setSymbolsActive] = useState(false);
   const { collectionId } = usePaneCollection();
   const tickers = useTickers();
   const { createPaneFromTemplate } = usePluginAppActions();
@@ -66,17 +67,18 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     && !(column.id === "skew" && rows.every((row) => row.skew == null))), [rows, shared]);
   const [selected, setSelected] = useState<string | null>(null);
   const queued = rows.filter((row) => row.status === "queued").length;
+  const uncovered = rows.filter((row) => row.status !== "queued" && row.iv30 == null).length;
   const notices = [universe.error, resource.error,
-    ...(queued ? [`${queued} symbol${queued === 1 ? "" : "s"} queued for implied volatility history; they fill in after backfill.`] : [])]
+    ...(queued ? [`${queued} symbol${queued === 1 ? "" : "s"} queued for implied volatility history; they fill in after backfill.`] : []),
+    ...(uncovered ? [`${uncovered} symbol${uncovered === 1 ? " has" : "s have"} no stored implied volatility yet.`] : [])]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-screen-notices", notices, focused });
   const openHistory = (row: RichCheapRow) => createPaneFromTemplate("iv-history-pane", { symbol: row.symbol });
   usePaneFooter("iv-screen", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    { id: "count", parts: [{ text: `${rows.filter((row) => row.iv30 != null).length} of ${rows.length} covered`, tone: "muted" as const }] },
     ...(shared ? [{ id: "date", parts: [{ text: readingLabel(shared.date, shared.method), tone: "muted" as const }] }]
       : resource.data?.asOf ? [{ id: "date", parts: [{ text: resource.data.asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "open", key: "enter", label: "IV history" }] }), [resource.loading, rows, shared, resource.data?.asOf]);
+  ] }), [resource.loading, shared, resource.data?.asOf]);
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.alt || event.meta || event.name !== "r") return false;
     void resource.reload();
@@ -98,9 +100,17 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
       default: return { text: "" };
     }
   };
+  const custom = scope === "custom";
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
+    <QueryBar width={width} filters={[
+      { id: "universe", label: "Universe", value: VCA_SCOPE_OPTIONS.some((option) => option.value === scope) ? scope : "etfs",
+        options: VCA_UNIVERSE_OPTIONS, onChange: setScope },
+      ...(custom ? [{ id: "symbols", kind: "text" as const, label: "Symbols", value: symbolsText, placeholder: "AAPL, MSFT, SPY",
+        width: SYMBOLS_FIELD_WIDTH, debounceMs: SYMBOLS_DEBOUNCE_MS, focused, active: symbolsActive, onActiveChange: setSymbolsActive,
+        onChange: setSymbolsText }] : []),
+    ]} />
     <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
-      <DataTableView<RichCheapRow> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={height}
+      <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} items={rows} rootWidth={width} rootHeight={Math.max(2, height - 1)}
         getItemKey={(row) => row.symbol} sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
         onHeaderClick={(id) => setSort({ id: id as SortId, direction: sort.id === id && sort.direction === "desc" ? "asc" : "desc" })}
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
@@ -122,4 +132,12 @@ export const VCA_SCOPE_OPTIONS = [
   { value: "collection", label: "Linked watchlist or portfolio" },
   { value: "custom", label: "Custom symbols" },
 ] as const satisfies ReadonlyArray<{ value: VcaPreset | "collection" | "custom"; label: string }>;
+/** The bar's menu keeps the settings wording; its trigger uses the short form. */
+const VCA_UNIVERSE_SHORT: Record<(typeof VCA_SCOPE_OPTIONS)[number]["value"], string> = {
+  etfs: "ETFs", megacaps: "Mega caps", collection: "Linked list", custom: "Custom",
+};
+const VCA_UNIVERSE_OPTIONS = VCA_SCOPE_OPTIONS.map((option) => ({ ...option, short: VCA_UNIVERSE_SHORT[option.value] }));
+const SYMBOLS_FIELD_WIDTH = 24;
+/** Symbols apply once typing pauses, so a half-typed ticker does not start a screen. */
+const SYMBOLS_DEBOUNCE_MS = 700;
 export { VCA_LIMIT, VCA_PRESETS };

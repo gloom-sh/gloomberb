@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
+  KeyValueRow,
+  Prose,
+  SectionHeading,
   usePaneNoticeFooter,
   usePaneFooter,
   type DataTableCell,
@@ -15,7 +18,6 @@ import type {
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
-import { wrapTextLines } from "../../../utils/text-wrap";
 import { formatPercent } from "../../../utils/format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -28,7 +30,6 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import {
   documentContentKey,
-  documentHeading,
   formatCompactDocumentLabel,
   isDefaultVisibleFilingDocument,
   isInlineExhibitDocument,
@@ -176,10 +177,10 @@ function eventDetailTitle(row: EventRow): string {
   return `${row.status} | ${row.date}`;
 }
 
+/** The row's figures in one line; the date is left to the detail title. */
 function eventSummaryLine(row: EventRow): string {
   return [
-    row.date,
-    row.period,
+    row.period !== "-" ? row.period : null,
     row.qEps != null ? `EPS ${formatEventMetric(row.qEps, row.epsCurrency, "eps")}` : null,
     row.qRevenue != null ? `Rev ${formatEventMetric(row.qRevenue, row.revenueCurrency, "revenue")}` : null,
     row.annualEps != null ? `Ann EPS ${formatEventMetric(row.annualEps, row.epsCurrency, "eps")}` : null,
@@ -195,7 +196,27 @@ function earningsInput(value: number | undefined, currency?: string): string {
   return currency ? `${amount} ${currency}` : amount;
 }
 
-export function buildEventDetailBody({
+export type EventDetailBlock =
+  | { kind: "row"; label: string; value: string; detail?: string; tone?: "positive" | "negative" }
+  | { kind: "note"; text: string }
+  | { kind: "prose"; text: string };
+
+/** One headed group of the event detail: labelled figures, notes, or filing text. */
+export interface EventDetailSection {
+  title?: string;
+  blocks: EventDetailBlock[];
+}
+
+const detailRow = (label: string, value: string, detail?: string, tone?: "positive" | "negative"): EventDetailBlock => (
+  { kind: "row", label, value, ...(detail ? { detail } : {}), ...(tone ? { tone } : {}) }
+);
+const detailNote = (text: string): EventDetailBlock => ({ kind: "note", text });
+
+function asOfSection(row: EventRow): EventDetailSection {
+  return { blocks: [row.fetchedAt ? detailRow("As of", row.fetchedAt) : detailNote("Retrieval time unavailable.")] };
+}
+
+export function buildEventDetail({
   row,
   secFilingsLoading,
   filing,
@@ -213,101 +234,163 @@ export function buildEventDetailBody({
   inlineContent: Map<string, string | null>;
   primaryContent: string | null | undefined;
   primaryContentLoading: boolean;
-}): string {
+}): EventDetailSection[] {
   if (row.status === "Q Est" || row.status === "FY Est") {
-    const lines = [`Fiscal period end: ${row.date}`];
+    const sections: EventDetailSection[] = [];
     for (const [key, label] of [["eps", "EPS"], ["revenue", "Revenue"]] as const) {
       const estimate = row.estimateInputs?.[key];
       if (!estimate) continue;
       const amount = (value: number | undefined) => earningsInput(value, estimate.currency);
-      lines.push("", `${label} consensus${estimate.currency ? "" : " (currency unavailable)"}`,
-        `Average: ${amount(estimate.average)}`,
-        `Low: ${amount(estimate.low)} | High: ${amount(estimate.high)}`,
-        `Prior-year input: ${amount(estimate.yearAgo)}`,
-        `Provider growth: ${estimate.growth == null ? "-" : formatPercent(estimate.growth)}`,
-        `Contributing analysts: ${estimate.analysts ?? "-"}`);
+      sections.push({
+        title: `${label} consensus`,
+        blocks: [
+          detailRow("Average", amount(estimate.average)),
+          detailRow("Low", amount(estimate.low)),
+          detailRow("High", amount(estimate.high)),
+          detailRow("Prior year", amount(estimate.yearAgo)),
+          detailRow("Growth", estimate.growth == null ? "-" : formatPercent(estimate.growth), undefined,
+            estimate.growth == null || estimate.growth === 0 ? undefined : estimate.growth > 0 ? "positive" : "negative"),
+          detailRow("Analysts", estimate.analysts == null ? "-" : String(estimate.analysts)),
+          ...(estimate.currency ? [] : [detailNote("Currency unavailable.")]),
+        ],
+      });
     }
-    if (!row.estimateInputs) lines.push("", eventSummaryLine(row), "Detailed estimate inputs are unavailable.");
-    if (row.estimateGrowthMetric) lines.push("", `Table growth: ${row.estimateGrowthMetric === "eps" ? "EPS" : "Revenue"}`);
-    lines.push("",
-      `Source: ${row.providerId ?? "unavailable"}`,
-      row.fetchedAt ? `Fetched: ${row.fetchedAt}` : "Retrieval time unavailable.");
-    return lines.join("\n");
-  }
-  const lines: string[] = ["Summary", eventSummaryLine(row)];
-  if (row.status === "Factor") {
-    lines.push("", "Provider split/adjustment factor",
-      ...(row.providerDescription ? [`Provider description: ${row.providerDescription}`] : []));
-  }
-  if (row.status !== "Earnings") {
-    return lines.join("\n");
+    if (!row.estimateInputs) {
+      sections.push({ title: "Summary", blocks: [
+        { kind: "prose", text: eventSummaryLine(row) },
+        detailNote("Detailed estimate inputs are unavailable."),
+      ] });
+    }
+    const closing = asOfSection(row);
+    closing.blocks.unshift(detailRow("Period end", row.date));
+    if (row.estimateGrowthMetric) {
+      closing.blocks.unshift(detailRow("Table growth", row.estimateGrowthMetric === "eps" ? "EPS" : "Revenue"));
+    }
+    sections.push(closing);
+    return sections;
   }
 
-  lines.push("", "EPS comparison (provider values)");
-  lines.push(`Actual: ${earningsInput(row.epsActual, row.epsCurrency)} | Consensus: ${earningsInput(row.epsEstimate, row.epsCurrency)}`);
-  if (row.epsDifference != null) lines.push(`Difference: ${earningsInput(row.epsDifference, row.epsCurrency)}`);
-  if (row.surprisePercent != null) lines.push(`Surprise: ${earningsInput(row.surprisePercent)}%`);
-  if (row.providerId || row.fetchedAt) lines.push([row.providerId, row.fetchedAt ? `Fetched ${row.fetchedAt}` : null].filter(Boolean).join(" | "));
-  if (row.fiscalPeriodEnd) lines.push(`Fiscal period: ${row.fiscalPeriodEnd} (${row.periodDateSource === "sec" ? "SEC corroborated" : "provider date"})`);
-  if (row.providerPeriodDate) lines.push(`Provider period date: ${row.providerPeriodDate}`);
-  if (row.dateEvidence) lines.push(`Period evidence: ${row.dateEvidence.accessionNumber}, filed ${row.dateEvidence.filed}`);
-  if (row.qRevenue == null && row.earningsState === "reported") lines.push("Quarterly revenue unavailable: no matching statement period was identified.");
+  const sections: EventDetailSection[] = [];
+  const summary = eventSummaryLine(row);
+  if (summary) sections.push({ title: "Summary", blocks: [{ kind: "prose", text: summary }] });
+  if (row.status === "Factor" && row.providerDescription) {
+    sections.push({ title: "Split/adjustment factor", blocks: [detailRow("Description", row.providerDescription)] });
+  }
+  if (row.status !== "Earnings") return sections;
 
-  lines.push("", "SEC Filing");
-  if (row.dateType === "fiscal-period-end") {
-    if (!row.dateEvidence) {
-      lines.push("Related SEC filing unavailable.");
-      return lines.join("\n");
-    }
+  const comparison: EventDetailBlock[] = [
+    detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency)),
+    detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency)),
+  ];
+  if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
+  if (row.surprisePercent != null) {
+    comparison.push(detailRow("Surprise", `${earningsInput(row.surprisePercent)}%`, undefined,
+      row.surprisePercent === 0 ? undefined : row.surprisePercent > 0 ? "positive" : "negative"));
+  }
+  if (row.fiscalPeriodEnd) {
+    comparison.push(detailRow("Fiscal period", row.fiscalPeriodEnd, row.periodDateSource === "sec" ? "SEC corroborated" : "not SEC corroborated"));
+  }
+  if (row.providerPeriodDate) comparison.push(detailRow("Reported period", row.providerPeriodDate));
+  if (row.dateEvidence) comparison.push(detailRow("Period evidence", row.dateEvidence.accessionNumber, `filed ${row.dateEvidence.filed}`));
+  if (row.fetchedAt) comparison.push(detailRow("As of", row.fetchedAt));
+  if (row.qRevenue == null && row.earningsState === "reported") {
+    comparison.push(detailNote("Quarterly revenue unavailable: no matching statement period was identified."));
+  }
+  sections.push({ title: "EPS comparison", blocks: comparison });
+
+  const secFiling: EventDetailSection = { title: "SEC filing", blocks: [] };
+  sections.push(secFiling);
+  if (row.dateType === "fiscal-period-end" && !row.dateEvidence) {
+    secFiling.blocks.push(detailNote("Related SEC filing unavailable."));
+    return sections;
   }
   if (secFilingsLoading && !filing) {
-    lines.push("Loading recent SEC filings...");
-    return lines.join("\n");
+    secFiling.blocks.push(detailNote("Loading recent SEC filings..."));
+    return sections;
   }
   if (!filing) {
-    lines.push("No related SEC filing found in recent filings.");
-    return lines.join("\n");
+    secFiling.blocks.push(detailNote("No related SEC filing found in recent filings."));
+    return sections;
   }
+  secFiling.blocks.push(
+    detailRow("Form", filing.form, `filed ${filingDateKey(filing)}`),
+    ...(filing.items ? [detailRow("Items", filing.items)] : []),
+    detailRow("Accession", filing.accessionNumber),
+  );
 
-  lines.push([
-    `${filing.form} filed ${filingDateKey(filing)}`,
-    filing.items ? `Items ${filing.items}` : null,
-    `Accession ${filing.accessionNumber}`,
-  ].filter(Boolean).join(" | "));
-
-  lines.push("", "Documents");
+  const documentBlocks: EventDetailBlock[] = [];
   if (documentsLoading && documents.length === 0) {
-    lines.push("Loading filing documents...");
+    documentBlocks.push(detailNote("Loading filing documents..."));
   } else if (documents.length === 0) {
-    lines.push("No filing documents were listed for this filing.");
+    documentBlocks.push(detailNote("No filing documents were listed for this filing."));
   } else {
     const visibleDocuments = documents.filter(isDefaultVisibleFilingDocument);
-    lines.push(...visibleDocuments.map(formatCompactDocumentLabel));
+    documentBlocks.push(...visibleDocuments.map((document): EventDetailBlock => ({ kind: "prose", text: formatCompactDocumentLabel(document) })));
     const hiddenCount = documents.length - visibleDocuments.length;
-    if (hiddenCount > 0) lines.push(`+ ${hiddenCount} support documents hidden`);
+    if (hiddenCount > 0) documentBlocks.push(detailNote(`+ ${hiddenCount} support documents hidden`));
   }
+  sections.push({ title: "Documents", blocks: documentBlocks });
 
   const exhibits = documents.filter(isInlineExhibitDocument);
-  if (exhibits.length > 0) {
-    lines.push("", "Inline Exhibits");
-    for (const document of exhibits) {
-      const key = documentContentKey(filing, document);
-      const hasContent = inlineContent.has(key);
-      const content = inlineContent.get(key);
-      lines.push("", documentHeading(document));
-      lines.push(hasContent
-        ? content || "Readable document content was not available for this exhibit."
-        : "Loading exhibit content...");
-    }
+  for (const document of exhibits) {
+    const key = documentContentKey(filing, document);
+    const content = inlineContent.get(key);
+    // Headings are upper-cased and cut to one line, so only the exhibit type
+    // goes there; the file name and description keep their case, wrapped below.
+    const described = document.description
+      && document.description !== document.document
+      && document.description !== document.type;
+    sections.push({
+      title: document.type || "Document",
+      blocks: [detailNote(described ? `${document.document} | ${document.description}` : document.document), inlineContent.has(key)
+        ? content ? { kind: "prose", text: content } : detailNote("Readable document content was not available for this exhibit.")
+        : detailNote("Loading exhibit content...")],
+    });
   }
 
   if (!documentsLoading && exhibits.length === 0) {
-    lines.push("", "Primary Filing Content");
-    lines.push(primaryContentLoading
-      ? "Loading filing content..."
-      : primaryContent || "Readable filing content was not available.");
+    sections.push({
+      title: "Primary filing content",
+      blocks: [primaryContentLoading
+        ? detailNote("Loading filing content...")
+        : primaryContent ? { kind: "prose", text: primaryContent } : detailNote("Readable filing content was not available.")],
+    });
   }
-  return lines.join("\n");
+  return sections;
+}
+
+const DETAIL_LABEL_WIDTH = 17;
+
+/** The event detail drawn with the kit: headed sections of labelled figures and wrapped text. */
+function EventDetailSections({ sections, width }: { sections: EventDetailSection[]; width: number }) {
+  return (
+    <Box flexDirection="column" gap={1}>
+      {sections.map((section, sectionIndex) => (
+        <Box key={`${sectionIndex}:${section.title ?? ""}`} flexDirection="column">
+          {section.title ? <SectionHeading title={section.title} width={width} /> : null}
+          {section.blocks.map((block, blockIndex) => {
+            const key = `${sectionIndex}:${blockIndex}`;
+            if (block.kind === "row") {
+              return (
+                <KeyValueRow
+                  key={key}
+                  label={block.label}
+                  value={block.value}
+                  detail={block.detail}
+                  color={block.tone === "positive" ? colors.positive : block.tone === "negative" ? colors.negative : undefined}
+                  labelWidth={DETAIL_LABEL_WIDTH}
+                  width={width}
+                />
+              );
+            }
+            return block.kind === "note"
+              ? <Prose key={key} text={block.text} width={width} color={colors.textDim} figures={false} />
+              : <Prose key={key} text={block.text} width={width} />;
+          })}
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
 /** Statuses the Earnings Estimates surface keeps; the rest are corporate actions. */
@@ -462,8 +545,8 @@ export function CorporateActionsView({
     if (scrollBox) scrollBox.scrollTop = 0;
   }, [openRowId]);
 
-  const detailBody = openRow
-    ? buildEventDetailBody({
+  const detailSections = openRow
+    ? buildEventDetail({
         row: openRow,
         secFilingsLoading,
         filing: matchedFiling,
@@ -473,12 +556,9 @@ export function CorporateActionsView({
         primaryContent,
         primaryContentLoading,
       })
-    : "";
+    : [];
   // Leave room for both horizontal padding cells and the vertical scrollbar.
   const detailTextWidth = Math.max(width - 3, 12);
-  const detailLines = openRow?.status === "Q Est" || openRow?.status === "FY Est"
-    ? detailBody.split(/\r?\n/).flatMap((line) => line ? wrapTextLines(line, detailTextWidth) : [""])
-    : wrapTextLines(detailBody, detailTextWidth);
   const scrollDetailBy = useCallback((delta: number) => {
     const scrollBox = detailScrollRef.current;
     if (!scrollBox?.viewport) return;
@@ -519,13 +599,7 @@ export function CorporateActionsView({
         scrollY
         focusable={false}
       >
-        <Box flexDirection="column">
-          {detailLines.map((line, index) => (
-            <Box key={`event-detail-${index}`} height={1}>
-              <Text fg={colors.text}>{line}</Text>
-            </Box>
-          ))}
-        </Box>
+        <EventDetailSections sections={detailSections} width={detailTextWidth} />
       </ScrollBox>
     </Box>
   ) : (
@@ -603,7 +677,6 @@ export function CorporateActionsView({
       items={rows}
       sortColumnId={null}
       sortDirection="desc"
-      onHeaderClick={() => {}}
       getItemKey={eventRowKey}
       renderCell={renderCell}
       getRowBackgroundColor={rowBackground}

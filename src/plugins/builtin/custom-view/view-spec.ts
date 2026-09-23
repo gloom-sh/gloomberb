@@ -318,10 +318,47 @@ export function applyViewProjection(rows: readonly ViewRow[], projection: ViewPr
   return result;
 }
 
-/** A transform's display text, given the raw value and (for index100) the column's first value. */
-export function formatViewValue(value: unknown, transform: ViewTransform | undefined, base?: number): string {
+const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * Headless sources hand dates over as ISO timestamps. A midnight stamp is a
+ * date, so it reads as YYYY-MM-DD; a real time keeps hours and minutes.
+ */
+function formatViewString(value: string): string {
+  const match = ISO_TIMESTAMP.exec(value);
+  if (!match) return value;
+  const [, date, hours, minutes, seconds = "00", fraction = "", zone] = match;
+  const utcOrLocal = !zone || zone === "Z" || /^[+-]00:?00$/.test(zone);
+  if (utcOrLocal && hours === "00" && minutes === "00" && seconds === "00" && !/[1-9]/.test(fraction)) return date!;
+  return `${date} ${hours}:${minutes}${zone === "Z" ? " UTC" : zone ? ` ${zone}` : ""}`;
+}
+
+function naturalDecimals(value: number): number {
+  return Number.isInteger(value) ? 0 : Math.abs(value) >= 100 ? 1 : 2;
+}
+
+/**
+ * One decimal count for a plain numeric column, so a column never mixes
+ * "236" with "232.1": the most any of its values would show on its own.
+ */
+export function viewColumnDecimals(rows: readonly ViewRow[], key: string): number | undefined {
+  let decimals: number | undefined;
+  for (const row of rows) {
+    const value = row[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    decimals = Math.max(decimals ?? 0, naturalDecimals(value));
+    if (decimals === 2) break;
+  }
+  return decimals;
+}
+
+/**
+ * A transform's display text, given the raw value, (for index100) the column's
+ * first value, and (for plain numbers) the column's decimal count.
+ */
+export function formatViewValue(value: unknown, transform: ViewTransform | undefined, base?: number, decimals?: number): string {
   if (value === null || value === undefined) return "";
-  if (typeof value !== "number") return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value !== "number") return typeof value === "string" ? formatViewString(value) : JSON.stringify(value);
   if (!Number.isFinite(value)) return "";
   switch (transform) {
     case "percent":
@@ -333,7 +370,7 @@ export function formatViewValue(value: unknown, transform: ViewTransform | undef
     case "index100":
       return base && Number.isFinite(base) && base !== 0 ? (value / base * 100).toFixed(1) : "";
     default:
-      return Number.isInteger(value) ? String(value) : value.toFixed(Math.abs(value) >= 100 ? 1 : 2);
+      return value.toFixed(decimals ?? naturalDecimals(value));
   }
 }
 

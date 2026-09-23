@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import {
   DataTableStackView,
-  KeyValueRow,
   PaneStatusBody,
   CompositeChart,
+  StatGrid,
+  statGridRows,
+  type StatItem,
   usePaneNoticeFooter,
   usePaneStatusFooter,
   type DataTableColumn,
@@ -54,15 +56,16 @@ const PALETTE = [
   "#b5835a",
   "#94a3b8",
 ];
+// The observation week is the same for every row, so it lives in the footer.
+// Percentiles rank against the trailing year of weekly readings.
 const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "ETF", width: 7, align: "left" },
-  { id: "label", label: "NAME", width: 19, align: "left" },
+  { id: "label", label: "NAME", width: 16, flexGrow: 1, align: "left" },
   { id: "quadrant", label: "QUADRANT", width: 10, align: "left" },
   { id: "strength", label: "STRENGTH", width: 10, align: "right" },
-  { id: "strengthRank", label: "PCTL 1Y", width: 8, align: "right" },
+  { id: "strengthRank", label: "STR PCTL", width: 8, align: "right" },
   { id: "momentum", label: "MOMENTUM", width: 10, align: "right" },
-  { id: "momentumRank", label: "PCTL 1Y", width: 8, align: "right" },
-  { id: "asOf", label: "AS OF", width: 10, align: "left" },
+  { id: "momentumRank", label: "MOM PCTL", width: 8, align: "right" },
 ];
 const clearDenied = (error: unknown) =>
   error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
@@ -103,30 +106,23 @@ function RotationDetail({
       ),
     [row, colors],
   );
+  // A thin percentile window is flagged in the footer notices, and the footer
+  // carries the observation week every row shares, so neither repeats here.
+  const rankDetail = (value: RotationRow["strengthRank"]) => `${rank(value.percentile)} pctl`;
+  const stats: StatItem[] = [
+    { id: "strength", label: "Strength", value: number(row.strength), detail: rankDetail(row.strengthRank) },
+    { id: "momentum", label: "Momentum", value: number(row.momentum), detail: rankDetail(row.momentumRank) },
+    { id: "quadrant", label: "Quadrant", value: row.quadrant ?? "--" },
+  ];
+  const statRows = statGridRows(stats, width);
   return (
     <Box width={width} height={height} flexDirection="column">
-      <Box paddingX={1} flexDirection="column" flexShrink={0}>
-        <KeyValueRow
-          label="Strength"
-          value={number(row.strength)}
-          detail={`${rank(row.strengthRank.percentile)} pctl 1Y · ${row.asOf ?? "--"}`}
-        />
-        <KeyValueRow
-          label="Momentum"
-          value={number(row.momentum)}
-          detail={`${rank(row.momentumRank.percentile)} pctl 1Y · ${row.asOf ?? "--"}`}
-        />
-        <KeyValueRow
-          label="Rank samples"
-          value={`${row.strengthRank.samples} strength / ${row.momentumRank.samples} momentum`}
-          detail={row.currency ?? "Currency unavailable"}
-        />
-      </Box>
+      <StatGrid items={stats} width={width} />
       <CompositeChart
         series={series}
         panels={PANELS}
         width={width}
-        height={Math.max(4, height - 3)}
+        height={Math.max(4, height - statRows)}
         navigable={false}
         showTimeAxis
         formatAxisValue={(value) => value.toFixed(1)}
@@ -208,7 +204,6 @@ function RotationView({
   instruments: RotationInstrument[];
   trail: number;
 }) {
-  const colors = useThemeColors();
   const session = useResearchCloudSession();
   const identity = `${rotationId(benchmark)}:${instruments.map(rotationId).join(",")}:${trail}`;
   const loader = useCallback(
@@ -346,7 +341,6 @@ function RotationView({
                 height={chartHeight}
                 selectedId={selectedId}
                 xLabel={`Strength vs ${benchmark.symbol}`}
-                observationLabel={`${data.asOf ?? "--"} · ${trail}W`}
               />
             ) : null}
             <DataTableStackView
@@ -393,12 +387,7 @@ function RotationView({
                       : column.id === "strength" || column.id === "momentum"
                         ? number(row[column.id])
                         : String(row[column.id as "symbol"] ?? "--"),
-                color:
-                  column.id === "symbol"
-                    ? colorMap.get(row.id)
-                    : column.id === "asOf"
-                      ? colors.textMuted
-                      : undefined,
+                color: column.id === "symbol" ? colorMap.get(row.id) : undefined,
               })}
               emptyStateTitle="No aligned weekly observations."
             />

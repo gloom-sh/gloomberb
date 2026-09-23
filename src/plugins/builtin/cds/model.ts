@@ -301,10 +301,10 @@ export const ISSUER_SORT_COLUMN_IDS: readonly IssuerColumnId[] = ["issuer", "tra
 /** "Most active" is the reason the market-wide view exists. */
 export const DEFAULT_ISSUER_SORT: IssuerSortPreference = { columnId: "trades", direction: "desc" };
 
-export function buildIssuerColumns(width: number): IssuerColumn[] {
-  const issuerWidth = Math.max(16, width - 35);
+/** The issuer takes the room the figures leave; the table lays it out. */
+export function buildIssuerColumns(): IssuerColumn[] {
   return [
-    { id: "issuer", label: "ISSUER", width: issuerWidth, align: "left" },
+    { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
     { id: "last", label: "LAST UTC", width: 12, align: "left" },
     { id: "spread", label: "SPREAD", width: 10, align: "right" },

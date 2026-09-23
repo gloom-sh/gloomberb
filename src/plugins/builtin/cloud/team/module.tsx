@@ -26,7 +26,7 @@ export const teamModule: PluginModule = {
   capabilities: [createCloudTeamCapability(), createCloudViewsCapability()],
   panes: [{
     id: TEAM_PANE_ID,
-    name: "TEAM",
+    name: "Team",
     icon: "T",
     component: TeamPane,
     defaultPosition: "right",

@@ -3,15 +3,23 @@ import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload 
 import {
   DataTableView,
   EmptyState,
-  PaneStatusBody, QueryBar, SectionHeading, usePaneFooter,
+  getPaneSidebarWidth,
+  getPaneSidebarWidthRange,
+  PaneSidebar,
+  PaneStatusBody,
+  QueryBar,
+  readStoredPaneSidebarWidth,
+  shouldShowPaneSidebar,
+  usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
+import { usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { WorldVenueMap } from "./map";
 import {
@@ -169,24 +177,40 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   usePaneFooter(WORLD_VENUE_MAP_PANE_ID, () => ({
     info: [
-      ...(loading && !data ? [{ id: "loading", parts: [{ text: "LOADING", tone: "muted" as const }] }] : []),
-      ...(data && !data.stale ? [{ id: "live", parts: [{ text: "LIVE", tone: "positive" as const }] }] : []),
-      ...(data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
+      ...(loading && !data ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(data && !data.stale ? [{ id: "live", parts: [{ text: "live", tone: "positive" as const }] }] : []),
+      ...(data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
       { id: "search", key: "/", label: "search", onPress: focusSearch },
-      { id: "refresh", key: "r", label: "efresh", onPress: refresh },
     ],
-  }), [data, error, focusSearch, loading, refresh]);
+  }), [data, error, focusSearch, loading]);
 
-  const horizontal = width >= 88;
-  const sidebarWidth = horizontal ? Math.max(34, Math.min(46, Math.round(width * 0.34))) : width;
-  const mapWidth = horizontal ? Math.max(1, width - sidebarWidth - 1) : width;
+  const { nativePaneChrome } = useUiCapabilities();
+  const [storedSidebarWidth, setStoredSidebarWidth] = usePluginPaneState<number | null>("sidebarWidth", null);
+  const [draggedSidebarWidth, setDraggedSidebarWidth] = useState<number | null>(null);
+  const horizontal = shouldShowPaneSidebar(data?.venues.length ?? 0, width, height);
+  // Venue names need more room than a conversation list, so the width the pane
+  // starts at is its own; a drag replaces it and is kept with the pane. The
+  // terminal's divider cell sits inside the sidebar, so it is added on top to
+  // keep the list 34 cells wide, which is what the LOCAL column needs.
+  const defaultSidebarWidth = Math.max(34, Math.min(46, Math.round(width * 0.34))) + (nativePaneChrome ? 0 : 1);
+  const sidebarWidth = horizontal
+    ? getPaneSidebarWidth(
+      width,
+      !!nativePaneChrome,
+      draggedSidebarWidth ?? readStoredPaneSidebarWidth(storedSidebarWidth) ?? defaultSidebarWidth,
+    )
+    : width;
+  const sidebarRange = getPaneSidebarWidthRange(width);
+  // The terminal draws the divider as a cell inside the sidebar; the desktop as a hairline.
+  const listWidth = horizontal && !nativePaneChrome ? Math.max(1, sidebarWidth - 1) : sidebarWidth;
+  const mapWidth = horizontal ? Math.max(1, width - sidebarWidth) : width;
   const mapSectionHeight = horizontal ? height : Math.max(8, Math.floor(height * 0.52));
   const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
   const mapHeight = Math.max(2, mapSectionHeight - 2);
-  const columns = useMemo(() => venueColumns(sidebarWidth), [sidebarWidth]);
+  const columns = useMemo(() => venueColumns(listWidth), [listWidth]);
 
   const renderCell = useCallback((
     venue: CloudWorldVenuePayload,
@@ -211,27 +235,22 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   }, [now]);
 
   const sidebarHeader = (
-    <Box flexDirection="column" width={sidebarWidth} height={2}>
-      <Box width="100%" paddingX={1}>
-        <SectionHeading title="Venues" />
-      </Box>
-      <QueryBar
-        width={sidebarWidth}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Filter venues...",
-          focused,
-          active: searchFocused,
-          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-          focusToken: searchFocusToken,
-          inputRef,
-          debounceMs: 80,
-          onNavigateDown: blurSearch,
-          normalizeValue: (value: string) => value.trim(),
-        }}
-      />
-    </Box>
+    <QueryBar
+      width={listWidth}
+      search={{
+        value: query,
+        onChange: setQuery,
+        placeholder: "Filter venues...",
+        focused,
+        active: searchFocused,
+        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
+        focusToken: searchFocusToken,
+        inputRef,
+        debounceMs: 80,
+        onNavigateDown: blurSearch,
+        normalizeValue: (value: string) => value.trim(),
+      }}
+    />
   );
 
   const table = (
@@ -243,14 +262,13 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
         getId: (venue) => venue.mic,
         onChange: (mic) => setSelectedMic(mic),
       }}
-      rootWidth={sidebarWidth}
+      rootWidth={listWidth}
       rootHeight={tableHeight}
       rootBefore={sidebarHeader}
       columns={columns}
       items={venues}
       sortColumnId={null}
       sortDirection="asc"
-      onHeaderClick={() => {}}
       getItemKey={(venue) => venue.mic}
       renderCell={renderCell}
       emptyStateTitle={query.trim() ? "No matching venues." : "No venue data."}
@@ -281,8 +299,22 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   return horizontal ? (
     <Box flexDirection="row" width={width} height={height}>
-      {table}
-      <Box width={1} height={height} backgroundColor={colors.border} />
+      <PaneSidebar
+        width={sidebarWidth}
+        height={height}
+        focused={focused}
+        resize={{
+          min: sidebarRange.min,
+          max: sidebarRange.max,
+          onResize: setDraggedSidebarWidth,
+          onResizeEnd: (next) => {
+            setStoredSidebarWidth(next);
+            setDraggedSidebarWidth(null);
+          },
+        }}
+      >
+        {table}
+      </PaneSidebar>
       {map}
     </Box>
   ) : (

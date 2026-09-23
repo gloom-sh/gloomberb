@@ -30,7 +30,7 @@ test("partial curve preserves actual expiries, null ghost legs and reported zero
   expect(series[1]!.points[1]!.value).toBeNull();
   expect(data.contracts.map((row) => row.openInterest)).toEqual([0, null]);
   expect(data.contracts[0]!.volume).toBe(0);
-  expect(curveRank(50, 1, "2026-09-21", "2026-09-21")).toBe("pctl unavailable");
+  expect(curveRank(50, 1)).toBe("pctl unavailable");
 });
 
 test("rejects cross-root responses, invalid expiries, nonfinite prices and mismatched historical contracts", () => {

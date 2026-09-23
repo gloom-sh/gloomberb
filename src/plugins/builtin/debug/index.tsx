@@ -1,16 +1,23 @@
-import { Box, Text } from "../../../ui";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Box, ScrollBox, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useShortcut } from "../../../react/input";
 import { TextAttributes } from "../../../ui";
 import type { GloomPlugin, PaneProps } from "../../../types/plugin";
-import { ListView, usePaneFooter } from "../../../components";
+import {
+  DataTableStackView,
+  isTableScrollNearEnd,
+  QueryBar,
+  usePaneFooter,
+  type DataTableCell,
+  type DataTableColumn,
+  type SelectControl,
+} from "../../../components";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginAppActions } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID, DEBUG_PANE_ID, DEBUG_SOURCE_SETTING } from "./template";
 import { colors } from "../../../theme/colors";
 import { debugLog, type LogEntry, type LogLevel } from "../../../utils/debug-log";
 import { isPlainKey } from "../../../utils/keyboard";
-import { wrapTextLines } from "../../../utils/text-wrap";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -52,23 +59,75 @@ const LEVEL_LABELS: Record<LogLevel, string> = {
   error: "ERR",
 };
 
-const ALL_LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
+const ALL_FILTER = "all";
+
+const LEVEL_OPTIONS: { value: LogLevel | typeof ALL_FILTER; label: string }[] = [
+  { value: ALL_FILTER, label: "All" },
+  { value: "debug", label: "Debug" },
+  { value: "info", label: "Info" },
+  { value: "warn", label: "Warn" },
+  { value: "error", label: "Error" },
+];
+
+type DebugColumn = DataTableColumn & { id: "time" | "level" | "source" | "message" };
 
 function formatTimestamp(ts: number): string {
   const d = new Date(ts);
   return d.toISOString().slice(11, 23);
 }
 
+function debugColumns(entries: LogEntry[]): DebugColumn[] {
+  const sourceWidth = Math.max(8, Math.min(18, entries.reduce((max, entry) => Math.max(max, entry.source.length), 0)));
+  return [
+    { id: "time", label: "TIME", width: 12, align: "left" },
+    { id: "level", label: "LEVEL", width: 5, align: "left" },
+    { id: "source", label: "SOURCE", width: sourceWidth, align: "left" },
+    { id: "message", label: "MESSAGE", width: 20, align: "left", flexGrow: 1 },
+  ];
+}
+
+function renderDebugCell(entry: LogEntry, column: DebugColumn, _index: number, state: { selected: boolean }): DataTableCell {
+  if (column.id === "time") return { text: formatTimestamp(entry.timestamp), color: colors.textMuted };
+  if (column.id === "level") return { text: LEVEL_LABELS[entry.level], color: levelColor(entry.level), attributes: TextAttributes.BOLD };
+  if (column.id === "source") return { text: entry.source, color: colors.textDim };
+  // A log line is one row; the detail shows the rest.
+  return { text: entry.message.replace(/\s+/g, " "), color: state.selected ? colors.selectedText : colors.text };
+}
+
+function DebugEntryDetail({ entry }: { entry: LogEntry }) {
+  return (
+    <ScrollBox flexGrow={1} scrollY focusable={false}>
+      <Box flexDirection="column" paddingX={1}>
+        <Text fg={colors.text} wrapText>{entry.message}</Text>
+        {entry.data !== undefined && (
+          <Box marginTop={1}>
+            <Text fg={colors.textDim} wrapText>{JSON.stringify(entry.data, null, 2)}</Text>
+          </Box>
+        )}
+      </Box>
+    </ScrollBox>
+  );
+}
+
 function DebugPane({ focused, width, height }: PaneProps) {
   const { notify } = usePluginAppActions();
   const [entries, setEntries] = useState<LogEntry[]>(() => debugLog.getEntries());
+  const [sources, setSources] = useState<string[]>(() => debugLog.getSources());
   const [filterLevel, setFilterLevel] = useState<LogLevel | null>(null);
   // Persisted with the pane so a log opened for one plugin stays on that plugin.
   const [filterSource, setFilterSource] = usePaneSettingValue<string | null>(DEBUG_SOURCE_SETTING, null);
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchFocus, setSearchFocus] = useState(0);
+  const searchInput = useRef<InputRenderable | null>(null);
+  const levelControl = useRef<SelectControl>(null);
+  const sourceControl = useRef<SelectControl>(null);
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // While on, the cursor rides the newest entry, which keeps the list pinned
+  // to the bottom as entries arrive.
   const [autoScroll, setAutoScroll] = useState(true);
-  const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [showDetail, setShowDetail] = useState(false);
-  const sourcesRef = useRef<string[]>(debugLog.getSources());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     const read = () => {
@@ -78,11 +137,24 @@ function DebugPane({ focused, width, height }: PaneProps) {
           : undefined,
       );
       setEntries(filtered);
-      sourcesRef.current = debugLog.getSources();
+      setSources(debugLog.getSources());
     };
     read();
     return debugLog.subscribe(read);
-  }, [filterLevel, filterSource, autoScroll]);
+  }, [filterLevel, filterSource]);
+
+  const visibleEntries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle ? entries.filter((entry) => entry.message.toLowerCase().includes(needle)) : entries;
+  }, [entries, query]);
+  const columns = useMemo(() => debugColumns(visibleEntries), [visibleEntries]);
+  const newestId = visibleEntries.length > 0 ? String(visibleEntries[visibleEntries.length - 1]!.id) : null;
+  const effectiveSelectedId = autoScroll ? newestId : selectedId;
+  const openEntry = openId ? entries.find((entry) => String(entry.id) === openId) ?? null : null;
+
+  useEffect(() => {
+    if (openId && !openEntry) setOpenId(null);
+  }, [openEntry, openId]);
 
   const exportLogs = useCallback(() => {
     const result = exportDebugLogFile({ filterLevel, filterSource });
@@ -96,227 +168,131 @@ function DebugPane({ focused, width, height }: PaneProps) {
   const clearLogs = useCallback(() => {
     debugLog.clear();
     setEntries([]);
+    setOpenId(null);
   }, []);
-  const cycleLevelFilter = useCallback(() => {
-    const currentIdx = filterLevel ? ALL_LEVELS.indexOf(filterLevel) : -1;
-    const nextIdx = currentIdx + 1;
-    setFilterLevel(nextIdx >= ALL_LEVELS.length ? null : ALL_LEVELS[nextIdx] ?? null);
-  }, [filterLevel]);
-  const cycleSourceFilter = useCallback(() => {
-    const sources = sourcesRef.current;
-    if (sources.length === 0) return;
-    const currentIdx = filterSource ? sources.indexOf(filterSource) : -1;
-    const nextIdx = currentIdx + 1;
-    setFilterSource(nextIdx >= sources.length ? null : sources[nextIdx] ?? null);
-  }, [filterSource]);
+  const toggleAutoScroll = useCallback(() => {
+    setAutoScroll((prev) => {
+      if (prev) setSelectedId(newestId);
+      return !prev;
+    });
+  }, [newestId]);
   const jumpTop = useCallback(() => {
-    setSelectedIdx(0);
     setAutoScroll(false);
+    setSelectedId(visibleEntries[0] ? String(visibleEntries[0].id) : null);
+  }, [visibleEntries]);
+  const focusSearch = useCallback(() => {
+    setSearching(true);
+    setSearchFocus((value) => value + 1);
   }, []);
-  const jumpBottom = useCallback(() => {
-    setSelectedIdx(entries.length - 1);
-    setAutoScroll(true);
-  }, [entries.length]);
 
   useShortcut((event) => {
-    if (!focused) return;
-
-    // Level filter cycling
-    if (event.name === "l") {
-      cycleLevelFilter();
-      return;
-    }
-
-    // Source filter cycling
-    if (event.name === "s") {
-      cycleSourceFilter();
-      return;
-    }
-
-    // Export
-    if (event.name === "e") {
-      exportLogs();
-      return;
-    }
-
-    // Clear
-    if (event.name === "c") {
-      clearLogs();
-      return;
-    }
-
-    // Auto-scroll toggle
-    if (event.name === "a") {
-      setAutoScroll((prev) => !prev);
-      return;
-    }
-
-    // Detail toggle
-    if (event.name === "return" && selectedIdx >= 0) {
-      setShowDetail((prev) => !prev);
-      return;
-    }
-
-    // Navigation
-    if (isPlainKey(event, "j", "down")) {
-      setAutoScroll(false);
-      setSelectedIdx((prev) => Math.min(prev + 1, entries.length - 1));
-      return;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      setAutoScroll(false);
-      setSelectedIdx((prev) => Math.max(prev - 1, 0));
-      return;
-    }
-
-    if (event.name === "g" && !event.shift) {
-      jumpTop();
-      return;
-    }
-    if (event.name === "g" && event.shift) {
-      jumpBottom();
-      return;
-    }
-
-    if (event.name === "escape" && showDetail) {
-      setShowDetail(false);
-      return;
-    }
+    if (!focused || openId || searching || event.targetEditable || event.ctrl || event.meta) return;
+    if (event.name === "l") { event.preventDefault?.(); levelControl.current?.open(); return; }
+    if (event.name === "s") { event.preventDefault?.(); sourceControl.current?.open(); return; }
+    // Plain `/` only: Shift+/ is `?`, which opens Help.
+    if (isPlainKey(event, "/")) { event.preventDefault?.(); focusSearch(); return; }
+    if (event.name === "e") { exportLogs(); return; }
+    if (event.name === "c") { clearLogs(); return; }
+    if (event.name === "a") { toggleAutoScroll(); return; }
+    // Top and end of the log; G also resumes following new entries.
+    if (event.name === "g" && !event.shift) { jumpTop(); return; }
+    if (event.name === "g" && event.shift) { setAutoScroll(true); return; }
   });
 
-  const contentWidth = Math.max(1, width - 2);
-  const messageAreaHeight = Math.max(1, height);
-
-  // Compute visible window
-  const visibleCount = showDetail ? Math.max(1, messageAreaHeight - 4) : messageAreaHeight;
-  const totalEntries = entries.length;
-
-  // Keep selected entry visible
-  let viewStart: number;
-  if (autoScroll) {
-    viewStart = Math.max(0, totalEntries - visibleCount);
-    // In auto-scroll, selected follows bottom
-  } else {
-    if (selectedIdx < 0) {
-      viewStart = Math.max(0, totalEntries - visibleCount);
-    } else {
-      viewStart = Math.max(0, Math.min(selectedIdx - Math.floor(visibleCount / 2), totalEntries - visibleCount));
-    }
-  }
-  const visibleEntries = entries.slice(viewStart, viewStart + visibleCount);
-
-  const selectedEntry = selectedIdx >= 0 && selectedIdx < entries.length ? entries[selectedIdx] : null;
-  const detailTextWidth = Math.max(1, contentWidth - 2);
-  const detailMessageLines = selectedEntry
-    ? wrapTextLines(
-        selectedEntry.message,
-        detailTextWidth,
-        selectedEntry.data === undefined ? 3 : 2,
-      )
-    : [];
-  const detailDataLines = selectedEntry?.data === undefined
-    ? []
-    : wrapTextLines(
-        JSON.stringify(selectedEntry.data, null, 2),
-        detailTextWidth,
-        Math.max(1, 3 - detailMessageLines.length),
-      );
-
   usePaneFooter("debug-log", () => ({
-    info: [
-      ...(filterLevel ? [{ id: "level", parts: [{ text: filterLevel.toUpperCase(), tone: "value" as const, color: levelColor(filterLevel), bold: true }] }] : []),
-      ...(filterSource ? [{ id: "source", parts: [{ text: filterSource, tone: "positive" as const }] }] : []),
-      ...(autoScroll ? [{ id: "auto", parts: [{ text: "AUTO", tone: "muted" as const }] }] : []),
-    ],
-    hints: [
-      // Every label is the mnemonic suffix of its key, so the footer reads
-      // "[l]evel [s]ource [e]xport [x] clear ..." consistently.
-      { id: "level", key: "l", label: "evel", onPress: cycleLevelFilter },
-      { id: "source", key: "s", label: "ource", onPress: cycleSourceFilter },
+    info: autoScroll && !openId ? [{ id: "auto", parts: [{ text: "following", tone: "muted" as const }] }] : [],
+    hints: openId ? [] : [
       { id: "export", key: "e", label: "xport", onPress: exportLogs },
       { id: "clear", key: "c", label: "lear", onPress: clearLogs },
-      { id: "auto", key: "a", label: "uto", onPress: () => setAutoScroll((prev) => !prev) },
-      { id: "jump-top", key: "g", label: "o to top", onPress: jumpTop },
-      { id: "jump-end", key: "G", label: "o to end", onPress: jumpBottom },
+      { id: "auto", key: "a", label: "uto-scroll", onPress: toggleAutoScroll },
     ],
-  }), [autoScroll, clearLogs, cycleLevelFilter, cycleSourceFilter, exportLogs, filterLevel, filterSource, jumpBottom, jumpTop]);
+  }), [autoScroll, clearLogs, exportLogs, openId, toggleAutoScroll]);
+
+  const sourceOptions = useMemo(() => {
+    const names = filterSource && !sources.includes(filterSource) ? [...sources, filterSource] : sources;
+    return [{ value: ALL_FILTER, label: "All" }, ...names.map((name) => ({ value: name, label: name }))];
+  }, [filterSource, sources]);
+
+  const filtered = !!(filterLevel || filterSource || query.trim());
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {/* Log entries */}
-      <Box
-        height={visibleCount}
-        flexDirection="column"
-        onMouseScroll={(event: any) => {
-          const dir = event.scroll?.direction;
-          if (!dir) return;
-          if (dir === "up" || dir === "down") {
+      <DataTableStackView<LogEntry, DebugColumn>
+        focused={focused && !searching}
+        rootWidth={width}
+        rootHeight={height}
+        rootBefore={(
+          <QueryBar
+            width={width}
+            search={{
+              value: query,
+              onChange: setQuery,
+              placeholder: "message",
+              focused,
+              active: searching,
+              onActiveChange: setSearching,
+              focusToken: searchFocus,
+              inputRef: searchInput,
+              onNavigateDown: () => setSearching(false),
+            }}
+            filters={[
+              {
+                id: "level",
+                label: "Level",
+                value: filterLevel ?? ALL_FILTER,
+                defaultValue: ALL_FILTER,
+                options: LEVEL_OPTIONS,
+                onChange: (value: string) => setFilterLevel(value === ALL_FILTER ? null : value as LogLevel),
+                controlRef: levelControl,
+              },
+              {
+                id: "source",
+                label: "Source",
+                value: filterSource ?? ALL_FILTER,
+                defaultValue: ALL_FILTER,
+                options: sourceOptions,
+                onChange: (value: string) => setFilterSource(value === ALL_FILTER ? null : value),
+                controlRef: sourceControl,
+              },
+            ]}
+          />
+        )}
+        columns={columns}
+        items={visibleEntries}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={(entry) => String(entry.id)}
+        renderCell={renderDebugCell}
+        scrollRef={scrollRef}
+        selection={{
+          kind: "id",
+          selectedId: effectiveSelectedId,
+          getId: (entry) => String(entry.id),
+          onChange: (id) => {
+            setSelectedId(id);
+            // Moving off the newest entry stops following; landing on it keeps
+            // whatever the user chose.
+            if (id !== newestId) setAutoScroll(false);
+          },
+        }}
+        onBodyScrollActivity={(source) => {
+          if (source === "programmatic" || !autoScroll) return;
+          if (!isTableScrollNearEnd(scrollRef.current, 2)) {
+            setSelectedId(newestId);
             setAutoScroll(false);
-            setSelectedIdx((prev) => {
-              const next = dir === "up" ? prev - 3 : prev + 3;
-              return Math.max(0, Math.min(next, entries.length - 1));
-            });
           }
         }}
-      >
-        <ListView
-          items={visibleEntries.map((entry) => ({ id: String(entry.id), label: entry.message }))}
-          selectedIndex={selectedIdx - viewStart}
-          height={visibleCount}
-          rowGap={0}
-          emptyMessage={`No log entries${filterLevel || filterSource ? " matching filter" : ""}`}
-          onSelect={(index) => { setSelectedIdx(viewStart + index); setAutoScroll(false); }}
-          renderRow={(_, { selected: isSelected }, i) => {
-            const entry = visibleEntries[i]!;
-            const ts = formatTimestamp(entry.timestamp);
-            const lvl = LEVEL_LABELS[entry.level];
-            const sourceTag = entry.source;
-            // Floor of 1: at maxMsg 0 the old slice(0, -1) kept almost the whole
-            // message and only appended an ellipsis.
-            const maxMsg = Math.max(1, contentWidth - ts.length - lvl.length - sourceTag.length - 8);
-            const msg = entry.message.length > maxMsg
-              ? `${entry.message.slice(0, Math.max(0, maxMsg - 1))}…`
-              : entry.message;
-
-            return (
-              <Box
-                key={entry.id}
-                height={1}
-                width={contentWidth}
-                flexDirection="row"
-              >
-                <Text fg={colors.textMuted}> {ts} </Text>
-                <Text fg={levelColor(entry.level)} attributes={TextAttributes.BOLD}>{lvl}</Text>
-                <Text fg={colors.textDim}> [{sourceTag}] </Text>
-                <Text fg={isSelected ? colors.selectedText ?? colors.textBright : colors.text}>
-                  {msg}
-                </Text>
-              </Box>
-            );
+        onActivate={(entry) => {
+          setSelectedId(String(entry.id));
+          setAutoScroll(false);
+          setOpenId(String(entry.id));
         }}
-        />
-      </Box>
-
-      {/* Detail panel */}
-      {showDetail && selectedEntry && (
-        <Box flexDirection="column" height={4} width={contentWidth}>
-          <Box height={1} width={contentWidth}>
-            <Text fg={colors.border}>{"-".repeat(contentWidth)}</Text>
-          </Box>
-          <Box paddingLeft={1} flexDirection="column">
-            {detailMessageLines.map((line, index) => (
-              <Box key={`message:${index}`} height={1}>
-                <Text fg={colors.text}>{line || " "}</Text>
-              </Box>
-            ))}
-            {detailDataLines.map((line, index) => (
-              <Box key={`data:${index}`} height={1}>
-                <Text fg={colors.textDim}>{line || " "}</Text>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
+        emptyStateTitle={filtered ? "No log entries match the filter." : "No log entries."}
+        detailOpen={!!openEntry}
+        onBack={() => setOpenId(null)}
+        detailTitle={openEntry ? `${formatTimestamp(openEntry.timestamp)} ${LEVEL_LABELS[openEntry.level]} ${openEntry.source}` : undefined}
+        detailContent={openEntry ? <DebugEntryDetail entry={openEntry} /> : null}
+      />
     </Box>
   );
 }

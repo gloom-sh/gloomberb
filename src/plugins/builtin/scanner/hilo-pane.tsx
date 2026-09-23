@@ -3,6 +3,7 @@ import type { ScannerHiloExtreme } from "../../../api-client";
 import {
   DataTableView,
   PaneStatusBody,
+  QueryBar,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -25,19 +26,31 @@ function rowKey(row: ScannerHiloExtreme, index: number): string {
   return `${row.symbol}:${row.at}:${index}`;
 }
 
-const BARS_HEIGHT = 4;
+/** The 5 min, 1 min and 30 sec window rows. */
+const BARS_HEIGHT = 3;
+const QUERY_BAR_HEIGHT = 1;
 /** Below this the two tables cannot both stay legible, so only the focused side is shown. */
 const SPLIT_MIN_WIDTH = 42;
 /** The bars are the lowest-priority panel: they go first when rows run out. */
-const BARS_MIN_HEIGHT = BARS_HEIGHT + 4;
+const BARS_MIN_HEIGHT = QUERY_BAR_HEIGHT + BARS_HEIGHT + 4;
+const MIN_PRICE_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "1", label: "1" },
+  { value: "5", label: "5" },
+] as const satisfies ReadonlyArray<{ value: HiloMinPrice; label: string }>;
+const SORT_OPTIONS = [
+  { value: "recent", label: "Recent" },
+  { value: "count", label: "Count" },
+] as const satisfies ReadonlyArray<{ value: HiloSort; label: string }>;
 
-function buildColumns(width: number): DataTableColumn[] {
-  const symbolWidth = 8;
+function buildColumns(width: number, side: Side): DataTableColumn[] {
+  // Wide enough for the "NEW HIGH" header that names the side.
+  const symbolWidth = 10;
   const countWidth = 6;
   // Table chrome is one gap per column, two cells of padding, and the scrollbar.
   const priceWidth = Math.max(7, width - symbolWidth - countWidth - 3 - 2 - 1);
   return [
-    { id: "symbol", label: "SYMBOL", width: symbolWidth, align: "left" },
+    { id: "symbol", label: side === "lows" ? "NEW LOW" : "NEW HIGH", width: symbolWidth, align: "left" },
     { id: "price", label: "PRICE", width: priceWidth, align: "right" },
     { id: "count", label: "COUNT", width: countWidth, align: "right" },
   ];
@@ -90,8 +103,8 @@ function HiloPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   // The selection belongs to this pane; writing it into the portfolio moved and scrolled its cursor.
   const [, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
-  const [minPrice] = usePaneSettingValue<HiloMinPrice>("minPrice", "1");
-  const [sort] = usePaneSettingValue<HiloSort>("sort", "recent");
+  const [minPrice, setMinPrice] = usePaneSettingValue<HiloMinPrice>("minPrice", "1");
+  const [sort, setSort] = usePaneSettingValue<HiloSort>("sort", "recent");
   const [activeSide, setActiveSide] = useState<Side>("lows");
   const [selected, setSelected] = useState<Record<Side, string | null>>({ lows: null, highs: null });
 
@@ -110,8 +123,8 @@ function HiloPane({ focused, width, height }: PaneProps) {
   const showBars = height >= BARS_MIN_HEIGHT;
   // One cell of gutter keeps the two cursors from reading as a single wide row.
   const tableWidth = split ? Math.max(12, Math.floor((width - 1) / 2)) : Math.max(12, width);
-  const tableHeight = Math.max(2, height - (showBars ? BARS_HEIGHT : 0));
-  const columns = useMemo(() => buildColumns(tableWidth), [tableWidth]);
+  const tableHeight = Math.max(2, height - QUERY_BAR_HEIGHT - (showBars ? BARS_HEIGHT : 0));
+  const columns = useMemo(() => ({ lows: buildColumns(tableWidth, "lows"), highs: buildColumns(tableWidth, "highs") }), [tableWidth]);
 
   const handleSelect = useCallback((side: Side, row: ScannerHiloExtreme, index: number) => {
     setActiveSide(side);
@@ -145,11 +158,10 @@ function HiloPane({ focused, width, height }: PaneProps) {
       onRootKeyDown={handleSideSwitchKey}
       rootWidth={tableWidth}
       rootHeight={tableHeight}
-      columns={columns}
+      columns={columns[side]}
       items={rows}
       sortColumnId={null}
       sortDirection="desc"
-      onHeaderClick={() => {}}
       getItemKey={rowKey}
       onActivate={(row) => pinTicker(row.symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
       renderCell={RENDER_ROW[side]}
@@ -160,6 +172,14 @@ function HiloPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      <QueryBar
+        width={width}
+        filters={[
+          { id: "min-price", label: "Min $", inline: true, value: minPrice, defaultValue: "1",
+            options: MIN_PRICE_OPTIONS, onChange: setMinPrice },
+          { id: "sort", label: "Sort", inline: true, value: sort, options: SORT_OPTIONS, onChange: setSort },
+        ]}
+      />
       {showBars && <HiloBars windows={feed.payload?.windows} width={width} />}
       <Box flexDirection="row" flexGrow={1} overflow="hidden">
         {split ? (

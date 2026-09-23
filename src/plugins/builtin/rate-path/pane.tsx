@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, curveGhostColors, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
+import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -14,7 +14,6 @@ import { meetingProbability, percentileText, probabilityTargets, ratePathCurves,
 
 const TABS = [{ value: "path", label: "Path" }, { value: "probabilities", label: "Probabilities" }, { value: "contracts", label: "Contracts" }, { value: "projections", label: "Projections" }];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
-const noop = () => {};
 const MEETING_COLUMNS: DataTableColumn[] = [
   { id: "date", label: "MEETING", width: 12, align: "left" },
   { id: "rate", label: "EFFR", width: 9, align: "right" },
@@ -71,8 +70,26 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   }), [data, sort]);
   const targets = useMemo(() => probabilityTargets(data?.meetings ?? []), [data]);
   const selectedMeeting = data?.meetings.find((meeting) => meeting.date === selected);
+  // The footer carries the snapshot time, so a figure or legend entry from the
+  // same day does not repeat it; older dates (EFFR's lag, ghosts, SEP) stay.
+  const footerDay = data?.asOf?.slice(0, 10) ?? null;
+  const ownDate = (value: string | null | undefined) => value && value.slice(0, 10) !== footerDay ? value : null;
+  const chartCurves = useMemo(() => curves.map((series) => (
+    series.asOf?.slice(0, 10) === footerDay ? { ...series, asOf: undefined } : series
+  )), [curves, footerDay]);
+  const statItems: StatItem[] = data ? [
+    { id: "effr", label: "EFFR", value: rateText(data.current.effr.value),
+      detail: [percentileText(data.current.effr.percentile), ownDate(data.current.effr.asOf)].filter(Boolean).join(" · ") },
+    { id: "target", label: "Target range", value: `${rateText(data.current.targetLower.value)} to ${rateText(data.current.targetUpper.value)}`,
+      detail: [percentileText(data.current.targetUpper.percentile), ownDate(data.current.targetUpper.asOf)].filter(Boolean).join(" · ") },
+    ...(tab === "path" && data.slope ? [{ id: "slope", label: "Last-first",
+      value: data.slope.valueBps == null ? "--" : `${data.slope.valueBps > 0 ? "+" : ""}${data.slope.valueBps.toFixed(1)}bp`,
+      detail: [percentileText(data.slope.percentile), ownDate(data.slope.asOf) && timestamp(data.slope.asOf)].filter(Boolean).join(" · ") }] : []),
+  ] : [];
+  const statRows = statGridRows(statItems, width);
   // The meeting table only needs its rows; the chart takes whatever is left.
-  const bodyHeight = Math.max(9, height - 3 - tabRows);
+  // The desktop grows the table to the footer.
+  const bodyHeight = Math.max(9, height - statRows - tabRows);
   const meetingTableHeight = Math.max(3, Math.min((data?.meetings.length ?? 0) + 2, Math.floor(bodyHeight * 0.5)));
   const pathHeight = Math.max(6, bodyHeight - meetingTableHeight);
   // Delayed contract quotes move all session; the curve follows them once a
@@ -97,13 +114,9 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!resource.loading && !resource.error && !data} subject="rate path">
       {data ? <>
-        <Box paddingX={1} flexShrink={0} flexDirection="column">
-          <KeyValueRow label="EFFR" value={rateText(data.current.effr.value)} detail={`${percentileText(data.current.effr.percentile, data.current.effr.samples)} · ${data.current.effr.asOf ?? "--"}`} />
-          <KeyValueRow label="Target range" value={`${rateText(data.current.targetLower.value)} to ${rateText(data.current.targetUpper.value)}`} detail={`${percentileText(data.current.targetUpper.percentile, data.current.targetUpper.samples)} · ${data.current.targetUpper.asOf ?? "--"}`} />
-        </Box>
+        <StatGrid items={statItems} width={width} />
         {tab === "path" ? <>
-          <CurveSurface series={curves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected}
-            slope={data.slope ? { label: "Last-first", value: data.slope.valueBps, percentile: data.slope.percentile, window: "1Y", asOf: data.slope.asOf, formatValue: (value) => `${value > 0 ? "+" : ""}${value.toFixed(1)}bp` } : undefined} />
+          <CurveSurface series={chartCurves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected} />
           <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={meetingTableHeight} emptyStateTitle="No scheduled FOMC meetings" />
         </> : tab === "probabilities" ? <DataTableView
           columns={[MEETING_COLUMNS[0]!, ...targets.map((target) => {
@@ -112,20 +125,20 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
             return { id: String(target), label: halfWidth == null ? `${target.toFixed(3)}%`
               : `${(target - halfWidth).toFixed(2)}-${(target + halfWidth).toFixed(2)}%`, width: 13, align: "right" as const };
           })]}
-          items={data.meetings} selection={selection} focused={focused} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
-          getItemKey={(row) => row.date} rootHeight={Math.max(3, height - 3 - tabRows)} emptyStateTitle="Meeting probabilities unavailable"
+          items={data.meetings} selection={selection} focused={focused} sortColumnId={null} sortDirection="asc"
+          getItemKey={(row) => row.date} rootHeight={Math.max(3, height - statRows - tabRows)} emptyStateTitle="Meeting probabilities unavailable"
           renderCell={(row, column) => {
             if (column.id === "date") return { text: row.date };
             const probability = meetingProbability(row, Number(column.id));
             return { text: probability == null ? "--" : `${(probability * 100).toFixed(1)}%`,
               backgroundColor: probability == null ? undefined : blendHex(colors.bg, colors.positive, probability * 0.7),
               color: probability != null && probability > 0.65 ? colors.bg : colors.text };
-          }} /> : tab === "contracts" ? <DataTableView columns={CONTRACT_COLUMNS} items={[...data.fedFunds, ...data.sofr]} selection={{ kind: "none" }} focused={focused} sortColumnId={null} sortDirection="asc" onHeaderClick={noop} getItemKey={(row) => row.symbol} renderCell={contractCell} rootHeight={Math.max(3, height - 3 - tabRows)} emptyStateTitle="Futures strip unavailable" />
+          }} /> : tab === "contracts" ? <DataTableView columns={CONTRACT_COLUMNS} items={[...data.fedFunds, ...data.sofr]} selection={{ kind: "none" }} focused={focused} sortColumnId={null} sortDirection="asc" getItemKey={(row) => row.symbol} renderCell={contractCell} rootHeight={Math.max(3, height - statRows - tabRows)} emptyStateTitle="Futures strip unavailable" />
           : <DataTableView columns={[
             { id: "year", label: "YEAR END", width: 14, align: "left" },
             { id: "rate", label: "SEP MEDIAN", width: 14, align: "right" },
             { id: "asOf", label: "AS OF", width: 12, align: "left" },
-          ]} items={data.dotPlot.points} selection={{ kind: "none" }} focused={focused} sortColumnId={null} sortDirection="asc" onHeaderClick={noop} getItemKey={(row) => String(row.year)} rootHeight={Math.max(3, height - 3 - tabRows)} emptyStateTitle="Fed projections unavailable" renderCell={(row, column) => ({ text: column.id === "year" ? String(row.year) : column.id === "rate" ? rateText(row.rate) : data.dotPlot.asOf })} />}
+          ]} items={data.dotPlot.points} selection={{ kind: "none" }} focused={focused} sortColumnId={null} sortDirection="asc" getItemKey={(row) => String(row.year)} rootHeight={Math.max(3, height - statRows - tabRows)} emptyStateTitle="Fed projections unavailable" renderCell={(row, column) => ({ text: column.id === "year" ? String(row.year) : column.id === "rate" ? rateText(row.rate) : data.dotPlot.asOf })} />}
       </> : null}
     </PaneStatusBody>
   </Box>;

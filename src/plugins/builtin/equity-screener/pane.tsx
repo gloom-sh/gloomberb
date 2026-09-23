@@ -12,6 +12,7 @@ import {
   DataTableView,
   KeyValueRow,
   Notice,
+  PageStackView,
   PaneStatusBody,
   QueryBar,
   Tabs,
@@ -70,6 +71,7 @@ import { overlayLiveScreenRows } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../shared/screener-live-quotes";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { getTableWidth } from "../../../components/ui/table-layout";
 
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const STREAM_OVERSCAN = 8;
@@ -97,24 +99,17 @@ function resultColumns(
   metric: NumericField,
 ): DataTableColumn[] {
   const [focus, ...others] = resultFields(definition, metric);
-  // Symbol, focus value, percentile, date, a minimum name, and one gap per column.
-  let budget = width - 2 - (8 + columnWidth(focus!) + 4 + 10 + 18) - 5;
-  const shown: NumericField[] = [];
-  for (const field of others) {
-    if (budget < columnWidth(field) + 1) break;
-    shown.push(field);
-    budget -= columnWidth(field) + 1;
-  }
-  const exchange = budget >= 8;
-  if (exchange) budget -= 8;
-  const sector = budget >= 23;
   const metricColumn = (field: NumericField): DataTableColumn => ({
     id: `m:${field}`,
     label: SHORT_LABELS[field],
     width: columnWidth(field),
     align: "right",
   });
-  return [
+  const build = (
+    extra: DataTableColumn[],
+    exchange: boolean,
+    sector: boolean,
+  ): DataTableColumn[] => [
     { id: "symbol", label: "SYMBOL", width: 8, align: "left" },
     { id: "name", label: "NAME", width: 18, flexGrow: 1, align: "left" },
     ...(exchange ? [{ id: "exchange", label: "EXCH", width: 7, align: "left" as const }] : []),
@@ -122,10 +117,21 @@ function resultColumns(
     metricColumn(focus!),
     { id: "percentile", label: "PCTL", width: 4, align: "right" },
     { id: "date", label: "AS OF", width: 10, align: "left" },
-    ...shown.map(metricColumn),
+    ...extra,
   ];
+  // Measured the way the table draws them (header floor, gaps, lead gaps), so a
+  // column is only added when it fits whole.
+  const fits = (columns: DataTableColumn[]) => getTableWidth(columns) <= width;
+  let shown: DataTableColumn[] = [];
+  for (const field of others) {
+    const next = [...shown, metricColumn(field)];
+    if (!fits(build(next, false, false))) break;
+    shown = next;
+  }
+  const exchange = fits(build(shown, true, false));
+  const sector = exchange && fits(build(shown, true, true));
+  return build(shown, exchange, sector);
 }
-const noop = () => {};
 const loadFields = () => fetchScreenFields();
 function ScreenDetail({
   row,
@@ -627,95 +633,94 @@ function EquityScreenView({
     focused: focused && !saveForm && editing === null,
   });
   const bodyHeight = Math.max(5, height - 1 - (tabsInHeader ? 0 : 1));
-  return (
-    <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={TABS}
-          activeValue={mode}
-          onSelect={switchMode}
-          focused={focused && !saveForm && editing === null}
-          dense
+  const saveContent = !access.emailVerified ? (
+    <SignInWall
+      action="save and open your screens"
+      needsVerification={session.needsVerification}
+    />
+  ) : (
+    <Box paddingX={1} paddingTop={1} flexDirection="column" gap={1}>
+      <TextField
+        label="Screen name"
+        value={name}
+        onChange={setName}
+        onSubmit={() => {
+          void save();
+        }}
+        focused={focused && saveFocus === "name"}
+        onMouseDown={() => setSaveFocus("name")}
+        width={Math.min(45, width - 4)}
+      />
+      {actionError ? (
+        <Notice tone="negative">{actionError}</Notice>
+      ) : null}
+      <Box flexDirection="row" gap={1}>
+        <Button
+          label={currentSaved ? "Update screen" : "Save screen"}
+          variant="primary"
+          active={focused && saveFocus === "save"}
+          disabled={saving || !name.trim()}
+          onPress={() => {
+            void save();
+          }}
         />
-      )}
-      {saveForm ? (
-        !access.emailVerified ? (
-          <SignInWall
-            action="save and open your screens"
-            needsVerification={session.needsVerification}
+        {currentSaved ? (
+          <Button
+            label="Save copy"
+            variant="secondary"
+            active={focused && saveFocus === "copy"}
+            disabled={saving || !name.trim()}
+            onPress={() => {
+              void save(true);
+            }}
           />
-        ) : (
-          <Box paddingX={1} flexDirection="column" gap={1}>
-            <TextField
-              label="Screen name"
-              value={name}
-              onChange={setName}
-              onSubmit={() => {
-                void save();
-              }}
-              focused={focused && saveFocus === "name"}
-              onMouseDown={() => setSaveFocus("name")}
-              width={Math.min(45, width - 4)}
-            />
-            {actionError ? (
-              <Notice tone="negative">{actionError}</Notice>
-            ) : null}
-            <Box flexDirection="row" gap={1}>
-              <Button
-                label={currentSaved ? "Update screen" : "Save screen"}
-                variant="primary"
-                active={focused && saveFocus === "save"}
-                disabled={saving || !name.trim()}
-                onPress={() => {
-                  void save();
-                }}
-              />
-              {currentSaved ? (
-                <Button
-                  label="Save copy"
-                  variant="secondary"
-                  active={focused && saveFocus === "copy"}
-                  disabled={saving || !name.trim()}
-                  onPress={() => {
-                    void save(true);
+        ) : null}
+        <Button
+          label="Cancel"
+          variant="secondary"
+          active={focused && saveFocus === "cancel"}
+          onPress={() => setSaveForm(false)}
+        />
+      </Box>
+    </Box>
+  );
+  const editingCriterion =
+    editing !== null && editing >= 0 ? definition.criteria[editing] : undefined;
+  const body =
+    mode === "criteria" ? (
+      <PaneStatusBody
+        loading={fields.loading && !fields.data}
+        error={!fields.data ? fields.error : null}
+        subject="screen fields"
+      >
+        {fields.data ? (
+          <PageStackView
+            focused={focused && !saveForm}
+            detailOpen={editing !== null}
+            onBack={() => setEditing(null)}
+            detailTitle={
+              editingCriterion ? criterionText(editingCriterion) : "New criterion"
+            }
+            detailContent={
+              editing !== null ? (
+                <CriterionEditor
+                  key={editing}
+                  fields={fields.data.fields}
+                  value={editingCriterion ?? null}
+                  focused={focused}
+                  width={width}
+                  onCancel={() => setEditing(null)}
+                  onSave={(criterion) => {
+                    const criteria = [...definition.criteria];
+                    if (editing < 0) criteria.push(criterion);
+                    else criteria[editing] = criterion;
+                    apply({ ...definition, criteria });
+                    setEditing(null);
                   }}
                 />
-              ) : null}
-              <Button
-                label="Cancel"
-                variant="secondary"
-                active={focused && saveFocus === "cancel"}
-                onPress={() => setSaveForm(false)}
-              />
-            </Box>
-          </Box>
-        )
-      ) : mode === "criteria" ? (
-        <PaneStatusBody
-          loading={fields.loading && !fields.data}
-          error={!fields.data ? fields.error : null}
-          subject="screen fields"
-        >
-          {fields.data ? (
-            editing !== null ? (
-              <CriterionEditor
-                key={editing}
-                fields={fields.data.fields}
-                value={
-                  editing < 0 ? null : (definition.criteria[editing] ?? null)
-                }
-                focused={focused}
-                width={width}
-                onCancel={() => setEditing(null)}
-                onSave={(criterion) => {
-                  const criteria = [...definition.criteria];
-                  if (editing < 0) criteria.push(criterion);
-                  else criteria[editing] = criterion;
-                  apply({ ...definition, criteria });
-                  setEditing(null);
-                }}
-              />
-            ) : (
+              ) : null
+            }
+            rootContent={
               <>
                 <QueryBar
                   width={width}
@@ -750,7 +755,8 @@ function EquityScreenView({
                     {
                       id: "criterion",
                       label: "CRITERION",
-                      width: Math.max(20, width - 4),
+                      width: 20,
+                      flexGrow: 1,
                       align: "left",
                     },
                   ]}
@@ -758,7 +764,7 @@ function EquityScreenView({
                     id: String(index),
                     criterion,
                   }))}
-                  focused={focused}
+                  focused={focused && editing === null && !saveForm}
                   rootWidth={width}
                   rootHeight={bodyHeight - 1}
                   getItemKey={(row) => row.id}
@@ -772,191 +778,210 @@ function EquityScreenView({
                   renderCell={(row) => ({ text: criterionText(row.criterion) })}
                   sortColumnId={null}
                   sortDirection="asc"
-                  onHeaderClick={noop}
                   emptyStateTitle="No criteria. All covered equities match."
                 />
               </>
-            )
-          ) : null}
-        </PaneStatusBody>
-      ) : mode === "saved" ? (
-        !access.emailVerified ? (
-          <SignInWall
-            action="save and open your screens"
-            needsVerification={session.needsVerification}
+            }
           />
-        ) : (
-          <PaneStatusBody
-            loading={saved.loading && !saved.data}
-            error={!saved.data ? saved.error : null}
-            subject="saved screens"
-          >
-            <DataTableView
-              columns={[
-                { id: "name", label: "SCREEN", width: 28, align: "left" },
-                {
-                  id: "criteria",
-                  label: "CRITERIA",
-                  width: Math.max(20, width - 43),
-                  align: "left",
-                },
-                { id: "updatedAt", label: "UPDATED", width: 11, align: "left" },
-              ]}
-              items={saved.data ?? []}
-              focused={focused}
-              rootWidth={width}
-              rootHeight={bodyHeight}
-              getItemKey={(row) => row.id}
-              selection={{
-                kind: "id",
-                selectedId: selectedSaved?.id ?? null,
-                getId: (row) => row.id,
-                onChange: setSavedSelectedId,
-              }}
-              onActivate={(row) => {
-                apply(row.definition);
-                setCurrentSavedId(row.id);
-                setMode("results");
-              }}
-              renderCell={(row, column) => ({
-                text:
-                  column.id === "name"
-                    ? row.name
-                    : column.id === "updatedAt"
-                      ? date(row.updatedAt)
-                      : row.definition.criteria.map(criterionText).join("; "),
-              })}
-              sortColumnId={null}
-              sortDirection="asc"
-              onHeaderClick={noop}
-              emptyStateTitle="No saved screens."
-            />
-          </PaneStatusBody>
-        )
+        ) : null}
+      </PaneStatusBody>
+    ) : mode === "saved" ? (
+      !access.emailVerified ? (
+        <SignInWall
+          action="save and open your screens"
+          needsVerification={session.needsVerification}
+        />
       ) : (
         <PaneStatusBody
-          loading={results.loading && !data}
-          error={!data ? results.error : null}
-          subject="equity screen"
+          loading={saved.loading && !saved.data}
+          error={!saved.data ? saved.error : null}
+          subject="saved screens"
         >
-          {!opened ? (
-            <QueryBar
-              width={width}
-              filters={[{
-                id: "metric",
-                label: "Metric",
-                controlRef: queryControl,
-                value: metric,
-                options: metricFields.length
-                  ? metricFields.map((field) => ({
-                      value: field.id as NumericField,
-                      label: field.label,
-                    }))
-                  : [{ value: metric, label: screenLabel(metric) }],
-                onChange: (value: string) => {
-                  setMetric(value as NumericField);
-                  apply({
-                    ...definition,
-                    sort: { field: value as NumericField, direction: "desc" },
-                  });
-                },
-              }]}
-            />
-          ) : null}
-          <DataTableStackView
-            columns={columns}
-            items={rows}
-            focused={focused}
+          <DataTableView
+            columns={[
+              { id: "name", label: "SCREEN", width: 28, align: "left" },
+              {
+                id: "criteria",
+                label: "CRITERIA",
+                width: 20,
+                flexGrow: 1,
+                align: "left",
+              },
+              { id: "updatedAt", label: "UPDATED", width: 11, align: "left" },
+            ]}
+            items={saved.data ?? []}
+            focused={focused && !saveForm}
             rootWidth={width}
-            rootHeight={bodyHeight - 1}
-            scrollRef={tableScroll}
-            onBodyScrollActivity={loadMore}
-            resetScrollKey={JSON.stringify(definition)}
-            visibleRangeKey={JSON.stringify(definition)}
-            onVisibleRangeChange={setVisibleRange}
-            getItemKey={screenRowId}
+            rootHeight={bodyHeight}
+            getItemKey={(row) => row.id}
             selection={{
               kind: "id",
-              selectedId: selectedId ?? (rows[0] ? screenRowId(rows[0]) : null),
-              getId: screenRowId,
-              onChange: setSelectedId,
+              selectedId: selectedSaved?.id ?? null,
+              getId: (row) => row.id,
+              onChange: setSavedSelectedId,
             }}
-            onActivate={(row) => setOpenId(screenRowId(row))}
-            detailOpen={!!opened}
-            onBack={() => setOpenId(null)}
-            detailTitle={opened?.name ?? opened?.symbol}
-            detailContent={
-              opened ? (
-                <ScreenDetail
-                  row={opened}
-                  width={width}
-                  height={bodyHeight - 2}
-                />
-              ) : null
-            }
-            renderCell={(row, column) => {
-              const field = column.id.startsWith("m:")
-                ? (column.id.slice(2) as NumericField)
-                : null;
-              if (field) {
-                const observation = row.metrics[field];
-                return {
-                  text: formatScreenValue(field, observation.value),
-                  color: observation.state === "stale" ? colors.warning : undefined,
-                };
-              }
-              const focus = row.metrics[metric];
-              if (column.id === "percentile")
-                return { text: rank(focus.percentile.value) };
-              if (column.id === "date") {
-                const stamp = metricDate(focus);
-                return {
-                  text: stamp.text,
-                  color:
-                    focus.state === "stale"
-                      ? colors.warning
-                      : stamp.collected
-                        ? colors.textMuted
-                        : undefined,
-                };
-              }
-              if (column.id === "name")
-                return { text: row.name?.toUpperCase() ?? "--" };
-              return { text: String(row[column.id as "symbol"] ?? "--") };
+            onActivate={(row) => {
+              apply(row.definition);
+              setCurrentSavedId(row.id);
+              setMode("results");
             }}
-            sortColumnId={
-              (NUMERIC_FIELDS as readonly string[]).includes(definition.sort.field)
-                ? `m:${definition.sort.field}`
-                : definition.sort.field
-            }
-            sortDirection={definition.sort.direction}
-            onHeaderClick={(id) => {
-              const field = id.startsWith("m:")
-                ? (id.slice(2) as NumericField)
-                : id === "percentile" || id === "date"
-                  ? metric
-                  : ["symbol", "sector", "exchange"].includes(id)
-                    ? (id as ScreenField)
-                    : null;
-              if (!field) return;
-              if ((NUMERIC_FIELDS as readonly string[]).includes(field))
-                setMetric(field as NumericField);
-              apply({
-                ...definition,
-                sort: {
-                  field,
-                  direction:
-                    definition.sort.field === field &&
-                    definition.sort.direction === "desc"
-                      ? "asc"
-                      : "desc",
-                },
-              });
-            }}
-            emptyStateTitle="No equities match this screen."
+            renderCell={(row, column) => ({
+              text:
+                column.id === "name"
+                  ? row.name
+                  : column.id === "updatedAt"
+                    ? date(row.updatedAt)
+                    : row.definition.criteria.map(criterionText).join("; "),
+            })}
+            sortColumnId={null}
+            sortDirection="asc"
+            emptyStateTitle="No saved screens."
           />
         </PaneStatusBody>
+      )
+    ) : (
+      <PaneStatusBody
+        loading={results.loading && !data}
+        error={!data ? results.error : null}
+        subject="equity screen"
+      >
+        {!opened ? (
+          <QueryBar
+            width={width}
+            filters={[{
+              id: "metric",
+              label: "Metric",
+              controlRef: queryControl,
+              value: metric,
+              options: metricFields.length
+                ? metricFields.map((field) => ({
+                    value: field.id as NumericField,
+                    label: field.label,
+                  }))
+                : [{ value: metric, label: screenLabel(metric) }],
+              onChange: (value: string) => {
+                setMetric(value as NumericField);
+                apply({
+                  ...definition,
+                  sort: { field: value as NumericField, direction: "desc" },
+                });
+              },
+            }]}
+          />
+        ) : null}
+        <DataTableStackView
+          columns={columns}
+          items={rows}
+          focused={focused && !saveForm}
+          rootWidth={width}
+          rootHeight={bodyHeight - 1}
+          scrollRef={tableScroll}
+          onBodyScrollActivity={loadMore}
+          resetScrollKey={JSON.stringify(definition)}
+          visibleRangeKey={JSON.stringify(definition)}
+          onVisibleRangeChange={setVisibleRange}
+          getItemKey={screenRowId}
+          selection={{
+            kind: "id",
+            selectedId: selectedId ?? (rows[0] ? screenRowId(rows[0]) : null),
+            getId: screenRowId,
+            onChange: setSelectedId,
+          }}
+          onActivate={(row) => setOpenId(screenRowId(row))}
+          detailOpen={!!opened}
+          onBack={() => setOpenId(null)}
+          detailTitle={opened?.name ?? opened?.symbol}
+          detailContent={
+            opened ? (
+              <ScreenDetail
+                row={opened}
+                width={width}
+                height={bodyHeight - 2}
+              />
+            ) : null
+          }
+          renderCell={(row, column) => {
+            const field = column.id.startsWith("m:")
+              ? (column.id.slice(2) as NumericField)
+              : null;
+            if (field) {
+              const observation = row.metrics[field];
+              return {
+                text: formatScreenValue(field, observation.value),
+                color: observation.state === "stale" ? colors.warning : undefined,
+              };
+            }
+            const focus = row.metrics[metric];
+            if (column.id === "percentile")
+              return { text: rank(focus.percentile.value) };
+            if (column.id === "date") {
+              const stamp = metricDate(focus);
+              return {
+                text: stamp.text,
+                color:
+                  focus.state === "stale"
+                    ? colors.warning
+                    : stamp.collected
+                      ? colors.textMuted
+                      : undefined,
+              };
+            }
+            if (column.id === "name")
+              return { text: row.name?.toUpperCase() ?? "--" };
+            return { text: String(row[column.id as "symbol"] ?? "--") };
+          }}
+          sortColumnId={
+            (NUMERIC_FIELDS as readonly string[]).includes(definition.sort.field)
+              ? `m:${definition.sort.field}`
+              : definition.sort.field
+          }
+          sortDirection={definition.sort.direction}
+          onHeaderClick={(id) => {
+            const field = id.startsWith("m:")
+              ? (id.slice(2) as NumericField)
+              : id === "percentile" || id === "date"
+                ? metric
+                : ["symbol", "sector", "exchange"].includes(id)
+                  ? (id as ScreenField)
+                  : null;
+            if (!field) return;
+            if ((NUMERIC_FIELDS as readonly string[]).includes(field))
+              setMetric(field as NumericField);
+            apply({
+              ...definition,
+              sort: {
+                field,
+                direction:
+                  definition.sort.field === field &&
+                  definition.sort.direction === "desc"
+                    ? "asc"
+                    : "desc",
+              },
+            });
+          }}
+          emptyStateTitle="No equities match this screen."
+        />
+      </PaneStatusBody>
+    );
+  return (
+    <Box width={width} height={height} flexDirection="column">
+      {!tabsInHeader && (
+        <Tabs
+          tabs={TABS}
+          activeValue={mode}
+          onSelect={switchMode}
+          focused={focused && !saveForm && editing === null}
+          dense
+        />
       )}
+      <PageStackView
+        focused={focused}
+        detailOpen={saveForm}
+        onBack={() => setSaveForm(false)}
+        detailTitle="Save screen"
+        rootContent={body}
+        detailContent={saveForm ? saveContent : null}
+      />
     </Box>
   );
 }

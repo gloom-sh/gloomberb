@@ -26,8 +26,8 @@ const SECTOR_TABS = ["all", ...SECTOR_NEWS_SECTORS] as const;
 const DEFAULT_SORT: NewsSortPreference = { columnId: "time", direction: "desc" };
 
 /**
- * The all-sector response is already fetched for the tab counts, so a sector
- * tab filters that list instead of issuing a second identical request.
+ * Every sector tab filters the one all-sector response instead of issuing a
+ * second request for a slice of the same stories.
  */
 function useIndustryArticles(sector: SectorNewsSelection): {
   articles: MarketNewsItem[];
@@ -68,20 +68,10 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     "industry:openArticleId",
   );
   const { readArticleIds, markArticleRead } = useNewsReadState();
-  const counts = useMemo(() => {
-    const next: Record<string, number> = { all: allArticles.length };
-    for (const cat of SECTOR_TABS) {
-      if (cat === "all") continue;
-      next[cat] = allArticles.filter((article) => (
-        article.sectors.some((entry) => entry.toLowerCase() === cat)
-      )).length;
-    }
-    return next;
-  }, [allArticles]);
   const tabs = useMemo(() => SECTOR_TABS.map((cat) => ({
     value: cat,
-    label: counts[cat] ? `${sectorNewsLabel(cat)} ${counts[cat]}` : sectorNewsLabel(cat),
-  })), [counts]);
+    label: sectorNewsLabel(cat),
+  })), []);
 
   useEffect(() => {
     setSelectedArticleId(null);

@@ -62,10 +62,10 @@ export function curveTimestamp(value: string | null): string {
   return value?.replace("T", " ").slice(0, 16) ?? "--";
 }
 
-/** `window: false` when a line above already states the same sample window. */
-export function curveRank(value: number | null, samples: number, start: string | null, end: string | null, window = true): string {
+/** The rank against the contract's own history; one observation ranks nothing. */
+export function curveRank(value: number | null, samples: number): string {
   if (value == null || samples < 2) return "pctl unavailable";
-  return window ? `${value.toFixed(0)} pctl · ${samples} obs · ${start ?? "--"} to ${end ?? "--"}` : `${value.toFixed(0)} pctl`;
+  return `${value.toFixed(0)} pctl`;
 }
 
 export const CURVE_HORIZONS = [

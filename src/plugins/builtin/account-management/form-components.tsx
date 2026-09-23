@@ -1,6 +1,6 @@
 import { type ReactNode, type Ref } from "react";
 import { Checkbox, SelectButton, TextField, type ChoiceDialogChoice } from "../../../components";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import type { SelectControl } from "../../../components/ui/select-button";
 import type { AccountFieldKey, ProfileAnalyticsPreview } from "./model";
@@ -35,7 +35,7 @@ export function AccountTextField({
   const active = activeField === fieldKey;
   const labelWidth = accountFieldLabelWidth(width);
   const inputWidth = Math.max(8, width - labelWidth - 1);
-  const labelText = `${active ? "> " : "  "}${label}`;
+  const labelText = useFieldLabel()(label, active);
   return (
     <Box
       height={1}
@@ -64,6 +64,15 @@ export function AccountTextField({
       />
     </Box>
   );
+}
+
+/**
+ * The desktop field draws its own focus ring, so its label is plain. The
+ * terminal input only shows a cursor, so the active label keeps a marker.
+ */
+export function useFieldLabel(): (label: string, active: boolean) => string {
+  const { nativePaneChrome } = useUiCapabilities();
+  return (label, active) => nativePaneChrome ? label : `${active ? "> " : "  "}${label}`;
 }
 
 export function accountFieldLabelWidth(width: number) {
@@ -136,7 +145,7 @@ export function PublicAnalyticsGroup({
   onSelect: (value: string) => void;
 }) {
   const contentWidth = Math.max(1, width - 2);
-  const labelText = active ? `> ${t("Public Stats:")}` : `  ${t("Public Stats:")}`;
+  const labelText = useFieldLabel()(t("Public Stats:"), active);
   const labelWidth = Math.min(accountFieldLabelWidth(width), Math.max(1, contentWidth));
   const buttonWidth = Math.max(8, Math.min(24, contentWidth - labelWidth - 1));
   const normalizedDetail = (detail ?? "").replace(/\.+$/, "");

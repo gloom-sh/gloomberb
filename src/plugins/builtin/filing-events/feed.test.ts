@@ -47,7 +47,6 @@ describe("buildFilingEventsFeed", () => {
       const feed = JSON.parse(result.stdout.toString());
       expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["Sep 01, 26", filed, filed]);
       expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective Sep 01, 26");
-      expect(feed.summaryLine).toContain(`since ${filed}`);
     }
   });
 
@@ -60,7 +59,6 @@ describe("buildFilingEventsFeed", () => {
       ],
     })], 80);
     expect(feed.entries[0]?.filedLabel).toBe("Feb 29, 24");
-    expect(feed.summaryLine).toContain("since Feb 29, 24");
     expect(feed.entries[0]?.people.map((person) => person.detail)).toEqual([
       "CEO, joined, effective Feb 29, 24", "CFO, joined, effective —",
     ]);
@@ -82,7 +80,6 @@ describe("buildFilingEventsFeed", () => {
 
     expect(feed.sections.map((section) => section.id)).toEqual(["news", "also"]);
     expect(feed.entries.map((entry) => entry.id)).toEqual(["news", "routine"]);
-    expect(feed.summaryLine).toBe("2 filings since Jun 05, 26  ·  1 carries news");
   });
 
   test("keeps the exhibits label only when the filing has no other", () => {
@@ -114,8 +111,8 @@ describe("buildFilingEventsFeed", () => {
 
     const news = feed.entries[0]!;
     // A blank row and the filed row, two headline lines, a line per point, and
-    // a line for the person.
-    expect(news.top).toBe(headingLines);
+    // a line for the person. The first heading starts the feed without a blank row.
+    expect(news.top).toBe(headingLines - 1);
     expect(news.lines).toBe(2 + 2 + 2 + 1);
 
     // The second section pays for its own heading before its first entry.

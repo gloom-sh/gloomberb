@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { Section } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
@@ -14,27 +13,21 @@ export function SiteDetail({
   height,
   catalog,
   openTicker,
-  favoriteToggle,
 }: {
   site: BuildoutSite;
   bodyWidth: number;
   height: number;
   catalog: InlineTickerCatalog;
   openTicker: (symbol: string) => void;
-  favoriteToggle: ReactNode;
 }) {
   const sourceList = [...(site.discoverySources ?? []), ...(site.projectReportSources ?? [])];
   const specs = metadataSpecs(site.siteMetadata);
 
   return (
     <>
-      {favoriteToggle || site.ownerTicker ? (
-        <Box flexDirection="row" height={1} gap={1}>
-          {favoriteToggle}
-          {site.ownerTicker ? tickerBadges({
-            symbols: [site.ownerTicker],
-            width: Math.min(bodyWidth - (favoriteToggle ? 3 : 0), 16),
-          }) : null}
+      {site.ownerTicker ? (
+        <Box flexDirection="row" height={1}>
+          {tickerBadges({ symbols: [site.ownerTicker], width: Math.min(bodyWidth, 16) })}
         </Box>
       ) : null}
       <DetailSpecGrid

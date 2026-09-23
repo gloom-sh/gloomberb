@@ -239,9 +239,6 @@ export function TranscriptView({
   const meta = [
     formatCallDate(transcript.callAt),
     formatDuration(transcript.durationSeconds),
-    transcript.participants.length > 0
-      ? `${transcript.participants.length} speakers`
-      : null,
     transcript.sentiment !== null
       ? `sentiment ${formatSentiment(transcript.sentiment)}`
       : null,

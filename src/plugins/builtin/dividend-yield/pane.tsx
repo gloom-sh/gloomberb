@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   DataTableView,
-  KeyValueRow,
+  StatGrid,
   StaticChartSurface,
+  statGridColumns,
+  statGridRows,
   usePaneFooter,
   usePaneNoticeFooter,
   usePaneTicker,
   type DataTableCell,
   type DataTableKeyEvent,
+  type StatItem,
 } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
+import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
@@ -72,42 +75,36 @@ function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
   }
 }
 
-interface MetricRow {
-  label: string;
-  value: string;
-  color?: string;
-  bold?: boolean;
-}
-
-function buildMetricRows(metrics: DividendMetrics, currency: string): MetricRow[] {
-  return [
-    { label: "TTM Cash Yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0), bold: true },
-    { label: "Forward Yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
-    { label: "TTM Cash/Share", value: formatRate(metrics.trailingRate, currency) },
-    { label: "Forward/Share", value: formatRate(metrics.forwardRate, currency) },
-    { label: "1Y Cash Growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
-    { label: "3Y Cash CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
-    { label: "Earnings Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
-    { label: "Recent Cadence", value: formatFrequency(metrics.paymentFrequency) },
-    metrics.nextExDividendDate
-      ? { label: "Next Ex-Date", value: formatDate(metrics.nextExDividendDate) }
-      : { label: "Last Ex-Date", value: formatDate(metrics.lastExDividendDate) },
-    { label: "Next Pay", value: formatDate(metrics.nextPayDate) },
-  ];
-}
-
-function renderMetricCell(row: MetricRow, width: number) {
-  const rowWidth = Math.max(1, width - 1);
-  const valueWidth = Math.min(rowWidth, Math.max(6, row.value.length));
-  return (
-    <KeyValueRow label={row.label} value={row.value.padStart(valueWidth)}
-      width={rowWidth} labelWidth={rowWidth - valueWidth} color={row.color} emphasis={row.bold ?? false} />
-  );
+/**
+ * The dividend figures over the history chart. Labels stay short so a narrow
+ * terminal does not clip them. The latest ex-date is the table's first row, so
+ * it shows only when there is no table. Three columns read trailing, forward
+ * and schedule down the band; two read trailing beside forward.
+ */
+function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory: boolean, columns: number): StatItem[] {
+  const item = {
+    ttmYield: { id: "ttm-yield", label: "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
+    fwdYield: { id: "forward-yield", label: "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
+    ttmRate: { id: "ttm-rate", label: "TTM/share", value: formatRate(metrics.trailingRate, currency) },
+    fwdRate: { id: "forward-rate", label: "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
+    growth1Y: { id: "growth-1y", label: "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
+    cagr3Y: { id: "cagr-3y", label: "3Y CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
+    payout: { id: "payout", label: "Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
+    cadence: { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
+    nextPay: { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },
+  } satisfies Record<string, StatItem>;
+  const exDate: StatItem[] = metrics.nextExDividendDate
+    ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
+    : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
+  return columns === 3
+    ? [item.ttmYield, item.fwdYield, item.payout, item.ttmRate, item.fwdRate, item.cadence, item.growth1Y, item.cagr3Y, item.nextPay, ...exDate]
+    : [item.ttmYield, item.fwdYield, item.ttmRate, item.fwdRate, item.growth1Y, item.cagr3Y, item.payout, item.cadence, ...exDate, item.nextPay];
 }
 
 function DividendSummary({
   metrics,
   currency,
+  hasHistory,
   width,
   height,
   chartPoints,
@@ -115,16 +112,21 @@ function DividendSummary({
 }: {
   metrics: DividendMetrics;
   currency: string;
+  hasHistory: boolean;
   width: number;
   height: number;
   chartPoints: ProjectedChartPoint[];
   scrollRef: RefObject<ScrollBoxRenderable | null>;
 }) {
-  const metricRows = buildMetricRows(metrics, currency);
-  const minColumnWidth = Math.max(...metricRows.map((row) => row.label.length + 2 + Math.max(6, row.value.length)));
-  const columnCount = width - 2 >= minColumnWidth * 2 ? 2 : 1;
-  const colWidth = Math.max(1, Math.floor((width - 2) / columnCount));
-  const rowCount = Math.ceil(metricRows.length / columnCount);
+  const { nativePaneChrome } = useUiCapabilities();
+  // Up to three columns, and in the terminal no more than the labels can
+  // share: a label gets at most half its cell there.
+  const sample = buildMetricItems(metrics, currency, hasHistory, 2);
+  const labelChars = Math.max(...sample.map((item) => displayWidth(item.label)));
+  const columns = Math.min(3, statGridColumns(sample, width),
+    nativePaneChrome ? 3 : Math.max(1, Math.floor(width / (2 * (labelChars + 1) + 2))));
+  const metricItems = columns === 3 ? buildMetricItems(metrics, currency, hasHistory, 3) : sample;
+  const rowCount = statGridRows(metricItems, width, columns);
   const chartHeight = chartPoints.length >= 2 ? 6 : 0;
   // Keep the history header and three cash rows usable in a short pane.
   const summaryHeight = Math.min(rowCount + chartHeight, Math.max(1, height - 4));
@@ -133,18 +135,7 @@ function DividendSummary({
 
   return (
     <ScrollBox ref={scrollRef} scrollY focusable={false} height={summaryHeight} flexShrink={0}>
-      <Box flexDirection="column" paddingX={1} height={rowCount} flexShrink={0}>
-        {Array.from({ length: rowCount }, (_, i) => {
-          const left = metricRows[i * columnCount]!;
-          const right = columnCount > 1 ? metricRows[i * columnCount + 1] : undefined;
-          return (
-            <Box key={left.label} height={1} flexDirection="row">
-              <Box width={colWidth}>{renderMetricCell(left, colWidth)}</Box>
-              {right ? <Box width={colWidth}>{renderMetricCell(right, colWidth)}</Box> : null}
-            </Box>
-          );
-        })}
-      </Box>
+      <StatGrid items={metricItems} width={width} columns={columns} />
       {chartPoints.length >= 2 && (
         <Box flexDirection="column" paddingX={1} height={chartHeight} flexShrink={0}>
           <StaticChartSurface
@@ -256,7 +247,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildDividendColumns(width), [width]);
+  const columns = useMemo(() => buildDividendColumns(), []);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
@@ -306,6 +297,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
         <DividendSummary
           metrics={metrics}
           currency={currency}
+          hasHistory={sortedRows.length > 0}
           width={width}
           height={height}
           chartPoints={chartPoints}

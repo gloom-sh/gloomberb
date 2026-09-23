@@ -55,6 +55,11 @@ import { consumeRequestedThesis, subscribeRequestedThesis, type ThesisPaneReques
 import { thesisStore } from "./store";
 
 export const THESIS_PANE_ID = "thesis-board";
+/**
+ * The scope select's value for the whole book, whose collection id is null.
+ * Not a plain word, so a portfolio or watchlist id named "all" cannot collide.
+ */
+const ALL_SCOPE = "__all__";
 
 type BoardItem =
   | { kind: "header"; id: string; group: BoardGroup | "untracked" }
@@ -173,7 +178,10 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         .map((row): BoardItem => ({ kind: "untracked", id: `untracked:${row.symbol}`, group: "untracked", row })),
     ]);
   }, [exposure.nameOf, query, theses, untracked]);
-  const weightItems = useMemo(() => convictionRows(exposures), [exposures]);
+  const weightItems = useMemo(() => convictionRows(exposures).filter((row) => (
+    !query || [row.thesis.title, thesisNames(row.thesis, exposure.nameOf), ...row.thesis.document.instruments.map((entry) => entry.symbol)]
+      .some((field) => field?.toLowerCase().includes(query))
+  )), [exposure.nameOf, exposures, query]);
 
   const openThesis = openId ? thesisStore.get(openId) : null;
   useEffect(() => {
@@ -276,7 +284,6 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       if (column.id === "name") return { text: item.row.name ?? "", color: selectedColor ?? colors.textDim };
       if (column.id === "health") return { text: item.row.held ? "no thesis" : "watching", color: selectedColor ?? colors.textDim };
       if (column.id === "weight") return { text: item.row.weight > 0 ? pct(item.row.weight) : "", color: selectedColor ?? colors.textDim };
-      if (column.id === "catalyst") return { text: "enter to start one", color: selectedColor ?? colors.textMuted };
       return { text: "" };
     }
     const { thesis } = item;
@@ -357,24 +364,23 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         title: "Share of the book on weakening or broken theses",
       });
     }
-    if (exposure.scope.kind !== "all") {
-      segments.push({ id: "scope", parts: [{ text: exposure.scope.label, tone: "value" }], title: "Portfolio in view; p cycles" });
-    }
-    if (untracked.length > 0 && mode === "board") {
-      segments.push({ id: "untracked", parts: [{ text: `${untracked.length} without a thesis`, tone: "muted" }] });
-    }
     if (exposures.some((entry) => entry.hasOptions)) {
       segments.push({ id: "options", parts: [{ text: "* includes option premium", tone: "muted" }] });
     }
     return segments;
-  }, [atRisk, exposure.bookValue, exposure.scope.kind, exposure.scope.label, exposures, mode, snapshot.error, snapshot.loading, snapshot.offline, snapshot.theses.length, untracked.length]);
+  }, [atRisk, exposure.bookValue, exposures, snapshot.error, snapshot.loading, snapshot.offline, snapshot.theses.length]);
 
+  // Scope and view are in the query bar; p and w stay as their shortcuts.
+  const selectedUntracked = mode === "board"
+    ? boardItems.find((item): item is Extract<BoardItem, { kind: "untracked" }> => item.kind === "untracked" && item.id === selectedId)
+    : undefined;
   const hints = useMemo<PaneHint[]>(() => [
     { id: "search", key: "/", label: "search", onPress: focusSearch },
     { id: "new", key: "n", label: "ew", onPress: () => void startFor() },
-    { id: "scope", key: "p", label: "ortfolio", onPress: () => cycleScope(1) },
-    { id: "mode", key: "w", label: mode === "board" ? "eights" : " board", onPress: () => setMode(mode === "board" ? "weights" : "board") },
-  ], [cycleScope, focusSearch, mode, setMode, startFor]);
+    ...(selectedUntracked
+      ? [{ id: "start", key: "Enter", label: " start thesis", onPress: () => void startFor(selectedUntracked.row.symbol) }]
+      : []),
+  ], [focusSearch, selectedUntracked, startFor]);
 
   usePaneFooter("thesis-board", () => (openId || !signedIn ? null : { info: footerInfo, hints }), [footerInfo, hints, openId, signedIn]);
 
@@ -398,6 +404,40 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     />
   ) : <Box flexGrow={1} />;
 
+  const queryBar = (
+    <QueryBar
+      width={width}
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "ticker or company",
+        focused: focused && !openThesis,
+        active: searchFocused,
+        onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
+        focusToken: searchFocusToken,
+        inputRef: searchInputRef,
+        debounceMs: 80,
+        onNavigateDown: blurSearch,
+      }}
+      filters={[{
+        id: "scope",
+        label: "Portfolio",
+        value: exposure.scope.collectionId ?? ALL_SCOPE,
+        defaultValue: ALL_SCOPE,
+        options: exposure.scopes.map((entry) => ({ value: entry.collectionId ?? ALL_SCOPE, label: entry.label })),
+        onChange: (value: string) => setScopeId(value === ALL_SCOPE ? null : value),
+      }]}
+      view={{
+        value: mode,
+        options: [
+          { value: "board", label: "Board" },
+          { value: "weights", label: "Weights" },
+        ],
+        onChange: (value: "board" | "weights") => setMode(value),
+      }}
+    />
+  );
+
   if (mode === "weights") {
     return (
       <DataTableStackView<ReturnType<typeof convictionRows>[number], BoardColumn>
@@ -411,15 +451,15 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         onActivate={(row) => setOpenId(row.thesis.id)}
         rootWidth={width}
         rootHeight={height}
+        rootBefore={queryBar}
         columns={columns}
         items={weightItems}
         sortColumnId={null}
         sortDirection="desc"
-        onHeaderClick={() => {}}
         getItemKey={(row) => row.thesis.id}
         renderCell={renderWeightCell}
-        emptyStateTitle="No active thesis with a position."
-        emptyStateHint="Conviction is compared with weight once a thesis holds something."
+        emptyStateTitle={query ? "Nothing matches." : "No active thesis with a position."}
+        emptyStateHint={query ? undefined : "Conviction is compared with weight once a thesis holds something."}
         showHorizontalScrollbar={false}
       />
     );
@@ -437,28 +477,11 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       onActivate={activate}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={(
-        <QueryBar
-          width={width}
-          search={{
-            value: searchQuery,
-            onChange: setSearchQuery,
-            placeholder: `ticker or company in ${exposure.scope.label.toLowerCase()}`,
-            focused: focused && !openThesis,
-            active: searchFocused,
-            onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
-            focusToken: searchFocusToken,
-            inputRef: searchInputRef,
-            debounceMs: 80,
-            onNavigateDown: blurSearch,
-          }}
-        />
-      )}
+      rootBefore={queryBar}
       columns={columns}
       items={boardItems}
       sortColumnId={null}
       sortDirection="desc"
-      onHeaderClick={() => {}}
       getItemKey={(item) => item.id}
       renderCell={renderBoardCell}
       isNavigable={(item) => item.kind !== "header"}
@@ -466,7 +489,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         ? { text: item.group === "untracked" ? "Positions without a thesis" : groupLabel(item.group), color: colors.textDim, attributes: TextAttributes.BOLD }
         : null)}
       emptyStateTitle={query ? "Nothing matches." : "No theses yet."}
-      emptyStateHint={query ? undefined : "Press n, or open a ticker's Thesis tab."}
+      emptyStateHint={query ? undefined : "Start one here or from a ticker's Thesis tab."}
       showHorizontalScrollbar={false}
     />
   );

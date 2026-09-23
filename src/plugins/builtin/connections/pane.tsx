@@ -50,18 +50,15 @@ function formatLatency(latencyMs: number | null): string {
 }
 
 function columnsForWidth(width: number): ConnectionColumn[] {
-  const statusWidth = 13;
-  const latencyWidth = 8;
-  const lastWidth = 9;
-  const requestWidth = width >= 72 ? 18 : 0;
-  // Floor low enough that a narrow pane scrolls horizontally instead of clipping.
-  const serviceWidth = Math.max(10, width - statusWidth - latencyWidth - lastWidth - requestWidth - 4);
+  // SERVICE takes the room left over; the kit spreads it, so the fixed columns
+  // (and the gaps between them) always fit.
+  const showRequest = width >= 72;
   return [
-    { id: "service", label: "SERVICE", width: serviceWidth, align: "left" },
-    { id: "status", label: "STATUS", width: statusWidth, align: "left" },
-    ...(requestWidth > 0 ? [{ id: "request", label: "REQUEST", width: requestWidth, align: "left" } as ConnectionColumn] : []),
-    { id: "latency", label: "LATENCY", width: latencyWidth, align: "right" },
-    { id: "last", label: "LAST", width: lastWidth, align: "right" },
+    { id: "service", label: "SERVICE", width: 16, align: "left", flexGrow: 1 },
+    { id: "status", label: "STATUS", width: 13, align: "left" },
+    ...(showRequest ? [{ id: "request", label: "REQUEST", width: 18, align: "left" } as ConnectionColumn] : []),
+    { id: "latency", label: "LATENCY", width: 8, align: "right" },
+    { id: "last", label: "LAST", width: 9, align: "right" },
   ];
 }
 
@@ -197,9 +194,9 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
   }), [connecting, cycleSort, detailOpen, issues]);
 
   const renderCell = useCallback((source: ConnectionHealthState, column: ConnectionColumn): DataTableCell => {
-    if (column.id === "service") return { text: truncateToDisplayWidth(source.name, column.width), color: colors.text };
+    if (column.id === "service") return { text: source.name, color: colors.text };
     if (column.id === "status") return { text: statusLabel(source.status), color: statusColor(source.status) };
-    if (column.id === "request") return { text: truncateToDisplayWidth(source.lastOperation ?? "-", column.width), color: colors.textDim };
+    if (column.id === "request") return { text: source.lastOperation ?? "-", color: colors.textDim };
     if (column.id === "latency") return { text: formatLatency(source.lastLatencyMs), color: source.status === "error" ? colors.negative : colors.textMuted };
     return { text: source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : "-", color: colors.textMuted };
   }, [now]);

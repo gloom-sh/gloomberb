@@ -9,11 +9,11 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { Button, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, type PaneHint } from "../../../../components";
+import { Button, QueryBar, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
-import { Box, ScrollBox, Span, Text, TextAttributes, useRendererHost } from "../../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { chatController } from "../../chat/controller";
@@ -38,6 +38,7 @@ import {
   describeMemberCount,
   draftChanges,
   draftFromTeam,
+  draftProblem,
   emptyTeamDraft,
   nextFieldId,
   sectionFieldIds,
@@ -57,7 +58,7 @@ import {
   MembersSection,
   SettingsSection,
 } from "./pane-sections";
-import { Muted, StatusLine, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
+import { Muted, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
 import { teamStore } from "./store";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
@@ -171,6 +172,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const rendererHost = useRendererHost();
   const openUpgrade = useCloudUpgradeAction();
   const plan = usePlanAccess();
+  const { nativePaneChrome } = useUiCapabilities();
   const snapshot = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
     () => teamStore.getSnapshot(),
@@ -288,18 +290,25 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     [activeField, focused, register, setActiveField],
   );
 
+  // Each result is a toast, and the last one stays in the footer until the
+  // next action or view change.
+  const report = useCallback((result: Message) => {
+    setMessage(result);
+    if (result) notify({ body: result.text, type: result.tone });
+  }, [notify]);
+
   const run = useCallback(async (key: string, work: () => Promise<Message>) => {
     if (busy) return;
     setBusy(key);
     setMessage(null);
     try {
-      setMessage(await work());
+      report(await work());
     } catch (error) {
-      setMessage({ tone: "error", text: errorText(error, "That did not work.") });
+      report({ tone: "error", text: errorText(error, "That did not work.") });
     } finally {
       setBusy(null);
     }
-  }, [busy]);
+  }, [busy, report]);
 
   const openChannel = useCallback((channel: ChatChannel | string) => {
     createPaneFromTemplate("new-chat-pane", { arg: typeof channel === "string" ? channel : channel.id });
@@ -318,9 +327,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     setTeamId(created.id);
     setSection("invites");
     setCreateDraft(emptyTeamDraft());
-    notify({ body: `${created.name} is ready. Invite people, then find its #general in chat.`, type: "success" });
-    return { tone: "success", text: `Created ${teamPrefix(created)} ${created.name}. Now invite a few people.` };
-  }), [createDraft, notify, run]);
+    return { tone: "success", text: `${teamPrefix(created)} ${created.name} is ready. Invite people, then find its #general in chat.` };
+  }), [createDraft, run]);
 
   const saveSettings = useCallback(() => {
     if (!team) return;
@@ -363,11 +371,11 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const copyLink = useCallback(async (link: TeamInviteLink) => {
     try {
       await rendererHost.copyText(link.url);
-      setMessage({ tone: "success", text: "Invite link copied." });
+      report({ tone: "success", text: "Invite link copied." });
     } catch {
-      setMessage({ tone: "info", text: link.url });
+      report({ tone: "info", text: link.url });
     }
-  }, [rendererHost]);
+  }, [rendererHost, report]);
 
   const newLink = useCallback(() => {
     if (!team) return;
@@ -475,16 +483,28 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (team) {
       list.push({ id: "chat", key: "c", label: "hat", onPress: () => openChannel(teamChannelId(team.id)) });
       if (canInviteToTeam(team)) list.push({ id: "invite", key: "i", label: "nvite", onPress: () => setSection("invites") });
+      if (section === "settings" && canManageTeam(team.role)) {
+        // Disabled exactly when the Save button is.
+        list.push({ id: "save", key: "Ctrl+S", label: "save", onPress: saveSettings, disabled: !dirty || !!draftProblem(draft) });
+      }
     }
     return list;
-  }, [openChannel, showCreate, signedIn, snapshot.teams.length, team]);
+  }, [dirty, draft, openChannel, saveSettings, section, showCreate, signedIn, snapshot.teams.length, team]);
+  const result = message ?? (details.error ? { tone: "error" as const, text: details.error } : null);
   usePaneFooter(TEAM_PANE_ID, () => ({
     info: [
       ...(busy ? [{ id: "busy", parts: [{ text: "working", tone: "muted" as const }] }] : []),
       ...(details.loading && !busy ? [{ id: "loading", parts: [{ text: "syncing", tone: "muted" as const }] }] : []),
+      ...(result && !busy ? [{
+        id: "result",
+        parts: [{
+          text: result.text,
+          tone: result.tone === "error" ? "negative" as const : result.tone === "success" ? "positive" as const : "muted" as const,
+        }],
+      } satisfies PaneFooterSegment] : []),
     ],
     hints,
-  }), [busy, details.loading, hints]);
+  }), [busy, details.loading, hints, result]);
 
   useShortcut((event) => {
     if (!focused || !showCreate || snapshot.teams.length === 0) return;
@@ -532,17 +552,19 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const contentWidth = Math.max(24, width - 2);
   const banners = snapshot.invitations;
   const tabRows = tabsInHeader ? 0 : 1;
-  const headerRows = 1 + tabRows + (banners.length > 0 ? banners.length + 1 : 0) + (message ? 1 : 0);
-  const bodyHeight = Math.max(3, height - headerRows - 1);
+  // The section bar or the teams status line; the create form has neither.
+  const sectionRows = showCreate ? 0 : 1;
+  const headerRows = sectionRows + tabRows + (banners.length > 0 ? banners.length + 1 : 0);
+  const bodyHeight = Math.max(3, height - headerRows);
 
   return (
     <TeamPaneFocusContext value={focus}>
-      <Box flexDirection="column" width={width} height={height} paddingX={1}>
+      <Box flexDirection="column" width={width} height={height}>
         {banners.map((invitation) => (
           <InvitationBanner
             key={invitation.id}
             invitation={invitation}
-            width={contentWidth}
+            width={width}
             busy={busy === `accept:${invitation.id}` || busy === `decline:${invitation.id}`}
             onAccept={() => { void acceptInvitation(invitation); }}
             onDecline={() => { void declineInvitation(invitation); }}
@@ -552,7 +574,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
 
         {/* Team switcher: one pill per team in its accent, plus the form. */}
         {!tabsInHeader && (
-          <Box height={1} flexDirection="row" alignItems="center">
+          <Box height={1} flexDirection="row" alignItems="center" paddingX={1}>
             <Tabs
               tabs={teamTabs}
               activeValue={showCreate ? "__create" : team?.id ?? null}
@@ -567,40 +589,32 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
           </Box>
         )}
 
-        {showCreate ? (
-          <Box height={1} />
-        ) : team ? (
-          <Box height={1} flexDirection="row" alignItems="center" gap={2}>
-            <Tabs
-              tabs={TEAM_PANE_SECTIONS.map((entry) => ({
-                label: entry.label,
-                value: entry.value,
-                ...(entry.value === "invites" && details.invitations.length > 0 ? { label: `Invites (${details.invitations.length})` } : {}),
-                ...(entry.value === "members" ? { label: `Members (${team.memberCount})` } : {}),
-              }))}
-              activeValue={section}
-              onSelect={(value) => { setSection(value as TeamPaneSection); setMessage(null); }}
-              focused={focused}
-              variant="underline"
-              compact
-              keyboardNavigation={false}
-            />
-            <Box flexGrow={1} />
-            <Text fg={colors.textMuted}>
-              <Span fg={teamAccentHex(team.accentColor)}>●</Span>
-              {` ${team.role} · ${describeMemberCount(team.memberCount)}`}
-            </Text>
-          </Box>
+        {showCreate ? null : team ? (
+          <QueryBar
+            width={width}
+            filters={[{
+              id: "section",
+              label: "Section",
+              inline: true,
+              value: section,
+              options: TEAM_PANE_SECTIONS,
+              onChange: (value: TeamPaneSection) => { setSection(value); setMessage(null); },
+            }]}
+            meta={team.role}
+          />
         ) : (
-          <Box height={1}>
+          <Box height={1} paddingX={1}>
             <Muted>{snapshot.loading ? loadingText("teams") : snapshot.error ?? ""}</Muted>
           </Box>
         )}
 
-        <StatusLine message={message ?? (details.error ? { tone: "error", text: details.error } : null)} />
-
-        <ScrollBox height={bodyHeight} scrollY focusable={false}>
-          <Box flexDirection="column" width={contentWidth} paddingTop={1}>
+        {/* The desktop section bar is taller than a cell, so the body takes what is left. */}
+        <ScrollBox
+          {...(nativePaneChrome ? { flexGrow: 1, flexBasis: 0, minHeight: 0 } : { height: bodyHeight })}
+          scrollY
+          focusable={false}
+        >
+          <Box flexDirection="column" width={contentWidth + 2} paddingX={1} paddingTop={1}>
             {showCreate ? (
               <CreateTeamForm
                 draft={createDraft}
@@ -697,7 +711,6 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                     void teamStore.refresh();
                     void chatController.refreshChatState();
                     setTeamId(null);
-                    notify({ body: `You left ${team.name}.`, type: "info" });
                     if (teamStore.getSnapshot().teams.length <= 1) close?.();
                     return { tone: "info", text: `You left ${team.name}.` };
                   });
@@ -709,7 +722,6 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                     void teamStore.refresh();
                     void chatController.refreshChatState();
                     setTeamId(null);
-                    notify({ body: `Deleted ${team.name}.`, type: "info" });
                     if (teamStore.getSnapshot().teams.length <= 1) close?.();
                     return { tone: "info", text: `Deleted ${team.name}.` };
                   });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, CurveSurface, Notice, PaneStatusBody, TextField, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
+import { CurveSurface, Notice, PaneStatusBody, QueryBar, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -30,10 +30,11 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   const [requestedDate, setRequestedDate] = usePaneSettingValue<string>("asOfDate", "");
   const [draftDate, setDraftDate] = useState(requestedDate);
   const [dateError, setDateError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [dateActive, setDateActive] = useState(false);
+  const [dateFocusToken, setDateFocusToken] = useState(0);
   const dateInput = useRef<InputRenderable>(null);
-  useEffect(() => { if (editing) dateInput.current?.focus?.(); }, [editing]);
-  useEffect(() => { setDraftDate(requestedDate); }, [requestedDate]);
+  // Leaving the field without Enter puts back the date the curve shows.
+  useEffect(() => { if (!dateActive) setDraftDate(requestedDate); }, [dateActive, requestedDate]);
   const loadCurve = useCallback(async () => ({
     requestedDate,
     points: completeYieldCurve(requestedDate
@@ -51,7 +52,8 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       setRequestedDate(nextDate);
       setDraftDate(nextDate);
       setDateError(null);
-      setEditing(false);
+      setDateActive(false);
+      // Show the start of the date once the field is left, not the scrolled tail.
       if (dateInput.current?.setCursorOffset) dateInput.current.setCursorOffset(0);
       else if (dateInput.current) dateInput.current.cursorOffset = 0;
       dateInput.current?.blur?.();
@@ -60,12 +62,16 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       setDateError(error instanceof Error ? error.message : String(error));
     }
   };
+  const editDate = () => {
+    setDateActive(true);
+    setDateFocusToken((token) => token + 1);
+  };
 
   useShortcut((ev) => {
-    if (!focused || editing) return;
+    if (!focused || dateActive) return;
     if (ev.name === "d") {
       ev.preventDefault();
-      setEditing(true);
+      editDate();
     } else if (ev.name === "r") {
       void load();
     } else if (ev.name === "l") {
@@ -75,15 +81,13 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   const bp = spreadBasisPoints(points);
   // Treasury series are daily closes, so which session the curve represents is
-  // status the user needs; "updated Xm ago" only says when we last fetched it.
+  // context the query bar carries; "updated Xm ago" only says when we fetched it.
   const asOf = curveAsOf(points);
   const sourceError = yieldCurveErrors(points).join("; ");
 
   const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
       ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y−2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
-      ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
-      ...(requestedDate && requestedDate !== asOf ? [{ id: "requested", parts: [{ text: `requested ${requestedDate}`, tone: "muted" as const }] }] : []),
-  ], [asOf, bp, requestedDate]);
+  ], [bp]);
   // Limitations of a curve that is still drawn sit behind one warning indicator.
   const missingTenors = points.filter((point) => point.yield == null).map((point) => point.maturity);
   usePaneNoticeFooter({
@@ -102,30 +106,53 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     error: error || sourceError || null,
     info: error || sourceError ? [] : yieldStatus,
     hints: [
-      { id: "date", key: "d", label: "ate", onPress: () => setEditing(true) },
+      { id: "date", key: "d", label: "ate", onPress: editDate },
       ...(requestedDate ? [{ id: "latest", key: "l", label: "atest", onPress: () => selectDate("") }] : []),
     ],
   });
 
-  const series = useMemo(() => [buildYieldCurveSeries(points)], [points]);
+  // The query bar carries the session date, so the legend does not repeat it;
+  // each point keeps its own date for the table when the tenors differ.
+  const series = useMemo(() => [{ ...buildYieldCurveSeries(points), asOf: undefined }], [points]);
+  const queryBar = (
+    <QueryBar
+      width={width}
+      filters={[{
+        id: "date",
+        kind: "text",
+        label: "Date",
+        value: draftDate,
+        placeholder: "latest",
+        width: 10,
+        debounceMs: 0,
+        focused,
+        active: dateActive,
+        onActiveChange: setDateActive,
+        focusToken: dateFocusToken,
+        inputRef: dateInput,
+        // Typing only edits the draft; Enter applies it. Clearing the chip
+        // (outside the field) goes back to the latest session.
+        onChange: (value: string) => {
+          setDraftDate(value);
+          if (!dateActive && !value.trim() && requestedDate) selectDate("");
+        },
+        onSubmit: selectDate,
+      }]}
+      // The session actually shown; a requested date the field already shows is not repeated.
+      meta={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
+    />
+  );
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {editing ? <Box flexDirection="row" paddingX={1} gap={1} alignItems="flex-end" flexShrink={0}>
-        <TextField label="As-of date" type="date" value={draftDate} width={12}
-          placeholder="YYYY-MM-DD" inputRef={dateInput} focused={focused && editing}
-          onChange={setDraftDate} onSubmit={selectDate}
-          onMouseDown={() => setEditing(true)}
-          onKeyDown={(event) => {
-            if (event.name === "escape") { setEditing(false); dateInput.current?.blur?.(); }
-          }} />
-        <Button label="View" onPress={() => selectDate(draftDate)} compact />
-      </Box> : null}
+      {queryBar}
       {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
       <PaneStatusBody loading={loading && points.length === 0} error={points.length === 0 ? error : null}
         loadingLabel="Loading yield curve..." subject="yield curve">
-        <CurveSurface series={series} width={width} height={Math.max(1, height - (editing ? 3 : 0) - (dateError ? 1 : 0))}
-          focused={focused && !editing} display={asOf ? "both" : "table"} valueLabel="Yield (%)"
+        {/* Mixed tenor dates still draw the curve: the table's As of column and
+            the footer warning say which tenors differ. */}
+        <CurveSurface series={series} width={width} height={Math.max(1, height - 1 - (dateError ? 1 : 0))}
+          focused={focused && !dateActive} display="both" valueLabel="Yield (%)"
           formatValue={formatYieldAxis} formatX={formatMaturityYears} />
       </PaneStatusBody>
     </Box>

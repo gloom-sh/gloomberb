@@ -293,7 +293,7 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const failedAfterEmpty = await frame();
   expect(failedAfterEmpty).not.toContain(recentDate);
-  expect(failedAfterEmpty).toMatch(/TTM Cash Yield\s+—/);
+  expect(failedAfterEmpty).toMatch(/TTM yield\s+—/);
   mode = "complete";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const restored = await frame();
@@ -337,15 +337,15 @@ test("short dividend panes keep history navigable while paging the complete summ
   });
   const latest = payments[0]!.exDate.toISOString().slice(0, 10);
   expect(await frame()).toContain(latest);
-  expect(await frame()).toContain("TTM Cash Yield");
+  expect(await frame()).toContain("TTM yield");
   for (let index = 0; index < 2; index++) await emitKeypress(setup!, { name: "pagedown" }, { trackPropagation: true });
-  expect(await frame()).toContain("Next Pay");
+  expect(await frame()).toContain("Next pay");
   expect(await frame()).toContain("2030-01-15");
   expect(await frame()).toContain(latest);
   await emitKeypress(setup!, Array.from({ length: 8 }, () => ({ name: "down" })), { trackPropagation: true });
   expect((await frame()).split("EX-DATE")[1]).not.toContain(latest);
   expect(await frame()).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
   for (let index = 0; index < 2; index++) await emitKeypress(setup!, { name: "pageup" }, { trackPropagation: true });
-  expect(await frame()).toContain("TTM Cash Yield");
+  expect(await frame()).toContain("TTM yield");
   expect(await frame()).toContain(payments[8]!.exDate.toISOString().slice(0, 10));
 });

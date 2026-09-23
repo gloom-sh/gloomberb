@@ -1,8 +1,11 @@
 import { isPlainKey } from "../../../utils/keyboard";
 import { useCallback, useMemo, useState } from "react";
+import { Box } from "../../../ui";
 import {
+  Button,
   ConfirmDialog,
   DataTableView,
+  EmptyState,
   usePaneFooter,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -207,7 +210,15 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
             : colors.text,
       })}
       emptyStateTitle={error ?? "No event alerts"}
-      emptyStateHint={error ? undefined : "Follow filings, news, earnings, members, funds or market moves."}
+      emptyContent={error ? undefined : (
+        <Box paddingX={1} paddingY={1}>
+          <EmptyState
+            title="No event alerts"
+            message="Follow filings, news, earnings, members, funds or market moves."
+            actions={<Button label="Add event alert" compact onPress={add} />}
+          />
+        </Box>
+      )}
     />
   );
 }

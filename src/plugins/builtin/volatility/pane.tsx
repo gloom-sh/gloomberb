@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
+  type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
@@ -15,9 +15,8 @@ import { useAutoRefresh } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
-import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES,
-  withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
-import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityRatioChart, VolatilityIndexHistoryChart } from "./charts";
+import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
+import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityIndexHistoryChart } from "./charts";
 import { useVolatilityEvidence } from "./evidence";
 
 /** Streamed index levels rebuild the board at most this often. */
@@ -40,6 +39,7 @@ const CURVE_COLUMNS: DataTableColumn[] = [
 const number = (value: number | null | undefined, signed = false) => value == null || !Number.isFinite(value)
   ? "--" : `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}`;
 const percentile = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
+const TERM_STATE_LABELS: Record<string, string> = { normal: "Contango", inverted: "Backwardation", flat: "Flat", partial: "Partial" };
 
 export function VolatilityPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
@@ -151,33 +151,32 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const contentHeight = Math.max(5, height - tabRows);
   // The board needs only its rows; the selected index history takes the rest.
   const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
-  const curveTableHeight = Math.min(8, Math.max(4, Math.floor(contentHeight * 0.3)));
-  const historyHeight = Math.max(3, Math.floor(contentHeight * 0.6));
+  const curve = data?.curve;
+  // The tenor table needs only its rows; the curve chart takes the rest.
+  const curveTableHeight = Math.min(Math.max(2, (curve?.points.length ?? 0) + 1), 8, Math.max(4, Math.floor(contentHeight * 0.3)));
+  const curveStats: StatItem[] = curve ? [
+    { id: "structure", label: "Structure", value: TERM_STATE_LABELS[curve.termState] ?? curve.termState,
+      tone: curve.termState === "inverted" ? "warning" : curve.termState === "normal" ? "positive" : "neutral" },
+    { id: "ratio", label: "3M/30D", value: number(curve.ratio),
+      detail: curve.ratio == null ? undefined : `${percentile(curve.ratioPercentile1y)} pctl 1Y` },
+    { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
+  ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused} />}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
       {data && tab === "curve" && <>
-        <Box height={1} flexDirection="row" paddingX={1} gap={3} overflow="hidden">
-          <Badge label={data.curve.termState === "normal" ? "CONTANGO" : data.curve.termState === "inverted" ? "BACKWARDATION" : data.curve.termState.toUpperCase()}
-            tone={data.curve.termState === "inverted" ? "warning" : data.curve.termState === "normal" ? "positive" : "neutral"} />
-          <KeyValueRow label="3M/30D" labelWidth={7} value={number(data.curve.ratio)}
-            detail={data.curve.ratioPercentile1y == null ? data.curve.ratio == null ? undefined : "pctl 1Y --" : `${percentile(data.curve.ratioPercentile1y)} pctl 1Y (${data.curve.ratioSampleSize})`} />
-          <KeyValueRow label="Spread" labelWidth={7} value={`${number(data.curve.slope, true)} pts`} />
-        </Box>
-        <VolatilityCurveChart curve={data.curve} width={width} height={Math.max(4, contentHeight - curveTableHeight - 1)} />
+        <StatGrid items={curveStats} width={width} />
+        <VolatilityCurveChart curve={data.curve} width={width} height={Math.max(4, contentHeight - curveTableHeight - statGridRows(curveStats, width))} />
         <DataTableView focused={focused} columns={CURVE_COLUMNS} items={data.curve.points} rootWidth={width} rootHeight={curveTableHeight}
           emptyStateTitle="VIX curve unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: setSelectedId }}
           onActivate={(row) => { setSelectedId(row.id); setTab("board"); }} onRootKeyDown={handleKey}
-          sortColumnId={null} sortDirection="asc" onHeaderClick={() => {}}
+          sortColumnId={null} sortDirection="asc"
           getExportMetadata={() => [["as of", data.curve.date], ["source", data.curve.source], ["units", "IV percent"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "value" ? number(row.value) : String(row.tenor),
             color: row.value == null ? colors.textMuted : column.id === "value" ? colors.warning : colors.text })} />
       </>}
-      {data && tab === "history" && <>
-        <VolatilityHistoryChart fred={data.fred} width={width} height={historyHeight} />
-        <VolatilityRatioChart fred={data.fred} width={width} height={Math.max(3, contentHeight - historyHeight)} />
-      </>}
+      {data && tab === "history" && <VolatilityHistoryChart fred={data.fred} width={width} height={contentHeight} />}
       {data && tab === "board" && <>
         <DataTableView<VolatilityBoardRow> focused={focused} columns={BOARD_COLUMNS} items={rows} rootWidth={width} rootHeight={boardHeight}
           emptyStateTitle="Volatility indices unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}

@@ -221,3 +221,15 @@ export function buildCommunityEntries(items: readonly LayoutMarketplaceEntry[]):
     publishedAt: item.publishedAt,
   }));
 }
+
+/** The entry the desktop previews: the picked one, else the layout in use, else the first. */
+export function resolvePreviewEntry(gallery: {
+  entries: readonly GalleryEntry[];
+  owned: readonly GalleryEntry[];
+  selectedId: string | null;
+}): GalleryEntry | null {
+  return gallery.entries.find((entry) => entry.id === gallery.selectedId)
+    ?? gallery.owned.find((entry) => entry.active)
+    ?? gallery.entries[0]
+    ?? null;
+}

@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
+import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -125,16 +125,13 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
       : []),
   });
 
-  // The ticker set and range are visible in-pane, so the footer only carries
-  // load state and errors.
+  // The ticker set and range are visible in-pane and an invalid list shows in
+  // the body, so the footer only carries load state. `r` is global: no hint.
   usePaneFooter("correlation", () => ({
-    info: settings.symbolsError
-      ? [{ id: "error", parts: [{ text: settings.symbolsError, tone: "warning" as const }] }]
-      : statusSummary
-        ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
-        : [],
-    hints: [{ id: "refresh", key: "r", label: "efresh", onPress: refresh }],
-  }), [settings.symbolsError, statusSummary, refresh]);
+    info: !settings.symbolsError && symbols.length >= 2 && statusSummary
+      ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
+      : [],
+  }), [settings.symbolsError, statusSummary, symbols.length]);
 
   const openSymbol = useCallback((symbol: string) => {
     if (tickers.has(symbol)) {
@@ -148,33 +145,22 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
     setHoveredSymbol((current) => (current === symbol ? null : current));
   }, []);
 
-  if (settings.symbolsError) {
-    return (
-      <Box flexDirection="column" width={width} height={height} paddingX={2} paddingY={1}>
-        <Text fg={colors.negative}>Invalid CORR tickers: {settings.symbolsError}</Text>
-        <Text fg={colors.textMuted}>Open pane settings and enter tickers like AAPL, MSFT, NVDA.</Text>
-      </Box>
-    );
-  }
-
-  if (symbols.length < 2) {
-    return (
-      <Box flexDirection="column" width={width} height={height} paddingX={2} paddingY={1}>
-        <Text fg={colors.textMuted}>Enter at least 2 tickers in pane settings</Text>
-      </Box>
-    );
-  }
-
   const headerBg = colors.panel;
   const rowHeaderWidth = Math.max(
     ROW_HEADER_WIDTH,
-    Math.min(12, Math.max(...symbols.map((symbol) => displaySymbol(symbol).length)) + 2),
+    Math.min(12, Math.max(0, ...symbols.map((symbol) => displaySymbol(symbol).length)) + 2),
   );
-  const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, symbols.length * MIN_MATRIX_CELL_WIDTH)) / symbols.length);
+  const cellCount = Math.max(1, symbols.length);
+  const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, cellCount * MIN_MATRIX_CELL_WIDTH)) / cellCount);
   const cellWidth = Math.max(MIN_MATRIX_CELL_WIDTH, Math.min(MATRIX_CELL_WIDTH, availableCellWidth));
-  // Rows are exactly as wide as the matrix, so the zebra and hover bands stop at
-  // the last column instead of running to the pane edge.
-  const matrixRowWidth = rowHeaderWidth + symbols.length * cellWidth + 2;
+  // Rows are exactly as wide as the matrix (after the one-cell inset), so the
+  // zebra and hover bands stop at the last column instead of running on.
+  const matrixRowWidth = 1 + rowHeaderWidth + symbols.length * cellWidth;
+  const bodyStatus = settings.symbolsError
+    ? <PaneStatusBody error={settings.symbolsError} />
+    : symbols.length < 2
+      ? <PaneStatusBody empty emptyTitle="Enter at least 2 tickers." />
+      : null;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -206,68 +192,71 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
           shortcutScope: "correlation:range",
         }}
       />
+      {bodyStatus ?? (
+        <>
+          {/* Column header row */}
+          <Box flexDirection="row" paddingLeft={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>
+            <Box width={rowHeaderWidth} flexShrink={0} />
+            {symbols.map((sym) => (
+              <SymbolLabelCell
+                key={sym}
+                symbol={sym}
+                width={cellWidth}
+                align="flex-end"
+                color={colors.textDim}
+                hovered={hoveredSymbol === sym}
+                onHover={setHoveredSymbol}
+                onLeave={clearHoveredSymbol}
+                onOpen={openSymbol}
+              />
+            ))}
+          </Box>
 
-      {/* Column header row */}
-      <Box flexDirection="row" paddingX={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>
-        <Box width={rowHeaderWidth} flexShrink={0} />
-        {symbols.map((sym) => (
-          <SymbolLabelCell
-            key={sym}
-            symbol={sym}
-            width={cellWidth}
-            align="flex-end"
-            color={colors.textDim}
-            hovered={hoveredSymbol === sym}
-            onHover={setHoveredSymbol}
-            onLeave={clearHoveredSymbol}
-            onOpen={openSymbol}
-          />
-        ))}
-      </Box>
-
-      {/* Matrix rows */}
-      <ScrollBox flexGrow={1} scrollY scrollX focusable={false}>
-        <Box flexDirection="column">
-          {symbols.map((rowSym, rowIndex) => (
-            <Box key={rowSym} flexDirection="row" paddingX={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
-              {/* Row header */}
-              <Box
-                width={rowHeaderWidth}
-                flexShrink={0}
-                overflow="hidden"
-              >
-                <SymbolLabelCell
-                  symbol={rowSym}
-                  width={rowHeaderWidth}
-                  color={rowHeaderColor(seriesBySymbol.get(rowSym)?.status ?? "loading")}
-                  hovered={hoveredSymbol === rowSym}
-                  onHover={setHoveredSymbol}
-                  onLeave={clearHoveredSymbol}
-                  onOpen={openSymbol}
-                />
-              </Box>
-              {/* Cells */}
-              {symbols.map((colSym) => {
-                const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                const cellColors = resolveCorrelationHeatmapCellColors(r);
-                const text = formatCorrelation(r);
-                return (
+          {/* Matrix rows */}
+          <ScrollBox flexGrow={1} scrollY scrollX focusable={false}>
+            <Box flexDirection="column">
+              {symbols.map((rowSym, rowIndex) => (
+                <Box key={rowSym} flexDirection="row" paddingLeft={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
+                  {/* Row header */}
                   <Box
-                    key={colSym}
-                    width={cellWidth}
-                    justifyContent="flex-end"
-                    paddingRight={1}
-                    backgroundColor={cellColors.background}
+                    width={rowHeaderWidth}
+                    flexShrink={0}
+                    overflow="hidden"
                   >
-                    <Text fg={cellColors.foreground}>{text}</Text>
+                    <SymbolLabelCell
+                      symbol={rowSym}
+                      width={rowHeaderWidth}
+                      color={rowHeaderColor(seriesBySymbol.get(rowSym)?.status ?? "loading")}
+                      hovered={hoveredSymbol === rowSym}
+                      onHover={setHoveredSymbol}
+                      onLeave={clearHoveredSymbol}
+                      onOpen={openSymbol}
+                    />
                   </Box>
-                );
-              })}
+                  {/* Cells */}
+                  {symbols.map((colSym) => {
+                    const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
+                    const cellColors = resolveCorrelationHeatmapCellColors(r);
+                    const text = formatCorrelation(r);
+                    return (
+                      <Box
+                        key={colSym}
+                        width={cellWidth}
+                        flexDirection="row"
+                        justifyContent="flex-end"
+                        paddingRight={1}
+                        backgroundColor={cellColors.background}
+                      >
+                        <Text fg={cellColors.foreground}>{text}</Text>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              ))}
             </Box>
-          ))}
-        </Box>
-      </ScrollBox>
-
+          </ScrollBox>
+        </>
+      )}
     </Box>
   );
 }

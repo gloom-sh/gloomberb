@@ -1,5 +1,4 @@
 import { resolveAssetDisplayKind } from "../../../market-data/market/format";
-import type { DataProvider } from "../../../types/data-provider";
 import {
   getTimeSeriesField,
   isMarketFieldId,
@@ -38,35 +37,14 @@ export type CatalogFilterId =
   | "futures"
   | "valuation";
 
-/** Shown until a provider is known; the CLI without any data plugin, in effect. */
-export const DEFAULT_CATALOG_MARKET_SOURCE = "Market data";
-
-/**
- * The name the catalog's SOURCE column shows for securities, options, crypto
- * and futures: whichever provider the router reaches first. It is the cloud in
- * the app, the Yahoo fallback in a CLI without cloud, never a fixed string.
- * The desktop renderer holds a remote transport rather than the router, so
- * the answer can arrive asynchronously from the process that owns it.
- */
-export async function resolveCatalogMarketSource(
-  provider: DataProvider | null | undefined,
-): Promise<string> {
-  if (!provider) return DEFAULT_CATALOG_MARKET_SOURCE;
-  if (typeof provider.primaryMarketSourceName === "function") {
-    try {
-      const name = await provider.primaryMarketSourceName();
-      return name?.trim() || DEFAULT_CATALOG_MARKET_SOURCE;
-    } catch {
-      return DEFAULT_CATALOG_MARKET_SOURCE;
-    }
-  }
-  return provider.name?.trim() || DEFAULT_CATALOG_MARKET_SOURCE;
-}
-
 export interface CatalogSeriesRow {
   id: string;
   label: string;
-  source: string;
+  /**
+   * The official publisher (FRED for economic and Treasury series), blank for
+   * market data: the catalog says what a series is, never which vendor serves it.
+   */
+  publisher: string;
   sourceId: CatalogSourceId;
   kind: string;
   expression: string;
@@ -130,7 +108,7 @@ function chartFieldToken(fieldId: string): string {
 function row(entry: {
   id: string;
   label: string;
-  source: string;
+  publisher?: string;
   sourceId: CatalogSourceId;
   kind: string;
   expression: string;
@@ -139,12 +117,13 @@ function row(entry: {
   needsTicker?: boolean;
   fieldToken?: string;
 }): CatalogSeriesRow {
-  const { searchExtra, ...fields } = entry;
+  const { searchExtra, publisher = "", ...fields } = entry;
   return {
     ...fields,
+    publisher,
     searchText: [
       entry.label,
-      entry.source,
+      publisher,
       entry.kind,
       entry.expression,
       entry.sourceId,
@@ -216,13 +195,12 @@ export function catalogInstrumentMatchesQuery(
 
 export function catalogRowsForResolvedInstruments(
   instruments: readonly SeriesCatalogInstrument[],
-  marketSource: string = DEFAULT_CATALOG_MARKET_SOURCE,
 ): CatalogSeriesRow[] {
   const fields = listTimeSeriesFields();
   const marketFields = fields.filter((field) => isMarketFieldId(field.id));
   return instruments.flatMap((instrument) => {
     if (isCatalogCryptoInstrument(instrument)) {
-      return [cryptoPairRow(catalogSecuritySymbol(instrument), marketSource, instrument.name)];
+      return [cryptoPairRow(catalogSecuritySymbol(instrument), instrument.name)];
     }
     if (isOptionInstrument(instrument)) {
       const symbol = compactOccSymbol(instrument.symbol)
@@ -233,7 +211,6 @@ export function catalogRowsForResolvedInstruments(
         return row({
           id: `option:${symbol}:${field.id}`,
           label: `${symbol} · ${field.label}`,
-          source: marketSource,
           sourceId: "option",
           kind: "Options",
           expression: `${symbol}:${token}`,
@@ -248,7 +225,6 @@ export function catalogRowsForResolvedInstruments(
       return row({
         id: `ticker:${symbol}:${field.id}`,
         label: `${symbol} · ${field.label}`,
-        source: marketSource,
         sourceId: "security",
         kind: fieldCategory(field),
         expression: `${symbol}:${token}`,
@@ -269,13 +245,12 @@ function catalogSecuritySymbol(instrument: SeriesCatalogInstrument): string {
   return instrument.symbol.trim();
 }
 
-function securityFieldRows(marketSource: string): CatalogSeriesRow[] {
+function securityFieldRows(): CatalogSeriesRow[] {
   return listTimeSeriesFields().map((field) => {
     const token = chartFieldToken(field.id);
     return row({
       id: `field:${field.id}`,
       label: field.label,
-      source: marketSource,
       sourceId: "security",
       kind: fieldCategory(field),
       expression: `TICKER:${token}`,
@@ -286,14 +261,13 @@ function securityFieldRows(marketSource: string): CatalogSeriesRow[] {
   });
 }
 
-function optionFieldRows(marketSource: string): CatalogSeriesRow[] {
+function optionFieldRows(): CatalogSeriesRow[] {
   return listTimeSeriesFields().flatMap((field) => {
     if (!isMarketFieldId(field.id)) return [];
     const token = chartFieldToken(field.id);
     return [row({
       id: `option:${field.id}`,
       label: field.label,
-      source: marketSource,
       sourceId: "option",
       kind: "Options",
       expression: `TICKER:${token}`,
@@ -304,11 +278,10 @@ function optionFieldRows(marketSource: string): CatalogSeriesRow[] {
   });
 }
 
-function cryptoPairRow(symbol: string, marketSource: string, name?: string): CatalogSeriesRow {
+function cryptoPairRow(symbol: string, name?: string): CatalogSeriesRow {
   return row({
     id: `crypto:${symbol.toUpperCase()}`,
     label: name ? `${symbol} · ${name}` : symbol,
-    source: marketSource,
     sourceId: "crypto",
     kind: "Crypto",
     expression: `${symbol}:price`,
@@ -316,17 +289,14 @@ function cryptoPairRow(symbol: string, marketSource: string, name?: string): Cat
   });
 }
 
-function cryptoRows(
-  instruments: readonly SeriesCatalogInstrument[],
-  marketSource: string,
-): CatalogSeriesRow[] {
+function cryptoRows(instruments: readonly SeriesCatalogInstrument[]): CatalogSeriesRow[] {
   const seen = new Set<string>();
   const rows: CatalogSeriesRow[] = [];
   const add = (symbol: string, name?: string) => {
     const key = symbol.trim().toUpperCase().replace("/", "-");
     if (!key || seen.has(key)) return;
     seen.add(key);
-    rows.push(cryptoPairRow(key, marketSource, name));
+    rows.push(cryptoPairRow(key, name));
   };
   for (const instrument of instruments) {
     if (!isCatalogCryptoInstrument(instrument)) continue;
@@ -336,23 +306,20 @@ function cryptoRows(
   return rows;
 }
 
-const staticInventoryBySource = new Map<string, readonly CatalogSeriesRow[]>();
+let staticInventory: readonly CatalogSeriesRow[] | null = null;
 
-function staticCatalogInventory(marketSource: string): readonly CatalogSeriesRow[] {
-  const cached = staticInventoryBySource.get(marketSource);
-  if (cached) return cached;
-  const inventory = buildStaticCatalogInventory(marketSource);
-  staticInventoryBySource.set(marketSource, inventory);
-  return inventory;
+function staticCatalogInventory(): readonly CatalogSeriesRow[] {
+  staticInventory ??= buildStaticCatalogInventory();
+  return staticInventory;
 }
 
-const buildStaticCatalogInventory = (marketSource: string): readonly CatalogSeriesRow[] => [
-  ...securityFieldRows(marketSource),
-  ...optionFieldRows(marketSource),
+const buildStaticCatalogInventory = (): readonly CatalogSeriesRow[] => [
+  ...securityFieldRows(),
+  ...optionFieldRows(),
   ...listFredCatalogSeries().map((entry) => row({
     id: `fred:${entry.seriesId}`,
     label: entry.label,
-    source: "FRED",
+    publisher: "FRED",
     sourceId: "fred",
     kind: "Economic",
     expression: `FRED:${entry.seriesId}`,
@@ -361,7 +328,7 @@ const buildStaticCatalogInventory = (marketSource: string): readonly CatalogSeri
   ...TREASURY_MATURITIES.map((entry) => row({
     id: `ust:${entry.maturity}`,
     label: `${entry.maturity} Treasury Yield`,
-    source: "FRED",
+    publisher: "FRED",
     sourceId: "treasury",
     kind: "Treasury",
     expression: `UST:${entry.maturity}`,
@@ -370,7 +337,6 @@ const buildStaticCatalogInventory = (marketSource: string): readonly CatalogSeri
   ...VALUATION_INDICATORS.map((entry) => row({
     id: `valuation:${entry.id}`,
     label: entry.label,
-    source: "Gloom Cloud",
     sourceId: "valuation",
     kind: "Valuation",
     expression: `CAP:${MARKET_VALUATION_CAPABILITY_ID}:${entry.id}`,
@@ -378,7 +344,6 @@ const buildStaticCatalogInventory = (marketSource: string): readonly CatalogSeri
   ...FUTURES_CONTRACTS.map((entry) => row({
     id: `fut:${entry.code}`,
     label: `${entry.name} (${entry.code})`,
-    source: marketSource,
     sourceId: "futures",
     kind: FUTURES_SECTOR_LABELS[entry.sector],
     expression: `FUT:${entry.code}`,
@@ -387,9 +352,8 @@ const buildStaticCatalogInventory = (marketSource: string): readonly CatalogSeri
 
 export function listStaticCatalogInventory(
   instruments: readonly SeriesCatalogInstrument[] = [],
-  marketSource: string = DEFAULT_CATALOG_MARKET_SOURCE,
 ): CatalogSeriesRow[] {
-  return [...staticCatalogInventory(marketSource), ...cryptoRows(instruments, marketSource)];
+  return [...staticCatalogInventory(), ...cryptoRows(instruments)];
 }
 
 function matchesCatalogQuery(entry: CatalogSeriesRow, query: string): boolean {

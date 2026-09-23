@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  Button,
   ConfirmDialog,
   DataTableStackView,
+  EmptyState,
   KeyValueRow,
   PaneStatusBody,
   QueryBar,
-  Tabs,
   useExternalLinkFooter,
-  usePaneHeaderTabs,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -53,16 +53,22 @@ export { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
 
 type Column = DataTableColumn & { id: "name" | "tagline" | "version" | "status" };
 
+const ALL_CATEGORIES = "all";
+/** Category ids are lowercase words; these read wrong title-cased. */
+const CATEGORY_LABELS: Record<string, string> = { ai: "AI" };
+
+function categoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category.charAt(0).toUpperCase() + category.slice(1);
+}
+
 function buildColumns(width: number): Column[] {
-  const versionWidth = 16;
-  const statusWidth = 14;
   const nameWidth = Math.min(24, Math.max(14, Math.floor(width * 0.22)));
-  const taglineWidth = Math.max(16, width - nameWidth - versionWidth - statusWidth - 8);
+  // The description takes what the other columns leave.
   return [
     { id: "name", label: "PLUGIN", width: nameWidth, align: "left" },
-    { id: "tagline", label: "DESCRIPTION", width: taglineWidth, align: "left" },
-    { id: "version", label: "VERSION", width: versionWidth, align: "right" },
-    { id: "status", label: "STATUS", width: statusWidth, align: "left" },
+    { id: "tagline", label: "DESCRIPTION", width: 16, align: "left", flexGrow: 1 },
+    { id: "version", label: "VERSION", width: 16, align: "right" },
+    { id: "status", label: "STATUS", width: 14, align: "left" },
   ];
 }
 
@@ -551,7 +557,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (canOpen) hints.push({ id: "open-pane", key: "p", label: "ane", onPress: openSelected });
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
   if (canRemove) hints.push({ id: "remove", key: "x", label: " remove", onPress: () => { void removeSelected(); } });
-  hints.push({ id: "builtin", key: "b", label: showBuiltin ? "uilt in ✓" : "uilt in", onPress: () => setShowBuiltin((value) => !value) });
 
   useExternalLinkFooter({
     registrationId: PLUGIN_MARKETPLACE_PANE_ID,
@@ -563,20 +568,33 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   });
 
   const columns = useMemo(() => buildColumns(width), [width]);
-  const categoryTabs = useMemo(
+  // The pick is saved with the pane, so keep it listed (and resettable) even
+  // when the catalog no longer has plugins in it.
+  const categoryOptions = useMemo(
     () => [
-      { label: "All", value: "" },
-      ...categories.map((entry) => ({ label: entry.charAt(0).toUpperCase() + entry.slice(1), value: entry })),
+      { label: "All", value: ALL_CATEGORIES },
+      ...(category && !categories.includes(category) ? [...categories, category] : categories)
+        .map((entry) => ({ label: categoryLabel(entry), value: entry })),
     ],
-    [categories],
+    [categories, category],
   );
-  const selectCategory = (value: string) => setCategory(value || null);
-  const tabsInHeader = usePaneHeaderTabs(categories.length > 1 ? {
-    tabs: categoryTabs,
-    activeValue: category ?? "",
-    onSelect: selectCategory,
-    focused: focused && !searchFocused && !detailOpen,
-  } : null);
+  // `b` stays the keyboard way to flip the built-in filter; the bar shows it.
+  const emptyState = status === "error" ? (
+    <EmptyState
+      title="Plugin catalog unavailable."
+      status="error"
+      actions={<Button label="Retry" variant="primary" compact onPress={() => refresh(true)} />}
+    />
+  ) : query || category ? (
+    <EmptyState title="No plugins match." />
+  ) : (
+    <EmptyState
+      title="Nothing installed yet."
+      actions={showBuiltin ? undefined : (
+        <Button label="Show built in" variant="secondary" compact onPress={() => setShowBuiltin(true)} />
+      )}
+    />
+  );
 
   if (status === "loading" && entries.length === 0) {
     return (
@@ -595,33 +613,31 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         detailContent={selected ? <EntryDetail entry={selected} width={width} host={host} /> : null}
         detailTitle={selected?.name}
         rootBefore={(
-          <Box flexDirection="column" width={width}>
-            {categories.length > 1 && !tabsInHeader ? (
-              <Tabs
-                tabs={categoryTabs}
-                activeValue={category ?? ""}
-                onSelect={selectCategory}
-                focused={focused && !searchFocused && !detailOpen}
-                variant="underline"
-                dense
-                scrollable
-              />
-            ) : null}
-            <QueryBar
-              width={width}
-              search={{
-                value: query,
-                onChange: setQuery,
-                placeholder: "name or category",
-                focused: focused && !detailOpen,
-                active: searchFocused,
-                onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
-                focusToken: searchFocusToken,
-                inputRef: searchInputRef,
-                onNavigateDown: blurSearch,
-              }}
-            />
-          </Box>
+          <QueryBar
+            width={width}
+            search={{
+              value: query,
+              onChange: setQuery,
+              placeholder: "name",
+              focused: focused && !detailOpen,
+              active: searchFocused,
+              onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
+              focusToken: searchFocusToken,
+              inputRef: searchInputRef,
+              onNavigateDown: blurSearch,
+            }}
+            filters={[
+              ...(categories.length > 1 || category ? [{
+                id: "category",
+                label: "Category",
+                value: category ?? ALL_CATEGORIES,
+                defaultValue: ALL_CATEGORIES,
+                options: categoryOptions,
+                onChange: (value: string) => setCategory(value === ALL_CATEGORIES ? null : value),
+              }] : []),
+              { kind: "toggle" as const, id: "builtin", label: "Built in", value: showBuiltin, onChange: setShowBuiltin },
+            ]}
+          />
         )}
         selection={{
           kind: "id",
@@ -644,11 +660,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         getItemKey={rowKey}
         sortColumnId={null}
         sortDirection="asc"
-        onHeaderClick={() => {}}
         renderSectionHeader={renderRowSectionHeader}
         renderCell={renderRow}
+        emptyContent={<Box width="100%" paddingX={1} paddingY={1}>{emptyState}</Box>}
         emptyStateTitle={status === "error" ? "Plugin catalog unavailable." : query || category ? "No plugins match." : "Nothing installed yet."}
-        emptyStateHint={status === "error" ? "Press r to retry." : !query && !category ? "Press b to see built-in modules." : undefined}
       />
     </Box>
   );

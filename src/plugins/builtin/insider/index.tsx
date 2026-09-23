@@ -6,10 +6,10 @@ import {
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
+import { EmptyState, FeedDataTableStackView, QueryBar, Spinner, StatGrid, useExternalLinkFooter, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type StatItem } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
-import { truncateWithEllipsis as truncateText } from "../../../utils/text-wrap";
+import { formatCompact } from "../../../utils/format";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
@@ -23,13 +23,15 @@ import {
 } from "../sec/filing-display";
 import { useSecFilingContentCache } from "../sec/filing-content";
 import {
-  buildInsiderSummary,
+  buildInsiderSummaryFigures,
   buildInsiderDisclosureText,
+  insiderSummaryCutoff,
   matchesInsiderOwner,
   insiderTransactionId,
   isInsiderDisclosureOnly,
   insiderReportedName,
   parseInsiderFiling,
+  type InsiderSummaryFigures,
   type ParsedInsiderFiling as ParsedFiling,
 } from "./model";
 import { insiderHeadless } from "./headless";
@@ -43,6 +45,35 @@ const FORM4_PAGE_SIZE = 20;
 // Recent EDGAR dumps cap at 1,000 mixed forms. Older archives are fetched
 // until this many filings or company history ends.
 const SEC_FILING_SCAN_LIMIT = 20_000;
+/** The insider filter's value for every reporting owner. */
+const ALL_INSIDERS = "*";
+
+/**
+ * The 90-day buy and sale totals as figures: one cell per side, and per
+ * security when there are several. A side with no trades says so.
+ */
+function summaryItems(figures: InsiderSummaryFigures): StatItem[] {
+  const securities = new Set(figures.totals.map((total) => total.security));
+  const items: StatItem[] = [];
+  for (const side of ["P", "S"] as const) {
+    const label = side === "P" ? "90d buys" : "90d sales";
+    const totals = figures.totals.filter((total) => total.side === side);
+    if (totals.length === 0) items.push({ id: side, label, value: "None" });
+    for (const total of totals) {
+      items.push({
+        id: `${total.security}:${side}`,
+        label,
+        value: total.unreconciled ? "Unavailable" : `${formatCompact(total.shares)} shares`,
+        detail: [
+          total.unreconciled ? "amended" : total.knownValue ? `$${formatCompact(total.value)}` : "value unavailable",
+          securities.size > 1 ? total.security : null,
+        ].filter(Boolean).join(" · "),
+        tone: total.unreconciled ? "muted" : undefined,
+      });
+    }
+  }
+  return items;
+}
 
 function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
   return parsed.map((entry) => {
@@ -163,7 +194,34 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       : allParsed
   ), [allParsed, nameFilter]);
   const feedItems = useMemo(() => toFeedItems(parsed), [parsed]);
-  const summary = useMemo(() => buildInsiderSummary(parsed, Date.now(), allParsed), [parsed, allParsed]);
+  const summary = useMemo(() => buildInsiderSummaryFigures(parsed, Date.now(), allParsed), [parsed, allParsed]);
+  // A page loading in on scroll clears the totals until it is read; the last
+  // totals for the same ticker and owner stay up so the table does not jump.
+  const summaryScope = `${tickerKey}:${nameFilter ?? ""}`;
+  const lastSummaryRef = useRef<{ scope: string; figures: InsiderSummaryFigures } | null>(null);
+  if (summary) lastSummaryRef.current = { scope: summaryScope, figures: summary };
+  const shownSummary = summary ?? (lastSummaryRef.current?.scope === summaryScope ? lastSummaryRef.current.figures : null);
+  const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary) : [], [shownSummary]);
+  // The totals only cover pages already loaded; they are whole once the
+  // oldest loaded filing predates the window or every filing is loaded.
+  const oldestLoaded = visibleForm4Filings.reduce<number | null>((oldest, filing) => {
+    const time = new Date(filing.filingDate).getTime();
+    return Number.isFinite(time) && (oldest == null || time < oldest) ? time : oldest;
+  }, null);
+  const windowPartial = visibleCount < form4Filings.length
+    && oldestLoaded != null && oldestLoaded >= insiderSummaryCutoff();
+  const insiderOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const entry of allParsed) {
+      const name = insiderReportedName(entry);
+      if (name) names.add(name);
+    }
+    if (nameFilter) names.add(nameFilter);
+    return [
+      { value: ALL_INSIDERS, label: "All" },
+      ...[...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })),
+    ];
+  }, [allParsed, nameFilter]);
   const amendments = useMemo(() => relevantInsiderAmendments(parsed, allParsed), [parsed, allParsed]);
   const selectedFilterName = parsed[selectedIdx] ? insiderReportedName(parsed[selectedIdx]!) : null;
   const openFiling = openItemId
@@ -172,6 +230,10 @@ function InsiderView({ width, height, focused }: { width: number; height: number
 
   const toggleNameFilter = useCallback((reportedName: string) => {
     setNameFilter((current) => current === reportedName ? null : reportedName);
+    setSelectedIdx(0);
+  }, [setNameFilter, setSelectedIdx]);
+  const selectInsider = useCallback((value: string) => {
+    setNameFilter(value === ALL_INSIDERS ? null : value);
     setSelectedIdx(0);
   }, [setNameFilter, setSelectedIdx]);
   const clearNameFilter = useCallback(() => {
@@ -200,15 +262,18 @@ function InsiderView({ width, height, focused }: { width: number; height: number
 
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
-    ...(!amendments.length && summary ? [{ id: "summary", parts: [{ text: truncateText(summary, Math.max(24, width - 20)), tone: "muted" as const }] }] : []),
-    ...(nameFilter ? [{ id: "filter", parts: [{ text: `filter: ${truncateText(nameFilter, 24)}`, tone: "warning" as const }] }] : []),
     ...(pendingLabel ? [{ id: "pending", parts: [{ text: pendingLabel, tone: "muted" as const }] }] : []),
     ...(error && allFilings.length > 0 ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-  ], [allFilings.length, amendments.length, error, nameFilter, pendingLabel, summary, width]);
-  // An unreconciled 4/A is a limitation of the totals on screen, not a status.
+  ], [allFilings.length, error, pendingLabel]);
+  // An unreconciled 4/A or an unread filing is a limitation of the totals on
+  // screen, not a status.
   usePaneNoticeFooter({
     registrationId: "insider:amendments",
-    notices: amendments.length ? ["A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable."] : [],
+    notices: [
+      ...(amendments.length ? ["A Form 4/A in this window is unreconciled, so the affected transaction totals are unavailable."] : []),
+      ...(summary?.incomplete ? ["Some transactions are unavailable or incomplete, so the 90-day totals leave them out."] : []),
+      ...(summary && windowPartial ? ["The 90-day totals cover the filings loaded so far; scroll the list to load older ones."] : []),
+    ],
     focused,
   });
   const footerHints = useMemo(() => (
@@ -253,6 +318,20 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       openItemId={openItemId}
       onOpenItemIdChange={setOpenItemId}
       onRootKeyDown={handleRootKeyDown}
+      rootBefore={<>
+        <QueryBar
+          width={width}
+          filters={[{
+            id: "insider",
+            label: "Insider",
+            value: nameFilter ?? ALL_INSIDERS,
+            defaultValue: ALL_INSIDERS,
+            options: insiderOptions,
+            onChange: selectInsider,
+          }]}
+        />
+        <StatGrid items={statItems} width={width} />
+      </>}
       sourceLabel="Insider"
       titleLabel="Transaction"
       emptyStateTitle={nameFilter

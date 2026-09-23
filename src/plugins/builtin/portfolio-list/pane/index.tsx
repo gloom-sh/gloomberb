@@ -478,15 +478,20 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     info: fxStatusText && !fxWarning
       ? [...summaryFooterInfo, { id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }]
       : summaryFooterInfo,
-    hints: showCashDrawer
-      ? [{
-          id: "cash",
-          key: "c",
-          label: "ash",
-          onPress: () => setCashDrawerExpanded(!cashDrawerExpanded),
-        }]
-      : [],
-  }), [cashDrawerExpanded, fxStatusText, fxWarning, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo]);
+    hints: [
+      ...(showCashDrawer
+        ? [{
+            id: "cash",
+            key: "c",
+            label: "ash",
+            onPress: () => setCashDrawerExpanded(!cashDrawerExpanded),
+          }]
+        : []),
+      ...(isPortfolioTab
+        ? [{ id: "view", key: "s", label: viewMode === "table" ? " grid" : " table", onPress: toggleViewMode }]
+        : []),
+    ],
+  }), [cashDrawerExpanded, fxStatusText, fxWarning, isPortfolioTab, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo, toggleViewMode, viewMode]);
 
   const quickAddCollectionKind = useMemo<QuickAddCollectionKind | null>(() => {
     if (!activeCollectionId) return null;

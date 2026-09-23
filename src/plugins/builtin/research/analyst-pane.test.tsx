@@ -119,7 +119,7 @@ test("renders each rating's price target and only dashes the rows without one", 
   await renderHarness(research);
 
   const frame = testSetup!.captureCharFrame();
-  expect(frame).toContain("$50.46 avg target");
+  expect(frame).toMatch(/Avg target\s+\$50\.46/);
   expect(frame).toContain("$47 → $42");
   expect(frame).toContain("$61");
   const noTargetRow = frame.split("\n").find((line) => line.includes("No Target"));
@@ -148,8 +148,7 @@ test("arrows walk the actions while the consensus context stays in the status ba
   expect(before).toContain("rating 6.1/10");
   expect(before).toContain("upside vs $38.40");
   // Body keeps the headline and the chart it labels, not the whole summary.
-  expect(before).toContain("$50.46 avg target");
-  expect(before).toContain("latest targets");
+  expect(before).toMatch(/Avg target\s+\$50\.46\s+\d+ firms/);
   expect(before).not.toContain("Upside reference price");
 
   const offscreenFirm = "Firm 20";

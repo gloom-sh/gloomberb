@@ -69,11 +69,14 @@ export function mapCloudNewsArticle(
     confidence: item.scores?.confidence ?? 0,
   };
   const tickers = mapCloudNewsTickers(item, fallbackTicker);
+  // primarySource is the cloud's routing key ("prnewswire-americas"); readers
+  // see the publisher's name from the story item it points at.
+  const primaryItem = item.items?.find((entry) => entry.sourceKey === item.primarySource);
   return {
     id: item.id,
     title: item.headline,
     url: item.primaryUrl,
-    source: item.primarySource,
+    source: primaryItem?.sourceName || item.primarySource,
     publishedAt: Number.isNaN(publishedAt.getTime()) ? new Date(0) : publishedAt,
     summary: item.summary,
     topic,

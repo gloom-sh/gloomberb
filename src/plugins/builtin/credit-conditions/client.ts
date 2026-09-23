@@ -17,7 +17,8 @@ export interface CreditConditionsLoadResult {
   errors: string[];
 }
 
-const HISTORY_LIMIT = 45;
+/** A year of business-day closes plus holidays, for the 1Y rank and history chart. */
+const HISTORY_LIMIT = 300;
 
 export type CreditSeriesLoader = (
   seriesId: CreditSeriesId,

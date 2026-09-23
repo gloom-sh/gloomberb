@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
-import { InputSearchBar, usePaneFooter } from "../components";
+import { InputSearchBar } from "../components";
 import { ListView, type ListViewItem } from "../components/ui/list-view";
 import { useShortcut, useViewport } from "../react/input";
 import { useThemeColors } from "../theme/theme-context";
 import { truncateToDisplayWidth } from "../utils/format";
 import { isPlainKey } from "../utils/keyboard";
 import { t, tf } from "../i18n";
-import type { LayoutGalleryController } from "./gallery";
+import type { GallerySearchState, LayoutGalleryController } from "./gallery";
 import {
   describeArrangement,
   formatPublishedAt,
@@ -54,12 +54,15 @@ function discoverStatusRow(controller: LayoutGalleryController): GalleryRow | nu
 
 export function LayoutGalleryTerminal({
   controller,
+  search,
   dialogOpen,
   focused,
   width,
   height,
 }: {
   controller: LayoutGalleryController;
+  /** Search focus lives with the gallery, whose `/` key focuses it. */
+  search: GallerySearchState;
   dialogOpen: boolean;
   focused: boolean;
   width?: number;
@@ -71,28 +74,16 @@ export function LayoutGalleryTerminal({
   const paneHeight = height ?? viewport.height;
   const detailsWidth = Math.min(DETAILS_WIDTH, Math.max(28, Math.floor(paneWidth * 0.42)));
   const inputRef = useRef<InputRenderable | null>(null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const searchFocused = search.active;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const {
     activate: activateLayout,
-    canDelete,
     community,
-    copyLink,
-    deleteLayout,
-    duplicateLayout,
     install: installLayout,
-    newLayout,
     owned,
-    publishCurrent,
-    publishToTeam,
-    pullTeamUpdates,
-    publishing,
-    renameLayout,
     select,
     teamSections,
     teamLayouts,
-    unlink,
   } = controller;
   const discoverStatus = discoverStatusRow(controller);
 
@@ -125,7 +116,7 @@ export function LayoutGalleryTerminal({
           : teamLayouts.state.status === "loading" && entries.length === 0
             ? [{ id: `team:${team.id}:loading`, label: "Loading team layouts…", disabled: true, entry: null }]
             : entries.length === 0
-              ? [{ id: `team:${team.id}:empty`, label: "No team layouts yet. Publish one with t.", disabled: true, entry: null }]
+              ? [{ id: `team:${team.id}:empty`, label: "No team layouts yet.", disabled: true, entry: null }]
               : entries.map((entry): GalleryRow => ({
                   id: entry.id,
                   label: `${entry.name}${entry.index !== null ? " (open)" : ""}`,
@@ -181,14 +172,13 @@ export function LayoutGalleryTerminal({
     setSelectedIndex(selectableIndexes[nextPosition]!);
   }, [selectableIndexes, selectedIndex]);
 
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
+  const focusSearch = search.focus;
+  const blurSearch = search.blur;
 
   // The details panel is always on screen here, so Enter runs the action it shows
-  // instead of stepping through a separate detail state.
+  // instead of stepping through a separate detail state. Entry keys (Enter on a
+  // layout, o, a, e, c, d, t, u, x, n, p, /) are the gallery's; this list adds
+  // moving the cursor and the status rows (log in, retry).
   const activate = useCallback((row: GalleryRow | null) => {
     if (!row) return;
     if (row.action) {
@@ -199,96 +189,6 @@ export function LayoutGalleryTerminal({
     if (row.entry.kind === "community" || row.entry.kind === "team") installLayout(row.entry);
     else activateLayout(row.entry);
   }, [activateLayout, installLayout]);
-
-  const selectedRowRef = useRef<GalleryRow | null>(selectedRow);
-  selectedRowRef.current = selectedRow;
-  const activateSelected = useCallback(() => activate(selectedRowRef.current), [activate]);
-  const renameSelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "owned") renameLayout(entry);
-  }, [renameLayout]);
-  const copySelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "community") copyLink(entry);
-    else if (entry?.kind === "owned") duplicateLayout(entry);
-  }, [copyLink, duplicateLayout]);
-  const deleteSelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "owned") deleteLayout(entry);
-  }, [deleteLayout]);
-  const publishTeamSelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "owned") publishToTeam(entry);
-  }, [publishToTeam]);
-  const pullSelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "owned" && entry.linked) pullTeamUpdates(entry);
-  }, [pullTeamUpdates]);
-  const unlinkSelected = useCallback(() => {
-    const entry = selectedRowRef.current?.entry;
-    if (entry?.kind === "owned" && entry.linked) unlink(entry);
-  }, [unlink]);
-  const teamsAvailable = teamSections.length > 0;
-
-  usePaneFooter("layout-marketplace", () => ({
-    info: publishing
-      ? [{ id: "publishing", parts: [{ text: "publishing", tone: "muted" as const }] }]
-      : [],
-    hints: [
-      { id: "search", key: "/", label: "search", onPress: focusSearch },
-      { id: "new", key: "n", label: "ew", onPress: newLayout },
-      ...(selectedEntry?.kind === "owned"
-        ? [
-            { id: "open", key: "o", label: "pen", onPress: activateSelected },
-            { id: "rename", key: "r", label: "ename", onPress: renameSelected },
-            { id: "copy", key: "c", label: "opy", onPress: copySelected },
-            { id: "delete", key: "d", label: "elete", onPress: deleteSelected, disabled: !canDelete },
-            ...(teamsAvailable
-              ? [{ id: "team", key: "t", label: selectedEntry.linked ? "eam publish" : "eam", onPress: publishTeamSelected, disabled: publishing }]
-              : []),
-            ...(selectedEntry.linked
-              ? [
-                  { id: "pull", key: "u", label: "pdate", onPress: pullSelected, disabled: publishing || !selectedEntry.linked.updateAvailable },
-                  { id: "unlink", key: "x", label: " unlink", onPress: unlinkSelected },
-                ]
-              : []),
-          ]
-        : selectedEntry?.kind === "team"
-          ? [
-              { id: "open-team", key: "a", label: selectedEntry.index !== null ? " open" : "dd linked tab", onPress: activateSelected },
-            ]
-        : selectedEntry?.kind === "community"
-          ? [
-              { id: "add", key: "a", label: "dd layout", onPress: activateSelected },
-              { id: "copy-link", key: "c", label: "opy link", onPress: copySelected },
-            ]
-          : selectedRow?.id === "discover:retry"
-            ? [{ id: "retry", key: "r", label: "etry", onPress: activateSelected }]
-            : selectedRow?.action
-              ? [{ id: "open", key: "o", label: "pen", onPress: activateSelected }]
-              : []),
-      { id: "publish", key: "p", label: "ublish", onPress: publishCurrent, disabled: publishing },
-    ],
-  }), [
-    activateSelected,
-    canDelete,
-    copySelected,
-    deleteSelected,
-    focusSearch,
-    newLayout,
-    publishCurrent,
-    publishTeamSelected,
-    publishing,
-    pullSelected,
-    renameSelected,
-    selectedEntry?.index,
-    selectedEntry?.kind,
-    selectedEntry?.linked,
-    selectedRow?.action,
-    selectedRow?.id,
-    teamsAvailable,
-    unlinkSelected,
-  ]);
 
   useShortcut((event) => {
     if (dialogOpen) return;
@@ -312,19 +212,7 @@ export function LayoutGalleryTerminal({
         if (event.name === "up" && selectedIndex === selectableIndexes[0]) focusSearch();
         else move(-1);
       });
-    } else if (isPlainKey(event, "enter", "return")) run(activateSelected);
-    else if (isPlainKey(event, "/")) run(focusSearch);
-    else if (isPlainKey(event, "n")) run(newLayout);
-    else if (isPlainKey(event, "p")) run(publishCurrent);
-    else if (isPlainKey(event, "o") && (selectedEntry?.kind === "owned" || selectedRow?.action)) run(activateSelected);
-    else if (isPlainKey(event, "a") && (selectedEntry?.kind === "community" || selectedEntry?.kind === "team")) run(activateSelected);
-    else if (isPlainKey(event, "t") && selectedEntry?.kind === "owned" && teamsAvailable && !publishing) run(publishTeamSelected);
-    else if (isPlainKey(event, "u") && selectedEntry?.kind === "owned" && selectedEntry.linked?.updateAvailable && !publishing) run(pullSelected);
-    else if (isPlainKey(event, "x") && selectedEntry?.kind === "owned" && selectedEntry.linked) run(unlinkSelected);
-    else if (isPlainKey(event, "r") && selectedRow?.id === "discover:retry") run(activateSelected);
-    else if (isPlainKey(event, "r") && selectedEntry?.kind === "owned") run(renameSelected);
-    else if (isPlainKey(event, "c") && selectedEntry) run(copySelected);
-    else if (isPlainKey(event, "d") && selectedEntry?.kind === "owned" && canDelete) run(deleteSelected);
+    } else if (isPlainKey(event, "enter", "return") && selectedRow?.action) run(() => activate(selectedRow));
   }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
 
   const bodyHeight = Math.max(4, paneHeight - 1);
@@ -336,7 +224,7 @@ export function LayoutGalleryTerminal({
         focused={focused && !dialogOpen}
         active={searchFocused}
         width={paneWidth}
-        focusToken={searchFocusToken}
+        focusToken={search.focusToken}
         inputRef={inputRef}
         placeholder={t("Search layouts and panes")}
         debounceMs={80}

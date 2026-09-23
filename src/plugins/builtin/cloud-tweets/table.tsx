@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
   PaneStatusBody,
+  StatGrid,
   TickerBadgeList,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type StatItem,
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
 import { RemoteImage } from "../../../components/ui";
@@ -85,38 +87,43 @@ function TweetDetail({
   const imageHeight = Math.max(6, Math.min(14, Math.floor(imageWidth * 0.35)));
   const { catalog, openTicker } = useInlineTickers([tweetText], { badgeQuotes: true });
 
+  const metrics: StatItem[] = [
+    { id: "likes", label: "Likes", value: formatMetric(tweet.metrics.likes) },
+    { id: "reposts", label: "Reposts", value: formatMetric(tweet.metrics.retweets) },
+    { id: "replies", label: "Replies", value: formatMetric(tweet.metrics.replies) },
+    { id: "views", label: "Views", value: formatMetric(tweet.metrics.views) },
+  ];
+
   return (
-    <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
-      <Box flexDirection="column" width={lineWidth} gap={1}>
-        <TickerBadgeText
-          text={tweetText}
-          lineWidth={lineWidth}
-          catalog={catalog}
-          textColor={colors.text}
-          openTicker={openTicker}
-          openUsername={onOpenUsername}
-        />
-        {imageUrls.length > 0 ? (
-          <Box flexDirection="column" gap={1}>
-            {imageUrls.slice(0, 4).map((url, index) => (
-              <RemoteImage
-                key={url}
-                src={url}
-                alt={`Tweet image ${index + 1}`}
-                width={imageWidth}
-                height={imageHeight}
-                label={imageUrls.length > 1 ? `image ${index + 1}` : "image"}
-              />
-            ))}
-          </Box>
-        ) : null}
-        <Box flexDirection="row" height={1}>
-          <Text fg={colors.textDim}>
-            {`likes ${formatMetric(tweet.metrics.likes)}  reposts ${formatMetric(tweet.metrics.retweets)}  replies ${formatMetric(tweet.metrics.replies)}  views ${formatMetric(tweet.metrics.views)}`}
-          </Text>
+    <Box flexDirection="column" flexGrow={1} flexBasis={0} minHeight={0}>
+      <StatGrid items={metrics} width={width} />
+      <ScrollBox scrollY focusable={false} flexGrow={1} flexBasis={0} minHeight={0} paddingX={1}>
+        <Box flexDirection="column" width={lineWidth} gap={1}>
+          <TickerBadgeText
+            text={tweetText}
+            lineWidth={lineWidth}
+            catalog={catalog}
+            textColor={colors.text}
+            openTicker={openTicker}
+            openUsername={onOpenUsername}
+          />
+          {imageUrls.length > 0 ? (
+            <Box flexDirection="column" gap={1}>
+              {imageUrls.slice(0, 4).map((url, index) => (
+                <RemoteImage
+                  key={url}
+                  src={url}
+                  alt={`Tweet image ${index + 1}`}
+                  width={imageWidth}
+                  height={imageHeight}
+                  label={imageUrls.length > 1 ? `image ${index + 1}` : "image"}
+                />
+              ))}
+            </Box>
+          ) : null}
         </Box>
-      </Box>
-    </ScrollBox>
+      </ScrollBox>
+    </Box>
   );
 }
 
@@ -402,20 +409,32 @@ export function TweetSearchTable({
     }
   }, []);
 
+  // Signed out with nothing cached, the wall is the whole body: a sortable
+  // header over "sign in" would read as a live, empty feed. A feed's search
+  // bar stays above it so the query and the `/` hint still have a field.
+  if (rows.length === 0 && error && isAuthError(error)) {
+    const wall = <SignInWall action="search X" needsVerification={/verification/i.test(error)} />;
+    if (!rootBefore) return wall;
+    return (
+      <Box flexDirection="column" width={width} height={height}>
+        {rootBefore}
+        {wall}
+      </Box>
+    );
+  }
+
   // Owns the whole empty body so loading, failure, and "nothing found" each get
   // their own rows instead of the table's single run-on empty line.
-  const emptyContent = error && isAuthError(error)
-    ? <SignInWall action="search X" needsVerification={/verification/i.test(error)} />
-    : (
-      <PaneStatusBody
-        loading={loading}
-        error={error}
-        empty
-        subject="Tweets"
-        emptyTitle={emptyStateTitle ?? "No tweets"}
-        emptyMessage={emptyStateHint ?? data?.query}
-      />
-    );
+  const emptyContent = (
+    <PaneStatusBody
+      loading={loading}
+      error={error}
+      empty
+      subject="Tweets"
+      emptyTitle={emptyStateTitle ?? "No tweets"}
+      emptyMessage={emptyStateHint ?? data?.query}
+    />
+  );
 
   return (
     <DataTableStackView<CloudTweetPayload, TweetColumn>

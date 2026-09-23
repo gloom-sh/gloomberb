@@ -7,18 +7,21 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useCallback, useMemo, useState } from "react";
 import { Box, ScrollBox, useRendererHost } from "../../../ui";
 import {
+  Button,
   CompositeChart,
   DataTableStackView,
   EmptyState,
-  KeyValueRow,
   PaneStatusBody,
+  StatGrid,
   StaticChartSurface,
   QueryBar,
   Tabs,
+  statGridRows,
   usePaneHeaderTabs,
   usePaneFooter,
   usePaneNoticeFooter,
   type DataTableColumn,
+  type StatItem,
 } from "../../../components";
 import {
   useAsyncResource,
@@ -33,6 +36,7 @@ import {
   usePaneInstance,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -40,6 +44,7 @@ import { loadPortfolioRiskMarket } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import {
   buildPortfolioRisk,
+  HOLDINGS_SUMMARY_ROW_IDS,
   portfolioRiskTickers,
   riskPercentile,
   riskValue,
@@ -65,8 +70,42 @@ const titles = {
 };
 const tabs = RISK_VIEWS.map((value) => ({ value, label: titles[value] }));
 const getKey = (row: RiskDisplayRow) => row.id;
-const chartColors = resolveChartPalette(colors, "positive");
 const PANELS = [{ id: "main" }];
+/** What the first column lists in each view. */
+const LABEL_HEADERS: Record<RiskView, string> = {
+  risk: "Metric",
+  factors: "Factor",
+  holdings: "Symbol",
+  correlation: "Pair",
+  stress: "Scenario",
+  performance: "Metric",
+  attribution: "Sector",
+  greeks: "Metric",
+};
+const EVIDENCE_VIEWS: ReadonlySet<RiskView> = new Set(["performance", "attribution", "greeks"]);
+const ATTRIBUTION_PARTS = [
+  { id: "allocation", label: "Allocation" },
+  { id: "selection", label: "Selection" },
+  { id: "interaction", label: "Interaction" },
+] as const;
+/** The unit every row shares, when it is a word worth moving into the header ("beta", "% gross"). */
+function sharedWordUnit(rows: RiskDisplayRow[]): string | null {
+  const unit = rows[0]?.unit;
+  if (!unit || unit === "%" || !rows.every((row) => row.unit === unit)) return null;
+  return unit;
+}
+const bareValue = (row: RiskDisplayRow) => row.value == null ? "--" : row.value.toFixed(2);
+const HOLDINGS_SUMMARY_LABELS: Record<string, string> = { top: "Largest", "top-five": "Top five" };
+/** The book concentration figures that lead the holdings view, as a summary band. */
+function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
+  return rows.map((row) => ({
+    id: row.id,
+    label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
+    value: row.value == null ? "--" : row.unit === "% gross" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
+    // "Absolute gross current exposure" is the same method note on both weights.
+    detail: row.unit === "% gross" ? "gross" : row.detail,
+  }));
+}
 // No column: rows keep the model order (return, risk, tail), which reads better than A-Z.
 const DEFAULT_SORT = { column: "", direction: "asc" as const };
 const EMPTY_MODEL: PortfolioRiskModel | null = null;
@@ -81,6 +120,20 @@ function RiskDetail({
   width: number;
   height: number;
 }) {
+  // Resolved per render so the chart follows the active theme.
+  const themeColors = useThemeColors();
+  const chartColors = useMemo(() => resolveChartPalette(themeColors, "positive"), [themeColors]);
+  const items: StatItem[] = [
+    {
+      id: "value",
+      label: "Value",
+      value: riskValue(row),
+      detail: row.asOf?.slice(0, 10) ?? "Source date unavailable",
+    },
+    ...(row.percentile != null ? [{ id: "percentile", label: "Pctl 1Y", value: riskPercentile(row) }] : []),
+    { id: "evidence", label: "Evidence", value: row.detail, wide: true },
+  ];
+  const statRows = statGridRows(items, width);
   const points = (row.history ?? []).map((point, index) => ({
     date: new Date(point.date),
     time: Date.parse(point.date),
@@ -92,30 +145,21 @@ function RiskDetail({
     volume: 0,
   }));
   return (
-    <ScrollBox
-      width={width}
-      height={height}
-      scrollY
-      contentOptions={{ paddingX: 1 }}
-    >
-      <KeyValueRow
-        label="Value"
-        value={riskValue(row)}
-        detail={row.asOf ?? "Source date unavailable"}
-      />
-      <KeyValueRow label="Percentile 1Y" value={riskPercentile(row)} />
-      <KeyValueRow label="Evidence" value={row.detail} />
+    <ScrollBox width={width} height={height} scrollY>
+      <StatGrid items={items} width={width} />
       {points.filter((row) => Number.isFinite(row.close)).length > 1 && (
-        <StaticChartSurface
-          points={points}
-          width={Math.max(12, width - 2)}
-          height={Math.max(5, height - 5)}
-          mode="line"
-          calendarSpaced
-          showTimeAxis
-          colors={chartColors}
-          yAxisLabel={row.unit}
-        />
+        <Box paddingX={1}>
+          <StaticChartSurface
+            points={points}
+            width={Math.max(12, width - 2)}
+            height={Math.max(5, height - statRows)}
+            mode="line"
+            calendarSpaced
+            showTimeAxis
+            colors={chartColors}
+            yAxisLabel={row.unit}
+          />
+        </Box>
       )}
     </ScrollBox>
   );
@@ -243,9 +287,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     volatility,
   ]);
   const model = derived.model;
+  const holdingsSummary = useMemo(
+    () => view === "holdings" ? holdingsSummaryItems((model?.rows.holdings ?? []).filter((row) => HOLDINGS_SUMMARY_ROW_IDS.has(row.id))) : [],
+    [model, view],
+  );
   const rows = useMemo(
     () =>
-      [...(model?.rows[view] ?? [])].sort((a, b) => {
+      (model?.rows[view] ?? [])
+        .filter((row) => view !== "holdings" || !HOLDINGS_SUMMARY_ROW_IDS.has(row.id))
+        .sort((a, b) => {
         if (!sort.column) return 0;
         const left = a[sort.column as keyof RiskDisplayRow],
           right = b[sort.column as keyof RiskDisplayRow];
@@ -313,11 +363,6 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ];
     return [];
   }, [model, view]);
-  // The chart takes what the table does not need: view tabs and portfolio bar (2), header, rows and footer.
-  const chartHeight =
-    series.length && height >= 18
-      ? Math.max(0, Math.min(Math.floor(height * 0.6), height - 4 - rows.length - 2))
-      : 0;
   const openRow = rows.find((row) => row.id === open);
   // Columns that say the same thing on every row belong in the footer, not repeated per row.
   const showPercentile = rows.some((row) => row.percentile != null);
@@ -382,20 +427,12 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ],
     [frozen, importEvidence, portfolios.length, nextPortfolio],
   );
+  // Only real data limitations raise the footer warning; the empty evidence
+  // views say what they need in the body, with the import action.
   const notices = [
     ...(model?.warnings ?? []),
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
-    ...(["performance", "attribution", "greeks"].includes(view) && !rows.length
-      ? [
-          `${titles[view]} requires dated local evidence. Import version 1 JSON using i.`,
-        ]
-      : []),
-    ...(view === "holdings" || view === "correlation" || view === "stress"
-      ? [
-          "Historical percentile unavailable for this current composition or scenario.",
-        ]
-      : []),
   ];
   usePaneNoticeFooter({
     registrationId: "portfolio-risk-notices",
@@ -412,7 +449,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               {
                 id: "loading",
                 parts: [
-                  { text: "loading Cloud history", tone: "muted" as const },
+                  { text: "loading history", tone: "muted" as const },
                 ],
               },
             ]
@@ -463,22 +500,39 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     },
     { enabled: focused, scope: "portfolio-risk", phase: "before" },
   );
+  // A unit every row shares goes in the value header, so the cells are bare numbers.
+  const sharedUnit = sharedWordUnit(rows);
+  const attributionParts = view === "attribution" && rows.some((row) => row.allocation != null);
+  const valueHeader = attributionParts
+    ? "Total pp"
+    : sharedUnit
+      ? sharedUnit.length <= 3 ? `Value ${sharedUnit}` : sharedUnit
+      : "Value";
   const columns = useMemo<DataTableColumn[]>(
     () => [
       {
         id: "label",
-        label: "Metric",
+        label: LABEL_HEADERS[view],
         width: Math.min(30, Math.max(19, width - 45)),
         align: "left",
       },
-      { id: "value", label: "Value", width: 16, align: "right" },
+      {
+        id: "value",
+        label: valueHeader,
+        width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : 16,
+        align: "right",
+      },
+      ...(attributionParts
+        ? ATTRIBUTION_PARTS.map((part) => ({ id: part.id, label: part.label, width: 11, align: "right" as const }))
+        : []),
       ...(showPercentile
         ? [{ id: "percentile", label: "Pctl 1Y", width: 8, align: "right" as const }]
         : []),
       ...(sharedDate
         ? []
         : [{ id: "asOf", label: "As of", width: 11, align: "left" as const }]),
-      ...(width >= 95 && !sharedEvidence
+      // Attribution's evidence is the three effects, now columns of their own.
+      ...(width >= 95 && !sharedEvidence && !attributionParts
         ? [
             {
               id: "detail",
@@ -490,7 +544,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, sharedEvidence, showPercentile, sharedDate],
+    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate],
   );
   const selectView = (value: string) => {
     setView(value);
@@ -503,8 +557,18 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     onSelect: selectView,
     focused: focused && !openRow,
   } : null);
-  // The view strip and the portfolio bar take one row each in the terminal.
-  const chromeRows = tabsInHeader ? 1 : 2;
+  // The view strip takes a row when it is not in the title bar; the portfolio
+  // bar and the holdings summary sit on the root view only.
+  const tabRows = tabsInHeader ? 0 : 1;
+  const summaryRows = statGridRows(holdingsSummary, width);
+  // The chart takes every row the table does not: bar, summary, header and rows.
+  const tableRows = 1 + rows.length;
+  const chartSpace = height - tabRows - 1 - summaryRows - tableRows;
+  const chartHeight =
+    series.length && height >= 18
+      ? Math.max(Math.min(8, Math.floor(height * 0.4)), chartSpace)
+      : 0;
+  const evidenceMissing = EVIDENCE_VIEWS.has(view) && rows.length === 0;
   if (!portfolio)
     return (
       <EmptyState
@@ -532,43 +596,47 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           compact
         />
       )}
-      <QueryBar
-        width={width}
-        filters={[{
-          id: "portfolio",
-          label: "Portfolio",
-          value: portfolio.id,
-          options: portfolios.length
-            ? portfolios.map((row) => ({ value: row.id, label: row.name }))
-            : [{ value: portfolio.id, label: portfolio.name }],
-          onChange: (id: string) => {
-            setPortfolio(id);
-            setOpen(null);
-          },
-        }]}
-      />
       <DataTableStackView<RiskDisplayRow, DataTableColumn>
         focused={focused}
         columns={columns}
         items={rows}
         getItemKey={getKey}
         rootBefore={
-          chartHeight ? (
-            <CompositeChart
-              series={series}
-              panels={PANELS}
+          <>
+            {/* In the root only: a detail changes nothing the portfolio filter picks. */}
+            <QueryBar
               width={width}
-              height={chartHeight}
-              showLegend
-              showTimeAxis
-              navigable={false}
-              formatAxisValue={(value) => `${value.toFixed(1)}%`}
-              formatValue={(value) => `${value.toFixed(2)}%`}
-              remoteKind="portfolio-risk-history"
+              filters={[{
+                id: "portfolio",
+                label: "Portfolio",
+                value: portfolio.id,
+                options: portfolios.length
+                  ? portfolios.map((row) => ({ value: row.id, label: row.name }))
+                  : [{ value: portfolio.id, label: portfolio.name }],
+                onChange: (id: string) => {
+                  setPortfolio(id);
+                  setOpen(null);
+                },
+              }]}
             />
-          ) : undefined
+            <StatGrid items={holdingsSummary} width={width} />
+            {chartHeight ? (
+              <CompositeChart
+                series={series}
+                panels={PANELS}
+                width={width}
+                height={chartHeight}
+                showLegend
+                showTimeAxis
+                navigable={false}
+                formatAxisValue={(value) => `${value.toFixed(1)}%`}
+                formatValue={(value) => `${value.toFixed(2)}%`}
+                remoteKind="portfolio-risk-history"
+              />
+            ) : null}
+          </>
         }
-        rootHeight={Math.max(3, height - chromeRows)}
+        rootHeight={Math.max(3, height - tabRows)}
         resetScrollKey={`${portfolio.id}:${view}`}
         selection={{
           kind: "id",
@@ -587,32 +655,38 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
                 : "asc",
           })
         }
-        renderCell={(row, column) => ({
-          text:
-            column.id === "label"
-              ? row.label
-              : column.id === "value"
-                ? riskValue(row)
-                : column.id === "percentile"
-                  ? riskPercentile(row)
-                  : column.id === "asOf"
-                    ? (row.asOf?.slice(0, 10) ?? "--")
-                    : row.detail,
-        })}
+        renderCell={(row, column) => {
+          if (column.id === "label") return { text: row.label };
+          if (column.id === "value") return { text: sharedUnit || attributionParts ? bareValue(row) : riskValue(row) };
+          if (column.id === "percentile") return { text: riskPercentile(row) };
+          if (column.id === "asOf") return { text: row.asOf?.slice(0, 10) ?? "--" };
+          if (column.id === "allocation" || column.id === "selection" || column.id === "interaction") {
+            const part = row[column.id];
+            return { text: part == null ? "--" : part.toFixed(2) };
+          }
+          return { text: row.detail };
+        }}
         onActivate={(row) => setOpen(row.id)}
         detailOpen={!!openRow}
         detailTitle={openRow?.label}
         onBack={() => setOpen(null)}
         detailContent={
           openRow ? (
-            <RiskDetail row={openRow} width={width} height={height - 4} />
+            <RiskDetail row={openRow} width={width} height={Math.max(3, height - tabRows - 1)} />
           ) : null
         }
-        emptyStateTitle={
-          view === "performance" || view === "attribution" || view === "greeks"
-            ? "Import dated local evidence."
-            : "No comparable observations."
+        emptyContent={
+          evidenceMissing ? (
+            <Box paddingX={1} paddingY={1}>
+              <EmptyState
+                title="This view needs dated local evidence."
+                message={frozen ? undefined : "Copy version 1 evidence JSON, then import it from the clipboard."}
+                actions={frozen ? undefined : <Button label="Import evidence" compact onPress={() => void importEvidence()} />}
+              />
+            </Box>
+          ) : undefined
         }
+        emptyStateTitle="No comparable observations."
       />
     </Box>
   );

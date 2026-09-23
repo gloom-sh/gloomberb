@@ -44,7 +44,8 @@ export function createCreditConditionsHeadless(
         (seriesId, options) => ctx.apiClient.getCloudFredSeries(seriesId, options),
       );
       return {
-        rows: result.rows.map((row) => ({ ...row })),
+        // The year of history feeds the pane's chart and rank, not the report rows.
+        rows: result.rows.map(({ history: _history, ...row }) => row),
         errors: result.errors,
         metadata: { stale: result.stale },
       };

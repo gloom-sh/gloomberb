@@ -238,7 +238,9 @@ test("preserves missing activity through source, summaries, CSV and CLI", async 
     const cli = await f.cli("missing-activity");
     expect(cli.data.calls[0].openInterest).toBeUndefined();
     expect(cli.data.puts[0].volume).toBeUndefined();
-    expect(result.frame).toMatch(/EXP VOL \S+\s+P\/C VOL --\s+P\/C OI --/);
+    expect(result.frame).toMatch(/Volume\s+\S+/);
+    expect(result.frame).toMatch(/P\/C vol\s+--/);
+    expect(result.frame).toMatch(/P\/C OI\s+--/);
     expect(result.csv).toContain(",—,");
     expect(cli.rows[0].volume).toBe(10);
     expect(cli.rows[1].openInterest).toBe(20);
@@ -249,7 +251,9 @@ test("preserves known zero activity and zero put/call ratios", async () => {
     const result = await f.capture("zero-activity");
     const cli = await f.cli("zero-activity");
     expect(cli.data.puts[0]).toMatchObject({ volume: 0, openInterest: 0 });
-    expect(result.frame).toMatch(/EXP VOL 10\s+P\/C VOL 0.00\s+P\/C OI 0.00/);
+    expect(result.frame).toMatch(/Volume\s+10\s/);
+    expect(result.frame).toMatch(/P\/C vol\s+0\.00/);
+    expect(result.frame).toMatch(/P\/C OI\s+0\.00/);
     expect(result.csv).toContain(",0,");
     expect(cli.rows[1].volume).toBe(0);
 });

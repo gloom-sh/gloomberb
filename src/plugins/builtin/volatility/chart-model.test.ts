@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { buildCompositeChartScene } from "../../../components/chart/composite/scene";
 import { buildStaticChartSeries } from "../../../components/chart/static/chart-surface";
-import { volatilityCurveChartModel, volatilityHistoryChartModel, volatilityIndexHistoryPoints, volatilityRatioChartModel } from "./chart-model";
+import { volatilityCurveChartModel, volatilityHistoryChartModel, volatilityHistorySeries, volatilityIndexHistoryPoints, volatilityRatioChartModel } from "./chart-model";
 
 test("VIX curve uses elapsed tenor days and leaves absent interior and endpoint observations as gaps", () => {
   const curve = [9, 30, 91, 182, 365].map((days, index) => ({ days, tenor: `${days}d`, value: [17, 18, null, 22, null][index]! }));
@@ -36,6 +36,14 @@ test("FRED history aligns observations by date and breaks each curve where the p
     [{ id: "main" }], { width: 90, height: 8, rightOffsetRatio: 0 })!;
   expect(ratioScene.panels[0]!.series[0]!.points.map((point) => point.breakBefore)).toEqual([true, true]);
   expect(ratio.overlays[0]!.points).toEqual([{ index: 0, value: 1 }, { index: 3, value: 1 }]);
+  // The pane's single chart plots the same alignment: a close either index lacks is a gap, on one date axis.
+  const series = volatilityHistorySeries(fred, { spot: "a", threeMonth: "b", ratio: "c", flat: "d" });
+  const values = (id: string) => series.find((entry) => entry.id === id)!.points.map((point) => point.value);
+  expect(values("vix")).toEqual([20, null, 22, 23]);
+  expect(values("vix3m")).toEqual([24, 25, null, 26]);
+  expect(values("ratio")).toEqual([1.2, null, null, 26 / 23]);
+  expect(series.find((entry) => entry.id === "flat")!.points.map((point) => point.date.toISOString().slice(0, 10))).toEqual(["2026-09-01", "2026-09-04"]);
+  expect(series.map((entry) => entry.panelId)).toEqual(["vol", "vol", "ratio", "ratio"]);
 });
 
 test("withdrawn dates missing from both histories still break the curves and board history", () => {

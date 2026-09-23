@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
-import { Divider, PaneStatusBody, SectionHeading, StaticChartSurface, TickerBadgeList, usePaneNoticeFooter } from "../../../components";
+import {
+  DataTableView,
+  PaneStatusBody,
+  SectionHeading,
+  StatGrid,
+  StaticChartSurface,
+  TickerBadgeList,
+  statGridRows,
+  usePaneNoticeFooter,
+  type DataTableColumn,
+  type StatItem,
+} from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import {
@@ -9,12 +20,11 @@ import {
   type FredSeriesData,
   type FredSeriesRequest,
 } from "../../../data/fred-series";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
-import { timeLabel } from "./calendar-model";
+import { actualColor, timeLabel } from "./calendar-model";
 import type { EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -22,6 +32,22 @@ interface EconDetailViewProps {
   width: number;
   height: number;
   focused: boolean;
+}
+
+interface HistoryRow {
+  date: string;
+  display: string;
+}
+
+const HISTORY_COLUMNS: DataTableColumn[] = [
+  { id: "date", label: "Period", width: 12, align: "left" },
+  { id: "value", label: "Value", width: 14, align: "right" },
+];
+
+function valueColor(display: string): string {
+  if (display.startsWith("+")) return colors.positive;
+  if (display.startsWith("-")) return colors.negative;
+  return colors.text;
 }
 
 function formatCompactAxisValue(value: number, units: string): string {
@@ -41,7 +67,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   const [error, setError] = useState<string | null>(null);
   const [freshnessWarning, setFreshnessWarning] = useState<string | null>(null);
   const [data, setData] = useState<FredSeriesData | null>(null);
-  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const historyScrollRef = useRef<ScrollBoxRenderable>(null);
 
   const mapping = useMemo(() => resolveFredMapping(event.event, event.country), [event.event, event.country]);
   const request = useMemo<FredSeriesRequest | null>(() => {
@@ -111,35 +137,19 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     focused,
   });
 
-  const scrollDetailBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-  }, []);
-
-  useShortcut((ev) => {
-    if (!focused) return;
-    if (isPlainKey(ev, "j", "down")) {
-      ev.stopPropagation?.();
-      ev.preventDefault?.();
-      scrollDetailBy(1);
-    } else if (isPlainKey(ev, "k", "up")) {
-      ev.stopPropagation?.();
-      ev.preventDefault?.();
-      scrollDetailBy(-1);
-    }
-  });
+  // The stack bar names the event; the detail opens on the release figures.
+  const releaseItems: StatItem[] = [
+    { id: "time", label: "Release", value: timeLabel(event.date) },
+    ...(event.actual ? [{ id: "actual", label: "Actual", value: event.actual, color: actualColor(event.actual, event.forecast) }] : []),
+    ...(event.forecast ? [{ id: "forecast", label: "Forecast", value: event.forecast }] : []),
+    ...(event.prior ? [{ id: "prior", label: "Prior", value: event.prior }] : []),
+  ];
 
   // A stale cache stays on screen while its refresh runs or fails.
   if (!mapping || ((loading || error) && !data)) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <Box height={1} paddingX={1} flexDirection="row">
-          <SectionHeading title={event.event} />
-          <Box flexGrow={1} />
-          {mapping && <Text fg={colors.textDim}>{mapping.seriesId}</Text>}
-        </Box>
+        <StatGrid items={mapping ? [...releaseItems, { id: "series", label: "Series", value: mapping.seriesId }] : releaseItems} width={width} />
         <PaneStatusBody
           loading={!!mapping && loading && !data}
           error={mapping && !loading && !data ? error : null}
@@ -154,8 +164,6 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   if (!data) return null;
 
   const { observations, info } = data;
-  const chartWidth = Math.max(10, width - 2);
-  const chartHeight = Math.min(18, Math.max(9, Math.floor(height * 0.38)));
   const projected = projectFredHistory(observations, mapping);
   const units = fredHistoryUnits(mapping, info?.units ?? "");
   const chartPoints: ProjectedChartPoint[] = projected
@@ -169,116 +177,87 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     }));
 
   const palette = resolveChartPalette(colors, "positive");
-  const tableRows = [...projected].reverse().slice(0, 12).map((obs) => ({
+  const tableRows: HistoryRow[] = [...projected].reverse().slice(0, 12).map((obs) => ({
     date: obs.date,
     display: units.toLowerCase().includes("percent")
       ? `${obs.value.toFixed(2)}%`
       : obs.value.toLocaleString("en-US", { maximumFractionDigits: 1 }),
   }));
-  const title = info?.title ?? event.event;
-  const valueColor = (display: string): string => {
-    if (display.startsWith("+")) return colors.positive;
-    if (display.startsWith("-")) return colors.negative;
-    return colors.text;
-  };
-  const dateColWidth = 14;
-  const valueColWidth = Math.max(14, Math.floor((width - 4) * 0.3));
+  // The series id names the official publisher's series; units, frequency and
+  // adjustment say what the chart and the history below are measured in.
+  const statItems: StatItem[] = [
+    ...releaseItems,
+    { id: "series", label: "Series", value: mapping.seriesId, wide: true,
+      detail: [units, info?.frequency, info?.seasonalAdjustment].filter(Boolean).join(" · ") || undefined },
+  ];
+  const statRows = statGridRows(statItems, width);
+  const relatedRows = mapping.relatedTickers.length > 0 ? 1 : 0;
+  const chartHeight = Math.min(18, Math.max(9, Math.floor(height * 0.38)));
+  const chartRows = chartPoints.length >= 2 ? chartHeight : 1;
+  // The history table takes what is left under the chart and its heading.
+  const historyHeight = Math.max(3, height - statRows - chartRows - 1 - relatedRows);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1} paddingX={1} flexDirection="row">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {title}
-        </Text>
-        <Box flexGrow={1} />
-        <Text fg={colors.textDim}>{mapping.seriesId}</Text>
-      </Box>
-      <Box height={1} paddingX={1} flexDirection="row">
-        <Text fg={colors.textMuted}>
-          {[units, info?.frequency, info?.seasonalAdjustment].filter(Boolean).join(" · ")}
-        </Text>
-      </Box>
-
-      <Box paddingX={1} flexDirection="row" height={1}>
-        <Text fg={colors.textDim}>Scheduled: </Text>
-        <Text fg={colors.text}>{timeLabel(event.date)}</Text>
-        {event.forecast ? (
-          <>
-            <Text fg={colors.textDim}>  Forecast: </Text>
-            <Text fg={colors.text}>{event.forecast}</Text>
-          </>
-        ) : null}
-        {event.prior ? (
-          <>
-            <Text fg={colors.textDim}>  Prior: </Text>
-            <Text fg={colors.text}>{event.prior}</Text>
-          </>
-        ) : null}
-      </Box>
-
-      <ScrollBox ref={scrollRef} flexGrow={1} scrollY focusable={false}>
-        <Box flexDirection="column">
-          {chartPoints.length >= 2 ? (
-            <Box flexDirection="column" paddingX={1} marginTop={1}>
-              <StaticChartSurface
-                points={chartPoints}
-                width={chartWidth}
-                height={chartHeight}
-                mode="area"
-                colors={palette}
-                showTimeAxis
-                timeAxisColor={colors.textDim}
-                yAxisLabel={units ? `Value (${units})` : "Value"}
-                yAxisColor={colors.textDim}
-                formatYAxisValue={(value) => formatCompactAxisValue(value, units)}
-              />
-            </Box>
-          ) : (
-            <Box paddingX={1} marginTop={1}>
-              <Text fg={colors.textMuted}>Not enough data for chart</Text>
-            </Box>
-          )}
-
-          <Box paddingX={1} height={1} marginTop={1}>
-            <Divider width={Math.max(0, width - 2)} />
-          </Box>
-
-          <Box paddingX={1} height={1}>
-            <SectionHeading title="Revised history · reference periods" />
-          </Box>
-          <Box paddingX={1} flexDirection="row" height={1}>
-            <Box width={dateColWidth}>
-              <Text fg={colors.textDim}>PERIOD</Text>
-            </Box>
-            <Box width={valueColWidth} justifyContent="flex-end">
-              <Text fg={colors.textDim}>VALUE</Text>
-            </Box>
-          </Box>
-          {tableRows.map((row) => (
-            <Box key={row.date} paddingX={1} flexDirection="row" height={1}>
-              <Box width={dateColWidth}>
-                <Text fg={colors.textDim}>{row.date}</Text>
-              </Box>
-              <Box width={valueColWidth} justifyContent="flex-end">
-                <Text fg={valueColor(row.display)}>{row.display}</Text>
-              </Box>
-            </Box>
-          ))}
-
-          {mapping.relatedTickers.length > 0 ? (
-            <Box paddingX={1} height={1} marginTop={1}>
-              <Divider width={Math.max(0, width - 2)} />
-            </Box>
-          ) : null}
-
-          {mapping.relatedTickers.length > 0 ? (
-            <Box paddingX={1} height={1} flexDirection="row">
-              <Text fg={colors.textDim}>Related: </Text>
-              <TickerBadgeList symbols={mapping.relatedTickers} width={Math.max(8, width - 12)} liveQuote={false} />
-            </Box>
-          ) : null}
+      <StatGrid items={statItems} width={width} />
+      {chartPoints.length >= 2 ? (
+        <Box flexDirection="column" paddingX={1} height={chartHeight} flexShrink={0}>
+          <StaticChartSurface
+            points={chartPoints}
+            width={Math.max(10, width - 2)}
+            height={chartHeight}
+            mode="area"
+            colors={palette}
+            showTimeAxis
+            timeAxisColor={colors.textDim}
+            yAxisColor={colors.textDim}
+            formatYAxisValue={(value) => formatCompactAxisValue(value, units)}
+          />
         </Box>
-      </ScrollBox>
+      ) : (
+        <Box paddingX={1} height={1} flexShrink={0}>
+          <Text fg={colors.textMuted}>Not enough data for chart</Text>
+        </Box>
+      )}
+
+      <Box paddingX={1} height={1} flexShrink={0}>
+        <SectionHeading title="Revised history · reference periods" />
+      </Box>
+      <DataTableView<HistoryRow>
+        columns={HISTORY_COLUMNS}
+        items={tableRows}
+        focused={focused}
+        selection={{ kind: "none" }}
+        rootWidth={width}
+        rootHeight={historyHeight}
+        scrollRef={historyScrollRef}
+        // The history has no row cursor, so j/k scroll it when a short pane
+        // cannot show all twelve periods.
+        onRootKeyDown={(event) => {
+          const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+          const body = historyScrollRef.current;
+          if (!delta || !body?.viewport) return false;
+          const maxScrollTop = Math.max(0, body.scrollHeight - body.viewport.height);
+          body.scrollTop = Math.max(0, Math.min(maxScrollTop, body.scrollTop + delta));
+          event.stopPropagation?.();
+          event.preventDefault?.();
+          return true;
+        }}
+        getItemKey={(row) => row.date}
+        renderCell={(row, column) => column.id === "date"
+          ? { text: row.date, color: colors.textDim }
+          : { text: row.display, color: valueColor(row.display) }}
+        sortColumnId={null}
+        sortDirection="asc"
+        emptyStateTitle="No observations."
+      />
+
+      {relatedRows ? (
+        <Box paddingX={1} height={1} flexDirection="row" flexShrink={0}>
+          <Text fg={colors.textDim}>Related: </Text>
+          <TickerBadgeList symbols={mapping.relatedTickers} width={Math.max(8, width - 12)} liveQuote={false} />
+        </Box>
+      ) : null}
     </Box>
   );
 }

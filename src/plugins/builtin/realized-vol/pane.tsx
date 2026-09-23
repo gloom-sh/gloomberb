@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
-  usePaneTicker, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
+  usePaneTicker, type DataTableColumn, type DataTableKeyEvent, type StatItem } from "../../../components";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -8,7 +8,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useLiveSessionRefresh } from "../shared/volatility/live-session";
@@ -33,6 +33,7 @@ const CONE_COLUMNS: DataTableColumn[] = [
 
 export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const { symbol, ticker, financials, error: identityError } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const [initialView] = usePaneSettingValue("initialView", "graph");
@@ -154,23 +155,26 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   };
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused });
   const tabRows = tabsInHeader ? 0 : 1;
-  const contentHeight = Math.max(4, height - 1 - tabRows);
-  const coneTableHeight = Math.min(10, Math.max(4, Math.floor(contentHeight * 0.42)));
+  const reference = showIv ? iv.data?.reference ?? null : null;
+  // The cone has no IV line of its own, so the dated ATM IV it is read against sits above it.
+  const coneStats: StatItem[] = view === "cone" && model && reference
+    ? [{ id: "atm-iv", label: "ATM IV", value: percent(reference.value), detail: `${Math.round(reference.daysToExpiry)}d` }] : [];
+  const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));
   const sortedCone = [...(model?.cone ?? [])].sort((left, right) => {
     const a = left[sort.id], b = right[sort.id];
     return a == null ? b == null ? 0 : 1 : b == null ? -1 : (a - b) * (sort.direction === "asc" ? 1 : -1);
   });
+  const coneTableHeight = Math.min(Math.max(2, sortedCone.length + 1), 10, Math.max(4, Math.floor(contentHeight * 0.42)));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} variant="underline" dense focused={focused} />}
     <QueryBar width={width} filters={[
       { id: "estimator", label: "Estimator", value: estimator, options: ESTIMATOR_OPTIONS, onChange: (value: string) => setEstimator(value as RealizedVolatilityEstimator) },
       { id: "lookback", label: "Lookback", value: String(lookback), options: [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }], onChange: setLookback },
-    ]} meta={showIv && iv.data?.reference
-      ? `${view === "cone" ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} ·` : "ATM IV observed"} ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC`
-      : `Annualized % · ${Number(lookback) === 2 ? "2Y" : "1Y"} history`} />
+    ]} meta={reference ? `ATM IV observed ${reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC` : "Annualized %"} />
     {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="realized volatility" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.history.length}>
       {model && view === "cone" ? <>
+        <StatGrid items={coneStats} width={width} />
         <DataTableView<VolatilityConeStatistics> focused={focused} columns={CONE_COLUMNS} items={sortedCone}
           rootWidth={width} rootHeight={coneTableHeight} getItemKey={(row) => String(row.window)}
           sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="Volatility cone unavailable."
@@ -184,7 +188,9 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
               : column.id === "percentile" ? row.percentile == null ? "--" : `${row.percentile.toFixed(1)}%`
                 : percent(row[column.id as "current" | "min" | "max" | "mean" | "median"]),
             color: column.id === "current" ? colors.warning : colors.text })} />
-        <VolatilityConeChart evidence={evidence} rows={model.cone} width={width} height={Math.max(3, contentHeight - coneTableHeight)} />
+        {/* Desktop chrome runs a little taller than its rows; the spare row keeps the last window in view. */}
+        <VolatilityConeChart evidence={evidence} rows={model.cone} width={width}
+          height={Math.max(3, contentHeight - coneTableHeight - (nativePaneChrome ? 1 : 0))} />
       </> : chartInput && windows.length ? <RealizedVolGraph evidence={evidence} input={chartInput} width={width} height={contentHeight} />
         : <EmptyState title="Select graph windows in pane settings." />}
     </PaneStatusBody>}

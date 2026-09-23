@@ -4,7 +4,7 @@ import {
   Button,
   ConfirmDialog,
   DataTableStackView,
-  EmptyState,
+  PaneStatusBody,
   QueryBar,
   Spinner,
   Tabs,
@@ -519,7 +519,8 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   });
 
   const modeTabs = MODE_TABS;
-  const tabsInHeader = usePaneHeaderTabs({
+  // Every tab leads to the same wall, so the strip waits until it is gone.
+  const tabsInHeader = usePaneHeaderTabs(signInRequired || verificationRequired ? null : {
     tabs: modeTabs,
     activeValue: mode,
     onSelect: (value) => setMode(value as PaneMode),
@@ -571,15 +572,11 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexDirection="column" paddingX={1}>
-          <EmptyState
-            title="This search needs Gloom Cloud Pro."
-            message="It indexes earnings call transcripts, news wires, and SEC filings so one query reaches across all three."
-          />
-          <Box flexDirection="row" marginTop={1}>
-            <Button label="Manage account" variant="secondary" onPress={openPlan} />
-          </Box>
-        </Box>
+        <PaneStatusBody
+          empty
+          emptyTitle="This search needs Gloom Cloud Pro."
+          actions={<Button label="Manage account" variant="secondary" compact onPress={openPlan} />}
+        />
       </Box>
     );
   }

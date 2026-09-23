@@ -49,7 +49,13 @@ export interface RiskDisplayRow {
   asOf: string | null;
   detail: string;
   history?: Array<{ date: string; value: number | null }>;
+  /** Brinson effects in pp, on attribution rows only; `value` is their total. */
+  allocation?: number;
+  selection?: number;
+  interaction?: number;
 }
+/** Book-level concentration rows that lead the holdings view, ahead of one row per holding. */
+export const HOLDINGS_SUMMARY_ROW_IDS: ReadonlySet<string> = new Set(["top", "top-five", "hhi"]);
 export const RISK_VIEWS = [
   "risk",
   "factors",
@@ -424,6 +430,9 @@ export function buildPortfolioRisk(
           percentile: null,
           asOf: attribution.endDate,
           detail: `Allocation ${(row.allocation * 100).toFixed(2)}; selection ${(row.selection * 100).toFixed(2)}; interaction ${(row.interaction * 100).toFixed(2)} pp`,
+          allocation: row.allocation * 100,
+          selection: row.selection * 100,
+          interaction: row.interaction * 100,
         }))
       : [],
     greeks: greeks

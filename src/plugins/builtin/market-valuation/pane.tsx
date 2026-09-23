@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
   PaneStatusBody, QueryBar, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -13,7 +12,7 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -59,11 +58,8 @@ function matchesQuery(row: IndicatorRow, query: string): boolean {
 /** Stacked mode keeps only what fits; the split has a whole column to work with. */
 function buildColumns(width: number, stacked: boolean): Column[] {
   const withTrend = stacked && width >= 100;
-  // 25 for value/zone/rich, 8 more for trend, then gutters between the columns.
-  const trailing = 25 + (withTrend ? 8 : 0);
-  const name = Math.max(11, width - trailing - 6);
   return [
-    { id: "name", label: "INDICATOR", width: name, align: "left" },
+    { id: "name", label: "INDICATOR", width: 11, flexGrow: 1, align: "left" },
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "zone", label: "ZONE", width: 11, align: "right" },
     { id: "percentile", label: "RICH", width: 6, align: "right" },
@@ -76,7 +72,6 @@ function buildColumns(width: number, stacked: boolean): Column[] {
 // Stable table adapters so memoized rows survive pane re-renders.
 const indicatorKey = (row: IndicatorRow) => row.indicator.id;
 const renderIndicatorCell = (row: IndicatorRow, column: Column) => cellsFor(row)[column.id];
-const noop = () => {};
 
 function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
   const view = row.view;
@@ -129,6 +124,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [range, setRange] = usePaneSettingValue<ValuationRangeId>("range", VALUATION_DEFAULTS.range);
   const resource = useAsyncResource(loadBundle, { initialData: () => getCachedValuationBundle() });
   const { data: bundle, load, reload: refresh, updatedAt: lastUpdated } = resource;
+  const { nativePaneChrome } = useUiCapabilities();
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
@@ -215,11 +211,8 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     if (selectedView.observationStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
-    if (normalizedQuery) {
-      info.push({ id: "filter", parts: [{ text: `filter: ${normalizedQuery}`, tone: "value" }] });
-    }
     return info;
-  }, [normalizedQuery, selectedView, width]);
+  }, [selectedView, width]);
 
   usePaneStatusFooter({
     registrationId: "market-valuation",
@@ -236,22 +229,28 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   if (!selected) {
     return (
-      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState status={error ? "error" : "empty"} title="Market valuation unavailable." message={error ?? undefined} />
-      </Box>
+      <PaneStatusBody
+        error={error}
+        errorTitle="Market valuation unavailable."
+        empty
+        emptyTitle="Market valuation unavailable."
+      />
     );
   }
 
   const split = width >= SPLIT_MIN_WIDTH;
   const listWidth = split ? Math.min(LIST_WIDTH, Math.floor(width * 0.4)) : width;
   const detailWidth = split ? width - listWidth : width;
+  // The terminal scroller draws its bar in the last column; the detail stays clear of it.
+  const detailContentWidth = Math.max(1, detailWidth - (nativePaneChrome ? 0 : 1));
   const columns = buildColumns(listWidth, !split);
-  // Header plus every row, and one more line for the horizontal scrollbar.
+  // Everything under the query bar. The split table fills it to the footer.
+  const bodyHeight = Math.max(1, height - 1);
+  // Stacked: header plus every row, and one more line for the horizontal scrollbar.
   const tableHeight = split
-    ? Math.max(3, height - 2)
+    ? Math.max(3, bodyHeight)
     : Math.min(visible.length + 2, Math.max(3, height - 12));
   // The stacked table consumes rows outside the detail scroll viewport.
-  const bodyHeight = Math.max(1, height - 1);
   const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight);
 
   const list = (
@@ -271,7 +270,6 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
             getId: (view) => view.indicator.id,
             onChange: (id, _item, _index, reason) => chooseIndicator(String(id), reason),
           }}
-          onHeaderClick={noop}
           onRootKeyDown={handlePaneKey}
           getItemKey={indicatorKey}
           renderCell={renderIndicatorCell}
@@ -284,18 +282,17 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const detail = (
     <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
       <ScrollBox height={detailHeight} scrollY focusable={false}>
-        <Box flexDirection="column" paddingBottom={1}>
-          {selectedView ? <IndicatorDetail
-            view={selectedView}
-            width={detailWidth}
-            height={Math.max(12, height - (split ? 3 : tableHeight + 3))}
-            focused={focused && !searchFocused}
-          /> : (
-            <Box flexDirection="column" padding={1} gap={1}>
-              <EmptyState status="error" title={`${selected.indicator.label} unavailable`} message={selected.error ?? undefined} />
-            </Box>
-          )}
-        </Box>
+        {selectedView ? <IndicatorDetail
+          view={selectedView}
+          width={detailContentWidth}
+          height={detailHeight}
+          focused={focused && !searchFocused}
+        /> : (
+          <PaneStatusBody
+            error={selected.error ?? "No data."}
+            errorTitle={`${selected.indicator.label} unavailable`}
+          />
+        )}
       </ScrollBox>
     </Box>
   );

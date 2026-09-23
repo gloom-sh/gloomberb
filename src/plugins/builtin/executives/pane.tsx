@@ -4,12 +4,16 @@ import type {
   CloudProxyStatementPayload,
 } from "../../../api-client";
 import {
-  EmptyState, PaneStatusBody, Prose, SectionHeading,
+  DataTableView,
+  EmptyState, PaneStatusBody, Prose, QueryBar, SectionHeading,
   Tabs,
   usePaneFooter,
   usePaneHeaderTabs,
   usePaneNoticeFooter,
-  type PaneFooterSegment
+  type DataTableCell,
+  type DataTableColumn,
+  type PaneFooterSegment,
+  type QueryBarFilter,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -34,7 +38,6 @@ import {
   formatFiled,
   formatPay,
   formatRatio,
-  shortTitle,
 } from "./format";
 
 export const EXECUTIVES_PANE_ID = "executives";
@@ -99,11 +102,12 @@ function PayMixBar({
   width: number;
 }) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
-  const parts = PAY_PARTS.map((part, index) => ({
+  // Colours follow the pieces that are drawn, so the common salary and stock
+  // pair never lands on two neighbouring shades of the palette.
+  const parts = PAY_PARTS.map((part) => ({
     ...part,
     value: (row[part.key] as number | null) ?? 0,
-    color: getChartIndicatorColor(index),
-  })).filter((part) => part.value > 0);
+  })).filter((part) => part.value > 0).map((part, index) => ({ ...part, color: getChartIndicatorColor(index) }));
   const sum = parts.reduce((total, part) => total + part.value, 0);
   if (sum <= 0) return null;
   const barWidth = Math.max(10, Math.min(width, 60));
@@ -145,8 +149,16 @@ function PayMixBar({
       )}
       <Box flexDirection="row" flexWrap="wrap">
         {parts.map((part) => (
-          <Box key={part.key} flexDirection="row" marginRight={2}>
-            <Text fg={part.color}>■ </Text>
+          <Box key={part.key} flexDirection="row" alignItems="center" marginRight={2}>
+            {isDesktopWeb ? (
+              <Box
+                width={1}
+                height={1}
+                marginRight={1}
+                backgroundColor={part.color}
+                style={{ width: "8px", height: "8px", borderRadius: "2px" }}
+              />
+            ) : <Text fg={part.color}>■ </Text>}
             <Text fg={colors.textDim}>{part.label} </Text>
             <Text fg={colors.text}>
               {Math.round((part.value / sum) * 100)}%
@@ -156,6 +168,23 @@ function PayMixBar({
       </Box>
     </Box>
   );
+}
+
+type OfficerColumn = DataTableColumn & { id: "name" | "title" | "equity" | "total" };
+const OFFICER_COLUMNS: OfficerColumn[] = [
+  { id: "name", label: "NAME", width: 18, align: "left" },
+  { id: "title", label: "TITLE", width: 16, align: "left", flexGrow: 1 },
+  { id: "equity", label: "EQ%", width: 4, align: "right" },
+  { id: "total", label: "TOTAL", width: 8, align: "right" },
+];
+
+function renderOfficerCell(row: CloudExecutiveRowPayload, column: OfficerColumn): DataTableCell {
+  switch (column.id) {
+    case "name": return { text: row.name, color: colors.textBright };
+    case "title": return { text: row.title.replace(/\s+/g, " ").trim(), color: colors.textDim };
+    case "equity": return { text: equityShare(row), color: colors.textDim };
+    case "total": return { text: formatPay(row.total), color: colors.text, attributes: TextAttributes.BOLD };
+  }
 }
 
 function ExecutiveRows({
@@ -177,44 +206,43 @@ function ExecutiveRows({
       />)}
     </Box>;
   }
-  // Name, title, equity share, total. The title takes whatever is left.
-  const totalWidth = 9;
-  const equityWidth = 5;
-  const nameWidth = Math.min(
-    24,
-    Math.max(10, ...rows.map((row) => row.name.length)),
-  );
-  const titleWidth = Math.max(
-    8,
-    width - nameWidth - equityWidth - totalWidth - 6,
-  );
+  // The name column fits the longest name so the title starts after a kit gutter.
+  const nameWidth = Math.min(24, Math.max(10, ...rows.map((row) => row.name.length)));
+  const columns = OFFICER_COLUMNS.map((column) => column.id === "name" ? { ...column, width: nameWidth } : column);
+  const height = rows.length + 1;
   return (
-    <Box flexDirection="column">
-      <Box height={1} flexDirection="row">
-        <Text fg={colors.textDim}>
-          {"NAME".padEnd(nameWidth)} {"TITLE".padEnd(titleWidth)}{" "}
-          {"EQ%".padStart(equityWidth)} {"TOTAL".padStart(totalWidth)}
-        </Text>
-      </Box>
-      {rows.map((row) => (
-        <Box key={`${row.name}-${row.total}`} height={1} flexDirection="row">
-          <Text fg={colors.textBright}>
-            {shortTitle(row.name, nameWidth).padEnd(nameWidth)}
-          </Text>
-          <Text fg={colors.textDim}>
-            {" "}
-            {shortTitle(row.title, titleWidth).padEnd(titleWidth)}{" "}
-          </Text>
-          <Text fg={colors.textDim}>
-            {equityShare(row).padStart(equityWidth)}{" "}
-          </Text>
-          <Text fg={colors.text} attributes={TextAttributes.BOLD}>
-            {formatPay(row.total).padStart(totalWidth)}
-          </Text>
-        </Box>
-      ))}
+    <Box flexDirection="column" height={height} flexShrink={0}>
+      <DataTableView<CloudExecutiveRowPayload, OfficerColumn>
+        columns={columns}
+        items={rows}
+        selection={{ kind: "none" }}
+        rootWidth={width}
+        rootHeight={height}
+        // The scroll body owns the gutter, so the table does not add its own.
+        horizontalPadding={0}
+        virtualize={false}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={(row, index) => `${row.name}-${row.total}-${index}`}
+        renderCell={renderOfficerCell}
+        emptyStateTitle="No named executive officers."
+      />
     </Box>
   );
+}
+
+/**
+ * What a key figure is about, so a filer's "Say on Pay Approval, 2025 Annual
+ * Meeting" is recognised as the "prior say-on-pay support" computed here.
+ */
+function figureTopic(label: string): string {
+  const letters = label.toLowerCase().replace(/[^a-z]/g, "");
+  if (letters.includes("sayonpay")) return "sayonpay";
+  if (letters.includes("payratio") || letters.includes("ceotomedian")
+    || (letters.includes("median") && letters.includes("ratio"))) return "payratio";
+  // The median's pay is its own figure; the pay ratio line carries it only as a note.
+  if (letters.includes("medianemployee")) return "medianpay";
+  return letters;
 }
 
 function figuresOf(statement: CloudProxyStatementPayload) {
@@ -249,10 +277,13 @@ function figuresOf(statement: CloudProxyStatementPayload) {
       label: "prior say-on-pay support",
     });
   }
-  const seen = new Set(figures.map((figure) => figure.label.toLowerCase()));
+  const seen = new Set(figures.map((figure) => figureTopic(figure.label)));
+  if (statement.payRatio !== null && statement.medianEmployeePay) seen.add("medianpay");
   for (const figure of statement.keyFigures ?? []) {
     if (figures.length >= 8) break;
-    if (seen.has(figure.label.toLowerCase())) continue;
+    const topic = figureTopic(figure.label);
+    if (seen.has(topic)) continue;
+    seen.add(topic);
     figures.push({
       value: figure.value,
       label: figure.label,
@@ -373,6 +404,24 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
     onSelect: selectYear,
     focused,
   } : null);
+  // Nested in Ticker Research the years stay in the body: the terminal keeps
+  // its tab row, the desktop picks the year from the query bar.
+  const yearStrip = years.length > 1 && !tabsInHeader;
+  const yearFilters = useMemo<QueryBarFilter[]>(() => yearStrip && nativePaneChrome ? [{
+    id: "year",
+    label: "Proxy",
+    inline: years.length <= 4,
+    value: year === null ? "" : String(year),
+    options: years.map((entry) => ({ label: String(entry.proxyYear), value: String(entry.proxyYear) })),
+    onChange: selectYear,
+  }] : [], [nativePaneChrome, selectYear, year, yearStrip, years]);
+  // The year is named by the tabs or the filter when there is a choice; a
+  // single proxy says which one it is here.
+  const meta = statement ? [
+    years.length > 1 ? null : `${statement.proxyYear} proxy`,
+    statement.fiscalYearLabel ? `pay for ${statement.fiscalYearLabel.replace(/^Fiscal/, "fiscal")}` : null,
+    statement.meetingDate ? `meeting ${formatFiled(statement.meetingDate)}` : null,
+  ].filter(Boolean).join(" · ") : "";
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
   const valueWidth = Math.min(
@@ -399,7 +448,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
       minHeight={0}
       overflow="hidden"
     >
-      {years.length > 1 && !tabsInHeader && (
+      {yearStrip && !nativePaneChrome && (
         <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
           <Tabs
             tabs={yearTabs}
@@ -411,6 +460,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
           />
         </Box>
       )}
+      {(yearFilters.length > 0 || meta) && <QueryBar width={width} filters={yearFilters} meta={meta || undefined} />}
       <ScrollBox
         ref={scrollRef}
         flexGrow={1}
@@ -424,24 +474,9 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
             flexDirection="column"
             width={nativePaneChrome ? "100%" : bodyWidth}
           >
-            <Prose
-              text={[
-                `${statement.proxyYear} proxy statement`,
-                statement.fiscalYearLabel
-                  ? `pay for ${statement.fiscalYearLabel.replace(/^Fiscal/, "fiscal")}`
-                  : null,
-                statement.meetingDate
-                  ? `meeting ${formatFiled(statement.meetingDate)}`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join("  ·  ")}
-              width={proseWidth}
-              color={colors.textDim}
-            />
             {figures.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1} title="KEY FIGURES" />
+                <SectionHeading title="KEY FIGURES" />
                 {figures.map((figure) => (
                   <FigureLine
                     key={`${figure.label}-${figure.value}`}
@@ -456,7 +491,7 @@ function ExecutiveResearch({ ticker, focused, width }: { ticker: string; focused
             )}
             {statement.ceo && (
               <Box flexDirection="column">
-                <SectionHeading marginTop={1}
+                <SectionHeading marginTop={figures.length > 0 ? 1 : 0}
                   title={`HOW ${statement.ceo.name.split(" ").pop()?.toUpperCase() ?? "THE CEO"} WAS PAID`}
                 />
                 <PayMixBar row={statement.ceo} width={proseWidth} />

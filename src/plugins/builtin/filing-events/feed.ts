@@ -34,7 +34,6 @@ export interface FilingEventsSection {
 }
 
 export interface FilingEventsFeed {
-  summaryLine: string;
   sections: FilingEventsSection[];
   /** Every entry in the order the selection walks them. */
   entries: FilingEventEntry[];
@@ -118,17 +117,6 @@ function buildEntry(
   };
 }
 
-function summaryLine(events: CloudFilingEventPayload[], newsCount: number): string {
-  const oldest = events[events.length - 1];
-  const since = oldest ? ` since ${formatFiled(oldest)}` : "";
-  const news = newsCount === 0
-    ? "none carry news"
-    : newsCount === 1
-      ? "1 carries news"
-      : `${newsCount} carry news`;
-  return `${events.length} filing${events.length === 1 ? "" : "s"}${since}  ·  ${news}`;
-}
-
 /**
  * Splits the filings into the ones a model read and the rest, and measures each
  * entry so a moving selection can be scrolled into view. Filings arrive newest
@@ -153,8 +141,8 @@ export function buildFilingEventsFeed(
     ["also", "ALSO FILED", also],
   ] as const) {
     if (group.length === 0) continue;
-    // The heading sits on its own row under a blank one, matching an entry.
-    top += 2;
+    // The first heading starts the feed; a later one sits under a blank row, matching an entry.
+    top += sections.length === 0 ? 1 : 2;
     const placed = group.map((entry) => {
       const positioned = { ...entry, top };
       top += entry.lines;
@@ -164,7 +152,7 @@ export function buildFilingEventsFeed(
     entries.push(...placed);
   }
 
-  return { summaryLine: summaryLine(events, news.length), sections, entries };
+  return { sections, entries };
 }
 
 /**

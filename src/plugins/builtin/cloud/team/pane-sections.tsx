@@ -164,7 +164,6 @@ export function InvitesSection({
             />
             <PaneButton id="invite-send" label={busy === "invite" ? "Sending…" : "Send"} variant="primary" disabled={busy === "invite" || !username.trim()} onPress={onInvite} />
           </Box>
-          <Muted width={width}>They get a card in their terminal and a chat notification. Invitations last 7 days.</Muted>
         </Box>
       ) : null}
 
@@ -214,7 +213,6 @@ export function InvitesSection({
               );
             })}
             <PaneButton id="new-link" label={busy === "link" ? "Creating…" : "New link"} disabled={busy === "link"} onPress={onNewLink} />
-            <Muted width={width}>A new link is copied as soon as it exists. Anyone with it joins as a member; it lasts 7 days and up to 100 uses.</Muted>
           </>
         ) : (
           <Muted width={width}>
@@ -409,7 +407,7 @@ export function SettingsSection({
               disabled={busy === "save" || !dirty || !!problem}
               onPress={onSave}
             />
-            {problem && dirty ? <Text fg={colors.negative}>{problem}</Text> : dirty ? <Muted>Ctrl+S saves.</Muted> : <Muted>Nothing to save.</Muted>}
+            {problem && dirty ? <Text fg={colors.negative}>{problem}</Text> : null}
           </Box>
         </>
       ) : (

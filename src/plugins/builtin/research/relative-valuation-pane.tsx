@@ -289,8 +289,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],
-        [row.symbol, "Fundamentals source", row.fundamentalsProvenance?.source ?? "unavailable",
-          "Retrieved", row.fundamentalsProvenance?.retrievedAt ?? "unavailable",
+        [row.symbol, "Fundamentals retrieved", row.fundamentalsProvenance?.retrievedAt ?? "unavailable",
           "Stale", String(row.fundamentalsProvenance?.stale ?? "unknown")],
         ...(row.fundamentalsProvenance?.stale ? [[row.symbol, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE]] : []),
       ])}

@@ -182,7 +182,8 @@ export function QuoteMonitorCard({
             position: "relative",
             zIndex: 1,
             display: "grid",
-            gridTemplateColumns: "minmax(130px, 1fr) minmax(88px, auto)",
+            // The name gives way first; the price keeps its natural width.
+            gridTemplateColumns: "minmax(0, 1fr) auto",
             gridTemplateRows: "auto 1fr auto",
             columnGap: 12,
             width: "100%",

@@ -25,7 +25,6 @@ import {
   CATALOG_FILTERS,
   CHART_COMPOSER_TEMPLATE_ID,
   DATA_CATALOG_PANE_ID,
-  DEFAULT_CATALOG_MARKET_SOURCE,
   catalogEmptyCopy,
   catalogExpressionForRow,
   catalogInstrumentMatchesQuery,
@@ -33,14 +32,12 @@ import {
   filterCatalogRows,
   listStaticCatalogInventory,
   looksLikeCatalogTickerQuery,
-  resolveCatalogMarketSource,
   type CatalogFilterId,
   type CatalogSeriesRow,
 } from "./catalog-inventory";
 import { useCatalogUniverse } from "./use-series-catalog";
-import { getSharedRegistry } from "../../registry";
 
-type CatalogColumnId = "series" | "source" | "kind" | "expression";
+type CatalogColumnId = "series" | "publisher" | "kind" | "expression";
 type CatalogColumn = DataTableColumn & { id: CatalogColumnId };
 
 interface CatalogSortPreference {
@@ -48,23 +45,7 @@ interface CatalogSortPreference {
   direction: SortDirection;
 }
 
-const DEFAULT_SORT: CatalogSortPreference = { columnId: "source", direction: "asc" };
-
-/**
- * Which provider a plain market request reaches first. Re-asked on every
- * mount, so toggling the cloud plugin and reopening the catalog reflects it.
- */
-function useCatalogMarketSource(): string {
-  const [source, setSource] = useState(DEFAULT_CATALOG_MARKET_SOURCE);
-  useEffect(() => {
-    let cancelled = false;
-    void resolveCatalogMarketSource(getSharedRegistry()?.marketData).then((name) => {
-      if (!cancelled) setSource(name);
-    });
-    return () => { cancelled = true; };
-  }, []);
-  return source;
-}
+const DEFAULT_SORT: CatalogSortPreference = { columnId: "publisher", direction: "asc" };
 
 function nextSortPreference(
   current: CatalogSortPreference,
@@ -76,12 +57,13 @@ function nextSortPreference(
   return DEFAULT_SORT;
 }
 
-function sortValue(columnId: CatalogColumnId, row: CatalogSeriesRow): string {
+function sortValue(columnId: CatalogColumnId, row: CatalogSeriesRow): string | null {
   switch (columnId) {
     case "series":
       return row.label;
-    case "source":
-      return row.source;
+    case "publisher":
+      // Blank publishers (market data) sort after the named ones.
+      return row.publisher || null;
     case "kind":
       return row.kind;
     case "expression":
@@ -90,15 +72,14 @@ function sortValue(columnId: CatalogColumnId, row: CatalogSeriesRow): string {
 }
 
 function buildColumns(width: number): CatalogColumn[] {
-  const sourceWidth = 18;
+  const publisherWidth = 10;
   const kindWidth = 12;
   const expressionWidth = Math.min(28, Math.max(16, Math.floor(width * 0.28)));
-  const seriesWidth = Math.max(18, width - 2 - 4 - sourceWidth - kindWidth - expressionWidth);
   return [
-    { id: "series", label: "SERIES", width: seriesWidth, align: "left" },
-    { id: "source", label: "SOURCE", width: sourceWidth, align: "left" },
+    { id: "series", label: "SERIES", width: 18, flexGrow: 1, align: "left" },
+    { id: "publisher", label: "PUBLISHER", width: publisherWidth, align: "left" },
     { id: "kind", label: "KIND", width: kindWidth, align: "left" },
-    { id: "expression", label: "G", width: expressionWidth, align: "left" },
+    { id: "expression", label: "EXPRESSION", width: expressionWidth, align: "left" },
   ];
 }
 
@@ -121,14 +102,11 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const loading = tickerQuery && universeLoading;
   const emptyCopy = catalogEmptyCopy(loading, searchQuery);
 
-  const marketSource = useCatalogMarketSource();
-
   const rows = useMemo(() => {
-    const staticRows = listStaticCatalogInventory(instruments, marketSource);
+    const staticRows = listStaticCatalogInventory(instruments);
     const resolvedRows = tickerQuery
       ? catalogRowsForResolvedInstruments(
         instruments.filter((instrument) => catalogInstrumentMatchesQuery(instrument, searchQuery)),
-        marketSource,
       )
       : [];
     const merged = new Map<string, CatalogSeriesRow>();
@@ -142,7 +120,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       compareSortValues(sortValue(columnId, left), sortValue(columnId, right), direction)
       || left.label.localeCompare(right.label)
     ));
-  }, [filter, instruments, marketSource, searchQuery, sortPreference, tickerQuery]);
+  }, [filter, instruments, searchQuery, sortPreference, tickerQuery]);
 
   useEffect(() => {
     if (selectedId && rows.some((row) => row.id === selectedId)) return;
@@ -250,8 +228,8 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "series":
         return { text: row.label, color: selectedColor ?? colors.textBright };
-      case "source":
-        return { text: row.source, color: selectedColor ?? colors.textMuted };
+      case "publisher":
+        return { text: row.publisher, color: selectedColor ?? colors.textMuted };
       case "kind":
         return { text: row.kind, color: selectedColor ?? colors.textDim };
       case "expression":
@@ -263,7 +241,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     registrationId: DATA_CATALOG_PANE_ID,
     focused,
     url: selectedUrl,
-    source: selectedUrl ? selectedRow?.source : null,
+    source: selectedUrl ? selectedRow?.publisher : null,
     label: "source",
     loading,
     hints: [
@@ -297,7 +275,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
             search={{
               value: searchQuery,
               onChange: setSearchQuery,
-              placeholder: "series, source, or expression",
+              placeholder: "series or expression",
               focused,
               active: searchFocused,
               onActiveChange: (active) => (active ? focusSearch() : blurSearch()),

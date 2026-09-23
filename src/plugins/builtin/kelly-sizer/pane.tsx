@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, type InputRenderable } from "../../../ui";
+import { Box, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
   EmptyState,
   FieldGrid,
   QueryBar,
+  StatGrid,
   Tabs,
   fieldGridColumns,
   fieldGridRows,
+  statGridRows,
   usePaneFooter,
   usePaneHeaderTabs,
   type GridField,
@@ -52,6 +54,7 @@ import {
   type KellySizerDraft,
   type KellySizerModeDrafts,
   type KellySizingMode,
+  type PredictionMarketKellyAssumptions,
 } from "./model";
 import { KELLY_PANE_ID } from "./constants";
 import {
@@ -65,8 +68,8 @@ import {
 import type { StaticChartXMarker } from "../../../components/chart/static";
 import {
   KellyCurveSection,
-  KellyResultMetrics,
   KellySensitivitySection,
+  buildKellyResultItems,
 } from "./sections";
 import { getPortfolioPositionValue, resolveActivePortfolioId } from "./portfolio";
 import { useKellyCommonAssumptions } from "./state";
@@ -90,8 +93,15 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const { nativePaneChrome } = useUiCapabilities();
 
   const [mode, setMode] = usePaneStateValue<KellySizingMode>("mode", "binary");
+  // A narrow terminal bar has no room for the view switch beside the ticker,
+  // price and account (plus the Side and Portfolio filters when shown), so
+  // there `s` stays a footer hint.
+  const viewInBar = nativePaneChrome || width >= 100
+    + (mode === "prediction-market" ? 16 : 0)
+    + (config.portfolios.length > 1 ? 12 : 0);
   const [drafts, setDrafts] = usePaneStateValue<KellySizerModeDrafts>("drafts", cloneKellyDrafts());
   const [showSensitivity, setShowSensitivity] = usePaneStateValue<boolean>("showSensitivity", false);
   const [selectedPortfolioId, setSelectedPortfolioId] = usePaneStateValue<string | null>("portfolioId", null);
@@ -397,9 +407,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           : [],
     hints: [
       { id: "search", key: "/", label: "search", onPress: focusTickerSearch },
-      { id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity },
+      ...(viewInBar ? [] : [{ id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity }]),
     ],
-  }), [bankroll, focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, ticker, toggleSensitivity]);
+  }), [bankroll, focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, ticker, toggleSensitivity, viewInBar]);
 
   const portfolioTabs = useMemo(
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
@@ -419,10 +429,20 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   });
   const tabRows = tabsInHeader ? 0 : 1;
   const gridFields = [...contextFields, ...editableFields];
-  const gridRows = fieldGridRows(gridFields, fieldGridColumns(width));
-  const metricsRows = 6;
-  const curveDecisionRows = 1;
-  const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - gridRows - metricsRows - curveDecisionRows - 5 - tabRows));
+  const gridColumns = fieldGridColumns(width);
+  const gridRows = fieldGridRows(gridFields, gridColumns);
+  const resultItems = buildKellyResultItems({
+    result,
+    baseCurrency: config.baseCurrency,
+    currentGrowth,
+    targetGrowth,
+    width,
+    columns: gridColumns,
+  });
+  const resultRows = statGridRows(resultItems, width, gridColumns);
+  // Query bar, the mode strip when it is not in the title bar, inputs, results.
+  const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows);
+  const chartHeight = showSensitivity ? 0 : bodyRows;
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
   const quoteCurrency = positionFinancials?.quote?.currency ?? ticker?.metadata.currency ?? config.baseCurrency;
   // The search shows the ticker and the Portfolio filter the account, so the
@@ -433,19 +453,33 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     bankrollOverride != null || currentValueOverride != null ? "override" : null,
     tickerSearchStatus,
   ].filter(Boolean).join(" · ");
-  const filters: QueryBarFilter[] = portfolioTabs.length > 1 ? [{
-    id: "portfolio",
-    label: "Portfolio",
-    value: activePortfolioId ?? "",
-    options: portfolioTabs,
-    onChange: (portfolioId: string) => {
-      setSelectedPortfolioId(portfolioId);
-      setBankrollOverride(null);
-      setCurrentValueOverride(null);
-    },
-  }] : [];
-  const leftMetricsWidth = Math.max(18, Math.floor((width - 2) * 0.52));
-  const rightMetricsWidth = Math.max(16, width - 2 - leftMetricsWidth);
+  const filters: QueryBarFilter[] = [];
+  if (portfolioTabs.length > 1) {
+    filters.push({
+      id: "portfolio",
+      label: "Portfolio",
+      value: activePortfolioId ?? "",
+      options: portfolioTabs,
+      onChange: (portfolioId: string) => {
+        setSelectedPortfolioId(portfolioId);
+        setBankrollOverride(null);
+        setCurrentValueOverride(null);
+      },
+    });
+  }
+  if (mode === "prediction-market") {
+    // The contract side picks which payoff is sized, so it is a mode switch
+    // beside the query rather than an input cell.
+    const market = activeDraft as PredictionMarketKellyAssumptions;
+    filters.push({
+      id: "side",
+      label: "Side",
+      inline: true,
+      value: market.side,
+      options: [{ value: "yes", label: "YES" }, { value: "no", label: "NO" }],
+      onChange: (side: string) => updateDraft({ side: side === "no" ? "no" : "yes" } as Partial<KellySizerDraft>),
+    });
+  }
 
   if (!requestedSymbol || !ticker) {
     return (
@@ -481,6 +515,14 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           normalizeValue: (value) => value.trim().toUpperCase(),
         }}
         filters={filters}
+        view={viewInBar ? {
+          value: showSensitivity ? "sensitivity" : "curve",
+          options: [
+            { value: "curve", label: "Curve" },
+            { value: "sensitivity", label: "Sensitivity" },
+          ],
+          onChange: (value: string) => setShowSensitivity(value === "sensitivity"),
+        } : undefined}
         meta={meta}
       />
 
@@ -508,12 +550,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         onDeactivate={() => activateInput(null)}
       />
 
-      <KellyResultMetrics
-        result={result}
-        baseCurrency={config.baseCurrency}
-        leftWidth={leftMetricsWidth}
-        rightWidth={rightMetricsWidth}
-      />
+      <StatGrid items={resultItems} width={width} columns={gridColumns} />
 
       {showChart && (
         <KellyCurveSection
@@ -523,15 +560,16 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           xAxisLabels={curveXAxisLabels}
           curveMaxFraction={curveMaxFraction}
           markers={curveMarkers}
-          result={result}
-          currentGrowth={currentGrowth}
-          targetGrowth={targetGrowth}
-          baseCurrency={config.baseCurrency}
         />
       )}
 
       {showSensitivity && (
-        <KellySensitivitySection width={width} sensitivity={sensitivity} />
+        <KellySensitivitySection
+          width={width}
+          height={bodyRows}
+          focused={focused && !activeInputId}
+          sensitivity={sensitivity}
+        />
       )}
     </Box>
   );

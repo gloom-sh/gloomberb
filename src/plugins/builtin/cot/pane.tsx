@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CompositeChart, DataTableStackView, DataTableView, KeyValueRow, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
+import { CompositeChart, DataTableStackView, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -10,7 +10,7 @@ import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotRank, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -33,7 +33,6 @@ const POSITION_COLUMNS: DataTableColumn[] = [
 ];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const rank = (value: number | null) => value == null ? "--" : value.toFixed(0);
-const noop = () => {};
 const cotDetailTitle = (name: string | undefined, code: string | null) => name ? cotMarketName(name) : code ?? undefined;
 
 export function CotPane(props: PaneProps) {
@@ -131,24 +130,27 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   const payload = data?.payload;
   const current = payload?.positions.find((row) => row.id === traderClass);
   const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors) : [], [data, traderClass, colors]);
-  const chartHeight = Math.max(6, Math.floor((height - 3) * 0.65));
+  // The selected class row already carries the net and both ranks, and the
+  // legend the charted net, so the detail opens on the chart. A rank over a
+  // short history is a limitation, so it sits behind the warning.
+  const partialRanks = current ? ([1, 3] as const).flatMap((years) => {
+    const window = years === 1 ? current.percentile1Y : current.percentile3Y;
+    return window.completeWindow ? [] : [`${years}Y percentiles rank a partial history${window.historyStart ? ` from ${window.historyStart}` : ""}.`];
+  }) : [];
+  const chartHeight = Math.max(6, Math.floor((height - 1) * 0.65));
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => { if (focused && !event.targetEditable && event.name === "r") { event.preventDefault(); void resource.reload(); } });
-  usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : [])] });
+  usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] },
       ...(payload.status !== "available" ? [{ id: "partial", parts: [{ text: payload.status, tone: "warning" as const }] }] : [])] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <Box width={width} height={height} flexDirection="column">
-      <Box flexDirection="column" paddingX={1} flexShrink={0}>
-        {current ? <KeyValueRow label={`${current.label} net`} labelWidth={current.label.length + 5} value={cotInteger(current.net, true)} detail={`${payload.asOf ?? "--"} · ${cotRank(current, 1)}`} /> : null}
-        {current ? <KeyValueRow label="3Y percentile" value={rank(current.percentile3Y.value)} detail={`${payload.asOf ?? "--"} · ${current.percentile3Y.sampleCount} obs · ${current.percentile3Y.historyStart ?? "--"} to ${current.percentile3Y.historyEnd ?? "--"}`} /> : null}
-      </Box>
       <CompositeChart series={series} panels={data.price.length ? [{ id: "price", height: 2 }, { id: "net", height: 1 }] : [{ id: "net" }]}
         width={width} height={chartHeight} showLegend showTimeAxis navigable={false} formatValue={cotLegendValue} remoteKind="cot-history" />
-      <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={Math.max(3, height - chartHeight - 2)}
+      <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={Math.max(3, height - chartHeight)}
         selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
-        onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+        onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc"
         renderCell={(row: CotClassSummary, column) => ({ text: column.id === "name" ? row.label : column.id === "one" ? rank(row.percentile1Y.value)
           : column.id === "three" ? rank(row.percentile3Y.value) : cotInteger(column.id === "change" ? row.weeklyChange : row[column.id as "long" | "short" | "net"], column.id === "net" || column.id === "change") })}
         emptyStateTitle="Position classes unavailable." />

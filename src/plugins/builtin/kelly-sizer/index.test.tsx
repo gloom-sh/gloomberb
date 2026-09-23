@@ -144,10 +144,9 @@ describe("KellySizerPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("SENSITIVITY");
-    expect(frame).toContain("Win p");
-    expect(frame).toContain("Upside");
-    expect(frame).not.toContain("Kelly Curve");
+    expect(frame).toMatch(/WIN P\s+UPSIDE 18\.0%\s+UPSIDE 24\.0%\s+UPSIDE 30\.0%/);
+    expect(frame).toMatch(/57\.0%\s+8\.00%/);
+    expect(frame).not.toContain("Expected log growth");
   });
 
   test("focuses ticker search with slash", async () => {
