@@ -187,7 +187,7 @@ describe("event rows", () => {
       date: "2026-06-30",
       status: "Q Est",
       period: "next qtr",
-      detail: "22E/18R",
+      detail: "22 EPS / 18 rev analysts",
       qEps: 1.5,
       qRevenue: 100_000_000,
       annualEps: undefined,
@@ -236,7 +236,7 @@ describe("event rows", () => {
     expect(rows[0]).toMatchObject({
       status: "Q Est",
       period: "cur qtr",
-      detail: "12R",
+      detail: "12 rev analysts",
       qEps: undefined,
       qRevenue: 95_000_000,
     });
@@ -266,7 +266,7 @@ describe("event rows", () => {
 
     expect(earnings).toMatchObject({
       status: "Earnings",
-      period: "Q26-03-31",
+      period: "Mar 2026",
       qEps: 1.24,
       qRevenue: 110,
     });

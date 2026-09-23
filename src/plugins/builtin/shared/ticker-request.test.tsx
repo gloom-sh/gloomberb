@@ -76,9 +76,9 @@ async function mount(pane: Pane, width: number, state: { failure: Error | null; 
 
 const cases: [Pane, number, string, string][] = [
   ["analyst-research", 80, "Original Research", "Recovered Research"],
-  ["earnings-estimates", 80, "12.34 USD", "15.67 USD"],
-  ["earnings-estimates", 48, "12.34 USD", "15.67 USD"],
-  ["earnings-estimates", 120, "12.34 USD", "15.67 USD"],
+  ["earnings-estimates", 80, "12.34", "15.67"],
+  ["earnings-estimates", 48, "12.34", "15.67"],
+  ["earnings-estimates", 120, "12.34", "15.67"],
   ["corporate-actions", 80, "2026-03-31", "2026-06-30"],
   ["historical-prices", 80, "2026-09-01", "2026-09-02"],
 ];

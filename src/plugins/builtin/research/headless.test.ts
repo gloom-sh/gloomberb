@@ -84,7 +84,7 @@ describe("earnings estimates headless", () => {
         period: "next qtr",
         qEps: 1.2,
         qRevenue: 9_000_000_000,
-        detail: "30E/28R",
+        detail: "30 EPS / 28 rev analysts",
       }),
       expect.objectContaining({
         status: "FY Est",

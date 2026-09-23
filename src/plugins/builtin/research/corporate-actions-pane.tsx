@@ -135,15 +135,31 @@ export function matchEarningsSecFiling(row: { status: string; date: string; date
   return best?.filing ?? null;
 }
 
-function buildEventColumns(): EventColumn[] {
+/** The one currency every EPS and revenue cell is in, so the headers carry it once. */
+function sharedMetricCurrency(rows: readonly EventRow[]): string | undefined {
+  const currencies = new Set<string | undefined>();
+  for (const row of rows) {
+    for (const [value, currency] of [
+      [row.qEps, row.epsCurrency], [row.annualEps, row.epsCurrency],
+      [row.qRevenue, row.revenueCurrency], [row.annualRevenue, row.revenueCurrency],
+    ] as const) {
+      if (value != null && Number.isFinite(value)) currencies.add(currency || undefined);
+    }
+  }
+  const [only] = currencies;
+  return currencies.size === 1 ? only : undefined;
+}
+
+function buildEventColumns(unit?: string): EventColumn[] {
+  const withUnit = (label: string) => unit ? `${label} ${unit}` : label;
   return [
     { id: "date", label: "DATE", width: 10, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
     { id: "period", label: "PERIOD", width: 9, align: "left" },
-    { id: "qEps", label: "Q EPS", width: 12, align: "right" },
-    { id: "qRevenue", label: "Q REV", width: 12, align: "right" },
-    { id: "annualEps", label: "ANN EPS", width: 12, align: "right" },
-    { id: "annualRevenue", label: "ANN REV", width: 12, align: "right" },
+    { id: "qEps", label: withUnit("Q EPS"), width: 12, align: "right" },
+    { id: "qRevenue", label: withUnit("Q REV"), width: 12, align: "right" },
+    { id: "annualEps", label: withUnit("ANN EPS"), width: 12, align: "right" },
+    { id: "annualRevenue", label: withUnit("ANN REV"), width: 12, align: "right" },
     { id: "value", label: "VALUE", width: 11, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
@@ -344,7 +360,8 @@ export function CorporateActionsView({
       ? allRows.filter((row) => EARNINGS_STATUSES.has(row.status))
       : allRows
   ), [allRows, variant]);
-  const columns = useMemo(() => buildEventColumns(), []);
+  const unit = useMemo(() => sharedMetricCurrency(rows), [rows]);
+  const columns = useMemo(() => buildEventColumns(unit), [unit]);
   const sourceNotice = useMemo(() => (
     actionsLoading || analystLoading
       ? null
@@ -523,19 +540,19 @@ export function CorporateActionsView({
       case "period":
         return { text: row.period, color: selectedColor ?? colors.textDim };
       case "qEps":
-        return { text: formatEventMetric(row.qEps, row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
       case "qRevenue":
-        return { text: formatEventMetric(row.qRevenue, row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
       case "annualEps":
-        return { text: formatEventMetric(row.annualEps, row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
       case "annualRevenue":
-        return { text: formatEventMetric(row.annualRevenue, row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
       case "value":
         return { text: row.value, color: selectedColor ?? toneColor(row.tone) };
       case "detail":
         return { text: row.detail, color: selectedColor ?? colors.text };
     }
-  }, []);
+  }, [unit]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
     return handleRefreshKey(event, reload, { stopPropagation: true });

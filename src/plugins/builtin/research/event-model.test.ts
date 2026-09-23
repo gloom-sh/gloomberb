@@ -93,8 +93,19 @@ test("fiscal period ends stay labeled and unknown EPS currency stays unknown", (
   const [row] = buildEventRows({ symbol: "COST", currency: "USD", dividends: [], splits: [],
     earnings: [{ date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, difference: 0.01 }],
   }, null, null, "USD");
-  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; diff 0.01" });
+  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; +0.01 vs est" });
   expect(row?.epsCurrency).toBeUndefined();
+});
+
+test("an upcoming report takes the currency its reported quarters agree on", () => {
+  const earnings = [
+    { date: "2026-10-28", epsEstimate: 4.72 },
+    { date: "2026-06-30", dateType: "fiscal-period-end" as const, epsActual: 4.74, currency: "USD" },
+  ];
+  const pending = (feed: typeof earnings) => buildEventRows({ symbol: "MSFT", currency: "USD", dividends: [], splits: [], earnings: feed }, null, null, "USD")
+    .find((row) => row.earningsState === "pending");
+  expect(pending(earnings)?.epsCurrency).toBe("USD");
+  expect(pending([...earnings, { date: "2026-03-31", dateType: "fiscal-period-end", epsActual: 4.27, currency: "EUR" }])?.epsCurrency).toBeUndefined();
 });
 
 test("partial and stale corporate data are not described as an empty event history", () => {
@@ -126,7 +137,7 @@ test("period aliases retain exact filing provenance and raw surprise inputs", ()
   const [row] = buildEventRows({ symbol: "COST", providerId: "yahoo", dividends: [], splits: [], earnings: [
     { date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, epsEstimate: 4.9231, difference: 0.0069, surprisePercent: 0.14 },
   ] }, null, { quarterlyStatements: [{ date: "2026-05-10", providerDate: "2026-05-31", dateSource: "sec", dateEvidence: evidence, totalRevenue: 70_527_000_000, currency: "USD" }] }, "USD");
-  expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "Q26-05-10", dateEvidence: evidence,
+  expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "May 2026", dateEvidence: evidence,
     qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: 0.0069, surprisePercent: 0.14, epsBasis: "provider-unspecified" });
 });
 

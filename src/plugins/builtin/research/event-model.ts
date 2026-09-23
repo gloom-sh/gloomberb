@@ -81,8 +81,13 @@ function sortedQuarterlyStatements(
     .sort((left, right) => left.date.localeCompare(right.date));
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The quarter by the month it ends in, e.g. "Jun 2026". */
 function quarterLabel(statement: FinancialStatement | undefined): string {
-  return statement?.date ? `Q${statement.date.slice(2)}` : "-";
+  const match = /^(\d{4})-(\d{2})/.exec(statement?.date ?? "");
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  return match && month ? `${month} ${match[1]}` : "-";
 }
 
 function statementForEarningsDate(
@@ -132,9 +137,9 @@ function buildEstimatePairs(data: AnalystResearchData | null): EstimatePair[] {
 
 function formatEstimateDetail(pair: EstimatePair): string {
   const analystCounts: string[] = [];
-  if (pair.eps?.analysts != null) analystCounts.push(`${pair.eps.analysts}E`);
-  if (pair.revenue?.analysts != null) analystCounts.push(`${pair.revenue.analysts}R`);
-  if (analystCounts.length) return analystCounts.join("/");
+  if (pair.eps?.analysts != null) analystCounts.push(`${pair.eps.analysts} EPS`);
+  if (pair.revenue?.analysts != null) analystCounts.push(`${pair.revenue.analysts} rev`);
+  if (analystCounts.length) return `${analystCounts.join(" / ")} analysts`;
   return "Consensus";
 }
 
@@ -198,7 +203,9 @@ function ttmRow(
 
 function earningsDetail(earning: CorporateActionsData["earnings"][number]): string {
   if (earning.epsActual == null) return "Pending";
-  const detail = earning.difference == null ? "Reported" : `diff ${formatNumber(earning.difference, 2)}`;
+  const detail = earning.difference == null
+    ? "Reported"
+    : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`;
   return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
 }
 
@@ -269,6 +276,10 @@ export function buildEventRows(
   if (ttm) rows.push(ttm);
 
   const earningsIds = earningsRowIds(earnings);
+  // An upcoming report often arrives without a currency; the feed's reported
+  // quarters give it when they all agree on one.
+  const feedCurrencies = new Set(earnings.map((earning) => earning.currency).filter(Boolean));
+  const feedCurrency = feedCurrencies.size === 1 ? [...feedCurrencies][0] : undefined;
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
@@ -279,7 +290,7 @@ export function buildEventRows(
       status: "Earnings",
       period: statement ? quarterLabel(statement) : earning.time?.trim() || "-",
       detail: earningsDetail(earning),
-      epsCurrency: earning.currency,
+      epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : undefined),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
       qRevenue: statement?.totalRevenue,
