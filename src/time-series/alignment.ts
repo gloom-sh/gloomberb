@@ -38,7 +38,20 @@ export function timeSeriesObservationKey(point: TimeSeriesPoint): string {
     : JSON.stringify([point.date.getTime(), point.observedAt.getTime(), point.periodLabel]);
 }
 
-function sortedUniquePoints(points: readonly TimeSeriesPoint[]): TimeSeriesPoint[] {
+function isStrictlyOrdered(points: readonly TimeSeriesPoint[]): boolean {
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const time = point.date.getTime();
+    if (!Number.isFinite(time) || time <= previous || point.periodLabel !== undefined) return false;
+    previous = time;
+  }
+  return true;
+}
+
+/** Callers only read the result, so ordered input (every market series) is returned as is. */
+function sortedUniquePoints(points: readonly TimeSeriesPoint[]): readonly TimeSeriesPoint[] {
+  // Live charts re-resolve on every quote; skip the keyed sort when nothing needs it.
+  if (isStrictlyOrdered(points)) return points;
   const byObservation = new Map<string, TimeSeriesPoint>();
   for (const point of points) {
     const time = point.date.getTime();
