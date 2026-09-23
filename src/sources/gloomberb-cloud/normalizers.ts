@@ -119,9 +119,10 @@ export function mapQuote(
 
 /**
  * JSON has no undefined, so a field the server left out must stay absent here
- * too. A stream frame that omits the 52-week range or market cap would
- * otherwise overwrite the snapshot's values with explicit undefined when the
- * two are merged.
+ * too; the desktop window only ever sees the JSON form. Whether an omitted
+ * field keeps the earlier value is decided when contributions merge: the
+ * 52-week range and name carry over, a close or volume from another trading
+ * day does not.
  */
 function withoutUndefinedFields<T extends object>(value: T): T {
   const result = {} as T;

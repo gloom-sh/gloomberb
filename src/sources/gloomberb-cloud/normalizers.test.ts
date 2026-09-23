@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { formatCloudDateTime, mapCloudFinancials, mapQuote } from "./normalizers";
 import type { CloudQuotePayload } from "../../api-client";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market-data/quotes/contributions";
-import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
+import { resolveCanonicalQuote, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 
 test("intraday boundaries use venue time or explicit UTC while daily dates stay UTC calendar dates", () => {
   const winter = new Date("2026-01-15T01:02:03.456Z");
@@ -101,4 +101,35 @@ test("a stream frame without the 52-week range or market cap keeps the snapshot'
     { ...frame, high52w: undefined, name: undefined },
   );
   expect(merged).toMatchObject({ high52w: 260, name: "Apple Inc." });
+});
+
+test("a stream frame from the next trading day drops the previous day's close, open and volume it leaves out", () => {
+  const monday = mapQuote({
+    symbol: "AAPL", currency: "USD", price: 110, change: 10, changePercent: 10, previousClose: 100, open: 101,
+    bid: 109.9, ask: 110.1, volume: 5e7, high52w: 150, changeSessionDate: "2026-09-14",
+    lastUpdated: Date.parse("2026-09-14T20:00:00Z"), providerId: "gloomberb-cloud", dataSource: "live",
+    listingExchangeName: "NASDAQ", marketState: "CLOSED",
+  });
+  // The server has no anchor for Tuesday yet, so it leaves the close, open and volume out.
+  const tuesdayAt = Date.parse("2026-09-15T14:00:00Z");
+  const tuesday = mapQuote({
+    symbol: "AAPL", currency: "USD", price: 112, change: Number.NaN, changePercent: Number.NaN, bid: 111.9, ask: 112.1,
+    changeSessionDate: "2026-09-15", lastUpdated: tuesdayAt, providerId: "gloomberb-cloud", dataSource: "live",
+    listingExchangeName: "NASDAQ", marketState: "REGULAR",
+  });
+
+  // The desktop window receives the frame as JSON.
+  for (const frame of [tuesday, JSON.parse(JSON.stringify(tuesday)) as typeof tuesday]) {
+    const merged = mergeQuoteContribution(normalizeQuoteContribution(monday), frame);
+    expect(merged).toMatchObject({ price: 112, bid: 111.9, high52w: 150, changeSessionDate: "2026-09-15" });
+    expect([merged.previousClose, merged.open, merged.volume]).toEqual([undefined, undefined, undefined]);
+    const resolved = resolveCanonicalQuote({ "gloomberb-cloud": merged }, tuesdayAt + 5_000).quote;
+    expect(resolved?.previousClose).toBeUndefined();
+    expect(Number.isFinite(resolved?.change)).toBe(false);
+  }
+
+  // Within one trading day a frame that leaves the anchor out keeps it.
+  const anchored = mergeQuoteContribution(normalizeQuoteContribution(tuesday), { ...tuesday, previousClose: 110, open: 111 });
+  const later = mergeQuoteContribution(anchored, { ...tuesday, price: 113, lastUpdated: tuesdayAt + 60_000 });
+  expect(later).toMatchObject({ price: 113, previousClose: 110, open: 111 });
 });

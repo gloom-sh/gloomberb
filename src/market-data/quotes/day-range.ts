@@ -30,13 +30,30 @@ function zoneDate(zone: string, timestamp: number): string | null {
   return date;
 }
 
-function sessionDate(quote: Quote): string | null {
+function declaredSessionDate(quote: Quote): string | null {
   const declared = quote.changeSessionDate;
   const declaredTime = typeof declared === "string" && /^\d{4}-\d{2}-\d{2}$/.test(declared)
     ? Date.parse(`${declared}T00:00:00Z`)
     : Number.NaN;
-  const declaredDate = Number.isFinite(declaredTime)
+  return Number.isFinite(declaredTime)
     && new Date(declaredTime).toISOString().slice(0, 10) === declared ? declared! : null;
+}
+
+/**
+ * The trading day a quote describes: the session its change is declared
+ * against, otherwise the exchange-local date it was observed on. Null when
+ * neither is known.
+ */
+export function quoteTradingDay(quote: Quote): string | null {
+  const declared = declaredSessionDate(quote);
+  if (declared) return declared;
+  const zone = resolveExchangeTimeZone(quote.listingExchangeName ?? quote.exchangeName);
+  if (!zone || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
+  return zoneDate(zone, quote.lastUpdated);
+}
+
+function sessionDate(quote: Quote): string | null {
+  const declaredDate = declaredSessionDate(quote);
   const zone = resolveExchangeTimeZone(quote.listingExchangeName ?? quote.exchangeName);
   if (!zone) return declaredDate;
   if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
