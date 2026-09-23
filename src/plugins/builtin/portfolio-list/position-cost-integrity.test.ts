@@ -56,7 +56,7 @@ test("a current mark cannot refresh broker profit without cost, and manual corre
     unrealizedPnlBasis: "broker-snapshot", unavailableCostSymbols: ["AAPL"], brokerPnlSymbols: ["AAPL"] });
   expect(getColumnValue(column("pnl"), record, financials, context)).toMatchObject({ text: "+200", pnlBasis: "broker-snapshot" });
   expect(getSortValue(column("pnl"), record, financials, context)).toBe(200);
-  const summary = buildPortfolioSummarySegments({ totals: totals(record), accountState: null, widthBudget: 240 });
+  const summary = buildPortfolioSummarySegments({ totals: totals(record), accountState: null });
   expect(summary.flatMap(segment => segment.parts.map(part => part.text)).join(" ")).toContain("Broker P&L");
   const config = createDefaultConfig("/unused-cost-recovery");
   expect(buildSetPortfolioPositionWorkflow(config, { activeCollectionId: "main", activeTicker: record })?.values.avgCost).toBe("");

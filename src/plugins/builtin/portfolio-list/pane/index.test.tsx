@@ -527,7 +527,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       expect(frame).toContain(source === "CAD" ? "Cash 13.5k" : "Cash —");
       expect(frame).not.toContain("Cash 0");
       if (source !== "unknown currency") expect(requested).toContain("CAD");
-      else expect(frame).toContain("FX unavailable");
+      else expect(frame).toContain("⚠");
     });
   }
 
@@ -734,7 +734,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).not.toContain("Cash & Margin");
+    expect(frame).not.toMatch(/[▸▾]/);
   });
 
   test("renders one-month sparkline column when price history is loaded", async () => {
@@ -836,7 +836,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       </Box>}</PaneFooterProvider>, { width, height: 16 });
       await flushFrame();
       const before = testSetup.captureCharFrame();
-      expect(before).toContain("Cost unavailable");
+      expect(before).toContain("⚠");
       expect(before).toMatch(/AAPL\s+—\s+1\.2k\s+\+200\s+—/);
       expect(before).not.toContain("NaN");
       const corrected = { ...imported, metadata: { ...imported.metadata,
@@ -845,7 +845,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await act(async () => { harnessDispatch!({ type: "UPDATE_TICKER", ticker: corrected }); });
       await flushFrame();
       const after = testSetup.captureCharFrame();
-      expect(after).not.toContain("Cost unavailable");
+      expect(after).not.toContain("⚠");
       expect(after).toMatch(/AAPL\s+100\s+1\.2k\s+\+200\s+\+20\.00%/);
     });
   }
@@ -1035,9 +1035,9 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).not.toContain("$4.25");
   });
 
-  test("shows flex cash summary and hides unavailable margin metrics", async () => {
+  test("shows flex cash summary once and hides unavailable margin metrics", async () => {
     const config = createPortfolioConfig("broker:ibkr-flex:DU12345", [createBrokerInstance("flex")]);
-    testSetup = await testRender(
+    testSetup = await testRender(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
       <PortfolioHarness
         config={config}
         collectionId="broker:ibkr-flex:DU12345"
@@ -1059,16 +1059,16 @@ describe("PortfolioListPane cash and margin UI", () => {
             ],
           }],
         }}
-      />,
-      { width: 100, height: 24 },
-    );
+        paneHeight={23}
+      />
+      <PaneFooterBar footer={footer} focused width={100} />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 24 });
 
     await flushFrame();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Cash");
-    expect(frame).toContain("Cash & Margin");
-    expect(frame).toContain("Net Liq");
+    expect(frame.match(/Cash -50k/g)).toHaveLength(1);
+    expect(frame.match(/Net Liq 125k/g)).toHaveLength(1);
     expect(frame).toContain("Flex Mar 27");
     expect(frame).toContain("-351,957.025");
     expect(frame).not.toContain("Avail");

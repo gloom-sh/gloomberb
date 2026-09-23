@@ -4,7 +4,12 @@ import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { BrokerAccount } from "../../../types/trading";
 import type { TickerRecord } from "../../../types/ticker";
 import type { PortfolioSummaryTotals } from "./metrics";
-import { buildPortfolioSummarySegments } from "./summary";
+import {
+  buildPortfolioFooterSegments,
+  buildPortfolioSummarySegments,
+  fitSummarySegments,
+  layoutPortfolioSummaryHeader,
+} from "./summary";
 import { shouldToggleCashMarginDrawer } from ".";
 import { needsVisibleQuoteWatchdogRefresh, selectQuoteWarmupTickers, selectStreamTickers } from "./pane/data";
 import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings } from "./settings";
@@ -52,11 +57,10 @@ describe("buildPortfolioSummarySegments", () => {
   };
 
   test("prioritizes net liquidation at narrow widths for broker portfolios", () => {
-    const segments = buildPortfolioSummarySegments({
+    const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-      widthBudget: 24,
-    });
+    }), 24);
 
     expect(segments.map((segment) => segment.id)).toEqual(["netliq", "val"]);
   });
@@ -65,11 +69,10 @@ describe("buildPortfolioSummarySegments", () => {
     const previousLanguage = getLanguage();
     try {
       setLanguage("zh-CN");
-      const segments = buildPortfolioSummarySegments({
+      const segments = fitSummarySegments(buildPortfolioSummarySegments({
         totals,
         accountState: { account, sourceLabel: "Live" },
-        widthBudget: 22,
-      });
+      }), 22);
 
       expect(segments.map((segment) => segment.id)).toEqual(["netliq"]);
     } finally {
@@ -81,18 +84,16 @@ describe("buildPortfolioSummarySegments", () => {
     const segments = buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-      widthBudget: 80,
     });
 
     expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175k");
   });
 
   test("drops low-priority broker segments before required ones", () => {
-    const segments = buildPortfolioSummarySegments({
+    const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-      widthBudget: 100,
-    });
+    }), 100);
 
     expect(segments.map((segment) => segment.id)).toEqual([
       "netliq",
@@ -105,32 +106,38 @@ describe("buildPortfolioSummarySegments", () => {
     ]);
   });
 
-  test("includes the source badge only when width permits", () => {
-    const segments = buildPortfolioSummarySegments({
-      totals,
-      accountState: { account, sourceLabel: "Live" },
-      widthBudget: 130,
-    });
+  test("the open cash drawer continues where the header row ran out of room", () => {
+    const segments = buildPortfolioSummarySegments({ totals, accountState: { account, sourceLabel: "Live" } });
+    const layout = layoutPortfolioSummaryHeader(segments, 50, { cashDrawer: true, hideHeader: false });
+    const ids = (list: typeof segments) => list.map((segment) => segment.id);
 
-    expect(segments.map((segment) => segment.id)).toContain("source");
+    expect(ids(layout.row)).toEqual(["netliq", "val", "cash"]);
+    expect(ids(layout.detail)).toEqual(["day", "pnl"]);
+    expect(ids(layoutPortfolioSummaryHeader(segments, 50, { cashDrawer: true, hideHeader: true }).detail))
+      .toEqual(["netliq", "val", "cash"]);
   });
 
-  test("shows account status when a broker portfolio has positions but no account snapshot", () => {
-    const segments = buildPortfolioSummarySegments({
-      totals,
+  test("keeps an account failure in the footer when the portfolio has nothing to total", () => {
+    const segments = buildPortfolioFooterSegments({
+      totals: { ...totals, hasPositions: false },
       accountState: null,
       accountStatusText: "Acct missing",
-      widthBudget: 80,
+      financialsMap: new Map(),
+      isPortfolioTab: true,
+      refreshingSize: 0,
+      sortedTickers: [],
     });
 
-    expect(segments.map((segment) => segment.id)).toContain("account-status");
-    expect(segments.find((segment) => segment.id === "account-status")?.parts[0]?.text).toBe("Acct missing");
+    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
   });
 
-  test("treats c as the cash drawer shortcut only when the drawer is available", () => {
-    expect(shouldToggleCashMarginDrawer("c", true)).toBe(true);
-    expect(shouldToggleCashMarginDrawer("c", false)).toBe(false);
-    expect(shouldToggleCashMarginDrawer("j", true)).toBe(false);
+  test("treats only a bare c as the cash drawer shortcut", () => {
+    expect(shouldToggleCashMarginDrawer({ name: "c" }, true)).toBe(true);
+    expect(shouldToggleCashMarginDrawer({ name: "c" }, false)).toBe(false);
+    expect(shouldToggleCashMarginDrawer({ name: "j" }, true)).toBe(false);
+    // Cmd+Shift+C copies a pane screenshot.
+    expect(shouldToggleCashMarginDrawer({ name: "c", meta: true, shift: true }, true)).toBe(false);
+    expect(shouldToggleCashMarginDrawer({ name: "c", super: true, shift: true }, true)).toBe(false);
   });
 });
 

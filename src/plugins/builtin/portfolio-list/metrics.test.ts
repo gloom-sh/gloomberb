@@ -4,7 +4,7 @@ import type { ColumnConfig } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { blendHex, colors } from "../../../theme/colors";
-import { buildPortfolioSummarySegments } from "./summary";
+import { buildPortfolioSummaryNotices, buildPortfolioSummarySegments } from "./summary";
 import {
   calculatePortfolioSummaryTotals,
   getColumnValue,
@@ -92,9 +92,10 @@ describe("portfolio-metrics", () => {
     expect(unavailable.totalMktValue).toBeNaN();
     expect(unavailable.unrealizedPnl).toBeNaN();
     expect(unavailable.unavailableConversions).toEqual(["EUR/USD"]);
-    const segments = buildPortfolioSummarySegments({ totals: unavailable, accountState: null, widthBudget: 200 });
+    const segments = buildPortfolioSummarySegments({ totals: unavailable, accountState: null });
     const rendered = segments.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
-    expect(rendered).toContain("FX unavailable");
+    expect(buildPortfolioSummaryNotices({ totals: unavailable, accountState: null, baseCurrency: "USD" }))
+      .toEqual(["FX unavailable: EUR/USD", "Market value unavailable: SAP"]);
     expect(rendered).toContain("Val —");
     expect(rendered).not.toContain("NaN");
     expect(rendered).not.toContain("2.4k");
@@ -465,7 +466,7 @@ describe("position aggregation across sides, currencies and broker coverage", ()
     expect(getSortValue(column("pnl_pct"), ticker, financials, defaultColumnContext)).toBeCloseTo(1000 / 21000 * 100);
     expect(getColumnValue(column("shares"), ticker, financials, defaultColumnContext).text).toBe("0");
     expect(getColumnValue(column("pnl"), ticker, financials, defaultColumnContext).text).toBe("+1k");
-    expect(buildPortfolioSummarySegments({ totals, accountState: null, widthBudget: 200 }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ")).toContain("Gross 24k Net 0");
+    expect(buildPortfolioSummarySegments({ totals, accountState: null }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ")).toContain("Gross 24k Net 0");
   });
 
   test("converts each cost basis before summing and withholds averages across native currencies", () => {

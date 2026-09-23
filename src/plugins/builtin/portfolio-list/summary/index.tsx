@@ -7,11 +7,12 @@ import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
-import { convertCurrency, displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
+import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../account-metrics";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
+import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
 
 export interface PortfolioSummarySegment {
@@ -71,7 +72,7 @@ function getAccountFreshnessTime(account: BrokerAccount): number {
   return asOfDate?.getTime() ?? account.updatedAt ?? 0;
 }
 
-function fitSummarySegments(candidates: PortfolioSummarySegment[], widthBudget: number): PortfolioSummarySegment[] {
+export function fitSummarySegments(candidates: PortfolioSummarySegment[], widthBudget: number): PortfolioSummarySegment[] {
   const fitted: PortfolioSummarySegment[] = [];
   let used = 0;
   for (const segment of candidates) {
@@ -182,49 +183,41 @@ export function resolvePortfolioAccountState(
   };
 }
 
+/** Headline numbers in priority order, so the narrowest header row keeps the most important ones. */
 export function buildPortfolioSummarySegments({
   totals,
   accountState,
-  accountStatusText,
-  widthBudget,
-  refreshText,
+  isPortfolioTab = true,
   convertAccountValue = (value) => value,
 }: {
   totals: PortfolioSummaryTotals;
   accountState: PortfolioSummaryAccountState | null;
-  accountStatusText?: string;
-  widthBudget: number;
-  refreshText?: string;
+  isPortfolioTab?: boolean;
   convertAccountValue?: (value: number) => number;
 }): PortfolioSummarySegment[] {
+  if (!isPortfolioTab) {
+    return totals.watchlistCount > 0
+      ? [createSummarySegment("avg-day", [
+        { text: "Avg Day", tone: "label" },
+        { text: formatPercentRaw(totals.avgWatchlistChange), tone: "value", color: priceColor(totals.avgWatchlistChange), bold: true },
+      ])]
+      : [];
+  }
+  if (!totals.hasPositions && !accountState) return [];
+
   const candidates: PortfolioSummarySegment[] = [];
-  const accountMetrics = resolvePortfolioAccountMetrics(totals, accountState?.account, convertAccountValue);
-  const totalMarketValue = resolvePortfolioMarketValue(totals, accountState?.account, convertAccountValue);
+  const account = accountState?.account;
+  const accountMetrics = resolvePortfolioAccountMetrics(totals, account, convertAccountValue);
+  const totalMarketValue = resolvePortfolioMarketValue(totals, account, convertAccountValue);
+  const accountValue = (id: string, label: string, value: number | undefined) => value != null
+    ? createSummarySegment(id, [
+      { text: label, tone: "label" },
+      { text: formatCompact(convertAccountValue(value)), tone: "value", bold: true },
+    ])
+    : null;
 
-  if (totals.unavailableConversions?.length || (accountState && !Number.isFinite(convertAccountValue(1)))) {
-    candidates.push(createSummarySegment("fx-unavailable", [
-      { text: "FX unavailable", tone: "muted", color: colors.warning },
-    ]));
-  }
-
-  if (totals.unavailableSymbols?.length) {
-    candidates.push(createSummarySegment("prices-unavailable", [
-      { text: "Prices unavailable", tone: "muted", color: colors.warning },
-    ]));
-  }
-
-  if (totals.unavailableCostSymbols?.length) {
-    candidates.push(createSummarySegment("cost-unavailable", [
-      { text: "Cost unavailable", tone: "muted", color: colors.warning },
-    ]));
-  }
-
-  if (accountState?.account.netLiquidation != null) {
-    candidates.push(createSummarySegment("netliq", [
-      { text: "Net Liq", tone: "label" },
-      { text: formatCompact(convertAccountValue(accountState.account.netLiquidation)), tone: "value", bold: true },
-    ]));
-  }
+  const netLiq = accountValue("netliq", "Net Liq", account?.netLiquidation);
+  if (netLiq) candidates.push(netLiq);
 
   candidates.push(createSummarySegment("val", [
     { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },
@@ -238,12 +231,8 @@ export function buildPortfolioSummarySegments({
     ]));
   }
 
-  if (accountState?.account.totalCashValue != null) {
-    candidates.push(createSummarySegment("cash", [
-      { text: "Cash", tone: "label" },
-      { text: formatCompact(convertAccountValue(accountState.account.totalCashValue)), tone: "value", bold: true },
-    ]));
-  }
+  // A broker account always states its cash, so a missing balance reads as unknown rather than zero.
+  if (account) candidates.push(accountValue("cash", "Cash", account.totalCashValue ?? Number.NaN)!);
 
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
@@ -251,96 +240,81 @@ export function buildPortfolioSummarySegments({
     { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.dailyPnlPct) },
   ]));
   candidates.push(createSummarySegment("pnl", [
-    { text: !Number.isFinite(accountState?.account.unrealizedPnl)
+    { text: !Number.isFinite(account?.unrealizedPnl)
       && totals.unrealizedPnlBasis === "broker-snapshot" ? "Broker P&L"
-      : !Number.isFinite(accountState?.account.unrealizedPnl)
+      : !Number.isFinite(account?.unrealizedPnl)
         && totals.unrealizedPnlBasis === "mixed" ? "Mixed P&L" : "P&L", tone: "label" },
     { text: formatSignedCompact(accountMetrics.unrealizedPnl), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.unrealizedPnlPct) },
   ]));
 
-  if (accountState) {
-    const { account, sourceLabel } = accountState;
-    const brokerSegments = [
-      accountMetrics.realizedPnl != null
-        ? createSummarySegment("realized", [
-          { text: "Realized", tone: "label" },
-          { text: formatSignedCompact(accountMetrics.realizedPnl), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
-        ])
-        : null,
-      account.settledCash != null
-        ? createSummarySegment("settled", [
-          { text: "Settled", tone: "label" },
-          { text: formatCompact(convertAccountValue(account.settledCash)), tone: "value", bold: true },
-        ])
-        : null,
-      account.availableFunds != null
-        ? createSummarySegment("avail", [
-          { text: "Avail", tone: "label" },
-          { text: formatCompact(convertAccountValue(account.availableFunds)), tone: "value", bold: true },
-        ])
-        : null,
-      account.excessLiquidity != null
-        ? createSummarySegment("excess", [
-          { text: "Excess", tone: "label" },
-          { text: formatCompact(convertAccountValue(account.excessLiquidity)), tone: "value", bold: true },
-        ])
-        : null,
-      account.buyingPower != null
-        ? createSummarySegment("bp", [
-          { text: "BP", tone: "label" },
-          { text: formatCompact(convertAccountValue(account.buyingPower)), tone: "value", bold: true },
-        ])
-        : null,
-      createSummarySegment("source", [
-        { text: sourceLabel, tone: "muted" },
-      ]),
-    ].filter((segment): segment is PortfolioSummarySegment => segment != null);
+  if (!account) return candidates;
 
-    return fitSummarySegments([...candidates, ...brokerSegments], widthBudget);
-  }
-
-  if (accountStatusText) {
-    candidates.push(createSummarySegment("account-status", [
-      { text: accountStatusText, tone: "muted" },
-    ]));
-  }
-
-  if (refreshText) {
-    candidates.push(createSummarySegment("refresh", [
-      { text: refreshText, tone: "muted" },
-    ]));
-  }
-
-  return fitSummarySegments(candidates, widthBudget);
+  const realized = accountMetrics.realizedPnl != null
+    ? createSummarySegment("realized", [
+      { text: "Realized", tone: "label" },
+      { text: formatSignedCompact(accountMetrics.realizedPnl), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
+    ])
+    : null;
+  return [
+    ...candidates,
+    ...[
+      realized,
+      accountValue("settled", "Settled", account.settledCash),
+      accountValue("avail", "Avail", account.availableFunds),
+      accountValue("excess", "Excess", account.excessLiquidity),
+      accountValue("bp", "BP", account.buyingPower),
+      accountValue("init", "Init", account.initMarginReq),
+      accountValue("maint", "Maint", account.maintMarginReq),
+    ].filter((segment): segment is PortfolioSummarySegment => segment != null),
+  ];
 }
 
+export interface PortfolioSummaryHeaderLayout {
+  /** The header row above the table. */
+  row: PortfolioSummarySegment[];
+  /** What the row had no room for, shown once the cash drawer opens. */
+  detail: PortfolioSummarySegment[];
+}
+
+/** Width of the disclosure marker and its gap in front of the header row. */
+export const SUMMARY_DISCLOSURE_WIDTH = 2;
+
+export function layoutPortfolioSummaryHeader(
+  segments: PortfolioSummarySegment[],
+  width: number,
+  { cashDrawer, hideHeader }: { cashDrawer: boolean; hideHeader: boolean },
+): PortfolioSummaryHeaderLayout {
+  const rowWidth = cashDrawer ? width - SUMMARY_DISCLOSURE_WIDTH : width;
+  const row = hideHeader ? [] : fitSummarySegments(segments, rowWidth);
+  const detail = cashDrawer ? fitSummarySegments(segments.slice(row.length), width - SUMMARY_DISCLOSURE_WIDTH) : [];
+  return { row, detail };
+}
+
+/** Changing status only: where the account numbers come from, account failures, and quote refresh time. */
 export function buildPortfolioFooterSegments({
   accountState,
   accountStatusText,
-  activeCollectionId,
-  baseCurrency,
-  exchangeRates,
   financialsMap,
-  hideHeader,
   isPortfolioTab,
   refreshingSize,
   sortedTickers,
-  width,
+  totals,
 }: {
   accountState: PortfolioSummaryAccountState | null;
   accountStatusText?: string;
-  activeCollectionId: string | null;
-  baseCurrency: string;
-  exchangeRates: Map<string, number>;
   financialsMap: Map<string, TickerFinancials>;
-  hideHeader: boolean;
   isPortfolioTab: boolean;
   refreshingSize: number;
   sortedTickers: TickerRecord[];
-  width: number;
+  totals: PortfolioSummaryTotals;
 }): PaneFooterSegment[] {
-  if (hideHeader) return [];
+  const accountStatus: PaneFooterSegment[] = isPortfolioTab && accountStatusText
+    ? [{ id: "account-status", parts: [{ text: accountStatusText, tone: "muted" }] }]
+    : [];
+  // Cached account numbers stay on screen when a live refresh fails, so the failure sits beside their date.
+  if (accountState) return [{ id: "source", parts: [{ text: accountState.sourceLabel, tone: "muted" }] }, ...accountStatus];
+  if (isPortfolioTab ? !totals.hasPositions && !accountStatusText : totals.watchlistCount === 0) return [];
 
   const lastRefreshTimestamp = getMostRecentQuoteUpdate(
     sortedTickers.map((ticker) => financialsMap.get(ticker.metadata.ticker)?.quote),
@@ -350,51 +324,44 @@ export function buildPortfolioFooterSegments({
     : lastRefreshTimestamp != null
       ? new Date(lastRefreshTimestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
       : "-";
-  const totals = calculatePortfolioSummaryTotals(
-    sortedTickers,
-    financialsMap,
-    baseCurrency,
-    exchangeRates,
-    isPortfolioTab,
-    activeCollectionId,
-  );
+  return [...accountStatus, { id: "refresh", parts: [{ text: refreshText, tone: "muted" }] }];
+}
 
-  if (!isPortfolioTab) {
-    if (totals.watchlistCount === 0) return [];
-    return [
-      {
-        id: "avg-day",
-        parts: [
-          { text: "Avg Day", tone: "label" },
-          { text: formatPercentRaw(totals.avgWatchlistChange), tone: "value", color: priceColor(totals.avgWatchlistChange), bold: true },
-        ],
-      },
-      {
-        id: "refresh",
-        parts: [{ text: refreshText, tone: "muted" }],
-      },
-    ];
+const MAX_NOTICE_SYMBOLS = 12;
+
+function listSymbols(symbols: string[]): string {
+  const shown = symbols.slice(0, MAX_NOTICE_SYMBOLS).join(", ");
+  return symbols.length > MAX_NOTICE_SYMBOLS ? `${shown} +${symbols.length - MAX_NOTICE_SYMBOLS} more` : shown;
+}
+
+/** Gaps behind the totals, for the pane's warning notice instead of text in the footer. */
+export function buildPortfolioSummaryNotices({
+  totals,
+  accountState,
+  baseCurrency,
+  convertAccountValue = (value) => value,
+  fxStatus,
+}: {
+  totals: PortfolioSummaryTotals;
+  accountState: PortfolioSummaryAccountState | null;
+  baseCurrency: string;
+  convertAccountValue?: (value: number) => number;
+  fxStatus?: FxRateStatus;
+}): string[] {
+  const notices: string[] = [];
+  const accountCurrency = accountState?.account.currency?.trim().toUpperCase();
+  const accountFxMissing = !!accountState && !Number.isFinite(convertAccountValue(1));
+  const missingPairs = new Set(totals.unavailableConversions ?? []);
+  if (accountFxMissing && accountCurrency) missingPairs.add(`${accountCurrency}/${baseCurrency}`);
+  if (accountFxMissing && !accountCurrency) notices.push("Account currency unknown, so account values are unavailable");
+  if (missingPairs.size > 0) notices.push(`FX unavailable: ${[...missingPairs].sort().join(", ")}`);
+  if (fxStatus && (fxStatus.stale || fxStatus.unknownTime || (fxStatus.unavailable && missingPairs.size === 0))) {
+    // Missing pairs are named above, so the rate summary only adds staleness and timing.
+    notices.push(`FX ${fxStatusLabel(missingPairs.size > 0 ? { ...fxStatus, unavailable: 0 } : fxStatus)}`);
   }
-
-  // An account error must still reach the footer, otherwise a failed load looks like an empty portfolio.
-  if (!totals.hasPositions && !accountState && !accountStatusText) return [];
-  const convertAccountValue = (value: number) => convertCurrency(
-    value,
-    accountState?.account.currency ?? "",
-    baseCurrency,
-    exchangeRates,
-  );
-  return buildPortfolioSummarySegments({
-    totals,
-    accountState,
-    accountStatusText,
-    widthBudget: Math.max(16, width - 14),
-    refreshText,
-    convertAccountValue,
-  }).map((segment) => ({
-    id: segment.id,
-    parts: segment.parts,
-  }));
+  if (totals.unavailableSymbols?.length) notices.push(`Market value unavailable: ${listSymbols(totals.unavailableSymbols)}`);
+  if (totals.unavailableCostSymbols?.length) notices.push(`Cost unavailable: ${listSymbols(totals.unavailableCostSymbols)}`);
+  return notices;
 }
 
 export function renderSummarySegments(segments: PortfolioSummarySegment[], width: number) {
@@ -419,49 +386,4 @@ export function renderSummarySegments(segments: PortfolioSummarySegment[], width
       ))}
     </Box>
   );
-}
-
-export function buildDrawerMetricSegments(
-  account: BrokerAccount,
-  widthBudget: number,
-  convertAccountValue: (value: number) => number = (value) => value,
-): PortfolioSummarySegment[] {
-  const money = (value: number) => convertAccountValue(value);
-  const candidates = [
-    account.dailyPnl != null
-      ? createSummarySegment("day", [{ text: "Day", tone: "label" }, { text: formatSignedCompact(money(account.dailyPnl)), tone: "value", color: priceColor(money(account.dailyPnl)), bold: true }])
-      : null,
-    account.unrealizedPnl != null
-      ? createSummarySegment("unreal", [{ text: "Unreal", tone: "label" }, { text: formatSignedCompact(money(account.unrealizedPnl)), tone: "value", color: priceColor(money(account.unrealizedPnl)), bold: true }])
-      : null,
-    account.realizedPnl != null
-      ? createSummarySegment("realized", [{ text: "Realized", tone: "label" }, { text: formatSignedCompact(money(account.realizedPnl)), tone: "value", color: priceColor(money(account.realizedPnl)), bold: true }])
-      : null,
-    account.totalCashValue != null
-      ? createSummarySegment("cash", [{ text: "Cash", tone: "label" }, { text: formatCompact(money(account.totalCashValue)), tone: "value", bold: true }])
-      : null,
-    account.settledCash != null
-      ? createSummarySegment("settled", [{ text: "Settled", tone: "label" }, { text: formatCompact(money(account.settledCash)), tone: "value", bold: true }])
-      : null,
-    account.netLiquidation != null
-      ? createSummarySegment("netliq", [{ text: "Net Liq", tone: "label" }, { text: formatCompact(money(account.netLiquidation)), tone: "value", bold: true }])
-      : null,
-    account.availableFunds != null
-      ? createSummarySegment("avail", [{ text: "Avail", tone: "label" }, { text: formatCompact(money(account.availableFunds)), tone: "value", bold: true }])
-      : null,
-    account.excessLiquidity != null
-      ? createSummarySegment("excess", [{ text: "Excess", tone: "label" }, { text: formatCompact(money(account.excessLiquidity)), tone: "value", bold: true }])
-      : null,
-    account.buyingPower != null
-      ? createSummarySegment("bp", [{ text: "BP", tone: "label" }, { text: formatCompact(money(account.buyingPower)), tone: "value", bold: true }])
-      : null,
-    account.initMarginReq != null
-      ? createSummarySegment("init", [{ text: "Init", tone: "label" }, { text: formatCompact(money(account.initMarginReq)), tone: "value", bold: true }])
-      : null,
-    account.maintMarginReq != null
-      ? createSummarySegment("maint", [{ text: "Maint", tone: "label" }, { text: formatCompact(money(account.maintMarginReq)), tone: "value", bold: true }])
-      : null,
-  ].filter((segment): segment is PortfolioSummarySegment => segment != null);
-
-  return fitSummarySegments(candidates, widthBudget);
 }
