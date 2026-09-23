@@ -167,7 +167,9 @@ const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
 
 const COLUMN_LABELS: Record<NewsColumnId, string> = {
   rank: "#",
-  time: "TIME",
+  // "25m" and "13h" read as times on their own, and a label would widen the
+  // column to fit itself and the sort mark, pushing the headline away.
+  time: "",
   source: "SOURCE",
   title: "HEADLINE",
   tickers: "TICKERS",
