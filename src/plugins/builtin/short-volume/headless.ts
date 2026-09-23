@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchShortVolume } from "./client";
-import { volumePercent, volumePointStatus } from "./model";
+import { volumePercent, volumePointStatus, volumeQuantity } from "./model";
 
 export const shortVolumeHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US equity ticker.", placeholder: "ticker" },
@@ -18,9 +18,9 @@ export const shortVolumeHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [{ title: "Daily off-exchange volume", columns: [
         { key: "date", header: "Date" },
         { key: "ratioPercent", header: "Short %", align: "right", format: (value) => volumePercent(value as number | null) },
-        { key: "shortVolume", header: "Short volume", align: "right" },
-        { key: "totalVolume", header: "Total volume", align: "right" },
-        { key: "shortExemptVolume", header: "Exempt volume", align: "right" },
+        { key: "shortVolume", header: "Short volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
+        { key: "totalVolume", header: "Total volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
+        { key: "shortExemptVolume", header: "Exempt volume", align: "right", format: (value) => volumeQuantity(value as string | null) },
         { key: "status", header: "Status" },
       ], rows: data.history.toReversed().map((point) => ({ ...point, status: volumePointStatus(point) })) }],
       metadata: { ...data },

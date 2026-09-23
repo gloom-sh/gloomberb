@@ -75,7 +75,7 @@ export function renderMarketMoverCell(
         color: selectedColor ?? priceColor(row.changePercent ?? 0),
       };
     case "volume":
-      return { text: formatCompact(row.volume ?? undefined), color: selectedColor ?? colors.textDim };
+      return { text: formatCompact(row.volume ?? undefined, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
     case "volumeRatio":
       return {
         text: formatVolRatio(row.volumeRatio),
@@ -88,7 +88,7 @@ export function renderMarketMoverCell(
       };
     case "marketCap":
       return {
-        text: row.marketCap != null ? formatCompact(row.marketCap) : "—",
+        text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : "—",
         color: selectedColor ?? colors.textDim,
       };
   }

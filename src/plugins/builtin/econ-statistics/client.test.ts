@@ -106,3 +106,17 @@ test("mixed known and unprovenanced observations retain explicit partial retriev
   expect(hydrated.fetchedAtComplete).toBe(false);
   expect(rows(hydrated)[0]).toMatchObject({ fetchedAt: null, cacheStale: null, stale: null, cacheSource: "hydrated" });
 });
+
+test("2s10s never runs ahead of the 2Y and 10Y rows it is computed from", async () => {
+  const days = (last: string, value: number) => ["2026-09-17", "2026-09-18", "2026-09-21", "2026-09-22"]
+    .filter((date) => date <= last).map((date) => ({ date, value }));
+  const series: Record<string, Array<{ date: string; value: number }>> = {
+    DGS10: days("2026-09-21", 4.96), DGS2: days("2026-09-21", 4.76), T10Y2Y: days("2026-09-22", 0.25),
+  };
+  const stats = [findStat("ten-year"), findStat("two-year"), findStat("curve-spread")];
+  const bundle = await loadStatsBundle({ loader: async (def) => series[def.seriesId]!, stats });
+  expect(bundle.builds.map((build) => build.points.at(-1)?.date)).toEqual(["2026-09-21", "2026-09-21", "2026-09-21"]);
+  // Alone, the spread keeps its newest print.
+  const alone = await loadStatsBundle({ loader: async (def) => series[def.seriesId]!, stats: [findStat("curve-spread")] });
+  expect(alone.builds[0]!.points.at(-1)?.date).toBe("2026-09-22");
+});

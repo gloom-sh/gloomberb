@@ -4,7 +4,7 @@ import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation } from "../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
 import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, financialOperatingSourceNotice, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
@@ -85,10 +85,13 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
 
 function quoteAmount(value: unknown, row: Record<string, unknown>, signed = false): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
-  const options = { assetCategory: typeof row.instrumentType === "string" ? row.instrumentType : undefined,
-    priceBasis: row.priceBasis === "per-unit" || row.priceBasis === "percent-of-par" ? row.priceBasis : undefined, minimumFractionDigits: 2 } as const;
-  const amount = typeof row.currency === "string" && row.currency.trim()
-    ? formatMarketPriceWithCurrency(value, row.currency, options)
+  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency : undefined;
+  const base: MarketFormatOptions = { assetCategory: typeof row.instrumentType === "string" ? row.instrumentType : undefined,
+    priceBasis: row.priceBasis === "per-unit" || row.priceBasis === "percent-of-par" ? row.priceBasis : undefined };
+  // Par quotes keep two decimals; money pads to its currency's minor unit (none for JPY).
+  const options = base.priceBasis === "percent-of-par" ? { ...base, minimumFractionDigits: 2 } : withCurrencyMinorDigits(base, currency);
+  const amount = currency
+    ? formatMarketPriceWithCurrency(value, currency, options)
     : formatMarketPrice(value, options);
   return amount === "—" ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
 }

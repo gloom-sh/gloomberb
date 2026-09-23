@@ -7,7 +7,7 @@ import { buildCryptoRows, formatCryptoPercent } from "./model";
 const NO_QUOTES = new Map();
 const number = (value: unknown) => (typeof value === "number" ? value : null);
 const percent = (value: unknown) => formatCryptoPercent(number(value));
-const compact = (value: unknown) => (number(value) == null ? "—" : formatCompact(number(value)!));
+const compact = (value: unknown) => (number(value) == null ? "—" : formatCompact(number(value)!, { fixedDecimals: true }));
 
 export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",

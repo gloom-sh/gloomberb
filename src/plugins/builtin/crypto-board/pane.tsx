@@ -102,9 +102,9 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
         content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
       };
     case "volume24h":
-      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h), color: selectedColor ?? colors.textDim };
+      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
     case "marketCap":
-      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap), color: selectedColor ?? colors.textDim };
+      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
   }
 }
 

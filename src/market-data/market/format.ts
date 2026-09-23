@@ -336,7 +336,9 @@ export function formatMarketCost(value: number | undefined, options: MarketForma
     return `${formatMarketCost(value, { ...options, priceBasis: "per-unit", maxWidth })}% par`;
   }
   const kind = resolveAssetDisplayKind(options);
-  return formatVariableNumber(value, getCostMaxFractionDigits(kind), options.maxWidth);
+  const maxFractionDigits = getCostMaxFractionDigits(kind);
+  const minimumFractionDigits = Math.max(0, Math.min(options.minimumFractionDigits ?? 0, maxFractionDigits));
+  return formatVariableNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
 }
 
 export function formatSignedMarketPrice(value: number | undefined, options: MarketFormatOptions = {}): string {
@@ -385,6 +387,13 @@ export function currencyMinorDigits(currency: string | undefined): number {
   } catch {
     return 2;
   }
+}
+
+/** Pads a money price to its currency's minor unit (two for USD, none for JPY),
+ * so one card or column never mixes $309.9 with $339.75. Par-quoted prices are left as they are. */
+export function withCurrencyMinorDigits(options: MarketFormatOptions, currency: string | undefined): MarketFormatOptions {
+  if (resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return options;
+  return { ...options, minimumFractionDigits: Math.max(options.minimumFractionDigits ?? 0, Math.min(2, currencyMinorDigits(currency))) };
 }
 
 export function formatMarketPriceWithCurrency(

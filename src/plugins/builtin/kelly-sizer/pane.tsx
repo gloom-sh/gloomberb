@@ -493,7 +493,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
 
       <KellyResultMetrics
         result={result}
-        activeDraft={activeDraft}
         baseCurrency={config.baseCurrency}
         leftWidth={leftMetricsWidth}
         rightWidth={rightMetricsWidth}

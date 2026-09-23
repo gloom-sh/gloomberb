@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
+import { CurveSurface, curveGhostColors, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
@@ -45,7 +45,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
-  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }, horizon) : [], [data, colors, horizon]);
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon) : [], [data, colors, horizon]);
   const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
   const newest = data ? newestQuote(data.contracts) : null;
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);

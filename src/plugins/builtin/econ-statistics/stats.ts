@@ -423,6 +423,7 @@ export const STATS: readonly StatDef[] = [
     shortLabel: "2s10s",
     category: "rates",
     seriesId: "T10Y2Y",
+    derivedFrom: ["ten-year", "two-year"],
     transform: "level",
     direction: "higher-is-good",
     axisUnit: "%",

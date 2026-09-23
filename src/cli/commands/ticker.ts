@@ -8,7 +8,7 @@ import {
   formatNumber,
   formatPercent,
 } from "../../utils/format";
-import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -19,7 +19,6 @@ import {
   type CliStatEntry,
 } from "../../utils/cli-output";
 import { exchangeShortName, marketStateLabel } from "../../market-data/market/status";
-import { resolvePriceBasis } from "../../market-data/market/price-basis";
 import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, TickerFinancials } from "../../types/financials";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -344,9 +343,7 @@ export async function buildTickerReport({
   const name = quote?.name || tickerFile?.metadata.name || symbol;
   const baseQuoteOptions = quoteFormatOptions(quote, tickerFile?.metadata.assetCategory, financials.quoteMetadata?.instrumentType);
   // Pad money prices to the currency's minor unit so a range reads £35.10 - £35.485, never past it (JPY has none).
-  const quoteOptions = resolvePriceBasis(baseQuoteOptions.priceBasis, baseQuoteOptions.assetCategory) === "per-unit"
-    ? { ...baseQuoteOptions, minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) }
-    : baseQuoteOptions;
+  const quoteOptions = withCurrencyMinorDigits(baseQuoteOptions, quote?.currency);
   const lines: string[] = [];
 
   lines.push(`${cliStyles.accent(quote?.symbol ?? symbol)} ${cliStyles.bold(name)}`);
@@ -417,7 +414,7 @@ export async function buildTickerReport({
       ["52W Range", quote.low52w != null || quote.high52w != null
         ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
         : "—"],
-      ["Bid / Ask", formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, quoteOptions.assetCategory, quote.priceBasis)],
+      ["Bid / Ask", formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, quoteOptions)],
       ["Volume", quote.volume != null ? formatNumber(quote.volume, 0) : "—"],
       ["Updated", formatTimestamp(quote.lastUpdated)],
     ]);

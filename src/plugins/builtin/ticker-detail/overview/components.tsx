@@ -1,6 +1,6 @@
 import type { PriceBasis } from "../../../../types/instrument";
 import { t } from "../../../../i18n";
-import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../../../market-data/market/format";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiHost } from "../../../../ui";
@@ -104,8 +104,9 @@ export function CompactRangeBar({
     RANGE_ENDPOINT_WIDTH,
     Math.max(7, Math.floor((width - 8) / 3)),
   );
-  const lowText = formatMarketPriceWithCurrency(low, currency, { assetCategory, priceBasis, maxWidth: endpointWidth });
-  const highText = formatMarketPriceWithCurrency(high, currency, { assetCategory, priceBasis, maxWidth: endpointWidth });
+  const endpointOptions = withCurrencyMinorDigits({ assetCategory, priceBasis, maxWidth: endpointWidth }, currency);
+  const lowText = formatMarketPriceWithCurrency(low, currency, endpointOptions);
+  const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
   const barWidth = Math.max(5, width - endpointWidth * 2 - 2);
   const markerIndex = Math.max(0, Math.min(barWidth - 1, Math.round(position * (barWidth - 1))));
   const labelWidth = Math.max(0, width - displayWidth(pctLabel));
@@ -156,12 +157,10 @@ function BookRow({
 }
 
 export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; assetCategory?: string; width: number }) {
-  const bidPrice = quote.bid != null
-    ? formatMarketPriceWithCurrency(quote.bid, quote.currency, quoteFormatOptions(quote, assetCategory))
-    : "—";
-  const askPrice = quote.ask != null
-    ? formatMarketPriceWithCurrency(quote.ask, quote.currency, quoteFormatOptions(quote, assetCategory))
-    : "—";
+  // Bid and ask share a precision ($224.58 / $224.60), padded to the currency's minor unit.
+  const priceOptions = withCurrencyMinorDigits(quoteFormatOptions(quote, assetCategory), quote.currency);
+  const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : "—";
+  const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : "—";
   const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatNumber(quote.bidSize, 0)} x ${bidPrice}` : bidPrice;
   const askText = quote.askSize != null && quote.askSize > 0 ? `${formatNumber(quote.askSize, 0)} x ${askPrice}` : askPrice;
   let spreadText = "—";
@@ -169,7 +168,7 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
     const spread = quote.ask - quote.bid;
     const mid = (quote.ask + quote.bid) / 2;
     const spreadPercent = mid > 0 ? ` (${((spread / mid) * 100).toFixed(2)}%)` : "";
-    spreadText = `${formatMarketPriceWithCurrency(spread, quote.currency, quoteFormatOptions(quote, assetCategory))}${spreadPercent}`;
+    spreadText = `${formatMarketPriceWithCurrency(spread, quote.currency, priceOptions)}${spreadPercent}`;
   }
 
   return (

@@ -26,9 +26,9 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
   const priceWidth = 15;
   const changeWidth = 12;
   const changePercentWidth = 9;
-  // 5-char 24h time (or a 6-char "Sep 18" date) in an 8-wide column: the shared table's floating-pane width
-  // accounting runs a few cells long, and the slack keeps the value intact.
-  const timeWidth = 8;
+  // An 8-char TIME UTC header over a 5-char time (or a 6-char "Sep 18" date): the shared table's floating-pane
+  // width accounting runs a few cells long, and the slack keeps the header intact.
+  const timeWidth = 11;
   const showChange = width >= CHANGE_MIN_WIDTH;
   const showTime = width >= TIME_MIN_WIDTH;
 
@@ -41,7 +41,7 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
     // Left-aligned on purpose: the shared table trims a few cells off the right
     // edge of a floating pane, and a right-aligned value would lose digits.
     ...(showTime
-      ? [{ id: "time" as const, label: "TIME", width: timeWidth, align: "left" as const }]
+      ? [{ id: "time" as const, label: "TIME UTC", width: timeWidth, align: "left" as const }]
       : []),
   ];
 
@@ -65,19 +65,19 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * 24-hour so the cell stays 5 wide in every locale and never clips. A quote from
- * an earlier day shows its date instead, so a closed market's last print is not
- * read as a time today.
+ * 24-hour UTC, like the other panes' TIME UTC columns, so the cell stays 5 wide
+ * and never clips. A quote from an earlier UTC day shows its date instead, so a
+ * closed market's last print is not read as a time today.
  */
 export function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
   if (!lastUpdated) return "—";
   const date = new Date(lastUpdated);
   const today = new Date(now);
-  if (date.getFullYear() !== today.getFullYear() || date.getMonth() !== today.getMonth()
-    || date.getDate() !== today.getDate()) {
-    return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  if (date.getUTCFullYear() !== today.getUTCFullYear() || date.getUTCMonth() !== today.getUTCMonth()
+    || date.getUTCDate() !== today.getUTCDate()) {
+    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
   }
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 export function renderWorldIndexCell(

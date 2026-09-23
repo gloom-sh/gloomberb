@@ -69,6 +69,13 @@ function resolveGridColumnCount(symbolCount: number, width: number, height: numb
   return bestColumns;
 }
 
+/** Desktop cards keep a 240px (30-cell) minimum, and the rows share the cards
+ * evenly: six tickers that fit five across lay out 3x2, not 5+1. */
+function resolveDesktopGridColumnCount(symbolCount: number, width: number): number {
+  const maxColumns = Math.max(1, Math.min(symbolCount, Math.floor(width / 30)));
+  return Math.ceil(symbolCount / Math.ceil(symbolCount / maxColumns));
+}
+
 export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { symbol: fallbackSymbol, ticker: fallbackTicker } = usePaneTicker();
@@ -158,6 +165,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const cardWidth = Math.max(1, Math.floor(contentWidth / columns));
 
   if (nativePaneChrome) {
+    const desktopColumns = resolveDesktopGridColumnCount(symbols.length, width);
     return (
       <Box
         flexGrow={1}
@@ -165,7 +173,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
         overflow="hidden"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
+          gridTemplateColumns: `repeat(${desktopColumns}, minmax(0, 1fr))`,
           gridAutoRows: "minmax(66px, 1fr)",
           alignItems: "stretch",
           alignContent: "stretch",

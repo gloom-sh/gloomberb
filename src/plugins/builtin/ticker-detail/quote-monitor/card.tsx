@@ -7,7 +7,7 @@ import { resolveEntryData } from "../../../../market-data/selectors";
 import { useDoubleClickActivation } from "../../../../components/use-double-click-activation";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
-import { formatMarketPriceWithCurrency, quoteFormatOptions, formatSignedMarketPrice } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, quoteFormatOptions, formatSignedMarketPrice, withCurrencyMinorDigits } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
@@ -97,16 +97,15 @@ export function QuoteMonitorCard({
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
-  const priceText = display
-    ? formatMarketPriceWithCurrency(display.price, currency, quoteFormatOptions(quote, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType))
-    : "";
+  const priceOptions = withCurrencyMinorDigits(quoteFormatOptions(quote, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType), currency);
+  const priceText = display ? formatMarketPriceWithCurrency(display.price, currency, priceOptions) : "";
   const changePercentText = display ? formatPercentRaw(display.changePercent) : "";
-  const changeValueText = display ? formatSignedMarketPrice(display.change, quoteFormatOptions(quote, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType)) : "";
+  const changeValueText = display ? formatSignedMarketPrice(display.change, priceOptions) : "";
   const priceColumnWidth = Math.max(priceText.length, changePercentText.length + changeValueText.length + 1);
   const nameMaxWidth = Math.max(10, width - priceColumnWidth - (nativePaneChrome ? 5 : 3));
   const sparklineRange = resolvePriceSparklineRange(priceHistory, chartPeriod);
   const rangeLabel = sparklineRange
-    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, { assetCategory })}-${formatMarketPriceWithCurrency(sparklineRange.max, currency, { assetCategory })}`
+    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, priceOptions)}-${formatMarketPriceWithCurrency(sparklineRange.max, currency, priceOptions)}`
     : "";
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);
@@ -167,7 +166,7 @@ export function QuoteMonitorCard({
       } : undefined}
     >
       {nativePaneChrome && display && (
-        <PriceAreaSparklineBackground priceHistory={priceHistory} trend={trend} period={chartPeriod} />
+        <PriceAreaSparklineBackground priceHistory={priceHistory} trend={trend} period={chartPeriod} insetTop={44} />
       )}
       {!display ? (
         <Box flexDirection="column" flexGrow={1} justifyContent="center">

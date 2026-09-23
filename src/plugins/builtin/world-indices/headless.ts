@@ -5,6 +5,8 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
+import { marketStateLabel } from "../../../market-data/market/status";
+import type { MarketState } from "../../../types/financials";
 import { loadWorldIndexQuotes, type WorldIndexQuoteResult } from "./client";
 import {
   getIndicesByRegion,
@@ -37,7 +39,11 @@ const COLUMNS = [
     align: "right" as const,
     format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)),
   },
-  { key: "marketState", header: "Session" },
+  {
+    key: "marketState",
+    header: "Session",
+    format: (value: unknown) => typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : "-",
+  },
   {
     key: "lastUpdated",
     header: "Updated",

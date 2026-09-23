@@ -90,7 +90,7 @@ test("streamed quotes move the visible rows' price, change, returns and market c
   const frame = setup!.captureCharFrame();
   expect(frame).toContain("110");
   expect(frame).toContain("+12.24%");
-  expect(frame).toContain("1.1T");
+  expect(frame).toContain("1.10T");
 });
 
 test("crypto board lists coins by market cap, switches to stablecoins and keeps rows through a failed refresh", async () => {
@@ -113,7 +113,7 @@ test("crypto board lists coins by market cap, switches to stablecoins and keeps 
   const csv = takeSavedTextFile()!.text;
   expect(csv).toContain("BTC");
   expect(csv).toContain("+2.04%");
-  expect(csv).toContain("1T");
+  expect(csv).toContain("1.00T");
 
   await emitKeypress(setup!, { name: "l" });
   await settleFrame(setup!, 8);

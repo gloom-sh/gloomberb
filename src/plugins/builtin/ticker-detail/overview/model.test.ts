@@ -69,17 +69,17 @@ describe("research position valuation", () => {
     expect(row({ shares: -10, marketValue: -1200 }, noQuote)).toEqual(row({ shares: -10, marketValue: 1200 }, noQuote));
     expect(row({ shares: -10, marketValue: -1200 }, noQuote)).toMatchObject({ value: "$1,200.00", pnlValue: -200 });
     expect(row({ shares: -10, marketValue: -1200, unrealizedPnl: -175 }, noQuote)).toMatchObject({ pnlValue: -175, ret: "-17.50%", pnlBasis: "broker-snapshot" });
-    expect(row({ shares: -10, markPrice: 80 }, noQuote)).toMatchObject({ mark: "$80", value: "$800.00", pnlValue: 200 });
+    expect(row({ shares: -10, markPrice: 80 }, noQuote)).toMatchObject({ mark: "$80.00", value: "$800.00", pnlValue: 200 });
   });
 
   test("current quote and known cost supersede broker snapshots, while unusable quotes preserve the snapshot", () => {
     const snapshot = { shares: -10, avgCost: 100, marketValue: -1100, markPrice: 110, unrealizedPnl: -75 };
-    expect(row(snapshot)).toMatchObject({ mark: "$120", value: "$1,200.00", pnlValue: -200, ret: "-20.00%", pnlBasis: "quote-and-cost" });
+    expect(row(snapshot)).toMatchObject({ mark: "$120.00", value: "$1,200.00", pnlValue: -200, ret: "-20.00%", pnlBasis: "quote-and-cost" });
     for (const quotePrice of [null, Number.NaN, Infinity]) {
-      expect(row(snapshot, { quotePrice })).toMatchObject({ mark: "$110", value: "$1,100.00", pnlValue: -75, pnlBasis: "broker-snapshot" });
+      expect(row(snapshot, { quotePrice })).toMatchObject({ mark: "$110.00", value: "$1,100.00", pnlValue: -75, pnlBasis: "broker-snapshot" });
       expect(row({ ...snapshot, avgCost: undefined }, { quotePrice })).toMatchObject({ cost: "—", ret: "—", pnlValue: -75, pnlBasis: "broker-snapshot" });
     }
-    expect(row({ ...snapshot, avgCost: undefined })).toMatchObject({ mark: "$120", value: "$1,200.00", pnlValue: -75, pnlBasis: "broker-snapshot" });
+    expect(row({ ...snapshot, avgCost: undefined })).toMatchObject({ mark: "$120.00", value: "$1,200.00", pnlValue: -75, pnlBasis: "broker-snapshot" });
   });
 
   test("derivative marks use contract multipliers while broker costs may already be scaled", () => {

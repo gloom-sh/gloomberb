@@ -4,19 +4,17 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { StaticChartXMarker } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
-import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
-import type { KellySizerDraft, KellySizingResult, SensitivityGrid } from "./model";
+import { formatCurrency, formatNumber } from "../../../utils/format";
+import type { KellySizingResult, SensitivityGrid } from "./model";
 import { KellyCurveDecisionView, SensitivityGridView, formatPct, formatSignedPct } from "./view";
 
 export function KellyResultMetrics({
   result,
-  activeDraft,
   baseCurrency,
   leftWidth,
   rightWidth,
 }: {
   result: KellySizingResult;
-  activeDraft: KellySizerDraft;
   baseCurrency: string;
   leftWidth: number;
   rightWidth: number;
@@ -25,12 +23,11 @@ export function KellyResultMetrics({
     <Box flexDirection="row" paddingX={1}>
       <Box flexDirection="column" width={leftWidth}>
         <KeyValueRow width={leftWidth} label="Full Kelly" value={formatPct(result.fullKellyFraction, 1)} />
-        <KeyValueRow width={leftWidth} label="Fractional" value={formatPct(result.fractionalKellyFraction, 1)} detail={formatPct(activeDraft.kellyFraction, 0)} />
+        <KeyValueRow width={leftWidth} label="Fractional" value={formatPct(result.fractionalKellyFraction, 1)} />
         <KeyValueRow
           width={leftWidth}
           label="Clipped"
           value={formatPct(result.clippedFraction, 2)}
-          detail={result.clipReasons.length > 0 ? result.clipReasons.join(", ") : undefined}
           color={result.clipReasons.length > 0 ? colors.positive : colors.text}
         />
         <KeyValueRow width={leftWidth} label="Target val" value={formatCurrency(result.targetValue, baseCurrency)} />
@@ -51,7 +48,7 @@ export function KellyResultMetrics({
         <KeyValueRow width={rightWidth} label="Worst loss" value={formatPct(result.downsideLossFraction, 1)} />
         <KeyValueRow width={rightWidth} label="Current %" value={formatPct(result.currentFraction, 1)} />
         <KeyValueRow width={rightWidth} label="Exp return" value={formatSignedPct(result.expectedReturn)} color={priceColor(result.expectedReturn)} />
-        <KeyValueRow width={rightWidth} label="Log growth" value={formatCompact(result.expectedLogGrowth)} />
+        <KeyValueRow width={rightWidth} label="Full growth" value={formatSignedPct(result.expectedLogGrowth)} />
       </Box>
     </Box>
   );

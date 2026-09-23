@@ -26,7 +26,7 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "changePercent", label: "Change %", description: "Percent change on the session." },
   { id: "volume", label: "Volume", description: "Contracts traded on the session." },
   { id: "prevClose", label: "Prev close", description: "Previous session close." },
-  { id: "time", label: "Time", description: "Local time of the last quote." },
+  { id: "time", label: "Time", description: "UTC time of the last quote." },
 ];
 
 const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id);
@@ -50,9 +50,9 @@ const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
   changePercent: 9,
   volume: 9,
   prevClose: 12,
-  // 5-char 24h time in an 8-wide column: the shared table's floating-pane width
-  // accounting runs a few cells long, and the slack keeps the value intact.
-  time: 8,
+  // An 8-char TIME UTC header over a 5-char time: the shared table's floating-pane
+  // width accounting runs a few cells long, and the slack keeps the header intact.
+  time: 11,
 };
 
 /** A colored dot needs a legend; the session word does not, so wide boards spell it out. */
@@ -101,7 +101,7 @@ const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
   changePercent: "CHG%",
   volume: "VOL",
   prevClose: "PREV",
-  time: "TIME",
+  time: "TIME UTC",
 };
 
 /** Falls back to the full column set when the saved selection is empty or unknown. */
@@ -224,7 +224,7 @@ export function renderFuturesCell(
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
         return { text: "—", color: dimmed };
       }
-      return { text: formatCompact(quote.volume), color: selectedColor ?? colors.textDim };
+      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
     case "prevClose":
       if (loadingCell) return { text: "…", color: dimmed };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
