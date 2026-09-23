@@ -99,6 +99,28 @@ export function deriveShareChange(position: number | undefined, changePercent: n
   return Math.round(position - position / denominator);
 }
 
+/** Month-end `months` after an ISO date, the way the quote summary labels fiscal periods. */
+function monthEndAfter(date: string, months: number): string | undefined {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(date);
+  if (!match) return undefined;
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + months + 1, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * The quote summary can label the next quarter with the current quarter's end
+ * (ADBE: both 2026-11-30). A following period ends after the one before it.
+ */
+export function withOrderedTrendPeriodEnds(trend: YahooEarningsTrend[]): YahooEarningsTrend[] {
+  const endOf = (period: string) => trend.find((row) => row.period === period)?.endDate;
+  return trend.map((row) => {
+    const [previous, months] = row.period === "+1q" ? ["0q", 3] as const : row.period === "+1y" ? ["0y", 12] as const : [];
+    const before = previous ? endOf(previous) : undefined;
+    if (!before || !row.endDate || row.endDate > before) return row;
+    const endDate = monthEndAfter(before, months!);
+    return endDate ? { ...row, endDate } : row;
+  });
+}
+
 export function mapYahooAnalystResearchResponse(
   result: YahooQuoteSummaryResult,
   fallbackSymbol: string,
@@ -111,7 +133,7 @@ export function mapYahooAnalystResearchResponse(
   const targetMean = priceValue(financialData?.targetMeanPrice);
   const targetMedian = priceValue(financialData?.targetMedianPrice);
   const currentPrice = priceValue(financialData?.currentPrice);
-  const trend = result.earningsTrend?.trend ?? [];
+  const trend = withOrderedTrendPeriodEnds(result.earningsTrend?.trend ?? []);
 
   return {
     providerId: "yahoo",

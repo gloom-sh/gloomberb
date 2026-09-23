@@ -73,6 +73,16 @@ describe("Yahoo mappers", () => {
     expect(data.revenueEstimates[0]).toMatchObject({ average: 1.454e12, currency: "TWD" });
   });
 
+  test("dates a next quarter labelled with the current quarter's end one quarter later", () => {
+    const estimate = { avg: 6.3, numberOfAnalysts: 29, earningsCurrency: "USD" };
+    const dates = (next: string) => mapYahooAnalystResearchResponse({ price: { currency: "USD" }, earningsTrend: { trend: [
+      { period: "0q", endDate: "2026-11-30", earningsEstimate: estimate },
+      { period: "+1q", endDate: next, earningsEstimate: estimate },
+    ] } }, "ADBE").earningsEstimates.map((row) => row.date);
+    expect(dates("2026-11-30")).toEqual(["2026-11-30", "2027-02-28"]);
+    expect(dates("2027-01-31")).toEqual(["2026-11-30", "2027-01-31"]);
+  });
+
   test("distinguishes announcement dates from Yahoo fiscal period ends", () => {
     expect(mapYahooCalendarEarnings({ calendarEvents: { earnings: { earningsDate: [{ fmt: "2026-09-24" }] } } })[0]?.dateType).toBe("announcement");
     const [history] = mapYahooEarningsHistory({ earningsHistory: { history: [{ quarter: "2026-05-31", currency: "CNY", epsActual: -0.63, epsEstimate: -0.78, surprisePercent: 0.1885 }] } });
