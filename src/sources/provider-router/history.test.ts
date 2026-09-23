@@ -197,6 +197,24 @@ describe("AssetDataRouter chart history", () => {
     } finally { persistence.close(); }
   });
 
+  test("a thin listing's quiet hours within one session are not a session break", async () => {
+    Date.now = () => Date.parse("2026-09-15T18:00:00Z");
+    const persistence = new AppPersistence(createTempDbPath("quiet-session-cache"));
+    const FIVE_MIN = 300_000;
+    const bars = (open: string, count: number) => Array.from({ length: count }, (_, index) =>
+      ({ date: new Date(Date.parse(open) + index * FIVE_MIN), close: 1 + index / 100, volume: 100 }));
+    // Nothing trades between 09:40 and 13:00 New York time.
+    const today = [...bars("2026-09-15T13:30:00Z", 2), ...bars("2026-09-15T17:00:00Z", 12)];
+    const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", name: "Cloud",
+      async getPriceHistory() { return [...bars("2026-09-14T13:30:00Z", 78), ...today]; } };
+    try {
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      await router.getPriceHistory("THIN", "NASDAQ", "1W");
+      const day = await router.getPriceHistory("THIN", "NASDAQ", "1D");
+      expect(day.map((point) => new Date(point.date).toISOString())).toEqual(today.map((bar) => bar.date.toISOString()));
+    } finally { persistence.close(); }
+  });
+
   test("sorts reversed chart history into chronological order", async () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
