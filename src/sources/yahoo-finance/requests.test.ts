@@ -38,7 +38,7 @@ test("finite windows preserve range and equivalent hourly cadence is accepted", 
 
 test("the current period is completed from the chart's own regular-market facts", async () => {
   // NVDA as Yahoo served it before the open on 2026-09-23.
-  const meta = { symbol: "NVDA", currency: "USD", regularMarketPrice: 228.87,
+  const meta = { symbol: "NVDA", currency: "USD", regularMarketPrice: 228.87, regularMarketChangePercent: 0.655,
     regularMarketTime: Date.parse("2026-09-22T20:00:00Z") / 1000 };
   const live = { t: "2026-09-22T20:00:00Z", o: 226.91, h: 229.98, l: 226.5, c: 228.87, v: 93296546 };
   const served = (granularity: string, rows: Array<typeof live | { t: string; o: number; h: number; l: number; c: number | null; v: number }>) => ({
@@ -56,6 +56,9 @@ test("the current period is completed from the chart's own regular-market facts"
   // The weekly row stops at Monday; the trailing observation is Tuesday.
   expect(await bars("1wk", [{ t: "2026-09-21T04:00:00Z", o: 222.94, h: 228.5, l: 221.56, c: 227.38, v: 109806100 }, live]))
     .toEqual([["2026-09-21", 229.98, 221.56, 228.87, 203102646]]);
+  // Mid-session the row can already hold part of Tuesday: newer prices, never Tuesday's volume twice.
+  expect(await bars("1wk", [{ t: "2026-09-21T04:00:00Z", o: 222.94, h: 229.5, l: 221.56, c: 228.4, v: 150000000 }, live]))
+    .toEqual([["2026-09-21", 229.98, 221.56, 228.87, 150000000]]);
   // The monthly row already includes it.
   expect(await bars("1mo", [{ t: "2026-09-01T04:00:00Z", o: 216.75, h: 234.76, l: 208.93, c: 228.87, v: 1744259600 }, live]))
     .toEqual([["2026-09-01", 234.76, 208.93, 228.87, 1744259600]]);

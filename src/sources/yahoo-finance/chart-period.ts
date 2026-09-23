@@ -6,6 +6,7 @@ interface ChartMeta {
   regularMarketDayHigh?: unknown;
   regularMarketDayLow?: unknown;
   regularMarketVolume?: unknown;
+  regularMarketChangePercent?: unknown;
 }
 
 const HOUR_MS = 3_600_000;
@@ -24,6 +25,26 @@ function periodEnd(start: number, interval: string): number | null {
     return end.getTime();
   }
   return null;
+}
+
+/**
+ * Yahoo measures the regular-market change from the previous session's close.
+ * A period row that ends at that close stops before the observation's session,
+ * so the observation's volume is not in it yet.
+ */
+function endsBeforeObservation(close: number, meta: ChartMeta | undefined): boolean {
+  const price = finite(meta?.regularMarketPrice);
+  const change = finite(meta?.regularMarketChangePercent);
+  if (price == null || change == null || change <= -100) return false;
+  const priorClose = price / (1 + change / 100);
+  // The change is rounded to thousandths of a percent.
+  return Math.abs(close - priorClose) <= priorClose * 2e-5;
+}
+
+function foldedVolume(period: number | undefined, observation: number | undefined, add: boolean): number | undefined {
+  if (period == null || observation == null) return period ?? observation;
+  // A row already holding part of the session would count it twice.
+  return add ? period + observation : Math.max(period, observation);
 }
 
 /**
@@ -54,7 +75,7 @@ export function reconcileYahooCurrentPeriod(rows: PricePoint[], interval: string
           high,
           low,
           close: last.close,
-          volume: previous.volume == null && last.volume == null ? undefined : (previous.volume ?? 0) + (last.volume ?? 0),
+          volume: foldedVolume(previous.volume, last.volume, endsBeforeObservation(previous.close, meta)),
         };
       }
     }
