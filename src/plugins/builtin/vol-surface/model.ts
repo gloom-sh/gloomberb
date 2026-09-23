@@ -22,6 +22,26 @@ export const DEFAULT_SURFACE_SETTINGS: SurfaceSettings = {
 export const SURFACE_MONEYNESS = [0.8, 0.9, 0.95, 1, 1.05, 1.1, 1.2] as const;
 export const SURFACE_DELTAS = [-0.1, -0.25, 0, 0.25, 0.1] as const;
 /** 3D delta axis: 10-delta put through ATM (spot strike) to 10-delta call, in 5-delta steps. */
+/** The 3D sheet's constant maturities, as on a dealer surface. */
+export const SURFACE_3D_TENORS = [
+  { label: "1W", years: 7 / 365 }, { label: "2W", years: 14 / 365 }, { label: "1M", years: 30 / 365 },
+  { label: "2M", years: 61 / 365 }, { label: "3M", years: 91 / 365 }, { label: "4M", years: 122 / 365 },
+  { label: "6M", years: 182 / 365 }, { label: "9M", years: 273 / 365 }, { label: "1Y", years: 1 },
+  { label: "18M", years: 1.5 }, { label: "2Y", years: 2 }, { label: "3Y", years: 3 },
+] as const;
+
+/**
+ * The constant maturities a snapshot can support without extrapolation: at
+ * least four, inside the first and last expiries with a fitted smile.
+ */
+export function surfaceSheetTenors(snapshot: SurfaceSnapshot): ReadonlyArray<{ label: string; years: number }> | null {
+  const years = snapshot.expiries.filter((entry) => entry.fit && entry.forward != null).map((entry) => entry.years);
+  if (!years.length) return null;
+  const first = Math.min(...years), last = Math.max(...years);
+  const inside = SURFACE_3D_TENORS.filter((tenor) => tenor.years >= first - 1e-9 && tenor.years <= last + 1e-9);
+  return inside.length >= 4 ? inside : null;
+}
+
 export const SURFACE_3D_DELTAS = [-0.1, -0.15, -0.2, -0.25, -0.3, -0.35, -0.4, -0.45, 0, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2, 0.15, 0.1] as const;
 
 export type SurfaceFilterReason = "invalid-contract" | "expiry-mismatch" | "zero-bid" | "crossed"
@@ -214,10 +234,30 @@ export interface BuildSurfaceExpiryInput {
   error?: string | null;
 }
 
+const CLOSED_QUOTE_GAP_MS = 60 * 60_000;
+
+/**
+ * The expiries the 3D sheet draws. An expiry whose SVI fit failed falls back
+ * to exact interpolation through its quotes; at the edge of the tenor range
+ * nothing smooths it, and its quote noise reads as a spike in the sheet. With
+ * at least four SVI slices, the sheet uses those only. Tables keep every expiry.
+ */
+export function surfaceSheetSnapshot<T extends SurfaceSnapshot>(snapshot: T): { snapshot: T; omitted: SurfaceExpiry[] } {
+  const fitted = snapshot.expiries.filter((entry) => entry.fit?.method === "svi");
+  if (fitted.length < 4 || fitted.length === snapshot.expiries.length) return { snapshot, omitted: [] };
+  return { snapshot: { ...snapshot, expiries: fitted }, omitted: snapshot.expiries.filter((entry) => entry.fit && entry.fit.method !== "svi") };
+}
+
 export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpiry {
   const { chain, expiration, spot, curve, now } = input;
   const settings = normalizeSurfaceSettings(input.settings);
-  const result = pendingSurfaceExpiry(expiration, now);
+  // Quotes carry the time value of the moment they were observed. A closed
+  // session's final NBBO read against today's clock would shorten every
+  // expiry by the overnight gap and inflate the front-month IVs. A delayed
+  // feed's quarter hour is immaterial, so only a gap over an hour moves it.
+  const observedAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+  const valuationTime = Number.isFinite(observedAt) && observedAt < now - CLOSED_QUOTE_GAP_MS ? observedAt : now;
+  const result = pendingSurfaceExpiry(expiration, valuationTime);
   result.state = "empty";
   result.source = chain.providerId ?? input.source ?? null;
   result.asOf = chain.asOf ?? null;
@@ -320,6 +360,8 @@ export interface SurfaceGridOptions {
   axis?: "spot" | "forward" | "delta" | "strike";
   tenors?: "listed" | "fixed";
   coordinates?: readonly number[];
+  /** Constant maturities for `tenors: "fixed"`; defaults to 1W through 1Y. */
+  fixedTenors?: ReadonlyArray<{ label: string; years: number }>;
 }
 
 export interface SurfaceCell {
@@ -384,11 +426,27 @@ export function evaluateSurfaceSmile(expiry: SurfaceExpiry, strike: number): num
   return evaluateSmile(expiry.fit, logForwardMoneyness(strike, expiry.forward)!);
 }
 
+/**
+ * The delta-neutral straddle strike, where d1 = 0 so the call and put deltas
+ * mirror: K = F exp(sigma(K)^2 T / 2), solved by fixed point on the smile.
+ * On a delta axis ATM must sit between 45P and 45C; spot does not once the
+ * forward drifts away from it at long tenors.
+ */
+export function deltaNeutralStrike(forward: number, years: number, volatilityAt: (logMoneyness: number) => number | null): number | null {
+  let k = 0;
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const volatility = volatilityAt(k);
+    if (volatility == null || !Number.isFinite(volatility)) return null;
+    k = volatility * volatility * years / 2;
+  }
+  return forward * Math.exp(k);
+}
+
 function deltaStrike(expiry: SurfaceExpiry, spot: number, coordinate: number): number | null {
   if (!expiry.fit || expiry.forward === null || expiry.rate === null || expiry.dividendYield === null) return null;
-  if (coordinate === 0) return spot;
-  const side = coordinate < 0 ? "put" : "call";
   const fit = expiry.fit;
+  if (coordinate === 0) return deltaNeutralStrike(expiry.forward, expiry.years, (k) => evaluateSmile(fit, k));
+  const side = coordinate < 0 ? "put" : "call";
   const center = Math.log(expiry.forward);
   const at = (logStrike: number) => {
     const strike = Math.exp(logStrike);
@@ -431,7 +489,7 @@ export function buildSurfaceGrid(snapshot: SurfaceSnapshot, options: SurfaceGrid
     cells: coordinates.map((coordinate) => cellAt(expiry, snapshot.spot, coordinate, axis)) }));
   if (options.tenors === "fixed") {
     const available = expiries.filter((expiry) => expiry.fit && expiry.forward != null && expiry.rate != null && expiry.dividendYield != null);
-    rows = FIXED_VOLATILITY_TENORS.map((tenor) => {
+    rows = (options.fixedTenors ?? FIXED_VOLATILITY_TENORS).map((tenor) => {
       const rightIndex = available.findIndex((expiry) => expiry.years >= tenor.years);
       const left = rightIndex < 0 ? available.at(-1) : available[Math.max(0, rightIndex - 1)];
       const right = rightIndex < 0 ? left : available[rightIndex];
@@ -447,8 +505,9 @@ export function buildSurfaceGrid(snapshot: SurfaceSnapshot, options: SurfaceGrid
       const cells = coordinates.map((coordinate): SurfaceCell => {
         const unavailable = (): SurfaceCell => ({ coordinate, strike: null, volatility: null, point: null, fitResidual: null });
         if (!positive(targetForward) || rate === null || dividendYield === null) return unavailable();
-        let strike = axis === "spot" ? snapshot.spot * coordinate : axis === "forward" ? targetForward * coordinate
-          : axis === "strike" ? coordinate : snapshot.spot;
+        let strike: number | null = axis === "spot" ? snapshot.spot * coordinate : axis === "forward" ? targetForward * coordinate
+          : axis === "strike" ? coordinate : deltaNeutralStrike(targetForward, tenor.years, (k) => at(k)?.volatility ?? null);
+        if (strike === null) return unavailable();
         if (axis === "delta" && coordinate !== 0) {
           let low = Math.min(...available.map((expiry) => expiry.points[0]!.logMoneyness));
           let high = Math.max(...available.map((expiry) => expiry.points.at(-1)!.logMoneyness));

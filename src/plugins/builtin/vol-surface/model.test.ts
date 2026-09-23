@@ -4,7 +4,7 @@ import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../opt
 import { optionDelta } from "../shared/volatility";
 import {
   buildSurfaceExpiry, buildSurfaceGrid, cleanSurfaceQuotes, DEFAULT_SURFACE_SETTINGS,
-  evaluateSurfaceSmile, surfaceTreasuryRate, windowSurfaceGrid, type SurfaceSnapshot,
+  evaluateSurfaceSmile, surfaceSheetSnapshot, surfaceTreasuryRate, windowSurfaceGrid, type SurfaceSnapshot,
 } from "./model";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -28,6 +28,14 @@ function chain(expiry = expiration, volatility = 0.3): OptionsChain {
 }
 
 describe("surface cleaning and midpoint model", () => {
+  test("closing quotes are valued at the time they were observed, not at the current clock", () => {
+    // Priced at 30% at the quote time; read 16 hours later, before the next open.
+    const quoted = { ...chain(), asOf: new Date(now).toISOString() };
+    const result = buildSurfaceExpiry({ chain: quoted, expiration, spot: 100, curve, now: now + 16 * 3_600_000 });
+    expect(result.years).toBeCloseTo(daysToExpiryFrom(expiration, now) / 365, 10);
+    expect(result.atmIV).toBeCloseTo(0.3, 5);
+  });
+
   test("keeps executable OTM quotes, recovers the parity forward and uses the shared IV solver", () => {
     const result = buildSurfaceExpiry({ chain: chain(), expiration, spot: 100, curve, now });
     const years = daysToExpiryFrom(expiration, now) / 365;
@@ -196,4 +204,26 @@ describe("surface grids", () => {
       }
     }
   });
+});
+
+test("the 3D sheet drops interpolation-fallback expiries only when four SVI slices remain", () => {
+  const slice = (expiration: number, method: "svi" | "monotone-cubic") => ({ expiration, fit: { method } }) as unknown as SurfaceSnapshot["expiries"][number];
+  const snapshot = (methods: ("svi" | "monotone-cubic")[]) => ({ expiries: methods.map((method, index) => slice(index + 1, method)) }) as unknown as SurfaceSnapshot;
+  const mixed = surfaceSheetSnapshot(snapshot(["svi", "svi", "svi", "svi", "monotone-cubic"]));
+  expect(mixed.snapshot.expiries.map((entry) => entry.expiration)).toEqual([1, 2, 3, 4]);
+  expect(mixed.omitted.map((entry) => entry.expiration)).toEqual([5]);
+  const thin = surfaceSheetSnapshot(snapshot(["svi", "svi", "monotone-cubic"]));
+  expect(thin.snapshot.expiries).toHaveLength(3);
+  expect(thin.omitted).toEqual([]);
+});
+
+test("the delta axis centres ATM on the delta-neutral straddle strike, between 45P and 45C", () => {
+  const expiry = buildSurfaceExpiry({ chain: chain(), expiration, spot: 100, curve, now });
+  const snapshot = { symbol: "AAPL", spot: 100, phase: "ready", settings: DEFAULT_SURFACE_SETTINGS, catalogue: [expiration], requested: 1, loaded: 1,
+    failed: 0, expiries: [expiry], failures: [], warnings: [], rateAsOf: null, fetchedAt: now } as SurfaceSnapshot;
+  const row = buildSurfaceGrid(snapshot, { axis: "delta", coordinates: [-0.45, 0, 0.45] }).rows[0]!;
+  const [put45, atm, call45] = row.cells.map((cell) => cell.strike!);
+  expect(atm).toBeCloseTo(expiry.forward! * Math.exp(0.3 * 0.3 * expiry.years / 2), 1);
+  expect(put45).toBeLessThan(atm);
+  expect(call45).toBeGreaterThan(atm);
 });

@@ -6,6 +6,8 @@ import {
 /** Row-major decimal IV. Missing cells remain holes, including across tenors. */
 export interface VolatilitySurfaceGrid {
   tenors: readonly number[];
+  /** Constant-maturity rows carry their tenor name ("1W", "18M") for the axis. */
+  rows?: ReadonlyArray<{ label: string; interpolated: boolean }>;
   /**
    * Column coordinates: forward moneyness K/F (one marks the ATM-forward
    * ridge), or signed spot delta when `axis` is "delta" (negative puts, zero
@@ -52,7 +54,15 @@ export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: Su
   const columnCount = grid.moneyness.length, rowCount = grid.tenors.length;
   const samples = grid.volatilities.flat().filter((value): value is number => value != null && Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
   const quantile = (fraction: number) => samples[Math.min(samples.length - 1, Math.max(0, Math.round((samples.length - 1) * fraction)))] ?? 0;
-  const minimum = quantile(0.02), maximum = quantile(0.98);
+  let minimum = quantile(0.02), maximum = quantile(0.98);
+  // A flat surface keeps its proportions: the axis spans at least 30% of the
+  // median level, so a 5-point wiggle on a 57% name does not fill the box.
+  const minimumSpan = quantile(0.5) * 0.3;
+  if (maximum - minimum < minimumSpan) {
+    const middle = (maximum + minimum) / 2;
+    minimum = middle - minimumSpan / 2;
+    maximum = middle + minimumSpan / 2;
+  }
   const pad = Math.max(0.01, (maximum - minimum) * 0.12);
   const ticks = volatilityTicks(Math.max(0, minimum - pad), maximum + pad);
   const zMin = ticks[0] ?? 0, zMax = Math.max(ticks.at(-1) ?? 1, zMin + 0.02);
@@ -60,7 +70,12 @@ export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: Su
   const low = Math.min(...coordinates), high = Math.max(...coordinates);
   const columnPositions = coordinates.map((value, index) => deltaAxis || high === low
     ? (columnCount <= 1 ? 0.5 : index / (columnCount - 1)) : (value - low) / (high - low));
-  const rowPositions = grid.tenors.map((_, index) => rowCount <= 1 ? 0.5 : index / (rowCount - 1));
+  // Square-root time: weekly expiries cluster at the front without taking a
+  // third of the depth, and the long end is not stretched out.
+  const roots = grid.tenors.map((years) => Math.sqrt(Math.max(0, years)));
+  const firstRoot = Math.min(...roots), lastRoot = Math.max(...roots);
+  const rowPositions = roots.map((root, index) => rowCount <= 1 ? 0.5 : lastRoot > firstRoot
+    ? (root - firstRoot) / (lastRoot - firstRoot) : index / (rowCount - 1));
   const xTicks = deltaAxis
     ? coordinates.flatMap((value, index) => [-0.1, -0.25, 0, 0.25, 0.1].some((target) => Math.abs(value - target) < 1e-9)
       ? [{ position: columnPositions[index]!, label: deltaLabel(value) }] : [])
@@ -72,10 +87,13 @@ export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: Su
       }
       return result;
     })();
-  const tickRows = [...new Set(Array.from({ length: Math.min(6, rowCount) }, (_, index) =>
-    Math.round(index * (rowCount - 1) / Math.max(1, Math.min(6, rowCount) - 1))))];
+  // Ticks at evenly spaced depths, each on the nearest listed expiry.
+  const tickRows = [...new Set(Array.from({ length: Math.min(6, rowCount) }, (_, index) => {
+    const target = index / Math.max(1, Math.min(6, rowCount) - 1);
+    return rowPositions.reduce((best, position, row) => Math.abs(position - target) < Math.abs(rowPositions[best]! - target) ? row : best, 0);
+  }))];
   const yTicks = tickRows.flatMap((row) => Number.isFinite(grid.tenors[row]) && grid.tenors[row]! > 0
-    ? [{ position: rowPositions[row]!, label: tenorLabel(grid.tenors[row]!) }] : []);
+    ? [{ position: rowPositions[row]!, label: grid.rows?.[row]?.interpolated ? grid.rows[row]!.label : tenorLabel(grid.tenors[row]!) }] : []);
   const ridgeColumn = deltaAxis ? coordinates.findIndex((value) => Math.abs(value) < 1e-9) : (() => {
     const index = coordinates.findIndex((value) => value >= 1 - 1e-9);
     if (index <= 0) return index;
