@@ -69,6 +69,11 @@ function createGateway(log: StreamLog, initial: BrokerConnectionStatus) {
   let status = initial;
   const listeners = new Set<() => void>();
   const emitters: Array<(target: QuoteSubscriptionTarget, dataSource: "live" | "delayed") => void> = [];
+  let connectCalls = 0;
+  const setStatus = (next: Partial<BrokerConnectionStatus>) => {
+    status = { ...status, ...next, updatedAt: status.updatedAt + 1 };
+    for (const listener of listeners) listener();
+  };
   const broker: BrokerAdapter = {
     id: "ibkr",
     name: "IBKR",
@@ -80,6 +85,10 @@ function createGateway(log: StreamLog, initial: BrokerConnectionStatus) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
+    async connect() {
+      connectCalls += 1;
+      setStatus({ state: "connected" });
+    },
     subscribeQuotes(_instance, targets, onQuote) {
       const symbols = targets.map((target) => target.symbol);
       log.opened.push(symbols);
@@ -89,14 +98,12 @@ function createGateway(log: StreamLog, initial: BrokerConnectionStatus) {
   };
   return {
     broker,
-    setStatus(next: Partial<BrokerConnectionStatus>) {
-      status = { ...status, ...next, updatedAt: status.updatedAt + 1 };
-      for (const listener of listeners) listener();
-    },
+    setStatus,
     emit(target: QuoteSubscriptionTarget, dataSource: "live" | "delayed") {
       emitters.at(-1)?.(target, dataSource);
     },
     listenerCount: () => listeners.size,
+    connectCalls: () => connectCalls,
   };
 }
 
@@ -136,7 +143,7 @@ describe("broker quote routing", () => {
   test("moves rows between the cloud and a gateway as it connects and disconnects", async () => {
     const cloud = streamLog();
     const brokerLog = streamLog();
-    const gateway = createGateway(brokerLog, { state: "disconnected", mode: "gateway", updatedAt: 1 });
+    const gateway = createGateway(brokerLog, { state: "connecting", mode: "gateway", updatedAt: 1 });
     const unsubscribe = createRouter(gateway.broker, cloud, true).subscribeQuotes([aapl, sap], () => {});
     expect(openSymbols(cloud)).toEqual(["AAPL", "SAP"]);
     expect(brokerLog.opened).toEqual([]);
@@ -161,32 +168,69 @@ describe("broker quote routing", () => {
     expect(openSymbols(cloud)).toEqual([]);
   });
 
+  test("asks a gateway that is down to connect, at most once per interval", async () => {
+    const cloud = streamLog();
+    const brokerLog = streamLog();
+    const gateway = createGateway(brokerLog, { state: "error", mode: "gateway", updatedAt: 1 });
+    const router = createRouter(gateway.broker, cloud, true);
+    const first = router.subscribeQuotes([aapl, sap], () => {});
+    expect(openSymbols(cloud)).toEqual(["AAPL", "SAP"]);
+
+    // Its status moves the rows over once it connects.
+    await flushReroute();
+    expect(gateway.connectCalls()).toBe(1);
+    await flushReroute();
+    expect(openSymbols(brokerLog)).toEqual(["AAPL", "SAP"]);
+    expect(openSymbols(cloud)).toEqual([]);
+
+    gateway.setStatus({ state: "disconnected" });
+    await flushReroute();
+    const second = router.subscribeQuotes([aapl, sap], () => {});
+    first();
+    await flushReroute();
+    expect(gateway.connectCalls()).toBe(1);
+    second();
+  });
+
   test("a delayed session hands real-time cloud instruments to the cloud and keeps the rest", async () => {
     const cloud = streamLog();
     const brokerLog = streamLog();
     const gateway = createGateway(brokerLog, { state: "connected", mode: "gateway", updatedAt: 1 });
     const seen: string[] = [];
-    const unsubscribe = createRouter(gateway.broker, cloud, true)
-      .subscribeQuotes([aapl, sap], (target, quote) => seen.push(`${target.symbol}:${quote.dataSource}`));
+    const router = createRouter(gateway.broker, cloud, true);
+    const unsubscribe = router.subscribeQuotes([aapl, sap], (target, quote) => seen.push(`${target.symbol}:${quote.dataSource}`));
     expect(openSymbols(brokerLog)).toEqual(["AAPL", "SAP"]);
     expect(openSymbols(cloud)).toEqual([]);
 
+    // A listing only the broker streams says nothing about the session.
     gateway.emit(sap, "delayed");
+    await flushReroute();
+    expect(openSymbols(brokerLog)).toEqual(["AAPL", "SAP"]);
+
+    gateway.emit(aapl, "delayed");
     await flushReroute();
     expect(openSymbols(cloud)).toEqual(["AAPL"]);
     expect(openSymbols(brokerLog)).toEqual(["SAP"]);
     // The replacement opened before the old stream closed, so SAP never lost its listener.
     expect(brokerLog.opened.at(-1)).toEqual(["SAP"]);
-    expect(seen).toEqual(["SAP:delayed"]);
+    expect(seen).toEqual(["SAP:delayed", "AAPL:delayed"]);
 
-    // A reconnect resets the session to real time.
+    // A reconnect resets the session to real time, even when it completes
+    // before the coalesced reroute runs.
     gateway.setStatus({ state: "connecting" });
-    await flushReroute();
     gateway.setStatus({ state: "connected" });
     await flushReroute();
     expect(openSymbols(brokerLog)).toEqual(["AAPL", "SAP"]);
     expect(openSymbols(cloud)).toEqual([]);
+
+    // Once nothing watches the profile, the next subscription tries it again.
+    gateway.emit(aapl, "delayed");
+    await flushReroute();
+    expect(openSymbols(cloud)).toEqual(["AAPL"]);
     unsubscribe();
+    const again = router.subscribeQuotes([aapl, sap], () => {});
+    expect(openSymbols(brokerLog)).toEqual(["AAPL", "SAP"]);
+    again();
   });
 
   test("a delayed session keeps every row when the cloud is not real time for the account", async () => {

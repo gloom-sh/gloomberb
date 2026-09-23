@@ -38,10 +38,45 @@ interface OpenStream {
   dispose(): void;
 }
 
+interface BrokerWatch {
+  /** Open subscriptions routing targets to this profile. */
+  subscriptions: number;
+  connected: boolean;
+}
+
+/** How often an open subscription may ask an offline broker to connect. */
+const BROKER_WAKE_INTERVAL_MS = 30_000;
+
+function isBrokerConnected(candidate: BrokerCandidate): boolean {
+  try {
+    const status = candidate.broker.getStatus?.(candidate.instance);
+    return !status || status.state === "connected";
+  } catch {
+    return false;
+  }
+}
+
+/** A broker that is down, not merely on its way up, and can be asked to connect. */
+function canWakeBroker(candidate: BrokerCandidate): boolean {
+  if (typeof candidate.broker.connect !== "function") return false;
+  try {
+    const state = candidate.broker.getStatus?.(candidate.instance)?.state;
+    return state === "disconnected" || state === "error";
+  } catch {
+    return false;
+  }
+}
+
 export class ProviderRouterStreamingRoutes {
-  /** Broker sessions that delivered delayed quotes since they last connected. */
+  /**
+   * Broker sessions that sent a delayed quote for an instrument the cloud
+   * streams in real time, since they last connected. Kept only while some
+   * subscription watches the profile, so the next one tries the broker again.
+   */
   private readonly delayedBrokerSessions = new Set<string>();
   private readonly delayedSessionListeners = new Set<() => void>();
+  private readonly brokerWatches = new Map<string, BrokerWatch>();
+  private readonly brokerWakeAttempts = new Map<string, number>();
 
   constructor(private readonly deps: ProviderRouterStreamingDeps) {}
 
@@ -71,12 +106,10 @@ export class ProviderRouterStreamingRoutes {
       if (disposed) return;
       const brokerStates = new Map<string, BrokerQuoteStreamState>();
       for (const [key, candidate] of watchedBrokers) {
-        const state = failedBrokers.has(key)
+        this.observeBrokerConnection(key, candidate);
+        brokerStates.set(key, failedBrokers.has(key)
           ? "unsupported"
-          : resolveBrokerQuoteStreamState(candidate, this.delayedBrokerSessions.has(key));
-        // A reconnect resets the broker's market data type, so start over.
-        if (state === "offline") this.delayedBrokerSessions.delete(key);
-        brokerStates.set(key, state);
+          : resolveBrokerQuoteStreamState(candidate, this.delayedBrokerSessions.has(key)));
       }
       const realtimeCloud = !!streamingProvider && this.deps.hasRealtimeCloudAccess();
 
@@ -151,9 +184,16 @@ export class ProviderRouterStreamingRoutes {
 
     const watchers: Array<() => void> = [];
     if (watchedBrokers.size > 0) {
-      for (const candidate of watchedBrokers.values()) {
+      for (const [key, candidate] of watchedBrokers) {
+        this.retainBrokerWatch(key, candidate);
+        watchers.push(() => this.releaseBrokerWatch(key));
         try {
-          const unsubscribe = candidate.broker.subscribeStatus?.(candidate.instance, scheduleApply);
+          const unsubscribe = candidate.broker.subscribeStatus?.(candidate.instance, () => {
+            // Read the transition now: a coalesced reroute would miss a
+            // reconnect that completes before it runs.
+            this.observeBrokerConnection(key, candidate);
+            scheduleApply();
+          });
           if (unsubscribe) watchers.push(unsubscribe);
         } catch {
           // A broker that cannot report status keeps the route it has now.
@@ -168,6 +208,12 @@ export class ProviderRouterStreamingRoutes {
     }
 
     apply();
+    // Subscribing to a broker used to connect it on demand. Keep that for a
+    // broker that is down, now that its rows wait on the cloud instead.
+    for (const [key, candidate] of watchedBrokers) {
+      if (failedBrokers.has(key) || resolveBrokerQuoteStreamState(candidate, false) !== "offline") continue;
+      this.wakeBroker(key, candidate);
+    }
 
     if (!providerStream && brokerStreams.size === 0) {
       this.deps.logWarn("No provider supports quote streaming", {
@@ -199,6 +245,50 @@ export class ProviderRouterStreamingRoutes {
       mayUseBroker,
       cloudRealtimeInstrument: mayUseBroker && isCloudRealtimeInstrument(target),
     };
+  }
+
+  private retainBrokerWatch(key: string, candidate: BrokerCandidate): void {
+    const watch = this.brokerWatches.get(key);
+    if (watch) watch.subscriptions += 1;
+    else this.brokerWatches.set(key, { subscriptions: 1, connected: isBrokerConnected(candidate) });
+  }
+
+  private releaseBrokerWatch(key: string): void {
+    const watch = this.brokerWatches.get(key);
+    if (!watch) return;
+    watch.subscriptions -= 1;
+    if (watch.subscriptions > 0) return;
+    // Nothing observes the session any more, so a reconnect could go unseen.
+    this.brokerWatches.delete(key);
+    this.delayedBrokerSessions.delete(key);
+  }
+
+  /** A connection change starts a new session with its own market data type. */
+  private observeBrokerConnection(key: string, candidate: BrokerCandidate): void {
+    const watch = this.brokerWatches.get(key);
+    if (!watch) return;
+    const connected = isBrokerConnected(candidate);
+    if (connected === watch.connected) return;
+    watch.connected = connected;
+    this.delayedBrokerSessions.delete(key);
+  }
+
+  private wakeBroker(key: string, candidate: BrokerCandidate): void {
+    if (!canWakeBroker(candidate)) return;
+    const now = Date.now();
+    const lastAttempt = this.brokerWakeAttempts.get(key);
+    if (lastAttempt !== undefined && now - lastAttempt < BROKER_WAKE_INTERVAL_MS) return;
+    this.brokerWakeAttempts.set(key, now);
+    this.deps.logInfo("Connecting broker for quote stream", { broker: key });
+    // Its status listener moves the rows over once it connects.
+    Promise.resolve()
+      .then(() => candidate.broker.connect!(candidate.instance))
+      .catch((error: unknown) => {
+        this.deps.logWarn("Broker connect for quote stream failed", {
+          broker: key,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 
   private openProviderStream(
@@ -241,7 +331,11 @@ export class ProviderRouterStreamingRoutes {
     let active = true;
     const unsubscribe = candidate.broker.subscribeQuotes!(candidate.instance, targets, (target, quote) => {
       if (!active) return;
-      if (quote.dataSource === "delayed") this.markBrokerSessionDelayed(key);
+      // One unentitled listing does not make the session delayed; only a
+      // delayed quote the cloud could replace in real time moves rows.
+      if (quote.dataSource === "delayed" && !this.delayedBrokerSessions.has(key) && isCloudRealtimeInstrument(target)) {
+        this.markBrokerSessionDelayed(key);
+      }
       onQuote(target, quote);
     });
     return {
