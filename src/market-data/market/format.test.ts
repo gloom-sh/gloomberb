@@ -148,7 +148,6 @@ test("nominal quantity and percent-of-par prices retain their units in narrow ex
   expect(formatMarketPriceWithCurrency(86.359375, "EUR", { assetCategory: "BOND" })).toBe("—");
 });
 
-// Metadata is descriptive, while the quote declares the price convention.
 test("a line quoted in pence keeps its pence decimals once shown in pounds", () => {
   const pence = quoteFormatOptions({ instrumentType: "EQUITY", providerPriceDivisor: 100 });
   expect(formatMarketPriceWithCurrency(1.2295, "GBP", { ...pence, minimumFractionDigits: 2 })).toBe("£1.2295");
@@ -160,6 +159,7 @@ test("a line quoted in pence keeps its pence decimals once shown in pounds", () 
   expect(formatMarketChangeWithCurrency(-0.0165, "GBP", pounds)).toBe("-£0.02");
 });
 
+// Metadata is descriptive, while the quote declares the price convention.
 test("quote formatting uses metadata only to withhold unknown bond units", () => {
   const unknown = quoteFormatOptions({}, "BOND", "STK");
   expect(formatMarketPriceWithCurrency(87, "USD", unknown)).toBe("—");

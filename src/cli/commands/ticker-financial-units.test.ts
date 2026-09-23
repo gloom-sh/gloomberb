@@ -65,3 +65,14 @@ test("enterprise value is shown in the market cap's currency, converted or label
   expect(renderFundamentalsReport({ ...undeclared, symbol: "UNITTEST" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " "))
     .toContain("Enterprise Value 3.85T USD");
 });
+
+test("a pence-quoted range shares one decimal count, other ranges are unchanged", async () => {
+  const pence = { ...quote, currency: "GBP", instrumentType: "EQUITY", providerPriceDivisor: 100, price: 35.32, low: 35.1, high: 35.4871, low52w: 25.5377, high52w: 37.585 };
+  const london = await report({ quote: pence, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(london).toContain("Day Range £35.1000 - £35.4871");
+  expect(london).toContain("52W Range £25.5377 - £37.5850");
+  const yen = await report({ quote: { ...quote, currency: "JPY", instrumentType: "EQUITY", price: 3000, low: 2950, high: 3012 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(yen).toContain("Day Range ¥2,950 - ¥3,012");
+  const dollars = await report({ quote: { ...quote, instrumentType: "EQUITY", low: 99.5, high: 101.25 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] });
+  expect(dollars).toContain("Day Range $99.50 - $101.25");
+});

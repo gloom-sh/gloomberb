@@ -37,6 +37,7 @@ import {
   formatBidAsk,
   formatFractionPercentCell,
   formatNullableCompact,
+  formatPriceRange,
   formatPortfolioNames,
   formatSignedCurrency,
   formatSignedPercentRaw,
@@ -412,10 +413,10 @@ export async function buildTickerReport({
       ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions)} (${formatSignedPercentRaw(quote.changePercent)})`, quote.change)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
-        ? `${quote.low != null ? formatMarketPriceWithCurrency(quote.low, quote.currency, quoteOptions) : "—"} - ${quote.high != null ? formatMarketPriceWithCurrency(quote.high, quote.currency, quoteOptions) : "—"}`
+        ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)
         : "—"],
       ["52W Range", quote.low52w != null || quote.high52w != null
-        ? `${quote.low52w != null ? formatMarketPriceWithCurrency(quote.low52w, quote.currency, quoteOptions) : "—"} - ${quote.high52w != null ? formatMarketPriceWithCurrency(quote.high52w, quote.currency, quoteOptions) : "—"}`
+        ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
         : "—"],
       ["Bid / Ask", formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, quoteOptions.assetCategory, quote.priceBasis)],
       ["Volume", quote.volume != null ? formatNumber(quote.volume, 0) : "—"],

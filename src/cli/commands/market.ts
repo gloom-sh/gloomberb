@@ -20,6 +20,7 @@ import {
   formatChangePercentCell,
   formatCountCell,
   formatFractionPercentCell,
+  formatPriceRange,
 } from "../helpers";
 import { cliStyles, renderStats } from "../../utils/cli-output";
 import { formatPerShareNumber } from "../../utils/reported-money";
@@ -126,7 +127,7 @@ function quoteRows(results: QuoteCliRecord[]) {
       session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
       // The close the shown move is measured from; a pre-market move starts at the last close.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
-      dayRange: quote?.low != null && quote.high != null ? `${price(quote.low)}-${price(quote.high)}` : "",
+      dayRange: quote?.low != null && quote.high != null ? formatPriceRange(quote.low, quote.high, quote.currency, options, "-") : "",
       volume: quote?.volume ?? null,
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
