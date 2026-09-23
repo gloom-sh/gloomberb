@@ -11,6 +11,7 @@ import { formatMarketPriceWithCurrency, quoteFormatOptions, formatSignedMarketPr
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
+import { appendLiveQuotePoint } from "../../../../time-series/chart-data";
 import {
   PriceAreaSparklineBackground,
   PriceSparkline,
@@ -75,9 +76,13 @@ export function QuoteMonitorCard({
   const { nativePaneChrome } = useUiCapabilities();
   const quote = resolveEntryData(quoteEntry) ?? cachedFinancials?.quote;
   const queriedPriceHistory = resolveEntryData(chartEntry);
-  const priceHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
+  const barHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
     ? queriedPriceHistory
     : cachedFinancials?.priceHistory;
+  const assetCategory = quote?.instrumentType ?? ticker?.metadata.assetCategory;
+  // Completed bars end at the prior close; the live price closes the line and the stated range.
+  const priceHistory = useMemo(() => barHistory && appendLiveQuotePoint(barHistory, quote, { assetCategory }),
+    [assetCategory, barHistory, quote]);
   const flashFinancials = useMemo<TickerFinancials | null>(
     () => quote ? { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] } : null,
     [quote],
@@ -90,7 +95,6 @@ export function QuoteMonitorCard({
   const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
   const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
-  const assetCategory = quote?.instrumentType ?? ticker?.metadata.assetCategory;
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
   const priceText = display
