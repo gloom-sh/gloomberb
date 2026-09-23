@@ -46,3 +46,21 @@ test("daily history fetched before a close is refetched, and kept when the refet
     expect(await close("BTC-USD", "CCC")).toBe(86_000);
   } finally { store.close(); }
 });
+
+test("a weekly series ending in a trade-time row is refetched after the close", async () => {
+  const calls: string[] = [];
+  // Yahoo's weekly chart before the close: the week row stops at Monday and
+  // the live observation trails it, so the points share no clock time.
+  let load = (): PricePoint[] => [["2026-09-08T04:00:00Z", 230], ["2026-09-15T04:00:00Z", 236], ["2026-09-21T04:00:00Z", 227.38],
+    ["2026-09-22T19:53:00Z", 228.1]].map(([date, close]) => ({ date: new Date(date as string), close: close as number }));
+  const store = new AppPersistence(createTempDbPath("calendar-weekly"));
+  const router = new AssetDataRouter(source(() => load(), calls), [], store.resources);
+  try {
+    setSystemTime(new Date("2026-09-22T19:55:00Z"));
+    expect((await router.getPriceHistory("NVDA", "NASDAQ", "5Y")).at(-1)?.close).toBe(228.1);
+    load = () => [{ date: new Date("2026-09-15T04:00:00Z"), close: 236 }, { date: new Date("2026-09-21T04:00:00Z"), close: 228.87 }];
+    setSystemTime(new Date("2026-09-23T10:00:00Z"));
+    expect((await router.getPriceHistory("NVDA", "NASDAQ", "5Y")).at(-1)?.close).toBe(228.87);
+    expect(calls).toHaveLength(2);
+  } finally { store.close(); }
+});

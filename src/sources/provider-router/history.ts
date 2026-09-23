@@ -557,7 +557,10 @@ export class ProviderRouterHistoryRoutes {
       && (request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd)))
       && isCalendarHistoryFetchOutdated(cachedValue.points, cached.fetchedAt, Date.now(), {
         exchange: parsePublicTickerKey(request.target.symbol).exchange || request.target.exchange,
-        intervalMs: cachedValue.resolution ? priceHistoryIntervalMs(cachedValue.resolution) : undefined,
+        // Bar size comes from the request: a cached weekly or monthly series
+        // can end in a trade-time row that hides its cadence.
+        intervalMs: cachedValue.resolution ? priceHistoryIntervalMs(cachedValue.resolution)
+          : request.cachePolicyKey === "priceHistoryDaily" ? DAY_MS : undefined,
       });
     const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale
       && !cachedBeforeClose;
