@@ -10,7 +10,13 @@ import type { PaneProps } from "../../../types/plugin";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex } from "../../../theme/color-utils";
 import { resolveOptionsTarget } from "../../../utils/options";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { optionMid } from "../shared/volatility";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
+import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { daysToExpiryFrom } from "../options-calculator/model";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
@@ -67,13 +73,51 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     catch (error) { return { value: null, error: error instanceof Error ? error.message : String(error) }; }
   }, [settings, underlying, exchange, market]);
   const [stored, setPosition] = usePluginPaneState<ScenarioPosition | null>("position", seeded.value);
-  const position = stored?.symbol === underlying && (!exchange || stored.exchange === exchange) ? stored : seeded.value;
+  const storedPosition = stored?.symbol === underlying && (!exchange || stored.exchange === exchange) ? stored : seeded.value;
+  // Following the market marks the position to the live spot and each leg's
+  // live midpoint on every applied quote batch. A spot typed on the command
+  // line is a what-if and stays; a frozen or screenshot scenario never moves.
+  const liveStreaming = useLiveStreamingSetting();
+  const [followState, setFollow] = usePluginPaneState<boolean | null>("followMarket", null);
+  const follow = !frozen && !frozenMarket && (followState ?? !(settings.spot != null && settings.spot !== "" && typeof settings.seedLeg !== "string"));
+  const legSymbols = useMemo(() => new Map((storedPosition?.legs ?? []).flatMap((leg) => {
+    const symbol = scenarioLegContractSymbol(underlying, leg, market?.chain);
+    return symbol ? [[leg.id, symbol] as const] : [];
+  })), [storedPosition?.legs, underlying, market?.chain]);
+  // Only the underlying and the position's own legs: the options stream budget is shared.
+  const liveTargets = useMemo<QuoteSubscriptionTarget[]>(() => !follow || !underlying || !storedPosition ? [] : [
+    { symbol: underlying, exchange: exchange ?? "", route: "provider", surface: "options", visible: true, selected: true, weight: 90 },
+    ...[...new Set(legSymbols.values())].map((symbol) => ({ symbol, exchange: OPTIONS_QUOTE_EXCHANGE, surface: "options" as const,
+      visible: true, weight: 90 })),
+  ], [follow, underlying, exchange, !!storedPosition, legSymbols]);
+  const { entries: liveEntries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(liveTargets, { liveStreaming });
+  const live = useMemo(() => {
+    if (!follow || !storedPosition) return null;
+    const spotQuote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: underlying, exchange: exchange ?? "" })));
+    if (!spotQuote || spotQuote.stale || !(spotQuote.price > 0) || !Number.isFinite(spotQuote.price)
+      || (spotQuote.currency && storedPosition.currency !== "UNKNOWN" && spotQuote.currency !== storedPosition.currency)) return null;
+    const freshness = { now: Math.max(freshnessNow, Date.now()), subscriptionStartedAt };
+    const mids = new Map<string, number>();
+    let delayed = spotQuote.dataSource !== "live";
+    for (const [id, symbol] of legSymbols) {
+      const quote = freshOptionQuote(liveEntries.get(buildOptionQuoteKey(symbol)), freshness);
+      const mid = quote && quote.bid != null && quote.ask != null ? optionMid({ bid: quote.bid, ask: quote.ask }) : null;
+      if (mid == null) continue;
+      mids.set(id, mid);
+      delayed ||= quote!.dataSource !== "live";
+    }
+    return { position: liveScenarioPosition(storedPosition, spotQuote.price, Date.now(), mids),
+      observedAt: spotQuote.lastUpdated, basis: delayed ? "delayed" : "real-time" };
+  }, [follow, storedPosition, liveEntries, underlying, exchange, legSymbols, freshnessNow, subscriptionStartedAt]);
+  const position = live?.position ?? storedPosition;
   const [controlState, setControls] = usePluginPaneState<ScenarioControls | null>("controls", null);
   const baseControls = useMemo(() => {
     try { return { value: position ? scenarioControlsFromSettings(settings, position) : null, error: null }; }
     catch (error) { return { value: null, error: error instanceof Error ? error.message : String(error) }; }
   }, [settings, position]);
-  const controls = controlState ?? baseControls.value;
+  const chosenControls = controlState ?? baseControls.value;
+  // A scenario date the live origin has passed is now, not an error.
+  const controls = live && chosenControls ? { ...chosenControls, date: Math.max(chosenControls.date, live.position.asOf) } : chosenControls;
   const result = useMemo(() => {
     if (frozen) return { scenario: frozen, error: null };
     if (!controlState && baseControls.error) return { scenario: null, error: baseControls.error };
@@ -136,6 +180,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (!text.trim() || !Number.isFinite(Number(text)) || !scenario) return;
     setControls({ ...scenario.controls, volShift: Number(text) / 100 });
   };
+  // Freezing keeps the marks shown at this moment as the scenario's inputs.
+  const freeze = () => { if (live) setPosition(live.position); setFollow(false); };
   const hints = detail === "chain" ? [{ id: "expiry", key: "d", label: "ate", onPress: () => chainExpiryControl.current?.open() }] : detail || volActive ? [] : [
     { id: "add", key: "a", label: "dd leg", onPress: addTyped },
     { id: "chain", key: "c", label: "hain", onPress: () => setDetail("chain") },
@@ -144,14 +190,17 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       { id: "remove", key: "x", label: "remove", onPress: () => void remove() }] : []),
     ...(scenario ? [{ id: "date", key: "d", label: "ate", onPress: () => dateControl.current?.open() }, { id: "save", key: "s", label: "ave", onPress: () => setDetail("save") }] : []),
     { id: "load", key: "b", label: "rowse saved", onPress: () => void loadSaved() },
+    ...(live ? [{ id: "follow", key: "f", label: "reeze", onPress: freeze }]
+      : follow || frozen || frozenMarket || !storedPosition ? [] : [{ id: "follow", key: "f", label: "ollow market", onPress: () => setFollow(true) }]),
   ];
   const notices = [...new Set([...restored.warnings, ...(market?.warnings ?? []), ...(scenario?.warnings ?? []), ...(resource.error ? [resource.error] : [])])];
   usePaneNoticeFooter({ registrationId: "osa-notices", notices, focused, enabled: !detail || detail === "chain" });
   usePaneFooter("osa", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-    ...(position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}`, tone: "muted" as const }] }] : []),
-  ], hints }), [hints, position, market?.source, resource.loading, error]);
+    ...(live ? [{ id: "asof", parts: [{ text: `${live.basis} · as of ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" as const }] }]
+      : position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}`, tone: "muted" as const }] }] : []),
+  ], hints }), [hints, position, market?.source, resource.loading, error, live?.basis, live?.observedAt]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -279,6 +328,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
           setPosition({ ...current, legs }); setSelectedId(leg.id); setDetail(null); setEditingLeg(null); setLocalError(null);
         }} /> : detail === "save" ? <ScenarioSaveForm focused={focused} onSave={save} onCancel={() => { setDetail(null); setEditingLeg(null); }} />
         : detail === "inputs" ? <ScenarioInputsForm position={baseline()} controls={controls} focused={focused} width={width}
-          onCancel={() => { setDetail(null); setEditingLeg(null); }} onSave={(position, controls) => { setPosition(position); setControls(controls); if (editingLeg && !Number.isFinite(editingLeg.strike)) setEditingLeg({ ...editingLeg, strike: position.spot }); setDetail(editingLeg ? "leg" : null); setLocalError(null); }} /> : null} />
+          onCancel={() => { setDetail(null); setEditingLeg(null); }} onSave={(position, controls) => {
+            // A typed spot is a what-if: the scenario stops following the market.
+            if (live && Math.abs(position.spot - live.position.spot) > 1e-9) setFollow(false);
+            setPosition(position); setControls(controls); if (editingLeg && !Number.isFinite(editingLeg.strike)) setEditingLeg({ ...editingLeg, strike: position.spot }); setDetail(editingLeg ? "leg" : null); setLocalError(null); }} /> : null} />
   </Box>;
 }

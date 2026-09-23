@@ -8,7 +8,14 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, solveImpliedVolatility, updateOptionCalcDraft, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
+import { OPTIONS_CALCULATOR_PANE_ID, daysToExpiryFrom, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, solveImpliedVolatility, updateOptionCalcDraft, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { optionMid } from "../shared/volatility";
+import { useThrottledValue } from "../shared/volatility/live-session";
 import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialSteps } from "./binomial";
 import { draftFromCalculatorInputs, parseCashDividends } from "./inputs";
 import { loadCalculatorSurfaceVol } from "./surface";
@@ -75,8 +82,44 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   useEffect(() => () => controller.current?.abort(), [loadSurface, surfaceSource]);
   const surface = screenshotSnapshot ? screenshotSnapshot.surface
     : surfaceResource.data?.key === surfaceKey ? surfaceResource.data.result : null;
-  const effectiveDraft = useMemo(() => ({ ...draft, dividends: dividendInput.dividends,
-    volatility: surfaceSource && surface?.volatility != null ? surface.volatility : draft.volatility }), [draft, dividendInput.dividends, surfaceSource, surface?.volatility]);
+  // A calculator opened on a chain contract follows that contract and its
+  // underlying until the user edits the price, the contract or the spot:
+  // any edit is theirs and ends the link for that input.
+  const liveStreaming = useLiveStreamingSetting();
+  const reference = draft.marketReference;
+  const priceLinked = !screenshotSnapshot && !!draft.marketPriceSource && !!reference && !!draft.symbol;
+  const spotLinked = priceLinked && draft.spot === seed.spot;
+  const liveTargets = useMemo<QuoteSubscriptionTarget[]>(() => !priceLinked ? [] : [
+    ...(spotLinked ? [{ symbol: draft.symbol, exchange: "", route: "provider" as const, surface: "options" as const, visible: true, selected: true, weight: 90 }] : []),
+    { symbol: reference!.contractSymbol, exchange: OPTIONS_QUOTE_EXCHANGE, surface: "options", visible: true, selected: true, weight: 90 },
+  ], [priceLinked, spotLinked, draft.symbol, reference?.contractSymbol]);
+  const { entries: liveEntries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(liveTargets, { liveStreaming });
+  // American trees solve IV by repeated valuation, so their live inputs move at most twice a second.
+  const liveInputs = useThrottledValue(useMemo(() => {
+    if (!priceLinked || !reference) return null;
+    const spotQuote = spotLinked ? resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: draft.symbol, exchange: "" }))) : null;
+    const spot = spotQuote && !spotQuote.stale && spotQuote.price > 0 && Number.isFinite(spotQuote.price) ? spotQuote.price : null;
+    const quote = freshOptionQuote(liveEntries.get(buildOptionQuoteKey(reference.contractSymbol)),
+      { now: Math.max(freshnessNow, Date.now()), subscriptionStartedAt });
+    if (spot == null && !quote) return null;
+    const mid = quote?.bid != null && quote.ask != null ? optionMid({ bid: quote.bid, ask: quote.ask }) : null;
+    const trade = quote?.lastTradePrice != null && quote.lastTradePrice > 0 && quote.lastTradeTime != null
+      && quote.lastTradeTime >= reference.lastTradeDate * 1000 ? { price: quote.lastTradePrice, time: quote.lastTradeTime } : null;
+    const price = draft.marketPriceSource === "mid" ? mid : trade?.price ?? null;
+    return { spot, price, delayed: (spotQuote != null && spotQuote.dataSource !== "live") || (quote != null && quote.dataSource !== "live"),
+      reference: quote ? { ...reference, bid: quote.bid ?? reference.bid, ask: quote.ask ?? reference.ask,
+        lastPrice: trade?.price ?? reference.lastPrice, lastTradeDate: trade ? trade.time / 1000 : reference.lastTradeDate,
+        lastUpdated: quote.lastUpdated } : reference };
+  }, [priceLinked, spotLinked, reference, liveEntries, draft.symbol, draft.marketPriceSource, freshnessNow, subscriptionStartedAt]),
+  draft.pricingModel === "american" ? 500 : 0, `${draft.symbol}|${reference?.contractSymbol ?? ""}`);
+  const linkedDraft = useMemo(() => !liveInputs ? draft : { ...draft,
+    spot: liveInputs.spot ?? draft.spot,
+    marketPrice: liveInputs.price ?? draft.marketPrice,
+    // The contract's remaining time runs with the clock while its price is live.
+    daysToExpiry: liveInputs.price != null && reference ? daysToExpiryFrom(reference.expiration, Date.now()) : draft.daysToExpiry,
+    marketReference: liveInputs.reference }, [draft, liveInputs, reference]);
+  const effectiveDraft = useMemo(() => ({ ...linkedDraft, dividends: dividendInput.dividends,
+    volatility: surfaceSource && surface?.volatility != null ? surface.volatility : linkedDraft.volatility }), [linkedDraft, dividendInput.dividends, surfaceSource, surface?.volatility]);
 
   const updateDraft = useCallback((patch: Partial<OptionCalcDraft>) => {
     setSeedError(null);
@@ -84,19 +127,19 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   }, [seed, setDraft]);
 
   const fields = useMemo<GridField[]>(() => [
-    { id: "spot", label: "Spot", value: draft.spot, valueText: String(draft.spot), onValue: (value) => updateDraft({ spot: value }) },
+    { id: "spot", label: "Spot", value: linkedDraft.spot, valueText: String(linkedDraft.spot), onValue: (value) => updateDraft({ spot: value }) },
     { id: "strike", label: "Strike", value: draft.strike, valueText: String(draft.strike), onValue: (value) => updateDraft({ strike: value }) },
     {
       id: "days",
       label: "Days",
-      value: draft.daysToExpiry,
+      value: linkedDraft.daysToExpiry,
       // Keep intraday expiry visible; rounding six hours to "0 d" makes a
       // live contract appear expired while its time value is still priced.
-      valueText: Number.isInteger(draft.daysToExpiry)
-        ? String(draft.daysToExpiry)
-        : draft.daysToExpiry > 0 && draft.daysToExpiry < 0.0001
+      valueText: Number.isInteger(linkedDraft.daysToExpiry)
+        ? String(linkedDraft.daysToExpiry)
+        : linkedDraft.daysToExpiry > 0 && linkedDraft.daysToExpiry < 0.0001
           ? "<0.0001"
-          : String(Number(draft.daysToExpiry.toFixed(4))),
+          : String(Number(linkedDraft.daysToExpiry.toFixed(4))),
       suffix: "d",
       onValue: (value) => updateDraft({ daysToExpiry: Math.max(0, value) }),
     },
@@ -106,15 +149,15 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     {
       id: "marketPrice",
       label: draft.marketPriceSource === "mid" ? "Mid" : draft.marketPriceSource === "last" ? "Last" : draft.marketPrice > 0 ? "Input" : "Market",
-      value: draft.marketPrice,
-      valueText: String(Number(draft.marketPrice.toPrecision(12))),
+      value: linkedDraft.marketPrice,
+      valueText: String(Number(linkedDraft.marketPrice.toPrecision(12))),
       // Clearing the field is how a standalone user says "no market price".
       onValue: (value) => updateDraft({ marketPrice: Math.max(0, value), marketPriceSource: undefined }),
       onClear: () => updateDraft({ marketPrice: 0, marketPriceSource: undefined }),
     },
     ...(american ? [{ id: "steps", label: "Steps", value: draft.steps ?? 400, valueText: String(draft.steps ?? 400),
       onValue: (value: number) => updateDraft({ steps: value }) }] : []),
-  ], [draft, updateDraft, american, surfaceSource, effectiveDraft.volatility, surface?.volatility]);
+  ], [draft, linkedDraft, updateDraft, american, surfaceSource, effectiveDraft.volatility, surface?.volatility]);
 
   const calculation = useMemo(() => {
     const unavailable = seedError ?? (american ? dividendInput.error : null)
@@ -127,12 +170,12 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       const options = { exercise: "american" as const, steps: draft.steps ?? 400, dividends: dividendInput.dividends };
       return { valuation: american ? valueBinomialOption(effectiveDraft, options) : valueOption(effectiveDraft),
         effectiveSteps: american ? effectiveBinomialSteps(effectiveDraft, options) : null,
-        implied: american ? solveBinomialImpliedVolatility(effectiveDraft, draft.marketPrice, options)
-          : solveImpliedVolatility(effectiveDraft, draft.marketPrice), problem: describeDraftProblem(effectiveDraft) };
+        implied: american ? solveBinomialImpliedVolatility(effectiveDraft, effectiveDraft.marketPrice, options)
+          : solveImpliedVolatility(effectiveDraft, effectiveDraft.marketPrice), problem: describeDraftProblem(effectiveDraft) };
     } catch (error) {
       return { valuation: null, implied: { volatility: null, note: null }, problem: error instanceof Error ? error.message : String(error) };
     }
-  }, [effectiveDraft, american, draft.steps, draft.marketPrice, dividendInput, surfaceSource, surface,
+  }, [effectiveDraft, american, draft.steps, dividendInput, surfaceSource, surface,
     surfaceResource.loading, surfaceResource.error, seedError]);
   const { valuation, implied, problem, effectiveSteps } = calculation;
   const notices = useMemo(() => [...(surfaceSource ? surface?.warnings ?? [] : []),
@@ -222,6 +265,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       ...(surfaceSource && surfaceResource.loading ? [{ id: "loading", parts: [{ text: "loading surface", tone: "muted" as const }] }] : []),
       ...(surfaceSource && surface?.asOf ? [{ id: "surface-asof", parts: [{ text: `surface · ${surface.asOf}`, tone: "muted" as const }] }] : []),
       ...(effectiveSteps && effectiveSteps !== (draft.steps ?? 400) ? [{ id: "refined", parts: [{ text: `tree refined to ${effectiveSteps} steps`, tone: "muted" as const }] }] : []),
+      ...(liveInputs ? [{ id: "market", parts: [{ text: liveInputs.delayed ? "delayed market" : "real-time market", tone: "muted" as const }] }] : []),
     ],
     hints: activeFieldId ? [] : [
       { id: "model", key: "m", label: "odel", onPress: () => setModel(american ? "european" : "american") },
@@ -230,7 +274,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       ...(american ? [{ id: "dividends", key: "d", label: "ividends", onPress: () => setActiveFieldId("dividends") }] : []),
       ...(surfaceSource ? [{ id: "refresh", key: "r", label: "efresh", onPress: () => { void surfaceResource.reload(); } }] : []),
     ],
-  }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps]);
+  }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps, liveInputs?.delayed, !!liveInputs]);
 
   const gridFields: GridField[] = [
     { id: "symbol", kind: "text", label: "Underlying", valueText: symbolText, placeholder: "ticker",
@@ -245,7 +289,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const resultWidth = Math.max(1, width - 3);
   const metricWidth = pairMetrics ? Math.floor(resultWidth / 2) : resultWidth;
   const trailingMetricWidth = pairMetrics ? Math.max(1, resultWidth - metricWidth) : metricWidth;
-  const referenceHeight = optionQuoteContextHeight(draft.marketReference, resultWidth, Number.POSITIVE_INFINITY, true);
+  const referenceHeight = optionQuoteContextHeight(linkedDraft.marketReference, resultWidth, Number.POSITIVE_INFINITY, !liveInputs);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -274,8 +318,8 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       <Box height={1} />
 
       <ScrollBox id="options-calculator-results" flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
-        {draft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
-          <OptionQuoteContext reference={draft.marketReference} width={resultWidth} height={referenceHeight} snapshot scrollable={false} />
+        {linkedDraft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
+          <OptionQuoteContext reference={linkedDraft.marketReference} width={resultWidth} height={referenceHeight} snapshot={!liveInputs} scrollable={false} />
         </Box>}
 
         <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>

@@ -157,7 +157,8 @@ export function overlayOptionContractQuote(
   };
 }
 
-function freshOptionQuote(entry: QueryEntry<Quote> | undefined, freshness: OptionsQuoteFreshness): Quote | null {
+/** A quote delivered since this subscription started and within the freshness window, or nothing. */
+export function freshOptionQuote(entry: QueryEntry<Quote> | undefined, freshness: OptionsQuoteFreshness): Quote | null {
   const quote = resolveEntryData(entry);
   if (!quote || quote.stale === true) return null;
   const receivedAt = quote.receivedAt ?? 0;
