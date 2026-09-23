@@ -1,35 +1,90 @@
 import { expect, test } from "bun:test";
-import { cryptoBoardRow, cryptoNotices, cryptoPrice, currentCryptoRow } from "./model";
-import { cryptoFixture } from "./test-fixture";
-test("cached crypto trades age independently of stored freshness and preserve completed UTC metrics", () => {
-  const row = cryptoFixture().rows[0]!;
-  const stale = currentCryptoRow(row, Date.parse("2026-09-22T12:31:00Z"));
-  expect(stale.price.freshness).toBe("stale");
-  expect(stale.price.asOf).toBe(row.price.asOf);
-  const expired = currentCryptoRow(row, Date.parse("2026-09-24T12:00:00Z"));
-  expect(expired.price.value).toBeNull();
-  expect(expired.price.percentile.value).toBeNull();
-  expect(expired.dailyChange.valuePercent).toBeNull();
-  expect(expired.return7d).toEqual(row.return7d);
-  expect(expired.volume).toEqual(row.volume);
-  expect(row.price.value).toBe(125);
+import type { QueryEntry } from "../../../market-data/result-types";
+import type { Quote } from "../../../types/financials";
+import {
+  buildCryptoColumns,
+  buildCryptoRows,
+  cryptoQuoteKey,
+  DEFAULT_CRYPTO_SORT,
+  formatCryptoPrice,
+  nextCryptoSort,
+  sortCryptoRows,
+} from "./model";
+import { CRYPTO_FIXTURE_NOW, cryptoFixture } from "./test-fixture";
+
+function entry(quote: Partial<Quote> & Pick<Quote, "price" | "lastUpdated">): QueryEntry<Quote> {
+  const data = { symbol: "BTC-USD", currency: "USD", change: 0, changePercent: 0, ...quote } as Quote;
+  return { phase: "ready", data, lastGoodData: data, source: "test", fetchedAt: null, staleAt: null, error: null, attempts: [] };
+}
+
+test("returns compare the price with the close N UTC days back, like the day change", () => {
+  const [btc, hype] = buildCryptoRows(cryptoFixture().assets, "coin", new Map(), CRYPTO_FIXTURE_NOW);
+  expect(btc!.changePercent).toBeCloseTo(2.0408, 4);
+  expect(btc!.return7d).toBeCloseTo((100 / 93 - 1) * 100, 6);
+  expect(btc!.return30d).toBeCloseTo((100 / 70 - 1) * 100, 6);
+  expect(btc!.return1y).toBeCloseTo(25, 6);
+  // 30 closes plus the live price.
+  expect(btc!.history).toHaveLength(31);
+  expect(btc!.history.at(-1)!.close).toBe(100);
+  // No history is unknown, not zero.
+  expect(hype).toMatchObject({ code: "HYPE", return7d: null, return30d: null, return1y: null, history: [] });
 });
-test("sub-cent prices retain visible precision, short samples are marked and sparse history keeps its actual dates", () => {
-  expect(cryptoPrice(0.00000604)).toBe("0.00000604");
-  const data = cryptoFixture(),
-    row = data.rows[0]!;
-  row.history[3] = {
-    date: row.history[3]!.date,
-    close: null,
-    volume: null,
-    tradeCount: null,
-    status: "missing",
-  };
-  const board = cryptoBoardRow(row, Date.parse(row.asOf!));
-  expect(board.history).toHaveLength(24);
-  expect(board.history[3]!.date.toISOString().slice(0, 10)).toBe(row.history[4]!.date);
-  expect(board.percentileText).toBe("60*");
-  expect(cryptoNotices(data, Date.parse(row.asOf!)).some((notice) => notice.includes("25 observed"))).toBe(
-    true,
-  );
+
+test("a newer live quote moves price, day change, returns and market cap", () => {
+  const data = cryptoFixture();
+  const btc = data.assets[0]!;
+  const quote = entry({ price: 105, changePercent: 7.1, lastUpdated: CRYPTO_FIXTURE_NOW, delivery: "stream", stale: false });
+  const [row] = buildCryptoRows(data.assets, "coin", new Map([[cryptoQuoteKey(btc), quote]]), CRYPTO_FIXTURE_NOW);
+  expect(row).toMatchObject({ price: 105, changePercent: 7.1, marketCap: 1_050_000_000_000, live: true });
+  expect(row!.return7d).toBeCloseTo((105 / 93 - 1) * 100, 6);
+  expect(row!.history.at(-1)!.close).toBe(105);
+  const older = entry({ price: 90, lastUpdated: Date.parse(btc.quoteTime!) - 1 });
+  const [kept] = buildCryptoRows(data.assets, "coin", new Map([[cryptoQuoteKey(btc), older]]), CRYPTO_FIXTURE_NOW);
+  expect(kept).toMatchObject({ price: 100, live: false });
+});
+
+test("a live quote without a change percent is restated from the previous close", () => {
+  const data = cryptoFixture();
+  const btc = data.assets[0]!;
+  const quote = entry({ price: 107.8, changePercent: Number.NaN, lastUpdated: CRYPTO_FIXTURE_NOW });
+  const [row] = buildCryptoRows(data.assets, "coin", new Map([[cryptoQuoteKey(btc), quote]]), CRYPTO_FIXTURE_NOW);
+  expect(row!.changePercent).toBeCloseTo(10, 6);
+});
+
+test("tabs split coins from stablecoins and keep market-cap rank order", () => {
+  const assets = cryptoFixture().assets;
+  expect(buildCryptoRows(assets, "coin", new Map()).map((row) => row.code)).toEqual(["BTC", "HYPE"]);
+  expect(buildCryptoRows(assets, "stablecoin", new Map()).map((row) => row.code)).toEqual(["USDT"]);
+});
+
+test("numeric columns sort largest first, then smallest, then back to rank", () => {
+  const rows = buildCryptoRows(cryptoFixture().assets, "coin", new Map(), CRYPTO_FIXTURE_NOW);
+  let sort = nextCryptoSort(DEFAULT_CRYPTO_SORT, "changePercent");
+  expect(sort).toEqual({ columnId: "changePercent", direction: "desc" });
+  expect(sortCryptoRows(rows, sort).map((row) => row.code)).toEqual(["BTC", "HYPE"]);
+  sort = nextCryptoSort(sort, "changePercent");
+  expect(sortCryptoRows(rows, sort).map((row) => row.code)).toEqual(["HYPE", "BTC"]);
+  expect(nextCryptoSort(sort, "changePercent")).toEqual(DEFAULT_CRYPTO_SORT);
+  expect(nextCryptoSort(DEFAULT_CRYPTO_SORT, "code").direction).toBe("asc");
+  // Unknown returns sort last in both directions.
+  const byWeek = sortCryptoRows(rows, { columnId: "return7d", direction: "asc" });
+  expect(byWeek.at(-1)!.code).toBe("HYPE");
+});
+
+test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", () => {
+  const ids = (width: number) => buildCryptoColumns(width).map((column) => column.id);
+  expect(ids(140)).toEqual([
+    "rank", "code", "name", "price", "changePercent", "return7d", "return30d", "return1y", "trend", "volume24h", "marketCap",
+  ]);
+  expect(ids(100)).not.toContain("return1y");
+  expect(ids(90)).not.toContain("trend");
+  expect(ids(60)).toEqual(["rank", "code", "price", "changePercent", "return7d", "marketCap"]);
+  const wide = buildCryptoColumns(200).find((column) => column.id === "name")!;
+  expect(wide.width).toBe(24);
+});
+
+test("prices keep the precision a sub-cent token needs", () => {
+  expect(formatCryptoPrice(84_352.31)).toBe("84,352.31");
+  expect(formatCryptoPrice(0.00000567)).toBe("0.00000567");
+  expect(formatCryptoPrice(null)).toBe("—");
 });

@@ -1,95 +1,80 @@
-import type { CryptoBoardPayload, CryptoBoardRow, CryptoPercentile } from "../../../api-client/crypto-board";
-export function cryptoFixture(): CryptoBoardPayload {
-  const history = Array.from({ length: 25 }, (_, i) => ({
-    date: new Date(Date.parse("2026-09-22") - (25 - i) * 86_400_000).toISOString().slice(0, 10),
-    close: 100 + i,
-    volume: 10 + i,
-    tradeCount: 1,
-    status: "observed" as const,
-  }));
-  const percentile: CryptoPercentile = {
-    value: 60,
-    rank: 15,
-    sampleCount: 25,
-    windowStart: history[0]!.date,
-    windowEnd: "2026-09-21",
-    historyStart: history[0]!.date,
-    historyEnd: "2026-09-21",
-    completeWindow: false,
-    min: 100,
-    max: 124,
-    mean: 112,
+import type { CryptoMarketAsset, CryptoMarketsPayload } from "../../../api-client/crypto-markets";
+
+/** 2026-09-23 12:00 UTC; closes run 2026-08-24 through 2026-09-22. */
+export const CRYPTO_FIXTURE_NOW = Date.parse("2026-09-23T12:00:00Z");
+
+function asset(overrides: Partial<CryptoMarketAsset> & Pick<CryptoMarketAsset, "symbol" | "code" | "name">): CryptoMarketAsset {
+  return {
+    kind: "coin",
+    rank: 1,
+    price: 100,
+    previousClose: 98,
+    change: 2,
+    changePercent: 2.0408,
+    dayHigh: 101,
+    dayLow: 97,
+    volume24h: 5_000_000_000,
+    marketCap: 1_000_000_000_000,
+    circulatingSupply: 10_000_000_000,
+    maxSupply: null,
+    high52w: 150,
+    low52w: 60,
+    yearAgoPrice: 80,
+    quoteTime: "2026-09-23T11:59:00.000Z",
+    // Close n is 70 + n: 30 days ago 70, 7 days ago 93, yesterday 99.
+    history: { start: "2026-08-24", closes: Array.from({ length: 30 }, (_, index) => 70 + index) },
+    ...overrides,
   };
-  const asOf = "2026-09-22T12:00:00.000Z";
-  const row: CryptoBoardRow = {
-    symbol: "BTC-USD",
-    providerSymbol: "BTC/USD",
-    name: "Bitcoin",
-    baseCurrency: "BTC",
-    quoteCurrency: "USD",
-    status: "partial",
-    asOf,
-    price: {
-      value: 125,
-      asOf,
-      freshness: "current",
-      basis: "latest-trade",
-      percentile: { ...percentile, referenceBasis: "completed-utc-bars-with-quote-midpoints" },
-    },
-    dailyChange: {
-      valuePercent: 0.8,
-      asOf,
-      referenceDate: "2026-09-21",
-      referenceClose: 124,
-      basis: "since-prior-utc-close",
-      percentile,
-    },
-    return7d: {
-      valuePercent: 5.98,
-      asOf: "2026-09-22T00:00:00.000Z",
-      startDate: "2026-09-14",
-      endDate: "2026-09-21",
-      basis: "completed-utc-closes",
-      percentile,
-    },
-    volume: {
-      value: 34,
-      unit: "BTC",
-      asOf: "2026-09-22T00:00:00.000Z",
-      periodStart: "2026-09-21T00:00:00.000Z",
-      periodEnd: "2026-09-22T00:00:00.000Z",
-      basis: "completed-utc-day",
-      percentile,
-    },
-    history,
-    coverage: {
-      windowStart: history[0]!.date,
-      windowEnd: "2026-09-21",
-      expectedDays: 25,
-      observedDays: 25,
-      missingDays: 0,
-      quoteOnlyDays: 0,
-      completeWindow: false,
-    },
-    warnings: [],
-  };
+}
+
+export function cryptoFixture(): CryptoMarketsPayload {
   return {
     version: 1,
-    generatedAt: asOf,
-    asOf,
-    freshness: { currentPrices: 1, stalePrices: 0, unavailablePrices: 0 },
-    status: "partial",
+    generatedAt: "2026-09-23T11:59:30.000Z",
+    asOf: "2026-09-23T11:59:00.000Z",
+    status: "available",
     source: {
-      name: "Alpaca US crypto",
-      venue: "us",
-      url: "https://docs.alpaca.markets/us/reference/cryptobars-1",
-      methodologyUrl: "https://docs.alpaca.markets/us/docs/real-time-crypto-pricing-data",
-      priceBasis: "Latest trade; bars include quote midpoints",
-      volumeBasis: "Base volume",
-      snapshotsFetchedAt: asOf,
-      historyFetchedAt: asOf,
+      name: "Yahoo Finance",
+      url: "https://finance.yahoo.com/markets/crypto/all/",
+      screenerFetchedAt: "2026-09-23T11:59:30.000Z",
+      historyFetchedAt: "2026-09-23T00:05:00.000Z",
     },
-    rows: [row],
+    assets: [
+      asset({ symbol: "BTC-USD", code: "BTC", name: "Bitcoin" }),
+      asset({
+        symbol: "HYPE32196-USD",
+        code: "HYPE",
+        name: "Hyperliquid",
+        rank: 2,
+        price: 40,
+        previousClose: 42,
+        change: -2,
+        changePercent: -4.7619,
+        marketCap: 20_000_000_000,
+        circulatingSupply: 500_000_000,
+        volume24h: 900_000_000,
+        yearAgoPrice: null,
+        history: null,
+      }),
+      asset({
+        symbol: "USDT-USD",
+        code: "USDT",
+        name: "Tether USDt",
+        kind: "stablecoin",
+        rank: 1,
+        price: 0.9998,
+        previousClose: 1,
+        change: -0.0002,
+        changePercent: -0.02,
+        marketCap: 180_000_000_000,
+        circulatingSupply: 180_036_000_000,
+        volume24h: 100_000_000_000,
+        high52w: 1.001,
+        low52w: 0.998,
+        yearAgoPrice: 1,
+        history: { start: "2026-08-24", closes: Array.from({ length: 30 }, () => 1) },
+      }),
+    ],
     warnings: [],
   };
 }

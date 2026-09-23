@@ -167,7 +167,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
-| `CRYP` | Crypto USD pairs: latest trades, UTC daily change, completed seven-day returns, base-asset volume and percentiles |
+| `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap; stablecoins on their own tab |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
@@ -212,7 +212,7 @@ additional windows and trades.
 
 `CBR`, `ECFC` and `CBRT` open the same Central Bank Rates board. Each row shows its policy rate or target range, last observed move and date, one-year percentile, history and latest observation date. Select a row and press Enter or click for the source instrument, reporting lag, one-year range and history; Back returns to the board. `o` opens its official source and `r` refreshes. The US detail includes its verified next FOMC meeting; other meeting dates remain unavailable. Reports support `gloomberb fn CBR --json` and its aliases.
 
-`CRYP` opens the twelve-pair crypto board. Select a row with Enter or click for its dated Price and Volume charts; `h` and `l` switch the detail view, and Escape returns to the board. Column headers sort, narrow panes scroll horizontally, and CSV export retains all columns. UTC DAY is the latest trade versus the prior UTC close; 7D CLOSED and ALPACA VOL use the completed date above the board. A percentile marked `*` uses an incomplete historical sample. `gloomberb fn CRYP --json` returns the board and all dated daily observations.
+`CRYP` opens the crypto board: the top 100 coins by market cap, with stablecoins on the second tab. Prices stream live and move every return and the market cap with them. Enter or click opens the coin in the ticker pane; column headers sort, `r` refreshes, and CSV export keeps every column. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins.
 
 ### Workspace and App Controls
 

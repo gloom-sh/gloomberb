@@ -1,281 +1,245 @@
-import { useCallback, useMemo } from "react";
-import { Box, ScrollBox } from "../../../ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Box, TextAttributes } from "../../../ui";
 import {
-  useAsyncResource,
-  useAutoRefresh,
-  usePluginPaneState,
-  useShortcut,
-  useUpdatedAgo,
-} from "../../../public/react";
-import {
-  CompositeChart,
-  KeyValueRow,
-  MarketBoardStack,
+  DataTableView,
   PaneStatusBody,
-  QueryBar,
+  Tabs,
+  usePaneFooter,
+  usePaneHeaderTabs,
   usePaneNoticeFooter,
-  usePaneStatusLinkFooter,
-  type MarketBoardStackProps,
+  type DataTableCell,
+  type DataTableKeyEvent,
 } from "../../../components";
-import { colors } from "../../../theme/colors";
-import type { CryptoBoardRow } from "../../../api-client/crypto-board";
+import { PriceSparkline } from "../../../components/price-sparkline/view";
+import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { ApiRequestError } from "../../../api-client/errors";
-import { staticSeries } from "../../../components/chart/static/series";
+import { useAsyncResource } from "../../../react/async-resource";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { colors, priceColor } from "../../../theme/colors";
+import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { Quote } from "../../../types/financials";
+import type { QueryEntry } from "../../../market-data/result-types";
 import type { PaneProps } from "../../../types/plugin";
+import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useAutoRefresh } from "../shared/auto-refresh";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { cachedCryptoBoard, loadCryptoBoard } from "./client";
+import { resolveScreenerQuoteFeedStatus } from "../shared/screener-live-quotes";
+import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {
-  cryptoBoardRow,
-  cryptoNotices,
-  cryptoPrice,
-  cryptoRank,
-  cryptoReturn,
-  cryptoTimestamp,
-  cryptoVolume,
-  type CryptoMarketBoardRow,
+  buildCryptoColumns,
+  buildCryptoRows,
+  CRYPTO_TABS,
+  DEFAULT_CRYPTO_SORT,
+  formatCryptoPercent,
+  formatCryptoPrice,
+  nextCryptoSort,
+  sortCryptoRows,
+  type CryptoColumn,
+  type CryptoRow,
+  type CryptoSortPreference,
 } from "./model";
-const PANELS = [{ id: "main" }];
-const METRICS = [
-  { value: "price", label: "Price" },
-  { value: "volume", label: "Volume" },
-];
+
+/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
+const STREAM_OVERSCAN = 8;
+/** Before the table reports its window, stream what a full-height pane shows. */
+const INITIAL_STREAM_ROWS = 40;
+
+const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
+
 const clearDenied = (error: unknown) =>
   error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
-const EXTRA_COLUMNS: MarketBoardStackProps<CryptoMarketBoardRow>["extraColumns"] = [
-  {
-    column: { id: "return7d", label: "7D CLOSED", width: 11, align: "right" },
-    sortValue: (row) => row.observation.return7d.valuePercent,
-    renderCell: (row) => {
-      const value = row.observation.return7d.valuePercent;
-      return { text: cryptoReturn(value), color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
-    },
-  },
-  {
-    column: { id: "baseVolume", label: "BASE VOL", width: 15, align: "right" },
-    sortValue: (row) => row.observation.volume.value,
-    renderCell: (row) => ({ text: cryptoVolume(row.observation), color: colors.textMuted }),
-  },
-];
-function CryptoDetail({
-  row,
-  width,
-  height,
-  focused,
-}: {
-  row: CryptoBoardRow;
-  width: number;
-  height: number;
-  focused: boolean;
-}) {
-  const [metric, setMetric] = usePluginPaneState("crypto:metric", "price");
-  useShortcut((event) => {
-    if (!focused) return;
-    const next = isPlainKey(event, "h", "left") ? "price" : isPlainKey(event, "l", "right") ? "volume" : null;
-    if (!next) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (next !== metric) setMetric(next);
-  });
-  const series = useMemo(
-    () => [
-      staticSeries(
-        row.history.map((point) => ({
-          date: new Date(point.date),
-          observedAt: new Date(point.date),
-          value: metric === "volume" ? point.volume : point.close,
-        })),
-        {
-          id: `${row.symbol}:${metric}`,
-          label: metric === "volume" ? `Volume (${row.volume.unit})` : `${row.baseCurrency} / USD`,
-          color: metric === "volume" ? colors.warning : colors.positive,
-          calendarSpaced: true,
-        },
-      ),
-    ],
-    [row, metric],
-  );
-  const summaryHeight = Math.min(9, Math.max(3, height - 7));
-  const p = row.price.percentile;
-  return (
-    <Box flexDirection="column" width={width} height={height}>
-      <QueryBar width={width} view={{ value: metric, options: METRICS, onChange: setMetric }} />
-      <ScrollBox height={summaryHeight} flexShrink={0} scrollY>
-        <Box paddingX={1} flexDirection="column">
-          <KeyValueRow
-            labelWidth={24}
-            label="Latest trade USD"
-            value={cryptoPrice(row.price.value)}
-            detail={`${cryptoRank(p)} · ${cryptoTimestamp(row.price.asOf)}`}
-          />
-          <KeyValueRow
-            labelWidth={24}
-            label="Since prior UTC close"
-            value={cryptoReturn(row.dailyChange.valuePercent)}
-            detail={`${cryptoRank(row.dailyChange.percentile)} · versus ${row.dailyChange.referenceDate ?? "--"}`}
-          />
-          <KeyValueRow
-            labelWidth={24}
-            label="7D completed"
-            value={cryptoReturn(row.return7d.valuePercent)}
-            detail={`${cryptoRank(row.return7d.percentile)} · ${row.return7d.startDate} to ${row.return7d.endDate}`}
-          />
-          <KeyValueRow
-            labelWidth={24}
-            label="Completed Alpaca volume"
-            value={cryptoVolume(row)}
-            detail={`${cryptoRank(row.volume.percentile)} · ${row.volume.periodStart.slice(0, 10)} UTC`}
-          />
-          <KeyValueRow
-            labelWidth={24}
-            label="Price sample"
-            value={`${p.sampleCount} daily closes`}
-            detail={`${p.historyStart ?? "--"} to ${p.historyEnd ?? "--"}`}
-          />
-          <KeyValueRow
-            labelWidth={24}
-            label="1Y price range USD"
-            value={`${cryptoPrice(p.min)} to ${cryptoPrice(p.max)}`}
-          />
-          <KeyValueRow labelWidth={24} label="Bar prices" value="Trades and quote midpoints" />
-          <KeyValueRow
-            labelWidth={24}
-            label="Quote-only days"
-            value={String(row.coverage.quoteOnlyDays)}
-            detail="zero reported traded volume"
-          />
-          <KeyValueRow labelWidth={24} label="Missing days" value={String(row.coverage.missingDays)} />
-        </Box>
-      </ScrollBox>
-      <PaneStatusBody
-        empty={row.history.every((point) => (metric === "volume" ? point.volume : point.close) === null)}
-        subject="crypto history"
-        emptyTitle="No dated history available."
-      >
-        <CompositeChart
-          series={series}
-          panels={PANELS}
-          width={width}
-          height={Math.max(3, height - summaryHeight - 1)}
-          showLegend={false}
-          navigable={false}
-          showTimeAxis
-          formatAxisValue={metric === "volume" ? (value) => formatCompact(value) : cryptoPrice}
-          remoteKind="crypto-board-history"
-        />
-      </PaneStatusBody>
-    </Box>
-  );
+
+const cryptoTickerKey = (row: CryptoRow) => publicTickerKey(row.asset.symbol, "CCC");
+
+function quoteTargets(
+  assets: readonly CryptoMarketAsset[],
+  selectedId: string | null,
+): QuoteSubscriptionTarget[] {
+  return assets.map((asset) => ({
+    symbol: asset.symbol,
+    exchange: "CCC",
+    surface: "screener",
+    visible: true,
+    selected: asset.symbol === selectedId,
+    weight: asset.symbol === selectedId ? 100 : 70,
+  }));
 }
+
+function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolean): DataTableCell {
+  const selectedColor = selected ? colors.selectedText : undefined;
+  const signed = (value: number | null) => ({
+    text: formatCryptoPercent(value),
+    color: selectedColor ?? (value == null ? colors.textDim : priceColor(value)),
+  });
+  switch (column.id) {
+    case "rank":
+      return { text: String(row.rank), color: selectedColor ?? colors.textDim };
+    case "code":
+      return { text: row.code, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+    case "name":
+      return { text: row.name, color: selectedColor };
+    case "price":
+      return { text: formatCryptoPrice(row.price, column.width), color: selectedColor };
+    case "changePercent":
+      return signed(row.changePercent);
+    case "return7d":
+      return signed(row.return7d);
+    case "return30d":
+      return signed(row.return30d);
+    case "return1y":
+      return signed(row.return1y);
+    case "trend":
+      return {
+        text: "",
+        content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
+      };
+    case "volume24h":
+      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h), color: selectedColor ?? colors.textDim };
+    case "marketCap":
+      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap), color: selectedColor ?? colors.textDim };
+  }
+}
+
 export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
-  const loader = useCallback((force: boolean) => loadCryptoBoard(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: cachedCryptoBoard, clearOnError: clearDenied });
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
-  const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
+  const loader = useCallback((force: boolean) => loadCryptoMarkets(force), [session.requestKey]);
+  const resource = useAsyncResource(loader, { initialData: cachedCryptoMarkets, clearOnError: clearDenied });
   const data = resource.data?.payload;
-  const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  // useUpdatedAgo supplies the existing minute clock so retained trades also age while offline.
-  const rows = useMemo(() => data?.rows.map((row) => cryptoBoardRow(row)) ?? [], [data, updatedAgo]);
-  const freshAsOf = rows
-    .flatMap((row) => (row.value != null && row.asOf ? [row.asOf] : []))
-    .sort()
-    .at(-1);
-  const stalePrices = rows.filter((row) => row.status === "stale").length;
-  const unavailablePrices = rows.filter((row) => row.status === "unavailable").length;
-  const completedDate = data?.rows[0]?.volume.periodStart.slice(0, 10);
+  const { pinTicker } = usePluginTickerActions();
+  const liveStreaming = useLiveStreamingSetting();
+  const [activeTab, setActiveTab] = usePluginPaneState<CryptoAssetKind>("activeTab", "coin");
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
+  const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) {
-      event.preventDefault();
-      void resource.reload();
-    }
+
+  const tabAssets = useMemo(
+    () => data?.assets.filter((asset) => asset.kind === activeTab) ?? [],
+    [activeTab, data],
+  );
+  // The stream follows the rows on screen. Ordering by the board snapshot keeps
+  // live ticks from reshuffling the subscription; the overscan covers the drift.
+  const streamedAssets = useMemo(() => {
+    const ordered = sortCryptoRows(buildCryptoRows(tabAssets, activeTab, NO_QUOTES), sort).map((row) => row.asset);
+    const window = ordered.slice(
+      Math.max(0, visibleRange.start - STREAM_OVERSCAN),
+      visibleRange.end + STREAM_OVERSCAN,
+    );
+    const selected = ordered.find((asset) => asset.symbol === selectedId);
+    return selected && !window.includes(selected) ? [...window, selected] : window;
+  }, [activeTab, selectedId, sort, tabAssets, visibleRange]);
+  const targets = useMemo(() => quoteTargets(streamedAssets, selectedId), [selectedId, streamedAssets]);
+  const { entries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(targets, {
+    freshnessScopeKey: `crypto-board:${activeTab}`,
+    liveStreaming,
   });
+
+  const rows = useMemo(
+    () => sortCryptoRows(buildCryptoRows(tabAssets, activeTab, entries, freshnessNow), sort),
+    [activeTab, entries, freshnessNow, sort, tabAssets],
+  );
+  useEffect(() => {
+    if (!rows.length) return;
+    if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
+  }, [rows, selectedId, setSelectedId]);
+
+  const feedStatus = useMemo(
+    () => resolveScreenerQuoteFeedStatus(targets, entries, { now: freshnessNow, subscriptionStartedAt }),
+    [entries, freshnessNow, subscriptionStartedAt, targets],
+  );
+  const latestUpdate = rows.reduce<number | null>(
+    (latest, row) => (row.updatedAt != null && (latest == null || row.updatedAt > latest) ? row.updatedAt : latest),
+    null,
+  );
+  const columns = useMemo(() => buildCryptoColumns(width), [width]);
+
+  const tabItems = CRYPTO_TABS.map((tab) => ({
+    label: tab.label,
+    value: tab.value,
+  }));
+  const selectTab = (value: string) => {
+    setActiveTab(value as CryptoAssetKind);
+    setSelectedId(null);
+    setVisibleRange({ start: 0, end: INITIAL_STREAM_ROWS });
+  };
+  const tabsInHeader = usePaneHeaderTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused });
+
   usePaneNoticeFooter({
     registrationId: "crypto-board:notices",
     focused,
-    notices: [
-      ...(data ? cryptoNotices(data) : []),
-      ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
+    notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])],
+  });
+  usePaneFooter("crypto-board", () => ({
+    info: [
+      ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(data && resource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
+      ...(feedStatus ? [{
+        id: "feed",
+        parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
+      }] : []),
+      ...(latestUpdate != null ? [{
+        id: "updated",
+        parts: [{
+          text: new Date(latestUpdate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          tone: "muted" as const,
+        }],
+      }] : []),
+      ...(resource.data?.stale ? [{ id: "cached", parts: [{ text: "cached", tone: "warning" as const }] }] : []),
     ],
-  });
-  usePaneStatusLinkFooter({
-    registrationId: "crypto-board",
-    focused,
-    loading: resource.loading,
-    error: resource.error,
-    url: data?.source.methodologyUrl ?? null,
-    showOpenHint: true,
-    info: data
-      ? [
-          ...(freshAsOf
-            ? [{ id: "as-of", parts: [{ text: cryptoTimestamp(freshAsOf), tone: "muted" as const }] }]
-            : []),
-          ...(stalePrices
-            ? [{ id: "stale-prices", parts: [{ text: `${stalePrices} stale`, tone: "warning" as const }] }]
-            : []),
-          ...(unavailablePrices
-            ? [
-                {
-                  id: "missing-prices",
-                  parts: [{ text: `${unavailablePrices} unavailable`, tone: "warning" as const }],
-                },
-              ]
-            : []),
-          ...(resource.data?.stale
-            ? [{ id: "cache", parts: [{ text: "cached", tone: "warning" as const }] }]
-            : []),
-        ]
-      : [],
-  });
+  }), [data, feedStatus, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
+
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (event.name !== "r") return false;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    void resource.reload();
+    return true;
+  }, [resource.reload]);
+
   return (
     <Box width={width} height={height} flexDirection="column">
+      {!tabsInHeader && (
+        <Box height={1} paddingX={1}>
+          <Tabs tabs={tabItems} activeValue={activeTab} onSelect={selectTab} compact variant="bare" focused={focused} />
+        </Box>
+      )}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}
-        subject="crypto board"
-        empty={!resource.loading && !resource.error && !!data && !rows.length}
+        subject="crypto prices"
+        empty={!!data && !rows.length}
+        emptyTitle="No crypto assets returned."
       >
-        {data ? (
-          <MarketBoardStack
-            rows={rows}
-            width={width}
-            height={height}
-            focused={focused}
-            signedChange
-            selectedId={selectedId}
-            onSelectedIdChange={setSelectedId}
-            openId={openId}
-            onOpenIdChange={setOpenId}
-            labelWidth={10}
-            valueLabel="USD"
-            valueWidth={13}
-            changeLabel="UTC DAY"
-            asOfWidth={12}
-            extraColumns={EXTRA_COLUMNS}
-            rootBefore={
-              completedDate ? (
-                <Box paddingX={1}>
-                  <KeyValueRow
-                    labelWidth={24}
-                    label="Completed UTC day"
-                    value={completedDate}
-                    detail="7D returns and base volume"
-                  />
-                </Box>
-              ) : undefined
-            }
-            renderDetail={(row) => (
-              <CryptoDetail
-                row={row.observation}
-                width={width}
-                height={Math.max(5, height - 2)}
-                focused={focused}
-              />
-            )}
-          />
-        ) : null}
+        <DataTableView<CryptoRow, CryptoColumn>
+          focused={focused}
+          selection={{
+            kind: "id",
+            selectedId,
+            getId: (row) => row.id,
+            onChange: (id) => setSelectedId(id),
+          }}
+          onRootKeyDown={handleKeyDown}
+          resetScrollKey={activeTab}
+          columns={columns}
+          items={rows}
+          sortColumnId={sort.columnId}
+          sortDirection={sort.direction}
+          onHeaderClick={(columnId) => setSort((current) => nextCryptoSort(current, columnId))}
+          getItemKey={(row) => row.id}
+          onActivate={(row) => pinTicker(cryptoTickerKey(row), {
+            floating: true,
+            paneType: TICKER_RESEARCH_PANE_ID,
+            instrument: null,
+          })}
+          visibleRangeKey={`${activeTab}:${sort.columnId}:${sort.direction}`}
+          onVisibleRangeChange={setVisibleRange}
+          renderCell={(row, column, _index, rowState) => renderCryptoCell(row, column, rowState.selected)}
+          emptyStateTitle="No crypto assets returned."
+        />
       </PaneStatusBody>
     </Box>
   );

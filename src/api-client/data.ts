@@ -1,5 +1,5 @@
 import type { DebtMaturitiesPayload } from "./debt-maturities";
-import type { CryptoBoardPayload } from "./crypto-board";
+import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
@@ -368,8 +368,8 @@ export class CloudDataApi {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
   }
 
-  async getCloudCryptoBoard(): Promise<CryptoBoardPayload> {
-    return this.request<CryptoBoardPayload>("/cloud/crypto/board", { signal: AbortSignal.timeout(45_000) });
+  async getCloudCryptoMarkets(): Promise<CryptoMarketsPayload> {
+    return this.request<CryptoMarketsPayload>("/cloud/crypto/markets", { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {
