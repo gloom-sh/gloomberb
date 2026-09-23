@@ -7,6 +7,7 @@ import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-ti
 import { blendHex, colors } from "../../../../theme/colors";
 import type { ChatUserSummary } from "../../../../api-client";
 import { tokenizeInlineContent, type InlineContentToken } from "../../../../utils/inline-content-tokenizer";
+import { chatBadgeTextWidth } from "../layout";
 
 export function ResponsiveTickerBadgeText({
   text = "",
@@ -103,12 +104,14 @@ export function ResponsiveTickerBadgeText({
         if (!entry || entry.status === "missing") {
           return <Text key={`raw:${index}`} fg={textColor}>{token.value}</Text>;
         }
-
+        // Pre-wrapped lines reserved this width for the chip; it never outgrows it.
+        const maxTextWidth = prewrapped ? chatBadgeTextWidth(token.symbol, entry) : undefined;
         return (
           <InlineTickerBadge
             key={`badge:${index}:${token.symbol}`}
             symbol={token.symbol}
             entry={entry}
+            maxTextWidth={maxTextWidth}
             hovered={hoveredSymbol === token.symbol}
             onHoverStart={() => setHoveredSymbol(token.symbol)}
             onHoverEnd={() => {

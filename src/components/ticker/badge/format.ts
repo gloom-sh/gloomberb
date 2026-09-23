@@ -72,20 +72,3 @@ export function getTickerBadgeText(options: TickerBadgeTextOptions): string {
 export function getTickerBadgeCellWidth(options: TickerBadgeTextOptions): number {
   return displayWidth(getTickerBadgeText(options)) + TICKER_BADGE_CHROME_WIDTH;
 }
-
-/** The widest day change a badge is laid out for (`-99.9%`). */
-const RESERVED_BADGE_CHANGE_PERCENT = -99.9;
-
-/**
- * Cell width that survives ticks: at least as wide as the badge with the widest
- * ordinary change, so text laid out around a live badge does not re-wrap when
- * the change gains a digit or a sign.
- */
-export function getTickerBadgeReservedCellWidth(options: TickerBadgeTextOptions): number {
-  const width = getTickerBadgeCellWidth(options);
-  if (options.status !== "ready" || !options.quote || options.hovered) return width;
-  return Math.max(width, getTickerBadgeCellWidth({
-    ...options,
-    quote: { ...options.quote, changePercent: RESERVED_BADGE_CHANGE_PERCENT },
-  }));
-}

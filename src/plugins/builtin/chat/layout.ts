@@ -3,7 +3,11 @@ import type { ChatMessage } from "../../../api-client";
 import { splitLongTextSegmentByDisplayWidth, truncateWithEllipsis } from "../../../utils/text-wrap";
 import { tokenizeInlineContent, type InlineContentToken } from "../../../utils/inline-content-tokenizer";
 import { displayWidth } from "../../../utils/format";
-import { getTickerBadgeCellWidth, getTickerBadgeReservedCellWidth } from "../../../components/ticker/badge/format";
+import {
+  getTickerBadgeText,
+  TICKER_BADGE_CHROME_WIDTH,
+  type TickerBadgeStatus,
+} from "../../../components/ticker/badge/format";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
@@ -59,6 +63,35 @@ function wrapTextLines(text: string, width: number) {
   return lines.length > 0 ? lines : [""];
 }
 
+/** The widest day change a chat chip is laid out for. */
+const RESERVED_BADGE_CHANGE_PERCENT = -999.9;
+
+/**
+ * Text width of a chat chip. Chips follow their own quote while the transcript
+ * is wrapped from the first one, so the width covers the widest day change and
+ * a hovered price with one more integer digit. Terminal lines render the chip
+ * with this as its `maxTextWidth`, so a move past either drops detail instead
+ * of spilling into the next token.
+ */
+export function chatBadgeTextWidth(symbol: string, entry: InlineTickerCatalogEntry): number {
+  const status: TickerBadgeStatus = entry.status === "loading" || entry.status === "ambiguous" ? entry.status : "ready";
+  const quote = entry.quote;
+  const widths = [displayWidth(getTickerBadgeText({ symbol, status, quote }))];
+  if (quote) {
+    if (status === "ready") {
+      widths.push(displayWidth(getTickerBadgeText({
+        symbol,
+        status,
+        quote: { ...quote, changePercent: RESERVED_BADGE_CHANGE_PERCENT },
+      })));
+    }
+    for (const price of [quote.price, quote.price * 10]) {
+      widths.push(displayWidth(getTickerBadgeText({ symbol, status, quote: { ...quote, price }, hovered: true })));
+    }
+  }
+  return Math.max(...widths);
+}
+
 function inlineTokenWidth(
   token: InlineContentToken,
   catalog: Record<string, InlineTickerCatalogEntry>,
@@ -68,20 +101,9 @@ function inlineTokenWidth(
   const entry = catalog[token.symbol];
   if (!entry || entry.status === "missing") return displayWidth(token.value);
 
-  // A live badge's change moves with every tick; reserving its widest form
-  // keeps the wrapped lines (and the transcript's scroll offsets) stable.
-  const baseWidth = getTickerBadgeReservedCellWidth({
-    symbol: token.symbol,
-    status: entry.status,
-    quote: entry.quote,
-  });
-  const hoverWidth = getTickerBadgeCellWidth({
-    symbol: token.symbol,
-    status: entry.status,
-    quote: entry.quote,
-    hovered: true,
-  });
-  return Math.max(baseWidth, hoverWidth);
+  // A live chip's change and price move with every tick; reserving their
+  // widest forms keeps the wrapped lines (and the scroll offsets) stable.
+  return chatBadgeTextWidth(token.symbol, entry) + TICKER_BADGE_CHROME_WIDTH;
 }
 
 function tokenWithValue(token: InlineContentToken, value: string): InlineContentToken {
