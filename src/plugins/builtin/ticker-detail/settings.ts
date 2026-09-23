@@ -144,11 +144,11 @@ export function getQuoteMonitorPaneSettings(
   };
 }
 
-export function buildQuoteMonitorSettingsDef(): PaneSettingsDef {
+export function buildQuoteMonitorSettingsDef(settings: Record<string, unknown> | undefined): PaneSettingsDef {
   return {
     title: "Quote Monitor Settings",
     values: {
-      chartPeriod: DEFAULT_QUOTE_MONITOR_CHART_PERIOD,
+      chartPeriod: getQuoteMonitorPaneSettings(settings).chartPeriod,
     },
     fields: [
       {

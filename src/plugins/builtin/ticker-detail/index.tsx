@@ -63,7 +63,10 @@ export const tickerDetailModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 72, height: 10 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
-      settings: (context) => withLiveStreamingSetting(buildQuoteMonitorSettingsDef(), context.settings),
+      settings: (context) => withLiveStreamingSetting(
+        buildQuoteMonitorSettingsDef(context.settings),
+        context.settings,
+      ),
     },
     {
       id: "historical-prices",

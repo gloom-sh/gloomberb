@@ -3,6 +3,51 @@ import { registerPaneTableExporter } from "../../state/pane-table-export-registr
 import { createDefaultConfig } from "../../types/config";
 import type { AppNotificationRequest, PaneDef } from "../../types/plugin";
 import { resolveRegistryPaneSettings } from "./pane-settings";
+import { tickerDetailModule } from "../builtin/ticker-detail";
+
+test("quote monitor settings show the stored chart period instead of the default", () => {
+  const pane = {
+    instanceId: "quote-monitor:main",
+    paneId: "quote-monitor",
+    settings: { symbols: ["AMD"], symbolsText: "AMD", chartPeriod: "1D" },
+  };
+  const config = createDefaultConfig("/tmp/gloomberb-quote-monitor-settings-test");
+  config.layout.instances = [pane];
+  const paneDef = tickerDetailModule.panes!.find((def) => def.id === "quote-monitor")!;
+
+  const resolved = resolveRegistryPaneSettings({
+    config,
+    getConfigState: () => null,
+    getPaneRuntimeState: () => null,
+    layout: config.layout,
+    paneDefs: new Map([[pane.paneId, paneDef]]),
+    paneOwners: new Map(),
+    resolvePaneTarget: () => pane.instanceId,
+    requestedPaneId: pane.instanceId,
+  });
+
+  expect(resolved?.context.settings.chartPeriod).toBe("1D");
+});
+
+test("quote monitor settings fall back to a one month chart period", () => {
+  const pane = { instanceId: "quote-monitor:main", paneId: "quote-monitor", settings: { symbols: ["AMD"] } };
+  const config = createDefaultConfig("/tmp/gloomberb-quote-monitor-settings-test");
+  config.layout.instances = [pane];
+  const paneDef = tickerDetailModule.panes!.find((def) => def.id === "quote-monitor")!;
+
+  const resolved = resolveRegistryPaneSettings({
+    config,
+    getConfigState: () => null,
+    getPaneRuntimeState: () => null,
+    layout: config.layout,
+    paneDefs: new Map([[pane.paneId, paneDef]]),
+    paneOwners: new Map(),
+    resolvePaneTarget: () => pane.instanceId,
+    requestedPaneId: pane.instanceId,
+  });
+
+  expect(resolved?.context.settings.chartPeriod).toBe("1M");
+});
 
 test("adds a working CSV action to exportable table panes", async () => {
   const pane = { instanceId: "prices:main", paneId: "prices", title: "Market Prices" };
