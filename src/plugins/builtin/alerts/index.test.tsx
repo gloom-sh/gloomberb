@@ -12,6 +12,10 @@ import { alertsPlugin } from "./index";
 import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { Quote } from "../../../types/financials";
 
 const TEST_PANE_ID = "alerts:test";
 
@@ -403,5 +407,53 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
     expect({ writes, notifications, schedulingReads }).toEqual({ writes: 0, notifications: 0, schedulingReads: 0 });
   } finally {
     alertsPlugin.dispose?.();
+  }
+});
+
+test("a streamed tick triggers a price alert once, and the poll leaves streaming symbols alone", async () => {
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+  let streamedTargets: QuoteSubscriptionTarget[] = [];
+  const coordinator = new MarketDataCoordinator(createTestDataProvider({
+    subscribeQuotes: (targets, onQuote) => {
+      streamedTargets = targets;
+      emit = onQuote;
+      return () => {};
+    },
+  }));
+  setSharedMarketDataCoordinator(coordinator);
+  const store = new Map<string, string>([["alerts", serializeAlerts([
+    { ...makeAlert("above", "AAPL", "above", 200), lastCheckedPrice: 195 },
+  ])]]);
+  let polled = 0;
+  const notifications: string[] = [];
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: string) => { store.set(key, value); } },
+    marketData: { getQuote: async () => { polled += 1; throw new Error("no poll expected"); } },
+    paneSettings: { get: () => "15" },
+    notify: (notification: { body: string }) => { notifications.push(notification.body); },
+    showPane() {},
+    log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    // Off screen and low priority: an alert must not outrank what the user watches.
+    expect(streamedTargets.map((target) => [target.symbol, target.visible, target.weight])).toEqual([["AAPL", false, 20]]);
+    const tick = (price: number) => emit!(streamedTargets[0]!, {
+      symbol: "AAPL", price, change: 0, changePercent: 0, currency: "USD",
+      lastUpdated: Date.now(), delivery: "stream", dataSource: "live", marketState: "REGULAR",
+    } as Quote);
+    await act(async () => { tick(201); await Bun.sleep(5); });
+    await act(async () => { tick(202); await Bun.sleep(5); });
+    expect(notifications).toHaveLength(1);
+    expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 201 });
+    // The first poll ran before any tick; nothing streaming is re-quoted after it.
+    const before = polled;
+    await Bun.sleep(5);
+    expect(polled).toBe(before);
+  } finally {
+    alertsPlugin.dispose?.();
+    coordinator.destroy();
+    setSharedMarketDataCoordinator(null);
   }
 });

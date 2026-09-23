@@ -152,6 +152,11 @@ export function setAppVisible(visible: boolean): void {
   visibility.setVisible(visible);
 }
 
+/** For services outside React that follow visibility the way `useAppVisible` does. */
+export function subscribeAppVisibility(listener: () => void): () => void {
+  return visibility.subscribe(listener);
+}
+
 /** Gate market data (streams, polling, refresh clocks) on this, not on focus. */
 export function useAppVisible(): boolean {
   return useSyncExternalStore(

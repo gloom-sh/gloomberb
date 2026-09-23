@@ -37,6 +37,10 @@ import {
   relativeTime,
 } from "./format";
 import type { AlertRule } from "./types";
+import { useQuoteEntries } from "../../../market-data/hooks";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { alertInstrument, streamedAlertQuote } from "./live";
+import { quoteAlertFields } from "./quotes";
 
 type AlertColumnId =
   | "status"
@@ -126,6 +130,21 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
       quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
     };
   }, [alertsJson]);
+
+  // The store keeps the last checked price at a coarse cadence; while a
+  // symbol streams the table shows its live price instead.
+  const liveInstruments = useMemo(() => {
+    const unique = new Map(rows
+      .filter((alert) => alert.status === "active")
+      .map((alert) => [buildQuoteKey(alertInstrument(alert)), alertInstrument(alert)] as const));
+    return [...unique.values()];
+  }, [rows]);
+  const liveEntries = useQuoteEntries(liveInstruments);
+  const displayRows = useMemo(() => rows.map((alert) => {
+    if (alert.status !== "active") return alert;
+    const quote = streamedAlertQuote(resolveEntryData(liveEntries.get(buildQuoteKey(alertInstrument(alert)))));
+    return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
+  }), [liveEntries, rows]);
 
   const savePaneAlerts = useCallback((next: AlertRule[] | ((current: AlertRule[]) => AlertRule[])) => {
     setAlertsJson((currentJson) => {
@@ -341,7 +360,7 @@ function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
       rootHeight={height}
       rootBackgroundColor={colors.bg}
       columns={ALERT_COLUMNS}
-      items={rows}
+      items={displayRows}
       sortColumnId={null}
       sortDirection="asc"
       onHeaderClick={() => {}}

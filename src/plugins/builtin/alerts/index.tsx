@@ -25,9 +25,19 @@ import {
   loadAlerts,
   saveAlerts,
 } from "./storage";
+import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream } from "./live";
+import type { AlertRule } from "./types";
 
 let pollGeneration = 0;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let alertStream: AlertQuoteStream | null = null;
+
+/**
+ * Streamed checks judge every tick in memory; the last-checked fields they
+ * leave behind are written at most this often, or at once when an alert
+ * triggers or first gets a baseline.
+ */
+const STREAM_PERSIST_MS = 60_000;
 
 export const alertsPlugin: GloomPlugin = {
   id: "alerts",
@@ -38,6 +48,59 @@ export const alertsPlugin: GloomPlugin = {
 
   setup(ctx) {
     const generation = ++pollGeneration;
+    const notifyTriggered = (alert: AlertRule, price: number) => {
+      ctx.notify({
+        body: `${formatAlertDescription(alert)} triggered at ${price}`,
+        type: "success",
+        desktop: "always",
+        persistent: true,
+        sound: "Glass",
+        action: {
+          label: "Open",
+          onClick: () => ctx.showPane("alerts"),
+        },
+      });
+    };
+
+    // The last price each alert was judged on by the stream. `crosses` needs
+    // it tick to tick, and writing it to the store on every tick would churn
+    // the saved config.
+    const streamedBaselines = new Map<string, number>();
+    let lastStreamPersistAt = 0;
+    const evaluateStreamed = () => {
+      if (generation !== pollGeneration) return;
+      const alerts = loadAlerts(ctx);
+      const now = Date.now();
+      let persist = false;
+      let touched = false;
+      for (const alert of alerts) {
+        if (alert.status !== "active") continue;
+        const quote = readStreamedAlertQuote(alert, undefined, now);
+        if (!quote) continue;
+        // A re-armed or new alert has no stored baseline: judge nothing on this
+        // tick and store one at once, so `crosses` never compares against a
+        // price from before the edit.
+        const stored = alert.lastCheckedPrice;
+        const previous = stored == null ? undefined : streamedBaselines.get(alert.id) ?? stored;
+        if (stored == null) persist = true;
+        if (evaluateAlert({ ...alert, lastCheckedPrice: previous }, quote.price)) {
+          alert.status = "triggered";
+          alert.triggeredAt = now;
+          ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: quote.price });
+          notifyTriggered(alert, quote.price);
+          persist = true;
+        }
+        streamedBaselines.set(alert.id, quote.price);
+        Object.assign(alert, quoteAlertFields(quote, now));
+        touched = true;
+      }
+      if (!persist && !(touched && now - lastStreamPersistAt >= STREAM_PERSIST_MS)) return;
+      lastStreamPersistAt = now;
+      saveAlerts(ctx, alerts);
+      if (persist) alertStream?.sync();
+    };
+    alertStream?.dispose();
+    alertStream = createAlertQuoteStream({ readAlerts: () => loadAlerts(ctx), onQuotes: evaluateStreamed });
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
@@ -88,6 +151,7 @@ export const alertsPlugin: GloomPlugin = {
         const existing = loadAlerts(ctx);
         existing.push(alert);
         saveAlerts(ctx, existing);
+        alertStream?.sync();
 
         ctx.notify({
           body: `Alert set: ${formatAlertDescription(alert)} (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`,
@@ -142,18 +206,18 @@ export const alertsPlugin: GloomPlugin = {
       },
     });
 
+    // The poll carries whatever the stream does not: symbols the feed has not
+    // delivered lately, and every symbol while the app is hidden.
     const poll = async () => {
-      const alerts = loadAlerts(ctx);
-      if (alerts.length === 0) return;
+      alertStream?.sync();
+      const pending = loadAlerts(ctx).filter((alert) => alert.status === "active" && !readStreamedAlertQuote(alert));
+      if (pending.length === 0) return;
 
-      const activeAlerts = alerts.filter((a) => a.status === "active");
-      if (activeAlerts.length === 0) return;
-
-      ctx.log.info("poll", { total: alerts.length, active: activeAlerts.length });
+      ctx.log.info("poll", { active: pending.length });
 
       // One batched pass over the distinct symbols: the alerts pane reads the same
       // persisted store, so this is the only place that talks to the provider.
-      const quoteKeys = [...new Set(activeAlerts.map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
+      const quoteKeys = [...new Set(pending.map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
       const results = await Promise.all(quoteKeys.map(async (key): Promise<[string, Quote | string]> => {
         const [symbol, exchange = ""] = key.split("\0");
         try {
@@ -166,9 +230,13 @@ export const alertsPlugin: GloomPlugin = {
       if (generation !== pollGeneration) return;
       const quotes = new Map<string, Quote | string>(results);
 
+      // Read the store again: the stream or the pane may have changed an alert
+      // while the quotes were in flight, and an alert must trigger only once.
+      const alerts = loadAlerts(ctx);
       let changed = false;
       for (const alert of alerts) {
         if (alert.status !== "active") continue;
+        if (readStreamedAlertQuote(alert)) continue;
         const quote = quotes.get(`${alert.symbol}\0${alert.exchange ?? ""}`);
         if (quote === undefined) continue;
         if (typeof quote === "string") {
@@ -181,18 +249,9 @@ export const alertsPlugin: GloomPlugin = {
           alert.status = "triggered";
           alert.triggeredAt = Date.now();
           ctx.log.info("poll: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-          ctx.notify({
-            body: `${formatAlertDescription(alert)} triggered at ${quote.price}`,
-            type: "success",
-            desktop: "always",
-            persistent: true,
-            sound: "Glass",
-            action: {
-              label: "Open",
-              onClick: () => ctx.showPane("alerts"),
-            },
-          });
+          notifyTriggered(alert, quote.price);
         }
+        streamedBaselines.delete(alert.id);
         Object.assign(alert, quoteAlertFields(quote));
         changed = true;
       }
@@ -254,6 +313,8 @@ export const alertsPlugin: GloomPlugin = {
 
   dispose() {
     pollGeneration += 1;
+    alertStream?.dispose();
+    alertStream = null;
     if (pollTimer) {
       clearTimeout(pollTimer);
       pollTimer = null;
