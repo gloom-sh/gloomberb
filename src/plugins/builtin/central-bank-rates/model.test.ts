@@ -25,6 +25,11 @@ describe("central bank policy boundary", () => {
     expect(board.asOf).toBe("2026-09-21");
     expect(board.observation.range).toEqual({ lower: -0.125, upper: 0.125 });
   });
+  test("prints every policy rate with two decimals and keeps a third for eighths", () => {
+    expect(policyBoardRow(row({ value: 3.875, range: { lower: 3.75, upper: 4 } })).valueText).toBe("3.75-4.00%");
+    expect(["1", "2.5", "14", "3.875"].map((value) => policyBoardRow(row({ value: Number(value), range: null })).valueText))
+      .toEqual(["1.00%", "2.50%", "14.00%", "3.875%"]);
+  });
   test("accepts unavailable policy jurisdictions without supplying a prior rate", () => {
     const data = payload();
     data.rows.push(row({ id: "AR", value: null, range: null, asOf: null, lagDays: null, changeBps: null, lastChangeDate: null,
