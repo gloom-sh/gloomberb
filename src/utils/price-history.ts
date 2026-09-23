@@ -1,6 +1,6 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
-import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latestRegularSessionClose } from "../market-data/market/freshness";
+import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -199,6 +199,9 @@ const CRYPTO_BAR_MAX_AGE_MS = 60 * 60 * 1000;
 // handful of requests per session rather than one per request.
 const BEHIND_RECHECK_MS = 60 * 60 * 1000;
 const BEHIND_RECHECK_BACKOFF = 4;
+// A copy fetched before that close is asked again at most this often when the
+// re-check fails, answers nothing usable, or is rejected.
+const UNSETTLED_RETRY_MS = 5 * 60 * 1000;
 
 interface CalendarHistoryFetchOptions extends Pick<PriceHistoryFreshnessOptions, "exchange" | "intervalMs"> {
   /**
@@ -212,10 +215,12 @@ interface CalendarHistoryFetchOptions extends Pick<PriceHistoryFreshnessOptions,
  * - current: holds every settled session it can.
  * - unsettled: fetched before the latest settled close, so it can hold that
  *   session in progress.
+ * - pending: unsettled, and re-checked since that close without replacing it;
+ *   the next re-check waits.
  * - behind: fetched after that close but without its bar; not due a re-check.
  * - recheck: behind, and due a re-check.
  */
-export type CalendarHistoryFetchState = "current" | "unsettled" | "behind" | "recheck";
+export type CalendarHistoryFetchState = "current" | "unsettled" | "pending" | "behind" | "recheck";
 
 function dayNumber(date: string): number {
   return Date.parse(`${date}T00:00:00Z`) / DAY_MS;
@@ -226,6 +231,23 @@ function barDate(time: number, timeZone: string): string {
   if (time % DAY_MS === 0) return new Date(time).toISOString().slice(0, 10);
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * The venue date of the latest bar, read as calendarHistoryFetchState reads
+ * it, so copies whose sources label a session differently compare equal.
+ */
+export function calendarHistoryLastBarDate(points: PricePoint[], exchange?: string): string | null {
+  const latest = normalizePriceHistory(points).findLast(hasFiniteClose);
+  if (!latest) return null;
+  const time = getPricePointTimestamp(latest);
+  if (!Number.isFinite(time)) return null;
+  // Bare symbols resolve to their US listing at the sources.
+  return barDate(time, sessionCalendarTimeZone(canonicalExchange(exchange) || "NYSE") ?? "UTC");
+}
+
+function unsettledState(settledAt: number, checkedAt: number | undefined, now: number): CalendarHistoryFetchState {
+  return checkedAt !== undefined && checkedAt >= settledAt && now - checkedAt < UNSETTLED_RETRY_MS ? "pending" : "unsettled";
 }
 
 /** True when the session date falls in a later bar than the latest one. */
@@ -257,11 +279,14 @@ export function calendarHistoryFetchState(
   const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
   if (intervalMs == null || intervalMs < DAY_MS) return "current";
   const exchange = canonicalExchange(options.exchange);
-  if (exchange === "CCC") return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS ? "unsettled" : "current";
+  if (exchange === "CCC") {
+    return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS
+      ? unsettledState(fetchedAt + CRYPTO_BAR_MAX_AGE_MS, options.checkedAt, now) : "current";
+  }
   // Bare symbols resolve to their US listing at the sources.
   const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
   if (!session) return "current";
-  if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return "unsettled";
+  if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return unsettledState(session.close + SESSION_BAR_SETTLE_MS, options.checkedAt, now);
   if (!exchange || !hasPublishedSessionCalendar(exchange, session.date)) return "current";
   const latest = normalized.findLast(hasFiniteClose);
   if (!latest || !isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone)) return "current";

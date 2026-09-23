@@ -22,7 +22,7 @@ import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-qu
 import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
-import { calendarHistoryFetchState, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
+import { calendarHistoryFetchState, calendarHistoryLastBarDate, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
 import { hasUnverifiedShellHistory, HistoryCoverageError } from "../history-coverage";
 import {
@@ -601,9 +601,12 @@ export class ProviderRouterHistoryRoutes {
     // A background revalidation cannot correct bars from before a close in
     // time: a one-shot CLI exits first, and this caller keeps the old bars.
     // Broader variants answer the same way. A current copy under another key
-    // (such as the refetch of this range) outranks one that is behind, whether
-    // or not that one is due a re-check, and among copies that are behind the
-    // one reaching furthest answers.
+    // (such as the refetch of this range) answers first. Next come copies
+    // fetched after the latest settled close that are behind, due a re-check
+    // or not, the one reaching furthest first. A copy fetched before that close
+    // answers only when no later copy exists: its latest bar may be the session
+    // in progress, and ranking it by that bar would refetch on every request
+    // without ever replacing it.
     const target = parsePublicTickerKey(request.target.symbol);
     const currentWindow = request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd));
     const now = Date.now();
@@ -617,14 +620,17 @@ export class ProviderRouterHistoryRoutes {
           : request.cachePolicyKey === "priceHistoryDaily" ? DAY_MS : undefined,
       })
       : "current";
-    const usableRecords = cachedRecords.filter((record) => hasUsablePriceHistory(record.value.points));
-    const lastBarDay = (record: { value: PriceHistoryResult }) => {
-      const last = record.value.points.at(-1);
-      return last ? Math.floor(getPricePointTimestamp(last) / DAY_MS) : Number.NEGATIVE_INFINITY;
-    };
-    const cached = usableRecords.find((record) => fetchState(record) === "current")
-      ?? usableRecords.toSorted((a, b) => lastBarDay(b) - lastBarDay(a))[0]
-      ?? cachedRecords[0] ?? null;
+    const fetchTier: Record<CalendarHistoryFetchState, number> = { current: 0, behind: 1, recheck: 1, pending: 2, unsettled: 2 };
+    const ranked = cachedRecords.filter((record) => hasUsablePriceHistory(record.value.points)).map((record) => {
+      const tier = fetchTier[fetchState(record)];
+      return { record, tier, exact: request.exactCacheVariantKeys.includes(record.variantKey),
+        lastBar: tier === 0 ? "" : calendarHistoryLastBarDate(record.value.points, target.exchange || request.target.exchange) ?? "" };
+    });
+    // Current copies keep their listed order. Otherwise ties go to this key's
+    // own copy, then the latest fetch, rather than to row order.
+    ranked.sort((a, b) => a.tier - b.tier || (a.tier === 0 ? 0 : b.lastBar.localeCompare(a.lastBar)
+      || Number(b.exact) - Number(a.exact) || b.record.fetchedAt - a.record.fetchedAt));
+    const cached = ranked[0]?.record ?? cachedRecords[0] ?? null;
     const cachedValue: PriceHistoryResult = cached?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) };
     const reportedGaps = cachedRecords.map((record) => record.value)
       .filter((value) => !hasUsablePriceHistory(value.points));
@@ -633,9 +639,9 @@ export class ProviderRouterHistoryRoutes {
       ? clipHistoryToRange(value, request.requestedRange, request.target.exchange) : value;
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
-    // A recent re-check, even a failed or empty one, defers the next one; it
-    // does not make the copy current. A broader copy only tells what its own
-    // key answered, so this key is asked at least once.
+    // A recent re-check, even a failed, empty or rejected one, defers the next
+    // one; it does not make the copy current. A broader copy only tells what
+    // its own key answered, so this key is asked at least once.
     const servedState = cached ? fetchState(cached, Math.max(this.calendarCheckedAt(request) ?? Number.NEGATIVE_INFINITY,
       request.exactCacheVariantKeys.includes(cached.variantKey) ? cached.fetchedAt : Number.NEGATIVE_INFINITY)) : "current";
     const cachedBeforeClose = servedState === "unsettled" || servedState === "recheck";
@@ -644,9 +650,10 @@ export class ProviderRouterHistoryRoutes {
       && !cachedBeforeClose;
     if (usableCached && !forceRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
-      // A copy behind the latest session is re-checked on the paced schedule
-      // above, not on its short TTL: the source is likely to answer the same.
-      if (cached.stale && servedState !== "behind") {
+      // A copy behind or before the latest session is re-checked on the
+      // paced schedule above, not on its short TTL: the source is likely to
+      // answer the same.
+      if (cached.stale && servedState === "current") {
         scheduleRouterRevalidation(this.historyRefreshInFlight, request.identity.revalidationKey, () => this.refreshHistory(request));
       }
       return exactHit || !request.requestedRange

@@ -187,6 +187,13 @@ function localWeekday(date: string): number | null {
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
 }
 
+/** The zone a venue's session dates are read in, or null when unknown. */
+export function sessionCalendarTimeZone(exchange: string | undefined): string | null {
+  const canonical = canonicalExchange(exchange);
+  return EXCHANGE_TIME_ZONES[canonical]
+    ?? (getPublishedUsEquityCalendarYears(canonical) ? "America/New_York" : null);
+}
+
 /**
  * The latest regular session that closed at or before `time`: the published
  * calendar for US venues, otherwise local weekdays less published closures. A
@@ -198,8 +205,7 @@ export function latestRegularSessionClose(
   time: number,
 ): { date: string; close: number; timeZone: string } | null {
   const canonical = canonicalExchange(exchange);
-  const timeZone = EXCHANGE_TIME_ZONES[canonical]
-    ?? (getPublishedUsEquityCalendarYears(canonical) ? "America/New_York" : undefined);
+  const timeZone = sessionCalendarTimeZone(canonical);
   if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;

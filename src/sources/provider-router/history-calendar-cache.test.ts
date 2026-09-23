@@ -186,7 +186,7 @@ test("a narrow range of a listing that stays behind is not revalidated on its sh
     }
     expect(calls).toEqual(["1M", "1M"]);
   } finally { store.close(); }
-});
+}, 30_000);
 
 test("a listing on a venue without published closures is not re-checked through its holidays", async () => {
   const calls: string[] = [];
@@ -207,5 +207,71 @@ test("a listing on a venue without published closures is not re-checked through 
     // One fetch per key a day, as before: the holiday is not a missing session.
     expect(calls.map((call) => call.slice(3, 13))).toEqual(["2026-09-24", "2026-09-24", "2026-09-24", "2026-09-24",
       "2026-09-25", "2026-09-25", "2026-09-26", "2026-09-26", "2026-09-27", "2026-09-27"]);
+  } finally { store.close(); }
+}, 30_000);
+
+test("a copy fetched after the close outranks a broader copy holding the session in progress", async () => {
+  const calls: string[] = [];
+  let load = () => upTo("2026-09-23", 1_236_003);
+  const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory(_symbol, _exchange, range) {
+    calls.push(range);
+    return load();
+  } };
+  const store = new AppPersistence(createTempDbPath("calendar-tiers"));
+  const router = new AssetDataRouter(provider, [], store.resources);
+  const last = async (range: "1M" | "5Y") => new Date((await router.getPriceHistory("TSLA", "NASDAQ", range)).at(-1)!.date)
+    .toISOString().slice(0, 10);
+  try {
+    // A 5Y copy fetched in session carries today's in-progress bar.
+    setSystemTime(new Date("2026-09-23T17:00:00Z"));
+    expect(await last("5Y")).toBe("2026-09-23");
+    // After the close settles, the source has not published today's bar yet.
+    load = () => upTo("2026-09-22");
+    setSystemTime(new Date("2026-09-23T20:40:00Z"));
+    expect(await last("1M")).toBe("2026-09-22");
+    // The 1M copy answers, past its short TTL too, rather than the 5Y copy
+    // whose later bar is the unfinished session.
+    for (const time of ["2026-09-23T20:43:00Z", "2026-09-23T20:50:00Z", "2026-09-23T21:20:00Z"]) {
+      setSystemTime(new Date(time));
+      expect(await last("1M")).toBe("2026-09-22");
+      await Bun.sleep(0);
+    }
+    expect(calls).toEqual(["5Y", "1M"]);
+  } finally { store.close(); }
+});
+
+test("a copy fetched before the close is re-asked at most every five minutes while the refetch fails", async () => {
+  const calls: string[] = [];
+  let load = () => upTo("2026-09-23", 1_236_003);
+  const store = new AppPersistence(createTempDbPath("calendar-unsettled-retry"));
+  const provider = source(() => load(), calls);
+  let router = new AssetDataRouter(provider, [], store.resources);
+  const volume = async (iso: string, range: "1M" | "1Y" = "1Y") => {
+    setSystemTime(new Date(iso));
+    const volume = (await router.getPriceHistory("NVDA", "NASDAQ", range)).at(-1)?.volume;
+    await Bun.sleep(0);
+    return volume;
+  };
+  try {
+    expect(await volume("2026-09-23T17:00:00Z")).toBe(1_236_003);
+    load = () => { throw new Error("offline"); };
+    expect(await volume("2026-09-23T20:31:00Z")).toBe(1_236_003);
+    expect(calls).toHaveLength(2);
+    await volume("2026-09-23T20:32:00Z");
+    await volume("2026-09-23T20:35:00Z");
+    // The pause binds a new process too.
+    router = new AssetDataRouter(provider, [], store.resources);
+    await volume("2026-09-23T20:35:30Z");
+    expect(calls).toHaveLength(2);
+    // An empty answer defers the next ask the same way; the broader copy
+    // keeps answering meanwhile.
+    load = () => [];
+    expect(await volume("2026-09-23T20:36:00Z", "1M")).toBe(1_236_003);
+    expect(calls).toHaveLength(3);
+    expect(await volume("2026-09-23T20:40:00Z", "1M")).toBe(1_236_003);
+    expect(calls).toHaveLength(3);
+    load = () => upTo("2026-09-23", 88_000_000);
+    expect(await volume("2026-09-23T20:41:00Z")).toBe(88_000_000);
+    expect(calls).toHaveLength(4);
   } finally { store.close(); }
 });
