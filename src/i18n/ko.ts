@@ -1052,6 +1052,8 @@ export const ko: Record<string, string> = {
   "Gainers": "상승률 상위",
   "Losers": "하락률 상위",
   "Trending": "인기",
+  "Coins": "코인",
+  "Stablecoins": "스테이블코인",
 
   // Onboarding account step
   "Try Pro free for 7 days — real-time quotes & news": "Pro 7일 무료 체험 — 실시간 시세와 뉴스",

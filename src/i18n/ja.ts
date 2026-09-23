@@ -1054,6 +1054,8 @@ export const ja: Record<string, string> = {
   "Gainers": "値上がり",
   "Losers": "値下がり",
   "Trending": "トレンド",
+  "Coins": "コイン",
+  "Stablecoins": "ステーブルコイン",
 
   // Onboarding account step
   "Try Pro free for 7 days — real-time quotes & news": "Pro を7日間無料で試す — リアルタイム相場とニュース",

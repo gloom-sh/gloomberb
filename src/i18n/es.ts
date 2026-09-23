@@ -1039,6 +1039,8 @@ export const es: Record<string, string> = {
   "Gainers": "Ganadores",
   "Losers": "Perdedores",
   "Trending": "Tendencia",
+  "Coins": "Monedas",
+  "Stablecoins": "Stablecoins",
   // ── Command bar, plan status, and account onboarding ─────────
   "Command or plain English…": "Comando o lenguaje natural…",
   "AI command bar": "Barra de comandos con IA",

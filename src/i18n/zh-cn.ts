@@ -1054,6 +1054,8 @@ export const zhCN: Record<string, string> = {
   "Gainers": "涨幅榜",
   "Losers": "跌幅榜",
   "Trending": "热门",
+  "Coins": "币种",
+  "Stablecoins": "稳定币",
 
   // Onboarding account step
   "Try Pro free for 7 days — real-time quotes & news": "免费试用 Pro 7 天 — 实时行情与新闻",

@@ -1054,6 +1054,8 @@ export const zhTW: Record<string, string> = {
   "Gainers": "漲幅榜",
   "Losers": "跌幅榜",
   "Trending": "熱門",
+  "Coins": "幣種",
+  "Stablecoins": "穩定幣",
 
   // Onboarding account step
   "Try Pro free for 7 days — real-time quotes & news": "免費試用 Pro 7 天 — 即時行情與新聞",
