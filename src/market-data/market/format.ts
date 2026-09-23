@@ -335,8 +335,16 @@ export function formatSignedMarketPrice(value: number | undefined, options: Mark
   return formatMarketPrice(value, options);
 }
 
-/** Preserve ordinary monetary change formatting while retaining declared par units. */
-export function formatMarketChangeWithCurrency(value: number | undefined, currency: string, options: MarketFormatOptions = {}): string {
+/** Preserve ordinary monetary change formatting while retaining declared par units.
+ * `referencePrice` is the quote's price: a change below a cent keeps its digits
+ * only when that price is itself quoted past cents and the change survives the
+ * price's precision, so float residue on a flat equity still prints $0.00. */
+export function formatMarketChangeWithCurrency(
+  value: number | undefined,
+  currency: string,
+  options: MarketFormatOptions = {},
+  referencePrice?: number,
+): string {
   if (value == null || !Number.isFinite(value)) return "—";
   if (resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return formatSignedMarketPrice(value, options);
   if (resolveAssetDisplayKind(options) === "contract") {
@@ -345,7 +353,14 @@ export function formatMarketChangeWithCurrency(value: number | undefined, curren
     })}`;
   }
   // Cents hide the whole move of a sub-cent asset (-$0.00 for a SHIB day change).
-  if (value !== 0 && Math.abs(value) < 0.005) return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, options)}`;
+  if (Math.abs(value) < 0.005 && referencePrice != null && Number.isFinite(referencePrice)) {
+    const priceDigits = marketPriceFractionDigitCeiling(referencePrice, options);
+    if (priceDigits > 2 && Math.abs(value) >= 0.5 * 10 ** -priceDigits) {
+      return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, options)}`;
+    }
+  }
+  // A move that rounds to zero cents is unsigned rather than -$0.00.
+  if (Math.abs(value) < 0.005) return formatCurrency(0, currency);
   return `${value > 0 ? "+" : ""}${formatCurrency(value, currency)}`;
 }
 

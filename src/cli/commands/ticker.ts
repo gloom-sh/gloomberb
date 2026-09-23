@@ -380,7 +380,7 @@ export async function buildTickerReport({
   if (quote) {
     appendMetricSection(lines, "Quote", [
       ["Last", colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, quoteOptions), quote.change)],
-      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions)} (${formatSignedPercentRaw(quote.changePercent)})`, quote.change)],
+      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions, quote.price)} (${formatSignedPercentRaw(quote.changePercent)})`, quote.change)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
         ? `${quote.low != null ? formatMarketPriceWithCurrency(quote.low, quote.currency, quoteOptions) : "—"} - ${quote.high != null ? formatMarketPriceWithCurrency(quote.high, quote.currency, quoteOptions) : "—"}`

@@ -161,8 +161,15 @@ test("quote formatting uses metadata only to withhold unknown bond units", () =>
   const par = quoteFormatOptions({ priceBasis: "percent-of-par" }, "STK");
   expect(formatMarketChangeWithCurrency(-1, "USD", par)).toBe("-1% par");
   // A sub-cent coin's whole day move must not round to -$0.00.
-  expect(formatMarketChangeWithCurrency(-2.6955e-8, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("-$0.00000002696");
-  expect(formatMarketChangeWithCurrency(-0.37, "USD", { assetCategory: "CRYPTOCURRENCY" })).toBe("-$0.37");
+  const crypto = { assetCategory: "CRYPTOCURRENCY" };
+  expect(formatMarketChangeWithCurrency(-2.6955e-8, "USD", crypto, 6.312e-6)).toBe("-$0.00000002696");
+  expect(formatMarketChangeWithCurrency(-0.37, "USD", crypto, 109556.16)).toBe("-$0.37");
+  // Float residue from price - previousClose on a cent-quoted asset stays $0.00.
+  const stock = { assetCategory: "STK" };
+  expect(formatMarketChangeWithCurrency(1.52587890625e-5, "USD", stock, 259.75)).toBe("$0.00");
+  expect(formatMarketChangeWithCurrency(-2.842170943040401e-14, "USD", stock, 172.47)).toBe("$0.00");
+  expect(formatMarketChangeWithCurrency(1.52587890625e-5, "USD", stock, 0.5)).toBe("$0.00");
+  expect(formatMarketChangeWithCurrency(3e-14, "USD", crypto, 6.312e-6)).toBe("$0.00");
 });
 
 test("contract price precision does not change units, signed/zero/missing semantics, quantity or cost", () => {

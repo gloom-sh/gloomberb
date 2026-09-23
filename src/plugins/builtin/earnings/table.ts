@@ -118,12 +118,14 @@ export function buildEarningsColumns(width: number, sharedCurrency: string | nul
   const symbolWidth = 8;
   const epsWidth = shared ? 8 : 11;
   const forecastEndWidth = 10;
-  const epsRangeWidth = shared ? 13 : 20;
+  // Shared-currency ranges drop the code but must still fit four-figure EPS
+  // ("1,234.56-1,300.00") and three-figure-billion sales ("174.12B-180.55B").
+  const epsRangeWidth = shared ? 17 : 20;
   const growthWidth = 8;
   const trendWidth = shared ? 7 : 11;
   const revisionsWidth = 7;
   const revenueWidth = shared ? 9 : 12;
-  const revenueRangeWidth = shared ? 13 : 23;
+  const revenueRangeWidth = shared ? 15 : 23;
   const analystsWidth = 6;
   const columns: EarningsColumn[] = [
     { id: "date", label: "DATE", width: dateWidth, align: "left" },

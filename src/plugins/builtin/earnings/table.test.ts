@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { colors } from "../../../theme/colors";
 import type { EarningsEvent } from "../../../types/data-provider";
 import { EARNINGS_ESTIMATE_FIELDS } from "./estimate-basis";
-import { buildEarningsColumns, renderEarningsCell, type EarningsColumn } from "./table";
+import { buildEarningsColumns, renderEarningsCell, sharedEarningsCurrency, type EarningsColumn } from "./table";
 
 function event(values: Partial<EarningsEvent> = {}): EarningsEvent {
   const result: EarningsEvent = {
@@ -43,6 +43,22 @@ describe("earnings estimate comparison basis", () => {
     expect(cell("epsRevisions", { epsRevisionUp30d: 0, epsRevisionDown30d: 0 }).text).toBe("0/0");
     expect(cell("epsRevisions", { epsRevisionUp30d: 3, epsRevisionDown30d: 0 }).color).toBe(colors.positive);
     expect(cell("epsRevisions", { epsRevisionUp30d: 0, epsRevisionDown30d: 3 }).color).toBe(colors.negative);
+  });
+
+  test("shared-currency range columns fit large-cap estimates", () => {
+    const large = event({
+      epsEstimate: 1250, epsLow: 1234.56, epsHigh: 1300,
+      revenueEstimate: 177e9, revenueLow: 174.12e9, revenueHigh: 180.55e9,
+    });
+    for (const basis of Object.values(large.estimateBasis!)) basis!.currency = "USD";
+    const shared = sharedEarningsCurrency([large]);
+    expect(shared).toBe("USD");
+    const columns = buildEarningsColumns(210, shared);
+    for (const id of ["epsRange", "revenueRange"] as const) {
+      const column = columns.find((candidate) => candidate.id === id)!;
+      const text = renderEarningsCell({ kind: "event", key: "test", eventIdx: 0, event: large }, column, false, shared).text;
+      expect(text.length).toBeLessThanOrEqual(column.width);
+    }
   });
 
   test("calendar dates agree with UTC grouping across time zones and year boundaries", () => {
