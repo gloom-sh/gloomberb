@@ -14,6 +14,7 @@ import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useAppActive } from "../../../state/app/activity";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { colors, priceColor } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -24,7 +25,6 @@ import type { PaneProps } from "../../../types/plugin";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
-import { useAutoRefresh } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { resolveScreenerQuoteFeedStatus } from "../shared/screener-live-quotes";
@@ -43,6 +43,12 @@ import {
   type CryptoSortPreference,
 } from "./model";
 
+/**
+ * The board is the price for every row without a live stream: coins the live
+ * feed does not carry, and every coin on a delayed plan, whose streamed quotes
+ * trail it by 15 minutes. It refreshes on this clock, not the app's data one.
+ */
+export const CRYPTO_BOARD_REFRESH_MS = 30_000;
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const STREAM_OVERSCAN = 8;
 /** Before the table reports its window, stream what a full-height pane shows. */
@@ -115,7 +121,13 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
-  useAutoRefresh(resource.updatedAt, resource.load);
+  const appActive = useAppActive();
+  const reloadBoard = resource.load;
+  useEffect(() => {
+    if (!appActive) return;
+    const timer = setInterval(() => void reloadBoard(false), CRYPTO_BOARD_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [appActive, reloadBoard]);
 
   const tabAssets = useMemo(
     () => data?.assets.filter((asset) => asset.kind === activeTab) ?? [],
@@ -175,7 +187,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   });
   usePaneFooter("crypto-board", () => ({
     info: [
-      ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      // Background refreshes run every 30s; only the first load is worth a label.
+      ...(resource.loading && !data ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(data && resource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
       ...(feedStatus ? [{
         id: "feed",

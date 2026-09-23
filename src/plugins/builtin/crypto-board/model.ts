@@ -76,10 +76,11 @@ export function buildCryptoRow(
     : quote
       ? percentChange(price, asset.previousClose)
       : asset.changePercent;
-  // Supply moves slowly; the price is what makes market cap live.
-  const marketCap = finite(asset.circulatingSupply) && asset.circulatingSupply > 0
-    ? asset.circulatingSupply * price
-    : finite(asset.marketCap) ? asset.marketCap * (price / asset.price) : null;
+  // Supply moves slowly; the price is what makes market cap live. Scaling the
+  // reported cap keeps the source's supply basis and the board's ranking.
+  const marketCap = finite(asset.marketCap)
+    ? asset.marketCap * (price / asset.price)
+    : finite(asset.circulatingSupply) && asset.circulatingSupply > 0 ? asset.circulatingSupply * price : null;
   const start = asset.history ? Date.parse(`${asset.history.start}T00:00:00Z`) : 0;
   const history: PricePoint[] = (asset.history?.closes ?? []).flatMap((close, index) =>
     close == null ? [] : [{ date: new Date(start + index * DAY_MS), close }]);
@@ -119,8 +120,13 @@ export function formatCryptoPrice(value: number | null, maxWidth?: number): stri
   return value == null ? "—" : formatMarketPrice(value, { assetCategory: "CRYPTO", maxWidth });
 }
 
-export const formatCryptoPercent = (value: number | null) =>
-  value == null || !Number.isFinite(value) ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+export function formatCryptoPercent(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const text = value.toFixed(2);
+  // A move that rounds to zero carries no sign.
+  if (Number(text) === 0) return "0.00%";
+  return `${value > 0 ? "+" : ""}${text}%`;
+}
 
 // Sorting ---------------------------------------------------------------------
 

@@ -6,6 +6,7 @@ import {
   buildCryptoRows,
   cryptoQuoteKey,
   DEFAULT_CRYPTO_SORT,
+  formatCryptoPercent,
   formatCryptoPrice,
   nextCryptoSort,
   sortCryptoRows,
@@ -81,6 +82,12 @@ test("narrow panes drop 1Y, the sparkline, 30D, volume and name in that order", 
   expect(ids(60)).toEqual(["rank", "code", "price", "changePercent", "return7d", "marketCap"]);
   const wide = buildCryptoColumns(200).find((column) => column.id === "name")!;
   expect(wide.width).toBe(24);
+});
+
+test("a move that rounds to zero is unsigned", () => {
+  expect(formatCryptoPercent(-0.004)).toBe("0.00%");
+  expect(formatCryptoPercent(0.005)).toBe("+0.01%");
+  expect(formatCryptoPercent(-1.5)).toBe("-1.50%");
 });
 
 test("prices keep the precision a sub-cent token needs", () => {

@@ -605,9 +605,9 @@ History is bounded to the latest 4,000 stored rows within one year, with truncat
 
 ## Crypto
 
-`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins on their own tab. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload refreshed every minute.
+`CRYP` lists the largest crypto assets by market cap: up to 100 coins, with stablecoins on their own tab. Wrapped, staked and bridged copies of a larger coin, and pairs with under $1M of 24h volume, are left out so each market appears once. The universe, prices, 24h volume, supply, 52-week range and the last 30 completed daily closes come from one Gloom Cloud payload that the pane refreshes every 30 seconds.
 
-Prices stream like any other quote. The rows on screen subscribe to the shared market socket, and each live quote moves the price, day change, market cap (circulating supply times price), 7D, 30D and 1Y returns and the end of the sparkline. The footer shows whether the feed is live, mixed or polling, and the time of the newest price. With live streaming off in the pane settings, quotes refresh once a minute.
+On top of that, the rows on screen subscribe to the shared market socket like any watchlist. A real-time quote moves the price, day change, market cap, 7D, 30D and 1Y returns and the end of the sparkline as it arrives; a streamed quote older than the board's own price is ignored, so a delayed plan's 15-minute-old crypto quotes never replace a current price. The footer shows whether the stream is live, mixed or polling, and the time of the newest price.
 
 CHG% is the change since the 00:00 UTC open. 7D% and 30D% compare the price with the close 7 and 30 UTC days earlier, the same basis, so a 7D move includes today's. 1Y% uses the price a year ago implied by the source's 52-week change. VOL 24H is aggregate USD volume across venues. A missing close shows as a dash rather than a zero return.
 
