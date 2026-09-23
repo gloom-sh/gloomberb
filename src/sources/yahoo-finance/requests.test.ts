@@ -63,3 +63,16 @@ test("the current period is completed from the chart's own regular-market facts"
   expect(await bars("1mo", [{ t: "2026-09-01T04:00:00Z", o: 216.75, h: 234.76, l: 208.93, c: 228.87, v: 1744259600 }, live]))
     .toEqual([["2026-09-01", 234.76, 208.93, 228.87, 1744259600]]);
 });
+
+test("FX calendar bars take the London date Yahoo stamps at 23:00 UTC the evening before", async () => {
+  const raw = { chart: { result: [{
+    meta: { symbol: "EURUSD=X", currency: "USD", exchangeTimezoneName: "Europe/London", dataGranularity: "1d" },
+    timestamp: ["2026-09-17T23:00:00Z", "2026-09-20T23:00:00Z", "2026-12-07T00:00:00Z"].map((date) => Date.parse(date) / 1000),
+    indicators: { quote: [{ close: [1.1476, 1.14797, 1.1] }] },
+  }] } };
+  const result = await fetchYahooChart(http(raw, []), "EURUSD=X", "1y", "1d");
+  // Friday, Monday, and a winter Monday already at 00:00 UTC.
+  expect(result.history.map((p) => p.date.toISOString())).toEqual([
+    "2026-09-18T00:00:00.000Z", "2026-09-21T00:00:00.000Z", "2026-12-07T00:00:00.000Z",
+  ]);
+});

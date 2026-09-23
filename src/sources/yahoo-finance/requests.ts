@@ -22,6 +22,26 @@ import type { YahooHttpClient } from "./http";
 import { applyYahooHistoryCoverage } from "../history-coverage";
 import { reconcileYahooCurrentPeriod } from "./chart-period";
 
+/**
+ * Yahoo stamps calendar bars at midnight in the instrument's zone, so an FX
+ * day opens at 23:00 UTC the evening before. Label such a bar with its own
+ * date at UTC midnight, the convention Cloud daily bars use.
+ */
+function dateCalendarBars(points: PricePoint[], interval: string, timeZone: unknown): PricePoint[] {
+  if (/^\d+[mh]$/.test(interval) || typeof timeZone !== "string") return points;
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  } catch {
+    return points;
+  }
+  return points.map((point) => {
+    const parts = new Map(formatter.formatToParts(point.date).map((part) => [part.type, part.value]));
+    const local = `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
+    return local === point.date.toISOString().slice(0, 10) ? point : { ...point, date: new Date(`${local}T00:00:00Z`) };
+  });
+}
+
 export async function fetchYahooChart(
   http: YahooHttpClient,
   symbol: string,
@@ -62,8 +82,12 @@ export async function fetchYahooChart(
     close: quote.close?.[i] ?? Number.NaN,
     volume: quote.volume?.[i] ?? undefined,
   }));
-  const history = reconcileYahooCurrentPeriod(rows, interval, result.meta)
-    .filter((point) => Number.isFinite(point.close) && point.close > 0);
+  const history = dateCalendarBars(
+    reconcileYahooCurrentPeriod(rows, interval, result.meta)
+      .filter((point) => Number.isFinite(point.close) && point.close > 0),
+    interval,
+    result.meta?.exchangeTimezoneName,
+  );
   return { meta: result.meta || {},
     history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
     events: result.events, observedAt, regularHoursOnly: !includePrePost };
