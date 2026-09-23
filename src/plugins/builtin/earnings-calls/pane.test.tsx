@@ -50,6 +50,10 @@ function signIn() {
 async function frames() {
   for (let i = 0; i < 6; i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
 }
+/** Renders until `done` holds; a slow runner needs more frames than a fixed count. */
+async function framesUntil(done: () => boolean, limit = 60) {
+  for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await setup!.renderOnce(); });
+}
 async function mount(width = 80, initialSymbol: string | null = "FIRST") {
   await act(async () => { setup = await testRender(<Harness width={width} initialSymbol={initialSymbol} />, { width, height: 21 }); });
   await frames();
@@ -128,11 +132,13 @@ test("scrolling to the end of the shelf appends the next page instead of stoppin
   expect(setup!.captureCharFrame()).not.toContain("COMPANY 50");
 
   await emitKeypress(setup!, Array.from({ length: 50 }, () => ({ name: "j", sequence: "j" })));
+  await framesUntil(() => offsets.length > 1);
   await frames();
   expect(offsets).toEqual([null, "50"]);
 
   // The page that arrived is reachable, and a short page ends the paging.
   await emitKeypress(setup!, Array.from({ length: 5 }, () => ({ name: "j", sequence: "j" })));
+  await framesUntil(() => setup!.captureCharFrame().includes("COMPANY 50"));
   await frames();
   expect(setup!.captureCharFrame()).toContain("COMPANY 50");
   expect(offsets).toEqual([null, "50"]);
