@@ -453,6 +453,22 @@ describe("pane screenshot active-state verification", () => {
     expect(missingActiveTabSelections(renderedTabs("0", "quarterly"), expected))
       .toEqual(expected);
   });
+
+  test("reads the active choices of a query bar", () => {
+    const queryBar = (statement: string, period: string): RemoteUiNodeSnapshot[] => [{
+      id: "query",
+      role: "query-bar",
+      actions: [],
+      metadata: {
+        selections: [
+          { id: "statement", value: statement === "Cash Flow" ? "1" : "0", label: statement },
+          { id: "view", value: period, label: period === "annual" ? "Annual" : "Quarterly" },
+        ],
+      },
+    }];
+    expect(missingActiveTabSelections(queryBar("Cash Flow", "annual"), expected)).toEqual([]);
+    expect(missingActiveTabSelections(queryBar("Income", "quarterly"), expected)).toEqual(expected);
+  });
 });
 
 describe("pane screenshot chart-data verification", () => {

@@ -1855,8 +1855,19 @@ export function missingActiveTabSelections(
   semanticUi: RemoteUiNodeSnapshot[],
   expected: PaneScreenshotExpectedSelection[],
 ): PaneScreenshotExpectedSelection[] {
-  const activeTabs = semanticUi.flatMap((node) => {
-    if (node.role !== "tabs" || !node.metadata) return [];
+  const activeTabs = semanticUi.flatMap((node): { value: string | null; label: string | null }[] => {
+    if (!node.metadata) return [];
+    // Query bars carry the active choice of each inline filter and the view.
+    if (node.role === "query-bar") {
+      const selections = Array.isArray(node.metadata.selections) ? node.metadata.selections : [];
+      return selections.flatMap((selection) => (
+        isRecord(selection) ? [{
+          value: typeof selection.value === "string" ? selection.value : null,
+          label: typeof selection.label === "string" ? selection.label : null,
+        }] : []
+      ));
+    }
+    if (node.role !== "tabs") return [];
     const activeValue = typeof node.metadata.activeValue === "string"
       ? node.metadata.activeValue
       : null;

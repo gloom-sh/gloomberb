@@ -199,11 +199,26 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
     }
   }, [filters]);
 
+  // The active choice of each select filter and the view, like tabs expose
+  // their active value, so automation can confirm what the pane shows.
+  const selections = [
+    ...filters.flatMap((filter) => {
+      if (filter.kind === "text" || filter.kind === "toggle" || filter.kind === "multi") return [];
+      const current = filter.options.find((option) => option.value === filter.value);
+      return [{ id: filter.id, value: String(filter.value), label: current?.label ?? null }];
+    }),
+    ...(view ? [{
+      id: "view",
+      value: String(view.value),
+      label: view.options.find((option) => option.value === view.value)?.label ?? null,
+    }] : []),
+  ];
+
   useRemoteUiNode({
     role: "query-bar",
     label: "Query bar",
     actions: { clear: resetAll },
-    metadata: { narrowing: narrowingCount, search: search?.value ?? null, view: view?.value ?? null },
+    metadata: { narrowing: narrowingCount, search: search?.value ?? null, view: view?.value ?? null, selections },
   });
 
   const searchNode = search ? (
