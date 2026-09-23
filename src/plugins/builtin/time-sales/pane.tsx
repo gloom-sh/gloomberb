@@ -9,7 +9,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapePriceDigits, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey } from "./model";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
@@ -60,6 +60,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   const rows: TapeRow[] = useMemo(() => !data ? [] : tab === "quotes"
     ? newestFirst(data.quotes).map((quote) => ({ id: quoteKey(quote), quote }))
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
+  const tradeDigits = useMemo(() => tapePriceDigits(data?.trades.map((trade) => trade.price) ?? []), [data]);
+  const quoteDigits = useMemo(() => tapePriceDigits(data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []), [data]);
   const freeze = () => { setPaused(frozen || !resource.data ? null : { data: resource.data, epoch: resource.epoch }); setDetail(null); };
   const reload = () => { setPaused(null); setDetail(null); setRefresh((value) => value + 1); };
   useShortcut((event) => {
@@ -88,20 +90,20 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         detailOpen={!!detail && !!resource.data} onBack={() => setDetail(null)} detailTitle={detail?.trade ? `Trade ${detail.trade.id}` : "Quote"}
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
         rootBefore={<Box flexDirection="column" flexShrink={0} paddingX={1}>
-          <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClockMs(stats.asOf) : "--"} UTC`} />
-          <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClockMs(stats.from) : "--"} to ${stats.asOf ? tapeClockMs(stats.asOf) : "--"}`} />
-          <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low)} to ${tapePrice(stats.high)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low)} to ${tapePrice(data.session.high)} · ${tapeTimeSeconds(data.session.asOf)} UTC` : undefined} />
+          <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null, tradeDigits)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClockMs(stats.asOf) : "--"} UTC`} />
+          <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap, tradeDigits)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClockMs(stats.from) : "--"} to ${stats.asOf ? tapeClockMs(stats.asOf) : "--"}`} />
+          <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low, tradeDigits)} to ${tapePrice(data.session.high, tradeDigits)} · ${tapeTimeSeconds(data.session.asOf)} UTC` : undefined} />
         </Box>}
         renderCell={(row, column) => {
           if (row.trade) {
             const trade = row.trade;
-            return { text: column.id === "time" ? tapeClockMs(trade.timestamp) : column.id === "price" ? tapePrice(trade.price)
+            return { text: column.id === "time" ? tapeClockMs(trade.timestamp) : column.id === "price" ? tapePrice(trade.price, tradeDigits)
               : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? trade.exchange
               : column.id === "conditions" ? trade.conditions.join(" ") : trade.tape,
               color: trade.size >= 10_000 ? colors.warning : column.id === "price" ? colors.text : colors.textMuted };
           }
           const quote = row.quote!, spread = quoteSpread(quote);
-          return { text: column.id === "time" ? tapeClockMs(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid) : column.id === "ask" ? tapePrice(quote.ask)
+          return { text: column.id === "time" ? tapeClockMs(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
             : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
             : column.id === "bidExchange" ? quote.bidExchange : column.id === "askExchange" ? quote.askExchange
             : spread.bps == null ? "--" : spread.bps.toFixed(2), color: spread.state === "normal" ? colors.text : colors.warning };

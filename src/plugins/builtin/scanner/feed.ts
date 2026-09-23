@@ -84,9 +84,13 @@ export function useScannerStatusFooter(
     return [{ id: "scanner-status", parts: [{ text: "degraded", tone: "warning" as const }] }];
   }, [state.denied, state.deniedReason, state.payload?.status]);
 
-  const info = useMemo(
-    () => (segment ? [segment, ...status] : status),
-    [segment, status],
+  // The upgrade segment carries the delay for free accounts; a delayed feed reaching Pro still says so.
+  const delayMinutes = state.payload?.access === "delayed" ? state.payload.delayMinutes || CLOUD_QUOTE_DELAY_MINUTES : null;
+  const info = useMemo<PaneFooterSegment[]>(
+    () => segment ? [segment, ...status]
+      : delayMinutes != null ? [{ id: "scanner-delay", parts: [{ text: tf("{count}m delayed", { count: delayMinutes }), tone: "muted" }] }, ...status]
+        : status,
+    [delayMinutes, segment, status],
   );
 
   usePaneStatusFooter({ registrationId, info, hints: upgradeHint ? [upgradeHint] : undefined });
