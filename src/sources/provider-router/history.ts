@@ -21,7 +21,7 @@ import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
-import { getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
+import { getPricePointTimestamp, hasUsablePriceHistory, isCalendarHistoryFetchOutdated, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
 import { hasUnverifiedShellHistory, HistoryCoverageError } from "../history-coverage";
 import {
@@ -551,7 +551,16 @@ export class ProviderRouterHistoryRoutes {
       ? { ...value, points: clipPriceHistoryToRange(value.points, request.requestedRange) } : value;
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
-    const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale;
+    // A background revalidation cannot correct bars from before a close in
+    // time: a one-shot CLI exits first, and this caller keeps the old bars.
+    const cachedBeforeClose = !!cached
+      && (request.requestedEnd === undefined || isCurrentHistoryWindow(new Date(request.requestedEnd)))
+      && isCalendarHistoryFetchOutdated(cachedValue.points, cached.fetchedAt, Date.now(), {
+        exchange: parsePublicTickerKey(request.target.symbol).exchange || request.target.exchange,
+        intervalMs: cachedValue.resolution ? priceHistoryIntervalMs(cachedValue.resolution) : undefined,
+      });
+    const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale
+      && !cachedBeforeClose;
     if (usableCached && !forceRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
       if (cached.stale) {

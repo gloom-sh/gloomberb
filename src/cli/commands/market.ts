@@ -247,7 +247,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   await withMarketData(ctx, async (market) => {
     const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
     const exchange = requestedExchange || localTicker?.metadata.exchange || "";
-    const points = await market.dataProvider.getPriceHistory(symbol, exchange, range);
+    const points = await market.dataProvider.getPriceHistory(symbol, exchange, range, {
+      cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
+    });
     const data = historyRows(points);
     ctx.printResult({ data, metadata: { symbol, range, exchange } }, {
       columns: [
