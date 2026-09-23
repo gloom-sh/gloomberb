@@ -131,6 +131,22 @@ describe("YahooFinanceClient exchange aliases", () => {
     expect(getYahooSymbolsToTry("HY9H", "FWB2")).toEqual(["HY9H.F", "HY9H.DE"]);
   });
 
+  test("symbol news drops search headlines Yahoo does not link to the symbol", async () => {
+    const originalFetch = globalThis.fetch;
+    const news = [
+      { title: "Bitcoin slips below 60k", link: "https://a", publisher: "A", providerPublishTime: 1_790_000_000, relatedTickers: ["btc-usd", "ETH-USD"] },
+      { title: "Nissan steps up exports from China", link: "https://b", publisher: "B", providerPublishTime: 1_790_000_100, relatedTickers: ["7201.T"] },
+      { title: "Rechargeable Thin Film Battery Market Outlook", link: "https://c", publisher: "C", providerPublishTime: 1_790_000_200 },
+    ];
+    globalThis.fetch = (async () => Response.json({ news })) as unknown as typeof fetch;
+    try {
+      const items = await new YahooFinanceClient().getNews("BTC-USD", 10);
+      expect(items.map((item) => item.title)).toEqual(["Bitcoin slips below 60k"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("maps manual resolution requests to yahoo chart range plus interval", async () => {
     const provider = new YahooFinanceClient() as any;
     let requested = false;

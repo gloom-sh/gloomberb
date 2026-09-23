@@ -294,7 +294,13 @@ export class YahooFinanceClient implements DataProvider {
       });
       if (!resp.ok) return [];
       const data = await resp.json() as any;
-      const items: NewsItem[] = (data.news || []).map((n: any) => ({
+      // Search is a text query: for symbols it cannot match (crypto pairs, many
+      // listings) it returns general headlines. Keep only items Yahoo links to the symbol.
+      const wanted = new Set([symbol.toUpperCase(), ticker.toUpperCase()]);
+      const items: NewsItem[] = (data.news || [])
+        .filter((n: any) => Array.isArray(n.relatedTickers)
+          && n.relatedTickers.some((related: unknown) => typeof related === "string" && wanted.has(related.toUpperCase())))
+        .map((n: any) => ({
         title: n.title || "",
         url: n.link || "",
         source: n.publisher || "",
