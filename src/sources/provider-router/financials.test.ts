@@ -186,3 +186,15 @@ test("yield basis and source stay attached to the selected yield observation", (
   expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldSource).toBeUndefined();
   expect(mergeFinancials(makeFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" });
 });
+
+test("per-share bases that reprice a multiple stay with that multiple's observation", () => {
+  // The fresh block withdrew its bases; an older fallback's must not pair with the new multiple and yield.
+  const fresh = makeFinancials({ fundamentals: { forwardPE: 30, dividendYield: 0.01 } });
+  const older = makeFinancials({ fundamentals: { forwardPE: 20, forwardEps: 5, dividendYield: 0.02, dividendRate: 2, revenue: 100 } });
+  const merged = mergeFinancials(fresh, older)?.fundamentals;
+  expect(merged).toMatchObject({ forwardPE: 30, dividendYield: 0.01, revenue: 100 });
+  expect(merged?.forwardEps).toBeUndefined();
+  expect(merged?.dividendRate).toBeUndefined();
+  expect(mergeFinancials(makeFinancials({ fundamentals: { revenue: 200 } }), older)?.fundamentals)
+    .toMatchObject({ forwardPE: 20, forwardEps: 5, dividendYield: 0.02, dividendRate: 2 });
+});

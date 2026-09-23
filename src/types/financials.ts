@@ -115,6 +115,12 @@ export interface Fundamentals {
   marketCapCurrency?: string;
   trailingPE?: number;
   forwardPE?: number;
+  /**
+   * Forward EPS behind `forwardPE`, per share in the listing's major currency
+   * unit. Served only when its basis matches the multiple, so the multiple can
+   * be repriced from a live quote; absent otherwise.
+   */
+  forwardEps?: number;
   pegRatio?: number;
   enterpriseValue?: number;
   enterpriseToRevenue?: number;
@@ -125,6 +131,12 @@ export interface Fundamentals {
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
   dividendYieldSource?: "twelvedata" | "yahoo";
+  /**
+   * Annual dividend per share behind `dividendYield`, in the listing's major
+   * currency unit. Served only when its basis matches the yield, so the yield
+   * can be repriced from a live quote; absent otherwise.
+   */
+  dividendRate?: number;
   revenue?: number;
   netIncome?: number;
   eps?: number;

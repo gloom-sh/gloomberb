@@ -2,6 +2,7 @@ import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
 import { verifiedPriceHistorySource } from "../history-coverage";
 import type {
+  Fundamentals,
   OptionsChain,
   PricePoint,
   Quote,
@@ -219,6 +220,28 @@ export function mapPricePoint(
   };
 }
 
+/** Per-share bases the statistics block serves beside its multiples. */
+const CLOUD_PER_SHARE_BASES = ["forwardEps", "dividendRate"] as const;
+
+/**
+ * The served statistics block with retractions applied. Forward EPS and the
+ * dividend rate are the per-share bases the live quote reprices forward P/E
+ * and the dividend yield from; JSON encodes a withdrawn one as null, and only
+ * a finite number is kept.
+ */
+export function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fundamentals | undefined {
+  const value = redactUnavailableFundamentals(fundamentals);
+  if (!value) return value;
+  let result = value;
+  for (const field of CLOUD_PER_SHARE_BASES) {
+    const raw: unknown = value[field];
+    if (raw === undefined || (typeof raw === "number" && Number.isFinite(raw))) continue;
+    if (result === value) result = { ...value };
+    delete result[field];
+  }
+  return result;
+}
+
 export function mapCloudFinancials(
   financials: CloudFinancialsPayload,
   providerMeta?: CloudProviderMeta,
@@ -233,7 +256,7 @@ export function mapCloudFinancials(
     quoteMetadata: financials.quoteMetadata,
     quoteContributions: financials.quoteContributions,
     profile: financials.profile,
-    fundamentals: redactUnavailableFundamentals(financials.fundamentals),
+    fundamentals: mapCloudFundamentals(financials.fundamentals),
     financialCurrency: financials.financialCurrency,
     statementHistory: financials.statementHistory,
     operatingHistoryRetryAt: typeof financials.operatingHistoryRetryAt === "number" && Number.isFinite(financials.operatingHistoryRetryAt)

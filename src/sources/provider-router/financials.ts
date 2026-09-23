@@ -57,6 +57,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
       dividendYield: statistics.dividendYield,
       dividendYieldBasis: statistics.dividendYieldBasis,
       dividendYieldSource: statistics.dividendYieldSource,
+      dividendRate: statistics.dividendRate,
       source: statistics.source,
       fetchedAt: statistics.fetchedAt,
       stale: statistics.stale,
@@ -335,6 +336,11 @@ function mergeDefinedObject<T extends object>(preferred: T | null | undefined, f
   return Object.fromEntries(mergedEntries) as T;
 }
 
+function setOrDelete<K extends "dividendRate" | "forwardEps">(target: Fundamentals, key: K, value: Fundamentals[K]): void {
+  if (value === undefined) delete target[key];
+  else target[key] = value;
+}
+
 function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamentals | undefined): Fundamentals | undefined {
   primary = redactUnavailableFundamentals(primary);
   fallback = redactUnavailableFundamentals(fallback);
@@ -354,11 +360,17 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
   }
   const dividend = primary?.dividendYield != null ? primary : fallback;
   if (merged && dividend) {
-    // A yield's source and basis must come from the same observation as its
-    // value, never from an unrelated fallback that supplied other metrics.
+    // A yield's source, basis and per-share rate must come from the same
+    // observation as its value, never from an unrelated fallback that supplied
+    // other metrics.
     merged.dividendYieldBasis = dividend.dividendYieldBasis;
     merged.dividendYieldSource = dividend.dividendYieldSource;
+    setOrDelete(merged, "dividendRate", dividend.dividendRate);
   }
+  const forward = primary?.forwardPE != null ? primary : fallback;
+  // Forward EPS reprices the forward multiple, so it pairs with that multiple's
+  // observation; a withdrawn one never comes back from an older fallback.
+  if (merged && forward) setOrDelete(merged, "forwardEps", forward.forwardEps);
   if (merged && primary && !primary.financialCurrency && [
     primary.revenue, primary.netIncome, primary.operatingCashFlow, primary.freeCashFlow, primary.eps,
   ].some((value) => value != null)) {

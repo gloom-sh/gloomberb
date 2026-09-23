@@ -17,9 +17,6 @@ const PRICE_DRIFT = 1.5;
  * is trusted to scale the quote. */
 const PRICE_BASIS = 0.005;
 
-/** Optional base values; used only when the served block carries them. */
-type ValuationFundamentals = Fundamentals & { forwardEps?: number; dividendRate?: number };
-
 interface LiveMarketCapitalization extends MarketCapitalization {
   /** Shares outstanding times the current price rather than a stored figure. */
   live: boolean;
@@ -62,13 +59,13 @@ export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fu
 }
 
 export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): number | undefined {
-  return repriceMultiple(fundamentals?.forwardPE, (fundamentals as ValuationFundamentals | undefined)?.forwardEps, quote, fundamentals);
+  return repriceMultiple(fundamentals?.forwardPE, fundamentals?.forwardEps, quote, fundamentals);
 }
 
 /** Forward dividend yield over the current price, as a ratio like the stored yield. */
 export function liveDividendYield(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): number | undefined {
   const stored = fundamentals?.dividendYield;
-  const rate = (fundamentals as ValuationFundamentals | undefined)?.dividendRate;
+  const rate = fundamentals?.dividendRate;
   const price = liveValuationPrice(quote);
   if (price == null || !quote || !fundamentals || !positive(stored) || !positive(rate)) return stored;
   if (!sameCurrencyBasis(quote, fundamentals)) return stored;

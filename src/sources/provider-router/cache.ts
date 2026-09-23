@@ -296,7 +296,7 @@ export function listCachedResources<T>(
       && ["twelvedata", "yahoo"].includes(statistics?.dividendYieldSource ?? "");
     const legacyYield = statistics?.dividendYield != null && (record.schemaVersion < 5 || !hasDividendProvenance);
     if (legacyYield) value = { ...value, fundamentals: { ...value.fundamentals,
-      dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined } };
+      dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined, dividendRate: undefined } };
     if (legacyValuation) value = { ...value, fundamentals: redactUnavailableFundamentals({ ...value.fundamentals,
       unavailableFields: [...RETRACTABLE_VALUATION_FIELDS] }) };
     return { ...record, stale: record.stale || legacyYield || legacyValuation || knownInvalidValuation, value: value as T };
