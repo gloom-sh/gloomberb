@@ -32,6 +32,9 @@ describe("provider-router financial quote usability", () => {
     expect(isProviderQuoteUsableForCurrentSession({ ...close, preMarketPrice: 101 }, "NYSE")).toBe(true);
     expect(isProviderQuoteUsableForCurrentSession({ ...close, marketState: "CLOSED" }, "NYSE")).toBe(false);
     expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-09-21T20:00:00Z") }, "NYSE")).toBe(false);
+    // Yesterday's own pre-market print is not a close.
+    expect(isProviderQuoteUsableForCurrentSession({ ...close, preMarketPrice: 101,
+      lastUpdated: Date.parse("2026-09-22T12:30:00Z") }, "NYSE")).toBe(false);
     // After the Labor Day closure, Friday is the previous session.
     clock.mockReturnValue(Date.parse("2026-09-08T09:30:00Z"));
     expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-09-04T20:00:00Z") }, "NYSE")).toBe(true);

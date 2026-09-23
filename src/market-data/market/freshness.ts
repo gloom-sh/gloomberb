@@ -179,7 +179,8 @@ export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null
  * session's close, and that close is the current price (Yahoo also stamps a
  * pre-market quote with that regular-session time). The provider must have
  * observed this pre-market session and the print must be from the session
- * immediately before today.
+ * immediately before today, at or after its regular open. An earlier print that
+ * day is that session's own pre-market, not a close.
  */
 export function isUsPriorSessionPremarketQuote(
   timestampMs: number,
@@ -193,8 +194,11 @@ export function isUsPriorSessionPremarketQuote(
   if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "PRE") return false;
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
-  return !!timestampDate && !!currentDate && timestampDate < currentDate
-    && localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
+  if (!timestampDate || !currentDate || timestampDate >= currentDate) return false;
+  if (!isLocalTradingDay(canonical, timestampDate)) return false;
+  const printSession = usSessionState(timestampMs);
+  if (printSession !== "REGULAR" && printSession !== "POST" && printSession !== "POSTPOST") return false;
+  return localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
 }
 
 export function isTimestampStaleForExchangeSession(
