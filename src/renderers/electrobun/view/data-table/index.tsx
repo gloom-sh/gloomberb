@@ -3,12 +3,13 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
-import { TextAttributes } from "../../../../ui/host";
+import { EmptyState } from "../../../../components/ui/status";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useRafCallback } from "../../../../react/use-raf-callback";
 import { measurePerf } from "../../../../utils/perf-marks";
@@ -25,11 +26,11 @@ import {
 } from "../../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
 import { useScrollbarActivity } from "../scrollbar-activity";
+import { useHorizontalScrollEdges } from "../host/overflow-fade";
 import {
   CSS_BG,
-  CSS_TEXT_BRIGHT,
+  CSS_PANEL,
   CSS_TEXT_DIM,
-  cellTextStyle,
   tableHeaderPx,
   toCellX,
   toCellY,
@@ -43,6 +44,32 @@ interface VirtualRow {
   key: string | number;
   size: number;
   start: number;
+}
+
+/** Width of the fade that marks columns hidden past a horizontal edge. */
+const OVERFLOW_FADE_PX = 28;
+
+/**
+ * A fade over one horizontal edge of the table, drawn above the scroller
+ * rather than as a mask on it so the vertical scrollbar stays crisp. The
+ * header band fades into the header colour and the rows into the table's.
+ */
+function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number): CSSProperties {
+  const direction = side === "left" ? "to left" : "to right";
+  const headerPx = tableHeaderPx();
+  return {
+    position: "absolute",
+    top: 0,
+    bottom: bottomPx,
+    [side]: offsetPx,
+    width: OVERFLOW_FADE_PX,
+    zIndex: 3,
+    pointerEvents: "none",
+    background: [
+      `linear-gradient(${direction}, transparent, ${CSS_PANEL}) 0 0 / 100% ${headerPx}px no-repeat`,
+      `linear-gradient(${direction}, transparent, ${CSS_BG}) 0 ${headerPx}px / 100% calc(100% - ${headerPx}px) no-repeat`,
+    ].join(", "),
+  };
 }
 
 export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
@@ -103,8 +130,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     [columnGap, columns, horizontalPadding],
   );
   const gridTemplateColumns = useMemo(
-    () => buildTableGridTemplateColumns(columns, fillAvailableWidth),
-    [columns, fillAvailableWidth],
+    () => buildTableGridTemplateColumns(columns, fillAvailableWidth, columnGap),
+    [columnGap, columns, fillAvailableWidth],
   );
   const selectRow = useCallback((item: T, index: number) => {
     onSelect(item, index);
@@ -285,7 +312,23 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     }
   }, [bodyHorizontal.bar, headerHorizontal.bar, horizontalScrollEnabled]);
 
+  const overflowEdges = useHorizontalScrollEdges(bodyElementRef, [horizontalScrollEnabled]);
+  // A frozen first column already covers what scrolls under it, so the left
+  // fade starts past it and its gap.
+  const [frozenEdgePx, setFrozenEdgePx] = useState(0);
+  useLayoutEffect(() => {
+    const body = bodyElementRef.current;
+    const frozenCell = freezeFirstColumn && overflowEdges.start
+      ? body?.querySelector<HTMLElement>('[data-gloom-role="data-table-header-cell"]')
+      : null;
+    const next = frozenCell && body
+      ? Math.max(0, frozenCell.getBoundingClientRect().right - body.getBoundingClientRect().left + columnGap * WEB_CELL_WIDTH)
+      : 0;
+    setFrozenEdgePx((current) => current === next ? current : next);
+  }, [columnGap, columns, freezeFirstColumn, overflowEdges.start, viewportWidth]);
+
   const rootStyle: CSSProperties = {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     flex: "1 1 0px",
@@ -370,6 +413,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           {items.length === 0 ? (
             emptyContent ?? (
               <div
+                data-gloom-role="data-table-empty"
                 style={{
                   width: viewportWidth > 0 ? viewportWidth * WEB_CELL_WIDTH : "100%",
                   maxWidth: "100%",
@@ -381,16 +425,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                   lineHeight: "var(--cell-h)",
                 }}
               >
-                {/* cellTextStyle is inline-block for real cells, so the title and
-                    hint would share one line and read as a single run-on string. */}
-                <div style={{ ...cellTextStyle(CSS_TEXT_BRIGHT, TextAttributes.BOLD), display: "block", whiteSpace: "normal", overflowWrap: "anywhere" }}>
-                  {emptyStateTitle}
-                </div>
-                {emptyStateHint ? (
-                  <div style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), display: "block", whiteSpace: "normal", overflowWrap: "anywhere" }}>
-                    {emptyStateHint}
-                  </div>
-                ) : null}
+                <EmptyState title={emptyStateTitle} hint={emptyStateHint} />
               </div>
             )
           ) : measurePerf(
@@ -455,6 +490,20 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           ) : null}
         </div>
       </div>
+      {horizontalScrollEnabled && overflowEdges.start ? (
+        <div
+          data-gloom-role="data-table-overflow-fade"
+          data-gloom-edge="left"
+          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom)}
+        />
+      ) : null}
+      {horizontalScrollEnabled && overflowEdges.end ? (
+        <div
+          data-gloom-role="data-table-overflow-fade"
+          data-gloom-edge="right"
+          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom)}
+        />
+      ) : null}
     </div>
   );
 }

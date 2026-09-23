@@ -160,10 +160,10 @@ describe("AlertsPane", () => {
     await renderSettled();
     const frame = testSetup.captureCharFrame();
 
-    expect(frame).toContain("State");
-    expect(frame).toContain("Symbol");
-    expect(frame).toContain("Current");
-    expect(frame).toContain("Away");
+    expect(frame).toContain("STATE");
+    expect(frame).toContain("SYMBOL");
+    expect(frame).toContain("CURRENT");
+    expect(frame).toContain("AWAY");
     expect(frame).toContain("AAPL");
     expect(frame).toContain("MSFT");
     expect(frame).toContain("[a]dd alert");
@@ -191,9 +191,9 @@ describe("AlertsPane", () => {
     await renderSettled();
     const frame = testSetup.captureCharFrame();
 
-    expect(frame).toContain("State");
-    expect(frame).toContain("Current");
-    expect(frame).toContain("Target");
+    expect(frame).toContain("STATE");
+    expect(frame).toContain("CURRENT");
+    expect(frame).toContain("TARGET");
     expect(frame).toContain("200");
     expect(frame).toContain("[a]dd alert");
   });

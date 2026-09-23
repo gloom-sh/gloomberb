@@ -11,7 +11,7 @@ import { createDomTestHarness } from "../test-utils";
 import { WEB_CELL_HEIGHT } from "../input-host";
 import { WebDataTable } from ".";
 
-const { window: testWindow, render } = createDomTestHarness({ withUi: false });
+const { window: testWindow, render } = createDomTestHarness();
 const items = Array.from({ length: 100 }, (_, index) => index);
 
 test("controlled centering keeps following late quotes until the user scrolls", async () => {

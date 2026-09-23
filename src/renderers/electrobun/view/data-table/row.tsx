@@ -8,8 +8,9 @@ import type {
   DataTableProps,
   DataTableSectionHeader,
 } from "../../../../components/ui/data-table";
+import { tableColumnLeadGap } from "../../../../components/ui/table-layout";
+import { WebIcon } from "../desktop/icons";
 import { useFrozenColumnInsets } from "./frozen-column";
-import { displayWidth } from "../../../../utils/format";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
 import {
   CSS_BG,
@@ -26,29 +27,9 @@ import {
   eventWithCellCoordinates,
 } from "./dom";
 
-function renderHeaderLabel<C extends DataTableColumn>(
-  column: C,
-  sortColumnId: string | null,
-  sortDirection: "asc" | "desc",
-) {
-  const isSorted = sortColumnId === column.id;
-  const indicator = isSorted ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
-  return {
-    isSorted,
-    text: column.label + indicator,
-  };
-}
-
-/**
- * Keep one blank cell between a right-aligned header and a left-aligned
- * neighbour, as fitTableHeaderText does in the terminal; otherwise the two
- * labels read as one ("1Y 1D MOVE").
- */
-function headerTouchesNext<C extends DataTableColumn>(columns: readonly C[], index: number, text: string): boolean {
-  const next = columns[index + 1];
-  return !!next && columns[index]!.align === "right" && (next.align ?? "left") === "left"
-    && displayWidth(text) < columns[index]!.width;
-}
+/** Space between a header label and its sort marker. */
+const SORT_MARKER_GAP_PX = 4;
+const SORT_MARKER_SIZE_PX = 9;
 
 function contentJustifyForAlign(align: string | undefined): CSSProperties["justifyContent"] {
   if (align === "right") return "flex-end";
@@ -58,6 +39,16 @@ function contentJustifyForAlign(align: string | undefined): CSSProperties["justi
 
 function columnGapCss(columnGap: number): CSSProperties["columnGap"] {
   return columnGap === 0 ? 0 : `calc(${columnGap} * var(--cell-w))`;
+}
+
+/**
+ * The extra blank before a left-aligned column that follows a right-aligned
+ * one. Its grid track already includes it; the cell steps past it as a margin,
+ * so the frozen-column inset measured from the cell box stays right.
+ */
+function leadGapCss<C extends DataTableColumn>(columns: readonly C[], index: number, columnGap: number): CSSProperties["marginLeft"] {
+  const lead = tableColumnLeadGap(columns, index, columnGap);
+  return lead === 0 ? undefined : `calc(${lead} * var(--cell-w))`;
 }
 
 function inlinePaddingPx(horizontalPadding: number): number {
@@ -87,7 +78,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   focusPane: () => void;
   onTableMouseDown?: (event: any) => void;
   gridTemplateColumns: string;
-  onHeaderClick: (columnId: string) => void;
+  onHeaderClick?: (columnId: string) => void;
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
 }) {
@@ -114,52 +105,64 @@ export function WebDataTableHeader<C extends DataTableColumn>({
       }}
     >
       {columns.map((column, columnIndex) => {
-        const { isSorted, text } = renderHeaderLabel(
-          column,
-          sortColumnId,
-          sortDirection,
-        );
+        const isSorted = sortColumnId === column.id;
+        const color = isSorted ? CSS_TEXT : column.headerColor ?? CSS_TEXT_DIM;
         return (
           <div
             key={column.id}
             data-gloom-role="data-table-header-cell"
-            data-gloom-interactive="true"
+            data-gloom-interactive={onHeaderClick ? "true" : undefined}
+            data-gloom-tinted={column.headerColor ? "true" : undefined}
             style={{
               minWidth: 0,
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
               zIndex: freezeFirstColumn && columnIndex === 0 ? 1 : undefined,
+              marginLeft: leadGapCss(columns, columnIndex, columnGap),
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
-              paddingRight: headerTouchesNext(columns, columnIndex, text) ? WEB_CELL_WIDTH : undefined,
               boxSizing: "border-box",
               height: tableHeaderPx(),
               overflow: "hidden",
+              // The sort marker sits on the side away from the column's
+              // alignment, inside the two cells every column reserves for it,
+              // so a label never moves when sorting reaches it and a
+              // right-aligned label stays flush over its numbers.
+              display: "flex",
+              alignItems: "center",
+              justifyContent: contentJustifyForAlign(column.align),
+              gap: column.label ? SORT_MARKER_GAP_PX : 0,
               backgroundColor: column.headerBackgroundColor ?? CSS_PANEL,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${column.headerBackgroundColor ?? CSS_PANEL}` : undefined,
             }}
-            onMouseDown={(event) => {
+            onMouseDown={onHeaderClick ? (event) => {
               focusPane();
               onTableMouseDown?.(event);
               event.preventDefault();
               onHeaderClick(column.id);
-            }}
+            } : undefined}
           >
             <span
-              title={text}
+              title={column.label || undefined}
               style={{
-                ...clippedCellTextStyle(
-                  column,
-                  isSorted ? CSS_TEXT : column.headerColor ?? CSS_TEXT_DIM,
-                  TextAttributes.BOLD,
-                ),
+                ...clippedCellTextStyle(column, color, TextAttributes.BOLD),
+                width: "auto",
+                flex: "0 1 auto",
                 // Fill the chrome-height header row so labels sit on its
                 // centre line like the pane header and query bar above.
                 lineHeight: `${tableHeaderPx()}px`,
                 whiteSpace: "pre",
               }}
             >
-              {text}
+              {column.label}
             </span>
+            {isSorted ? (
+              <span
+                data-gloom-role="data-table-sort-marker"
+                style={{ display: "flex", flex: "none", color, order: column.align === "right" ? -1 : undefined }}
+              >
+                <WebIcon name={sortDirection === "asc" ? "sort-up" : "sort-down"} size={SORT_MARKER_SIZE_PX} />
+              </span>
+            ) : null}
           </div>
         );
       })}
@@ -331,6 +334,7 @@ function WebDataTableRowInner<
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
               zIndex: freezeFirstColumn && columnIndex === 0 ? 1 : undefined,
+              marginLeft: leadGapCss(columns, columnIndex, columnGap),
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,

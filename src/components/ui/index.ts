@@ -31,6 +31,8 @@ export { TextField, NumberField } from "./fields";
 export { QueryBar } from "./query-bar";
 export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./field-grid";
 export type { FieldGridProps, GridField } from "./field-grid";
+export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
+export type { StatGridProps, StatItem } from "./stat-grid";
 export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
 export type { TextFieldProps, NumberFieldProps } from "./fields";
 

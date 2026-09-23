@@ -139,7 +139,7 @@ describe("TeamPane", () => {
     await flush();
     const frame = setup!.captureCharFrame();
     if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("Invite by username");
+    expect(frame).toContain("INVITE BY USERNAME");
     expect(frame).toContain("@sneh");
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
     expect(frame).toContain("3 uses");
@@ -178,7 +178,7 @@ describe("TeamPane", () => {
     expect(frame).toContain("MD· Macro Desk");
     expect(frame).toContain("Members can share invite links");
     expect(frame).toContain("Save changes");
-    expect(frame).toContain("Delete team");
+    expect(frame).toContain("DELETE TEAM");
 
     await act(async () => {
       requestTeamPaneView({ teamId: "org-1", section: "channels" });
@@ -186,7 +186,7 @@ describe("TeamPane", () => {
     await flush();
     frame = setup!.captureCharFrame();
     if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("New channel");
+    expect(frame).toContain("NEW CHANNEL");
     expect(frame).toContain("earnings-season");
   });
 

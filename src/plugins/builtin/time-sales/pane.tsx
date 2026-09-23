@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
-import { DataTableStackView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
+import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -60,6 +60,15 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   const rows: TapeRow[] = useMemo(() => !data ? [] : tab === "quotes"
     ? newestFirst(data.quotes).map((quote) => ({ id: quoteKey(quote), quote }))
     : newestFirst(data.trades).map((trade) => ({ id: tradeKey(trade), trade })), [data, tab]);
+  const spreads = useMemo(() => {
+    const quotes = data?.quotes ?? [];
+    const bps = quotes.map((quote) => quoteSpread(quote)).filter((spread) => spread.state === "normal" && spread.bps != null).map((spread) => spread.bps!).sort((a, b) => a - b);
+    return {
+      median: bps.length ? bps[Math.floor((bps.length - 1) / 2)]! : null,
+      widest: bps.length ? bps[bps.length - 1]! : null,
+      abnormal: quotes.filter((quote) => { const state = quoteSpread(quote).state; return state === "locked" || state === "crossed"; }).length,
+    };
+  }, [data]);
   const tradeDigits = useMemo(() => tapePriceDigits(data?.trades.map((trade) => trade.price) ?? []), [data]);
   const quoteDigits = useMemo(() => tapePriceDigits(data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []), [data]);
   const freeze = () => { setPaused(frozen || !resource.data ? null : { data: resource.data, epoch: resource.epoch }); setDetail(null); };
@@ -89,11 +98,17 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         sortColumnId={null} sortDirection="desc" onHeaderClick={noop} freezeFirstColumn
         detailOpen={!!detail && !!resource.data} onBack={() => setDetail(null)} detailTitle={detail?.trade ? `Trade ${detail.trade.id}` : "Quote"}
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
-        rootBefore={<Box flexDirection="column" flexShrink={0} paddingX={1}>
-          <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null, tradeDigits)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClockMs(stats.asOf) : "--"} UTC`} />
-          <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap, tradeDigits)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClockMs(stats.from) : "--"} to ${stats.asOf ? tapeClockMs(stats.asOf) : "--"}`} />
-          <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low, tradeDigits)} to ${tapePrice(data.session.high, tradeDigits)} · ${tapeTimeSeconds(data.session.asOf)} UTC` : undefined} />
-        </Box>}
+        rootBefore={<StatGrid width={width} items={[
+          ...(tab === "quotes" ? [
+            { id: "spread", label: "Spread", value: spreads.median == null ? "--" : `${spreads.median.toFixed(2)} bp`, detail: "median" },
+            { id: "widest", label: "Widest", value: spreads.widest == null ? "--" : `${spreads.widest.toFixed(2)} bp` },
+            ...(spreads.abnormal ? [{ id: "abnormal", label: "Locked", value: String(spreads.abnormal), tone: "warning" as const, detail: "or crossed" }] : []),
+          ] : [
+            { id: "vwap", label: "VWAP", value: tapePrice(stats.vwap, tradeDigits), detail: `${tapeQuantity(stats.volume)} shares since ${stats.from ? tapeClockMs(stats.from) : "--"}` },
+            { id: "range", label: "Range", value: `${tapePrice(stats.low, tradeDigits)} to ${tapePrice(stats.high, tradeDigits)}`, detail: `last ${rank(stats.pricePercentile)}` },
+          ]),
+          ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, tradeDigits)} to ${tapePrice(data.session.high, tradeDigits)}` }] : []),
+        ]} />}
         renderCell={(row, column) => {
           if (row.trade) {
             const trade = row.trade;

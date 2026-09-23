@@ -17,8 +17,36 @@ import { callMouseHandler } from "./mouse";
 import { cleanDomProps, commonStyle } from "./style";
 import { useScrollbarActivity } from "../scrollbar-activity";
 
+type InsetSide = "Left" | "Right" | "Top" | "Bottom";
+
+function insetCells(source: Record<string, unknown>, kind: "padding" | "margin", side: InsetSide): number {
+  const axis = side === "Left" || side === "Right" ? "X" : "Y";
+  const value = source[`${kind}${side}`] ?? source[`${kind}${axis}`] ?? source[kind];
+  return typeof value === "number" ? value : 0;
+}
+
+/**
+ * OpenTUI lays a ScrollBox's children out in an inner content box styled by
+ * `contentOptions`, so panes pad scrolled content there. The DOM scroller is
+ * its own content box: the content padding and margins go on it as padding,
+ * on top of the ScrollBox's own, so the content does not sit flush against
+ * the pane border.
+ */
+function contentInsetStyle(props: Record<string, unknown>, contentOptions: unknown): CSSProperties {
+  if (!contentOptions || typeof contentOptions !== "object") return {};
+  const options = contentOptions as Record<string, unknown>;
+  const style: CSSProperties = {};
+  for (const side of ["Left", "Right", "Top", "Bottom"] as const) {
+    const extra = insetCells(options, "padding", side) + insetCells(options, "margin", side);
+    if (extra === 0) continue;
+    const unit = side === "Left" || side === "Right" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT;
+    style[`padding${side}`] = `${(insetCells(props, "padding", side) + extra) * unit}px`;
+  }
+  return style;
+}
+
 export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unknown> & { children?: ReactNode }>(
-  function WebScrollBox({ children, ...props }, ref) {
+  function WebScrollBox({ children, contentOptions, ...props }, ref) {
     const elementRef = useRef<HTMLDivElement | null>(null);
     const isHeaderLikeScroller = props.scrollX === true && props.scrollY !== true && props.height === 1;
     /**
@@ -269,6 +297,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         onWheel={scrollable ? handleWheel : undefined}
         style={{
           ...commonStyle(props),
+          ...contentInsetStyle(props, contentOptions),
           overflowX,
           overflowY,
           ...(props.style as CSSProperties | undefined),

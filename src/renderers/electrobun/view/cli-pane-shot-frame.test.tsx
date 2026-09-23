@@ -9,7 +9,7 @@ import { WebInputHostProvider } from "./input-host";
 import { WebDialogHostProvider } from "./dialog-host";
 import { createDomTestHarness } from "./test-utils";
 import { PaneShotFrame } from "./cli-pane-shot-frame";
-import { nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
+import { nativePaneFooterRows, nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
 
 const { render } = createDomTestHarness({ withUi: false });
 const renderer: RendererHost = {
@@ -46,7 +46,7 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   const bodyHeight = () => Number(root.querySelector("[data-body-height]")?.getAttribute("data-body-height"));
   // 24 rows less the desktop header, and less the footer row when one shows.
   const withoutFooter = 24 - nativePaneHeaderRows();
-  const withFooter = withoutFooter - 1;
+  const withFooter = withoutFooter - nativePaneFooterRows();
   expect(root.textContent).toContain("Research data");
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withoutFooter);

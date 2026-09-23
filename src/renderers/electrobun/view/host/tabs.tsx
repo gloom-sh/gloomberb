@@ -8,6 +8,9 @@ import {
 } from "react";
 import type { HostTabsProps } from "../../../../ui/host";
 import { WEB_CELL_HEIGHT } from "../input-host";
+import { WebIcon, WebIconButton } from "../desktop/icons";
+import { WebMenu } from "../desktop/menu";
+import { WebPopover } from "../desktop/popover";
 import { useHorizontalOverflow } from "./overflow-fade";
 import { useTopSurfaceColor } from "./top-surface";
 
@@ -36,6 +39,7 @@ export function WebTabs({
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
   const [dragSourceValue, setDragSourceValue] = useState<string | null>(null);
   const [dragTargetValue, setDragTargetValue] = useState<string | null>(null);
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
   const header = variant === "header";
   const showUnderline = variant === "underline" && !compact;
   // A tab bar occupies exactly the one row every caller reserves for it. Any
@@ -60,6 +64,22 @@ export function WebTabs({
 
   // A strip wider than its pane scrolls sideways; fade the edge hiding tabs.
   const overflow = useHorizontalOverflow(tabListRef, [tabs]);
+  // The fade is set exactly while some tab is out of view.
+  const overflowing = overflow.maskStyle.maskImage !== undefined;
+  useEffect(() => {
+    if (!overflowing) setOverflowMenuOpen(false);
+  }, [overflowing]);
+
+  const selectFromOverflowMenu = (value: string) => {
+    setOverflowMenuOpen(false);
+    onSelect(value);
+    // Also when the chosen tab was already active, so the effect above does not run.
+    requestAnimationFrame(() => {
+      tabListRef.current
+        ?.querySelector<HTMLElement>(`[data-tab-value="${CSS.escape(value)}"]`)
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+  };
   // The active title-bar tab opens into the pane, so it takes the colour of
   // whatever is directly under it.
   useTopSurfaceColor(tabListRef, header, [activeValue, tabs, focused]);
@@ -139,7 +159,7 @@ export function WebTabs({
   const dragTargetIndex = tabs.findIndex((tab) => tab.value === dragTargetValue);
   const dragSlotWidth = dragSourceWidthRef.current + (dense ? 2 : 4);
 
-  return (
+  const tabList = (
     <div
       ref={tabListRef}
       data-gloom-role="tab-list"
@@ -153,7 +173,7 @@ export function WebTabs({
         width: "100%",
         height: listHeight,
         minInlineSize: 0,
-        flexShrink: 0,
+        flexShrink: header ? 1 : 0,
         overflowX: "auto",
         overflowY: "hidden",
         paddingInline: header || variant === "underline" || dense ? 0 : 4,
@@ -294,7 +314,7 @@ export function WebTabs({
                   tab.onClose?.(tab.value);
                 }}
               >
-                {"x"}
+                <WebIcon name="close" size={10} />
               </span>
             )}
             {showUnderline && (
@@ -346,19 +366,68 @@ export function WebTabs({
             transition: "background-color 110ms ease, color 110ms ease",
             cursor: "pointer",
           } as CssVars}
+          aria-label={addLabel === "+" ? "Add tab" : undefined}
           onMouseEnter={() => setHoveredValue("__add__")}
           onMouseLeave={() => setHoveredValue((current) => (current === "__add__" ? null : current))}
           onClick={onAdd}
         >
-          <span
-            data-gloom-role="tab-label"
-            style={{
-              display: "block",
-            }}
-          >
-            {addLabel}
-          </span>
+          {addLabel === "+" ? (
+            <WebIcon name="plus" size={11} />
+          ) : (
+            <span
+              data-gloom-role="tab-label"
+              style={{
+                display: "block",
+              }}
+            >
+              {addLabel}
+            </span>
+          )}
         </button>
+      )}
+    </div>
+  );
+
+  if (!header) return tabList;
+
+  // Title-bar strips can hold more tabs than the pane is wide (a research
+  // pane has two dozen). A chevron after the strip lists every tab.
+  return (
+    <div data-gloom-role="tab-strip" style={{ display: "flex", flexDirection: "row", width: "100%", height: "100%", minWidth: 0 }}>
+      {tabList}
+      {overflowing && (
+        <div data-gloom-role="tab-overflow" className="gloom-tab-overflow">
+          <WebPopover
+            open={overflowMenuOpen}
+            onOpenChange={setOverflowMenuOpen}
+            placement="bottom-end"
+            minWidth={170}
+            label="Tabs"
+            density="menu"
+            trigger={(
+              <WebIconButton
+                icon="chevron-down"
+                label="All tabs"
+                hasPopup="menu"
+                size={10}
+                onPress={() => setOverflowMenuOpen((open) => !open)}
+              />
+            )}
+          >
+            <WebMenu
+              label="Tabs"
+              selection="single"
+              items={tabs.map((tab) => ({
+                id: tab.value,
+                label: tab.label,
+                disabled: tab.disabled,
+                selected: tab.value === activeValue,
+              }))}
+              onSelect={selectFromOverflowMenu}
+              onClose={() => setOverflowMenuOpen(false)}
+            />
+          </WebPopover>
+        </div>
       )}
     </div>
   );

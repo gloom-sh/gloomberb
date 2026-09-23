@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { HostQueryBarItem, HostQueryBarProps } from "../../../../ui/host";
 import { WebPopover } from "./popover";
 import { WebMenu } from "./menu";
@@ -7,6 +7,9 @@ import { useHorizontalOverflow } from "../host/overflow-fade";
 import { StackHeaderContext } from "./stack-header";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
+
+/** Input width of a text filter that names none, in cells (the terminal's default). */
+const DEFAULT_TEXT_FIELD_CELLS = 20;
 
 function Chevron() {
   return <span className="gloom-qb-chevron"><WebIcon name="chevron-down" size={9} /></span>;
@@ -48,14 +51,20 @@ function TextField({ item }: { item: HostQueryBarItem }) {
       className="gloom-qb-search gloom-qb-textfield"
       data-active={item.active ? "true" : undefined}
       data-narrowing={item.narrowing ? "true" : undefined}
-      style={item.width ? { width: `calc(${item.width} * var(--cell-w))` } : undefined}
       onMouseDown={(event) => {
         event.stopPropagation();
         if (!item.active) item.onActivate?.();
       }}
     >
       <span className="gloom-qb-label">{item.label}</span>
-      <div className="gloom-qb-search-input">{item.node}</div>
+      {/* The width sizes the input, as in the terminal; the segment grows to
+          fit the label beside it. */}
+      <div
+        className="gloom-qb-search-input"
+        style={{ "--qb-input-w": `calc(${item.width ?? DEFAULT_TEXT_FIELD_CELLS} * var(--cell-w))` } as CSSProperties}
+      >
+        {item.node}
+      </div>
       {item.narrowing ? (
         <span
           className="gloom-qb-reset"
@@ -246,7 +255,14 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
   }
 
   return (
-    <div ref={rootRef} className="gloom-qb" data-gloom-role="query-bar" data-gloom-top-surface="">
+    <div
+      ref={rootRef}
+      className="gloom-qb"
+      data-gloom-role="query-bar"
+      data-gloom-top-surface=""
+      // A search with nothing beside it may take the room the filters would.
+      data-search-only={search && items.length === 0 && !view ? "true" : undefined}
+    >
       <div ref={scrollRef} className="gloom-qb-scroll" style={overflow.maskStyle} onWheel={overflow.onWheel}>
       {stack && stackAttached && (
         <>

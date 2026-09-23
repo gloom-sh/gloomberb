@@ -19,6 +19,23 @@ const HEADER_RESERVED_WIDTH = 2;
 export const TABLE_COLUMN_GAP = 1;
 
 /**
+ * Blank cells a column gets on top of the regular gap. A right-aligned value
+ * ends on its column edge and a left-aligned one starts on the next, so one
+ * blank reads as a word space ("47 60 sessions"); a second keeps them apart.
+ * Tables that set no gap pack their columns on purpose and get none.
+ */
+export function tableColumnLeadGap(
+  columns: readonly TableWidthColumn[],
+  index: number,
+  columnGap = TABLE_COLUMN_GAP,
+): number {
+  if (index <= 0 || columnGap <= 0) return 0;
+  const previous = columns[index - 1];
+  const column = columns[index];
+  return previous?.align === "right" && (column?.align ?? "left") === "left" ? 1 : 0;
+}
+
+/**
  * Width a column actually needs: its configured data width, but never less than
  * its own header label plus the sort indicator, so a header is only ever
  * shortened when the pane itself is too narrow for it.
@@ -79,7 +96,26 @@ export function getTableWidth(
   columnGap = 1,
   horizontalPadding = 1,
 ): number {
-  return columns.reduce((sum, column) => sum + tableColumnWidth(column) + columnGap, horizontalPadding * 2);
+  return columns.reduce(
+    (sum, column, index) => sum + tableColumnLeadGap(columns, index, columnGap) + tableColumnWidth(column) + columnGap,
+    horizontalPadding * 2,
+  );
+}
+
+/**
+ * Where each column's content starts, in cells from the first column, counting
+ * the gap after every column and any lead gap before it. Takes columns already
+ * at their drawn width (after normalizeTableColumns or expandTableColumns).
+ */
+export function tableColumnStarts(columns: readonly TableWidthColumn[], columnGap = 1): number[] {
+  const starts: number[] = [];
+  let offset = 0;
+  columns.forEach((column, index) => {
+    offset += tableColumnLeadGap(columns, index, columnGap);
+    starts.push(offset);
+    offset += column.width + columnGap;
+  });
+  return starts;
 }
 
 export function hasMeaningfulTableHorizontalOverflow(
@@ -139,20 +175,27 @@ function cellWidthCss(width: number): string {
   return `calc(${width} * ${WEB_CELL_UNIT})`;
 }
 
+/**
+ * Grid tracks for the desktop table. A column's lead gap is part of its own
+ * track (the cell sits after it as a margin), so the tracks add up to
+ * getTableWidth and the row and header grids stay in step.
+ */
 export function buildTableGridTemplateColumns(
   columns: readonly TableWidthColumn[],
   fillAvailableWidth = true,
+  columnGap = TABLE_COLUMN_GAP,
 ): string {
   const hasFlexColumn = columns.some((column) => (column.flexGrow ?? 0) > 0);
   return columns
-    .map((column) => {
-      const width = tableColumnWidth(column);
-      const minWidth = cellWidthCss(columnMinCh(column));
+    .map((column, index) => {
+      const lead = tableColumnLeadGap(columns, index, columnGap);
+      const width = tableColumnWidth(column) + lead;
+      const minWidth = cellWidthCss(columnMinCh(column) + lead);
       if (!fillAvailableWidth) {
         return `minmax(${minWidth}, ${cellWidthCss(width)})`;
       }
       if (!hasFlexColumn || (column.flexGrow ?? 0) > 0) {
-        return `minmax(${minWidth}, ${columnFlexWeight(column)}fr)`;
+        return `minmax(${minWidth}, ${columnFlexWeight(column) + lead}fr)`;
       }
       return `minmax(${minWidth}, ${cellWidthCss(width)})`;
     })

@@ -367,7 +367,7 @@ export interface HostQueryBarItem {
   node?: ReactNode;
   active?: boolean;
   onActivate?(): void;
-  /** Text filters: the field width in cells. */
+  /** Text filters: the input width in cells, not counting the label. */
   width?: number;
   checked?: boolean;
   options: HostQueryBarOption[];

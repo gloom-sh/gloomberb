@@ -119,8 +119,6 @@ function getTickerKey(ticker: TickerRecord): string {
   return ticker.metadata.ticker;
 }
 
-function ignoreHeaderClick(): void {}
-
 export function TickerListTableView({
   focused = false,
   rootBefore,
@@ -296,7 +294,7 @@ export function TickerListTableView({
       items={tickers}
       sortColumnId={sortColumnId ?? null}
       sortDirection={sortDirection}
-      onHeaderClick={onHeaderClick ?? ignoreHeaderClick}
+      onHeaderClick={onHeaderClick}
       getItemKey={getTickerKey}
       selection={selection}
       onCursorChange={onCursorChange}

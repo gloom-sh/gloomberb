@@ -16,6 +16,7 @@ import { useShortcut } from "../../../react/input";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
@@ -1371,6 +1372,15 @@ function legendValue(
   return formatValue ? formatValue(value, series) : formatCompositeSeriesValue(value, series);
 }
 
+const LISTED_TICKER_PATTERN = /(^|[\s(])([A-Z0-9^][A-Z0-9.^=/-]*):([A-Z0-9]{2,})(?=$|[\s),])/g;
+
+/** `Volume AAPL:XNAS Price` → `Volume AAPL Price`, for a legend name that must shorten. */
+function withoutListingExchange(label: string): string {
+  return label.replace(LISTED_TICKER_PATTERN, (match, lead: string, symbol: string, exchange: string) => (
+    CANONICAL_EXCHANGE_ALIASES[exchange] ? `${lead}${symbol}` : match
+  ));
+}
+
 function CompositeLegend({
   scene,
   series,
@@ -1425,55 +1435,75 @@ function CompositeLegend({
       && cursorValue?.value != null && Number.isFinite(cursorValue.value)
       ? `Value ${cursorValue.value} ${entry.unit}` : "";
     const tooltip = [fullText, exactTotal, details].filter(Boolean).join(" · ");
-    // Keep the value (including its sign/unit) intact. Long names may shorten;
-    // oversized values remain reachable through the scrollable legend.
-    const labelWidth = Math.max(0, 30 - (valueText ? displayWidth(valueText) + 1 : 0));
-    const text = [truncateToDisplayWidth(entry.label, labelWidth), valueText].filter(Boolean).join(" ");
-    const textWidth = Math.max(1, displayWidth(text));
+    const label = entry.label;
+    const compactLabel = withoutListingExchange(label);
+    const labelWidth = displayWidth(label);
+    const text = [label, valueText].filter(Boolean).join(" ");
     return {
       entry,
+      label,
+      compactLabel,
       text,
-      width: textWidth + 2,
+      width: Math.max(1, displayWidth(text)) + 2,
       labelWidth,
       valueText,
       toggleable,
       tooltip,
     };
   });
-  let desiredSeriesWidth = entries.reduce(
+  type LegendEntry = (typeof entries)[number];
+  const setEntryLabel = (target: LegendEntry, label: string, labelWidth: number) => {
+    target.label = label;
+    target.labelWidth = labelWidth;
+    target.text = [truncateToDisplayWidth(label, labelWidth), target.valueText].filter(Boolean).join(" ");
+    target.width = Math.max(1, displayWidth(target.text)) + 2;
+  };
+  const measureSeriesWidth = () => entries.reduce(
     (total, entry, index) => total + entry.width + (index > 0 ? 1 : 0),
     0,
   );
+  // One cell in from the pane border, so the first marker and the legend text
+  // line up with the query bar and tables above and below the chart.
+  const inset = width > 1 ? 1 : 0;
+  const innerWidth = Math.max(0, width - inset);
   const resolvedAccessoryWidth = accessory
-    ? Math.max(1, Math.min(width, Math.floor(accessoryWidth ?? 14)))
+    ? Math.max(1, Math.min(innerWidth, Math.floor(accessoryWidth ?? 14)))
     : 0;
-  const reservedAccessoryGap = accessory && width > resolvedAccessoryWidth ? 1 : 0;
+  const reservedAccessoryGap = accessory && innerWidth > resolvedAccessoryWidth ? 1 : 0;
   // The cursor date lives on the time axis, where the crosshair points at it.
-  const widthBeforeAccessory = Math.max(0, width - resolvedAccessoryWidth - reservedAccessoryGap);
-  // A slightly overflowing row should shorten names before hiding a value's
-  // final digits/unit under the accessory. Keep a readable name fragment; if
-  // the full row cannot fit even then, retain its existing scrollable layout.
+  const widthBeforeAccessory = Math.max(0, innerWidth - resolvedAccessoryWidth - reservedAccessoryGap);
+  // Names get the room the row has. When it overflows, the widest name
+  // shortens first: its listing exchange goes before any of the name is cut.
+  // The value (including its sign/unit) always stays intact. If the row cannot
+  // fit even with every name at a readable fragment, it keeps the old 30-cell
+  // entries and scrolls.
   const minimumSeriesWidth = entries.reduce((total, entry, index) => {
-    const text = [truncateToDisplayWidth(entry.entry.label, Math.min(8, entry.labelWidth)), entry.valueText]
+    const text = [truncateToDisplayWidth(entry.compactLabel, Math.min(8, displayWidth(entry.compactLabel))), entry.valueText]
       .filter(Boolean).join(" ");
     return total + Math.max(1, displayWidth(text)) + 2 + (index > 0 ? 1 : 0);
   }, 0);
   if (minimumSeriesWidth <= widthBeforeAccessory) {
-    while (desiredSeriesWidth > widthBeforeAccessory) {
-      const shrinkable = entries.filter((entry) => entry.labelWidth > 8)
+    while (measureSeriesWidth() > widthBeforeAccessory) {
+      const shrinkable = entries
+        .filter((entry) => entry.label !== entry.compactLabel || entry.labelWidth > 8)
         .sort((left, right) => right.labelWidth - left.labelWidth)[0];
       if (!shrinkable) break;
-      const previousWidth = shrinkable.width;
-      shrinkable.labelWidth -= 1;
-      shrinkable.text = [truncateToDisplayWidth(shrinkable.entry.label, shrinkable.labelWidth), shrinkable.valueText]
-        .filter(Boolean).join(" ");
-      shrinkable.width = Math.max(1, displayWidth(shrinkable.text)) + 2;
-      desiredSeriesWidth -= previousWidth - shrinkable.width;
+      if (shrinkable.label !== shrinkable.compactLabel) {
+        setEntryLabel(shrinkable, shrinkable.compactLabel, Math.min(shrinkable.labelWidth, displayWidth(shrinkable.compactLabel)));
+      } else {
+        setEntryLabel(shrinkable, shrinkable.label, shrinkable.labelWidth - 1);
+      }
+    }
+  } else {
+    for (const entry of entries) {
+      const budget = Math.max(0, 30 - (entry.valueText ? displayWidth(entry.valueText) + 1 : 0));
+      if (entry.labelWidth > budget) setEntryLabel(entry, entry.compactLabel, budget);
     }
   }
+  const desiredSeriesWidth = measureSeriesWidth();
   const seriesWidth = Math.min(desiredSeriesWidth, widthBeforeAccessory);
   const accessorySpacerWidth = accessory
-    ? Math.max(reservedAccessoryGap, width - seriesWidth - resolvedAccessoryWidth)
+    ? Math.max(reservedAccessoryGap, innerWidth - seriesWidth - resolvedAccessoryWidth)
     : 0;
   const keyboardEntryStart = keyboardIndex === null || keyboardIndex === undefined
     ? null
@@ -1532,6 +1562,7 @@ function CompositeLegend({
       alignItems="flex-end"
       width={width}
       height={1}
+      paddingLeft={inset}
       overflow="visible"
       // Accessory dropdowns must escape above the sibling drawing toolbar.
       zIndex={accessory ? 40 : 20}

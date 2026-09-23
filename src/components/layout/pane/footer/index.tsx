@@ -4,6 +4,7 @@ import { colors, blendHex } from "../../../../theme/colors";
 import { getShortcutHintWidth, ShortcutHint } from "../../../ui/shortcut-hint";
 import { IconButton } from "../../../ui/icon";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
+import { nativePaneFooterRows } from "../sizing";
 import {
   EMPTY_FOOTER,
   hasPaneFooterContent,
@@ -255,7 +256,7 @@ export function PaneFooterBar({
   if (nativePaneChrome) {
     return (
       <Box
-        height={1}
+        height={nativePaneFooterRows()}
         flexDirection="row"
         paddingLeft={1}
         paddingRight={rightPadding}

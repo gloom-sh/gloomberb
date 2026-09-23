@@ -52,7 +52,8 @@ export interface DataTableProps<
   items: T[];
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
-  onHeaderClick: (columnId: string) => void;
+  /** Sorts by a column. Without it the header is plain labels and ignores clicks. */
+  onHeaderClick?: (columnId: string) => void;
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll: () => void;

@@ -4,7 +4,7 @@ import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } fro
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
-import { IconButton } from "../../ui/icon";
+import { Icon, IconButton } from "../../ui/icon";
 import type { PaneHeaderTabsRegistration } from "./header-tabs";
 import { nativePaneHeaderRows } from "./sizing";
 
@@ -148,9 +148,10 @@ export function PaneHeader({
           boxShadow: `inset 0 -1px 0 ${visuallyFocused ? colors.borderFocused : colors.border}`,
         }}
       >
-        <Text fg={visuallyFocused ? colors.borderFocused : colors.textMuted} selectable={false} data-gloom-role="pane-grip">
-          {PANE_HEADER_GRIP}
-        </Text>
+        {/* Part of the header, so it clicks and drags like the rest of it. */}
+        <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
+          <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
+        </Box>
         {/* Full header height, so trimming the title to its capitals never lets
             this clip cut descenders. */}
         <Box minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
@@ -183,6 +184,9 @@ export function PaneHeader({
               marginBottom: -1,
               marginLeft: 10,
               "--pane-tab-top-gap": `${HEADER_TAB_TOP_GAP}px`,
+              // Undoes the negative top margin for controls centred in the
+              // strip (the overflow chevron).
+              "--pane-tab-top-inset": `${topInset}px`,
               // Lifts tab labels onto the header's centre line. The tab spans
               // gap..bottom with a 1px top border; the centre line sits halfway
               // between the top rule (if any) and the bottom rule.

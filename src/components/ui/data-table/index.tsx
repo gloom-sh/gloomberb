@@ -1,4 +1,4 @@
-import { type ComponentType, useEffect, useRef } from "react";
+import { type ComponentType, useEffect, useMemo, useRef } from "react";
 import { useRendererHost, useUiHost } from "../../../ui";
 import { OpenTuiDataTable } from "./opentui";
 import type {
@@ -10,6 +10,7 @@ import { remoteNumberValue, resolveRemoteItemIndex } from "../../../remote/seman
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { createDataTableCsv } from "../../data-table/export";
+import { headerCase } from "../header-case";
 
 export type {
   DataTableCell,
@@ -60,7 +61,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
             ? (input as { columnId: string }).columnId
             : null;
         if (columnId && props.columns.some((column) => column.id === columnId)) {
-          props.onHeaderClick(columnId);
+          props.onHeaderClick?.(columnId);
         }
       },
       scrollTo: (input) => {
@@ -95,13 +96,22 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       rowCount: props.items.length,
     }),
   });
+  // Header labels read the same in every table whatever case a pane wrote
+  // them in. Exports and automation keep the pane's own labels.
+  const columns = useMemo(
+    () => props.columns.map((column) => {
+      const label = headerCase(column.label);
+      return label === column.label ? column : { ...column, label };
+    }),
+    [props.columns],
+  );
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
     | undefined;
   if (HostDataTable) {
-    return <HostDataTable {...props} />;
+    return <HostDataTable {...props} columns={columns} />;
   }
-  return <OpenTuiDataTable {...props} />;
+  return <OpenTuiDataTable {...props} columns={columns} />;
 }
 
 function resolveTableIndex<T, C extends DataTableColumn>(

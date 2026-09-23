@@ -195,11 +195,12 @@ body.gloom-dragging {
   min-height: 0;
   max-height: 100%;
 }
+/* The same chrome row as the pane header, query bar and table header. */
 [data-gloom-role="pane-footer"] {
-  flex: 0 0 var(--cell-h);
-  height: var(--cell-h);
-  min-height: var(--cell-h);
-  max-height: var(--cell-h);
+  flex: 0 0 var(--chrome-h);
+  height: var(--chrome-h);
+  min-height: var(--chrome-h);
+  max-height: var(--chrome-h);
   align-items: center;
   border-top: 1px solid color-mix(in srgb, var(--pane-footer-border-color, var(--gloom-border)) 72%, transparent);
   font-size: 11.5px;
@@ -778,7 +779,6 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    Equal padding and negative margin keep ascenders and descenders inside any
    overflow clip without changing the layout size. */
 [data-gloom-role="pane-header"] [data-gloom-role="pane-title"],
-[data-gloom-role="pane-header"] [data-gloom-role="pane-grip"],
 [data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-label"],
 .gloom-qb-label,
 .gloom-qb-value,
@@ -845,9 +845,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-menu-check { flex: none; color: var(--gloom-border-focused); display: inline-flex; }
 .gloom-menu-check svg { width: 11px; height: 11px; }
 
-/* A labelled text filter beside the search (e.g. tickers). */
-.gloom-qb-textfield { flex: 0 1 180px; min-width: 110px; }
-.gloom-qb-filters .gloom-qb-textfield { flex: none; width: calc(22 * var(--cell-w)); }
+/* A labelled text filter beside the search (e.g. tickers). Its width is the
+   input's, as in the terminal; the segment grows to fit the label. */
+.gloom-qb-textfield { flex: none; min-width: 0; }
+.gloom-qb-textfield .gloom-qb-search-input { flex: 0 0 var(--qb-input-w); width: var(--qb-input-w); }
 
 /* Field grid: a calculator's inputs as one sheet under the query bar. Same
    band surface and hairlines; each cell is label, value, unit. The cell being
@@ -905,6 +906,50 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 [data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] input { text-align: left; font-weight: 400; }
 [data-gloom-role="field-grid-unit"] { flex: none; color: var(--gloom-text-muted); }
 
+/* Stat grid: the read-only sibling of the field grid. A pane's summary figures
+   sit in the same band of hairline-split cells, so the header zone (title-bar
+   tab, query bar, figures) reads as one surface. Cells are not editable: no
+   hover, no text cursor. Each cell is label, value, muted context. */
+[data-gloom-role="stat-grid"] {
+  --sg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
+  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  box-shadow: inset 0 -1px 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-row"] {
+  display: grid !important;
+  grid-template-columns: repeat(var(--stat-columns, 3), minmax(0, 1fr));
+}
+[data-gloom-role="stat-grid-row"] + [data-gloom-role="stat-grid-row"] {
+  box-shadow: inset 0 1px 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-cell"] {
+  width: auto !important;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--cell-w);
+  box-sizing: border-box;
+  box-shadow: inset -1px 0 0 var(--sg-hairline);
+}
+[data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+[data-gloom-role="stat-grid-label"] {
+  flex: 0 0 var(--stat-label-w, 10ch);
+  width: var(--stat-label-w, 10ch);
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-gloom-role="stat-grid-value"] { flex: none; white-space: nowrap; font-weight: 600; }
+[data-gloom-role="stat-grid-detail"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Icon-only button: pane header, footer, dialog close, window controls. */
 .gloom-icon-button {
   flex: none;
@@ -931,3 +976,64 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 [data-gloom-role="field-grid-value"] button > span { justify-content: flex-end !important; text-align: right; padding-inline: 0 !important; }
 [data-gloom-role="field-grid-value"] input { padding: 0 !important; }
 [data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] { width: auto !important; }
+
+/* ===== Chrome: title-bar tab overflow, query bar edges, quick-add band ===== */
+
+/* Title-bar tabs that do not fit: a chevron after the strip lists them all.
+   The strip hangs over the header's rules; the padding puts the chevron back
+   on the header's centre line. */
+.gloom-tab-overflow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: var(--pane-tab-top-inset, 0px) 0 1px 2px;
+}
+
+/* A search with nothing beside it takes the room filters would have used. */
+.gloom-qb[data-search-only="true"] .gloom-qb-search { flex: 1 1 260px; max-width: 480px; }
+
+/* Band text starts one cell in, on the same edge as the table columns and
+   body text below it; segments after the first keep their 10px. */
+.gloom-qb-scroll > :is(.gloom-stack-back, .gloom-qb-search):first-child,
+.gloom-qb-scroll > .gloom-qb-filters:first-child > :first-child:not(.gloom-popover-anchor),
+.gloom-qb-scroll > .gloom-qb-filters:first-child > .gloom-popover-anchor:first-child > *,
+.gloom-stack-bar > .gloom-stack-back,
+[data-gloom-role="field-grid-cell"]:first-child:not([data-kind="action"]) {
+  padding-left: var(--cell-w);
+}
+
+/* Inline quick add across a pane (a watchlist's ticker field): the query bar's
+   band at the foot of the list, the field as its leading segment. */
+[data-gloom-role="inline-quick-add"][data-band="true"] {
+  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  height: var(--chrome-h);
+  padding-top: 1px;
+  align-items: stretch;
+  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  box-shadow: inset 0 1px 0 var(--qb-hairline);
+  font-size: 12px;
+  cursor: text;
+}
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] {
+  gap: 6px;
+  padding: 0 10px 0 var(--cell-w);
+  box-shadow: inset -1px 0 0 var(--qb-hairline);
+  transition: background-color 120ms ease;
+}
+[data-gloom-role="inline-quick-add"][data-band="true"]:hover [data-gloom-role="inline-quick-add-field"] { background: var(--qb-fill); }
+[data-gloom-role="inline-quick-add"][data-band="true"][data-active="true"] [data-gloom-role="inline-quick-add-field"] {
+  background: var(--qb-fill);
+  box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
+}
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] input::placeholder { color: var(--gloom-text-muted); }
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-preview"] { padding: 0 10px; }
+
+/* ===== Data table: sortable headers ===== */
+
+/* A header that sorts brightens under the pointer; plain headers (no
+   onHeaderClick) are not interactive and stay put. Tinted headers keep
+   their colour. */
+[data-gloom-role="data-table-header-cell"][data-gloom-interactive="true"]:not([data-gloom-tinted="true"]):hover > * {
+  color: var(--gloom-text) !important;
+}

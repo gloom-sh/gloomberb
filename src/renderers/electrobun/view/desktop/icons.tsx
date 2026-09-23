@@ -65,6 +65,19 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </g>
   ),
+  "sort-up": <path d="M3.2 7.4 6 4.6l2.8 2.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />,
+  "sort-down": <path d="M3.2 4.6 6 7.4l2.8-2.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />,
+  // Two columns of three dots: the pane's drag handle.
+  grip: (
+    <>
+      <circle cx="4.4" cy="3" r="0.9" fill="currentColor" />
+      <circle cx="7.6" cy="3" r="0.9" fill="currentColor" />
+      <circle cx="4.4" cy="6" r="0.9" fill="currentColor" />
+      <circle cx="7.6" cy="6" r="0.9" fill="currentColor" />
+      <circle cx="4.4" cy="9" r="0.9" fill="currentColor" />
+      <circle cx="7.6" cy="9" r="0.9" fill="currentColor" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

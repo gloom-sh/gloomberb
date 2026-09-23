@@ -233,7 +233,7 @@ describe("ThesisBoardPane", () => {
     await flush();
     const frame = setup!.captureCharFrame();
     if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("Gap");
+    expect(frame).toContain("GAP");
     expect(frame).toContain("[w] board");
   });
 });

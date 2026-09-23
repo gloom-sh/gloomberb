@@ -13,8 +13,9 @@ describe("pane sizing", () => {
       reserveFooter: false,
     });
 
-    // The desktop header is 20px, a fractional cell taller than the terminal's.
-    expect(bodyFrame.height).toBeCloseTo(30 - 20 / 18 - 1);
+    // The desktop header and footer are 20px chrome rows, a fractional cell
+    // taller than the terminal's.
+    expect(bodyFrame.height).toBeCloseTo(30 - 20 / 18 - 20 / 18);
     expect(bodyFrame.layoutProps).toEqual({
       flexGrow: 1,
       flexShrink: 1,

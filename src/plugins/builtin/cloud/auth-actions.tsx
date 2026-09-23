@@ -25,15 +25,35 @@ function openAuth(
   }
 }
 
-export function InlineAuthActions({ showSignup = true }: { showSignup?: boolean }) {
+export interface InlineAuthActionsProps {
+  showSignup?: boolean;
+  /**
+   * `buttons` is the wall's pair of compact buttons, for a surface such as
+   * the chat composer where the actions must read as controls. `plain` is
+   * clickable text, for chrome that is itself a row of text (a status bar).
+   */
+  variant?: "buttons" | "plain";
+}
+
+export function InlineAuthActions({ showSignup = true, variant = "buttons" }: InlineAuthActionsProps) {
   const { openCommandBar } = usePluginAppActions();
+  const logIn = () => openAuth(openCommandBar, "login");
+  const signUp = () => openAuth(openCommandBar, "signup");
+  if (variant === "plain") {
+    return (
+      <Box flexDirection="row">
+        <Button label={t("Log in")} variant="plain" compact stopPropagation onPress={logIn} />
+        {showSignup && <>
+          <Text fg={colors.textDim}> / </Text>
+          <Button label={t("Sign up free")} variant="plain" compact stopPropagation onPress={signUp} />
+        </>}
+      </Box>
+    );
+  }
   return (
-    <Box flexDirection="row">
-      <Button label={t("Log In")} variant="plain" compact stopPropagation onPress={() => openAuth(openCommandBar, "login")} />
-      {showSignup && <>
-        <Text fg={colors.textDim}> / </Text>
-        <Button label={t("Sign Up")} variant="plain" compact stopPropagation onPress={() => openAuth(openCommandBar, "signup")} />
-      </>}
+    <Box flexDirection="row" gap={1}>
+      <Button label={t("Log in")} variant="primary" compact stopPropagation onPress={logIn} />
+      {showSignup && <Button label={t("Sign up free")} variant="secondary" compact stopPropagation onPress={signUp} />}
     </Box>
   );
 }

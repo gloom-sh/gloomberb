@@ -43,6 +43,8 @@ test("chart keyboard cursor uses stable point ids and keeps unavailable values u
   await act(async () => { setup = await testRender(<CurveSurface series={series} width={60} height={15} focused
     onSelectedPointChange={(id) => selections.push(id)} />, { width: 60, height: 15 }); });
   await frame();
+  // Before any cursor the readout row reads the curve's last point, not a blank band.
+  expect(setup!.captureCharFrame()).toContain("Dec · Today 3.75");
   await emitKeypress(setup!, { name: "right" });
   await emitKeypress(setup!, { name: "right" });
   await frame();

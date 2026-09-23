@@ -19,7 +19,10 @@ const renderer: RendererHost = {
   notify() {},
 };
 
-function renderAxis(kind: "opentui" | "desktop-web"): string {
+function renderAxis(
+  kind: "opentui" | "desktop-web",
+  cursor: { cursorPixelX?: number; cursorLabel?: string } = {},
+): string {
   const ui = {
     kind,
     capabilities: {
@@ -40,6 +43,7 @@ function renderAxis(kind: "opentui" | "desktop-web"): string {
           { label: "Jul 29 2026", ratio: 1 },
         ]}
         width={80}
+        {...cursor}
       />
     </UiHostProvider>,
   );
@@ -54,7 +58,17 @@ describe("StaticXAxisLabels", () => {
     expect(html).toContain("left:50%");
     expect(html).toContain("transform:translateX(-50%)");
     expect(html).toContain("right:0");
+    // The left edge sits one cell in, on the legend's inset, off the pane border.
+    expect(html).toContain("left:var(--cell-w)");
     expect(html).not.toContain("Nov 3 2025                    Mar");
+  });
+
+  test("drops a desktop tick label the cursor badge would sit on", () => {
+    const html = renderAxis("desktop-web", { cursorPixelX: 80 * 8 - 1, cursorLabel: "2026-07-29" });
+
+    expect(html).toContain(">2026-07-29<");
+    expect(html).not.toContain(">Jul 29 2026<");
+    expect(html).toContain(">Mar<");
   });
 
   test("keeps the fixed-width axis string for terminal cells", () => {

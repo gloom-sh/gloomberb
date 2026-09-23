@@ -365,9 +365,10 @@ describe("composite chart scene", () => {
     }
     const short = buildCompositeChartScene([volume(32e6)], [{ id: "main" }], { width: 40, height: 3 })!.panels[0]!;
     expect(compositeAxisTicks(short.axes.left!).map((tick) => tick.label)).toEqual(["34M", "17M", "0"]);
-    // Labels placed at their exact heights keep the round values.
+    // Labels placed at their exact heights keep round values, only as many as
+    // the panel holds a line apart: four on three rows drew over each other.
     const exact = resizeCompositePanel(short, 3, false).axes.left!;
-    expect(compositeAxisTicks(exact).map((tick) => tick.label)).toEqual(["30M", "20M", "10M", "0"]);
+    expect(compositeAxisTicks(exact).map((tick) => tick.label)).toEqual(["20M", "0"]);
   });
 
   test("extends a prior step anchor across an otherwise empty viewport", () => {

@@ -5,6 +5,7 @@ import {
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  tableColumnStarts,
   tableColumnWidth,
 } from "./table-layout";
 
@@ -44,6 +45,21 @@ describe("table layout", () => {
     expect(getTableWidth([{ width: 2, label: "OI" }, { width: 4, label: "ENDS" }], 1, 0)).toBe(12);
   });
 
+  test("budgets an extra gap where a right-aligned column meets a left-aligned one", () => {
+    const columns = [
+      { width: 4, align: "right" },
+      { width: 6, align: "left" },
+      { width: 3 },
+      { width: 5, align: "right" },
+      { width: 5, align: "right" },
+    ];
+    // Only the right-to-left seam gets the extra cell; right-to-right does not.
+    expect(getTableWidth(columns, 1, 0)).toBe(4 + 1 + 1 + 6 + 1 + 3 + 1 + 5 + 1 + 5 + 1);
+    expect(tableColumnStarts(columns, 1)).toEqual([0, 6, 13, 17, 23]);
+    // Tables packed without gaps stay packed.
+    expect(getTableWidth(columns, 0, 0)).toBe(23);
+  });
+
   test("marks clipped cells so a cut number cannot read as a smaller value", () => {
     expect(fitTableCellText("2026-08-17", 9, "right")).toBe("2026-08-\u2026");
     expect(fitTableCellText("globenewswire", 10)).toBe("globenews\u2026");
@@ -67,7 +83,8 @@ describe("table layout", () => {
     ]);
 
     expect(template).toBe(
-      "minmax(calc(4 * var(--cell-w)), calc(4 * var(--cell-w))) minmax(calc(14 * var(--cell-w)), 40fr) minmax(calc(8 * var(--cell-w)), calc(24 * var(--cell-w))) minmax(calc(5 * var(--cell-w)), calc(5 * var(--cell-w)))",
+      // The flexible column follows a right-aligned one, so its track carries the extra gap cell.
+      "minmax(calc(4 * var(--cell-w)), calc(4 * var(--cell-w))) minmax(calc(15 * var(--cell-w)), 41fr) minmax(calc(8 * var(--cell-w)), calc(24 * var(--cell-w))) minmax(calc(5 * var(--cell-w)), calc(5 * var(--cell-w)))",
     );
   });
 

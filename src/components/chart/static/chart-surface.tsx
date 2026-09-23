@@ -138,7 +138,8 @@ export function StaticChartSurface({
   return (
     <Box flexDirection="column" width={totalWidth} height={totalHeight}>
       {yAxisLabel ? (
-        <Box height={1}>
+        // Inset like the composite legend, off the pane border.
+        <Box height={1} paddingX={1} overflow="hidden">
           <Text fg={yAxisColor}>{yAxisLabel}</Text>
         </Box>
       ) : null}

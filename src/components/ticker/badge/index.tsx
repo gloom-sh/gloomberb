@@ -21,6 +21,8 @@ export interface TickerBadgeProps {
   onOpen: (symbol: string) => void;
 }
 
+const NATIVE_CHIP_STYLE = { height: "calc(100% - 4px)", borderRadius: 3 };
+
 export function TickerBadge({
   symbol,
   status,
@@ -34,7 +36,7 @@ export function TickerBadge({
   onOpen,
 }: TickerBadgeProps) {
   const registry = getSharedRegistry();
-  const { nativeContextMenu } = useUiCapabilities();
+  const { nativeContextMenu, nativePaneChrome } = useUiCapabilities();
   const ticker = typeof registry?.getTickerFn === "function" ? registry.getTickerFn(symbol) : null;
   const financials = typeof registry?.getDataFn === "function" ? registry.getDataFn(symbol) : null;
   const openTickerContextMenu = useTickerContextMenu({
@@ -55,10 +57,14 @@ export function TickerBadge({
   const interactive = status !== "loading";
 
   return (
-    <Box paddingRight={trailingGap ? 1 : 0} flexShrink={0}>
+    <Box paddingRight={trailingGap ? 1 : 0} flexShrink={0} justifyContent={nativePaneChrome ? "center" : undefined}>
       <Box
         paddingX={1}
         backgroundColor={backgroundColor}
+        // A chip as tall as its row runs into the one below in a column of
+        // badges; the desktop leaves a hairline of row above and below.
+        justifyContent={nativePaneChrome ? "center" : undefined}
+        style={nativePaneChrome ? NATIVE_CHIP_STYLE : undefined}
         data-gloom-context-menu-surface="true"
         onMouseOver={() => {
           onHoverStart?.();

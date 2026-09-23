@@ -10,23 +10,52 @@ export interface ProseRun {
 
 /**
  * Money, percentages and quantities with a unit, plus bare numbers except
- * years. Ordinals and fiscal labels (Q2, FY26, 2Q) are left alone.
+ * years, each with its sign. Ordinals and fiscal labels (Q2, FY26, 2Q) are
+ * left alone.
  */
 const FIGURE_PATTERN =
-  /[$€£¥]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:trillion|billion|million|thousand|bn|mn|k|m|b)\b)?|\b\d[\d,]*(?:\.\d+)?\s?(?:%|percent(?:age points?)?|bps|basis points|x\b|trillion|billion|million|thousand)|\b\d[\d,]*(?:\.\d+)?\b/gi;
+  /[+\-\u2212]?(?:[$€£¥]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:trillion|billion|million|thousand|bn|mn|k|m|b)\b)?|\b\d[\d,]*(?:\.\d+)?\s?(?:%|percent(?:age points?)?|bps|basis points|x\b|trillion|billion|million|thousand)|\b\d[\d,]*(?:\.\d+)?\b)/gi;
 
 const YEAR_PATTERN = /^(?:19|20)\d{2}$/;
 
+/** "Sep 01", "Feb 24, 2026", "Sep 01, 26": the day and year are not figures. */
+const MONTH_DATE_PATTERN =
+  /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b(?:,\s*\d{2}(?:\d{2})?\b)?/g;
+
+const isWordChar = (char: string | undefined) => char !== undefined && /[\p{L}\p{N}]/u.test(char);
+const isJoiner = (char: string | undefined) => char === "-" || char === "/";
+
+/**
+ * Digits joined to a word by a hyphen or slash are part of a code or a date
+ * (2025-10-31, 10-K, 8-K/A, 0000320193-24-000123), not a figure. So is a
+ * zero-padded number, an id rather than a quantity.
+ */
+function isCodeDigits(text: string, start: number, end: number, digits: string): boolean {
+  return /^0\d/.test(digits)
+    || (isJoiner(text[start - 1]) && isWordChar(text[start - 2]))
+    || (/\d$/.test(digits) && isJoiner(text[end]) && isWordChar(text[end + 1]));
+}
+
 export function splitFigures(text: string): ProseRun[] {
   const runs: ProseRun[] = [];
+  const dates = [...text.matchAll(MONTH_DATE_PATTERN)]
+    .map((match) => [match.index ?? 0, (match.index ?? 0) + match[0].length] as const);
   let last = 0;
   for (const match of text.matchAll(FIGURE_PATTERN)) {
     const start = match.index ?? 0;
     const value = match[0];
-    if (YEAR_PATTERN.test(value)) continue;
+    const end = start + value.length;
+    const signed = /^[+\-\u2212]/.test(value);
+    const unsigned = signed ? value.slice(1) : value;
+    // A sign glued to the word before it is a hyphen or a range: 10-15, A-1.
+    if (signed && (isWordChar(text[start - 1]) || isJoiner(text[start - 1]))) continue;
+    if (YEAR_PATTERN.test(unsigned)) continue;
+    if (dates.some(([dateStart, dateEnd]) => start < dateEnd && end > dateStart)) continue;
+    // A currency amount keeps its own prefix (US$5); only plain digits can be codes.
+    if (/^\d/.test(unsigned) && isCodeDigits(text, start, end, unsigned)) continue;
     if (start > last) runs.push({ text: text.slice(last, start), figure: false });
     runs.push({ text: value, figure: true });
-    last = start + value.length;
+    last = end;
   }
   if (last < text.length) runs.push({ text: text.slice(last), figure: false });
   return runs;

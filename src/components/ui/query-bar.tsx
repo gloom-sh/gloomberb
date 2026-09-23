@@ -82,8 +82,14 @@ export interface QueryBarTextFilter extends QueryBarFilterBase {
   focusToken?: number;
   inputRef?: RefObject<InputRenderable | null>;
   debounceMs?: number;
-  /** Field width in cells. */
+  /** Input width in cells; the label is drawn beside it. */
   width?: number;
+  /**
+   * Enter in the field. `onChange` still follows typing, so a pane that should
+   * apply the value only when it is complete (a date) can keep a draft in
+   * `onChange` and apply here.
+   */
+  onSubmit?: (value: string) => void;
 }
 
 export type QueryBarFilter = QueryBarSelectFilter<any> | QueryBarMultiFilter | QueryBarToggleFilter | QueryBarTextFilter;
@@ -259,6 +265,7 @@ export function QueryBar({ width, search, filters = [], view, meta }: QueryBarPr
         onFocus={() => filter.onActiveChange(true)}
         onBlur={() => filter.onActiveChange(false)}
         onQueryChange={filter.onChange}
+        onSubmit={filter.onSubmit}
       />
     ));
   }

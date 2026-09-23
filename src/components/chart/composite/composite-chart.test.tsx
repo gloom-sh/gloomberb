@@ -502,6 +502,26 @@ describe("CompositeChart", () => {
     expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
   });
 
+  test("gives legend names the row's room and drops the listing exchange before cutting a name", async () => {
+    const legendAt = async (width: number) => {
+      if (testSetup) await act(async () => testSetup!.renderer.destroy());
+      testSetup = await testRender(
+        <CompositeChart width={width} height={10} panels={[{ id: "main" }]} series={[
+          { ...series("price", "main", "left", "USD", [101]), label: "AAPL:XNAS Price" },
+          { ...series("volume", "main", "left", "%", [8]), label: "Volume AAPL:XNAS Price" },
+        ]} />,
+        { width: width + 2, height: 12 },
+      );
+      await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
+      return testSetup.captureCharFrame().split("\n")[0]!;
+    };
+    expect(await legendAt(60)).toContain("Volume AAPL:XNAS Price 8.00%");
+    const narrow = await legendAt(50);
+    expect(narrow).toContain("AAPL:XNAS Price $101");
+    expect(narrow).toContain("Volume AAPL Price 8.00%");
+    expect(narrow).not.toContain("...");
+  });
+
   test("keeps non-plotted legend series available for restoring", async () => {
     const price = series("price", "main", "left", "USD", [100, 103, 101]);
     const hiddenRevenue = series("revenue", "main", "right", "%", [4, 6, 8]);

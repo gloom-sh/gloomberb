@@ -6,6 +6,10 @@ export function nativePaneHeaderRows(): number {
   return chromeRowPx() / WEB_CELL_HEIGHT;
 }
 const PANE_FOOTER_ROWS = 1;
+/** Desktop pane footer height in cells: the same chrome row as the header. */
+export function nativePaneFooterRows(): number {
+  return chromeRowPx() / WEB_CELL_HEIGHT;
+}
 
 export function paneHeaderRows(nativePaneChrome: boolean | undefined): number {
   return nativePaneChrome ? nativePaneHeaderRows() : PANE_HEADER_ROWS;
@@ -39,7 +43,7 @@ function resolvePaneBodyHeight({
   const finiteHeight = Number.isFinite(height) ? height : 1;
   const normalizedHeight = nativePaneChrome ? finiteHeight : Math.max(1, Math.floor(finiteHeight));
   const footerRows = nativePaneChrome
-    ? footerVisible ? PANE_FOOTER_ROWS : 0
+    ? footerVisible ? nativePaneFooterRows() : 0
     : reserveFooter ? PANE_FOOTER_ROWS : 0;
   return Math.max(1, normalizedHeight - headerRows - footerRows);
 }

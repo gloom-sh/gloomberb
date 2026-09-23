@@ -93,22 +93,32 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   });
   const cursorX = hoverX ?? selected?.x ?? null;
   const cursorDate = cursorX == null ? null : chart.toDate(cursorX);
-  const cursorRow = cursorX == null ? null : rows.reduce<CurveTableRow | null>((best, row) => (
-    best == null || Math.abs(row.x - cursorX) < Math.abs(best.x - cursorX) ? row : best
-  ), null);
+  // With nothing hovered or selected, the readout shows the primary curve's
+  // last point rather than a blank row.
+  const cursorRow = cursorX == null
+    ? rows.findLast((row) => primary != null && row.points[primary.id]?.value != null) ?? null
+    : rows.reduce<CurveTableRow | null>((best, row) => (
+      best == null || Math.abs(row.x - cursorX) < Math.abs(best.x - cursorX) ? row : best
+    ), null);
   const onCursorDateChange = useCallback((date: Date | null) => setHoverX(date == null ? null : chart.fromDate(date)), [chart]);
   const xAxis = useMemo(() => ({ ticks: chart.ticks, formatCursor: (ratio: number) => formatX(chart.min + ratio * (chart.max - chart.min)) }), [chart, formatX]);
+  const rowAsOf = useCallback((row: CurveTableRow) => (
+    (primary && row.points[primary.id]?.asOf) ?? primary?.asOf ?? "--"
+  ), [primary]);
+  // One shared date is already in the legend or the pane footer; a column
+  // repeating it on every row only earns its width when the rows differ.
+  const mixedDates = useMemo(() => new Set(rows.map(rowAsOf)).size > 1, [rowAsOf, rows]);
   const columns = useMemo(() => [
     { id: "label", label: "Tenor", width: Math.max(10, Math.min(18, Math.floor(totalWidth / 4))), align: "left" as const },
     ...series.map((entry) => ({ id: entry.id, label: entry.label, width: Math.max(9, Math.min(15, Math.floor((totalWidth - 24) / Math.max(1, series.length)))), align: "right" as const })),
-    { id: "asOf", label: "As of", width: 10, align: "left" as const },
-  ], [series, totalWidth]);
+    ...(mixedDates ? [{ id: "asOf", label: "As of", width: 10, align: "left" as const }] : []),
+  ], [mixedDates, series, totalWidth]);
   const renderCell = useCallback((row: CurveTableRow, column: { id: string }) => {
     if (column.id === "label") return { text: row.label };
-    if (column.id === "asOf") return { text: (primary && row.points[primary.id]?.asOf) ?? primary?.asOf ?? "--", color: colors.textMuted };
+    if (column.id === "asOf") return { text: rowAsOf(row), color: colors.textMuted };
     const point = row.points[column.id];
     return { text: point?.value != null && Number.isFinite(point.value) ? formatValue(point.value) : "--" };
-  }, [colors.textMuted, formatValue, primary]);
+  }, [colors.textMuted, formatValue, rowAsOf]);
   if (!rows.length) return <EmptyState title="No curve observations." />;
   return <Box width={totalWidth} height={totalHeight} flexDirection="column" overflow="hidden">
     {showChart ? legendRows.map((row, index) => <Box key={index} height={1} flexShrink={0} paddingX={1} gap={3} flexDirection="row">

@@ -22,7 +22,10 @@ export type IconName =
   | "cloud"
   | "sound-on"
   | "sound-off"
-  | "user";
+  | "user"
+  | "sort-up"
+  | "sort-down"
+  | "grip";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -44,6 +47,9 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   "sound-on": "◖)",
   "sound-off": "◖·",
   user: "@",
+  "sort-up": "▲",
+  "sort-down": "▼",
+  grip: "::",
 };
 
 export interface IconProps {

@@ -70,9 +70,11 @@ function axisTickValue(domain: CompositeAxisDomain, ratio: number): number {
     : domain.max + (domain.min - domain.max) * ratio;
 }
 
-/** How many labeled ticks a panel of this many rows can hold, two rows apart. */
+/** How many labeled ticks a panel of this many rows can hold, two rows apart.
+ * A short study panel gets fewer than the usual three rather than labels that
+ * land on each other. */
 export function compositeAxisMaxTicks(rows: number): number {
-  return Math.max(AXIS_TICK_COUNT, Math.min(DEFAULT_AXIS_MAX_TICKS, 1 + Math.floor((rows - 1) / 2)));
+  return Math.max(2, Math.min(DEFAULT_AXIS_MAX_TICKS, 1 + Math.floor((rows - 1) / 2)));
 }
 
 /** The next 1, 2 or 5 times power-of-ten step above (or below) a nice step. */
@@ -114,9 +116,12 @@ function edgeTickValues(domain: CompositeAxisDomain): number[] {
     return [...new Set([0, Math.round(lastRow / 2), lastRow])]
       .map((row) => axisTickValue(domain, lastRow > 0 ? row / lastRow : 0));
   }
+  // Labels placed at exact heights have no rows to keep them apart: a panel
+  // too short for a middle label shows only its top and bottom.
+  const count = Math.max(2, Math.min(AXIS_TICK_COUNT, domain.maxTicks ?? AXIS_TICK_COUNT));
   return Array.from(
-    { length: AXIS_TICK_COUNT },
-    (_, index) => axisTickValue(domain, index / (AXIS_TICK_COUNT - 1)),
+    { length: count },
+    (_, index) => axisTickValue(domain, index / (count - 1)),
   );
 }
 

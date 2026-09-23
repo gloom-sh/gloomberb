@@ -91,6 +91,53 @@ export function StaticXAxisLabels({
     && cursorLabelWidth > 0
     ? Math.max(0, Math.min(Math.max(0, width - cursorLabelWidth), Math.round(cursorColumn) - Math.floor(cursorLabelWidth / 2)))
     : null;
+  const isDesktop = uiHost.kind === "desktop-web";
+  const extraMarkerLeft = (label: string, ratio: number) => (
+    Math.max(0, Math.min(width - label.length, Math.round(ratio * (width - 1)) - Math.floor(label.length / 2)))
+  );
+  // Where the cursor and anchor badges sit, in cells. A tick label under one
+  // steps aside instead of showing its ends around the badge.
+  const badgeSpans: Array<readonly [number, number]> = [];
+  if (clippedCursorLabel && cursorLeftPercent !== null) {
+    const center = (cursorLeftPercent / 100) * width;
+    badgeSpans.push([center - cursorLabelWidth / 2, center + cursorLabelWidth / 2]);
+  } else if (clippedCursorLabel && cursorLeft !== null) {
+    badgeSpans.push([cursorLeft, cursorLeft + cursorLabelWidth]);
+  }
+  for (const marker of extraMarkers ?? []) {
+    const label = marker.label.slice(0, width);
+    if (label.length === 0) continue;
+    const ratio = clampRatio(marker.ratio);
+    const left = fractionalViewport ? ratio * width - label.length / 2 : extraMarkerLeft(label, ratio);
+    badgeSpans.push([left, left + label.length]);
+  }
+  const clearOfBadges = (start: number, end: number) => badgeSpans.every(([badgeStart, badgeEnd]) => (
+    end + 1 <= badgeStart || start >= badgeEnd + 1
+  ));
+  const positionedPlacements = visiblePositionedLabels.flatMap((entry, index) => {
+    const ratio = clampRatio(entry.ratio);
+    const labelWidth = entry.label.length;
+    const halfLabel = labelWidth / 2;
+    let start: number;
+    let edgeStyle: Record<string, number | string>;
+    if (!isDesktop) {
+      start = Math.max(0, Math.min(width - labelWidth, markerColumn(ratio, width) - Math.floor(labelWidth / 2)));
+      edgeStyle = { left: start };
+    } else if (ratio * width <= halfLabel + 1) {
+      // A centered label that would reach the left border sits one cell in,
+      // on the same inset as the legend above the plot.
+      start = 1;
+      edgeStyle = { left: "var(--cell-w)" };
+    } else if (ratio * width >= width - halfLabel) {
+      start = width - labelWidth;
+      edgeStyle = { right: 0 };
+    } else {
+      start = ratio * width - halfLabel;
+      edgeStyle = { left: `${ratio * 100}%`, transform: "translateX(-50%)" };
+    }
+    if (!clearOfBadges(start, start + labelWidth)) return [];
+    return [{ entry, index, edgeStyle }];
+  });
 
   return (
     <Box
@@ -104,22 +151,9 @@ export function StaticXAxisLabels({
         ? visiblePositionedLabels.map((entry) => entry.label)
         : visibleLabels).join(" ")}
     >
-      {visiblePositionedLabels.length > 0 && (uiHost.kind === "desktop-web" || visibleLabels.length === 0) ? (
+      {visiblePositionedLabels.length > 0 && (isDesktop || visibleLabels.length === 0) ? (
         <Box position="absolute" left={0} top={0} width={width} height={1}>
-          {visiblePositionedLabels.map((entry, index) => {
-            const ratio = clampRatio(entry.ratio);
-            // A centered label that would spill past either edge pins to it instead.
-            const halfLabel = entry.label.length / 2;
-            const edgeStyle = uiHost.kind !== "desktop-web"
-              ? { left: Math.max(0, Math.min(width - entry.label.length, markerColumn(ratio, width) - Math.floor(entry.label.length / 2))) }
-              : ratio * width <= halfLabel
-              ? { left: 0 }
-              : ratio * width >= width - halfLabel
-                ? { right: 0 }
-                : {
-                  left: `${ratio * 100}%`,
-                  transform: "translateX(-50%)",
-                };
+          {positionedPlacements.map(({ entry, index, edgeStyle }) => {
             return (
               <Text
                 key={`${entry.label}:${entry.ratio}:${index}`}
@@ -173,7 +207,7 @@ export function StaticXAxisLabels({
               }
               : {
                 position: "absolute",
-                left: Math.max(0, Math.min(width - label.length, Math.round(ratio * (width - 1)) - Math.floor(label.length / 2))),
+                left: extraMarkerLeft(label, ratio),
                 top: 0,
                 whiteSpace: "pre",
                 pointerEvents: "none",

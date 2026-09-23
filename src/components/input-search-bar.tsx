@@ -21,6 +21,7 @@ export function InputSearchBar({
   onFocus,
   onBlur,
   onQueryChange,
+  onSubmit,
 }: {
   value: string;
   focused: boolean;
@@ -39,6 +40,8 @@ export function InputSearchBar({
   onFocus: () => void;
   onBlur: () => void;
   onQueryChange: (query: string) => void;
+  /** Enter: called after the value is committed through `onQueryChange`. */
+  onSubmit?: (query: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
   useAppInputCapture(focused && active);
@@ -85,8 +88,9 @@ export function InputSearchBar({
 
   const commitNow = useCallback((nextValue: string) => {
     onQueryChange(nextValue);
+    onSubmit?.(nextValue);
     onBlur();
-  }, [onBlur, onQueryChange]);
+  }, [onBlur, onQueryChange, onSubmit]);
 
   return (
     <Box

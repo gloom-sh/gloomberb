@@ -35,7 +35,7 @@ test("rebuilds translated columns when the app language changes", async () => {
     { width: 80, height: 8 },
   );
   await act(async () => testSetup?.renderOnce());
-  expect(testSetup.captureCharFrame()).toContain("Source");
+  expect(testSetup.captureCharFrame()).toContain("SOURCE");
 
   await act(async () => {
     setLanguage("zh-CN");

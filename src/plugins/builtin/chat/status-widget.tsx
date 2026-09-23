@@ -79,7 +79,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
       {!username && !hasSavedSession ? (
         <>
           <CloudStatusIcon />
-          <InlineAuthActions showSignup={false} />
+          <InlineAuthActions showSignup={false} variant="plain" />
         </>
       ) : (
         <Button label={username ? `Open chat as ${username}` : "Open chat"} variant="plain" compact stopPropagation onPress={openChat}>

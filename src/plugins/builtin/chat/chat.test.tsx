@@ -1250,8 +1250,8 @@ describe("ChatContent", () => {
     const frame = setup().captureCharFrame();
     expect(frame).toContain("message 1");
     expect(frame).toContain("Read-only chat.");
-    expect(frame).toContain("Log In");
-    expect(frame).toContain("Sign Up");
+    expect(frame).toContain("Log in");
+    expect(frame).toContain("Sign up free");
     expect(frame).not.toContain("Type a message...");
   });
 
@@ -1273,8 +1273,8 @@ describe("ChatContent", () => {
 
     const frame = setup().captureCharFrame();
     expect(frame).toContain("Read-only chat.");
-    expect(frame).toContain("Log In");
-    expect(frame).toContain("Sign Up");
+    expect(frame).toContain("Log in");
+    expect(frame).toContain("Sign up free");
   });
 
   test("shows a logged-in icon in the cloud status widget for cached sessions", async () => {
@@ -1334,12 +1334,12 @@ describe("ChatContent", () => {
 
     const frame = setup().captureCharFrame();
     expect(frame).toContain("☁");
-    expect(frame).toContain("Log In");
-    expect(frame).not.toContain("Sign Up");
+    expect(frame).toContain("Log in");
+    expect(frame).not.toContain("Sign up");
     expect(frame).not.toContain("Shift+C");
 
     const line = frame.split("\n")[0] ?? "";
-    const loginCol = line.indexOf("Log In");
+    const loginCol = line.indexOf("Log in");
 
     expect(loginCol).toBeGreaterThanOrEqual(0);
 

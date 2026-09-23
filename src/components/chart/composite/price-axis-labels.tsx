@@ -73,6 +73,56 @@ export function buildCursorPriceAxisOverlay({
   return { labelText, topPercent };
 }
 
+interface PlacedAxisTick {
+  label: string;
+  ratio: number;
+  topPercent: number;
+}
+
+/**
+ * Tick labels at their exact heights, a line apart. Hosts that do not snap to
+ * rows can squeeze ticks closer than the text is tall in a short panel, so the
+ * inner ones thin out while the top and bottom stay; any left within a line of
+ * the cursor or an anchor badge give way to it.
+ */
+export function placeAxisTicks({
+  ticks,
+  height,
+  cellHeightPx,
+  badgeCentersPx = [],
+}: {
+  ticks: readonly { ratio: number; label: string }[];
+  height: number;
+  cellHeightPx: number;
+  badgeCentersPx?: readonly number[];
+}): PlacedAxisTick[] {
+  const pixelHeight = Math.max(height * cellHeightPx, 1);
+  const halfLabel = Math.min(cellHeightPx / 2, (pixelHeight - 1) / 2);
+  const placed = ticks
+    .map((tick) => ({
+      label: tick.label,
+      ratio: tick.ratio,
+      topPx: clamp(tick.ratio * (pixelHeight - 1), halfLabel, Math.max(pixelHeight - halfLabel, halfLabel)),
+    }))
+    .sort((left, right) => left.topPx - right.topPx);
+  const first = placed[0];
+  const last = placed[placed.length - 1];
+  const kept = first ? [first] : [];
+  for (const tick of placed.slice(1, -1)) {
+    if (tick.topPx - kept[kept.length - 1]!.topPx >= cellHeightPx && last!.topPx - tick.topPx >= cellHeightPx) {
+      kept.push(tick);
+    }
+  }
+  if (last && last !== first && last.topPx - kept[kept.length - 1]!.topPx >= cellHeightPx) kept.push(last);
+  return kept
+    .filter((tick) => badgeCentersPx.every((center) => Math.abs(tick.topPx - center) >= cellHeightPx))
+    .map((tick) => ({
+      label: tick.label,
+      ratio: tick.ratio,
+      topPercent: (tick.topPx / Math.max(pixelHeight - 1, 1)) * 100,
+    }));
+}
+
 export function PriceAxisLabels({
   axisLabels,
   axisTicks,
@@ -101,6 +151,17 @@ export function PriceAxisLabels({
   // Row-snapped labels drift up to a row off the gridlines they name.
   const usePixelTicks = fractionalViewport && axisTicks !== undefined;
   const pixelHeight = Math.max(height * cellHeightPx, 1);
+  const placedTicks = usePixelTicks
+    ? placeAxisTicks({
+      ticks: axisTicks,
+      height,
+      cellHeightPx,
+      badgeCentersPx: [
+        ...(usePixelOverlay ? [(overlay.topPercent! / 100) * (pixelHeight - 1)] : []),
+        ...(extraMarkers?.map((marker) => marker.pixelY) ?? []),
+      ],
+    })
+    : null;
   const axisPaddingWidth = Math.max(0, axisSectionWidth - axisWidth);
   const axisLabelJustify = side === "left"
     ? "flex-end"
@@ -151,9 +212,7 @@ export function PriceAxisLabels({
           </Box>
         );
       })}
-      {usePixelTicks ? axisTicks.map((tick) => {
-        const halfLabel = Math.min(cellHeightPx / 2, (pixelHeight - 1) / 2);
-        const topPx = clamp(tick.ratio * (pixelHeight - 1), halfLabel, Math.max(pixelHeight - halfLabel, halfLabel));
+      {placedTicks ? placedTicks.map((tick) => {
         return (
           <Box
             key={`${tick.label}:${tick.ratio}`}
@@ -162,7 +221,7 @@ export function PriceAxisLabels({
             style={{
               position: "absolute",
               left: 0,
-              top: `${(topPx / Math.max(pixelHeight - 1, 1)) * 100}%`,
+              top: `${tick.topPercent}%`,
               transform: "translateY(-50%)",
               whiteSpace: "pre",
               pointerEvents: "none",

@@ -4,6 +4,7 @@ import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
+import { headerCase } from "./header-case";
 
 export { Prose } from "./prose";
 export type { ProseProps } from "./prose";
@@ -20,7 +21,7 @@ export function SectionHeading({ title, marginTop = 0, width, wrap = false }: Se
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
       <Text fg={colors.textDim} attributes={TextAttributes.BOLD} wrapText={wrap}>
-        {wrap || width === undefined ? t(title) : truncateToDisplayWidth(t(title), width)}
+        {wrap || width === undefined ? headerCase(t(title)) : truncateToDisplayWidth(headerCase(t(title)), width)}
       </Text>
     </Box>
   );

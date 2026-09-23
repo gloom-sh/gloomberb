@@ -15,6 +15,8 @@ import {
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
+  tableColumnLeadGap,
+  tableColumnStarts,
   tableContentWidthProps,
   useMeasuredTableContentWidth,
 } from "../../table-layout";
@@ -56,6 +58,7 @@ function OpenTuiDataTableRowInner<
 >({
   colors,
   columnGap,
+  columnStarts,
   contentWidth,
   displayColumns,
   focusPane,
@@ -78,6 +81,7 @@ function OpenTuiDataTableRowInner<
   rowVersion?: unknown;
   colors: ReturnType<typeof useThemeColors>;
   columnGap: number;
+  columnStarts: number[];
   contentWidth: number;
   displayColumns: C[];
   focusPane: () => void;
@@ -159,14 +163,15 @@ function OpenTuiDataTableRowInner<
       {displayColumns.map((column, columnIndex) => {
         const cell = renderCell(item, column, index, rowState);
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
-        const columnStart = displayColumns.slice(0, columnIndex).reduce((sum, current) => sum + current.width + columnGap, 0);
+        const columnStart = columnStarts[columnIndex] ?? 0;
+        const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
         const inset = !frozen && frozenColumnOffset !== undefined
           ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
         return (
           <Box
             key={column.id}
             width={column.width + columnGap + (frozen ? horizontalPadding : 0)}
-            marginLeft={frozen ? -horizontalPadding : 0}
+            marginLeft={frozen ? -horizontalPadding : leadGap}
             position="relative"
             left={frozen ? frozenColumnOffset : undefined}
             zIndex={frozen ? 1 : undefined}
@@ -317,6 +322,10 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const displayColumns = useMemo(
     () => expandTableColumns(columns, contentWidth, columnGap, horizontalPadding),
     [columnGap, columns, contentWidth, horizontalPadding],
+  );
+  const columnStarts = useMemo(
+    () => tableColumnStarts(displayColumns, columnGap),
+    [columnGap, displayColumns],
   );
   const emitVisibleRange = useCallback(() => {
     if (!onVisibleRangeChange) return;
@@ -533,26 +542,29 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         >
           {displayColumns.map((column, columnIndex) => {
             const frozen = freezeFirstColumn && columnIndex === 0;
-            const columnStart = displayColumns.slice(0, columnIndex).reduce((sum, current) => sum + current.width + columnGap, 0);
+            const columnStart = columnStarts[columnIndex] ?? 0;
             const inset = freezeFirstColumn && !frozen
               ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
             const isSorted = sortColumnId === column.id;
-            const indicator = isSorted
-              ? sortDirection === "asc"
-                ? " ▲"
-                : " ▼"
-              : "";
+            const marker = sortDirection === "asc" ? "▲" : "▼";
+            // An unlabeled column shows the bare marker, not a stray space before it.
+            const indicator = isSorted ? column.label ? ` ${marker}` : marker : "";
+            // A lead gap already separates this label from the next one, so a
+            // right-aligned label keeps no blank of its own and sits flush
+            // over its numbers.
+            const hasNextLabel = columnIndex < displayColumns.length - 1
+              && tableColumnLeadGap(displayColumns, columnIndex + 1, columnGap) === 0;
             const labelText = " ".repeat(inset) + (inset < column.width ? fitTableHeaderText(
               column.label + indicator,
               column.width - inset,
               column.align,
-              columnIndex < displayColumns.length - 1,
+              hasNextLabel,
             ) : "");
             return (
               <Box
                 key={column.id}
                 width={column.width + columnGap + (frozen ? horizontalPadding : 0)}
-                marginLeft={frozen ? -horizontalPadding : 0}
+                marginLeft={frozen ? -horizontalPadding : tableColumnLeadGap(displayColumns, columnIndex, columnGap)}
                 position="relative"
                 left={frozen ? frozenColumnOffset : undefined}
                 zIndex={frozen ? 1 : undefined}
@@ -560,6 +572,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                 onMouseDown={(event: any) => {
                   focusPane();
                   onTableMouseDown?.(event);
+                  if (!onHeaderClick) return;
                   event.preventDefault();
                   onHeaderClick(column.id);
                 }}
@@ -611,6 +624,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     key={itemKey}
                     colors={colors}
                     columnGap={columnGap}
+                    columnStarts={columnStarts}
                     contentWidth={contentWidth}
                     displayColumns={displayColumns}
                     focusPane={focusPane}

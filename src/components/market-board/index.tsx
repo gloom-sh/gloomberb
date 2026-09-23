@@ -54,6 +54,50 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   emptyTitle?: string;
 }
 
+/**
+ * What a board gives up, in order, when the pane is too narrow for it: the
+ * second label, the sparkline, the as-of year, then the change date and the
+ * percentile. Shortening dates costs less than losing a column, so it comes
+ * before the data columns.
+ */
+const FIT_STEPS = ["labelDetail", "history", "shortAsOf", "changeAsOf", "percentile"] as const;
+/** An as-of date without its year ("09-17"). */
+const SHORT_AS_OF_WIDTH = 5;
+
+function shortIsoDate(text: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.slice(5) : text;
+}
+
+/** Fit the board to the pane rather than cut its right edge mid-value. */
+function fitBoardColumns(candidates: DataTableColumn[], width: number): { columns: DataTableColumn[]; shortAsOf: boolean } {
+  const withAsOfWidth = (list: DataTableColumn[], asOfWidth: number | null) => asOfWidth === null
+    ? list
+    : list.map((column) => column.id === "asOf" ? { ...column, width: asOfWidth } : column);
+  let columns = candidates;
+  let shortAsOf = false;
+  for (const step of FIT_STEPS) {
+    if (getTableWidth(columns) <= width) break;
+    if (step === "shortAsOf") {
+      shortAsOf = true;
+      columns = withAsOfWidth(columns, SHORT_AS_OF_WIDTH);
+    } else {
+      columns = columns.filter((column) => column.id !== step);
+    }
+  }
+  // Dropping a column after the dates were shortened may leave room for the year again.
+  const fullAsOf = candidates.find((column) => column.id === "asOf")?.width ?? null;
+  if (shortAsOf && getTableWidth(withAsOfWidth(columns, fullAsOf)) <= width) {
+    shortAsOf = false;
+    columns = withAsOfWidth(columns, fullAsOf);
+  }
+  // The detail name, when it survives, is the column that grows.
+  const growId = columns.some((column) => column.id === "labelDetail") ? "labelDetail" : "label";
+  return {
+    columns: columns.map((column) => column.id === growId ? { ...column, flexGrow: 1 } : column),
+    shortAsOf,
+  };
+}
+
 /** Funding, policy, volume and price boards share sorting, date context,
  * native sparklines, stable selection and a mouse/keyboard detail stack. */
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
@@ -72,7 +116,10 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     return sort.direction === "asc" ? comparison : -comparison;
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
-  const baseColumns: DataTableColumn[] = [
+  const { columns, shortAsOf } = fitBoardColumns([
+    { id: "label", label: labelHeader, width: labelWidth, align: "left" },
+    ...(rows.some((row) => row.labelDetail !== undefined)
+      ? [{ id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left" as const }] : []),
     { id: "value", label: valueLabel, width: valueWidth, align: "right" },
     { id: "change", label: changeLabel, width: 10, align: "right" },
     ...(rows.some((row) => row.changeAsOf !== undefined) ? [{ id: "changeAsOf", label: "LAST CHANGE", width: 11, align: "left" as const }] : []),
@@ -80,16 +127,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     { id: "percentile", label: percentileLabel, width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: asOfWidth, align: "left" },
-  ];
-  const labelDetailColumn: DataTableColumn = { id: "labelDetail", label: labelDetailHeader, width: labelDetailWidth, align: "left", flexGrow: 1 };
-  // The detail name is the first thing to go: history and as-of dates matter more than a second label.
-  const withLabelDetail = rows.some((row) => row.labelDetail !== undefined)
-    && getTableWidth([{ width: labelWidth, label: labelHeader }, labelDetailColumn, ...baseColumns]) <= width;
-  const columns: DataTableColumn[] = [
-    { id: "label", label: labelHeader, width: labelWidth, align: "left", flexGrow: withLabelDetail ? 0 : 1 },
-    ...(withLabelDetail ? [labelDetailColumn] : []),
-    ...baseColumns,
-  ];
+  ], width);
   const renderCell = (row: T, column: DataTableColumn): DataTableCell => {
     const extra = extraColumns?.find((item) => item.column.id === column.id);
     if (extra) return extra.renderCell(row);
@@ -102,7 +140,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "changeAsOf") return { text: row.changeAsOf ?? "--", color: colors.textDim };
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
-    return { text: row.asOfText ?? row.asOf ?? "--", color: row.status === "stale" ? colors.warning : colors.textDim };
+    const asOf = row.asOfText ?? row.asOf ?? "--";
+    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, color: row.status === "stale" ? colors.warning : colors.textDim };
   };
   return <DataTableStackView columns={columns} items={items} getItemKey={(row) => row.id} renderCell={renderCell}
     focused={focused} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: onSelectedIdChange }}

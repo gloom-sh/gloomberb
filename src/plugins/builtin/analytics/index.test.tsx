@@ -264,9 +264,9 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Broker return +10.00%");
     expect(frame).not.toContain("Day           +0");
     expect(frame).not.toContain("P&L           +0");
-    expect(frame).toContain("Portfolio History");
+    expect(frame).toContain("PORTFOLIO HISTORY");
     expect(frame).toContain("Value (USD)");
-    expect(frame).not.toContain("Current-weight basket estimates");
+    expect(frame).not.toContain("CURRENT-WEIGHT BASKET ESTIMATES");
     expect(frame).not.toContain("Holdings by sector");
   });
 
@@ -359,7 +359,7 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
     expect(harnessState?.paneState[TEST_PANE_ID]?.portfolioId).toBe(secondId);
     expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
-    expect(testSetup!.captureCharFrame()).not.toContain("Portfolio History");
+    expect(testSetup!.captureCharFrame()).not.toContain("PORTFOLIO HISTORY");
     await act(async () => {
       completeSecond({ accountId: "DU54321", source: "flex", period: "Second account", fetchedAt: 1,
         points: [{ date: "2026-01-01", cumulativeReturn: 0 }, { date: "2026-02-01", cumulativeReturn: .2 }] });
@@ -387,7 +387,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Flex DU12345");
     expect(frame).toContain("Val           1.3k");
     expect(frame).toContain("P&L           +250  (+25.00%)");
-    expect(frame).toContain("Current-weight basket estimates");
+    expect(frame).toContain("CURRENT-WEIGHT BASKET ESTIMATES");
     expect(frame).toContain("Est. Sharpe");
     expect(frame).toContain("Beta (SPY)");
     expect(frame).toContain("SECTOR");
@@ -570,7 +570,7 @@ describe("PortfolioAnalyticsPane", () => {
     ]);
     expect(frame).toContain("Broker return");
     expect(frame).toContain("+10.00%");
-    expect(frame).toContain("Portfolio History");
+    expect(frame).toContain("PORTFOLIO HISTORY");
     expect(frame).toContain("Technology");
     expect(frame).toContain("100.0%");
     expect(frame).toContain("Flex FLEX");

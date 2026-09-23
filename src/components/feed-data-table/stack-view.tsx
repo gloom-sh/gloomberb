@@ -17,6 +17,7 @@ import {
 } from "../feed-stack-controller";
 import { ExternalLink, type DataTableCell, type DataTableColumn } from "../ui";
 import { wrapTextLines } from "../../utils/text-wrap";
+import { tableColumnWidth } from "../ui/table-layout";
 
 export interface FeedDataTableItem {
   id: string;
@@ -117,14 +118,15 @@ function buildColumns(
   items: FeedDataTableItem[],
 ): DetailColumn[] {
   const timeWidth = 8;
-  const sourceWidth = Math.min(
-    Math.max(
-      displayWidth(sourceLabel),
-      ...items.map((item) => item.eyebrow?.length ?? 0),
-      6,
-    ),
-    14,
-  );
+  // Long sources (insider names, publishers) get more room as the pane
+  // widens, from 14 cells up to 24; the title keeps its minimum.
+  const sourceCap = Math.min(24, Math.max(14, Math.floor(width * 0.18)));
+  let longestSource = Math.max(displayWidth(sourceLabel), 6);
+  for (const item of items) {
+    if (item.eyebrow) longestSource = Math.max(longestSource, displayWidth(item.eyebrow));
+  }
+  // The table widens a column to fit its header, so budget what it will draw.
+  const sourceWidth = tableColumnWidth({ width: Math.min(longestSource, sourceCap), label: sourceLabel });
   const titleWidth = Math.max(
     16,
     width - (timeWidth + 1) - (sourceWidth + 1) - 3,

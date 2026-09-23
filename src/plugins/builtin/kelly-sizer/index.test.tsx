@@ -144,7 +144,7 @@ describe("KellySizerPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("Sensitivity");
+    expect(frame).toContain("SENSITIVITY");
     expect(frame).toContain("Win p");
     expect(frame).toContain("Upside");
     expect(frame).not.toContain("Kelly Curve");
