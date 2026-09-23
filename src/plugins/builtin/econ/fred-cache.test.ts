@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   attachFredSeriesPersistence,
   hydrateFredSeries,
+  isFredPublicationPending,
   loadCachedFredSeries,
   resetFredSeriesPersistence,
   type FredSeriesData,
@@ -133,6 +134,44 @@ describe("FRED series cache", () => {
     expect(result.refreshError).toBe("network unavailable");
     expect(result.data.observations[0]!.value).toBe(319);
   });
+});
+
+test("a daily series cached before its morning publication is re-read within the day", async () => {
+  const request: FredSeriesRequest = { seriesId: "VIXCLS", limit: 400, sortOrder: "desc" };
+  const series = (...dates: string[]): FredSeriesData => ({
+    observations: dates.map((date) => ({ date, value: 14.2 })), info: null,
+  });
+  const beforeRelease = series("2026-09-21", "2026-09-18", "2026-09-17", "2026-09-16");
+  const published = series("2026-09-22", ...beforeRelease.observations.map((point) => point.date));
+  const persistence = new MemoryPluginPersistence();
+  attachFredSeriesPersistence(persistence);
+  try {
+    // 06:00 New York on Wednesday 2026-09-23, before FRED posts the 09-22 close.
+    setSystemTime(new Date("2026-09-23T10:00:00Z"));
+    await loadCachedFredSeries(request, async () => beforeRelease);
+    let calls = 0;
+    const loader = async () => { calls++; return published; };
+    setSystemTime(new Date("2026-09-23T10:20:00Z"));
+    expect((await loadCachedFredSeries(request, loader)).data).toEqual(beforeRelease);
+    expect(calls).toBe(0);
+    setSystemTime(new Date("2026-09-23T10:45:00Z"));
+    expect((await loadCachedFredSeries(request, async () => { throw Error("offline"); })).stale).toBe(false);
+    const refreshed = await loadCachedFredSeries(request, loader);
+    expect(calls).toBe(1);
+    expect(refreshed.data.observations[0]!.date).toBe("2026-09-22");
+    setSystemTime(new Date("2026-09-23T20:00:00Z"));
+    await loadCachedFredSeries(request, loader);
+    expect(calls).toBe(1);
+  } finally {
+    setSystemTime();
+  }
+  const hour = 60 * 60_000;
+  // Weekends publish nothing; weekly series keep the nominal policy.
+  const saturday = Date.parse("2026-09-26T15:00:00Z");
+  expect(isFredPublicationPending(series("2026-09-24", "2026-09-23", "2026-09-22").observations, saturday - 2 * hour, saturday)).toBe(false);
+  const monday = Date.parse("2026-09-28T15:00:00Z");
+  expect(isFredPublicationPending(series("2026-09-24", "2026-09-23", "2026-09-22").observations, monday - hour, monday)).toBe(true);
+  expect(isFredPublicationPending(series("2026-09-16", "2026-09-09", "2026-09-02").observations, monday - hour, monday)).toBe(false);
 });
 
 test("a successful HTTP response cannot erase the source's stale flag or retrieval time", async () => {
