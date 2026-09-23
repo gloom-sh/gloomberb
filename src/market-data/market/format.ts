@@ -193,6 +193,12 @@ export function formatPriceObservation(
   return formatPriceNumber(value, 8, options.maxWidth, Math.max(0, Math.min(8, options.minimumFractionDigits ?? 0)));
 }
 
+/** The most decimals formatMarketPrice shows for this asset kind and magnitude,
+ * for callers that render a whole column with one fixed decimal count. */
+export function marketPriceFractionDigitCeiling(value: number, context: AssetDisplayContext): number {
+  return Math.max(getBasePriceMaxFractionDigits(resolveAssetDisplayKind(context), value), tinyPriceFractionDigits(value));
+}
+
 function getPriceMaxFractionDigits(
   kind: AssetDisplayKind,
   value: number,

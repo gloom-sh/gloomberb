@@ -285,7 +285,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ? await market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
       : { points: await market.dataProvider.getPriceHistory(symbol, exchange, range, context), resolution: null };
     const data = historyRows(points, resolution);
-    const decimals = historyPriceDecimals(data);
+    const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
     ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
       columns: [
