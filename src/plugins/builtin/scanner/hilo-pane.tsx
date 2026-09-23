@@ -7,13 +7,13 @@ import {
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../components";
-import { usePaneSettingValue } from "../../../state/app/context";
+import { usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber } from "../../../utils/format";
-import { usePluginPaneActions, usePluginTickerActions } from "../../runtime";
+import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
 import { HiloBars } from "./hilo-bars";
@@ -87,8 +87,9 @@ function renderCell(
 
 function HiloPane({ focused, width, height }: PaneProps) {
   const feed = useHiloFeed();
-  const { selectTicker } = usePluginPaneActions();
   const { pinTicker } = usePluginTickerActions();
+  // The selection belongs to this pane; writing it into the portfolio moved and scrolled its cursor.
+  const [, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
   const [minPrice] = usePaneSettingValue<HiloMinPrice>("minPrice", "1");
   const [sort] = usePaneSettingValue<HiloSort>("sort", "recent");
   const [activeSide, setActiveSide] = useState<Side>("lows");
@@ -115,8 +116,8 @@ function HiloPane({ focused, width, height }: PaneProps) {
   const handleSelect = useCallback((side: Side, row: ScannerHiloExtreme, index: number) => {
     setActiveSide(side);
     setSelected((current) => ({ ...current, [side]: rowKey(row, index) }));
-    selectTicker(row.symbol);
-  }, [selectTicker]);
+    setCursorSymbol(row.symbol);
+  }, [setCursorSymbol]);
 
   const handleSideSwitchKey = useCallback((event: DataTableKeyEvent) => {
     if (event.name !== "left" && event.name !== "right") return false;

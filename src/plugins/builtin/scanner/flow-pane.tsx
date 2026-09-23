@@ -7,13 +7,13 @@ import {
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
-import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
+import { useAppSelector, usePaneSettingValue, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber } from "../../../utils/format";
-import { usePluginPaneActions, usePluginTickerActions } from "../../runtime";
+import { usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
 import {
@@ -104,9 +104,11 @@ function renderCell(
 
 function FlowPane({ focused, width, height }: PaneProps) {
   const feed = useFlowFeed();
-  const { selectTicker } = usePluginPaneActions();
   const { pinTicker } = usePluginTickerActions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Publish the selection on this pane, not the portfolio: moving the
+  // portfolio's cursor scrolled it to a ticker the user never picked there.
+  const [, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
 
   const [minPremium, setMinPremium] = usePaneSettingValue<FlowMinPremium>("minPremium", DEFAULT_FLOW_FILTERS.minPremium);
   const [side, setSide] = usePaneSettingValue<FlowSide>("side", DEFAULT_FLOW_FILTERS.side);
@@ -141,8 +143,8 @@ function FlowPane({ focused, width, height }: PaneProps) {
 
   const handleSelect = useCallback((event: ScannerFlowEvent) => {
     setSelectedId(event.id);
-    selectTicker(event.underlying);
-  }, [selectTicker]);
+    setCursorSymbol(event.underlying);
+  }, [setCursorSymbol]);
 
   if (feed.denied) {
     return <ScannerDeniedState reason={feed.deniedReason} />;
