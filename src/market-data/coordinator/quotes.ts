@@ -109,7 +109,7 @@ export async function loadQuoteEntry({
       const resolvedQuote = resolveQuote?.(instrument, quote) ?? quote;
       const source = resolvedQuote.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, startedAt, "success")];
-      return quoteStore.update(key, (current) => readyQuoteEntry(current, resolvedQuote, source, attempts));
+      return quoteStore.update(key, (current) => readyQuoteEntry(current, resolvedQuote, source, attempts, { keepNewerHeldQuote: true }));
     } catch (error) {
       const classified = classifyError(error);
       const attempt = createAttempt(dataProvider.id, startedAt, EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error", classified.reasonCode, classified.message);
@@ -161,7 +161,7 @@ export async function loadQuoteBatchEntries({
       const quote = resolveQuote?.(instrument, item.quote) ?? item.quote;
       const source = quote.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, Date.now(), "success")];
-      results.set(key, quoteStore.update(key, (current) => readyQuoteEntry(current, quote, source, attempts)));
+      results.set(key, quoteStore.update(key, (current) => readyQuoteEntry(current, quote, source, attempts, { keepNewerHeldQuote: true })));
     });
   }
 

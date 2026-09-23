@@ -20,6 +20,7 @@ import {
   errorEntry,
   hasCachedSnapshotData,
   hasFreshEntryData,
+  heldQuoteSupersedes,
   loadingEntry,
   readyEntry,
   readyChartEntry,
@@ -90,10 +91,14 @@ function storeFinancialsSnapshot(
   );
   if (normalized.quote) {
     const quoteKey = buildQuoteKey(instrument);
-    stores.quoteStore.set(
-      quoteKey,
-      readyEntry(stores.quoteStore.get(quoteKey), normalized.quote, normalized.quote.providerId ?? source, attempts),
-    );
+    const currentQuoteEntry = stores.quoteStore.get(quoteKey);
+    // A tick streamed while the snapshot was in flight is newer than its quote.
+    if (!heldQuoteSupersedes(currentQuoteEntry, normalized.quote)) {
+      stores.quoteStore.set(
+        quoteKey,
+        readyEntry(currentQuoteEntry, normalized.quote, normalized.quote.providerId ?? source, attempts),
+      );
+    }
   }
   if ((normalized.priceHistory ?? []).length > 0) {
     const chartRequest: ChartRequest = createBaselineChartRequest(instrument);

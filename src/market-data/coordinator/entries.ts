@@ -109,12 +109,30 @@ export function readyChartEntry(
     ...(data && !hasUsablePriceHistory(data) ? { error: { reasonCode: "NO_DATA", message: EMPTY_MESSAGE } } : {}) };
 }
 
+/**
+ * A request can resolve after the stream has already delivered a later tick
+ * for the same key. The held quote stays when it is current for the session
+ * and observed after the incoming one; the request still counts as a refresh.
+ */
+export function heldQuoteSupersedes(current: QueryEntry<Quote>, incoming: Quote, now = Date.now()): Quote | null {
+  const held = current.data ?? current.lastGoodData;
+  if (!held || held === incoming) return null;
+  if (!Number.isFinite(held.lastUpdated) || !Number.isFinite(incoming.lastUpdated)) return null;
+  if (held.lastUpdated <= incoming.lastUpdated) return null;
+  return isQuoteStaleForCurrentSession(held, now) ? null : held;
+}
+
 export function readyQuoteEntry(
   current: QueryEntry<Quote>,
   quote: Quote,
   source: string,
   attempts: ProviderAttempt[],
+  options: { keepNewerHeldQuote?: boolean } = {},
 ): QueryEntry<Quote> {
+  const held = options.keepNewerHeldQuote ? heldQuoteSupersedes(current, quote) : null;
+  if (held) {
+    return readyEntry(current, held, current.source ?? source, attempts, { keepLastGoodOnEmpty: true });
+  }
   if (isQuoteStaleForCurrentSession(quote)) {
     const keepFreshQuote = hasFreshQuoteForCurrentSession([current.data, current.lastGoodData]);
     return readyEntry(current, null, current.source ?? source, attempts, { keepLastGoodOnEmpty: keepFreshQuote });

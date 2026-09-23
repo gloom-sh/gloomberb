@@ -491,6 +491,33 @@ describe("MarketDataCoordinator key subscriptions", () => {
     expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(123);
   });
 
+  test("a request that resolves after a newer streamed tick keeps the streamed quote", async () => {
+    const now = Date.now();
+    let resolveRest: ((quote: Quote) => void) | null = null;
+    let onQuote: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    const provider = createTestDataProvider({
+      id: "test-provider",
+      getQuote: () => new Promise<Quote>((resolve) => { resolveRest = resolve; }),
+      subscribeQuotes: (_targets, handler) => {
+        onQuote = handler;
+        return () => {};
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const aapl = { symbol: "AAPL", exchange: "NASDAQ" };
+    coordinator.subscribeQuotes([{ instrument: aapl }]);
+
+    const loading = coordinator.loadQuote(aapl, { forceRefresh: true });
+    onQuote!(aapl, quote("AAPL", 101, { lastUpdated: now - 1_000, dataSource: "live", delivery: "stream" }));
+    await flushCoordinator();
+    resolveRest!(quote("AAPL", 99, { lastUpdated: now - 20_000, dataSource: "live" }));
+    const entry = await loading;
+
+    expect(entry.data?.price).toBe(101);
+    expect(entry.phase).toBe("ready");
+    expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(101);
+  });
+
   test("applies repeated stream quotes that refresh quote freshness", async () => {
     const realDateNow = Date.now;
     const { provider, emitQuote } = createProvider();
