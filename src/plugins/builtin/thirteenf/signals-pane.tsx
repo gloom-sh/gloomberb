@@ -39,7 +39,10 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("13f-ticker:selected", null);
   const [fund, setFund] = usePluginPaneState<{ cik: string; name: string } | null>("13f-ticker:fund", null);
   const unavailableRef = useRef(onUnavailable); unavailableRef.current = onUnavailable;
-  useEffect(() => { onDetailChange?.(!!fund); }, [fund, onDetailChange]);
+  useEffect(() => {
+    onDetailChange?.(!!fund);
+    return () => onDetailChange?.(false);
+  }, [fund, onDetailChange]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const controller = useRef<AbortController | null>(null);
   const load = useCallback((more = false) => {
@@ -53,7 +56,9 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
       setData(current => more && current ? appendTickerHoldings(current, page) : page);
     }).catch(cause => {
       if (controller.current !== request || request.signal.aborted) return;
-      if (!more && !data && unavailableRef.current) unavailableRef.current();
+      // A first page always starts from cleared data, so a failure means the
+      // ticker has no positions view (the closure's data may be the last ticker's).
+      if (!more && unavailableRef.current) unavailableRef.current();
       else setError(cause instanceof Error ? cause.message : String(cause));
     }).finally(() => { if (controller.current === request) setLoading(false); });
   }, [symbol, loading, data]);
