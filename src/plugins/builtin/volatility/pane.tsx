@@ -22,7 +22,6 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "change1dPercent", label: "1D %", width: 9, align: "right" },
   { id: "percentile1y", label: "1Y pctl", width: 9, align: "right" },
   { id: "date", label: "As of", width: 12, align: "left" },
-  { id: "status", label: "Coverage", width: 12, align: "left" },
 ];
 const CURVE_COLUMNS: DataTableColumn[] = [
   { id: "tenor", label: "Tenor", width: 12, align: "left" },
@@ -53,8 +52,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   const result = partial ?? resource.data;
   const data = result?.data;
+  // Indices without a level are reported in the notices, not as empty rows.
   const rows = useMemo(() => {
-    const ordered = boardOrder(data?.board ?? []);
+    const ordered = boardOrder(data?.board ?? []).filter((row) => row.value != null);
     if (!sort.id) return ordered;
     const key = sort.id as keyof VolatilityBoardRow;
     return ordered.sort((left, right) => {
@@ -128,12 +128,10 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
           getExportMetadata={() => [["basis", "daily history; sparse observations retain their timestamp"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "id" ? row.id.toUpperCase()
             : column.id === "label" ? row.label
-            : column.id === "status" ? row.value == null && !row.error && result && result.loaded < result.total ? "loading"
-              : row.status === "limited" ? `${row.sampleSize} obs` : row.status
-              : column.id === "percentile1y" ? percentile(row.percentile1y)
-              : ["value", "change1d", "change1dPercent"].includes(column.id)
-                ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
-                : String(row.date ?? "--"),
+            : column.id === "percentile1y" ? percentile(row.percentile1y)
+            : ["value", "change1d", "change1dPercent"].includes(column.id)
+              ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
+              : String(row.date ?? "--"),
             color: column.id.startsWith("change") && row.change1d != null ? row.change1d > 0 ? colors.warning : row.change1d < 0 ? colors.positive : colors.text
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>

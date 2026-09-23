@@ -38,7 +38,7 @@ export interface VolatilityHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext): Promise<VolatilityLoadResult>;
 }
 const defaultDependencies: VolatilityHeadlessDependencies = {
-  load: (_args, context) => loadVolatilityData(false, createVolatilityDependencies(context.marketData, context.apiClient),
+  load: (_args, context) => loadVolatilityData(context.refresh === true, createVolatilityDependencies(context.marketData, context.apiClient),
     { signal: context.signal }),
 };
 export function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
