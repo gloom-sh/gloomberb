@@ -38,7 +38,6 @@ export interface CurveSurfaceProps {
 const PANELS = [{ id: "main" }];
 const formatNumber = (value: number) => value.toFixed(2);
 const rowKey = (row: CurveTableRow) => row.id;
-const noop = () => {};
 const sourceTime = (value: string) => value.replace("T", " ").slice(0, 16);
 
 /** One numeric-axis curve surface across terminal bitmap, text and desktop.
@@ -142,7 +141,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     {showTable ? <DataTableView columns={columns} items={rows} focused={focused}
       rootHeight={tableHeight} rootWidth={totalWidth} getItemKey={rowKey} renderCell={renderCell}
       selection={{ kind: "id", selectedId: activeId, getId: rowKey, onChange: (_id, row) => select(row) }}
-      onActivate={select} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
+      onActivate={select} sortColumnId={null} sortDirection="asc"
       emptyStateTitle="No curve observations." /> : null}
   </Box>;
 }
