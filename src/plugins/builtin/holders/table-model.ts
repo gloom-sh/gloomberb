@@ -33,12 +33,12 @@ export function buildColumns(width: number): HolderColumn[] {
 
   return [
     { id: "holder", label: "HOLDER", width: holderWidth, align: "left" },
-    { id: "value", label: "VALUE", width: valueWidth, align: "right" },
+    { id: "value", label: "MKT VAL", width: valueWidth, align: "right" },
     { id: "shares", label: "AMOUNT", width: sharesWidth, align: "right" },
     { id: "changeShares", label: "CHG", width: changeWidth, align: "right" },
     { id: "changePercent", label: "CHG%", width: changePercentWidth, align: "right" },
     { id: "percentHeld", label: "HELD", width: heldWidth, align: "right" },
-    { id: "reportDate", label: "DATE", width: dateWidth, align: "right" },
+    { id: "reportDate", label: "PERIOD", width: dateWidth, align: "right" },
   ];
 }
 

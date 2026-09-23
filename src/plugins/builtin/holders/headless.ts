@@ -23,7 +23,7 @@ const HOLDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "ownerType", header: "Type" },
   {
     key: "value",
-    header: "Value",
+    header: "Mkt value",
     align: "right",
     format: (value, row) => formatMoneyCompact(
       value == null ? undefined : Number(value),
@@ -56,7 +56,7 @@ const HOLDER_COLUMNS: HeadlessPaneColumn[] = [
   },
   {
     key: "reportDate",
-    header: "Date",
+    header: "Period",
     format: (value) => displayDate(typeof value === "string" ? value : undefined),
   },
 ];

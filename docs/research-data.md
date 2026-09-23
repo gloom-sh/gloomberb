@@ -124,6 +124,8 @@ Amendment status uses the existing footer. Headless reports retain the candidate
 
 ## Institutional holdings
 
+HDS lists each holder's shares as of its reporting period. Mkt value is those shares at the latest price, so it differs from the value reported in the 13F filing, which is priced at the period end. The 13F pane shows the reported value.
+
 For 13F option positions, reported values and shares refer to the underlying security. The 13F percentage is the share of reported value, not an option premium or portfolio delta. The position type remains identified in the holdings table, and exports retain this value basis.
 
 Congress research uses House Clerk and Senate eFD periodic transaction reports,
