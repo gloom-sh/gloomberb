@@ -83,10 +83,13 @@ describe("Yahoo mappers", () => {
     const data = mapYahooAnalystResearchResponse({ upgradeDowngradeHistory: { history: [
       { epochGradeDate: 1_700_000_000, firm: "Freedom Capital Markets", action: "down", priceTargetAction: "", currentPriceTarget: 0, priorPriceTarget: 0 },
       { epochGradeDate: 1_700_000_000, firm: "Distressed analyst", action: "down", priceTargetAction: "Lowers", currentPriceTarget: 0, priorPriceTarget: 2 },
+      { epochGradeDate: 1_700_000_000, firm: "Leerink Partners", action: "up", priceTargetAction: "Announces", currentPriceTarget: 265, priorPriceTarget: 0 },
     ] } }, "BABA");
     expect(data.ratings[0]?.currentPriceTarget).toBeUndefined();
     expect(data.ratings[0]?.priorPriceTarget).toBeUndefined();
     expect(data.ratings[1]).toMatchObject({ currentPriceTarget: 0, priorPriceTarget: 2 });
+    expect(data.ratings[2]).toMatchObject({ currentPriceTarget: 265 });
+    expect(data.ratings[2]?.priorPriceTarget).toBeUndefined();
   });
 
   test("retains London dividends when the independent earnings endpoint fails", async () => {

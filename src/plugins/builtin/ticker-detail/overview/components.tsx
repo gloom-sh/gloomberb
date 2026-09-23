@@ -211,7 +211,7 @@ export function StatGrid({ fields, width }: { fields: StatField[]; width: number
             return (
               <Box key={j} flexDirection="row">
                 {j > 0 && <Box width={STAT_COLUMN_GAP} />}
-                <Box width={colWidth} flexDirection="row">
+                <Box width={colWidth} flexDirection="row" data-gloom-ui="key-value-row">
                   <Box width={labelWidth} overflow="hidden">
                     <Text fg={colors.textDim}>{t(field.label)}</Text>
                   </Box>

@@ -765,8 +765,10 @@ export async function renderDesktopShot({
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom"
     && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved)
     && !isScenarioScreenshot(resolved) && !isCalculatorScreenshot(resolved);
+  // A live pane without a table, such as a ticker overview, shows its data
+  // as labeled values.
   const rowCount = usesLiveDomEvidence
-    ? render.rows.length
+    ? render.rows.length || (render.visibleKeyValues?.length ?? 0)
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
   const unavailableSymbols = usesLiveDomEvidence
     ? []

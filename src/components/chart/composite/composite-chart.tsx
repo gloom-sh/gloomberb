@@ -102,11 +102,13 @@ import {
   applyCompositeChartCursor,
   buildCompositeChartScene,
   projectCompositeValue,
+  resizeCompositePanel,
   resolveAdjacentCompositeCursorDate,
   resolveCompositeCursorDate,
   unprojectCompositeValue,
 } from "./scene";
 import {
+  compositeAxisTickLabels,
   renderCompositeAxisText,
   renderCompositePanelText,
 } from "./text-renderer";
@@ -182,11 +184,13 @@ function renderPanelBitmap(
   panel: CompositePanelScene,
   bitmapSize: StaticChartBitmapSize,
   colors: CompositeChartColors,
+  snapGridToRows = false,
 ): NativeChartBitmap {
   return renderCompositePanelBitmap(panel, {
     pixelWidth: bitmapSize.pixelWidth,
     pixelHeight: bitmapSize.pixelHeight,
     colors,
+    snapGridToRows,
   });
 }
 
@@ -224,7 +228,7 @@ function useCompositePanelBitmap({
   // (and resident in the terminal) while the crosshair moves.
   const terminalBitmap = useMemo(() => {
     if (isDesktopWeb || !bitmapSize) return null;
-    return renderPanelBitmap(panel, bitmapSize, colors);
+    return renderPanelBitmap(panel, bitmapSize, colors, true);
   }, [bitmapSize, colors, isDesktopWeb, panel]);
 
   useEffect(() => {
@@ -371,7 +375,7 @@ function compositeAxisLabelWidth(
   includeCursor: boolean,
 ): number {
   if (!domain) return 0;
-  const ticks = compositeAxisTicks(domain, 3, format);
+  const ticks = compositeAxisTicks(domain, format);
   const labels = ticks.map((tick) => tick.label);
   if (includeCursor) {
     const cursorFormat = format ?? formatCompositeCursorValue;
@@ -932,6 +936,14 @@ function CompositePanelSurface({
     ),
     [formatAxisValue, panel, rightAxisWidth],
   );
+  const leftAxisTicks = useMemo(
+    () => compositeAxisTickLabels(panel.axes.left, leftAxisWidth, formatAxisValue),
+    [formatAxisValue, leftAxisWidth, panel],
+  );
+  const rightAxisTicks = useMemo(
+    () => compositeAxisTickLabels(panel.axes.right, rightAxisWidth, formatAxisValue),
+    [formatAxisValue, panel, rightAxisWidth],
+  );
   const cursorRow = activeCursorYRatio === null
     ? null
     : Math.round(activeCursorYRatio * Math.max(panel.height - 1, 0));
@@ -1287,6 +1299,7 @@ function CompositePanelSurface({
         <>
           <PriceAxisLabels
             axisLabels={leftAxisLabels}
+            axisTicks={leftAxisTicks}
             axisWidth={leftAxisWidth}
             axisSectionWidth={leftAxisWidth}
             side="left"
@@ -1330,6 +1343,7 @@ function CompositePanelSurface({
           <Box width={axisGap} />
           <PriceAxisLabels
             axisLabels={rightAxisLabels}
+            axisTicks={rightAxisTicks}
             axisWidth={rightAxisWidth}
             axisSectionWidth={rightAxisWidth}
             side="right"
@@ -1933,18 +1947,30 @@ export function CompositeChart({
   const availableAxisWidth = axisCount > 0
     ? Math.max(0, Math.floor((totalWidth - minimumPlotWidth) / axisCount) - 1)
     : 0;
+  const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
+    if (!projectedScene) return null;
+    const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));
+    const panelHeights = allocateCompositePanelHeights(
+      projectedScene.panels.map((panel) => ({
+        id: panel.id,
+        height: panelSpecById.get(panel.id)?.height,
+      })),
+      plotHeight,
+    );
+    return projectedScene.panels.map((panel) => resizeCompositePanel(panel, panelHeights.get(panel.id) ?? 1));
+  }, [panels, plotHeight, projectedScene]);
   // Static overview charts also pin the latest price with cursor precision.
   const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
   const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
-      ...(projectedScene?.panels ?? []).flatMap((panel) => [
+      ...(layoutPanels ?? []).flatMap((panel) => [
         compositeAxisLabelWidth(panel.axes.left, formatAxisValue, includeCursorLabels),
         compositeAxisLabelWidth(panel.axes.right, formatAxisValue, includeCursorLabels),
       ]).map((width) => includeCursorLabels ? width : Math.min(width, maximumAxisWidth)),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, maximumAxisWidth, projectedScene]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, layoutPanels, maximumAxisWidth]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
@@ -1958,21 +1984,6 @@ export function CompositeChart({
     1,
     Math.round(plotWidth * cellWidthPx * Math.max(1, pixelRatio)),
   );
-  const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
-    if (!projectedScene) return null;
-    const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));
-    const panelHeights = allocateCompositePanelHeights(
-      projectedScene.panels.map((panel) => ({
-        id: panel.id,
-        height: panelSpecById.get(panel.id)?.height,
-      })),
-      plotHeight,
-    );
-    return projectedScene.panels.map((panel) => {
-      const height = panelHeights.get(panel.id) ?? 1;
-      return panel.height === height ? panel : { ...panel, height };
-    });
-  }, [panels, plotHeight, projectedScene]);
   const baseScene = useMemo<CompositeChartScene | null>(() => {
     if (!projectedScene || !layoutPanels) return null;
     const laidOut: CompositeChartScene = {

@@ -154,6 +154,8 @@ export function mapYahooAnalystResearchResponse(
         const priorPriceTarget = priceValue(rating.priorPriceTarget);
         // A grade-only action uses two zero sentinels, not an explicit $0 target.
         const emptyTargets = currentPriceTarget === 0 && priorPriceTarget === 0 && !rating.priceTargetAction?.trim();
+        // A firm setting its first target reports the missing prior as 0.
+        const firstTarget = priorPriceTarget === 0 && currentPriceTarget != null && currentPriceTarget > 0;
         return {
           date,
           firm,
@@ -161,7 +163,7 @@ export function mapYahooAnalystResearchResponse(
           ...(current ? { current } : {}),
           ...(prior ? { prior } : {}),
           ...(!emptyTargets && currentPriceTarget != null ? { currentPriceTarget } : {}),
-          ...(!emptyTargets && priorPriceTarget != null ? { priorPriceTarget } : {}),
+          ...(!emptyTargets && !firstTarget && priorPriceTarget != null ? { priorPriceTarget } : {}),
         };
       })
       .filter((rating): rating is AnalystResearchData["ratings"][number] => rating !== null)

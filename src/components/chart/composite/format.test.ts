@@ -194,10 +194,10 @@ describe("composite chart unit formatting", () => {
     expect(formatCompositeAxisValue(79_432.18, domain)).toBe("$79K");
     expect(formatChartLegendValue(1_234_567.89, "USD", "price:USD")).toBe("$1,234,567.89");
     expect(formatChartLegendValue(90_007_000_000, "USD", "currency-total:USD")).toBe("$90.01B");
-    expect(formatChartLegendValue(-12_345_600_000, "EUR", "currency-total")).toBe("€-12.35B");
+    expect(formatChartLegendValue(-12_345_600_000, "EUR", "currency-total")).toBe("-€12.35B");
     expect(formatChartLegendValue(123_456_000, "CAD", "currency-total:CAD")).toBe("123.46M CAD");
     expect(formatCompositeCursorValue(90_007_000_000, { ...domain, unitGroup: "currency-total:USD" })).toBe("$90.01B");
-    expect(formatCompositeCursorValue(-12_345_600_000, { ...domain, unit: "EUR", unitGroup: "currency-total" })).toBe("€-12.35B");
+    expect(formatCompositeCursorValue(-12_345_600_000, { ...domain, unit: "EUR", unitGroup: "currency-total" })).toBe("-€12.35B");
     expect(formatCompositeCursorValue(123_456_000, { ...domain, unit: "CAD", unitGroup: "currency-total:CAD" })).toBe("123.46M CAD");
   });
 });
@@ -226,32 +226,32 @@ test("zoomed price axes spend the digits their ticks need and stay compact when 
     unitGroup: "price:USD",
     ...extra,
   });
-  const labels = (...args: Parameters<typeof domain>) => compositeAxisTicks(domain(...args), 3).map((tick) => tick.label);
+  const labels = (...args: Parameters<typeof domain>) => compositeAxisTicks(domain(...args)).map((tick) => tick.label);
   const crypto = { priceAssetCategories: ["CRYPTOCURRENCY"] };
 
-  expect(labels(109_500, 109_620, crypto)).toEqual(["$109,620", "$109,560", "$109,500"]);
+  expect(labels(109_500, 109_620, crypto)).toEqual(["$109,600", "$109,550", "$109,500"]);
   expect(labels(109_500, 109_620, { ...crypto, scale: "log" })).toEqual(["$109,620", "$109,560", "$109,500"]);
-  expect(labels(1.1598, 1.1607, { priceAssetCategories: ["CURRENCY"] })).toEqual(["$1.1607", "$1.1603", "$1.1598"]);
-  expect(labels(0.000005, 0.000006, crypto)).toEqual(["$0.00000600", "$0.00000550", "$0.00000500"]);
+  expect(labels(1.1598, 1.1607, { priceAssetCategories: ["CURRENCY"] })).toEqual(["$1.1606", "$1.1604", "$1.1602", "$1.1600", "$1.1598"]);
+  expect(labels(0.000005, 0.000006, { ...crypto, maxTicks: 3 })).toEqual(["$0.0000060", "$0.0000055", "$0.0000050"]);
 
   // A wide view is already legible, so it keeps the narrower compact gutter.
-  expect(labels(52_000, 133_000, crypto)).toEqual(["$133K", "$93K", "$52K"]);
+  expect(labels(52_000, 133_000, crypto)).toEqual(["$120K", "$100K", "$80K", "$60K"]);
   expect(labels(52_000, 133_000, { ...crypto, scale: "log" })).toEqual(["$133K", "$83K", "$52K"]);
-  expect(labels(250, 262, { priceAssetCategories: ["EQUITY"] })).toEqual(["$262", "$256", "$250"]);
+  expect(labels(250, 262, { priceAssetCategories: ["EQUITY"] })).toEqual(["$260", "$255", "$250"]);
 
   for (const [min, max] of [[109_500, 109_620], [1.1598, 1.1607], [0.000005, 0.000006], [52_000, 133_000]] as const) {
-    const ticks = compositeAxisTicks(domain(min, max, crypto), 4).map((tick) => tick.label);
+    const ticks = compositeAxisTicks(domain(min, max, crypto)).map((tick) => tick.label);
     expect(new Set(ticks).size).toBe(ticks.length);
   }
 });
 
 // Regression: truncating before PriceAxisLabels bypassed its full-value guard.
 test("constrained axis ticks never become plausible numeric prefixes", () => {
-  const domain = { side: "right" as const, seriesIds: ["tiny"], min: 3.88e-6, max: 6.12e-6, scale: "linear" as const, unit: "USD", unitGroup: "price" };
+  const domain = { side: "right" as const, seriesIds: ["tiny"], min: 3.88e-6, max: 6.12e-6, scale: "linear" as const, unit: "USD", unitGroup: "price", maxTicks: 3 };
   for (const side of ["left", "right"] as const) {
     const short = renderCompositeAxisText(domain, 5, 8, side).map((row) => row.trim()).filter(Boolean);
     expect(short).toEqual(["…", "…", "…"]);
-    expect(renderCompositeAxisText(domain, 5, 12, side)[0]?.trim()).toBe("$0.00000612");
+    expect(renderCompositeAxisText(domain, 5, 12, side)[0]?.trim()).toBe("$0.000006");
     expect(renderCompositeAxisText(domain, 5, 5, side, () => "12345 CAD")[0]?.trim()).toBe("…");
     expect(renderCompositeAxisText(domain, 5, 5, side, () => "−12.5%")[0]?.trim()).toBe("…");
   }

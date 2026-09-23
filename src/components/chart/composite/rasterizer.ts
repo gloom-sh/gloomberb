@@ -12,6 +12,7 @@ import {
   type CompositeColumnGroupCenter,
   type CompositeColumnLayout,
 } from "./column-layout";
+import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
 import type {
   CompositeAxisDomain,
@@ -25,6 +26,9 @@ interface RenderCompositePanelBitmapOptions {
   pixelWidth: number;
   pixelHeight: number;
   colors: CompositeChartColors;
+  /** Terminal cells hold one axis label per row: centre each gridline on the
+   * row its label snaps to. */
+  snapGridToRows?: boolean;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -329,8 +333,11 @@ export function renderCompositePanelBitmap(
   const negative = parseHex(options.colors.negative);
   fillOpaque(data, background);
 
-  for (let index = 1; index <= 3; index += 1) {
-    const y = (height - 1) * (index / 4);
+  const rows = Math.max(1, panel.height);
+  for (const ratio of compositeGridRatios(panel)) {
+    const y = options.snapGridToRows
+      ? (Math.round(ratio * (rows - 1)) + 0.5) / rows * height
+      : (height - 1) * ratio;
     fillRect(data, width, height, 0, y, width - 1, y + 0.6, grid, 0.42);
   }
 

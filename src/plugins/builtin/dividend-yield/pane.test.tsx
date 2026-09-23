@@ -231,6 +231,8 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   let mode: "complete" | "empty" | "failure" = "complete";
   const cashCurrency = failure === "unknown-currency" ? "GBP" : "USD";
   const cashLabel = cashCurrency === "GBP" ? "£4.00" : "$4.00";
+  // The payment row: a round axis tick can share the amount.
+  const cashRow = `${cashLabel} ${cashCurrency}`;
   setHttpFetchTransport(async (url) => {
     if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
     if (url.includes("getcrumb")) return new Response("fixture");
@@ -300,13 +302,13 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
   await act(async () => { changeSymbol("OTHER"); });
   const changed = await frame();
   expect(changed).not.toContain(recentDate);
-  expect(changed).not.toContain(cashLabel);
+  expect(changed).not.toContain(cashRow);
   expect(changed).toContain(failure === "invalid" ? "Incomplete cash history" : "Dividend currency is unavailable");
   mode = "complete";
   await emitKeypress(setup!, { name: "r", sequence: "r" });
   const newSecurity = await frame();
   expect(newSecurity).toContain("7.00%");
-  expect(newSecurity).not.toContain(cashLabel);
+  expect(newSecurity).not.toContain(cashRow);
 });
 
 test("short dividend panes keep history navigable while paging the complete summary", async () => {

@@ -1,5 +1,5 @@
 import { displayWidth, padTo } from "../../../utils/format";
-import { compositeAxisTicks, type CompositeAxisValueFormatter } from "./format";
+import { compositeAxisTicks, compositeGridRatios, type CompositeAxisValueFormatter } from "./format";
 import type { CompositeViewportRange } from "./interactions";
 import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
@@ -217,8 +217,8 @@ export function renderCompositePanelText(
   const height = Math.max(1, panel.height);
   const plotWidth = Math.max(1, width);
   const rows = Array.from({ length: height }, () => Array(plotWidth).fill(" "));
-  for (let index = 1; index <= 3; index += 1) {
-    const row = Math.round((height - 1) * (index / 4));
+  for (const ratio of compositeGridRatios(panel)) {
+    const row = Math.round((height - 1) * ratio);
     for (let x = 0; x < plotWidth; x += 3) setCell(rows, x, row, "·");
   }
 
@@ -283,6 +283,21 @@ export function renderCompositePanelText(
   return rows.map((row) => row.join(""));
 }
 
+/** Axis ticks as they fit a gutter of `width` cells. */
+export function compositeAxisTickLabels(
+  domain: CompositeAxisDomain | undefined,
+  width: number,
+  format?: CompositeAxisValueFormatter,
+): Array<{ ratio: number; label: string }> {
+  if (!domain || width <= 0) return [];
+  // Never pass a clipped number to the axis renderer: its later overflow
+  // guard cannot distinguish that prefix from a complete formatted value.
+  return compositeAxisTicks(domain, format).map(({ ratio, label }) => ({
+    ratio,
+    label: displayWidth(label) > width ? "…" : label,
+  }));
+}
+
 export function renderCompositeAxisText(
   domain: CompositeAxisDomain | undefined,
   height: number,
@@ -291,12 +306,8 @@ export function renderCompositeAxisText(
   format?: CompositeAxisValueFormatter,
 ): string[] {
   const rows = Array.from({ length: Math.max(1, height) }, () => " ".repeat(Math.max(0, width)));
-  if (!domain || width <= 0) return rows;
-  for (const tick of compositeAxisTicks(domain, 3, format)) {
-    const row = clamp(Math.round(tick.ratio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
-    // Never pass a clipped number to the axis renderer: its later overflow
-    // guard cannot distinguish that prefix from a complete formatted value.
-    const label = displayWidth(tick.label) > width ? "…" : tick.label;
+  for (const { ratio, label } of compositeAxisTickLabels(domain, width, format)) {
+    const row = clamp(Math.round(ratio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
     rows[row] = padTo(label, width, side === "left" ? "right" : "left");
   }
   return rows;

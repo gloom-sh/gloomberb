@@ -20,6 +20,7 @@ import {
   projectCompositeTimestamp,
   unprojectCompositeTimestamp,
 } from "./time-scale";
+import { compositeAxisMaxTicks } from "./format";
 import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -263,8 +264,10 @@ function paddedDomain(values: number[], scale: PanelScale): { min: number; max: 
     if (scale === "log") {
       return { min: rawMin / 1.1, max: rawMax * 1.1 };
     }
+    // All zero, as in a session without reported volume, sits on the floor.
+    if (rawMin === 0) return { min: 0, max: 1 };
     const delta = Math.max(Math.abs(rawMin) * 0.08, 1);
-    return { min: rawMin - delta, max: rawMax + delta };
+    return signBounded(rawMin, rawMax, { min: rawMin - delta, max: rawMax + delta });
   }
 
   if (scale === "log") {
@@ -275,19 +278,23 @@ function paddedDomain(values: number[], scale: PanelScale): { min: number; max: 
   }
 
   const padding = (rawMax - rawMin) * 0.06;
-  if (rawMin === 0 && rawMax > 0) {
-    return { min: 0, max: rawMax + padding };
-  }
-  if (rawMax === 0 && rawMin < 0) {
-    return { min: rawMin - padding, max: 0 };
-  }
-  return { min: rawMin - padding, max: rawMax + padding };
+  return signBounded(rawMin, rawMax, { min: rawMin - padding, max: rawMax + padding });
+}
+
+/** Headroom never pushes one-signed values across zero: a price or volume
+ * axis does not reach below 0. */
+function signBounded(rawMin: number, rawMax: number, padded: { min: number; max: number }): { min: number; max: number } {
+  return {
+    min: rawMin >= 0 ? Math.max(0, padded.min) : padded.min,
+    max: rawMax <= 0 ? Math.min(0, padded.max) : padded.max,
+  };
 }
 
 function buildAxisDomain(
   side: CompositeAxisSide,
   series: ResolvedSeries[],
   scale: PanelScale,
+  rows: number,
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
@@ -302,7 +309,20 @@ function buildAxisDomain(
     unitGroup: first.unitGroup,
     priceAssetCategories: [...new Set(axisSeries.flatMap((entry) => entry.priceAssetCategory ? [entry.priceAssetCategory] : []))],
     seriesIds: axisSeries.map((entry) => entry.id),
+    maxTicks: compositeAxisMaxTicks(rows),
   };
+}
+
+/** A panel laid out at another height keeps as many axis ticks as it can label. */
+export function resizeCompositePanel(panel: CompositePanelScene, height: number): CompositePanelScene {
+  if (panel.height === height) return panel;
+  const maxTicks = compositeAxisMaxTicks(height);
+  const axes: CompositePanelScene["axes"] = {};
+  for (const side of ["left", "right"] as const) {
+    const domain = panel.axes[side];
+    if (domain) axes[side] = domain.maxTicks === maxTicks ? domain : { ...domain, maxTicks };
+  }
+  return { ...panel, height, axes };
 }
 
 export function projectCompositeValue(value: number, domain: CompositeAxisDomain): number | null {
@@ -634,8 +654,9 @@ export function buildCompositeChartScene(
     const domainSeries = emptyRange || panelSeries.length === 0
       ? dataSeries.filter((entry) => entry.panelId === panel.id)
       : panelSeries;
-    const left = buildAxisDomain("left", domainSeries, scale);
-    const right = buildAxisDomain("right", domainSeries, scale);
+    const rows = panelHeights.get(panel.id) ?? 1;
+    const left = buildAxisDomain("left", domainSeries, scale, rows);
+    const right = buildAxisDomain("right", domainSeries, scale, rows);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
     return {
       id: panel.id,

@@ -19,6 +19,8 @@ interface PriceAxisMarker {
 
 interface PriceAxisLabelsProps {
   axisLabels: ReadonlyMap<number, string>;
+  /** Tick labels at their exact heights, where the host can place text between rows. */
+  axisTicks?: readonly { ratio: number; label: string }[];
   axisWidth: number;
   axisSectionWidth: number;
   side?: "left" | "right";
@@ -73,6 +75,7 @@ export function buildCursorPriceAxisOverlay({
 
 export function PriceAxisLabels({
   axisLabels,
+  axisTicks,
   axisWidth,
   axisSectionWidth,
   side,
@@ -95,6 +98,9 @@ export function PriceAxisLabels({
     cellHeightPx,
   }), [axisSectionWidth, axisWidth, cellHeightPx, cursorLabel, cursorPixelY, height]);
   const usePixelOverlay = fractionalViewport && overlay.labelText !== null && overlay.topPercent !== null;
+  // Row-snapped labels drift up to a row off the gridlines they name.
+  const usePixelTicks = fractionalViewport && axisTicks !== undefined;
+  const pixelHeight = Math.max(height * cellHeightPx, 1);
   const axisPaddingWidth = Math.max(0, axisSectionWidth - axisWidth);
   const axisLabelJustify = side === "left"
     ? "flex-end"
@@ -126,16 +132,16 @@ export function PriceAxisLabels({
       height={height}
       flexDirection="column"
       overflow="hidden"
-      style={usePixelOverlay ? { position: "relative" } : undefined}
+      style={usePixelOverlay || usePixelTicks ? { position: "relative" } : undefined}
     >
       {Array.from({ length: height }, (_, row) => {
         const isCursorRow = !usePixelOverlay && cursorLabel !== null && cursorRow === row;
-        const marker = usePixelOverlay
+        const marker = usePixelOverlay || usePixelTicks
           ? undefined
           : extraMarkers?.find((entry) => entry.row === row);
         const label = isCursorRow
           ? cursorLabel
-          : marker?.label ?? (axisLabels.get(row) ?? null);
+          : marker?.label ?? (usePixelTicks ? null : axisLabels.get(row) ?? null);
         return (
           <Box key={row} height={1}>
             {renderAxisLabel(
@@ -145,7 +151,31 @@ export function PriceAxisLabels({
           </Box>
         );
       })}
-      {usePixelOverlay ? extraMarkers?.map((marker) => (
+      {usePixelTicks ? axisTicks.map((tick) => {
+        const halfLabel = Math.min(cellHeightPx / 2, (pixelHeight - 1) / 2);
+        const topPx = clamp(tick.ratio * (pixelHeight - 1), halfLabel, Math.max(pixelHeight - halfLabel, halfLabel));
+        return (
+          <Box
+            key={`${tick.label}:${tick.ratio}`}
+            width={axisSectionWidth}
+            flexDirection="row"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: `${(topPx / Math.max(pixelHeight - 1, 1)) * 100}%`,
+              transform: "translateY(-50%)",
+              whiteSpace: "pre",
+              pointerEvents: "none",
+            }}
+          >
+            <Box flexDirection="row" width={axisWidth} justifyContent={axisLabelJustify} overflow="hidden">
+              <Text fg={axisColor} selectable={false}>{tick.label}</Text>
+            </Box>
+            {axisPaddingWidth > 0 ? <Box width={axisPaddingWidth} /> : null}
+          </Box>
+        );
+      }) : null}
+      {usePixelOverlay || usePixelTicks ? extraMarkers?.map((marker) => (
         <Box
           key={`${marker.label}:${marker.pixelY}`}
           width={axisSectionWidth}

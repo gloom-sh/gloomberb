@@ -1490,7 +1490,7 @@ describe("CompositeChart", () => {
 
   test.each([
     ["USD", "currency-total:USD", 90_007_000_000, "$90.01B"],
-    ["EUR", "currency-total:EUR", -12_345_600_000, "€-12.35B"],
+    ["EUR", "currency-total:EUR", -12_345_600_000, "-€12.35B"],
     ["CAD", "currency-total:CAD", 123_456_000, "123.46M CAD"],
     ["USD", "price:USD", 1_234_567.89, "$1,234,567.89"],
     ["USD", "price:USD", 0.0123, "$0.0123"],

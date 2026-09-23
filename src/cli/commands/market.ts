@@ -239,6 +239,11 @@ function optionRows(chain: OptionsChain) {
     }));
 }
 
+/** Per-share earnings to the cent, as reported; consensus averages carry more digits. */
+function formatEpsCell(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
+}
+
 function earningsRows(events: EarningsEvent[]) {
   return events.map((event) => ({
     symbol: event.symbol,
@@ -537,8 +542,8 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
         { key: "timing", header: "Timing" },
-        { key: "epsEstimate", header: "EPS Est", align: "right" },
-        { key: "epsActual", header: "EPS", align: "right" },
+        { key: "epsEstimate", header: "EPS Est", align: "right", format: formatEpsCell },
+        { key: "epsActual", header: "EPS", align: "right", format: formatEpsCell },
       ],
     });
   });

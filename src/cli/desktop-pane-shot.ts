@@ -625,7 +625,9 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
         loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
         errorStateDetected: root.querySelector('[data-gloom-status="error"]') !== null,
-        emptyStateDetected: root.querySelector('[data-gloom-status="empty"]') !== null,
+        // An empty sub-section off screen, such as a ticker's news list below
+        // the fold, does not make the captured view empty.
+        emptyStateDetected: [...root.querySelectorAll('[data-gloom-status="empty"]')].some(isVisible),
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],

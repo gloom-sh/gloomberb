@@ -9,6 +9,7 @@ import {
   unprojectCompositeValue,
 } from "./scene";
 import { buildCompositeColumnLayout } from "./column-layout";
+import { compositeAxisTicks, compositeGridRatios, formatCompositeAxisValue } from "./format";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 
 /** Ratio the newest observation lands on once the right offset is reserved. */
@@ -316,6 +317,28 @@ describe("composite chart scene", () => {
 
     expect(scene?.panels[0]?.axes.left?.min).toBe(0);
     expect(scene?.panels[0]?.axes.left?.max).toBeGreaterThan(140);
+  });
+
+  // Regression: 6% headroom under an $11 low on a $237 range put the NVDA axis
+  // at $-2.73, and a session with no reported volume spanned -1..1.
+  test("never pads one-signed values across zero and labels every gridline with a round value", () => {
+    const price = series({
+      id: "price",
+      unitGroup: "price:USD",
+      points: [point("2022-10-13", 11), point("2025-06-30", 237)],
+    });
+    const volume = series({ id: "volume", style: "columns", unit: "shares", unitGroup: "volume", panelId: "volume", points: [
+      point("2025-06-27", 0), point("2025-06-30", 0),
+    ] });
+    const scene = buildCompositeChartScene([price, volume], [{ id: "main", height: 3 }, { id: "volume", height: 1 }], { width: 40, height: 40 })!;
+    const [main, lower] = scene.panels;
+
+    expect(main!.axes.left!.min).toBe(0);
+    expect(lower!.axes.left).toMatchObject({ min: 0, max: 1 });
+    const ticks = compositeAxisTicks(main!.axes.left!);
+    expect(ticks.map((tick) => tick.label)).toEqual(["$250", "$200", "$150", "$100", "$50", "$0"]);
+    expect(compositeGridRatios(main!)).toEqual(ticks.map((tick) => tick.ratio).filter((ratio) => ratio > 0.01 && ratio < 0.99));
+    expect(formatCompositeAxisValue(-4, { ...main!.axes.left!, min: -5, max: 5 })).toBe("-$4");
   });
 
   test("extends a prior step anchor across an otherwise empty viewport", () => {
