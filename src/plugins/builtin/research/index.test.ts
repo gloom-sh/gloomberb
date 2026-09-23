@@ -295,11 +295,13 @@ describe("event rows", () => {
     };
     const ttm = () => buildEventRows(actions, null, financials, "USD").find((row) => row.status === "TTM");
     expect(ttm()?.annualEps).toBeCloseTo(18.64, 10);
-    expect(ttm()).toMatchObject({ date: "2026-06-30", epsCurrency: "USD", annualRevenue: 400 });
+    expect(ttm()).toMatchObject({ date: "2026-06-30", epsCurrency: "USD", annualRevenue: 400, detail: "sum" });
 
-    // A quarter without its reported row cannot be summed from the rows, so the statement TTM stays.
+    // A quarter without its reported row cannot be summed from the rows, so the statement TTM
+    // stays and is not labelled as their sum (ADBE: Yahoo omitted two of the last four quarters).
     actions.earnings.splice(1, 1);
     expect(ttm()?.annualEps).toBeCloseTo(15.55, 10);
+    expect(ttm()?.detail).toBe("statement EPS");
   });
 
   test("omits a TTM row when a flow metric is missing from one of the last four quarters", () => {

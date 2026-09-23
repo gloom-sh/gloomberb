@@ -115,7 +115,7 @@ test("a forecast quarter Yahoo already reports as actual carries no estimates in
   // On report day history can carry the actual before Yahoo rolls the date; that consensus is today's.
   const reportDay = Date.parse("2026-11-05T13:00:00Z");
   expect(mapYahooEarningsCalendarEvent(source, "SYN", reportDay)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
-  expect(mapYahooCalendarEarnings(source, reportDay)[0]?.epsEstimate).toBe(150);
+  expect(mapYahooCalendarEarnings(source, reportDay)[0]).toMatchObject({ epsEstimate: 1.5, currency: "GBP" });
 
   source.earningsHistory.history!.pop();
   expect(mapYahooEarningsCalendarEvent(source, "SYN", now)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });

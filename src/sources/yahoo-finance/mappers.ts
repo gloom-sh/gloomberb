@@ -242,11 +242,20 @@ export function mapYahooCalendarEarnings(result: YahooQuoteSummaryResult, now = 
   if (!date) return [];
   const timestamp = yahooRawDateTime(rawDate);
   const staleTrend = yahooReportedQuarterTrend(result, now);
+  const epsEstimate = financeRawNumber(staleCalendarValue(result.calendarEvents?.earnings?.earningsAverage, staleTrend?.earningsEstimate?.avg));
+  // calendarEvents carries no currency; a value copied from the current
+  // quarter's trend can use that trend's earnings currency.
+  const trendEstimate = staleTrend ? undefined : result.earningsTrend?.trend?.find((trend) => trend.period === "0q")?.earningsEstimate;
+  const unit = epsEstimate != null && epsEstimate === financeRawNumber(trendEstimate?.avg)
+    ? resolveCurrencyUnit(trendEstimate?.earningsCurrency)
+    : undefined;
+  const currency = unit && /^[A-Z]{3}$/.test(unit.currency) ? unit.currency : undefined;
   return [{
     date,
     dateType: "announcement",
+    ...(currency ? { currency } : {}),
     time: timestamp ? inferEarningsTiming(timestamp) : undefined,
-    epsEstimate: financeRawNumber(staleCalendarValue(result.calendarEvents?.earnings?.earningsAverage, staleTrend?.earningsEstimate?.avg)),
+    epsEstimate: currency ? normalizeMarketValue(epsEstimate, unit!.divisor) : epsEstimate,
   }];
 }
 

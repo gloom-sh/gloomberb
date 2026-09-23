@@ -64,6 +64,23 @@ test("ADRs keep independent consensus EPS and revenue currencies and never infer
   expect(rows.find((row) => row.date === "2026-12-31")?.revenueCurrency).toBeUndefined();
 });
 
+test("quarterly consensus for a quarter that already has a reported row is dropped", () => {
+  // REF in Sep 2026: Yahoo still served the reported June quarter as 0q; SEC re-dated the statement to 06-27.
+  const rows = buildEventRows({ symbol: "REF", dividends: [], splits: [], earnings: [
+    { date: "2026-11-10", dateType: "announcement", time: "AMC" },
+    { date: "2026-06-30", dateType: "fiscal-period-end", currency: "USD", epsActual: 0.2393, epsEstimate: 0.22282 },
+  ] }, { symbol: "REF", recommendations: [], ratings: [],
+    earningsEstimates: [
+      { date: "2026-06-30", period: "current quarter", average: 0.22282, currency: "USD" },
+      { date: "2026-12-31", period: "next quarter", average: 0.17, currency: "USD" },
+      { date: "2026-12-31", period: "current year", average: 0.53, currency: "USD" },
+    ],
+    revenueEstimates: [{ date: "2026-06-30", period: "current quarter", average: 154_430_000, currency: "USD" }],
+  }, { quarterlyStatements: [{ date: "2026-06-27", providerDate: "2026-06-30", dateSource: "sec", totalRevenue: 155_230_000 }] }, "USD");
+  expect(rows.filter((row) => row.status === "Q Est").map((row) => row.period)).toEqual(["next qtr"]);
+  expect(rows.some((row) => row.status === "FY Est")).toBe(true);
+});
+
 test("split direction and fractional historical dividends remain faithful to the event", () => {
   const rows = buildEventRows({ symbol: "NVDA", currency: "USD", earnings: [],
     dividends: [{ exDate: "2024-03-05", amount: 0.004 }],

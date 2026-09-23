@@ -79,6 +79,20 @@ describe("Yahoo mappers", () => {
     expect(history).toMatchObject({ date: "2026-05-31", dateType: "fiscal-period-end", currency: "CNY", epsActual: -0.63, surprisePercent: 18.85 });
   });
 
+  test("an announcement consensus copied from the current-quarter trend takes that trend's currency and unit", () => {
+    const calendar = (earningsAverage: number, earningsCurrency: string) => mapYahooCalendarEarnings({
+      calendarEvents: { earnings: { earningsDate: [{ fmt: "2026-10-28" }], earningsAverage } },
+      earningsTrend: { trend: [{ period: "0q", endDate: "2026-09-30", earningsEstimate: { avg: 4.72455, earningsCurrency } }] },
+    })[0];
+    expect(calendar(4.72455, "USD")).toMatchObject({ epsEstimate: 4.72455, currency: "USD" });
+    expect(calendar(4.72455, "GBp")?.currency).toBe("GBP");
+    expect(calendar(4.72455, "GBp")?.epsEstimate).toBeCloseTo(0.0472455, 10);
+    // A calendar value from a different source never borrows the trend currency.
+    const independent = calendar(4.5, "USD");
+    expect(independent?.epsEstimate).toBe(4.5);
+    expect(independent?.currency).toBeUndefined();
+  });
+
   test("omits grade-only zero placeholders but retains explicitly cut-to-zero analyst targets", () => {
     const data = mapYahooAnalystResearchResponse({ upgradeDowngradeHistory: { history: [
       { epochGradeDate: 1_700_000_000, firm: "Freedom Capital Markets", action: "down", priceTargetAction: "", currentPriceTarget: 0, priorPriceTarget: 0 },

@@ -185,7 +185,8 @@ function ttmRow(
     date: latest?.date ?? "",
     status: "TTM",
     period: "4 qtrs",
-    detail: "sum",
+    // Statement EPS is not the sum of the (often adjusted) rows above it.
+    detail: !reportedEps && ttm.eps != null ? "statement EPS" : "sum",
     epsCurrency: reportedEps ? reportedEps.currency : ttm.currency ?? financialCurrency,
     revenueCurrency: ttm.currency ?? financialCurrency,
     annualEps: reportedEps ? reportedEps.eps : ttm.eps,
@@ -219,6 +220,29 @@ function earningsRowIds(earnings: CorporateActionsData["earnings"]): string[] {
     occurrences.set(id, occurrence);
     return occurrence === 1 ? id : `${id}:${occurrence}`;
   });
+}
+
+/** Quarter ends closer than this are the same fiscal quarter under different normalizations. */
+const SAME_QUARTER_MS = 45 * 86_400_000;
+
+function reportedPeriodTimes(
+  earnings: CorporateActionsData["earnings"],
+  quarterlyStatements: readonly FinancialStatement[],
+): number[] {
+  return earnings
+    .filter((earning) => earning.epsActual != null && earning.dateType === "fiscal-period-end")
+    .flatMap((earning) => [earning.date, statementForEarningsDate(quarterlyStatements, earning)?.date])
+    .map((date) => Date.parse(date ?? ""))
+    .filter(Number.isFinite);
+}
+
+/**
+ * Yahoo can keep serving a reported quarter as "0q" until its trend rolls
+ * (REF and ORCL in Sep 2026), so that consensus describes a past period.
+ */
+function isReportedQuarter(periodEnd: string, reportedPeriodEnds: readonly number[]): boolean {
+  const time = Date.parse(periodEnd);
+  return Number.isFinite(time) && reportedPeriodEnds.some((reported) => Math.abs(time - reported) < SAME_QUARTER_MS);
 }
 
 function eventSortRank(status: EventStatus): number {
@@ -276,8 +300,10 @@ export function buildEventRows(
     });
   }
 
+  const reportedPeriodEnds = reportedPeriodTimes(earnings, quarterlyStatements);
   for (const pair of buildEstimatePairs(estimates)) {
     const isFiscal = isFiscalEstimatePeriod(pair.period);
+    if (!isFiscal && isReportedQuarter(pair.date, reportedPeriodEnds)) continue;
     rows.push({
       id: `estimate:${pair.date}:${pair.period}`,
       date: pair.date,
