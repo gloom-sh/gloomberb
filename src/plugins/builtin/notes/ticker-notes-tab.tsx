@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import type { TickerResearchTabProps } from "../../../types/plugin";
-import { usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { EmptyState, usePaneFooter } from "../../../components";
@@ -18,10 +17,11 @@ import {
 } from "./owner";
 import { NoteConflictError, type NoteOwner, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function createNotesTab(registry: NotesStoreRegistry) {
   return function NotesTab({ focused, width, onCapture }: TickerResearchTabProps) {
-    const { ticker } = usePaneTicker();
+    const { ticker } = usePaneTickerIdentity();
     const { notify } = usePluginAppActions();
     const dialog = useDialog();
     const teams = useNoteTeams();

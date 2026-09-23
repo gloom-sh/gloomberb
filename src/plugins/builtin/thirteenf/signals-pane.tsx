@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, usePaneNoticeFooter, usePaneTicker, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint } from "../../../components";
+import { DataTableStackView, DataTableView, EmptyState, KeyValueRow, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -11,9 +11,10 @@ import { usePaneStatusFooter } from "../shared/pane-footer";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHoldings, type TickerHolderRow } from "./signals";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? "";
   if (!symbol) return <EmptyState title="Select a ticker." />;
   return <ThirteenFTickerHoldingsView symbol={symbol} focused={focused} width={width} height={height} />;

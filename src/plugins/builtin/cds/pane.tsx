@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody, usePaneTicker,
+  EmptyState, PaneStatusBody,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment
@@ -45,6 +45,7 @@ import {
   type TradeColumnId,
   type TradeSortPreference,
 } from "./model";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 function renderIssuerCell(
   row: CdsIssuerSummary,
@@ -177,7 +178,7 @@ export function CdsPane({
   height,
   loadActivity = loadCdsActivity,
 }: CdsPaneProps) {
-  const { symbol, ticker } = usePaneTicker();
+  const { symbol, ticker } = usePaneTickerIdentity();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
 
   const [issuerSort, setIssuerSort] = useState<IssuerSortPreference>(DEFAULT_ISSUER_SORT);

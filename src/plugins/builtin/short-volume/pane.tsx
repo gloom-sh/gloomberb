@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTicker, type DataTableCell } from "../../../components";
+import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -13,6 +13,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedShortVolume, loadShortVolume } from "./client";
 import { exactQuantity, percentileCaption, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const PANELS = [{ id: "main" }];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
@@ -34,7 +35,7 @@ function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; wid
   </ScrollBox>;
 }
 export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "width" | "height" | "focused">) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const [sourceSymbol] = usePaneSettingValue("finraSymbol", "");
   const [scopeValue] = usePaneSettingValue("shortVolumeScope", "nms");
   const scope = scopeValue === "otc" ? "otc" : "nms";

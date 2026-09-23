@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
-import { usePaneTicker } from "../../../state/app/context";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isCloudSessionRequired } from "./research-cloud-session";
 
@@ -22,8 +22,12 @@ export function listingIdentity(key: string | null | undefined, savedExchange = 
   return { symbol: parsed.symbol.toUpperCase(), exchange: parsed.exchange ?? savedExchange };
 }
 
+/**
+ * The pane's symbol for research panes that load their own data. Identity only:
+ * it does not observe the quote, so a price tick does not re-render the pane.
+ */
 export function useBoundTicker() {
-  const { symbol, ticker } = usePaneTicker();
+  const { symbol, ticker } = usePaneTickerIdentity();
   return {
     symbol,
     ticker,

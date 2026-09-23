@@ -12,7 +12,6 @@ import {
   StaticChartSurface,
   Tabs,
   usePaneFooter,
-  usePaneTicker,
   useTableLoadMore,
   type DataTableCell,
   type PaneFooterSegment,
@@ -57,6 +56,7 @@ import {
   type PostingSort,
 } from "./model";
 import { ShareBars } from "./share-bars";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export const JOBS_PANE_ID = "jobs";
 
@@ -688,7 +688,7 @@ export interface JobsViewProps {
 }
 
 export function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
   const companyName = ticker?.metadata.name ?? null;
   const access = usePlanAccess();

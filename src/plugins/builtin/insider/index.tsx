@@ -5,7 +5,6 @@ import {
   useSecFilingsQuery,
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { usePaneTicker } from "../../../state/app/context";
 import type { ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
@@ -36,6 +35,7 @@ import {
 import { insiderHeadless } from "./headless";
 import { isInsiderForm } from "./insider-data";
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export { insiderHeadless } from "./headless";
 
@@ -91,7 +91,7 @@ function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
 }
 
 function InsiderView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const tickerKey = ticker?.metadata.ticker ?? "none";
   const [selectedIdx, setSelectedIdx] = usePluginPaneState<number>(`insider:selectedIdx:${tickerKey}`, 0);
   const [nameFilter, setNameFilter] = usePluginPaneState<string | null>(`insider:nameFilter:${tickerKey}`, null);

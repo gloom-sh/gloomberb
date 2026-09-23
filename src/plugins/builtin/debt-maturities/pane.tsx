@@ -20,7 +20,6 @@ import {
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
-  usePaneTicker,
   type DataTableCell,
 } from "../../../components";
 import { colors } from "../../../theme/colors";
@@ -63,6 +62,7 @@ import {
   type HistoryColumn,
   type HistoryColumnId,
 } from "./model";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const PANELS = [{ id: "main" }];
 const TABS = [
@@ -263,7 +263,7 @@ function HistoryDetail({
 }
 
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const session = useResearchCloudSession();
   const loader = useCallback(

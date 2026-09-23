@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apiClient } from "../../../../api-client";
 import { Button, EmptyState, QueryBar, usePaneFooter } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
-import { usePaneTicker } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import { Box } from "../../../../ui";
@@ -18,13 +17,14 @@ import * as flows from "./flows";
 import { thesesCovering } from "./model";
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
+import { usePaneTickerIdentity } from "../../../../state/hooks/pane-ticker";
 
 /**
  * The Thesis tab on a ticker: the theses that hold it, or the first question
  * when there is none. Sits next to Notes, and is where most theses start.
  */
 export function ThesisTickerTab({ focused, width, height }: TickerResearchTabProps) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const dialog = useDialog();
   const { notify } = usePluginAppActions();
   const plan = usePlanAccess();

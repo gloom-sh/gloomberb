@@ -19,7 +19,6 @@ import {
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
-  usePaneTicker,
   type DataTableColumn,
 } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
@@ -60,6 +59,7 @@ import {
   sortGuidanceSources,
   type EstimateSort,
 } from "./sorting";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const clearDeniedEstimates = (error: unknown) =>
   (error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0))
@@ -227,7 +227,7 @@ function EstimateDetail({
   );
 }
 export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
-  const { ticker, symbol: boundSymbol } = usePaneTicker(),
+  const { ticker, symbol: boundSymbol } = usePaneTickerIdentity(),
     session = useResearchCloudSession(),
     colors = useThemeColors();
   const identity = listingIdentity(boundSymbol, ticker?.metadata.exchange ?? "");

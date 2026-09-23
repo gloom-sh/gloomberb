@@ -7,7 +7,6 @@ import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
-import { usePaneTicker } from "../../../state/app/context";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Prose, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
@@ -43,6 +42,7 @@ import {
   secIssuerLabel,
   secReportedAcceptance,
 } from "./model";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export { secHeadless } from "./headless";
 
@@ -215,7 +215,7 @@ function toFeedItems(
 }
 
 function SecView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const selectionKey = `selectedIdx:${ticker?.metadata.ticker ?? "none"}`;
   const [selectedIdx, setSelectedIdx] = useDebouncedPluginPaneState<number>(selectionKey, 0);
   // The open filing is what the pane shows, so it is pane state: it restores

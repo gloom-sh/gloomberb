@@ -1,11 +1,12 @@
-import { EmptyState, usePaneTicker } from "../../../components";
+import { EmptyState } from "../../../components";
 import type { TickerResearchTabProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { CongressTradesPane } from "./pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 function CongressTickerTab(props: TickerResearchTabProps) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker;
   if (!symbol) return <EmptyState title="Select a ticker." />;
   return <CongressTradesPane key={symbol} {...props} paneId="congress" paneType="congress-trades" tickerFilter={symbol} />;

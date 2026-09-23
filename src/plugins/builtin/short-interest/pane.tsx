@@ -6,7 +6,6 @@ import {
   StaticChartSurface,
   unavailableText,
   usePaneFooter,
-  usePaneTicker,
   type DataTableCell,
 } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
@@ -31,6 +30,7 @@ import {
   type SortPreference,
 } from "./model";
 import type { ShortInterestRecord } from "./types";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
 
@@ -47,7 +47,7 @@ function recordsToChartPoints(records: ShortInterestRecord[]): ProjectedChartPoi
 
 function ShortInterestView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const { nativePaneChrome } = useUiCapabilities();
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
 
   const skipNonUs = isKnownNonUsEquityTicker(ticker);

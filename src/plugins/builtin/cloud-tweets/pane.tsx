@@ -6,7 +6,7 @@ import {
   usePaneHeaderTabs,
 } from "../../../components";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
-import { usePaneInstance, usePaneInstanceId, usePaneTicker } from "../../../state/app/context";
+import { usePaneInstance, usePaneInstanceId } from "../../../state/app/context";
 import { usePluginPaneState, usePluginState } from "../../runtime";
 import { apiClient, type CloudTweetQueryType, type CloudTweetSearchResponse } from "../../../api-client";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
@@ -29,9 +29,10 @@ import { TweetSearchTable } from "./table";
 import { TwitterFeedSearchBar } from "./search-bar";
 import { useTwitterFeedFooter } from "./footer";
 import { useTwitterFeedKeyboard } from "./keyboard";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function TwitterTickerTab({ focused, width, height }: TickerResearchTabProps) {
-  const { symbol } = usePaneTicker();
+  const { symbol } = usePaneTickerIdentity();
   const load = useCallback((offset: number) => {
     if (!symbol) throw new Error("No ticker selected");
     return apiClient.getCloudTickerTweets({

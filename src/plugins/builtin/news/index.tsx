@@ -1,6 +1,5 @@
 import { Box } from "../../../ui";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
-import { usePaneTicker } from "../../../state/app/context";
 import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
@@ -18,12 +17,13 @@ import { usePersistedNewsArticles } from "./wire/persisted-articles";
 import { useNewsReadState } from "./wire/read-state";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { tickerNewsHeadless } from "./headless";
+import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const NEWS_ITEM_LIMIT = 50;
 const DEFAULT_SORT: NewsSortPreference = { columnId: "time", direction: "desc" };
 
 function TickerNewsView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
-  const { ticker } = usePaneTicker();
+  const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? "none";
   const [selectedArticleId, setSelectedArticleId] = useDebouncedPluginPaneState<string | null>(
     `selectedArticleId:${symbol}`,
