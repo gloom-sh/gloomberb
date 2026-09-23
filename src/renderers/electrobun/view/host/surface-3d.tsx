@@ -176,6 +176,19 @@ function uploadLines(gl: GL, target: LineBuffer | null, segments: ArrayLike<numb
   return { buffer, count: data.length / 8 };
 }
 
+function uploadSurfaceGeometry(r: Resources, geometry: SurfaceGeometry): void {
+  const { gl } = r;
+  gl.bindBuffer(gl.ARRAY_BUFFER, r.positions);
+  gl.bufferData(gl.ARRAY_BUFFER, geometry.positions, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, r.normals);
+  gl.bufferData(gl.ARRAY_BUFFER, geometry.normals, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, r.colors);
+  gl.bufferData(gl.ARRAY_BUFFER, geometry.colors, gl.DYNAMIC_DRAW);
+  r.wire = uploadLines(gl, r.wire, geometry.wire);
+  r.ridge = uploadLines(gl, r.ridge, geometry.ridge);
+  r.drop = uploadLines(gl, r.drop, geometry.drop);
+}
+
 function hexColor(hex: string, alpha = 1): [number, number, number, number] {
   const value = hex.replace("#", "");
   const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value.slice(0, 6);
@@ -191,6 +204,79 @@ function mix(a: string, b: string, weight: number): [number, number, number] {
 const cameraEquals = (a: Surface3DCamera, b: Surface3DCamera) =>
   Math.abs(a.azimuth - b.azimuth) < 1e-6 && Math.abs(a.elevation - b.elevation) < 1e-6 && Math.abs(a.zoom - b.zoom) < 1e-6;
 const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
+
+/** How long a refreshed surface takes to settle into its new shape. */
+export const SURFACE_MORPH_MS = 650;
+
+/** The vertex data drawn on screen, kept so a refreshed scene can morph from it. */
+export interface SurfaceGeometry {
+  positions: Float32Array;
+  normals: Float32Array;
+  colors: Float32Array;
+  wire: Float32Array;
+  ridge: Float32Array;
+  drop: Float32Array;
+  indices: Uint32Array;
+}
+
+export function surfaceGeometry(scene: Surface3DScene, drop: ArrayLike<number>): SurfaceGeometry {
+  // Missing cells are NaN in the scene and are never indexed; draw them at 0.
+  const positions = new Float32Array(scene.positions.length);
+  for (let index = 0; index < positions.length; index += 1) {
+    const value = scene.positions[index]!;
+    positions[index] = Number.isFinite(value) ? value : 0;
+  }
+  return {
+    positions, normals: Float32Array.from(scene.normals), colors: Float32Array.from(scene.colors),
+    wire: Float32Array.from(scene.wire), ridge: Float32Array.from(scene.ridge), drop: Float32Array.from(drop), indices: scene.indices,
+  };
+}
+
+function cloneGeometry(geometry: SurfaceGeometry): SurfaceGeometry {
+  return {
+    positions: geometry.positions.slice(), normals: geometry.normals.slice(), colors: geometry.colors.slice(),
+    wire: geometry.wire.slice(), ridge: geometry.ridge.slice(), drop: geometry.drop.slice(), indices: geometry.indices,
+  };
+}
+
+function sameValues(left: ArrayLike<number>, right: ArrayLike<number>): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false;
+  return true;
+}
+
+/**
+ * A refresh can morph only when it draws the same mesh: same grid, same valid
+ * cells and the same line layout. A different expiry set or a cell that gained
+ * or lost a quote swaps in directly.
+ */
+export function canMorphSurface(from: SurfaceGeometry, to: SurfaceGeometry): boolean {
+  return from.positions.length === to.positions.length && from.normals.length === to.normals.length
+    && from.colors.length === to.colors.length && from.wire.length === to.wire.length
+    && from.ridge.length === to.ridge.length && sameValues(from.indices, to.indices)
+    && !(sameValues(from.positions, to.positions) && sameValues(from.colors, to.colors));
+}
+
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+
+function lerpInto(out: Float32Array, from: Float32Array, to: Float32Array, weight: number): void {
+  for (let index = 0; index < out.length; index += 1) out[index] = from[index]! + (to[index]! - from[index]!) * weight;
+}
+
+/** Writes the morph frame at progress t (0..1) into out. */
+export function morphSurfaceGeometry(out: SurfaceGeometry, from: SurfaceGeometry, to: SurfaceGeometry, t: number): void {
+  const weight = easeOutCubic(Math.min(1, Math.max(0, t)));
+  lerpInto(out.positions, from.positions, to.positions, weight);
+  lerpInto(out.normals, from.normals, to.normals, weight);
+  lerpInto(out.colors, from.colors, to.colors, weight);
+  lerpInto(out.wire, from.wire, to.wire, weight);
+  lerpInto(out.ridge, from.ridge, to.ridge, weight);
+  if (out.drop.length === to.drop.length && from.drop.length === to.drop.length) lerpInto(out.drop, from.drop, to.drop, weight);
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
 
 /**
  * WebGL surface chart. React renders it once per scene or palette change; every
@@ -214,6 +300,8 @@ export function WebSurface3D(props: Surface3DHostProps) {
     commitTimer: 0 as ReturnType<typeof setTimeout> | 0,
     committed: clampSurface3DCamera(props.camera),
     size: { width: 1, height: 1, ratio: 1 },
+    shown: null as SurfaceGeometry | null,
+    morph: null as null | { from: SurfaceGeometry; to: SurfaceGeometry; start: number },
   });
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -409,6 +497,12 @@ export function WebSurface3D(props: Surface3DHostProps) {
       s.camera = clampSurface3DCamera(done ? target : next);
       if (done) { s.target = null; commit(); } else animating = true;
     }
+    if (s.morph && s.shown && resources.current) {
+      const t = (performance.now() - s.morph.start) / SURFACE_MORPH_MS;
+      morphSurfaceGeometry(s.shown, s.morph.from, s.morph.to, t);
+      uploadSurfaceGeometry(resources.current, s.shown);
+      if (t >= 1) s.morph = null; else animating = true;
+    }
     draw();
     if (animating) schedule();
   };
@@ -445,26 +539,28 @@ export function WebSurface3D(props: Surface3DHostProps) {
     };
   }, []);
 
-  // Geometry uploads once per scene.
+  // Geometry uploads once per scene. A refresh of the same mesh (new quotes on
+  // the same grid) morphs from what is on screen instead of jumping.
   useEffect(() => {
     const r = resources.current;
     if (!r) return;
-    const { gl } = r;
+    const s = state.current;
     const scene = props.scene;
-    gl.bindBuffer(gl.ARRAY_BUFFER, r.positions);
-    gl.bufferData(gl.ARRAY_BUFFER, scene.positions.map((value) => Number.isFinite(value) ? value : 0), gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, r.normals);
-    gl.bufferData(gl.ARRAY_BUFFER, scene.normals, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, r.colors);
-    gl.bufferData(gl.ARRAY_BUFFER, scene.colors, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.indices);
-    const indices = r.indexType === gl.UNSIGNED_INT ? scene.indices : Uint16Array.from(scene.indices.filter((index) => index < 65536));
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-    r.indexCount = indices.length;
-    r.wire = uploadLines(gl, r.wire, scene.wire);
-    r.ridge = uploadLines(gl, r.ridge, scene.ridge);
     const chosen = scene.input.selected ? scene.nodes.find((point) => point.row === scene.input.selected!.row && point.column === scene.input.selected!.column) : null;
-    r.drop = uploadLines(gl, r.drop, chosen ? [chosen.x, chosen.y, chosen.z, chosen.x, chosen.y, FLOOR] : []);
+    const next = surfaceGeometry(scene, chosen ? [chosen.x, chosen.y, chosen.z, chosen.x, chosen.y, FLOOR] : []);
+    if (s.shown && !prefersReducedMotion() && canMorphSurface(s.shown, next)) {
+      if (s.shown.drop.length !== next.drop.length) s.shown.drop = next.drop.slice();
+      s.morph = { from: cloneGeometry(s.shown), to: next, start: performance.now() };
+    } else {
+      s.morph = null;
+      s.shown = cloneGeometry(next);
+      const { gl } = r;
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.indices);
+      const indices = r.indexType === gl.UNSIGNED_INT ? scene.indices : Uint16Array.from(scene.indices.filter((index) => index < 65536));
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+      r.indexCount = indices.length;
+      uploadSurfaceGeometry(r, s.shown);
+    }
     r.layoutKey = "";
     schedule();
   }, [props.scene, failed]);
