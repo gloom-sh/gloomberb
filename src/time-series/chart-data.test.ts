@@ -49,6 +49,29 @@ describe("appendLiveQuotePoint", () => {
     expect(updated[0]?.close).toBe(105);
   });
 
+  test("merges a quote into a London-dated FX bar that opened at 23:00 UTC", () => {
+    const now = Date.parse("2026-09-17T23:30:00Z");
+    const quote = quoteFixture({
+      symbol: "EURUSD=X", price: 1.149, lastUpdated: now - 60_000,
+      listingExchangeName: "CCY", exchangeName: "CCY",
+    });
+    const history: PricePoint[] = [
+      { date: new Date("2026-09-17T00:00:00Z"), open: 1.146, high: 1.148, low: 1.145, close: 1.1476 },
+      { date: new Date("2026-09-18T00:00:00Z"), open: 1.1476, high: 1.1482, low: 1.1471, close: 1.148 },
+    ];
+    for (const resolution of ["1d", "1wk"] as const) {
+      const updated = appendLiveQuotePoint(history, quote, { now, mode: "ohlc", resolution });
+      expect(updated).toHaveLength(2);
+      expect(updated[1]).toMatchObject({ open: 1.1476, high: 1.149, low: 1.1471, close: 1.149 });
+    }
+    const scalar = appendLiveQuotePoint(history.map(({ date, close }) => ({ date, close })), quote, { now });
+    expect(scalar.map((point) => point.close)).toEqual([1.1476, 1.149]);
+    // Intraday bars never start in the future; an older quote stays out.
+    expect(appendLiveQuotePoint(history, quote, { now, mode: "ohlc", resolution: "1h" })).toBe(history);
+    expect(appendLiveQuotePoint(history, quote, { now: Date.parse("2026-09-18T00:30:00Z"), mode: "ohlc", resolution: "1d" }))
+      .toBe(history);
+  });
+
   test("extends coarse chart histories with a fresh quote tail", () => {
     const history: PricePoint[] = [
       { date: new Date("2026-05-04T00:00:00Z"), close: 56 },

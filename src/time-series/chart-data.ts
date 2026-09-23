@@ -12,6 +12,9 @@ const MAX_LIVE_QUOTE_TAIL_AGE_MS = 7 * 24 * 60 * 60_000;
 const MAX_LIVE_QUOTE_CLOCK_SKEW_MS = 5 * 60_000;
 const MAX_INTRADAY_BAR_INTERVAL_MS = 6 * 60 * 60_000;
 const MIN_LIVE_QUOTE_TAIL_GAP_MS = 5 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+// Closer daily points than this are intraday data, not calendar bars.
+const MIN_CALENDAR_BAR_INTERVAL_MS = 20 * 60 * 60_000;
 
 export type AppendLiveQuotePointOptions = { assetCategory?: string } & (
   | {
@@ -124,7 +127,12 @@ export function appendLiveQuotePoint(
   if (!latest) return points;
 
   const latestTime = getPointTime(latest);
-  if (!Number.isFinite(latestTime) || quoteTime < latestTime) return points;
+  if (!Number.isFinite(latestTime)) return points;
+  // A calendar bar labelled with its own zone's date at UTC midnight starts
+  // after `now` while that zone is ahead of UTC: London FX opens its day at
+  // 23:00 UTC in summer. A quote shortly before such a bar is its live price.
+  const beforeDatedBar = quoteTime < latestTime;
+  if (beforeDatedBar && !(latestTime > now && latestTime - quoteTime < DAY_MS)) return points;
 
   const previous = points.at(-2);
   const latestInterval = previous ? latestTime - getPointTime(previous) : Number.NaN;
@@ -142,6 +150,17 @@ export function appendLiveQuotePoint(
     { currency: quote.currency, price: quotePrice },
   )) {
     return points;
+  }
+
+  if (beforeDatedBar) {
+    const calendarBars = options.mode === "ohlc"
+      ? CHART_RESOLUTION_STEP_MS[options.resolution] >= DAY_MS
+      : latestInterval >= MIN_CALENDAR_BAR_INTERVAL_MS;
+    if (!calendarBars) return points;
+    const merged = options.mode === "ohlc" || latest.high != null || latest.low != null
+      ? mergeQuoteIntoLatestBar(latest, quotePrice)
+      : { ...latest, close: quotePrice };
+    return [...points.slice(0, -1), merged];
   }
 
   if (options.mode === "ohlc") {
