@@ -17,6 +17,7 @@ import {
 import { debugLog } from "../utils/debug-log";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import { mergeQuoteSubscriptionTargets } from "../market-data/quote-subscription-target";
+import { recordServerClockSample } from "../market-data/quotes/clock";
 import {
   connectionHealth,
   GLOOM_CLOUD_SOCKET_CONNECTION_ID,
@@ -24,6 +25,13 @@ import {
 } from "../core/connection-health";
 
 const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
+/**
+ * Protocol features this client can read. A server lists the ones it offers
+ * in "ready"; the client opts into the shared ones, so an older server never
+ * sees a request it does not understand.
+ */
+const MARKET_BATCH_FEATURE = "market.batch";
+const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE] as const;
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
@@ -113,6 +121,8 @@ export class CloudApiSocket {
   >();
   private quoteSubscriptionFlushTimer: ReturnType<typeof setTimeout> | null =
     null;
+  /** The connection that already opted into server features; a reconnect negotiates again. */
+  private featuresRequestedFor: WebSocket | null = null;
   private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
   private readonly scannerListeners = new Map<
     ScannerKind,
@@ -473,7 +483,10 @@ export class CloudApiSocket {
       return;
     }
 
-    if (parsed?.type === "ready" && parsed.user) {
+    if (parsed?.type === "ready") {
+      recordServerClockSample(parsed.serverTime);
+      this.negotiateSocketFeatures(parsed.features);
+      if (!parsed.user) return;
       cloudApiLog.info("websocket ready", {
         emailVerified: parsed.user.emailVerified === true,
       });
@@ -576,23 +589,16 @@ export class CloudApiSocket {
       return;
     }
 
-    if (
-      parsed?.type === "market.quote" &&
-      parsed.quote &&
-      typeof parsed.symbol === "string"
-    ) {
-      const key = marketKey(parsed.symbol, parsed.exchange);
-      const quote: CloudQuotePayload = {
-        ...(parsed.quote as CloudQuotePayload),
-        ...(parsed.delivery === "stream" || parsed.delivery === "poll"
-          ? { delivery: parsed.delivery }
-          : {}),
-        ...(typeof parsed.stale === "boolean" ? { stale: parsed.stale } : {}),
-      };
-      for (const subscription of this.quoteSubscriptions.get(key)?.values() ??
-        []) {
-        subscription.listener(subscription.target, quote);
-      }
+    if (parsed?.type === "market.quote") {
+      this.dispatchMarketQuote(parsed);
+      return;
+    }
+
+    if (parsed?.type === "market.quotes") {
+      recordServerClockSample(parsed.at);
+      if (!Array.isArray(parsed.quotes)) return;
+      // One synchronous pass: every item lands before the next data frame.
+      for (const item of parsed.quotes) this.dispatchMarketQuote(item);
       return;
     }
 
@@ -605,6 +611,31 @@ export class CloudApiSocket {
         return;
       }
     }
+  }
+
+  /** Delivers one market.quote frame, or one item of a market.quotes batch, to its listeners. */
+  private dispatchMarketQuote(frame: any): void {
+    if (!frame?.quote || typeof frame.symbol !== "string") return;
+    const subscriptions = this.quoteSubscriptions.get(marketKey(frame.symbol, frame.exchange));
+    if (!subscriptions) return;
+    const quote: CloudQuotePayload = {
+      ...(frame.quote as CloudQuotePayload),
+      ...(frame.delivery === "stream" || frame.delivery === "poll"
+        ? { delivery: frame.delivery }
+        : {}),
+      ...(typeof frame.stale === "boolean" ? { stale: frame.stale } : {}),
+    };
+    for (const subscription of subscriptions.values()) {
+      subscription.listener(subscription.target, quote);
+    }
+  }
+
+  private negotiateSocketFeatures(offered: unknown): void {
+    if (!Array.isArray(offered) || this.featuresRequestedFor === this.ws) return;
+    const features = CLIENT_SOCKET_FEATURES.filter((feature) => offered.includes(feature));
+    if (features.length === 0) return;
+    this.featuresRequestedFor = this.ws;
+    this.sendSocketMessage({ type: "client.features", features });
   }
 
   private getWebSocketBaseUrl(): string {
@@ -676,6 +707,9 @@ export class CloudApiSocket {
         this.getWebSocketBaseUrl(),
       );
       this.reconnectDelayMs = 1000;
+      // The full set goes out now; queued diffs from before the open are part of it.
+      this.pendingQuoteSubscribes.clear();
+      this.pendingQuoteUnsubscribes.clear();
       this.flushSubscriptions();
     };
 
@@ -731,7 +765,9 @@ export class CloudApiSocket {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || !this.shouldKeepSocketOpen()) return;
-    const delay = this.reconnectDelayMs;
+    // Jittered so clients dropped together by a server restart do not all
+    // come back in the same instant.
+    const delay = Math.round(this.reconnectDelayMs * (0.5 + Math.random()));
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 10_000);
