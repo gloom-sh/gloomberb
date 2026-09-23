@@ -99,23 +99,48 @@ test("solves one calendar-time IV per strike from midpoints and ignores vendor I
 
   const volatilities = solveChainVolatilities(chain, spot, 0, now);
   for (const strike of strikes.slice(1)) expect(volatilities.byStrike.get(strike)!).toBeCloseTo(0.14, 2);
-  // Only intrinsic value is quoted this deep: no time value to solve.
-  expect(volatilities.byStrike.get(760)).toBe(0);
-  expect(volatilities.byStrike.get(785)).toBe(0);
+  // Out-of-the-money quotes inside the tick: the wing reads off its solved neighbour,
+  // not a zero volatility forced by the in-the-money spread.
+  expect(volatilities.byStrike.get(760)).toBe(volatilities.byStrike.get(767));
+  expect(volatilities.byStrike.get(785)).toBe(volatilities.byStrike.get(772));
   expect(calculateOptionsSummary(chain, spot, [], volatilities).atmImpliedVolatility).toBeCloseTo(0.14, 2);
 
   // Parity: equal gamma, and put delta = call delta - 1 at the same strike.
-  const row = (strike: number) => ["call", "put"].map((side) => calculateOptionGreeks(
-    side === "call" ? chain.calls.find((c) => c.strike === strike) : chain.puts.find((p) => p.strike === strike),
-    side as "call" | "put", spot, 0, volatilities)!);
-  const [call772, put772] = row(772);
+  const greeks = (strike: number, side: "call" | "put") => calculateOptionGreeks(
+    (side === "call" ? chain.calls : chain.puts).find((c) => c.strike === strike), side, spot, 0, volatilities);
+  const [call772, put772] = [greeks(772, "call")!, greeks(772, "put")!];
   expect(put772.gamma).toBeCloseTo(call772.gamma, 10);
   expect(put772.delta).toBeCloseTo(call772.delta - 1, 10);
   expect(put772.delta).toBeGreaterThan(-0.95);
-  const [call785, put785] = row(785);
-  expect(put785.delta).toBeCloseTo(-1, 10);
-  expect(call785.delta).toBe(0);
-  expect(put785.gamma).toBe(0);
+  // The two-sided put keeps its Greeks; the call nobody bids shows none.
+  expect(greeks(785, "put")!.delta).toBeLessThan(greeks(772, "put")!.delta);
+  expect(greeks(785, "put")!.delta).toBeCloseTo(-1, 4);
+  expect(greeks(785, "call")).toBeUndefined();
+});
+
+// SPY 749 on 2026-09-23: a two-sided call next to a 0/0.01 put read delta 1.000 and
+// gamma .000 between 748 (.994) and 750 (.993), whose puts bid a cent.
+test("a strike without an out-of-the-money bid keeps delta monotonic across the chain", () => {
+  const expiration = Date.UTC(2026, 8, 25) / 1000;
+  const now = Date.UTC(2026, 8, 23, 16, 0);
+  const spot = 767;
+  const price = (side: "call" | "put", strike: number) => valueOption({ symbol: "SPY", side, spot, strike,
+    daysToExpiry: 2.2, rate: 0.04, volatility: 0.22, dividendYield: 0.04, marketPrice: 0 }).price;
+  const quoted = (side: "call" | "put", strike: number): OptionContract => {
+    const mid = price(side, strike);
+    const bid = Math.max(0, Math.round((mid - 0.07) * 100) / 100);
+    return { ...contract(strike, 0, 10, 10), expiration, bid, ask: Math.round((mid + 0.07) * 100) / 100 };
+  };
+  const strikes = [746, 747, 748, 749, 750, 765, 766, 767, 768, 769];
+  const chain: OptionsChain = { underlyingSymbol: "SPY", expirationDates: [expiration], asOf: new Date(now).toISOString(),
+    calls: strikes.map((strike) => quoted("call", strike)),
+    puts: strikes.map((strike) => strike === 749 ? { ...quoted("put", strike), bid: 0, ask: 0.01 } : quoted("put", strike)) };
+  const volatilities = solveChainVolatilities(chain, spot, 0, now);
+  const deltas = strikes.map((strike) => calculateOptionGreeks(chain.calls.find((c) => c.strike === strike),
+    "call", spot, 0, volatilities)!.delta);
+  for (let index = 1; index < deltas.length; index += 1) expect(deltas[index]!).toBeLessThan(deltas[index - 1]!);
+  expect(deltas[3]!).toBeLessThan(1);
+  expect(calculateOptionGreeks(chain.puts.find((p) => p.strike === 749), "put", spot, 0, volatilities)).toBeUndefined();
 });
 
 test("activity totals require each reported contract's input without discarding independent metrics", () => {

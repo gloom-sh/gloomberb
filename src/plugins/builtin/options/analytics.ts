@@ -92,26 +92,34 @@ export function solveChainVolatilities(
     const forward = extractImpliedForward([...calls.values()], [...puts.values()], spot, years, rate, chain.underlyingSymbol).forward
       ?? forwardFromCarry(spot, years, rate, carry);
     if (forward == null) continue;
-    const discount = Math.exp(-rate * years);
     // q=r turns the shared spot pricer into discounted forward pricing.
-    const solve = (side: OptionSide, contract: OptionContract | undefined, inTheMoney: boolean): number | null => {
+    const solve = (side: OptionSide, contract: OptionContract | undefined): number | null => {
       const mid = contract ? optionMid(contract) : null;
       if (mid == null) return null;
-      const { strike, bid, ask } = contract!;
-      // Deep in the money, time value inside the quoted spread is noise, not optionality.
-      const intrinsic = Math.max(0, (side === "call" ? forward - strike : strike - forward) * discount);
-      if (inTheMoney && mid - intrinsic <= ask - bid) return 0;
-      const solved = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: forward, strike,
+      const solved = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: forward, strike: contract!.strike,
         daysToExpiry: years * 365, rate, dividendYield: rate }, mid).volatility;
       return solved != null && Number.isFinite(solved) && solved > 0 ? solved : null;
     };
-    for (const strike of new Set([...calls.keys(), ...puts.keys()])) {
-      const call = calls.get(strike);
-      const put = puts.get(strike);
-      const volatility = strike >= forward ? solve("call", call, false) ?? solve("put", put, true)
-        : solve("put", put, false) ?? solve("call", call, true);
+    const strikes = [...new Set([...calls.keys(), ...puts.keys()])].sort((a, b) => a - b);
+    const solved = strikes.map((strike) => strike >= forward
+      ? solve("call", calls.get(strike)) : solve("put", puts.get(strike)));
+    // Without a two-sided out-of-the-money quote a strike's time value sits inside
+    // the tick, and the in-the-money quote is intrinsic plus spread noise. Read its
+    // volatility off the neighbouring solved strikes so delta stays monotonic.
+    strikes.forEach((strike, index) => {
+      let volatility = solved[index];
+      if (volatility == null) {
+        let below = index - 1, above = index + 1;
+        while (below >= 0 && solved[below] == null) below -= 1;
+        while (above < strikes.length && solved[above] == null) above += 1;
+        const low = below >= 0 ? solved[below]! : null;
+        const high = above < strikes.length ? solved[above]! : null;
+        volatility = low != null && high != null
+          ? low + (high - low) * (strike - strikes[below]!) / (strikes[above]! - strikes[below]!)
+          : low ?? high;
+      }
       if (volatility != null) byStrike.set(strike, volatility);
-    }
+    });
   }
   return { valuationTime, byStrike };
 }
@@ -188,7 +196,8 @@ export function calculateOptionGreeks(
   volatilities: ChainVolatilities,
 ): OptionValuation | undefined {
   const volatility = contract ? volatilities.byStrike.get(contract.strike) : undefined;
-  if (!contract || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {
+  // A side nobody bids has no market to measure sensitivity against.
+  if (!contract || optionMid(contract) == null || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {
     return undefined;
   }
   return valueOption({
