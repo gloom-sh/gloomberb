@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getPublishedUsEquitySession } from "../../../../market-data/published-us-sessions";
-import { useAppVisible } from "../../../../state/app/activity";
+import { usePaneVisible } from "../../../../state/app/activity";
 import { zonedWallClockToUtcMs } from "../../../../utils/zoned-date-time";
 
 /**
@@ -54,10 +54,11 @@ export function usOptionsSession(now: number): OptionsSessionState {
 
 /**
  * Whether the US options market is in its regular session. Re-evaluated at the
- * next open or close while the app is visible; a hidden app keeps its last answer.
+ * next open or close while the pane can be seen; a hidden app or a covered
+ * pane keeps its last answer, which is recomputed if its boundary has passed.
  */
 export function useOptionsSessionOpen(enabled = true): boolean {
-  const visible = useAppVisible();
+  const visible = usePaneVisible();
   const [state, setState] = useState(() => usOptionsSession(Date.now()));
   useEffect(() => {
     if (!enabled || !visible) return;
@@ -78,13 +79,14 @@ export function useOptionsSessionOpen(enabled = true): boolean {
 }
 
 /**
- * Calls `refresh` every `intervalMs` while enabled, the app is visible and the
- * options market is open. It never fires on mount, since the caller already
- * loads once, nor right after the caller's own load (`loadedAt`); returning
- * after a hidden stretch, or reaching the open, more than an interval after
- * the last data fires straight away. A refresh still in flight is never
- * overlapped by the next. Returns whether the refresh cycle is running, which
- * is what "live" means.
+ * Calls `refresh` every `intervalMs` while enabled, the pane can be seen (the
+ * app is visible and the pane is not covered) and the options market is open.
+ * It never fires on mount, since the caller already loads once, nor right
+ * after the caller's own load (`loadedAt`); returning after a hidden or
+ * covered stretch, or reaching the open, more than an interval after the last
+ * data fires straight away. A refresh still in flight is never overlapped by
+ * the next. Returns whether the refresh cycle is running, which is what
+ * "live" means.
  */
 export function useLiveSessionRefresh(
   refresh: () => void | Promise<unknown>,
@@ -92,7 +94,7 @@ export function useLiveSessionRefresh(
   enabled: boolean,
   loadedAt?: number | null,
 ): boolean {
-  const visible = useAppVisible();
+  const visible = usePaneVisible();
   const open = useOptionsSessionOpen(enabled);
   const active = enabled && visible && open;
   const refreshRef = useRef(refresh);

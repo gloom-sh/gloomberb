@@ -21,7 +21,7 @@ import type { PriceHistoryResult } from "../types/price-history";
 import type { InstrumentRef } from "../market-data/request-types";
 import { getSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { resolveEntryData } from "../market-data/selectors";
-import { useAppVisible } from "../state/app/activity";
+import { usePaneVisible } from "../state/app/activity";
 import { DEFAULT_QUOTE_POLL_INTERVAL_MS, useQuoteUpdates } from "../state/hooks/quote-streaming";
 import { isMarketFieldId } from "./field-catalog";
 import { CHART_RESOLUTION_STEP_MS, getNextBufferRange, isIntradayResolution, type ManualChartResolution } from "./resolution";
@@ -302,13 +302,15 @@ export function useChartResolution(
   latestRequestRef.current = { spec, sources, options: resolveOptions };
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
-  const appVisible = useAppVisible();
+  // A covered chart keeps its quotes arriving at the off-screen cadence but
+  // builds no live bars; coming back into view catches up from the store.
+  const paneVisible = usePaneVisible();
   const liveTargetSignature = liveChartQuoteTargetSignature(spec);
   const selected = options.selected === true;
   const liveTargets = useMemo(
-    () => snapshot ? [] : getLiveChartQuoteTargets(spec, { selected }),
+    () => snapshot ? [] : getLiveChartQuoteTargets(spec, { selected, visible: paneVisible }),
     // The signature is the targets' identity; a new spec object alone must not resubscribe.
-    [snapshot, liveTargetSignature, selected],
+    [snapshot, liveTargetSignature, paneVisible, selected],
   );
   const liveStreaming = options.liveStreaming !== false;
   const quotePollingIntervalMs = options.quotePollingIntervalMs ?? DEFAULT_QUOTE_POLL_INTERVAL_MS;
@@ -317,7 +319,7 @@ export function useChartResolution(
   useQuoteUpdates(liveTargets, { liveStreaming, pollIntervalMs: quotePollingIntervalMs });
 
   const liveFrameMs = Math.max(0, options.liveRefreshIntervalMs ?? 0);
-  const liveKey = !snapshot && appVisible && coordinator && liveTargetSignature ? liveTargetSignature : null;
+  const liveKey = !snapshot && paneVisible && coordinator && liveTargetSignature ? liveTargetSignature : null;
   // Declared before the resolve effect so a first resolve already carries the stored quotes.
   useEffect(() => {
     if (liveKey === null || !coordinator) return;

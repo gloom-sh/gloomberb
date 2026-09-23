@@ -4,7 +4,7 @@ import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types
 import type { TickerRecord } from "../types/ticker";
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest, TickerInstrumentOptions } from "./request-types";
 import { instrumentFromTicker } from "./request-types";
-import { useAppVisible } from "../state/app/activity";
+import { useAppVisible, usePaneVisible } from "../state/app/activity";
 import {
   getSharedMarketDataCoordinator,
   resolveEntryValue,
@@ -270,8 +270,12 @@ export function useOptionsQuery(
   useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
   const entry = coordinator && request ? coordinator.getOptionsEntry(request) : null;
-  const appActive = useAppVisible();
+  // The refresh feeds a display: it rests while the pane is covered or the app
+  // is hidden, and catches up at once if a refresh came due meanwhile.
+  const visible = usePaneVisible();
   const refreshIntervalMs = Math.max(0, options.refreshIntervalMs ?? 0);
+  const lastRefreshRef = useRef({ key: requestKey, at: Date.now() });
+  if (lastRefreshRef.current.key !== requestKey) lastRefreshRef.current = { key: requestKey, at: Date.now() };
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -281,12 +285,15 @@ export function useOptionsQuery(
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !request || !appActive || refreshIntervalMs <= 0) return;
-    const interval = setInterval(() => {
+    if (!coordinator || !request || !visible || refreshIntervalMs <= 0) return;
+    const refresh = () => {
+      lastRefreshRef.current = { key: requestKey, at: Date.now() };
       void coordinator.loadOptions(request, { forceRefresh: true }).catch(() => {});
-    }, refreshIntervalMs);
+    };
+    if (Date.now() - lastRefreshRef.current.at >= refreshIntervalMs) refresh();
+    const interval = setInterval(refresh, refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [appActive, refreshIntervalMs, requestKey]);
+  }, [refreshIntervalMs, requestKey, visible]);
 
   return entry;
 }

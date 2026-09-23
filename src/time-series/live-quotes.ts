@@ -49,8 +49,15 @@ function supportsLiveQuote(
   return isMarketFieldId(fieldId) || valuationSeriesUsesLiveQuote(fieldId);
 }
 
-/** Displayed or study-required quote-sensitive instruments, deduplicated by routing identity. */
-export function getLiveChartQuoteTargets(spec: ChartSpec, priority: { selected?: boolean } = {}): QuoteSubscriptionTarget[] {
+/**
+ * Displayed or study-required quote-sensitive instruments, deduplicated by
+ * routing identity. `visible: false` marks a chart that is not on screen, so
+ * its quotes arrive at the off-screen cadence.
+ */
+export function getLiveChartQuoteTargets(
+  spec: ChartSpec,
+  priority: { selected?: boolean; visible?: boolean } = {},
+): QuoteSubscriptionTarget[] {
   const targets = new Map<string, QuoteSubscriptionTarget>();
   const activeStudyInputs = activeStudyInputSeriesIds(spec.studies);
   for (const series of spec.series) {
@@ -64,8 +71,8 @@ export function getLiveChartQuoteTargets(spec: ChartSpec, priority: { selected?:
         instrument: series.source.instrument.instrument ?? null,
       },
       surface: "detail",
-      visible: true,
-      ...(priority.selected ? { selected: true } : {}),
+      visible: priority.visible !== false,
+      ...(priority.selected && priority.visible !== false ? { selected: true } : {}),
       weight: 1,
     };
     targets.set(chartQuoteOverrideKeyForTarget(target), target);
