@@ -139,6 +139,9 @@ describe("formatMarketPriceWithCurrency", () => {
   test("formats position cost values with tighter equity precision", () => {
     expect(formatMarketCostWithCurrency(119.3687, "HKD", { assetCategory: "STK" })).toBe("HK$119.37");
     expect(formatMarketCostWithCurrency(50.9507, "USD", { assetCategory: "OPT", multiplier: 100 })).toBe("$50.9507");
+    // Money costs keep the currency's minor unit.
+    expect(formatMarketCostWithCurrency(189.2, "USD", { assetCategory: "STK" })).toBe("$189.20");
+    expect(formatMarketCostWithCurrency(1520, "JPY", { assetCategory: "STK" })).toBe("¥1,520");
   });
 });
 

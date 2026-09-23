@@ -13,7 +13,8 @@ import {
   renderTable,
 } from "../../../../utils/cli-output";
 import { formatCompact } from "../../../../utils/format";
-import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
+import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
+import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
 import { exchangeShortName, getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import type { AppConfig } from "../../../../types/config";
@@ -22,6 +23,14 @@ import type { MarketContext } from "../../../../cli/types";
 import type { TickerRecord } from "../../../../types/ticker";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
+
+/** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
+function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
+  const options = quoteFormatOptions(quote, assetCategory);
+  return resolvePriceBasis(options.priceBasis, options.assetCategory) === "per-unit"
+    ? { ...options, minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) }
+    : options;
+}
 
 export function renderCollectionOverview(config: AppConfig, tickers: TickerRecord[]): string {
   const blocks: string[] = [];
@@ -146,7 +155,7 @@ async function showCollectionWithMarketData(
       const displayedQuote = getActiveQuoteDisplay(quote);
       const activeQuote = displayedQuote && Number.isFinite(displayedQuote.price) ? displayedQuote : null;
       const priceText = quote && activeQuote
-        ? colorBySign(formatMarketPriceWithCurrency(activeQuote.price, quote.currency, quoteFormatOptions(quote, ticker.metadata.assetCategory)), activeQuote.change)
+        ? colorBySign(formatMarketPriceWithCurrency(activeQuote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), activeQuote.change)
         : "—";
       const changeText = activeQuote ? colorBySign(formatSignedPercentRaw(activeQuote.changePercent), activeQuote.change) : "—";
 
@@ -234,7 +243,7 @@ async function showCollectionWithMarketData(
     for (const ticker of filtered) {
       const quote = quotes.get(ticker.metadata.ticker);
       const priceText = quote
-        ? colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, quoteFormatOptions(quote, ticker.metadata.assetCategory)), quote.change)
+        ? colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), quote.change)
         : "—";
       const changeText = quote ? colorBySign(formatSignedPercentRaw(quote.changePercent), quote.change) : "—";
       const marketCapText = quote?.marketCap != null

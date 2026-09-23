@@ -426,7 +426,12 @@ export function formatMarketCostWithCurrency(
   const numericWidth = options.maxWidth == null
     ? undefined
     : Math.max(1, options.maxWidth - sign.length - symbol.length);
-  const body = formatMarketCost(Math.abs(value), { ...options, maxWidth: numericWidth });
+  // A money cost keeps its currency's minor unit: $189.20, not $189.2 (JPY has none).
+  const body = formatMarketCost(Math.abs(value), {
+    minimumFractionDigits: Math.min(2, currencyMinorDigits(normalizedCurrency)),
+    ...options,
+    maxWidth: numericWidth,
+  });
   return `${sign}${symbol}${body}`;
 }
 
