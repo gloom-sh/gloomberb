@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { formatCloudDateTime, mapCloudFinancials, mapQuote } from "./normalizers";
 import type { CloudQuotePayload } from "../../api-client";
+import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market-data/quotes/contributions";
+import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 
 test("intraday boundaries use venue time or explicit UTC while daily dates stay UTC calendar dates", () => {
   const winter = new Date("2026-01-15T01:02:03.456Z");
@@ -71,4 +73,32 @@ describe("mapCloudFinancials", () => {
     expect(financials.priceHistory[0]?.close).toBeCloseTo(0.231);
     expect(financials.priceHistory[0]?.date.toISOString()).toBe("2026-05-13T09:15:00.000Z");
   });
+});
+
+test("a stream frame without the 52-week range or market cap keeps the snapshot's values", () => {
+  const lastUpdated = Date.now();
+  const snapshot = mapQuote({
+    symbol: "AAPL", currency: "USD", price: 230, change: 1, changePercent: 0.4, lastUpdated: lastUpdated - 60_000,
+    providerId: "gloomberb-cloud", dataSource: "live", high52w: 260, low52w: 160, marketCap: 3.4e12, name: "Apple Inc.",
+    listingExchangeName: "NASDAQ", marketState: "REGULAR",
+  });
+  const frame = mapQuote({
+    symbol: "AAPL", currency: "USD", price: 231, change: 2, changePercent: 0.9, lastUpdated,
+    providerId: "gloomberb-cloud", dataSource: "live", listingExchangeName: "NASDAQ", marketState: "REGULAR",
+  });
+  expect("high52w" in frame).toBe(false);
+  expect(Object.values(frame).includes(undefined)).toBe(false);
+
+  const resolved = resolveTickerFinancialsQuoteState(
+    { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: snapshot },
+    frame,
+  )?.quote;
+  expect(resolved).toMatchObject({ price: 231, high52w: 260, low52w: 160, marketCap: 3.4e12, name: "Apple Inc." });
+
+  // An explicit undefined from any source is not a retraction either.
+  const merged = mergeQuoteContribution(
+    normalizeQuoteContribution(snapshot),
+    { ...frame, high52w: undefined, name: undefined },
+  );
+  expect(merged).toMatchObject({ high52w: 260, name: "Apple Inc." });
 });

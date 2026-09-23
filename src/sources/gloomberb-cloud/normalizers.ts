@@ -52,7 +52,7 @@ export function mapQuote(
   const changePercent = typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)
     ? quote.changePercent
     : Number.NaN;
-  return reconcileQuoteDayRange({
+  return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
@@ -114,7 +114,21 @@ export function mapQuote(
           },
         }
       : quote.provenance,
-  });
+  }));
+}
+
+/**
+ * JSON has no undefined, so a field the server left out must stay absent here
+ * too. A stream frame that omits the 52-week range or market cap would
+ * otherwise overwrite the snapshot's values with explicit undefined when the
+ * two are merged.
+ */
+function withoutUndefinedFields<T extends object>(value: T): T {
+  const result = {} as T;
+  for (const key in value) {
+    if (value[key] !== undefined) result[key] = value[key];
+  }
+  return result;
 }
 
 const LOCAL_DATE_TIME_PATTERN =

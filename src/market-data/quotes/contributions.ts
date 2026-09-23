@@ -8,6 +8,9 @@ import type {
 } from "../../types/financials";
 import { reconcileQuoteDayRange } from "./day-range";
 
+const RETAINED_DESCRIPTIVE_FIELDS = ["high52w", "low52w", "marketCap", "name", "instrumentType"] as const;
+const PRICE_DENOMINATED_DESCRIPTIVE_FIELDS: ReadonlySet<string> = new Set(["high52w", "low52w", "marketCap"]);
+
 function inferQuoteProviderId(quote: Quote | QuoteContribution): string {
   if (quote.providerId?.trim()) return quote.providerId;
   return "quote";
@@ -147,6 +150,14 @@ export function mergeQuoteContribution(
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
   };
+
+  // Leaving a descriptive field out is not a retraction. Price-denominated
+  // ones only carry over while the price convention is unchanged.
+  for (const field of RETAINED_DESCRIPTIVE_FIELDS) {
+    if (merged[field] === undefined && current[field] !== undefined && (samePriceBasis || !PRICE_DENOMINATED_DESCRIPTIVE_FIELDS.has(field))) {
+      (merged as unknown as Record<string, unknown>)[field] = current[field];
+    }
+  }
 
   if (next.marketState == null && current.marketState != null) {
     merged.marketState = current.marketState;
