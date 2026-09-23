@@ -96,20 +96,29 @@ export function termLengthDays(term: string): number {
 }
 
 /**
- * Zero indirect bidding is a real, and notable, auction outcome, so only a
- * missing leg or an unusable total is unknown.
+ * Indirect takedown, as Treasury reports it: a share of competitive accepted,
+ * which excludes noncompetitive, FIMA and SOMA add-on awards. Zero indirect
+ * bidding is a real, and notable, outcome, so only a missing leg or an
+ * unusable total is unknown.
  */
 export function indirectPct(auction: TreasuryAuction): number | null {
-  if (auction.indirectAccepted == null || !auction.totalAccepted) return null;
-  return (auction.indirectAccepted / auction.totalAccepted) * 100;
+  if (auction.indirectAccepted == null || !auction.competitiveAccepted) return null;
+  return (auction.indirectAccepted / auction.competitiveAccepted) * 100;
 }
 
 /**
- * The loaded headline rate: bill investment rate or note/bond/TIPS high yield.
- * The source projection does not yet include FRN high discount margin.
+ * The headline result: bill investment rate, FRN high discount margin, or
+ * note/bond/TIPS high yield (a real yield for TIPS).
  */
 export function rateValue(auction: TreasuryAuction): number | null {
+  if (auction.secType === "FRN") return auction.highDiscountMargin ?? null;
   return auction.highInvestmentRate ?? auction.highYield;
+}
+
+/** FRN discount margins read in basis points; every other rate in percent. */
+export function formatAuctionRate(auction: TreasuryAuction, value: number | null, empty: string): string {
+  if (value == null) return empty;
+  return auction.secType === "FRN" ? `${(value * 100).toFixed(1)}bp` : `${value.toFixed(3)}%`;
 }
 
 /** Announced auctions appear in the feed days before any results are published. */
@@ -117,8 +126,12 @@ export function isPendingAuction(auction: TreasuryAuction): boolean {
   return rateValue(auction) == null && auction.bidToCoverRatio == null;
 }
 
+/**
+ * The announced offering, for pending and completed auctions alike. Total
+ * accepted also counts SOMA add-ons, which would overstate completed sizes.
+ */
 export function auctionSize(auction: TreasuryAuction): number | null {
-  return auction.totalAccepted ?? auction.offeringAmount;
+  return auction.offeringAmount ?? auction.totalAccepted;
 }
 
 function sortValue(auction: TreasuryAuction, columnId: AuctionColumnId): number | string | null {

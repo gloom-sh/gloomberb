@@ -29,6 +29,7 @@ import {
   auctionHistoryDays,
   auctionSize,
   buildAuctionColumns,
+  formatAuctionRate,
   indirectPct,
   isPendingAuction,
   nextAuctionSort,
@@ -124,7 +125,7 @@ function renderAuctionCell(
     case "term":
       return { text: auction.securityTerm, color: selected ?? colors.text };
     case "rate":
-      return { text: formatRate(rateValue(auction)), color: selected ?? colors.textBright };
+      return { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio), color: selected ?? colors.text };
     case "indirect":
@@ -136,8 +137,7 @@ function renderAuctionCell(
 
 
 function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; width: number }) {
-  const total = auction.totalAccepted;
-  const share = (value: number | null): string => (
+  const share = (value: number | null, total: number | null): string => (
     value == null || !total ? formatMoney(value) : `${formatMoney(value)} (${((value / total) * 100).toFixed(1)}%)`
   );
 
@@ -149,7 +149,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
           {isPendingAuction(auction) && <Text fg={colors.warning}>results pending</Text>}
         </Box>
         <Box height={1} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High rate" value={formatRate(rateValue(auction))} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High rate" value={formatAuctionRate(auction, rateValue(auction), "—")} />
         {auction.avgMedYield != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
         )}
@@ -161,9 +161,9 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Offering" value={formatMoney(auction.offeringAmount)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Total accepted" value={formatMoney(auction.totalAccepted)} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Competitive" value={share(auction.competitiveAccepted)} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect" value={share(auction.indirectAccepted)} />
-        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Competitive" value={share(auction.competitiveAccepted, auction.totalAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect" value={share(auction.indirectAccepted, auction.competitiveAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted, auction.competitiveAccepted)} />
       </Box>
     </ScrollBox>
   );

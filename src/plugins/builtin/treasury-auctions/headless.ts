@@ -5,9 +5,11 @@ import type {
 import { formatCompact } from "../../../utils/format";
 import { fetchTreasuryAuctions } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
+import type { TreasuryAuction } from "./types";
 import {
   auctionSize,
   DEFAULT_AUCTION_SORT,
+  formatAuctionRate,
   indirectPct,
   rateValue,
   visibleAuctions,
@@ -18,7 +20,7 @@ const COLUMNS = [
   { key: "auctionDate", header: "Date" },
   { key: "secType", header: "Type" },
   { key: "securityTerm", header: "Term" },
-  { key: "rate", header: "Rate", align: "right" as const, format: (value: unknown) => value == null ? "-" : `${Number(value).toFixed(3)}%` },
+  { key: "rate", header: "Rate", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-") },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(2) },
   { key: "indirectPercent", header: "Indirect", align: "right" as const, format: (value: unknown) => value == null ? "-" : `${Number(value).toFixed(1)}%` },
   { key: "size", header: "Size", align: "right" as const, format: (value: unknown) => value == null ? "-" : `$${formatCompact(Number(value))}` },

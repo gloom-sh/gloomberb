@@ -16,8 +16,10 @@ export interface TreasuryAuction {
   securityTerm: string;
   /** ISO "YYYY-MM-DD". */
   auctionDate: string;
-  /** Bill investment rate, in percentage points. FRN discount margin is not loaded. */
+  /** Bill investment rate, in percentage points. */
   highInvestmentRate: number | null;
+  /** FRN high discount margin over the 13-week bill index, in percentage points. */
+  highDiscountMargin?: number | null;
   /** High yield, reported by Notes, Bonds, and TIPS. */
   highYield: number | null;
   avgMedYield: number | null;
@@ -54,6 +56,9 @@ export interface TreasuryAuctionRaw {
   primary_dealer_accepted?: string;
   total_accepted?: string;
   offering_amt?: string;
+  inflation_index_security?: string;
+  floating_rate?: string;
+  high_discnt_margin?: string;
 }
 
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";

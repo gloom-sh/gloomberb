@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_AUCTION_SORT,
+  auctionSize,
+  formatAuctionRate,
   indirectPct,
   isPendingAuction,
   matchesFilter,
@@ -62,6 +64,9 @@ describe("auction metrics", () => {
     expect(rateValue(auction({ secType: "Bill", securityTerm: "4-Week", highInvestmentRate: 3.9 }))).toBe(3.9);
     expect(rateValue(auction({ secType: "Note", securityTerm: "10-Year", highYield: 4.683 }))).toBe(4.683);
     expect(rateValue(auction({ secType: "Bond", securityTerm: "20-Year" }))).toBeNull();
+    const frn = auction({ secType: "FRN", securityTerm: "1-Year 11-Month", highDiscountMargin: 0.055, highYield: 3.9 });
+    expect(rateValue(frn)).toBe(0.055);
+    expect(formatAuctionRate(frn, rateValue(frn), "-")).toBe("5.5bp");
   });
 
   test("keeps a zero indirect allocation as 0%, not unknown", () => {
@@ -70,7 +75,7 @@ describe("auction metrics", () => {
       secType: "Bill",
       securityTerm: "4-Week",
       indirectAccepted: 0,
-      totalAccepted: 50_000_000_000,
+      competitiveAccepted: 50_000_000_000,
     });
     expect(indirectPct(zeroIndirect)).toBe(0);
     expect(visibleAuctions([zeroIndirect], {
@@ -80,17 +85,25 @@ describe("auction metrics", () => {
     })).toHaveLength(1);
   });
 
-  test("indirect share needs both legs and survives a zero total", () => {
+  test("indirect share is of competitive accepted, excluding SOMA and noncompetitive awards", () => {
+    // 2026-09-22 2-Year: Treasury reports 57.8% indirect; total accepted
+    // includes $10.4B of SOMA add-ons and would understate it at 49.3%.
     const filled = auction({
       secType: "Note",
-      securityTerm: "10-Year",
-      indirectAccepted: 32_087_936_000,
-      totalAccepted: 52_623_557_100,
+      securityTerm: "2-Year",
+      indirectAccepted: 39_116_326_000,
+      competitiveAccepted: 67_685_935_200,
+      totalAccepted: 79_388_014_800,
     });
-    expect(indirectPct(filled)).toBeCloseTo(60.98, 1);
-    expect(indirectPct(auction({ secType: "Note", securityTerm: "10-Year", totalAccepted: 0, indirectAccepted: 5 })))
+    expect(indirectPct(filled)).toBeCloseTo(57.79, 1);
+    expect(indirectPct(auction({ secType: "Note", securityTerm: "10-Year", competitiveAccepted: 0, indirectAccepted: 5 })))
       .toBeNull();
-    expect(indirectPct(auction({ secType: "Note", securityTerm: "10-Year", totalAccepted: 100 }))).toBeNull();
+    expect(indirectPct(auction({ secType: "Note", securityTerm: "10-Year", competitiveAccepted: 100 }))).toBeNull();
+  });
+
+  test("sizes completed and announced auctions by the offering, not SOMA-inflated accepted totals", () => {
+    expect(auctionSize(auction({ secType: "Note", securityTerm: "2-Year", offeringAmount: 69e9, totalAccepted: 79.39e9 }))).toBe(69e9);
+    expect(auctionSize(auction({ secType: "Note", securityTerm: "2-Year", totalAccepted: 79.39e9 }))).toBe(79.39e9);
   });
 
   test("flags announced auctions that have no published results", () => {

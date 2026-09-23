@@ -28,7 +28,7 @@ describe("treasury auctions headless model", () => {
     const all = await headless.load(args("all"), {} as HeadlessPaneContext);
     const bonds = await headless.load(args("bond"), {} as HeadlessPaneContext);
     expect(all.rows).toHaveLength(2);
-    expect(bonds.rows).toEqual([expect.objectContaining({ id: "bond", rate: 4.1, indirectPercent: 20 })]);
+    expect(bonds.rows).toEqual([expect.objectContaining({ id: "bond", rate: 4.1, indirectPercent: 25 })]);
     expect(requested).toEqual([90, 90]);
   });
 });

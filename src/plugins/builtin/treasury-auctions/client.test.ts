@@ -51,6 +51,14 @@ describe("normalizeAuction", () => {
     expect(auction.avgMedPrice).toBeNull();
   });
 
+  test("tells TIPS and FRNs apart from the nominal notes they are auctioned as", () => {
+    const tips = normalizeAuction({ ...LIVE_NOTE_ROW, cusip: "91282CRE3", inflation_index_security: "Yes", floating_rate: "No" });
+    const frn = normalizeAuction({ ...LIVE_NOTE_ROW, cusip: "91282CRD5", high_yield: "null", inflation_index_security: "No", floating_rate: "Yes", high_discnt_margin: "0.055000" });
+    expect(tips).toMatchObject({ secType: "TIPS", highYield: 4.683 });
+    expect(frn).toMatchObject({ secType: "FRN", highDiscountMargin: 0.055 });
+    expect(normalizeAuction({ ...LIVE_NOTE_ROW, inflation_index_security: "No", floating_rate: "No" })?.secType).toBe("Note");
+  });
+
   test("keeps announced auctions whose results are not published yet", () => {
     const auction = normalizeAuction({
       security_type: "Bond",

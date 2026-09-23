@@ -22,6 +22,9 @@ const FIELDS = [
   "primary_dealer_accepted",
   "total_accepted",
   "offering_amt",
+  "inflation_index_security",
+  "floating_rate",
+  "high_discnt_margin",
 ].join(",");
 
 export const AUCTION_HISTORY_DAYS = 120;
@@ -86,10 +89,13 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     // so CUSIP plus date is what keeps reopenings from collapsing into one row.
     id: cusip ? `${cusip}|${auctionDate}` : `${secType}|${auctionDate}|${securityTerm}`,
     cusip: cusip || null,
-    secType,
+    // TIPS and FRNs are auctioned under the Note/Bond security type; their
+    // yields are real yields and discount margins, not nominal yields.
+    secType: record.inflation_index_security === "Yes" ? "TIPS" : record.floating_rate === "Yes" ? "FRN" : secType,
     securityTerm: securityTerm || "—",
     auctionDate,
     highInvestmentRate: toNumber(record.high_investment_rate),
+    highDiscountMargin: toNumber(record.high_discnt_margin),
     highYield: toNumber(record.high_yield),
     avgMedYield: toNumber(record.avg_med_yield),
     highPrice: toNumber(record.high_price),

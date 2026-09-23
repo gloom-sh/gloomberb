@@ -45,6 +45,7 @@ const AUCTIONS: TreasuryAuction[] = [
     auctionDate: "2026-08-17",
     highInvestmentRate: 3.802,
     bidToCoverRatio: 2.86,
+    competitiveAccepted: 80_000_000_000,
     indirectAccepted: 48_000_000_000,
     totalAccepted: 98_725_863_900,
   }),
@@ -54,6 +55,7 @@ const AUCTIONS: TreasuryAuction[] = [
     auctionDate: "2026-08-12",
     highYield: 4.683,
     bidToCoverRatio: 2.53,
+    competitiveAccepted: 41_821_613_600,
     indirectAccepted: 32_087_936_000,
     primaryDealerAccepted: 3_597_810_000,
     totalAccepted: 52_623_557_100,
@@ -134,7 +136,7 @@ describe("TreasuryAuctionsPane", () => {
     expect(frame).toContain("3.802%");
     expect(frame).toContain("2.86");
     // Indirect share is derived, not reported.
-    expect(frame).toContain("48.6%");
+    expect(frame).toContain("60.0%");
     // The 20-Year is announced but unpublished: every metric cell reads the
     // same placeholder the reported-but-missing cells use.
     expect(frame).toContain("20-Year");
