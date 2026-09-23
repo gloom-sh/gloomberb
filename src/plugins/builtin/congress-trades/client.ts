@@ -3,6 +3,7 @@ import type { CloudCongressHousePayload } from "../../../api-client";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 
+/** Reads the feed named by `params.chamber`, House when omitted. */
 export function loadCongressHouse(
   params: CloudCongressHouseParams = {},
   client: Pick<HeadlessPaneApiClient, "getCloudCongressHouse"> = apiClient,

@@ -27,8 +27,8 @@ export const EVENT_ALERT_TEMPLATES = [
     kind: "congress_trade",
     target: "member",
     label: "Congress: follow a member",
-    field: "House member",
-    placeholder: "Nancy Pelosi:CA11",
+    field: "Member of Congress",
+    placeholder: "Nancy Pelosi or Tommy Tuberville",
     normalize: (value: string) => value.trim(),
   },
   {
@@ -53,7 +53,7 @@ export function createEventAlert(
   const normalized = template.normalize(value);
   if (template.field && !normalized)
     throw new Error(
-      template.target === "fund" ? "Enter a numeric SEC CIK." : "Enter a House member's full name.",
+      template.target === "fund" ? "Enter a numeric SEC CIK." : "Enter the member's first and last name.",
     );
   if (normalized.length > 160) throw new Error("The member name is too long.");
   return {

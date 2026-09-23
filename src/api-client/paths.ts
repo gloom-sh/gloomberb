@@ -29,7 +29,11 @@ export type CloudCdsParams = {
   limit?: number;
 };
 
+export type CloudCongressChamber = "all" | "house" | "senate";
+
 export type CloudCongressHouseParams = {
+  /** Which feed to read; House when omitted. */
+  chamber?: CloudCongressChamber;
   year?: number;
   limit?: number;
   offset?: number;
@@ -243,7 +247,7 @@ export function cloudCongressHousePath(
   if (params.assetType) search.set("assetType", params.assetType);
   if (params.minAmount != null) search.set("minAmount", String(params.minAmount));
   if (params.refresh != null) search.set("refresh", String(params.refresh));
-  return appendQuery("/cloud/congress/house", search);
+  return appendQuery(`/cloud/congress/${params.chamber ?? "house"}`, search);
 }
 
 const US_ISSUER_LISTINGS = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);

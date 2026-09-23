@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { cloudCongressHousePath } from "../../../api-client/paths";
 import type { CloudCongressHousePayload } from "../../../api-client";
 import {
   canLoadMoreCongress,
@@ -78,6 +79,17 @@ describe("congress paging", () => {
     expect(congressScanNotice(payload({ filingsFailed: 1, filingsPending: 3 }))).toBe(
       "4 filings not read yet, retrying later",
     );
+    expect(congressScanNotice(payload({ filingsFailed: 1, filingsPaper: 2, senateUnavailable: true }))).toBe(
+      "1 filings unavailable · 2 Senate paper filings not read · Senate filings unavailable, showing House only",
+    );
+    expect(congressScanNotice(payload({ filingsPaper: 1 }))).toBe("1 Senate paper filing not read");
+  });
+
+  test("pages keep the chamber they were asked for", () => {
+    expect(cloudCongressHousePath({ year: 2026 })).toBe("/cloud/congress/house?year=2026");
+    expect(cloudCongressHousePath({ chamber: "all", ...nextCongressPage(payload({ hasMore: true, nextOffset: 5 }))! }))
+      .toStartWith("/cloud/congress/all?");
+    expect(cloudCongressHousePath({ chamber: "senate", ticker: "NVDA" })).toBe("/cloud/congress/senate?ticker=NVDA");
   });
 
   test("appends unique trades and members from the next page", () => {

@@ -4,8 +4,11 @@ import { Checkbox, SelectButton } from "../../../components";
 import type { SelectControl } from "../../../components/ui/select-button";
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 
-export type CongressFilters = Pick<CloudCongressHouseParams, "side" | "owner" | "assetType" | "minAmount">;
-export type CongressFilterRefs = Record<"side" | "owner" | "assetType" | "minAmount", RefObject<SelectControl | null>>;
+/** No chamber means both. */
+export type CongressFilters = Pick<CloudCongressHouseParams, "side" | "owner" | "assetType" | "minAmount"> & {
+  chamber?: "house" | "senate";
+};
+export type CongressFilterRefs = Record<"chamber" | "side" | "owner" | "assetType" | "minAmount", RefObject<SelectControl | null>>;
 
 export function CongressFilterBar({ filters, onChange, mine, onMine, width, controls }: {
   filters: CongressFilters; onChange: (filters: CongressFilters) => void;
@@ -13,6 +16,9 @@ export function CongressFilterBar({ filters, onChange, mine, onMine, width, cont
 }) {
   return <Box flexDirection={width < 100 ? "column" : "row"} gap={width < 100 ? 0 : 1}>
     <Box flexDirection="row" gap={1}>
+      <SelectButton label="Chamber" value={filters.chamber ?? "all"} controlRef={controls.chamber}
+        options={[{ value: "all", label: "All" }, { value: "house", label: "House" }, { value: "senate", label: "Senate" }]}
+        onChange={(value) => onChange({ ...filters, chamber: value === "all" ? undefined : value as CongressFilters["chamber"] })} emphasized={!!filters.chamber} />
       <SelectButton label="Side" value={filters.side ?? "all"} controlRef={controls.side}
         options={[{ value: "all", label: "All" }, ...["BUY", "SELL", "EXCHANGE", "OTHER"].map((value) => ({ value, label: value }))]}
         onChange={(value) => onChange({ ...filters, side: value === "all" ? undefined : value as CongressFilters["side"] })} emphasized={!!filters.side} />

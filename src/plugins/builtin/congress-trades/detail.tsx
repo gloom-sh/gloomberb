@@ -77,7 +77,7 @@ export function TradeDetail({
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
         {/* The detail title already carries the member and ticker. */}
-        <DetailLine label="district" value={trade.stateDistrict || "--"} tone="muted" />
+        <DetailLine label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <DetailLine label="party" value={trade.party ?? "--"} />
         <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : "warning"} />
         <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
@@ -120,6 +120,8 @@ export function MemberTradesDetail({
   const rendererHost = useRendererHost();
   const openTicker = useInlineTickerOpener();
   const [trades, setTrades] = useState<CloudCongressTradePayload[]>(initialTrades);
+  // A member sits in one chamber, so their history comes from that feed alone.
+  const chamber = initialTrades[0]?.chamber ?? "all";
   const [detailPayload, setDetailPayload] = useState<CloudCongressHousePayload | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +140,7 @@ export function MemberTradesDetail({
     setStatus("loading");
     setError(null);
     loadCongressHouse({
+      chamber,
       member: member.memberName,
       limit: CONGRESS_MEMBER_TRADE_LIMIT,
       filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
@@ -158,7 +161,7 @@ export function MemberTradesDetail({
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });
-  }, [filingLimit, member.memberName, member.stateDistrict]);
+  }, [chamber, filingLimit, member.memberName, member.stateDistrict]);
 
   const loadPage = useCallback((nextRequest: ReturnType<typeof nextCongressPage>) => {
     if (!detailPayload || !nextRequest) return;
@@ -166,6 +169,7 @@ export function MemberTradesDetail({
     setLoadingMore(true);
     loadCongressHouse({
       ...nextRequest,
+      chamber,
       member: member.memberName,
       limit: CONGRESS_MEMBER_TRADE_LIMIT,
       filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
@@ -188,7 +192,7 @@ export function MemberTradesDetail({
         if (fetchGenRef.current !== gen) return;
         setLoadingMore(false);
       });
-  }, [detailPayload, filingLimit, member.memberName, member.stateDistrict]);
+  }, [chamber, detailPayload, filingLimit, member.memberName, member.stateDistrict]);
 
   const loadMore = useCallback(() => {
     if (!detailPayload || loadingMore || status !== "loaded") return;

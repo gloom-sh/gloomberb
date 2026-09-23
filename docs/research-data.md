@@ -126,7 +126,8 @@ Amendment status uses the existing footer. Headless reports retain the candidate
 
 For 13F option positions, reported values and shares refer to the underlying security. The 13F percentage is the share of reported value, not an option premium or portfolio delta. The position type remains identified in the holdings table, and exports retain this value basis.
 
-Congress research uses House Clerk periodic transaction reports. Ticker searches
+Congress research uses House Clerk and Senate eFD periodic transaction reports,
+merged into one index ordered by filing date. Ticker searches
 filter the trades extracted from each filing window, not the filing index itself.
 An empty window therefore does not mean that the ticker has no disclosures in
 that year. The Congress tab and `CG` keep the next window available, and earlier
@@ -362,14 +363,15 @@ The context includes available source, observation, retrieval, stale-state, and 
 
 ### Filing alert timing
 
-Filing event alerts observe House disclosures and followed funds' 13F submissions,
+Filing event alerts observe House and Senate disclosures and followed funds' 13F submissions,
 using the existing mobile daily cap, cooldowns, and delivery ledger. A filing that
 matches several rules notifies once. Rules begin on their creation day; resuming
 a paused rule starts a new observation window. The evaluator looks back at most
 14 days and handles up to 40 event rules per user.
 
-House alerts depend on successful PDF parsing and the daily OCR budget, scanning
-up to 240 recent filings per source year. Fund filing checks share the 24-hour
+House alerts depend on successful PDF parsing and the daily OCR budget; Senate
+alerts cover electronic reports only. Each chamber scans up to 240 recent
+filings per source year. Fund filing checks share the 24-hour
 forms13f cache. Delivery therefore follows source availability and parsing, not
 the transaction date or a guaranteed real-time schedule. Price alerts continue
 to use their existing price conditions.
@@ -525,7 +527,7 @@ The Members median uses priced transaction-date stock returns across all sides. 
 
 Party and current committee assignments come from the public unitedstates/congress-legislators YAML, cached server-side for 24 hours. Matching requires name, state/district and a House term covering the filing date. Party follows that term; committees are the current source snapshot. Ambiguous matches remain unknown.
 
-Senate coverage remains deferred. On September 22, 2026, the eFD root, search, home and report-data endpoints returned HTTP 403 from Akamai before exposing an agreement or search form. Requests with standard browser headers returned the same result, leaving no accessible index or representative report to validate a parser. Paper filings and HTML Senate trades are not represented as House data.
+Senate reports come from the Senate eFD site, which serves US addresses only and is read through a US egress server. An eFD amendment restates its whole report, so the newest electronic amendment replaces the original; its rows keep the original filing date, which the 45-day late flag uses. Paper reports are scanned images: they are counted in the scan notice (`filingsPaper` in structured output) and not read. Senators are matched to the member directory by last name among sitting senators, with first names deciding shared last names; the directory supplies their state, party and committees. When the Senate source is unreachable, the merged feed serves House filings and reports `senateUnavailable`.
 
 ## Futures curves (CTM)
 

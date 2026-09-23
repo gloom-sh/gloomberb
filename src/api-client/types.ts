@@ -450,7 +450,7 @@ type CloudCongressTradeSide = "BUY" | "SELL" | "EXCHANGE" | "OTHER";
 
 export interface CloudCongressTradePayload {
   id: string;
-  chamber: "house";
+  chamber: "house" | "senate";
   filingId: string;
   docId: string;
   memberName: string;
@@ -518,8 +518,9 @@ export interface CloudCongressTickerPayload {
 
 export interface CloudCongressHousePayload {
   asOf: string;
-  chamber: "house";
-  source: "house-clerk";
+  /** "all" pages both chambers' filings as one date-ordered index. */
+  chamber: "house" | "senate" | "all";
+  source: "house-clerk" | "senate-efd" | "congress";
   year: number;
   indexUpdatedAt: string | null;
   filingsScanned: number;
@@ -529,6 +530,10 @@ export interface CloudCongressHousePayload {
   filingsFailed?: number;
   /** Filings left unread because the server's daily document budget is spent. */
   filingsPending?: number;
+  /** Scanned Senate paper filings: listed and linked, not read. */
+  filingsPaper?: number;
+  /** The merged feed could not reach the Senate source; this window is House only. */
+  senateUnavailable?: boolean;
   filingCount: number;
   filingOffset?: number;
   hasMore?: boolean;

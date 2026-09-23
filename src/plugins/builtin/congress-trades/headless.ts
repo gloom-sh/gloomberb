@@ -74,6 +74,7 @@ export interface CongressHeadlessDependencies {
 
 const defaultDependencies: CongressHeadlessDependencies = {
   loadHouse: (args, ctx) => loadCongressHouse({
+    chamber: (args.options.chamber as CloudCongressHouseParams["chamber"]) ?? "all",
     year: Number(args.options.year),
     limit: CONGRESS_TRADE_LIMIT,
     filingLimit: CONGRESS_FILING_LIMIT,
@@ -95,9 +96,10 @@ export function createCongressHeadless(
     argument: {
       kind: "ticker",
       optional: true,
-      description: "Optional ticker to filter House PTR trades.",
+      description: "Optional ticker to filter Congress PTR trades.",
     },
     options: [
+      { key: "chamber", description: "House, Senate, or both merged by filing date.", type: "enum", defaultValue: "all", values: ["all", "house", "senate"].map((value) => ({ value })) },
       { key: "offset", description: "Trade offset within the filing window.", type: "integer", defaultValue: 0, minimum: 0 },
       { key: "filingOffset", description: "Offset into the year's filing index.", type: "integer", defaultValue: 0, minimum: 0 },
       {
@@ -110,7 +112,7 @@ export function createCongressHeadless(
       },
       {
         key: "year",
-        description: "House disclosure year.",
+        description: "Disclosure year.",
         type: "integer",
         defaultValue: new Date().getUTCFullYear(),
         minimum: 2008,
@@ -146,7 +148,8 @@ export function createCongressHeadless(
           metadata: { asOf: payload.asOf, chamber: payload.chamber, source: payload.source, year: payload.year,
             aggregateScope: "filtered filing window", filingOffset: payload.filingOffset, filingsScanned: payload.filingsScanned,
             nextFilingOffset: payload.nextFilingOffset, hasMoreFilings: payload.hasMoreFilings,
-            filingsPending: payload.filingsPending, filingsFailed: payload.filingsFailed },
+            filingsPending: payload.filingsPending, filingsFailed: payload.filingsFailed,
+            filingsPaper: payload.filingsPaper ?? 0, senateUnavailable: payload.senateUnavailable ?? false },
         };
       }
       if (args.options.tab === "members") {
@@ -167,6 +170,8 @@ export function createCongressHeadless(
             hasMoreFilings: payload.hasMoreFilings,
             filingsPending: payload.filingsPending,
             filingsFailed: payload.filingsFailed,
+            filingsPaper: payload.filingsPaper ?? 0,
+            senateUnavailable: payload.senateUnavailable ?? false,
           },
         };
       }
@@ -187,6 +192,8 @@ export function createCongressHeadless(
           hasMoreFilings: payload.hasMoreFilings,
           filingsPending: payload.filingsPending,
           filingsFailed: payload.filingsFailed,
+          filingsPaper: payload.filingsPaper ?? 0,
+          senateUnavailable: payload.senateUnavailable ?? false,
         },
       };
     },

@@ -189,8 +189,8 @@ Correlation uses matching observation times when inputs have different frequenci
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
 
-Ticker Research includes a **Congress** tab for House transactions in the selected
-ticker. Scroll to append filing windows; `n` or its footer action continues a
+Ticker Research includes a **Congress** tab for House and Senate transactions in
+the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
 window with no matching transactions. After the year's filings, `p` appends the
 previous year. Select a trade for its disclosure details; `m`, `t`, and `o` open
 the member, ticker, and source filing. Dates include the year when comparing
@@ -255,8 +255,9 @@ The AI screener, the AI research workspace, and the Ask AI research tab come fro
 
 ### Filing event alerts
 
-Open `ALRT` and choose **Events** to follow House trades for your portfolio and
-watchlist, a House member's full name (optionally `name:district`), or a fund's
+Open `ALRT` and choose **Events** to follow Congress trades for your portfolio and
+watchlist, a representative's or senator's first and last name (optionally
+`name:district` or `name:state`), or a fund's
 numeric SEC CIK. Use **Add Event Alert** in the command bar, or the pane's add
 action. Enter or the pause action toggles a rule; delete removes it. Rules sync
 with your price alerts. The phone's notification settings have separate Congress
@@ -409,7 +410,7 @@ filed more than 45 days after the transaction. CLI examples:
 `gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json` and
 `gloomberb fn CG AAPL --owner spouse --assetType option --json`.
 
-Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis and the source access limit that keeps Senate coverage deferred.
+Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis.
 
 ## Options scenarios
 

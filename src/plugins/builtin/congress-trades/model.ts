@@ -354,9 +354,13 @@ export function previousCongressYearPage(
 export function congressScanNotice(payload: CloudCongressHousePayload): string | null {
   const pending = payload.filingsPending ?? 0;
   const failed = payload.filingsFailed ?? 0;
-  if (pending > 0) return `${pending + failed} filings not read yet, retrying later`;
-  if (failed > 0) return `${failed} filings unavailable`;
-  return null;
+  const paper = payload.filingsPaper ?? 0;
+  const notices = [
+    pending > 0 ? `${pending + failed} filings not read yet, retrying later` : failed > 0 ? `${failed} filings unavailable` : null,
+    paper > 0 ? `${paper} Senate paper ${paper === 1 ? "filing" : "filings"} not read` : null,
+    payload.senateUnavailable ? "Senate filings unavailable, showing House only" : null,
+  ].filter((notice): notice is string => !!notice);
+  return notices.length ? notices.join(" · ") : null;
 }
 
 export function mergeCongressPages(
