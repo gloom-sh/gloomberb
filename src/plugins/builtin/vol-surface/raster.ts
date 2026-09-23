@@ -44,12 +44,17 @@ export function volatilityTicks(low: number, high: number): number[] {
 }
 const percent = (value: number) => `${Number((value * 100).toFixed(1))}%`;
 
+/** A vertical range drawn before; a reloaded sheet that still fits it keeps it. */
+export interface SurfaceZRange { zMin: number; zMax: number }
+
 /**
  * The vertical axis and colour follow the 2nd to 98th percentile of the
  * surface, so a few wild short-dated wing cells poke above the box instead of
- * flattening every other row.
+ * flattening every other row. A reload whose range still fits inside the one
+ * already drawn, and fills at least half of it, keeps that box and colour
+ * scale, so the sheet moves rather than the axes.
  */
-export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: SurfaceCell | null): Surface3DInput {
+export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: SurfaceCell | null, held?: SurfaceZRange | null): Surface3DInput {
   const deltaAxis = grid.axis === "delta";
   const columnCount = grid.moneyness.length, rowCount = grid.tenors.length;
   const samples = grid.volatilities.flat().filter((value): value is number => value != null && Number.isFinite(value) && value >= 0).sort((a, b) => a - b);
@@ -64,8 +69,11 @@ export function volatilitySurfaceInput(grid: VolatilitySurfaceGrid, selected: Su
     maximum = middle + minimumSpan / 2;
   }
   const pad = Math.max(0.01, (maximum - minimum) * 0.12);
-  const ticks = volatilityTicks(Math.max(0, minimum - pad), maximum + pad);
-  const zMin = ticks[0] ?? 0, zMax = Math.max(ticks.at(-1) ?? 1, zMin + 0.02);
+  const floor = Math.max(0, minimum - pad), ceiling = maximum + pad;
+  const keep = !!held && samples.length > 0 && floor >= held.zMin - 1e-12 && ceiling <= held.zMax + 1e-12
+    && ceiling - floor >= (held.zMax - held.zMin) * 0.5;
+  const ticks = keep ? volatilityTicks(held!.zMin, held!.zMax) : volatilityTicks(floor, ceiling);
+  const zMin = keep ? held!.zMin : ticks[0] ?? 0, zMax = keep ? held!.zMax : Math.max(ticks.at(-1) ?? 1, zMin + 0.02);
   const coordinates = grid.moneyness;
   const low = Math.min(...coordinates), high = Math.max(...coordinates);
   const columnPositions = coordinates.map((value, index) => deltaAxis || high === low

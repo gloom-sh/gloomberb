@@ -5,6 +5,8 @@ import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useTickerFinancials } from "../../../market-data/hooks";
+import { quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
+import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { blendHex } from "../../../theme/color-utils";
@@ -14,13 +16,17 @@ import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
 import { useAutoRefresh } from "../shared/auto-refresh";
-import { loadVolatilitySurface } from "./client";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import { useLiveSessionRefresh } from "../shared/volatility/live-session";
+import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
+import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
 import { formatIvRank, useIvRank } from "../iv-history/rank";
 import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
-  surfaceSheetSnapshot, surfaceSheetTenors, type SurfaceSettings, type SurfaceSnapshot } from "./model";
+  type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { DEFAULT_SURFACE_CAMERA, rotateSurfaceCamera, zoomSurfaceCamera, type SurfaceCamera } from "./raster";
 import { VolatilitySurface } from "./surface";
 import { expiryLabel, formatIv, formatPrice, SmileChart, TermChart } from "./charts";
@@ -79,37 +85,74 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const spotRef = useRef(quote?.price ?? 0);
   spotRef.current = quote?.price ?? 0;
   const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable, requestedExpiration]);
+  // Every load reads the spot at the moment it starts; a reload in session
+  // therefore uses the current stream price, not the one from the first load.
+  const surfaceRequest = useCallback((force: boolean, signal: AbortSignal): SurfaceLoadRequest => {
+    const instrument = target?.instrument;
+    return {
+      instrument: { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
+        brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument },
+      spot: spotRef.current, spotAsOf: spotAsOfRef.current, limit, forceRefresh: force, signal,
+      requiredExpiries: expirationRef.current == null ? [] : [expirationRef.current],
+      settings: { ...DEFAULT_SURFACE_SETTINGS, ivSource, priceSide, maxRelativeSpread: Number(spread), maxStaleSessions: Number(age) },
+    };
+  // Stable quote reference prevents every streaming tick from restarting all expiry requests.
+  }, [requestKey]);
   const request = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
-    const instrument = target?.instrument;
-    return loadVolatilitySurface({
-      instrument: { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
-        brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument },
-      spot: spotRef.current, spotAsOf: spotAsOfRef.current, limit, forceRefresh: force, signal: abort.signal,
-      requiredExpiries: expirationRef.current == null ? [] : [expirationRef.current],
-      settings: { ...DEFAULT_SURFACE_SETTINGS, ivSource, priceSide, maxRelativeSpread: Number(spread), maxStaleSessions: Number(age) },
-      onSnapshot: (snapshot) => { if (!abort.signal.aborted) setPartial({ key: requestKey, snapshot }); },
-    });
-  // Stable quote reference prevents every streaming tick from restarting all expiry requests.
-  }, [requestKey]);
+    return loadVolatilitySurface({ ...surfaceRequest(force, abort.signal),
+      onSnapshot: (snapshot) => { if (!abort.signal.aborted) setPartial({ key: requestKey, snapshot }); } });
+  }, [surfaceRequest]);
   const resource = useAsyncResource(symbol && spotAvailable && !historyDate ? request : null);
+  // A live reload replaces the whole surface once it is complete: the sheet
+  // never collapses to the first few expiries while the rest reload.
+  const [live, setLive] = useState<{ key: string; snapshot: SurfaceSnapshot; at: number } | null>(null);
+  const liveController = useRef<AbortController | null>(null);
+  const liveDependencies = useMemo(() => withReusedYieldCurve(createSurfaceDependencies()), []);
+  const reloadLive = useCallback(async () => {
+    liveController.current?.abort();
+    const abort = new AbortController();
+    liveController.current = abort;
+    const snapshot = await loadVolatilitySurface({ ...surfaceRequest(true, abort.signal),
+      // Each expiry is fitted as its chain arrives, never all together at the end.
+      onSnapshot: () => {} }, liveDependencies);
+    if (!abort.signal.aborted) setLive({ key: requestKey, snapshot, at: Date.now() });
+  }, [surfaceRequest, liveDependencies]);
+  useEffect(() => () => liveController.current?.abort(), [reloadLive]);
+  const liveReload = live?.key === requestKey && (resource.updatedAt == null || live.at > resource.updatedAt) ? live.snapshot : null;
+  const settledSnapshot = liveReload ?? resource.data;
   // Stored close surfaces and IV rank come from the Cloud IV history of the underlying.
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
   const dates = useAsyncResource(underlying ? datesLoader : null);
   const ivRank = useIvRank(underlying || null);
   useEffect(() => () => controller.current?.abort(), [request]);
-  useAutoRefresh(resource.updatedAt, resource.load);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
-  const liveSnapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
+  const liveSnapshot = liveReload ?? (incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data);
   // Outside regular hours the delayed chain publishes zero bids, so nothing is two-sided.
   // Judged on the last complete load, so a refresh in progress does not flip the view.
-  const liveQuotes = liveQuoteCoverage(resource.data);
+  const liveQuotes = liveQuoteCoverage(settledSnapshot);
   const liveEmpty = liveQuotes.empty && liveQuoteCoverage(liveSnapshot).points === 0;
   // With no clean live quote, the latest stored close stands in until the chain reopens.
   const fallbackDate = !historyDate && liveEmpty ? dates.data?.[0] ?? null : null;
+  // The underlying streams even when no other pane watches it, so each
+  // reload is fitted at the current price.
+  const liveStreaming = useLiveStreamingSetting();
+  const underlyingQuoteTarget = target?.isOptionTicker
+    ? target.effectiveTicker ? { symbol: target.effectiveTicker, exchange: target.effectiveExchange, route: "provider" as const } : null
+    : quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
+  useQuoteUpdates(underlyingQuoteTarget && !historyDate ? [{
+    ...underlyingQuoteTarget, surface: "options", visible: true, selected: true, weight: 90,
+  }] : [], { liveStreaming });
+  // A real-time surface reloads every 15 seconds in the regular session while
+  // visible; the upstream chain cache dedupes the requests across users. A
+  // delayed surface keeps the configured refresh.
+  const realtimeSurface = !!settledSnapshot?.expiries.some((entry) => entry.dataSource === "live" || entry.realtimeEligible === true);
+  const liveActive = useLiveSessionRefresh(reloadLive, SURFACE_LIVE_RELOAD_MS,
+    !!symbol && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading);
+  useAutoRefresh(resource.updatedAt, liveActive ? noRefresh : resource.load);
   const shownDate = historyDate ?? fallbackDate;
   const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
   const stored = useAsyncResource(underlying && shownDate ? storedLoader : null);
@@ -126,10 +169,17 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const grid = useMemo(() => snapshot ? buildSurfaceGrid(snapshot, { axis, tenors }) : null, [axis, snapshot, tenors]);
   // Delta columns give every expiry the same quoted wing span, so the 3D
   // surface is a full sheet; moneyness keeps each row within 2.5 ATM sigmas.
-  const sheet = useMemo(() => snapshot ? surfaceSheetSnapshot(snapshot) : null, [snapshot]);
+  // A reload over the same expiries keeps the rows it drew, so the sheet morphs.
+  const sheetAxes = useRef<SurfaceSheetAxes | null>(null);
+  const sheet = useMemo(() => {
+    if (!snapshot) return null;
+    const next = stableSurfaceSheet(snapshot, sheetAxes.current);
+    if (next.axes) sheetAxes.current = next.axes;
+    return next;
+  }, [snapshot]);
   // Constant maturities, interpolated in total variance, keep a near-dated
   // event from folding the sheet into walls between listed weeklies.
-  const sheetTenors = useMemo(() => sheet && deltaSurface ? surfaceSheetTenors(sheet.snapshot) : null, [sheet, deltaSurface]);
+  const sheetTenors = sheet && deltaSurface ? sheet.tenors : null;
   const denseGrid = useMemo(() => !sheet ? null : deltaSurface
     ? { ...buildSurfaceGrid(sheet.snapshot, sheetTenors
       ? { axis: "delta", tenors: "fixed", fixedTenors: sheetTenors, coordinates: SURFACE_3D_DELTAS }
@@ -233,6 +283,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(expiration != null && snapshot && !resource.loading && !snapshot.catalogue.includes(expiration)
       ? [`${expiryLabel(expiration)}: selected expiration unavailable`] : []),
     ...(active.error ? [active.error] : [])];
+  // What the quotes are and when they were observed; a reload moves the time.
+  const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
+    : surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES);
   const arbitrageWarnings = snapshot?.warnings.filter((warning) => /calendar|butterfly/i.test(warning)).length ?? 0;
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   usePaneFooter("ovdv", () => ({
@@ -240,8 +293,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ...(arbitrageWarnings ? [{ id: "arbitrage", parts: [{ text: `${arbitrageWarnings} arbitrage warnings`, tone: "warning" as const }] }] : []),
       ...(snapshot ? [{ id: "progress", parts: [{ text: `${snapshot.loaded}/${snapshot.requested} expiries`, tone: "muted" as const }] }] : []),
       ...(active.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(snapshot ? [{ id: "source", parts: [{ text: snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
-        : snapshot.expiries.some((entry) => entry.dataSource === "live") ? "mixed / live" : "delayed", tone: "muted" as const }] }] : []),
+      ...(freshness ? [{ id: "source", parts: [{ text: freshness, tone: "muted" as const }] }] : []),
       ...(snapshot?.expiries.some((entry) => entry.stale) ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
       ...(selectedExpiry?.fit && activeTab === "smile" ? [{ id: "fit", parts: [{ text: `${selectedExpiry.fit.method} · RMSE ${(selectedExpiry.fit.residual * 100).toFixed(3)} vol pts`, tone: "muted" as const }] }] : []),
     ],
@@ -255,7 +307,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         { id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
       ...(storedDates.length ? [{ id: "history", key: "t", label: historyDate ? " live" : " stored dates", onPress: toggleHistory }] : []),
     ],
-  }), [snapshot, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain, deltaSurface]);
+  }), [snapshot, freshness, active.loading, historyDate, storedDates, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain, deltaSurface]);
   const exportMetadata = () => [["method", ...(snapshot?.stored ? ["recomputed", "mid", `stored close ${snapshot.stored.sessionDate}`, snapshot.stored.capturedAt] : [ivSource, priceSide])], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
     ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
@@ -322,6 +374,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     </PaneStatusBody>}
   </Box>;
 }
+
+function noRefresh(): void {}
 
 const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 function formatCaptureTime(iso: string): string {

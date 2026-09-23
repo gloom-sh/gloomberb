@@ -57,6 +57,33 @@ export function createSurfaceDependencies(
   };
 }
 
+/** The Treasury curve is published daily; repeated live reloads read it once per window. */
+export const TREASURY_CURVE_REUSE_MS = 30 * 60_000;
+
+/**
+ * Dependencies whose Treasury curve is loaded once and reused for `reuseMs`,
+ * shared by concurrent callers. A failed load is not kept, so the next reload
+ * retries it.
+ */
+export function withReusedYieldCurve(
+  dependencies: SurfaceLoaderDependencies,
+  reuseMs = TREASURY_CURVE_REUSE_MS,
+): SurfaceLoaderDependencies {
+  let held: { at: number; curve: Promise<YieldPoint[]> } | null = null;
+  return {
+    ...dependencies,
+    loadYieldCurve: () => {
+      const now = Date.now();
+      if (held && now - held.at < reuseMs) return held.curve;
+      const curve = dependencies.loadYieldCurve();
+      const entry = { at: now, curve };
+      held = entry;
+      curve.catch(() => { if (held === entry) held = null; });
+      return curve;
+    },
+  };
+}
+
 export interface SurfaceLoadRequest {
   instrument: InstrumentRef;
   spot: number;
