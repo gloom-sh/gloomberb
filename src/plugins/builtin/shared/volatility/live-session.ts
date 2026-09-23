@@ -80,14 +80,17 @@ export function useOptionsSessionOpen(enabled = true): boolean {
 /**
  * Calls `refresh` every `intervalMs` while enabled, the app is visible and the
  * options market is open. It never fires on mount, since the caller already
- * loads once; returning after a hidden stretch longer than the interval fires
- * straight away. A refresh still in flight is never overlapped by the next.
- * Returns whether the refresh cycle is running, which is what "live" means.
+ * loads once, nor right after the caller's own load (`loadedAt`); returning
+ * after a hidden stretch, or reaching the open, more than an interval after
+ * the last data fires straight away. A refresh still in flight is never
+ * overlapped by the next. Returns whether the refresh cycle is running, which
+ * is what "live" means.
  */
 export function useLiveSessionRefresh(
   refresh: () => void | Promise<unknown>,
   intervalMs: number,
   enabled: boolean,
+  loadedAt?: number | null,
 ): boolean {
   const visible = useAppVisible();
   const open = useOptionsSessionOpen(enabled);
@@ -95,10 +98,14 @@ export function useLiveSessionRefresh(
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   const lastRef = useRef(Date.now());
+  const loadedAtRef = useRef(loadedAt);
+  loadedAtRef.current = loadedAt;
   useEffect(() => {
     if (!active) return;
     let inFlight = false;
     let cancelled = false;
+    // A load the caller finished itself counts as the latest refresh.
+    if (loadedAtRef.current != null && loadedAtRef.current > lastRef.current) lastRef.current = loadedAtRef.current;
     const run = () => {
       if (inFlight || cancelled) return;
       lastRef.current = Date.now();

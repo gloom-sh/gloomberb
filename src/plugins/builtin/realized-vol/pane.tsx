@@ -76,10 +76,11 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   useAutoRefresh(history.updatedAt, history.load);
   useAutoRefresh(loadedIv.updatedAt, loadedIv.load);
   // The pane subscribes its own quote: the IV reference is fitted at the live
-  // price even when no other pane streams this ticker.
+  // price even when no other pane streams this ticker. The price is only
+  // sampled at each refresh, so the slow off-screen cadence is enough.
   const liveStreaming = useLiveStreamingSetting();
   const quoteTarget = quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
-  useQuoteUpdates(quoteTarget ? [{ ...quoteTarget, surface: "detail", visible: true, weight: 70 }] : [], { liveStreaming });
+  useQuoteUpdates(quoteTarget ? [{ ...quoteTarget, surface: "detail", visible: false, weight: 70 }] : [], { liveStreaming });
   // In session the reference's own expiry is re-read every minute; the full
   // load that chose it still runs on the global refresh.
   const [refreshedIv, setRefreshedIv] = useState<{ owner: typeof ivLoader; at: number; data: CurrentAtmIvSnapshot } | null>(null);
@@ -99,7 +100,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const refreshedCurrent = refreshedIv?.owner === ivLoader && refreshedIv.at > (loadedIv.updatedAt ?? 0) ? refreshedIv.data : null;
   const iv = { ...loadedIv, data: refreshedCurrent ?? loadedIv.data };
   ivDataRef.current = iv.data;
-  useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !!iv.data?.reference && !loadedIv.loading);
+  useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !!iv.data?.reference && !loadedIv.loading,
+    loadedIv.updatedAt);
   const model = useMemo(() => history.data ? projectRealizedVolatility(history.data.history, {
     symbol: history.data.symbol, estimator, windows, lookbackYears: Number(lookback) === 2 ? 2 : 1,
   }) : null, [history.data, estimator, windows, lookback]);

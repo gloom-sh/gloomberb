@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { testRender } from "../../../../renderers/opentui/test-utils";
 import { setAppVisible } from "../../../../state/app/activity";
 import { useLiveSessionRefresh, usOptionsSession } from "./live-session";
@@ -66,4 +66,26 @@ test("refreshes only while visible, enabled and in session, and never on mount",
   const disabled = await renderRefresh(Date.parse("2026-09-23T15:00:00Z"), false);
   await disabled.wait(70);
   expect(disabled.calls()).toBe(0);
+});
+
+test("a cycle enabled by a slow load waits an interval; returning from a long hidden stretch fires at once", async () => {
+  let now = Date.parse("2026-09-23T15:00:00Z");
+  Date.now = () => now;
+  let calls = 0;
+  let setProps!: (next: { enabled: boolean; loadedAt: number | null }) => void;
+  function Probe() {
+    const [props, set] = useState<{ enabled: boolean; loadedAt: number | null }>({ enabled: false, loadedAt: null });
+    setProps = set;
+    useLiveSessionRefresh(() => { calls += 1; }, 1_000, props.enabled, props.loadedAt);
+    return null;
+  }
+  await act(async () => { setup = await testRender(createElement(Probe), { width: 10, height: 2 }); });
+  // The first load outlasted the interval; its own data is the latest refresh.
+  now += 5_000;
+  await act(async () => setProps({ enabled: true, loadedAt: now }));
+  expect(calls).toBe(0);
+  await act(async () => setAppVisible(false));
+  now += 5_000;
+  await act(async () => setAppVisible(true));
+  expect(calls).toBe(1);
 });

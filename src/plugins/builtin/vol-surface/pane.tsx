@@ -138,20 +138,22 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // With no clean live quote, the latest stored close stands in until the chain reopens.
   const fallbackDate = !historyDate && liveEmpty ? dates.data?.[0] ?? null : null;
   // The underlying streams even when no other pane watches it, so each
-  // reload is fitted at the current price.
+  // reload is fitted at the current price. The spot is only sampled at each
+  // reload, so the slow off-screen cadence is enough and spares re-renders.
   const liveStreaming = useLiveStreamingSetting();
   const underlyingQuoteTarget = target?.isOptionTicker
     ? target.effectiveTicker ? { symbol: target.effectiveTicker, exchange: target.effectiveExchange, route: "provider" as const } : null
     : quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
   useQuoteUpdates(underlyingQuoteTarget && !historyDate ? [{
-    ...underlyingQuoteTarget, surface: "options", visible: true, selected: true, weight: 90,
+    ...underlyingQuoteTarget, surface: "options", visible: false, selected: false, weight: 90,
   }] : [], { liveStreaming });
   // A real-time surface reloads every 15 seconds in the regular session while
   // visible; the upstream chain cache dedupes the requests across users. A
   // delayed surface keeps the configured refresh.
   const realtimeSurface = !!settledSnapshot?.expiries.some((entry) => entry.dataSource === "live" || entry.realtimeEligible === true);
   const liveActive = useLiveSessionRefresh(reloadLive, SURFACE_LIVE_RELOAD_MS,
-    !!symbol && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading);
+    !!symbol && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading,
+    resource.updatedAt);
   useAutoRefresh(resource.updatedAt, liveActive ? noRefresh : resource.load);
   const shownDate = historyDate ?? fallbackDate;
   const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
