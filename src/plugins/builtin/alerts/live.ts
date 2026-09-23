@@ -8,7 +8,7 @@ import type { Quote } from "../../../types/financials";
 import type { AlertRule } from "./types";
 
 /** A streamed quote older than this no longer judges an alert; the poll takes the symbol back. */
-export const ALERT_STREAM_FRESH_MS = 90_000;
+const ALERT_STREAM_FRESH_MS = 90_000;
 /**
  * Alerts watch symbols nobody may be looking at, so they rank below anything
  * on screen and ride the server's off-screen cadence.

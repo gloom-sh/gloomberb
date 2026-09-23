@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { PricePoint } from "../../../types/financials";
-import { computeTrailingReturn, sectorReturnTargetDate, sortRows, type SectorRow } from "./sector-model";
+import type { PricePoint, Quote } from "../../../types/financials";
+import { computeTrailingReturn, overlayLiveSectorQuote, sectorReturnTargetDate, sortRows, type SectorRow } from "./sector-model";
 
 const point = (date: string, close: number): PricePoint => ({ date: new Date(date), close });
 
@@ -55,5 +55,30 @@ describe("sector calendar price returns", () => {
   test("an invalid newest close cannot reveal an older duplicate or baseline", () => {
     const history = [point("2026-08-07", 90), point("2026-08-10", 100), point("2026-08-10", NaN), point("2026-09-10", 110)];
     expect(computeTrailingReturn(history, "1M")).toBeNull();
+  });
+});
+
+describe("live sector quotes", () => {
+  const row = {
+    etf: "XLK", name: "Technology", price: 200, changePercent: 1, return1M: 10, return1Y: 25,
+    currency: "USD", loading: false, returnAsOfDate: "2026-09-10", quoteUpdatedAt: Date.parse("2026-09-10T15:00:00Z"),
+  } as SectorRow;
+  const quote = (price: number, at: string, extra: Partial<Quote> = {}) => ({
+    symbol: "XLK", price, change: 0, changePercent: 1.5, currency: "USD", lastUpdated: Date.parse(at), delivery: "stream", ...extra,
+  }) as Quote;
+
+  test("a tick in the shared session moves price and day change and keeps the return baselines", () => {
+    const live = overlayLiveSectorQuote(row, quote(210, "2026-09-10T16:00:00Z"));
+    expect(live).toMatchObject({ price: 210, changePercent: 1.5 });
+    // Baselines 200/1.10 and 200/1.25, now measured to 210.
+    expect(live.return1M).toBeCloseTo(15.5, 6);
+    expect(live.return1Y).toBeCloseTo(31.25, 6);
+  });
+
+  test("a print from another session, an older quote or a stale one leaves the snapshot row", () => {
+    // The next session's pre-market must not mix into a board ranked on the completed one.
+    expect(overlayLiveSectorQuote(row, quote(215, "2026-09-11T12:00:00Z", { marketState: "PRE" }))).toBe(row);
+    expect(overlayLiveSectorQuote(row, quote(199, "2026-09-10T14:00:00Z"))).toBe(row);
+    expect(overlayLiveSectorQuote(row, quote(210, "2026-09-10T16:00:00Z", { stale: true }))).toBe(row);
   });
 });

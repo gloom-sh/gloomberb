@@ -18,7 +18,7 @@ export const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
  * below anything the user can see and the server sends it at its off-screen
  * cadence.
  */
-export const OFFSCREEN_QUOTE_WEIGHT = 10;
+const OFFSCREEN_QUOTE_WEIGHT = 10;
 
 export interface QuoteStreamingOptions {
   enabled?: boolean;
@@ -41,7 +41,7 @@ export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscription
 }
 
 /** The same target, ranked as off screen: not visible, not selected, low weight. */
-export function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget {
+function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget {
   const weight = Number.isFinite(target.weight)
     ? Math.min(target.weight ?? OFFSCREEN_QUOTE_WEIGHT, OFFSCREEN_QUOTE_WEIGHT)
     : OFFSCREEN_QUOTE_WEIGHT;

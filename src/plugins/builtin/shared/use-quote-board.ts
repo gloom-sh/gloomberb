@@ -41,7 +41,7 @@ export interface QuoteBoardOptions {
  * cap evicted, listings no live feed carries, and a dropped connection. It
  * runs only while the board can be seen.
  */
-export const QUOTE_BOARD_FALLBACK_MS = 60_000;
+const QUOTE_BOARD_FALLBACK_MS = 60_000;
 /** An open market the stream has not moved for this long is polled as well. */
 const STREAM_SILENCE_MS = 3 * 60_000;
 
@@ -83,7 +83,7 @@ function finitePrice(quote: Quote | null): quote is Quote {
  * closed market still counts), the connection has not marked it stale, and an
  * open market has not gone silent.
  */
-export function isStreamCarryingQuote(
+function isStreamCarryingQuote(
   entry: QueryEntry<Quote> | undefined,
   subscriptionStartedAt: number,
   now: number,
@@ -303,7 +303,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
 }
 
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
-export const BOARD_STREAM_OVERSCAN = 4;
+const BOARD_STREAM_OVERSCAN = 4;
 
 /**
  * The symbols of the rows on screen plus overscan, as a set that keeps its

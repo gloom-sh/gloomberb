@@ -95,11 +95,18 @@ export { useFxRatesMap, useTickerFinancialsMap } from "../market-data/hooks";
 // host's cancellation and stale-response handling.
 export { useAsyncResource } from "../react/async-resource";
 
-// Periodic refresh tied to app activity, and the "updated 2m ago" label that
-// goes with it, so plugin panes refresh on the same cadence as built-ins and
-// stop while the app is in the background. `AGE_TICK_MS` is that cadence, for
+// Periodic refresh tied to pane visibility, and the "updated 2m ago" label
+// that goes with it, so plugin panes refresh on the same cadence as built-ins
+// and stop while they cannot be seen. `AGE_TICK_MS` is that cadence, for
 // a pane that re-renders its own age column on the same clock.
 export { AGE_TICK_MS, useAutoRefresh, useUpdatedAgo } from "../plugins/builtin/shared/auto-refresh";
+export type { AutoRefreshOptions } from "../plugins/builtin/shared/auto-refresh";
+
+// Whether market data should flow: `usePaneVisible()` is true while the app
+// can be seen and the pane is not covered by other windows; `useAppVisible()`
+// is the app half alone. Gate streams, polls and clocks on these, not on pane
+// focus: a user watches quotes in one pane while typing in another.
+export { useAppVisible, usePaneVisible } from "../state/app/activity";
 
 // The class behind `useConnectionHealth()`. A value export so a plugin test
 // can construct one to exercise its own connection-status registration.

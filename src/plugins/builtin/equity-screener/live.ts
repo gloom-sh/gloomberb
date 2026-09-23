@@ -13,7 +13,7 @@ function metricTime(metric: ScreenMetric | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-export function screenRowQuoteKey(row: Pick<ScreenRow, "symbol" | "exchange">): string {
+function screenRowQuoteKey(row: Pick<ScreenRow, "symbol" | "exchange">): string {
   return buildQuoteKey({ symbol: row.symbol, exchange: row.exchange });
 }
 
@@ -28,7 +28,7 @@ function liveMetric(metric: ScreenMetric, value: number, observedAt: string): Sc
  * reshuffle nor vanish between snapshots. A quote in another currency unit
  * (GBp against GBP) or older than the snapshot leaves the row alone.
  */
-export function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null): ScreenRow {
+function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null): ScreenRow {
   if (!quote || quote.stale === true || !finite(quote.price) || quote.price <= 0) return row;
   const snapshotPrice = row.metrics.price;
   if (!snapshotPrice) return row;

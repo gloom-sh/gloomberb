@@ -40,7 +40,7 @@ export interface AutoRefreshOptions {
  * last good data and the last attempt this hook made. Counting from the last
  * attempt is what stops a dead endpoint from turning into a retry storm.
  */
-export function nextAutoRefreshAt(
+function nextAutoRefreshAt(
   lastUpdated: number | null,
   lastAttemptAt: number,
   intervalMs: number,
