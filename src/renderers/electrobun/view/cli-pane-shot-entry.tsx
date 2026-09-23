@@ -37,6 +37,7 @@ import type {
   DataProvider,
   EarningsEvent,
   QuoteBatchResult,
+  SecFilingDocument,
   SecFilingItem,
 } from "../../../types/data-provider";
 import type {
@@ -372,6 +373,10 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     getCorporateActions: (symbol, exchange) => requestShotMarketData<CorporateActionsData>("getCorporateActions", [symbol, exchange]),
     getHolders: (symbol, exchange) => requestShotMarketData<HolderData>("getHolders", [symbol, exchange]),
     getSecFilings: (symbol, count, exchange) => requestShotMarketData<SecFilingItem[]>("getSecFilings", [symbol, count, exchange]).then(reviveSecFilings),
+    // The page holds no session credential, so verified cloud reads such as
+    // Form 4 content would fail as signed out if the page made them itself.
+    getSecFilingDocuments: (filing) => requestShotMarketData<SecFilingDocument[]>("getSecFilingDocuments", [filing]),
+    getSecFilingContent: (filing) => requestShotMarketData<string | null>("getSecFilingContent", [filing]),
     getEarningsCalendar: (symbols) => requestShotMarketData<EarningsEvent[]>("getEarningsCalendar", [symbols]).then(reviveEarningsEvents),
     subscribeQuotes: () => () => {},
   };

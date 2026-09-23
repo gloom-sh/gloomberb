@@ -170,6 +170,8 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getQuote",
   "getQuoteMetadata",
   "getQuotesBatch",
+  "getSecFilingContent",
+  "getSecFilingDocuments",
   "getSecFilings",
 ]);
 
