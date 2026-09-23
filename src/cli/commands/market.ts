@@ -350,9 +350,13 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const data = historyRows(points, resolution);
     const decimals = historyPriceDecimals(data, localTicker?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
+    // Intraday bars print in UTC, as the charts and time and sales label them, not the host zone.
+    const intraday = data.some((row) => row.date.length > 10);
     ctx.printResult({ data, metadata: { symbol, range, exchange, resolution } }, {
       columns: [
-        { key: "date", header: "Date" },
+        intraday
+          ? { key: "date", header: "Time (UTC)", format: (value) => typeof value === "string" ? value.slice(0, 16).replace("T", " ") : "" }
+          : { key: "date", header: "Date" },
         { key: "open", header: "Open", align: "right", format: price },
         { key: "high", header: "High", align: "right", format: price },
         { key: "low", header: "Low", align: "right", format: price },
