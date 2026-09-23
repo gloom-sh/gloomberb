@@ -1,0 +1,44 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+build
+artifacts
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+.wrangler
+*.tsbuildinfo
+paseo.json
+src-tauri/target
+src-tauri/gen
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+.code-graph/
+
+.codex/
+paseo.json

@@ -1,0 +1,266 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            asset: gloomberb-darwin-arm64
+          # Intel Macs only get the terminal build. GitHub retires this runner
+          # image in 2027; the desktop app stays Apple Silicon only.
+          - os: macos-15-intel
+            asset: gloomberb-darwin-x64
+          - os: ubuntu-latest
+            asset: gloomberb-linux-x64
+          - os: ubuntu-24.04-arm
+            asset: gloomberb-linux-arm64
+          - os: windows-latest
+            asset: gloomberb-windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build
+        run: bun run scripts/build.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+
+  desktop-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Configure Apple signing
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
+          ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
+          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+        run: |
+          set -euo pipefail
+
+          : "${APPLE_CERTIFICATE_BASE64:?missing APPLE_CERTIFICATE_BASE64 secret}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?missing APPLE_CERTIFICATE_PASSWORD secret}"
+          : "${APPLE_KEYCHAIN_PASSWORD:?missing APPLE_KEYCHAIN_PASSWORD secret}"
+          : "${ELECTROBUN_APPLEAPIKEY:?missing ELECTROBUN_APPLEAPIKEY secret}"
+          : "${ELECTROBUN_APPLEAPIKEY_BASE64:?missing ELECTROBUN_APPLEAPIKEY_BASE64 secret}"
+          : "${ELECTROBUN_APPLEAPIISSUER:?missing ELECTROBUN_APPLEAPIISSUER secret}"
+          : "${ELECTROBUN_DEVELOPER_ID:?missing ELECTROBUN_DEVELOPER_ID secret}"
+
+          decode_base64() {
+            if base64 --help 2>&1 | grep -q -- "--decode"; then
+              base64 --decode
+            else
+              base64 -D
+            fi
+          }
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-signing-certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${ELECTROBUN_APPLEAPIKEY}.p8"
+
+          printf "%s" "$APPLE_CERTIFICATE_BASE64" | decode_base64 > "$CERTIFICATE_PATH"
+          printf "%s" "$ELECTROBUN_APPLEAPIKEY_BASE64" | decode_base64 > "$NOTARY_KEY_PATH"
+
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          echo "ELECTROBUN_APPLEAPIKEYPATH=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed desktop DMG
+        env:
+          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
+          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+        run: bun run desktop:release
+
+      - name: Build Homebrew app archive
+        run: |
+          set -euo pipefail
+          brew install zstd
+          tmp_dir="$(mktemp -d)"
+          zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
+          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help
+          ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
+
+      - name: Verify desktop artifacts
+        run: |
+          set -euo pipefail
+          test -f artifacts/stable-macos-arm64-Gloomberb.dmg
+          test -f artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          test -f artifacts/stable-macos-arm64-Gloomberb.app.zip
+          test -f artifacts/stable-macos-arm64-update.json
+          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
+          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gloomberb-desktop-macos-arm64
+          path: artifacts/*
+
+  desktop-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build Windows desktop package
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+
+      - name: Verify Windows desktop artifacts
+        shell: pwsh
+        run: ./scripts/verify-windows-desktop.ps1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gloomberb-desktop-windows-x64
+          path: artifacts/*
+
+  release:
+    needs:
+      - build
+      - desktop-macos
+      - desktop-windows
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Check release assets
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.exe dist/*.gz dist/*.json dist/*.zip dist/*.zst)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release artifacts were produced."
+            exit 1
+          fi
+          printf 'Uploading %s release artifacts:\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+
+      - name: Upload assets to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.gz
+            dist/*.json
+            dist/*.zip
+            dist/*.zst
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not configured; skipping Homebrew tap update."
+            exit 0
+          fi
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP_PATH="dist/stable-macos-arm64-Gloomberb.app.zip"
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "macOS desktop zip is missing; skipping Homebrew tap update."
+            exit 0
+          fi
+          SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
+          TAP_DIR="$RUNNER_TEMP/homebrew-tap"
+
+          git config --global user.name "gloomberb-release"
+          git config --global user.email "actions@users.noreply.github.com"
+          gh repo clone vincelwt/homebrew-tap "$TAP_DIR"
+          git -C "$TAP_DIR" remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/vincelwt/homebrew-tap.git"
+          bun run scripts/write-homebrew-cask.ts \
+            --version "$VERSION" \
+            --sha256 "$SHA256" \
+            --output "$TAP_DIR/Casks/gloomberb.rb"
+
+          cd "$TAP_DIR"
+          git add Casks/gloomberb.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew tap already up to date."
+            exit 0
+          fi
+          git commit -m "Update Gloomberb to $VERSION"
+          git push
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install npm 11 (required for trusted publishing)
+        run: npm install -g npm@11
+
+      - name: Publish to npm
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "const p=require('./package.json'); p.version='$VERSION'; require('fs').writeFileSync('./package.json', JSON.stringify(p,null,2)+'\n')"
+          npm publish --access public --provenance
+
+      # The website re-captures its function screenshots against this release
+      # and opens a PR there when a pane's layout changed.
+      - name: Ask the website to refresh screenshots
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.PLATFORM_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PLATFORM_DISPATCH_TOKEN is not configured; skipping screenshot refresh."
+            exit 0
+          fi
+          gh api repos/vincelwt/gloomberb-platform/dispatches \
+            -f event_type=gloomberb-release \
+            -f "client_payload[ref]=${GITHUB_REF_NAME}"
