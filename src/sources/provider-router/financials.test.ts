@@ -23,6 +23,32 @@ describe("provider-router financial quote usability", () => {
     }), "NASDAQ")).toBe(false);
   });
 
+  test("keeps the previous close before any pre-market trade, but not an older one", () => {
+    // Wednesday 05:30 New York; Tuesday's last print was the 16:00 close.
+    clock.mockReturnValue(Date.parse("2026-09-23T09:30:00Z"));
+    const close = makeQuote({ listingExchangeName: "NYSE", marketState: "PRE", dataSource: "delayed",
+      lastUpdated: Date.parse("2026-09-22T20:00:00Z") });
+    expect(isProviderQuoteUsableForCurrentSession(close, "NYSE")).toBe(true);
+    expect(isProviderQuoteUsableForCurrentSession({ ...close, preMarketPrice: 101 }, "NYSE")).toBe(true);
+    expect(isProviderQuoteUsableForCurrentSession({ ...close, marketState: "CLOSED" }, "NYSE")).toBe(false);
+    expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-09-21T20:00:00Z") }, "NYSE")).toBe(false);
+    // After the Labor Day closure, Friday is the previous session.
+    clock.mockReturnValue(Date.parse("2026-09-08T09:30:00Z"));
+    expect(isProviderQuoteUsableForCurrentSession({ ...close, lastUpdated: Date.parse("2026-09-04T20:00:00Z") }, "NYSE")).toBe(true);
+  });
+
+  test("keeps a Tokyo close through published exchange holidays", () => {
+    const toyota = makeQuote({ symbol: "7203.T", listingExchangeName: "JPX", marketState: "CLOSED",
+      dataSource: "delayed", lastUpdated: Date.parse("2026-09-18T06:30:00Z") });
+    // Sep 21-23 2026 are JPX holidays; Sep 24 trades again.
+    for (const now of ["2026-09-23T02:00:00Z", "2026-09-23T23:30:00Z"]) {
+      clock.mockReturnValue(Date.parse(now));
+      expect(isProviderQuoteUsableForCurrentSession(toyota, "JPX")).toBe(true);
+    }
+    clock.mockReturnValue(Date.parse("2026-09-24T23:30:00Z"));
+    expect(isProviderQuoteUsableForCurrentSession(toyota, "JPX")).toBe(false);
+  });
+
   test("rejects old active-session provider quotes", () => {
     expect(isProviderQuoteUsableForCurrentSession(makeQuote({
       listingExchangeName: "FWB2",

@@ -1,5 +1,7 @@
 import type { MarketState } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
+import { isPublishedJpxClosure } from "../published-jpx-sessions";
+import { getPublishedUsEquityCalendarDay } from "../published-us-sessions";
 
 const US_EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
@@ -116,19 +118,26 @@ function isoLocalDateToUtcDay(date: string): number | null {
   return Math.floor(Date.UTC(year, month - 1, day) / MS_PER_DAY);
 }
 
-function localWeekdaysBetween(earlierDate: string, laterDate: string): number {
+function isPublishedClosure(exchange: string, date: string): boolean {
+  return exchange === "JPX" ? isPublishedJpxClosure(date) : getPublishedUsEquityCalendarDay(exchange, date) === "closed";
+}
+
+function isLocalTradingDay(exchange: string, date: string): boolean {
+  const weekday = localWeekday(date);
+  return weekday != null && weekday !== 0 && weekday !== 6 && !isPublishedClosure(exchange, date);
+}
+
+/** Weekdays in (earlier, later], less published closures for venues with a calendar. */
+function localTradingDaysBetween(exchange: string, earlierDate: string, laterDate: string): number {
   const earlierDay = isoLocalDateToUtcDay(earlierDate);
   const laterDay = isoLocalDateToUtcDay(laterDate);
   if (earlierDay == null || laterDay == null || laterDay <= earlierDay) return 0;
 
-  let weekdays = 0;
+  let sessions = 0;
   for (let day = earlierDay + 1; day <= laterDay; day += 1) {
-    const weekday = new Date(day * MS_PER_DAY).getUTCDay();
-    if (weekday !== 0 && weekday !== 6) {
-      weekdays += 1;
-    }
+    if (isLocalTradingDay(exchange, new Date(day * MS_PER_DAY).toISOString().slice(0, 10))) sessions += 1;
   }
-  return weekdays;
+  return sessions;
 }
 
 function localWeekday(date: string): number | null {
@@ -165,6 +174,29 @@ export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null
   return session === "PRE" || session === "POST" ? session : null;
 }
 
+/**
+ * Before any pre-market trade, a US quote's last print is the previous
+ * session's close, and that close is the current price (Yahoo also stamps a
+ * pre-market quote with that regular-session time). The provider must have
+ * observed this pre-market session and the print must be from the session
+ * immediately before today.
+ */
+export function isUsPriorSessionPremarketQuote(
+  timestampMs: number,
+  exchange: string | undefined,
+  marketState: MarketState | undefined,
+  now = Date.now(),
+): boolean {
+  const canonical = canonicalExchange(exchange);
+  if (marketState !== "PRE" || !isUsExtendedHoursExchange(canonical)) return false;
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
+  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "PRE") return false;
+  const timestampDate = exchangeLocalDate(canonical, timestampMs);
+  const currentDate = exchangeLocalDate(canonical, now);
+  return !!timestampDate && !!currentDate && timestampDate < currentDate
+    && localTradingDaysBetween(canonical, timestampDate, currentDate) === 1;
+}
+
 export function isTimestampStaleForExchangeSession(
   timestampMs: number,
   exchange?: string,
@@ -196,6 +228,7 @@ function isTimestampStaleForExchangeSessionUnsafe(
   if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
   if (marketState === "REGULAR" && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
+  if (isUsPriorSessionPremarketQuote(timestampMs, canonical, marketState, now)) return false;
   if (isUsExtendedHoursExchange(canonical)) {
     const session = usSessionState(now);
     if (session === "PRE" || session === "REGULAR" || session === "POST" || session === "POSTPOST") {
@@ -203,10 +236,13 @@ function isTimestampStaleForExchangeSessionUnsafe(
     }
   }
 
-  const weekdaysBehind = localWeekdaysBetween(timestampDate, currentDate);
-  if (weekdaysBehind > 1) return true;
-  if (weekdaysBehind === 1 && now - timestampMs > OVERNIGHT_CLOSE_MAX_AGE_MS) {
-    return localWeekday(currentDate) !== 1;
+  const sessionsBehind = localTradingDaysBetween(canonical, timestampDate, currentDate);
+  if (sessionsBehind > 1) return true;
+  if (sessionsBehind === 1 && now - timestampMs > OVERNIGHT_CLOSE_MAX_AGE_MS) {
+    // When today is the first session after a weekend or exchange holiday,
+    // the last close stays current until the provider reports the new session.
+    const calendarDaysBehind = isoLocalDateToUtcDay(currentDate)! - isoLocalDateToUtcDay(timestampDate)!;
+    return !(isLocalTradingDay(canonical, currentDate) && (calendarDaysBehind > 1 || localWeekday(currentDate) === 1));
   }
   return false;
 }

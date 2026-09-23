@@ -3,6 +3,7 @@ import type { PricePoint, Quote } from "../../../types/financials";
 import type { SectorDef } from "./sector-data";
 import {
   computeTrailingReturn,
+  historySessionBefore,
   latestHistoryDate,
   sectorReturnTargetDate,
   sectorReturnStartDate,
@@ -39,6 +40,9 @@ export async function loadSectorRows(
     sector.etf,
     await provider.getPriceHistory(sector.etf, "", "1Y").catch(() => []),
   ] as const)));
+  for (const [symbol, quote] of quotes) {
+    if (quote) quotes.set(symbol, completedSessionQuote(quote, histories.get(symbol) ?? []));
+  }
   const quoteDates = new Map([...quotes].map(([symbol, quote]) => [symbol, quote ? quoteSessionDate(quote) : null]));
   const asOfDate = [...quoteDates.values(), ...[...histories.values()].map(latestHistoryDate)]
     .filter((date): date is string => date != null).sort().at(-1) ?? null;
@@ -109,6 +113,28 @@ export async function loadSectorRows(
     if (row.return1YStartDate !== yearStartDate) { row.return1Y = null; row.return1YStartDate = null; }
   }
   return outcomes;
+}
+
+/**
+ * Before the open a pre-market print dates a quote to a session that has not
+ * traded yet, while funds without one still report yesterday. Rank every fund
+ * on the last completed session, confirmed by the quote's own previous close.
+ */
+function completedSessionQuote(quote: Quote, history: readonly PricePoint[]): Quote {
+  const sessionDate = quote.marketState === "PRE" ? quoteSessionDate(quote) : null;
+  const latestDate = latestHistoryDate(history);
+  if (!sessionDate || !latestDate || sessionDate <= latestDate) return quote;
+  const completed = historySessionBefore(history, sessionDate);
+  const previousClose = quote.previousClose;
+  if (!completed || previousClose == null || !(previousClose > 0)
+    || Math.abs(completed.close / previousClose - 1) > 0.001) return quote;
+  return {
+    ...quote,
+    price: completed.close,
+    change: completed.close * completed.changePercent / (100 + completed.changePercent),
+    changePercent: completed.changePercent,
+    changeSessionDate: completed.date,
+  };
 }
 
 function quoteSessionDate(quote: Quote): string | null {

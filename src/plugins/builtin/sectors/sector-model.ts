@@ -136,6 +136,18 @@ export function latestHistoryDate(history: readonly PricePoint[]): string | null
   return latest ? new Date(latest.timestamp).toISOString().slice(0, 10) : null;
 }
 
+/** The last daily session dated before `beforeDate`, with the close that anchors its change. */
+export function historySessionBefore(history: readonly PricePoint[], beforeDate: string): { date: string; close: number; changePercent: number } | null {
+  const points = getSortedHistory(history)
+    .filter(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10) < beforeDate);
+  const [previous, latest] = points.slice(-2);
+  if (!previous || !latest || pricePointIntegrity(previous.point) || pricePointIntegrity(latest.point)) return null;
+  const close = latest.point.close;
+  const changePercent = (close / previous.point.close - 1) * 100;
+  if (!(close > 0) || !(previous.point.close > 0) || !Number.isFinite(changePercent)) return null;
+  return { date: new Date(latest.timestamp).toISOString().slice(0, 10), close, changePercent };
+}
+
 export type SectorReturnRange = "1M" | "1Y";
 
 /** Clamp calendar subtraction so March 31 maps to February's final day. */

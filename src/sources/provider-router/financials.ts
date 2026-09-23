@@ -7,7 +7,7 @@ import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../
 import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import { parsePublicTickerKey } from "../../utils/exchanges";
-import { activeUsMarketSession } from "../../market-data/market/freshness";
+import { activeUsMarketSession, isUsPriorSessionPremarketQuote } from "../../market-data/market/freshness";
 import { normalizeStatementOperatingResult } from "../../utils/operating-result";
 import {
   mergeQuoteContributionMaps,
@@ -122,6 +122,11 @@ function isQuoteInActiveSession(quote: Quote, now: number): boolean {
 
 function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
   if (!isQuoteInActiveSession(quote, now)) return false;
+  // A prior-session close before any pre-market trade has no in-session print
+  // to age; the session-date rules bound it instead.
+  if (isUsPriorSessionPremarketQuote(quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now)) {
+    return false;
+  }
   if (!Number.isFinite(quote.lastUpdated)) return false;
   const maxAge =
     quote.dataSource === "delayed"

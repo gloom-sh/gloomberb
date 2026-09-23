@@ -93,6 +93,23 @@ test("one missing baseline bar cannot change a fund's comparison window", async 
   expect(outcomes.map(({ row }) => row?.return1Y)).toEqual([31.25, 31.25]);
 });
 
+test("before the open a pre-market print ranks on the last completed session", async () => {
+  // XLK printed pre-market on 09-11; XLF has not traded since the 09-10 close.
+  const provider = {
+    getQuote: async (symbol: string) => symbol === "XLK"
+      ? { ...quote(symbol), price: 102, changePercent: 2, previousClose: 100, marketState: "PRE", changeSessionDate: "2026-09-11" }
+      : { ...quote(symbol), marketState: "PRE" },
+    getPriceHistory: async () => [...history.slice(0, 2), { date: "2026-09-09", close: 96 }, history[2]!],
+  } as unknown as DataProvider;
+  const rows = await loadSectorRows(sectors, provider);
+  expect(rows[0]?.row).toMatchObject({ price: 100, quoteSessionDate: "2026-09-10", returnAsOfDate: "2026-09-10", quoteIssue: null });
+  expect(rows[0]?.row?.changePercent).toBeCloseTo(4.1666667);
+  expect(rows[1]?.row).toMatchObject({ price: 105, changePercent: 5, quoteIssue: null });
+  // A history that has not reached the previous close cannot stand in for it.
+  const lagging = { ...provider, getPriceHistory: async () => history.slice(0, 2) } as unknown as DataProvider;
+  expect((await loadSectorRows(sectors, lagging))[0]?.row).toMatchObject({ lastReportedPrice: 102, quoteSessionDate: "2026-09-11" });
+});
+
 test("a prior-session quote cannot lead the current sector ranking", async () => {
   const provider = {
     getQuote: async (symbol: string) => symbol === "XLK" ? quote(symbol) : {

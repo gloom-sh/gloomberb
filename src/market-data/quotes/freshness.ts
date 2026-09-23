@@ -1,6 +1,10 @@
 import type { Quote } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
-import { activeUsExtendedHoursSession, isTimestampStaleForExchangeSession } from "../market/freshness";
+import {
+  activeUsExtendedHoursSession,
+  isTimestampStaleForExchangeSession,
+  isUsPriorSessionPremarketQuote,
+} from "../market/freshness";
 
 const EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 
@@ -21,7 +25,11 @@ function isQuoteMissingActiveSessionPrice(quote: Quote, now: number): boolean {
   const activeSession = activeUsExtendedHoursSession(now);
   if (!activeSession) return false;
   if (quote.marketState !== activeSession) return true;
-  return activeSession === "PRE" ? quote.preMarketPrice == null : quote.postMarketPrice == null;
+  if (activeSession === "POST") return quote.postMarketPrice == null;
+  // No pre-market trade yet: the previous session's close is the current price.
+  return quote.preMarketPrice == null && !isUsPriorSessionPremarketQuote(
+    quote.lastUpdated, quote.listingExchangeName || quote.exchangeName, quote.marketState, now,
+  );
 }
 
 export function isQuoteStaleForCurrentSession(quote: Quote | null | undefined, now = Date.now()): boolean {
