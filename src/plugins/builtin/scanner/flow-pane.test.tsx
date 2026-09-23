@@ -29,6 +29,17 @@ const LIVE = Array.from({ length: 6 }, (_, index) => print(index, NOW - index * 
 const RECORDED = Array.from({ length: 60 }, (_, index) =>
   print(100 + index, index < 5 ? NOW - (10 + index) * MINUTE : NOW - 26 * 60 * MINUTE - index * MINUTE));
 
+/** Reads the wire query back the way the Cloud route does. */
+function readQuery(search: string): ScannerFlowHistoryQuery {
+  const params = new URLSearchParams(search);
+  const number = (key: string) => (params.has(key) ? Number(params.get(key)) : undefined);
+  return {
+    ...(params.has("beforeAt") ? { before: { at: number("beforeAt")!, id: params.get("beforeId")! } } : {}),
+    limit: number("limit"),
+    minPremium: number("minPremium"),
+  };
+}
+
 const originalSubscribe = apiClient.subscribeScanner;
 const originalHistory = apiClient.getScannerFlowHistory;
 let requests: ScannerFlowHistoryQuery[] = [];
@@ -46,7 +57,8 @@ beforeEach(() => {
     return () => { pushFeed = null; };
   }) as typeof apiClient.subscribeScanner;
   // Pages the recorded log the way the server does: strictly below the cursor.
-  apiClient.getScannerFlowHistory = (async (query: ScannerFlowHistoryQuery) => {
+  apiClient.getScannerFlowHistory = (async (search: string) => {
+    const query = readQuery(search);
     requests.push(query);
     const below = RECORDED.filter((event) => !query.before
       || event.at < query.before.at
@@ -109,7 +121,8 @@ test("recorded prints fill the pane below the live tape, older days with their d
 });
 
 test("scrolling to the end asks for the next page from the last recorded print", async () => {
-  apiClient.getScannerFlowHistory = (async (query: ScannerFlowHistoryQuery) => {
+  apiClient.getScannerFlowHistory = (async (search: string) => {
+    const query = readQuery(search);
     requests.push(query);
     const below = RECORDED.filter((event) => !query.before
       || event.at < query.before.at

@@ -6,6 +6,7 @@ import {
   filterFlowEvents,
   flowEmptyState,
   flowHistoryQuery,
+  flowHistorySearch,
   flowRowsSpanDays,
   formatFlowTime,
   keepFlowPrints,
@@ -141,6 +142,21 @@ describe("paging below the live tape", () => {
       maxExpiryDays: 7,
       symbols: ["BRK.B", "NVDA"],
     });
+  });
+
+  test("the query goes over the wire as the Cloud route reads it", () => {
+    expect(flowHistorySearch({ limit: 100, minPremium: 250_000 })).toBe("limit=100&minPremium=250000");
+    expect(new URLSearchParams(flowHistorySearch({
+      before: { at: 1_790_183_480_304, id: "opt-1-NVDA-ab-9" },
+      limit: 50,
+      right: "P",
+      kind: "block",
+      minVolOi: 5,
+      maxExpiryDays: 7,
+      symbols: ["BRK.B", "NVDA"],
+    })).toString()).toBe(
+      "beforeAt=1790183480304&beforeId=opt-1-NVDA-ab-9&limit=50&right=P&kind=block&minVolOi=5&maxExpiryDays=7&universe=symbols&symbols=BRK.B%2CNVDA",
+    );
   });
 
   test("share classes and adjusted contracts match the watchlist by option root", () => {

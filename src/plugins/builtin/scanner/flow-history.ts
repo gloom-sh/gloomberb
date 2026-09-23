@@ -5,7 +5,7 @@ import {
   type ScannerFlowHistoryPage,
   type ScannerFlowHistoryQuery,
 } from "../../../api-client";
-import { mergeFlowRows } from "./flow-model";
+import { flowHistorySearch, mergeFlowRows } from "./flow-model";
 
 export interface FlowHistoryState {
   /** The query the pages belong to; a filter change starts over. */
@@ -21,8 +21,20 @@ export type FlowHistoryLoader = (
   signal: AbortSignal,
 ) => Promise<ScannerFlowHistoryPage>;
 
+/** Aborts on the caller's signal or after `ms`; AbortSignal.any is too new for older system WebViews. */
+function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal.aborted) abort();
+  else signal.addEventListener("abort", abort, { once: true });
+  const timeout = AbortSignal.timeout(ms);
+  if (timeout.aborted) abort();
+  else timeout.addEventListener("abort", abort, { once: true });
+  return controller.signal;
+}
+
 const loadRecordedPrints: FlowHistoryLoader = (query, signal) =>
-  apiClient.getScannerFlowHistory(query, signal);
+  apiClient.getScannerFlowHistory(flowHistorySearch(query), withTimeout(signal, 20_000));
 
 function emptyHistory(key: string): FlowHistoryState {
   return { key, events: [], hasMore: true, loading: false, error: null };

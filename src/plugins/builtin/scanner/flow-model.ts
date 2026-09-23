@@ -245,3 +245,28 @@ export function flowRowsSpanDays(events: readonly ScannerFlowEvent[], now = Date
   const today = localDay(now);
   return events.some((event) => localDay(event.at) !== today);
 }
+
+/** The recorded-print query as the Cloud route reads it. */
+export function flowHistorySearch(query: ScannerFlowHistoryQuery): string {
+  const params = new URLSearchParams();
+  if (query.before) {
+    params.set("beforeAt", String(query.before.at));
+    params.set("beforeId", query.before.id);
+  }
+  const optional: Array<[string, string | number | undefined]> = [
+    ["limit", query.limit],
+    ["minPremium", query.minPremium],
+    ["right", query.right],
+    ["kind", query.kind],
+    ["minVolOi", query.minVolOi],
+    ["maxExpiryDays", query.maxExpiryDays],
+  ];
+  for (const [key, value] of optional) {
+    if (value != null) params.set(key, String(value));
+  }
+  if (query.symbols) {
+    params.set("universe", "symbols");
+    params.set("symbols", query.symbols.join(","));
+  }
+  return params.toString();
+}
