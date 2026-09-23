@@ -9,11 +9,30 @@ export { marketValuationHeadless } from "./headless";
 
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 
-const INDICATOR_KEYWORDS = INDICATORS.flatMap((indicator) => [
-  indicator.id,
-  ...indicator.shortLabel.toLowerCase().split(" "),
-  ...indicator.label.toLowerCase().split(" "),
-]);
+const BASE_KEYWORDS = [
+  "valuation",
+  "market cap",
+  "gdp",
+  "wilshire",
+  "macro",
+  "bubble",
+  "overvalued",
+  "undervalued",
+  "shiller",
+  "tobin",
+  "erp",
+];
+
+// Whole phrases: keywords double as CLI resolver tokens and catalog aliases,
+// so split words would claim generic tokens such as "to", "q" and "/".
+const KEYWORDS = [...new Set([
+  ...BASE_KEYWORDS,
+  ...INDICATORS.flatMap((indicator) => [
+    indicator.id,
+    indicator.shortLabel.toLowerCase(),
+    indicator.label.toLowerCase(),
+  ]),
+])];
 
 export const marketValuationModule: PluginModule = {
   // Exposes each ratio as a chartable series, so G can overlay them on anything else.
@@ -33,17 +52,7 @@ export const marketValuationModule: PluginModule = {
     paneId: MARKET_VALUATION_PANE_ID,
     label: "Market Valuation",
     description: "Whole-market valuation ratios against their own history, with zones and trend deviation.",
-    keywords: [
-      "valuation",
-      "market cap",
-      "gdp",
-      "wilshire",
-      "macro",
-      "bubble",
-      "overvalued",
-      "undervalued",
-      ...INDICATOR_KEYWORDS,
-    ],
+    keywords: KEYWORDS,
     shortcut: {
       prefix: "VAL",
       argPlaceholder: "indicator",
