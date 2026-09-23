@@ -211,8 +211,12 @@ const SAME_QUARTER_MS = 45 * 86_400_000;
  * Yahoo can keep serving the "0q" trend after that quarter has been reported
  * (ORCL in Sep 2026 listed the reported Aug quarter against its December date).
  * Its consensus then describes a past period, and calendarEvents copies it.
+ * Only an announcement on a later UTC day than today can belong to the next
+ * quarter: on report day history may carry the actual before the date rolls.
  */
-function yahooReportedQuarterTrend(result: YahooQuoteSummaryResult): YahooEarningsTrend | undefined {
+function yahooReportedQuarterTrend(result: YahooQuoteSummaryResult, now: number): YahooEarningsTrend | undefined {
+  const announcement = financeRawNumber(result.calendarEvents?.earnings?.earningsDate?.[0]);
+  if (announcement == null || Math.floor(announcement / 86_400) <= Math.floor(now / 86_400_000)) return undefined;
   const currentQtr = result.earningsTrend?.trend?.find((trend) => trend.period === "0q");
   const periodEnd = currentQtr?.endDate ? Date.parse(currentQtr.endDate) : Number.NaN;
   if (!Number.isFinite(periodEnd)) return undefined;
@@ -229,12 +233,12 @@ function staleCalendarValue(value: unknown, staleTrendValue: unknown): unknown {
   return raw != null && raw === financeRawNumber(staleTrendValue) ? undefined : value;
 }
 
-export function mapYahooCalendarEarnings(result: YahooQuoteSummaryResult): EarningsAction[] {
+export function mapYahooCalendarEarnings(result: YahooQuoteSummaryResult, now = Date.now()): EarningsAction[] {
   const rawDate = result.calendarEvents?.earnings?.earningsDate?.[0];
   const date = yahooRawDate(rawDate);
   if (!date) return [];
   const timestamp = yahooRawDateTime(rawDate);
-  const staleTrend = yahooReportedQuarterTrend(result);
+  const staleTrend = yahooReportedQuarterTrend(result, now);
   return [{
     date,
     dateType: "announcement",
@@ -267,6 +271,7 @@ export function mapYahooEarningsHistory(result: YahooQuoteSummaryResult): Earnin
 export function mapYahooEarningsCalendarEvent(
   result: YahooQuoteSummaryResult,
   symbol: string,
+  now = Date.now(),
 ): EarningsEvent | null {
   const cal = result.calendarEvents?.earnings;
   if (!cal?.earningsDate?.length) return null;
@@ -274,7 +279,7 @@ export function mapYahooEarningsCalendarEvent(
   const earningsDate = new Date((cal.earningsDate[0]!.raw ?? 0) * 1000);
   if (Number.isNaN(earningsDate.getTime())) return null;
 
-  const staleTrend = yahooReportedQuarterTrend(result);
+  const staleTrend = yahooReportedQuarterTrend(result, now);
   const currentQtr = staleTrend ? undefined : result.earningsTrend?.trend?.find((trend) => trend.period === "0q");
   const staleEps = staleTrend?.earningsEstimate;
   const staleRevenue = staleTrend?.revenueEstimate;

@@ -104,15 +104,21 @@ test("a forecast quarter Yahoo already reports as actual carries no estimates in
     { quarter: { raw: Date.parse("2026-06-30T00:00:00Z") / 1000 }, epsActual: 1.1 },
     { quarter: { raw: Date.parse("2026-09-30T00:00:00Z") / 1000 }, epsActual: 1.4 },
   ] };
-  const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
+  const now = Date.parse("2026-10-20T12:00:00Z");
+  const event = mapYahooEarningsCalendarEvent(source, "SYN", now)!;
   expect(event.earningsDate.toISOString().slice(0, 10)).toBe("2026-11-05");
   expect([event.epsEstimate, event.epsLow, event.revenueEstimate, event.epsAnalysts, event.epsTrend30dAgo]).toEqual([null, null, null, null, null]);
   expect(event.epsHigh).toBe(7);
   expect(earningsForecastPeriod(event)).toBeNull();
-  expect(mapYahooCalendarEarnings(source)[0]?.epsEstimate).toBeUndefined();
+  expect(mapYahooCalendarEarnings(source, now)[0]?.epsEstimate).toBeUndefined();
+
+  // On report day history can carry the actual before Yahoo rolls the date; that consensus is today's.
+  const reportDay = Date.parse("2026-11-05T13:00:00Z");
+  expect(mapYahooEarningsCalendarEvent(source, "SYN", reportDay)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
+  expect(mapYahooCalendarEarnings(source, reportDay)[0]?.epsEstimate).toBe(150);
 
   source.earningsHistory.history!.pop();
-  expect(mapYahooEarningsCalendarEvent(source, "SYN")!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
+  expect(mapYahooEarningsCalendarEvent(source, "SYN", now)!.estimateBasis?.epsEstimate).toMatchObject({ source: "earningsTrend", periodEndDate: "2026-09-30" });
 });
 
 test("calendar fallback values retain unknown basis while unrelated trend ranges/counts stay separate", () => {

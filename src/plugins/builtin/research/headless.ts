@@ -120,7 +120,7 @@ export function projectEarningsEstimatesHeadless(
       returned: rows.length,
       truncated: rows.length < matching.length,
       coverageNote: notice?.text,
-      epsBasis: "Provider EPS and consensus may be adjusted; accounting basis is unspecified. TTM EPS comes from statements.",
+      epsBasis: "Provider EPS and consensus may be adjusted; accounting basis is unspecified. TTM EPS sums the reported quarter rows when all four match a statement period; otherwise it comes from statements.",
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
       unmatchedReportedPeriods,
     },
