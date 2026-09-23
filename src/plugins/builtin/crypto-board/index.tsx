@@ -21,7 +21,7 @@ export const cryptoBoardModule: PluginModule = {
       id: "crypto-board-pane",
       paneId: "crypto-board",
       label: "Crypto Board",
-      description: "USD crypto pairs, UTC returns, base volume and one-year price context.",
+      description: "USD crypto pairs, UTC returns, Alpaca volume and one-year price context.",
       keywords: ["crypto", "cryp", "bitcoin", "ethereum", "digital", "currency"],
       shortcut: { prefix: "CRYP" },
       headless: cryptoBoardHeadless,

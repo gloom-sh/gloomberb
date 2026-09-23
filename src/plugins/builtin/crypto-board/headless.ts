@@ -28,7 +28,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"bundle"> = {
             { key: "price", header: "USD", align: "right" },
             { key: "dailyChange", header: "Since UTC close", align: "right" },
             { key: "return7d", header: "7D completed", align: "right" },
-            { key: "volume", header: "Base volume", align: "right" },
+            { key: "volume", header: "Alpaca volume", align: "right" },
             { key: "volumeDate", header: "Volume UTC day" },
             { key: "percentile", header: "Price pctl", align: "right" },
             { key: "sampleCount", header: "Daily samples", align: "right" },
