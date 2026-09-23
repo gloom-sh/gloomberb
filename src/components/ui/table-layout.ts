@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
 import type { ScrollBoxRenderable } from "../../ui";
-import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { clipToDisplayWidth, displayWidth } from "../../utils/format";
 
 export interface TableWidthColumn {
   width: number;
@@ -52,7 +52,7 @@ function padToWidth(text: string, width: number, align: string | undefined): str
  * value.
  */
 export function fitTableCellText(text: string, width: number, align?: string): string {
-  return padToWidth(truncateToDisplayWidth(text, width), width, align);
+  return padToWidth(clipToDisplayWidth(text, width), width, align);
 }
 
 /**
@@ -70,7 +70,7 @@ export function fitTableHeaderText(
   // fills its column keeps every character.
   const reserve = hasNextColumn && displayWidth(text) < width ? 1 : 0;
   const available = width - reserve;
-  const inner = padToWidth(truncateToDisplayWidth(text, available), available, align);
+  const inner = padToWidth(clipToDisplayWidth(text, available), available, align);
   return reserve > 0 ? `${inner} ` : inner;
 }
 

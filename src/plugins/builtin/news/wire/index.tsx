@@ -45,7 +45,8 @@ const TopPane = createNewsPresetPane({
   paneKey: "top:curated",
   title: "Top News",
   query: NEWS_QUERY_PRESETS.top,
-  columns: ["time", "source", "title", "tickers", "categories", "importance"],
+  // A story can merge several outlets, so one source name would misattribute it.
+  columns: ["time", "title", "tickers", "categories", "importance"],
   defaultSort: { columnId: "importance", direction: "desc" },
   emptyStateTitle: "No top stories yet",
   emptyStateHint: "Top stories appear when curated market sources publish them.",

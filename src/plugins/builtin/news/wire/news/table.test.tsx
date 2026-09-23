@@ -10,7 +10,7 @@ import {
 } from "../../../../../state/app/context";
 import { createDefaultConfig } from "../../../../../types/config";
 import type { MarketNewsItem } from "../../../../../types/news-source";
-import { NewsArticleStackView, type NewsSortPreference } from "./table";
+import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -137,7 +137,7 @@ describe("NewsArticleStackView", () => {
             detailOpen={false}
             onBack={() => {}}
             detailContent={<Box />}
-            columns={["time", "source", "title", "tickers", "categories", "importance"]}
+            columns={["time", "title", "tickers", "categories", "importance"]}
             emptyStateTitle="No stories"
           />
         </PaneInstanceProvider>
@@ -159,7 +159,19 @@ describe("NewsArticleStackView", () => {
     // Snake_case ids and mid-word clipping never reach the user.
     expect(lines[1]).toContain("Politics");
     expect(lines[1]).not.toContain("macro_politics");
-    expect(lines[1]).toContain("globenews...");
+    // The headline takes every cell the fixed columns leave, clipped behind one mark.
+    expect(lines[1]).toContain("Fed officials signal caution on further r\u2026");
+  });
+
+  test("narrowing gives up category, then ticker room, before the headline", () => {
+    const ids = (width: number) => buildColumns(width, ["time", "source", "title", "tickers", "categories", "importance"])
+      .map((column) => column.id === "tickers" ? `tickers:${column.width}` : column.id);
+    expect(ids(120)).toEqual(["time", "source", "title", "tickers:18", "categories", "importance"]);
+    expect(ids(95)).toEqual(["time", "source", "title", "tickers:18", "importance"]);
+    expect(ids(85)).toEqual(["time", "source", "title", "tickers:10", "importance"]);
+    expect(ids(75)).toEqual(["time", "title", "tickers:10", "importance"]);
+    expect(ids(60)).toEqual(["time", "title", "importance"]);
+    expect(ids(45)).toEqual(["time", "title"]);
   });
 
   test("dedupes exchange-qualified ticker aliases in table cells", async () => {

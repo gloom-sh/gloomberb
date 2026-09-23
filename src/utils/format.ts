@@ -221,6 +221,17 @@ export function truncateToDisplayWidth(value: string, width: number): string {
 }
 
 /**
+ * Clips to a display width behind a single `…`, which gives a narrow cell back
+ * two characters that `...` would spend on the marker.
+ */
+export function clipToDisplayWidth(value: string, width: number): string {
+  if (width <= 0) return "";
+  if (displayWidth(value) <= width) return value;
+  if (width === 1) return "…";
+  return `${truncateToWidth(value, width - 1).trimEnd()}…`;
+}
+
+/**
  * Clips a styled run of text to a display width. A highlighted snippet is many
  * text nodes rather than one string, so the clipping cannot go through
  * `truncateToDisplayWidth`; the ellipsis is built by the caller so the returned

@@ -45,8 +45,8 @@ describe("table layout", () => {
   });
 
   test("marks clipped cells so a cut number cannot read as a smaller value", () => {
-    expect(fitTableCellText("2026-08-17", 9, "right")).toBe("2026-0...");
-    expect(fitTableCellText("globenewswire", 10)).toBe("globene...");
+    expect(fitTableCellText("2026-08-17", 9, "right")).toBe("2026-08-\u2026");
+    expect(fitTableCellText("globenewswire", 10)).toBe("globenews\u2026");
     expect(fitTableCellText("12.5", 6, "right")).toBe("  12.5");
   });
 

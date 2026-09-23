@@ -15,7 +15,6 @@ import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
 import { formatRelativeTime } from "../../../../../utils/datetime-format";
-import { truncateWithEllipsis } from "../../../../../utils/text-wrap";
 import { formatNewsCategory } from "../categories";
 
 export type NewsColumnId =
@@ -155,44 +154,81 @@ function nextSortPreference(current: NewsSortPreference, columnId: NewsColumnId)
   };
 }
 
-function buildColumns(width: number, columnIds: NewsColumnId[]): NewsTableColumn[] {
-  const fixedWidths: Record<Exclude<NewsColumnId, "title">, number> = {
-    rank: 4,
-    time: 4,
-    source: 12,
-    tickers: 18,
-    categories: 10,
-    sentiment: 4,
-    // Wide enough to keep the sort indicator next to the label.
-    importance: 7,
-  };
-  const labels: Record<NewsColumnId, string> = {
-    rank: "#",
-    time: "TIME",
-    source: "SOURCE",
-    title: "HEADLINE",
-    tickers: "TICKERS",
-    categories: "CATEGORY",
-    sentiment: "SENT",
-    importance: "SCORE",
-  };
+const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
+  rank: 4,
+  time: 4,
+  source: 12,
+  tickers: 18,
+  categories: 10,
+  sentiment: 4,
+  // Wide enough to keep the sort indicator next to the label.
+  importance: 7,
+};
+
+const COLUMN_LABELS: Record<NewsColumnId, string> = {
+  rank: "#",
+  time: "TIME",
+  source: "SOURCE",
+  title: "HEADLINE",
+  tickers: "TICKERS",
+  categories: "CATEGORY",
+  sentiment: "SENT",
+  importance: "SCORE",
+};
+
+/** Below this the headline takes room back from the other columns. */
+const MIN_HEADLINE_WIDTH = 40;
+
+/**
+ * What a narrowing pane gives up, in order, to keep the headline readable: a
+ * step with a width shrinks that column, one without drops it. Time and rank
+ * are never given up.
+ */
+const NARROW_STEPS: { id: Exclude<NewsColumnId, "title">; width?: number }[] = [
+  { id: "categories" },
+  // Room for one badge and its change.
+  { id: "tickers", width: 10 },
+  { id: "source" },
+  { id: "tickers" },
+  { id: "sentiment" },
+  { id: "importance" },
+];
+
+export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsTableColumn[] {
+  const widths = { ...FIXED_COLUMN_WIDTHS };
+  let columnIds = requestedIds;
 
   // A column occupies its header-floored width plus the gap, and the table adds
   // one cell of padding on each side. Anything the fixed columns do not take is
   // the headline's, so the last column never falls off the right edge.
-  const fixedTotal = columnIds
-    .filter((id) => id !== "title")
-    .reduce((sum, id) => sum + tableColumnWidth({
-      width: fixedWidths[id as Exclude<NewsColumnId, "title">],
-      label: labels[id],
-    }) + TABLE_COLUMN_GAP, 0);
-  const tablePadding = 2;
-  const titleWidth = Math.max(16, width - fixedTotal - tablePadding - TABLE_COLUMN_GAP);
+  const headlineWidth = () => {
+    const fixedTotal = columnIds
+      .filter((id): id is Exclude<NewsColumnId, "title"> => id !== "title")
+      .reduce((sum, id) => sum + tableColumnWidth({
+        width: widths[id],
+        label: COLUMN_LABELS[id],
+      }) + TABLE_COLUMN_GAP, 0);
+    const tablePadding = 2;
+    return width - fixedTotal - tablePadding - TABLE_COLUMN_GAP;
+  };
+
+  if (columnIds.includes("title")) {
+    for (const step of NARROW_STEPS) {
+      if (headlineWidth() >= MIN_HEADLINE_WIDTH) break;
+      if (!columnIds.includes(step.id)) continue;
+      if (step.width === undefined) {
+        columnIds = columnIds.filter((id) => id !== step.id);
+      } else {
+        widths[step.id] = step.width;
+      }
+    }
+  }
+  const titleWidth = Math.max(16, headlineWidth());
 
   return columnIds.map((id) => ({
     id,
-    label: labels[id],
-    width: id === "title" ? titleWidth : fixedWidths[id],
+    label: COLUMN_LABELS[id],
+    width: id === "title" ? titleWidth : widths[id],
     align: id === "rank" || id === "importance" ? "right" : "left",
     flexGrow: id === "title" ? 1 : undefined,
   }));
@@ -282,13 +318,12 @@ export function NewsArticleStackView({
       case "time":
         return { text: formatRelativeTime(item.publishedAt), color: selectedColor ?? colors.textDim };
       case "source":
-        return {
-          text: truncateWithEllipsis(item.source, column.width),
-          color: selectedColor ?? colors.textMuted,
-        };
+        return { text: item.source, color: selectedColor ?? colors.textMuted };
       case "title":
         return {
-          text: truncateWithEllipsis(titleForArticle?.(item) ?? item.title, column.width),
+          // Unclipped: the table fits it to the width the column really gets,
+          // which on desktop is wider than the width it was laid out at.
+          text: titleForArticle?.(item) ?? item.title,
           color: selectedColor ?? colors.text,
           attributes: readArticleIds?.has(item.id)
             ? TextAttributes.NONE
@@ -310,7 +345,7 @@ export function NewsArticleStackView({
       }
       case "categories":
         return {
-          text: truncateWithEllipsis(formatNewsCategory(item.categories[0]) || "-", column.width),
+          text: formatNewsCategory(item.categories[0]) || "-",
           color: selectedColor ?? colors.textDim,
         };
       case "sentiment": {
