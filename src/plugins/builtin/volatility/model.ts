@@ -289,6 +289,35 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
     termState: classifyTermState(spot, threeMonth), warnings };
 }
 
+/** An index level observed by the quote stream, in index points at a millisecond instant. */
+export interface VolatilityLiveLevel { value: number; observedAt: number }
+
+/**
+ * Today's streamed level becomes the latest observation of its index history,
+ * so the level, the change against the previous close, the curve and the
+ * one-year percentile read it exactly as they read a daily close (it replaces
+ * a provisional bar for the same date). A level older than the latest close
+ * is ignored. The CBOE correlation rows keep their published daily closes.
+ */
+export function withLiveVolatilityLevels(
+  inputs: VolatilityInputs,
+  levels: ReadonlyMap<VolatilityIndexId, VolatilityLiveLevel>,
+): VolatilityInputs {
+  if (levels.size === 0) return inputs;
+  const history = { ...inputs.history };
+  for (const [id, level] of levels) {
+    if (id in IMPLIED_CORRELATION_ROWS || !(level.value > 0) || !Number.isFinite(level.value) || !Number.isFinite(level.observedAt)) continue;
+    const input = history[id];
+    const points = input?.history ?? [];
+    const latest = points.reduce((max, point) => Math.max(max, new Date(point.date).getTime()), Number.NEGATIVE_INFINITY);
+    const observed = new Date(level.observedAt);
+    if (Number.isFinite(latest) && observed.toISOString().slice(0, 10) < new Date(latest).toISOString().slice(0, 10)) continue;
+    history[id] = { source: input?.source ?? null, fetchedAt: input?.fetchedAt ?? null, stale: input?.stale, error: input?.error ?? null,
+      ...input, history: [...points, { date: observed, close: level.value }] };
+  }
+  return { ...inputs, history };
+}
+
 /** Curve values share one date and source family; board rows keep their own dates. */
 export function buildVolatilityData(inputs: VolatilityInputs): VolatilityData {
   const fred = fredHistory(inputs.fred);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { boardOrder, buildVolatilityData, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
+import { boardOrder, buildVolatilityData, withLiveVolatilityLevels, type VolatilityHistoryInput, type VolatilitySeriesInput } from "./model";
 
 function history(rows: Array<[string, number]>, source = "yahoo"): VolatilityHistoryInput {
   return { source, history: rows.map(([date, close]) => ({ date: new Date(date), close })) };
@@ -33,6 +33,25 @@ describe("dated volatility sources", () => {
     expect(data.fred.metrics[0]).toMatchObject({ date: "2026-09-18", observationEnd: "2026-09-17" });
     expect(data.board.find((item) => item.id === "vix")).toMatchObject({ date: "2026-09-22", value: 24 });
     expect(data.board.find((item) => item.id === "vix1y")).toMatchObject({ value: 26, change1d: null, percentile1y: null, sampleSize: 1 });
+  });
+
+  test("a streamed level is today's observation for the board and curve; older levels and CBOE closes are left alone", () => {
+    const inputs = { history: {
+      vix: history([["2026-09-21", 20], ["2026-09-22T13:30:00Z", 21]]),
+      vix3m: history([["2026-09-21", 22], ["2026-09-22T13:30:00Z", 22.5]]),
+      cor1m: history([["2026-09-21", 30]], "cboe"),
+    } };
+    const at = Date.parse("2026-09-22T18:05:00Z");
+    const live = buildVolatilityData(withLiveVolatilityLevels(inputs, new Map([
+      ["vix", { value: 24, observedAt: at }], ["vix3m", { value: 24.6, observedAt: at }],
+      ["cor1m", { value: 44, observedAt: at }], ["vvix", { value: 90, observedAt: Date.parse("2026-09-19T20:00:00Z") }],
+    ])));
+    // The provisional bar for the same date is replaced, not added.
+    expect(live.board.find((item) => item.id === "vix")).toMatchObject({ value: 24, date: "2026-09-22", change1d: 4 });
+    expect(live.curve).toMatchObject({ date: "2026-09-22", ratio: 24.6 / 24 });
+    expect(live.board.find((item) => item.id === "cor1m")!.value).toBe(30);
+    expect(withLiveVolatilityLevels(inputs, new Map([["vix", { value: 19, observedAt: Date.parse("2026-09-18T20:00:00Z") }]])).history!.vix)
+      .toBe(inputs.history.vix);
   });
 
   test("ranks the current ratio within a trailing year of FRED ratios only with broad coverage", () => {

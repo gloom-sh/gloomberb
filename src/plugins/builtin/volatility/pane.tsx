@@ -7,12 +7,21 @@ import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
+import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { useAutoRefresh } from "../shared/auto-refresh";
+import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
-import { boardOrder, type VolatilityBoardRow } from "./model";
+import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES,
+  withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";
 import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityRatioChart, VolatilityIndexHistoryChart } from "./charts";
 import { useVolatilityEvidence } from "./evidence";
 
+/** Streamed index levels rebuild the board at most this often. */
+const LIVE_LEVEL_THROTTLE_MS = 1_000;
+const INDEX_LEVEL_REFRESH_MS = 15_000;
 const TABS = [{ value: "curve", label: "Curve" }, { value: "history", label: "History" }, { value: "board", label: "Cross-asset" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "id", label: "Index", width: 8, align: "left" },
@@ -50,7 +59,42 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const resource = useAsyncResource(request, { initialData: getCachedVolatilityData });
   useEffect(() => () => controller.current?.abort(), []);
   useAutoRefresh(resource.updatedAt, resource.load);
-  const result = partial ?? resource.data;
+  const loaded = partial ?? resource.data;
+  // Index levels stream through the shared quote layer for the tab on screen;
+  // the history tab is FRED daily closes and subscribes nothing.
+  const liveTargets = useMemo<QuoteSubscriptionTarget[]>(() => (tab === "curve" ? VOLATILITY_CURVE_INDICES
+    : tab === "board" ? VOLATILITY_INDICES.filter((definition) => !(definition.id in IMPLIED_CORRELATION_ROWS)) : [])
+    .map((definition) => ({ symbol: definition.symbol, exchange: "", surface: "monitor", visible: true,
+      selected: definition.id === selectedId, weight: 40 })), [tab, selectedId]);
+  const { entries: liveEntries } = useLiveQuoteEntries(liveTargets);
+  const liveEntriesRef = useRef(liveEntries);
+  liveEntriesRef.current = liveEntries;
+  // Where an index does not stream, its level is re-read every 15 seconds in
+  // session while visible; a streamed level younger than that is left alone.
+  const refreshIndexLevels = useCallback(async () => {
+    const coordinator = getSharedMarketDataCoordinator();
+    const now = Date.now();
+    const quiet = liveTargets.filter((target) => {
+      const quote = resolveEntryData(liveEntriesRef.current.get(buildQuoteKey({ symbol: target.symbol, exchange: "" })));
+      return !quote || now - (quote.receivedAt ?? quote.lastUpdated) >= INDEX_LEVEL_REFRESH_MS;
+    });
+    if (!coordinator || quiet.length === 0) return;
+    await coordinator.loadQuotesBatch(quiet.map((target) => ({ symbol: target.symbol, exchange: "" })), { forceRefresh: true });
+  }, [liveTargets]);
+  useLiveSessionRefresh(refreshIndexLevels, INDEX_LEVEL_REFRESH_MS, liveTargets.length > 0);
+  const liveLevels = useThrottledValue(useMemo(() => {
+    const levels = new Map<VolatilityIndexId, VolatilityLiveLevel>();
+    for (const definition of VOLATILITY_INDICES) {
+      const quote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: definition.symbol, exchange: "" })));
+      if (quote && !quote.stale && quote.price > 0 && Number.isFinite(quote.price) && Number.isFinite(quote.lastUpdated)) {
+        levels.set(definition.id, { value: quote.price, observedAt: quote.lastUpdated });
+      }
+    }
+    return levels;
+  }, [liveEntries]), LIVE_LEVEL_THROTTLE_MS);
+  // Rebuilt at most once a second from the loaded daily inputs plus the levels.
+  const result = useMemo(() => !loaded || liveLevels.size === 0 ? loaded
+    : { ...loaded, data: buildVolatilityData(withLiveVolatilityLevels(loaded.inputs, liveLevels)) }, [loaded, liveLevels]);
   const data = result?.data;
   // Indices without a level are reported in the notices, not as empty rows;
   // rows still loading keep their place so the board does not jump.
@@ -82,14 +126,23 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   };
   useShortcut((event) => { if (focused && tab === "history") handleKey(event); });
   const asOf = tab === "history" ? data?.fred.termDate : tab === "board" ? selected?.date : data?.curve.date;
-  const observationTime = selected?.sampleSize === 1 ? selected.history.at(-1)?.observedAt : null;
-  const observationBasis = tab === "history" ? "daily close" : tab === "board" && selected?.sampleSize === 1 ? "observation" : "daily history";
+  // A level from the stream is labelled intraday with its time; closes keep their date.
+  const intraday = (id: VolatilityIndexId | undefined, date: string | null | undefined) => {
+    const level = id ? liveLevels.get(id) : undefined;
+    return level && date === new Date(level.observedAt).toISOString().slice(0, 10) ? level : null;
+  };
+  const liveObservation = tab === "board" ? intraday(selected?.id, selected?.date)
+    : tab === "curve" && data?.curve.source === "market-history" ? intraday("vix", data.curve.date) : null;
+  const observationTime = liveObservation ? new Date(liveObservation.observedAt).toISOString()
+    : selected?.sampleSize === 1 ? selected.history.at(-1)?.observedAt : null;
+  const observationBasis = liveObservation ? "intraday" : tab === "history" ? "daily close"
+    : tab === "board" && selected?.sampleSize === 1 ? "observation" : "daily history";
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
     ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
-    ...(asOf ? [{ id: "date", parts: [{ text: observationTime && tab === "board" ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, tab]);
+    ...(asOf ? [{ id: "date", parts: [{ text: observationTime && (tab === "board" || liveObservation) ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
+  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, tab, liveObservation]);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
   const contentHeight = Math.max(5, height - tabRows);

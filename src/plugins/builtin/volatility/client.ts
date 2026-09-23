@@ -14,6 +14,8 @@ export const VOLATILITY_LOAD_CONCURRENCY = 4;
 export const VOLATILITY_HISTORY_LIMIT = 400;
 export interface VolatilityLoadResult {
   data: VolatilityData;
+  /** The daily inputs the data was built from, so live index levels can be laid over them. */
+  inputs: VolatilityInputs;
   stale: boolean;
   errors: string[];
   phase: "loading" | "partial" | "ready" | "error";
@@ -105,7 +107,7 @@ function project(inputs: VolatilityInputs, loaded: number, total: number, pendin
   const stale = [...Object.values(inputs.history ?? {}), ...Object.values(inputs.fred ?? {})].some((value) => value.stale);
   const phase = pending ? hasValues(data) ? "partial" : "loading" : !hasValues(data) ? "error"
     : errors.length || stale || data.warnings.length || data.board.some((row) => row.status !== "available") ? "partial" : "ready";
-  return { data, stale, errors, phase, loaded, total };
+  return { data, inputs: { history: { ...inputs.history }, fred: { ...inputs.fred } }, stale, errors, phase, loaded, total };
 }
 export function getCachedVolatilityData(dependencies: VolatilityLoaderDependencies = createVolatilityDependencies()): VolatilityLoadResult | null {
   const inputs = cachedInputs(dependencies, dependencies.now?.() ?? Date.now());
