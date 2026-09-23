@@ -214,6 +214,8 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         explicitIntentScore,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
         symbolMatchRank: scoreSymbolMatchRank(intent, item),
+        nameOnly: companyMatchRank > 0 && labelScore + aliasScore <= 0
+          && !(isQualifiedTickerQuery(query) && matchesQualifiedTicker(item, query)),
         textScore,
         score: textScore + priorityScore + (textScore > 0 && saved ? SAVED_MATCH_BONUS : 0),
       };
@@ -271,8 +273,21 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         representative: entries.reduce((best, entry) =>
           compareFallbackEntries(entry, best) < 0 ? entry : best
         ),
+        nameOnly: entries.every((entry) => entry.nameOnly && entry.symbolMatchRank === 0),
+        saved: entries.some((entry) => isSavedSearchItem(entry.item)),
+        providerRank: Math.min(...entries.map((entry) => entry.item.providerRank ?? Number.POSITIVE_INFINITY)),
       }))
-      .sort((a, b) => compareFallbackEntries(a.representative, b.representative));
+      .sort((a, b) => {
+        // Companies matched by name alone differ in text score only by name
+        // and type length. The provider's popularity order is the better
+        // signal there; a symbol match keeps its text relevance.
+        if (a.nameOnly !== b.nameOnly) return a.nameOnly ? 1 : -1;
+        if (a.nameOnly) {
+          if (a.saved !== b.saved) return a.saved ? -1 : 1;
+          if (a.providerRank !== b.providerRank) return a.providerRank - b.providerRank;
+        }
+        return compareFallbackEntries(a.representative, b.representative);
+      });
     orderedGroups.forEach(({ entries }, order) => {
       entries.forEach((entry) => groupOrderByIndex.set(entry.index, order));
     });
@@ -325,12 +340,17 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   return deduped;
 }
 
+// Folding accents keeps "Nestlé" matchable as "nestle" instead of "NESTL".
+function foldSearchText(text: string): string {
+  return text.normalize("NFKD").replace(/\p{M}/gu, "").trim().toUpperCase();
+}
+
 export function normalizeSearchText(text: string): string {
-  return text.trim().toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  return foldSearchText(text).replace(/[^A-Z0-9]+/g, " ").trim();
 }
 
 export function compactSearchText(text: string): string {
-  return text.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+  return foldSearchText(text).replace(/[^A-Z0-9]+/g, "");
 }
 
 export function normalizeTickerSymbol(symbol: string): string {

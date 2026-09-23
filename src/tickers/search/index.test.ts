@@ -533,6 +533,24 @@ describe("ticker-search utilities", () => {
     expect(results.some((item) => item.symbol === "APPLE80.BK")).toBe(true);
   });
 
+  test("orders companies matched by name alone by provider popularity, not name length", () => {
+    const rank = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+      query,
+      tickers: new Map<string, TickerRecord>(),
+      providerResults,
+    }).map((item) => item.symbol);
+
+    expect(rank("Siemens", [
+      makeSearchResult("SIE", "Siemens Aktiengesellschaft", { exchange: "XETRA" }),
+      makeSearchResult("SHL", "Siemens Healthineers AG", { exchange: "XETRA", type: "Common Stock" }),
+    ])).toEqual(["SIE", "SHL"]);
+    // Accented names stay whole words, so the unaccented query still matches them.
+    expect(rank("nestle", [
+      makeSearchResult("NESTLEIND", "Nestle India Ltd.", { exchange: "NSE" }),
+      makeSearchResult("NESN", "Nestlé S.A.", { exchange: "SWX" }),
+    ])).toEqual(["NESN", "NESTLEIND"]);
+  });
+
   test("normalizes legal suffixes in literal company-name queries", () => {
     const cases = [
       {

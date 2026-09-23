@@ -60,14 +60,15 @@ test("only recognized issuance tails group with the issuer; comparator order rem
       { id: "descriptor", label: "ZZZ", symbol: "ZZZ", detail: `Acme Holdings S.A. ${suffix}`, right: "NASDAQ",
         kind: "search", category: "Other Listings", instrumentClass: "equity" as const, providerRank: 0 },
       { id: "base", label: "YYY", symbol: "YYY", detail: "Acme Holdings SA", right: "NYSE",
-        kind: "search", category: "Other Listings", instrumentClass: "equity" as const, providerRank: 1 },
+        kind: "search", category: "Other Listings", instrumentClass: "equity" as const, providerRank: 2 },
       { id: "different-issuer", label: "XXX", symbol: "XXX", detail: "Acme Holdings International", right: "AMS",
-        kind: "search", category: "Other Listings", instrumentClass: "equity" as const, providerRank: -1 },
+        kind: "search", category: "Other Listings", instrumentClass: "equity" as const, providerRank: 1 },
     ];
-    const expected = sameIssuer ? ["descriptor", "base", "different-issuer"] : ["base", "descriptor", "different-issuer"];
+    // Name-only matches follow provider order, so only a shared issuer keeps
+    // the base listing next to its descriptor ahead of the provider's second.
+    const expected = sameIssuer ? ["descriptor", "base", "different-issuer"] : ["descriptor", "different-issuer", "base"];
     const forward = rankTickerSearchItems(candidates, "Acme").map(row => row.id);
-    expect(forward[0]).toBe(expected[0]);
-    expect(forward.indexOf("different-issuer")).toBeGreaterThan(forward.indexOf("base"));
+    expect(forward).toEqual(expected);
     expect(rankTickerSearchItems([...candidates].reverse(), "Acme").map(row => row.id)).toEqual(forward);
   }
 });
