@@ -1,5 +1,5 @@
 import type { DataTableColumn, PaneFooterSegment } from "../../../components";
-import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
+import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { formatRelativeTime } from "../../../utils/datetime-format";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
@@ -14,11 +14,44 @@ function compactPeriod(period: string): string {
     .replace(/_/g, " ");
 }
 
-export function targetUpside(target: AnalystResearchData["priceTarget"]): number | undefined {
-  if (target?.average == null || target.current == null
-    || !Number.isFinite(target.average) || !Number.isFinite(target.current)
-    || target.average < 0 || target.current <= 0) return undefined;
-  return (target.average - target.current) / target.current;
+/** Upside of the average target over `reference`, the provider's own reference price by default. */
+export function targetUpside(
+  target: AnalystResearchData["priceTarget"],
+  reference: number | undefined = target?.current,
+): number | undefined {
+  if (target?.average == null || reference == null
+    || !Number.isFinite(target.average) || !Number.isFinite(reference)
+    || target.average < 0 || reference <= 0) return undefined;
+  return (target.average - reference) / reference;
+}
+
+export interface AnalystReferencePrice {
+  price: number | undefined;
+  /** What the price is when it is the live quote, such as `real-time` or `15m delayed`. */
+  freshness: string | null;
+  live: boolean;
+}
+
+function quoteFreshness(quote: Quote): string | null {
+  if (quote.dataSource === "live") return "real-time";
+  if (quote.dataSource === "delayed") return "15m delayed";
+  return null;
+}
+
+/**
+ * The price the upside is measured against: the live quote when it is priced
+ * in the target's currency, otherwise the provider's reference from when the
+ * research was fetched (an ADR or a pence line cannot be compared directly).
+ */
+export function analystReferencePrice(
+  data: AnalystResearchData | null,
+  quote: Quote | null | undefined,
+): AnalystReferencePrice {
+  const fallback = { price: data?.priceTarget?.current, freshness: null, live: false };
+  const currency = analystTargetCurrency(data);
+  if (!quote || quote.stale || !currency || !Number.isFinite(quote.price) || quote.price <= 0) return fallback;
+  if (quote.currency?.trim() !== currency) return fallback;
+  return { price: quote.price, freshness: quoteFreshness(quote), live: true };
 }
 
 function isCurrentMonthPeriod(period: string | undefined): boolean {
@@ -282,17 +315,25 @@ function fitFooterSegments(segments: PaneFooterSegment[], availableWidth: number
  */
 export function buildAnalystFooterInfo(
   data: AnalystResearchData | null,
-  { width, loading, error }: { width: number; loading: boolean; error: string | null },
+  { width, loading, error, reference }: {
+    width: number;
+    loading: boolean;
+    error: string | null;
+    reference?: AnalystReferencePrice;
+  },
 ): PaneFooterSegment[] {
   const lead = loadingErrorFooterInfo(loading, error);
   const leadWidth = lead.reduce((total, segment) => total + footerSegmentWidth(segment) + 1, 0);
   return [
     ...lead,
-    ...fitFooterSegments(buildAnalystStatusSegments(data), Math.max(0, width - 2 - leadWidth)),
+    ...fitFooterSegments(buildAnalystStatusSegments(data, reference), Math.max(0, width - 2 - leadWidth)),
   ];
 }
 
-export function buildAnalystStatusSegments(data: AnalystResearchData | null): PaneFooterSegment[] {
+export function buildAnalystStatusSegments(
+  data: AnalystResearchData | null,
+  reference: AnalystReferencePrice = analystReferencePrice(data, null),
+): PaneFooterSegment[] {
   if (!data) return [];
 
   const target = data.priceTarget;
@@ -337,10 +378,14 @@ export function buildAnalystStatusSegments(data: AnalystResearchData | null): Pa
   }
 
   // The upside is only as good as the price it was measured against.
-  if (target?.current != null) {
+  if (reference.price != null) {
     segments.push({
       id: "analyst-reference-price",
-      parts: [{ text: "upside vs", tone: "label" }, { text: price(target.current) }],
+      parts: [
+        { text: "upside vs", tone: "label" },
+        { text: price(reference.price) },
+        ...(reference.freshness ? [{ text: reference.freshness, tone: "muted" as const }] : []),
+      ],
     });
   }
 

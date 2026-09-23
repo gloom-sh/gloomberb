@@ -1,6 +1,6 @@
 import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
-import type { TickerFinancials } from "../../../types/financials";
+import type { Quote, TickerFinancials } from "../../../types/financials";
 export { convertMarketCapitalization as comparableMarketCap } from "../../../utils/market-capitalization";
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
@@ -50,5 +50,44 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
       ? fundamentals.freeCashFlow / capitalization.value : null,
     revenueGrowth: fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null,
     operatingMargin: fundamentals?.operatingMargin ?? null,
+  };
+}
+
+function scaled(value: number | undefined, ratio: number): number | undefined {
+  return value != null && Number.isFinite(value) ? value * ratio : value;
+}
+
+/**
+ * The snapshot with a newer quote laid over it. Fundamentals stay from the
+ * snapshot; everything measured against the price (market cap, and through it
+ * the FCF yield, and the P/E multiples) moves by live price / snapshot price.
+ * A quote in another currency, or a stale one, leaves the snapshot alone.
+ */
+export function withLiveQuote(financials: TickerFinancials | null, live: Quote | null | undefined): TickerFinancials | null {
+  const base = financials?.quote;
+  if (!financials || !base || !live || live === base || live.stale) return financials;
+  if (!live.currency || live.currency !== base.currency) return financials;
+  if (!(base.price > 0) || !(live.price > 0) || !Number.isFinite(live.price)) return financials;
+  if (live.lastUpdated < base.lastUpdated) return financials;
+  const ratio = live.price / base.price;
+  const fundamentals = financials.fundamentals;
+  return {
+    ...financials,
+    quote: {
+      ...base,
+      price: live.price,
+      change: live.change,
+      changePercent: live.changePercent,
+      lastUpdated: live.lastUpdated,
+      stale: live.stale,
+      ...(live.dataSource ? { dataSource: live.dataSource } : {}),
+      marketCap: scaled(base.marketCap, ratio),
+    },
+    fundamentals: fundamentals ? {
+      ...fundamentals,
+      trailingPE: scaled(fundamentals.trailingPE, ratio),
+      forwardPE: scaled(fundamentals.forwardPE, ratio),
+      marketCap: fundamentals.marketCapCurrency === live.currency ? scaled(fundamentals.marketCap, ratio) : fundamentals.marketCap,
+    } : fundamentals,
   };
 }

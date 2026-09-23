@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
-import { analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
+import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
+import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -99,4 +99,27 @@ test("explicit current month is selected without inventing an observation date",
   }
   const historical = { ...complete, period: "previous month" };
   expect(latestRecommendation({ ...data, recommendations: [historical] })).toBe(historical);
+});
+
+test("upside follows the live price only when it is quoted in the target's currency", () => {
+  const research: AnalystResearchData = {
+    ...data,
+    currency: "USD",
+    priceTarget: { current: 100, average: 120, currency: "USD" },
+  };
+  const quote = (overrides: Partial<Quote>): Quote => ({
+    symbol: "FIX", price: 110, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, dataSource: "live", ...overrides,
+  });
+  const live = analystReferencePrice(research, quote({}));
+  expect(live).toEqual({ price: 110, freshness: "real-time", live: true });
+  expect(targetUpside(research.priceTarget, live.price)).toBeCloseTo(120 / 110 - 1);
+  expect(analystReferencePrice(research, quote({ dataSource: "delayed" })).freshness).toBe("15m delayed");
+  // An ADR quoted in another currency, a pence line or a stale quote keep the provider's reference.
+  for (const other of [quote({ currency: "EUR" }), quote({ currency: "GBp" }), quote({ stale: true })]) {
+    expect(analystReferencePrice(research, other)).toEqual({ price: 100, freshness: null, live: false });
+  }
+  const footer = buildAnalystStatusSegments(research, live)
+    .find((segment) => segment.id === "analyst-reference-price")!
+    .parts.map((part) => part.text).join(" ");
+  expect(footer).toBe("upside vs $110.00 real-time");
 });

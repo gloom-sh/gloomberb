@@ -21,6 +21,7 @@ import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
+import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
@@ -189,6 +190,10 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData;
 }) {
   const { symbol, ticker, financials } = usePaneTicker();
+  // Yields are repriced from the quote on every render, so streaming it is all
+  // it takes for them to move with the stock. A yield to two decimals needs
+  // about one update a second, not the fast lane of a price on screen.
+  useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 40 });
   const cloudSession = useResearchCloudSession();
   const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";

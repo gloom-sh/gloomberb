@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
+import { useFxRatesMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
-import { useAppSelector } from "../../../../state/app/context";
+import { useAppSelector, usePaneAppConfig } from "../../../../state/app/context";
+import { useLiveTickerFinancialsMap } from "../../../../state/hooks/live-ticker-financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
 import { getPortfolioPositionValue } from "../../kelly-sizer/portfolio";
@@ -47,7 +48,8 @@ export function useBookExposure(collectionId: string | null): BookExposure {
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
-  const config = useAppSelector((state) => state.config);
+  // Not the whole config: every pane-state change rewrites its layout mirror.
+  const config = usePaneAppConfig();
   const baseCurrency = config.baseCurrency;
   const scopes = useMemo<BookScope[]>(() => [
     { collectionId: null, kind: "all", label: "All portfolios" },
@@ -66,7 +68,15 @@ export function useBookExposure(collectionId: string | null): BookExposure {
       : members;
   }, [config, portfolioId, scope.collectionId, scope.kind, tickersBySymbol]);
   const instrumentOptions = useMemo(() => (portfolioId ? { portfolioId } : NO_INSTRUMENT_OPTIONS), [portfolioId]);
-  const liveFinancials = useTickerFinancialsMap(tickers, instrumentOptions);
+  // Values are compact currency totals, so the positions stream in the
+  // background and merge with the portfolio pane's subscription.
+  const liveFinancials = useLiveTickerFinancialsMap(tickers, {
+    enabled: scope.kind !== "watchlist",
+    surface: "portfolio",
+    visible: false,
+    weight: 20,
+    instrumentOptions,
+  });
   const financials = useMemo(
     () => buildPortfolioFinancialsMap(tickers, cachedFinancials, liveFinancials, instrumentOptions),
     [cachedFinancials, instrumentOptions, liveFinancials, tickers],

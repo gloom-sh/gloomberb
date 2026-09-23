@@ -1,11 +1,76 @@
 import type { ReactNode } from "react";
 import { Section } from "../../../../components";
+import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
+import { useInlineTickerQuote } from "../../../../state/hooks/inline-tickers";
+import { useTickerQuoteStream } from "../../../../state/hooks/live-ticker-financials";
 import { colors } from "../../../../theme/colors";
+import type { Quote } from "../../../../types/financials";
+import type { TickerRecord } from "../../../../types/ticker";
 import { Box, Text } from "../../../../ui";
-import { activityLabel, criticalityColor, dateShort, metricColor, textOrNull, truncate } from "../format";
+import { formatCompact } from "../../../../utils/format";
+import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, textOrNull, tickerSymbol, truncate } from "../format";
 import type { BuildoutCompany } from "../model/types";
-import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, tickerBadges, type InlineTickerCatalog } from "./ui";
+import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, tickerBadges, type DetailSpec, type InlineTickerCatalog } from "./ui";
 import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
+
+interface LiveCompanyValues {
+  price: string | null;
+  marketCap: string | null;
+}
+
+/**
+ * Price and market cap from the live quote. The dataset prints them in USD
+ * (with the local price in brackets for foreign listings), so the quote only
+ * replaces them for a USD listing; the cap moves with the price, from the
+ * dataset's own cap and price. Anything else keeps the dataset's strings.
+ */
+export function liveCompanyValues(company: BuildoutCompany, quote: Quote | null): LiveCompanyValues | null {
+  if (!quote || quote.stale || !(quote.price > 0) || quote.currency !== "USD") return null;
+  if ((company.currency?.trim().toUpperCase() || "USD") !== "USD") return null;
+  const datasetPrice = metricNumber(company.stockPrice);
+  const datasetCap = metricNumber(company.marketCap);
+  const liveCap = datasetPrice != null && datasetPrice > 0 && datasetCap != null && datasetCap > 0
+    ? datasetCap * (quote.price / datasetPrice)
+    : null;
+  return {
+    price: formatMarketPriceWithCurrency(quote.price, quote.currency, { minimumFractionDigits: 2 }),
+    marketCap: liveCap != null ? `$${formatCompact(liveCap)}` : null,
+  };
+}
+
+function useLiveCompanyValues(company: BuildoutCompany, ticker: TickerRecord | null, stream: boolean): LiveCompanyValues | null {
+  const symbol = ticker ? tickerSymbol(company.ticker) : null;
+  // The detail's own price: on screen, so it takes the fast lane.
+  useTickerQuoteStream(symbol, ticker, { enabled: stream, surface: "detail", weight: 50 });
+  return liveCompanyValues(company, useInlineTickerQuote(symbol, ticker));
+}
+
+/** The spec grid with the live price; only this grid re-renders on a tick. */
+function CompanyOverviewGrid({ company, ticker, width, items }: {
+  company: BuildoutCompany;
+  ticker: TickerRecord | null;
+  width: number;
+  items: (price: string | null) => DetailSpec[];
+}) {
+  const live = useLiveCompanyValues(company, ticker, true);
+  return <DetailSpecGrid width={width} items={items(live?.price ?? valueWithOriginal(company.stockPrice, company.stockPriceOriginal))} />;
+}
+
+function CompanyValuationGrid({ company, ticker, width, items }: {
+  company: BuildoutCompany;
+  ticker: TickerRecord | null;
+  width: number;
+  items: (marketCap: string | null) => DetailSpec[];
+}) {
+  const live = useLiveCompanyValues(company, ticker, false);
+  return (
+    <DetailSpecGrid
+      width={width}
+      marginTop={0}
+      items={items(live?.marketCap ?? valueWithOriginal(company.marketCap, company.marketCapOriginal))}
+    />
+  );
+}
 
 export function CompanyDetail({
   company,
@@ -27,6 +92,8 @@ export function CompanyDetail({
   const valueChainStages = detailListValues(company.valueChainStages ?? [], categoryAnchor);
   const hasCategories = sectors.length > 0 || subSectors.length > 0 || technologies.length > 0 || valueChainStages.length > 0;
   const supplyChain = company.supplyChain;
+  const companySymbol = tickerSymbol(company.ticker);
+  const companyTicker = companySymbol ? catalog[companySymbol]?.ticker ?? null : null;
   const hasSupplyChain = (supplyChain?.suppliers.length ?? 0) > 0
     || (supplyChain?.customers.length ?? 0) > 0
     || (supplyChain?.competitors.length ?? 0) > 0
@@ -43,11 +110,13 @@ export function CompanyDetail({
           }) : null}
         </Box>
       ) : null}
-      <DetailSpecGrid
+      <CompanyOverviewGrid
+        company={company}
+        ticker={companyTicker}
         width={bodyWidth}
-        items={[
+        items={(price) => [
           { label: "Exchange", value: company.exchange },
-          { label: "Price", value: valueWithOriginal(company.stockPrice, company.stockPriceOriginal), color: metricColor(company.return1y) },
+          { label: "Price", value: price, color: metricColor(company.return1y) },
           { label: "1Y", value: company.return1y, color: metricColor(company.return1y) },
           { label: "3Y", value: company.return3y, color: metricColor(company.return3y) },
           { label: "Sector", value: [company.primarySector, company.primarySubsector, company.primaryTechnology].filter(Boolean).join(" / ") },
@@ -78,11 +147,12 @@ export function CompanyDetail({
         </Section>
       ) : null}
       <Section title="Valuation & Trading" width={bodyWidth}>
-        <DetailSpecGrid
+        <CompanyValuationGrid
+          company={company}
+          ticker={companyTicker}
           width={bodyWidth}
-          marginTop={0}
-          items={[
-            { label: "Mkt Cap", value: valueWithOriginal(company.marketCap, company.marketCapOriginal) },
+          items={(marketCap) => [
+            { label: "Mkt Cap", value: marketCap },
             { label: "EV", value: company.enterpriseValue },
             { label: "Fwd P/E", value: company.forwardPE },
             { label: "Trail P/E", value: company.trailingPE },

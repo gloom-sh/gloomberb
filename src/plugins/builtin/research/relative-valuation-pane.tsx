@@ -12,7 +12,13 @@ import {
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { useAppSelector, usePaneInstance } from "../../../state/app/context";
-import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
+import { buildQuoteKey } from "../../../market-data/selectors";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { TickerFinancials } from "../../../types/financials";
+import { normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor } from "../../../theme/colors";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -21,7 +27,7 @@ import { usePluginTickerActions } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../shared/table-pane";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
-import { comparableMarketCap, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues } from "./relative-valuation-model";
+import { comparableMarketCap, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
 type RelativeColumnId = "symbol" | "price" | "changePercent" | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
@@ -70,10 +76,10 @@ function relativeSortValue(row: RelativeRow, columnId: RelativeColumnId): string
   return columnId === "symbol" ? row.symbol.toLocaleLowerCase() : row[columnId];
 }
 
-function sortRelativeRows(
+function sortRelativeRowIndices(
   rows: readonly RelativeRow[],
   preference: RelativeSortPreference,
-): RelativeRow[] {
+): number[] {
   return rows
     .map((row, index) => ({ row, index }))
     .sort((left, right) => (
@@ -83,7 +89,20 @@ function sortRelativeRows(
         preference.direction,
       ) || left.index - right.index
     ))
-    .map((entry) => entry.row);
+    .map((entry) => entry.index);
+}
+
+/** Live values keep moving; the row order follows them at most this often. */
+const RELATIVE_ORDER_SAMPLE_MS = 5_000;
+
+interface PeerSnapshot {
+  symbol: string;
+  financials: TickerFinancials | null;
+  error?: string;
+}
+
+function peerQuoteKey(symbol: string): string {
+  return buildQuoteKey({ symbol: normalizeSymbol(symbol), exchange: "", instrument: null });
 }
 
 export function RelativeValuationPane({ focused, width, height }: PaneProps) {
@@ -94,12 +113,29 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     [pane?.settings, symbol],
   );
   const { navigateTicker } = usePluginTickerActions();
-  const [rows, setRows] = useState<RelativeRow[]>([]);
+  // Fundamentals come from one batched snapshot; prices stream on top of it.
+  const [snapshots, setSnapshots] = useState<{ version: number; peers: PeerSnapshot[] }>({ version: 0, peers: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => symbols.map((peer) => ({
+    symbol: peer,
+    exchange: "",
+    surface: "screener",
+    visible: true,
+    weight: 60,
+  })), [symbols]);
+  const { entries: liveQuotes } = useLiveQuoteEntries(quoteTargets);
+  const rows = useMemo<RelativeRow[]>(() => snapshots.peers.map((peer) => {
+    const entry = liveQuotes.get(peerQuoteKey(peer.symbol));
+    return {
+      symbol: peer.symbol,
+      ...relativeValuationValues(withLiveQuote(peer.financials, entry ? resolveEntryValue(entry) : null)),
+      error: peer.error,
+    };
+  }), [liveQuotes, snapshots]);
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   const columns = useMemo(() => buildRelativeColumns(baseCurrency), [baseCurrency]);
   const fetchGenRef = useRef(0);
@@ -108,14 +144,14 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
     if (symbols.length === 0) {
-      setRows([]);
+      setSnapshots((current) => ({ version: current.version + 1, peers: [] }));
       setLoading(false);
       setError("No tickers selected");
       return;
     }
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) {
-      setRows([]);
+      setSnapshots((current) => ({ version: current.version + 1, peers: [] }));
       setLoading(false);
       setError("Market data unavailable");
       return;
@@ -126,13 +162,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     coordinator.loadSnapshotsBatch(symbols.map((peer) => ({ symbol: peer })), { forceRefresh })
       .then((entries) => {
         if (fetchGenRef.current !== gen) return;
-        setRows(symbols.map((peer, index) => {
-          const entry = entries[index];
-          return {
-            symbol: peer,
-            ...relativeValuationValues(entry?.data ?? entry?.lastGoodData ?? null),
-            error: entry?.error?.message,
-          };
+        setSnapshots((current) => ({
+          version: current.version + 1,
+          peers: symbols.map((peer, index) => {
+            const entry = entries[index];
+            return {
+              symbol: peer,
+              financials: entry?.data ?? entry?.lastGoodData ?? null,
+              error: entry?.error?.message,
+            };
+          }),
         }));
       })
       .catch((err) => {
@@ -153,7 +192,19 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     ...row, marketCap: comparableMarketCap(row.marketCap, row.marketCapCurrency, baseCurrency, fxRates),
   })), [rows, baseCurrency, fxRates]);
   const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
-  const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
+  // Sorting by a live column would reshuffle rows under the cursor on every
+  // tick; the order is taken from values sampled every few seconds instead,
+  // and at once when the sort or the peer set changes.
+  const orderRows = useSampledValue(
+    comparableRows,
+    RELATIVE_ORDER_SAMPLE_MS,
+    `${snapshots.version}:${sortPreference.columnId}:${sortPreference.direction}`,
+  );
+  const order = useMemo(() => sortRelativeRowIndices(orderRows, sortPreference), [orderRows, sortPreference]);
+  const sortedRows = useMemo(
+    () => order.flatMap((index) => (comparableRows[index] ? [comparableRows[index]] : [])),
+    [comparableRows, order],
+  );
 
   const staleSymbols = rows.filter((row) => row.quoteStale).map((row) => row.symbol);
   const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);

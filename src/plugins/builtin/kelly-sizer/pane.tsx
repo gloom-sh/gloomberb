@@ -15,7 +15,8 @@ import {
   type QueryBarFilter,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
-import { useFxRatesMap, useTickerFinancials, useTickerFinancialsMap } from "../../../market-data/hooks";
+import { useFxRatesMap } from "../../../market-data/hooks";
+import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { formatCurrency } from "../../../utils/format";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
@@ -79,7 +80,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const requestedSymbol = symbolOverride || paneInstance?.params?.symbol || focusedSymbol;
   const ticker = useAppSelector((state) => (requestedSymbol ? state.tickers.get(requestedSymbol) ?? null : null));
   const cachedFinancials = useAppSelector((state) => (requestedSymbol ? state.financials.get(requestedSymbol) ?? null : null));
-  const liveFinancials = useTickerFinancials(requestedSymbol ?? null, ticker);
+  // Sizes are derived from the price; about one update a second keeps them
+  // current without redrawing the curve and grid on every tick.
+  const liveFinancials = useLiveTickerFinancials(requestedSymbol ?? null, ticker, { surface: "detail", visible: false, weight: 50 });
   const financials = liveFinancials ?? cachedFinancials;
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedPortfolioFinancials = useAppSelector((state) => state.financials);
@@ -186,7 +189,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     [activePortfolioId, config, tickersBySymbol],
   );
   const instrumentOptions = useMemo(() => ({ portfolioId: activePortfolioId }), [activePortfolioId]);
-  const livePortfolioFinancials = useTickerFinancialsMap(portfolioTickers, instrumentOptions);
+  // The bankroll is a sum, so the other positions stream in the background.
+  const livePortfolioFinancials = useLiveTickerFinancialsMap(portfolioTickers, {
+    surface: "portfolio",
+    visible: false,
+    weight: 20,
+    instrumentOptions,
+  });
   const portfolioFinancials = useMemo(
     () => buildPortfolioFinancialsMap(portfolioTickers, cachedPortfolioFinancials, livePortfolioFinancials, instrumentOptions),
     [portfolioTickers, cachedPortfolioFinancials, livePortfolioFinancials, instrumentOptions],

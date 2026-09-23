@@ -17,7 +17,8 @@ import {
   usePaneStateValue,
   usePaneAppConfig,
 } from "../../../state/app/context";
-import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
+import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
+import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { usePortfolioAccountState } from "../portfolio-list/header";
@@ -58,6 +59,8 @@ import {
   PortfolioHistorySection,
   SectorAllocationTable,
 } from "./view";
+
+const ANALYTICS_STATS_SAMPLE_MS = 5_000;
 
 function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const focusedCollectionId = useAppSelector((state) => getFocusedCollectionId(state));
@@ -139,10 +142,24 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const spyChartRequests = useMemo(() => [spyRequest], [spyRequest]);
   const spyChartEntries = useChartQueries(spyChartRequests);
 
-  const marketFinancials = useTickerFinancialsMap(portfolioTickers, instrumentOptions);
+  // Totals and weights are aggregates, so the positions stream as background
+  // targets (about once a second each) and merge with the portfolio pane's rows.
+  const marketFinancials = useLiveTickerFinancialsMap(portfolioTickers, {
+    surface: "portfolio",
+    visible: false,
+    weight: 20,
+    instrumentOptions,
+  });
   const financials = useMemo(
     () => buildPortfolioFinancialsMap(portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions),
     [portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions],
+  );
+  // Sharpe and beta weight daily returns by position value; they are daily
+  // statistics and do not need to be recomputed on every tick.
+  const statsFinancials = useSampledValue(
+    financials,
+    ANALYTICS_STATS_SAMPLE_MS,
+    `${activePortfolioId}\u001f${[...financials.keys()].join(",")}`,
   );
   const brokerPerformance = useBrokerPortfolioPerformance(activePortfolio, config);
   const performanceChartPoints = useMemo(
@@ -180,11 +197,11 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     () => buildPortfolioReturnSeries({
       chartTargets,
       chartEntries,
-      financials,
+      financials: statsFinancials,
       columnContext,
       account: accountState?.account,
     }),
-    [accountState, chartEntries, chartTargets, columnContext, financials],
+    [accountState, chartEntries, chartTargets, columnContext, statsFinancials],
   );
   const portfolioReturnSeries = returnSeriesResult.returns;
 

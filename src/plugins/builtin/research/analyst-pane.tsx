@@ -10,6 +10,9 @@ import {
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { AnalystResearchData } from "../../../types/financials";
+import type { TickerRecord } from "../../../types/ticker";
+import { useTickerFinancials } from "../../../market-data/hooks";
+import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financials";
 import { blendHex, colors, priceColor } from "../../../theme/colors";
 import { displayWidth, formatPercent } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
@@ -20,6 +23,7 @@ import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/
 import { loadAnalystResearch } from "./client";
 import {
   DEFAULT_RATING_SORT,
+  analystReferencePrice,
   analystTargetCurrency,
   formatAnalystPrice,
   formatPriceTarget,
@@ -71,18 +75,26 @@ function targetHistoryPoints(history: AnalystTargetHistoryPoint[]): ProjectedCha
   }));
 }
 
+interface AnalystQuoteBinding {
+  symbol: string | null;
+  ticker: TickerRecord | null;
+}
+
 /**
  * The reported target and its upside stay in the body because the chart under
  * them is a different measure: the rest of the consensus context lives in the
- * status bar rather than in a fixed block above the actions.
+ * status bar rather than in a fixed block above the actions. The upside moves
+ * with the live price, so this line (not the ratings table) re-renders on it.
  */
-function AnalystHeadline({ data, legend, width }: {
+function AnalystHeadline({ data, legend, width, binding }: {
   data: AnalystResearchData | null;
   legend: string | null;
   width: number;
+  binding: AnalystQuoteBinding;
 }) {
+  const financials = useTickerFinancials(binding.ticker ? binding.symbol : null, binding.ticker);
   const target = data?.priceTarget;
-  const upside = targetUpside(target);
+  const upside = targetUpside(target, analystReferencePrice(data, financials?.quote).price);
   const currency = analystTargetCurrency(data);
 
   // The table body already reports loading, error, and empty states.
@@ -147,10 +159,35 @@ function TargetHistoryChart({
   );
 }
 
+/**
+ * Streams the bound symbol and keeps the status bar's reference price on it.
+ * Rendered beside the table so a tick redraws the footer, not the ratings.
+ */
+function AnalystFooter({ data, loading, error, width, binding }: {
+  data: AnalystResearchData | null;
+  loading: boolean;
+  error: string | null;
+  width: number;
+  binding: AnalystQuoteBinding;
+}) {
+  // The upside is a percentage; about one update a second is enough for it.
+  const financials = useLiveTickerFinancials(binding.ticker ? binding.symbol : null, binding.ticker, {
+    surface: "detail",
+    visible: false,
+    weight: 40,
+  });
+  const reference = analystReferencePrice(data, financials?.quote);
+  usePaneFooter("analyst-research", () => ({
+    info: buildAnalystFooterInfo(data, { width, loading, error, reference }),
+  }), [data, error, loading, reference.freshness, reference.live, reference.price, width]);
+  return null;
+}
+
 export function AnalystResearchView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const dataProvider = useAssetData();
   const cloudSession = useResearchCloudSession();
-  const { symbol, exchange } = useSymbolBinding();
+  const { symbol, exchange, ticker } = useSymbolBinding();
+  const binding = useMemo<AnalystQuoteBinding>(() => ({ symbol, ticker }), [symbol, ticker]);
   const [sortPreference, setSortPreference] = useState<RatingSortPreference>(DEFAULT_RATING_SORT);
   const loader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider) throw new Error("Analyst data unavailable");
@@ -216,52 +253,65 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     setSortPreference((current) => nextRatingSortPreference(current, columnId));
   }, []);
 
-  usePaneFooter("analyst-research", () => ({
-    info: buildAnalystFooterInfo(authWall ? null : data, {
-      width,
-      loading,
-      error: authWall ? null : error,
-    }),
-  }), [authWall, data, error, loading, width]);
+  const footer = (
+    <AnalystFooter
+      data={authWall ? null : data}
+      loading={loading}
+      error={authWall ? null : error}
+      width={width}
+      binding={binding}
+    />
+  );
 
-  if (authWall) return <SignInWall action="view analyst research" needsVerification={cloudSession.needsVerification} />;
+  if (authWall) {
+    return (
+      <>
+        {footer}
+        <SignInWall action="view analyst research" needsVerification={cloudSession.needsVerification} />
+      </>
+    );
+  }
 
   return (
-    <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>
-      focused={focused}
-      selection={{
-        kind: "index",
-        selectedIndex: rows.length > 0 ? selectedIdx : -1,
-        onChange: (index) => setSelectedIdx(index),
-      }}
-      rootWidth={width}
-      rootHeight={height}
-      rootBefore={(
-        <>
-          <AnalystHeadline
-            data={data}
-            width={width}
-            legend={showChart ? `mean of ${chartFirms} rated firms' latest targets` : null}
-          />
-          {showChart ? (
-            <TargetHistoryChart
-              history={targetHistory}
-              currency={ratingCurrency}
+    <>
+      {footer}
+      <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>
+        focused={focused}
+        selection={{
+          kind: "index",
+          selectedIndex: rows.length > 0 ? selectedIdx : -1,
+          onChange: (index) => setSelectedIdx(index),
+        }}
+        rootWidth={width}
+        rootHeight={height}
+        rootBefore={(
+          <>
+            <AnalystHeadline
+              data={data}
+              binding={binding}
               width={width}
-              height={chartHeight}
+              legend={showChart ? `mean of ${chartFirms} rated firms' latest targets` : null}
             />
-          ) : null}
-        </>
-      )}
-      onRootKeyDown={handleKeyDown}
-      columns={columns}
-      items={rows}
-      sortColumnId={sortPreference.columnId}
-      sortDirection={sortPreference.direction}
-      onHeaderClick={handleHeaderClick}
-      getItemKey={(row, index) => `${row.date}:${row.firm}:${index}`}
-      renderCell={renderCell}
-      emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
-    />
+            {showChart ? (
+              <TargetHistoryChart
+                history={targetHistory}
+                currency={ratingCurrency}
+                width={width}
+                height={chartHeight}
+              />
+            ) : null}
+          </>
+        )}
+        onRootKeyDown={handleKeyDown}
+        columns={columns}
+        items={rows}
+        sortColumnId={sortPreference.columnId}
+        sortDirection={sortPreference.direction}
+        onHeaderClick={handleHeaderClick}
+        getItemKey={(row, index) => `${row.date}:${row.firm}:${index}`}
+        renderCell={renderCell}
+        emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
+      />
+    </>
   );
 }
