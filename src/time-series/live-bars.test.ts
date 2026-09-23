@@ -85,15 +85,42 @@ describe("LiveBarAccumulator", () => {
     expect(points).toHaveLength(1);
     expect(points[0]).toMatchObject({ open: 100, high: 105, low: 97, close: 97, volume: 40_500_000 });
 
-    // The session count restarts the next day; nothing is taken back from yesterday.
+    // The next session's count starts from zero and all of it is today's,
+    // even when the first quote seen arrives mid-morning. Nothing is taken
+    // back from yesterday.
     next = { ...quote("15:00:00", 99, 2_000_000), lastUpdated: Date.parse("2026-09-23T15:00:00Z") };
     bars.apply(history, next, options(next));
     next = { ...quote("15:00:00", 101, 2_600_000), lastUpdated: Date.parse("2026-09-23T15:10:00Z") };
     points = bars.apply(history, next, options(next));
     expect(points).toHaveLength(2);
     expect(points[0]?.volume).toBe(40_500_000);
-    expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), open: 99, high: 101, low: 99, close: 101, volume: 600_000 });
+    expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), open: 99, high: 101, low: 99, close: 101, volume: 2_600_000 });
   });
+
+  test("a pre-market quote still carrying yesterday's count does not become today's volume", () => {
+    const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
+    const bars = new LiveBarAccumulator();
+    const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1d" as const, exchange: "NASDAQ" });
+    let next: Quote = { ...quote("00:00:00", 103, 40_000_000, { marketState: "PRE", preMarketPrice: 104 }),
+      lastUpdated: Date.parse("2026-09-23T12:00:00Z") };
+    let points = bars.apply(history, next, options(next));
+    expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), close: 104 });
+    expect(points[1]?.volume).toBeUndefined();
+    // The regular session restarts the count on the same date, here first seen mid-morning.
+    next = { ...quote("00:00:00", 105, 25_000_000), lastUpdated: Date.parse("2026-09-23T15:00:00Z") };
+    points = bars.apply(history, next, options(next));
+    expect(points[0]?.volume).toBe(40_000_000);
+    expect(points[1]).toMatchObject({ close: 105, volume: 25_000_000 });
+  });
+
+  test("regular bars keep extended-hours prints out, including a bar still open after the close", () => {
+    const history = [bar("18:30:00", 100, 101, 99, 100, 5_000), bar("19:30:00", 100, 100.5, 99.5, 100.2, 800)];
+    const bars = new LiveBarAccumulator();
+    const post = quote("20:10:00", 100.2, 90_000, { marketState: "POST", postMarketPrice: 97 });
+    const points = bars.apply(history, post, { now: post.lastUpdated, resolution: "1h", exchange: "NASDAQ", liveSince: at("19:00:00") });
+    expect(points.at(-1)).toMatchObject({ low: 99.5, close: 100.2 });
+  });
+
   describe("a history ending in a trade-time observation", () => {
     // 5m bars, then the latest trade stamped at 14:23.
     const history = [

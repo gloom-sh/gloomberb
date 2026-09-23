@@ -13,6 +13,7 @@ import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resoluti
 
 const DAY_MS = 24 * 60 * 60_000;
 const EXTENDED_HOURS_STATES = new Set(["PRE", "PREPRE", "POST", "POSTPOST"]);
+const PRE_MARKET_STATES = new Set(["PRE", "PREPRE"]);
 /** Bars formed without any history refresh stay bounded on a chart left open for weeks. */
 const MAX_FORMED_BARS = 2_000;
 
@@ -140,6 +141,8 @@ export class LiveBarAccumulator {
   private lastQuote: Quote | undefined;
   private lastTime = Number.NEGATIVE_INFINITY;
   private lastPrice = Number.NaN;
+  /** The last observation was a pre-market quote, whose count is still the previous session's. */
+  private lastPreMarket = false;
   private cumulative: number | null = null;
   private version = 0;
   private gapPending = false;
@@ -208,13 +211,18 @@ export class LiveBarAccumulator {
       high: carried?.high ?? null,
       low: carried?.low ?? null,
       close: carried?.close ?? null,
-      // The provider's volume counts trades until it was loaded; later trades add to it.
-      volumeBase: this.cumulative,
+      // The provider's volume counts trades until it was loaded; later trades
+      // add to it. A count observed before the load is older than that bar.
+      volumeBase: this.observedSince(options.session?.observedAt, this.lastTime) ? this.cumulative : null,
       volumeEnd: forming ? null : this.cumulative,
       point: null,
     };
     this.bars = later;
     this.version += 1;
+  }
+
+  private observedSince(observedAt: number | undefined, time: number): boolean {
+    return observedAt === undefined || time >= observedAt;
   }
 
   private shiftVolumes(shift: number): void {
@@ -258,23 +266,40 @@ export class LiveBarAccumulator {
       { currency: quote.currency, price },
     )) return;
 
+    const { resolution } = options;
+    const calendar = isCalendarResolution(resolution);
+    const preMarket = !!quote.marketState && PRE_MARKET_STATES.has(quote.marketState);
+    const previousTime = this.lastTime;
     let previous = this.cumulative;
     if (volume !== null && previous !== null && volume < previous) {
-      // The session count restarted or was re-anchored lower. Volume already
-      // attributed to bars stays; only later trades are added.
-      this.shiftVolumes(previous - volume);
-      previous = volume;
+      // A new session's count starts from zero and all of it belongs to the
+      // calendar bar it falls in. Any other drop re-anchors the count lower;
+      // volume already attributed to bars stays and only later trades are added.
+      const restarted = calendar && ((this.lastPreMarket && !preMarket)
+        || calendarBarStart(time, "1d", exchange, false) !== calendarBarStart(previousTime, "1d", exchange, false));
+      const base = restarted ? 0 : volume;
+      this.shiftVolumes(previous - base);
+      previous = base;
     }
     if (volume !== null) {
-      anchor.volumeBase ??= previous ?? volume;
+      const observedAt = options.session?.observedAt;
+      if (anchor.volumeBase === null && this.observedSince(observedAt, time)) {
+        anchor.volumeBase = previous !== null && this.observedSince(observedAt, previousTime) ? previous : volume;
+      }
       if (forming && forming.volumeEnd === null && volume !== this.cumulative) forming.point = null;
       this.cumulative = volume;
     }
     this.lastTime = time;
     this.lastPrice = price;
+    this.lastPreMarket = preMarket;
     this.version += 1;
 
-    const { resolution } = options;
+    // Loaded intraday bars cover the regular session. Extended-hours prints
+    // would extend or form bars that no refresh can confirm.
+    if (!calendar && quote.marketState && EXTENDED_HOURS_STATES.has(quote.marketState)) {
+      this.closeFormingVolume(previous);
+      return;
+    }
     if (forming && this.inBar(time, forming.time, options, exchange)) {
       forming.high = Math.max(forming.high, price);
       forming.low = Math.min(forming.low, price);
@@ -292,19 +317,13 @@ export class LiveBarAccumulator {
     if (time < latestBarTime) return;
 
     let barTime = time;
-    if (isCalendarResolution(resolution)) {
+    if (calendar) {
       if (anchor.time % DAY_MS === 0) {
         // Keep the history's date labels so a new session lines up with its neighbours.
         barTime = Date.parse(`${calendarBarStart(time, resolution, exchange, false)}T00:00:00Z`);
         if (!(barTime > latestBarTime)) return;
       }
     } else {
-      // Loaded intraday bars cover the regular session. Extended-hours prints
-      // would form bars that no refresh can confirm.
-      if (quote.marketState && EXTENDED_HOURS_STATES.has(quote.marketState)) {
-        this.closeFormingVolume(previous);
-        return;
-      }
       const step = CHART_RESOLUTION_STEP_MS[resolution];
       const watched = options.liveSince !== undefined && latestBarTime + step >= options.liveSince;
       if (!watched && time - latestBarTime > Math.max(MIN_LIVE_QUOTE_TAIL_GAP_MS, 3 * step)) {
@@ -318,13 +337,16 @@ export class LiveBarAccumulator {
 
     this.closeFormingVolume(previous);
     if (this.bars.length >= MAX_FORMED_BARS) this.bars.splice(0, this.bars.length - MAX_FORMED_BARS + 1);
+    // A calendar bar's first quote reports its session's whole count so far,
+    // unless it is a pre-market quote still carrying the previous session's.
+    const sessionCount = calendar && previous === null && !preMarket;
     this.bars.push({
       time: barTime,
       open: price,
       high: price,
       low: price,
       close: price,
-      volumeStart: previous ?? volume,
+      volumeStart: sessionCount ? 0 : previous ?? volume,
       volumeEnd: null,
       point: null,
     });
