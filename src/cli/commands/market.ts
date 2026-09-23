@@ -468,13 +468,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
         { key: "rate", header: "Rate", align: "right" },
-        {
+        ...(asOf || stale ? [{
           key: "asOf",
           header: "As Of",
           format: (value: unknown, row: { stale: boolean }) => (
             row.stale ? cliStyles.warning(`${value ?? ""} stale`.trim()) : String(value ?? "")
           ),
-        },
+        }] : []),
       ],
     });
   });
