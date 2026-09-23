@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  browserSortFor,
   buildFilingPositionRows,
   buildFundHoldingRows,
   buildTimelineRows,
@@ -47,6 +48,13 @@ function holding(overrides: Partial<ThirteenFHoldingRecord>): ThirteenFHoldingRe
 }
 
 describe("13F model", () => {
+  test("a stored return sort falls back to reported value outside the performance ranking", () => {
+    const stored = { columnId: "estQuarterReturn" as const, direction: "desc" as const };
+    expect(browserSortFor(stored, "performance")).toBe(stored);
+    expect(browserSortFor(stored, "byTicker")).toEqual({ columnId: "value", direction: "desc" });
+    expect(browserSortFor({ columnId: "fund", direction: "asc" }, "funds")).toEqual({ columnId: "fund", direction: "asc" });
+  });
+
   test("infers browser mode from command query", () => {
     expect(inferBrowserTabFromQuery("")).toBe("performance");
     expect(inferBrowserTabFromQuery("AAPL")).toBe("byTicker");

@@ -40,6 +40,18 @@ export const DEFAULT_BROWSER_SORT: FundSortPreference<FundBrowserColumnId> = {
   direction: "desc",
 };
 
+const RETURN_SORT_COLUMNS = new Set<FundBrowserColumnId>(["estQuarterReturn", "return1", "return2", "return3"]);
+
+/** Estimated returns exist only on the performance ranking; other lists sort by reported value instead. */
+export function browserSortFor(
+  preference: FundSortPreference<FundBrowserColumnId>,
+  tab: ThirteenFBrowserTab,
+): FundSortPreference<FundBrowserColumnId> {
+  return tab !== "performance" && RETURN_SORT_COLUMNS.has(preference.columnId)
+    ? { columnId: "value", direction: "desc" }
+    : preference;
+}
+
 export const DEFAULT_HOLDING_SORT: FundSortPreference<FundHoldingColumnId> = {
   columnId: "value",
   direction: "desc",
@@ -578,15 +590,15 @@ export function nextSortPreference<TColumn extends string>(
   };
 }
 
-export function buildBrowserColumns(width: number): FundBrowserColumn[] {
+export function buildBrowserColumns(width: number, withEstimate = true): FundBrowserColumn[] {
   const cikWidth = 12;
   const periodWidth = 10;
   const filedWidth = 9;
   const valueWidth = 11;
   const rowsWidth = 6;
-  const retWidth = 9;
+  const retWidth = withEstimate ? 9 : 0;
   const fixedWidth = cikWidth + periodWidth + filedWidth + valueWidth + rowsWidth + retWidth;
-  const separators = 7;
+  const separators = withEstimate ? 7 : 6;
   const fundWidth = Math.max(18, width - fixedWidth - separators - 2);
   return [
     { id: "fund", label: "FUND", width: fundWidth, align: "left" },

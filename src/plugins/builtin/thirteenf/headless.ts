@@ -14,6 +14,7 @@ import {
 } from "./data";
 import {
   DEFAULT_BROWSER_SORT,
+  browserSortFor,
   DEFAULT_HOLDING_SORT,
   DEFAULT_TIMELINE_SORT,
   buildFundHoldingRows,
@@ -321,8 +322,9 @@ export function createThirteenFHeadless(
       const tab = browserTab(view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
       return {
-        columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))] : BROWSER_COLUMNS,
-        rows: sortBrowserRows(result.rows, DEFAULT_BROWSER_SORT)
+        columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))]
+          : tab === "performance" ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn"),
+        rows: sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab))
           .slice(0, limit)
           .map((row) => ({ ...row, ...Object.fromEntries((row.priorReturns ?? []).map((point, index) => [`return${index + 1}`, point.value])) })),
         ...(result.warning ? { errors: [result.warning] } : {}),

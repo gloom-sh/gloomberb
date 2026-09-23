@@ -37,6 +37,7 @@ import {
   FUND_DETAIL_TABS,
   THIRTEENF_PANE_ID,
   hasComparable13FQuarter,
+  browserSortFor,
   buildBrowserColumns,
   buildFilingPositionColumns,
   buildFilingPositionRows,
@@ -234,9 +235,10 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     }
   }, { allowEditable: true });
 
-  const sortedRows = useMemo(() => sortBrowserRows(rows, sortPreference), [rows, sortPreference]);
+  const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
+  const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort]);
   const columns = useMemo(() => {
-    if (browserMode !== "performance") return buildBrowserColumns(width);
+    if (browserMode !== "performance") return buildBrowserColumns(width, false);
     const history = rows[0]?.priorReturns ?? [];
     return [...buildBrowserColumns(width - history.length * 10).filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const }))];
   }, [width, browserMode, rows]);
@@ -369,11 +371,11 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         resetScrollKey={`${browserMode}:${query}`}
         columns={columns}
         items={sortedRows}
-        sortColumnId={sortPreference.columnId}
-        sortDirection={sortPreference.direction}
+        sortColumnId={browserSort.columnId}
+        sortDirection={browserSort.direction}
         onHeaderClick={(columnId) => {
-          setSortPreference((current) => nextSortPreference(
-            current,
+          setSortPreference(nextSortPreference(
+            browserSort,
             columnId as FundBrowserColumnId,
             columnId === "fund" || columnId === "cik" ? "asc" : "desc",
           ));
