@@ -33,8 +33,8 @@ import type { PaneProps } from "../../../../types/plugin";
 import type { InstrumentRef } from "../../../../market-data/request-types";
 import { calculatePortfolioSummaryTotals, resolveCollectionSortPreference, type ColumnContext } from "../metrics";
 import {
-  PortfolioSummaryHeader,
-  portfolioSummaryHeaderHeight,
+  cashMarginDrawerHeight,
+  PortfolioCashMarginDrawer,
   shouldToggleCashMarginDrawer,
   usePortfolioAccountState,
 } from "../header";
@@ -43,6 +43,7 @@ import {
   buildPortfolioSummaryNotices,
   buildPortfolioSummarySegments,
   layoutPortfolioSummaryHeader,
+  renderSummarySegments,
 } from "../summary";
 import {
   getCollectionEntries,
@@ -250,8 +251,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     cashDrawer: showCashDrawer,
     hideHeader: paneSettings.hideHeader,
   }), [paneSettings.hideHeader, showCashDrawer, summarySegments, summaryWidth]);
-  const summaryDrawerState = showCashDrawer ? accountState : null;
-  const requestedSummaryHeight = portfolioSummaryHeaderHeight(summaryLayout, summaryDrawerState, cashDrawerExpanded);
   const showCollectionTabs = visibleCollections.length > 1;
   const handleCollectionSelect = useCallback((collectionId: string) => {
     cancelPendingCursorSymbol();
@@ -270,8 +269,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     }
     : null);
   const headerHeight = showCollectionTabs && !tabsInHeader ? 1 : 0;
-  const summaryHeight = requestedSummaryHeight > 0
-    ? Math.min(requestedSummaryHeight, Math.max(1, height - (headerHeight + 2)))
+  const summaryHeight = summaryLayout.row.length > 0 && height > headerHeight + 2 ? 1 : 0;
+  const drawerHeight = showCashDrawer && cashDrawerExpanded
+    ? Math.min(cashMarginDrawerHeight(accountState, summaryLayout.detail.length), Math.max(1, height - (headerHeight + summaryHeight + 2)))
     : 0;
 
   const handleVisibleRangeChange = useCallback(({ start, end }: TickerListVisibleRange) => {
@@ -476,7 +476,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     notices: capNotice ? [...summaryNotices, capNotice] : summaryNotices,
     focused: focused && !quickAddFocused,
   });
-  const contentHeight = Math.max(1, height - headerHeight - summaryHeight - quickAddHeight);
+  const contentHeight = Math.max(1, height - headerHeight - summaryHeight - drawerHeight - quickAddHeight);
   const quickAddRow = activeCollectionId && activeCollectionEntry && quickAddCollectionKind ? (
     <QuickAddTickerInput
       collectionId={activeCollectionId}
@@ -508,15 +508,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       )}
 
       {summaryHeight > 0 && (
-        <Box height={summaryHeight} paddingX={1}>
-          <PortfolioSummaryHeader
-            layout={summaryLayout}
-            accountState={summaryDrawerState}
-            expanded={cashDrawerExpanded}
-            onToggle={() => setCashDrawerExpanded(!cashDrawerExpanded)}
-            width={summaryWidth}
-            height={summaryHeight}
-          />
+        <Box height={1} paddingX={1} overflow="hidden">
+          {renderSummarySegments(summaryLayout.row, summaryWidth)}
         </Box>
       )}
 
@@ -558,6 +551,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       )}
 
       {quickAddRow}
+
+      {drawerHeight > 0 && accountState && (
+        <Box height={drawerHeight} paddingX={1}>
+          <PortfolioCashMarginDrawer
+            accountState={accountState}
+            detail={summaryLayout.detail}
+            onToggle={() => setCashDrawerExpanded(false)}
+            width={summaryWidth}
+            height={drawerHeight}
+          />
+        </Box>
+      )}
 
     </Box>
   );

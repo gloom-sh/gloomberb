@@ -277,17 +277,13 @@ export interface PortfolioSummaryHeaderLayout {
   detail: PortfolioSummarySegment[];
 }
 
-/** Width of the disclosure marker and its gap in front of the header row. */
-export const SUMMARY_DISCLOSURE_WIDTH = 2;
-
 export function layoutPortfolioSummaryHeader(
   segments: PortfolioSummarySegment[],
   width: number,
   { cashDrawer, hideHeader }: { cashDrawer: boolean; hideHeader: boolean },
 ): PortfolioSummaryHeaderLayout {
-  const rowWidth = cashDrawer ? width - SUMMARY_DISCLOSURE_WIDTH : width;
-  const row = hideHeader ? [] : fitSummarySegments(segments, rowWidth);
-  const detail = cashDrawer ? fitSummarySegments(segments.slice(row.length), width - SUMMARY_DISCLOSURE_WIDTH) : [];
+  const row = hideHeader ? [] : fitSummarySegments(segments, width);
+  const detail = cashDrawer ? fitSummarySegments(segments.slice(row.length), width) : [];
   return { row, detail };
 }
 

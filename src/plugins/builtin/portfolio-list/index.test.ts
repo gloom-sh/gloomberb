@@ -112,7 +112,7 @@ describe("buildPortfolioSummarySegments", () => {
     const ids = (list: typeof segments) => list.map((segment) => segment.id);
 
     expect(ids(layout.row)).toEqual(["netliq", "val", "cash"]);
-    expect(ids(layout.detail)).toEqual(["day", "pnl"]);
+    expect(ids(layout.detail)).toEqual(["day", "pnl", "settled"]);
     expect(ids(layoutPortfolioSummaryHeader(segments, 50, { cashDrawer: true, hideHeader: true }).detail))
       .toEqual(["netliq", "val", "cash"]);
   });

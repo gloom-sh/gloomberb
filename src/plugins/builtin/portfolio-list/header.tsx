@@ -1,5 +1,4 @@
-import { Button } from "../../../components/ui/button";
-import { DisclosureMarker } from "../../../components/ui/disclosure-marker";
+import { ActionRow } from "../../../components/ui/action-row";
 import { Box, ScrollBox, Text } from "../../../ui";
 import { useEffect, useMemo, useState } from "react";
 import { t } from "../../../i18n";
@@ -16,8 +15,7 @@ import { usePluginBrokerActions } from "../../runtime";
 import {
   renderSummarySegments,
   resolvePortfolioAccountState,
-  SUMMARY_DISCLOSURE_WIDTH,
-  type PortfolioSummaryHeaderLayout,
+  type PortfolioSummarySegment,
   type ResolvedPortfolioAccountState,
 } from "./summary";
 
@@ -83,81 +81,52 @@ export function usePortfolioAccountState(
   return useMemo(() => ({ accountState, accountsError }), [accountState, accountsError]);
 }
 
-/** Rows the header needs: the summary row, then the open drawer's leftover numbers and currency balances. */
-export function portfolioSummaryHeaderHeight(
-  layout: PortfolioSummaryHeaderLayout,
-  accountState: ResolvedPortfolioAccountState | null,
-  expanded: boolean,
-): number {
-  if (!accountState) return layout.row.length > 0 ? 1 : 0;
-  if (!expanded) return 1;
-  return 1 + (layout.detail.length > 0 ? 1 : 0) + Math.min(4, Math.max(1, accountState.visibleCashBalances.length));
+/** Rows the open drawer needs: its title, the numbers the header row had no room for, then currency balances. */
+export function cashMarginDrawerHeight(accountState: ResolvedPortfolioAccountState, detailCount: number): number {
+  return 1 + (detailCount > 0 ? 1 : 0) + Math.min(4, Math.max(1, accountState.visibleCashBalances.length));
 }
 
 /**
- * The headline numbers above the table. For a broker account the row is also
- * the Cash & Margin disclosure, and opening it adds what the row had no room
- * for plus the per-currency balances, so no number is shown twice.
+ * Opens from the `[c]ash` hint and takes no rows while closed. It continues
+ * the header row rather than repeating it, so no number is shown twice.
  */
-export function PortfolioSummaryHeader({
-  layout,
+export function PortfolioCashMarginDrawer({
   accountState,
-  expanded,
+  detail,
   onToggle,
   width,
   height,
 }: {
-  layout: PortfolioSummaryHeaderLayout;
-  /** Set when the row opens the account's cash and margin. */
-  accountState: ResolvedPortfolioAccountState | null;
-  expanded: boolean;
+  accountState: ResolvedPortfolioAccountState;
+  detail: PortfolioSummarySegment[];
   onToggle: () => void;
   width: number;
   height: number;
 }) {
-  if (!accountState) {
-    return <Box height={1} overflow="hidden">{renderSummarySegments(layout.row, width)}</Box>;
-  }
-
-  const rowWidth = Math.max(0, width - SUMMARY_DISCLOSURE_WIDTH);
-  const summaryRow = (
-    <Button label="Cash & Margin" variant="plain" compact flush stopPropagation expanded={expanded} onPress={onToggle} width={width}>
-      <Box flexDirection="row" width="100%" alignItems="center" gap={1}>
-        <DisclosureMarker expanded={expanded} color={colors.text} width={2} />
-        {layout.row.length > 0
-          ? renderSummarySegments(layout.row, rowWidth)
-          : <Text fg={colors.text}>{t("Cash & Margin")}</Text>}
-      </Box>
-    </Button>
-  );
-  if (!expanded) return summaryRow;
-
-  const currencyRowsHeight = Math.max(1, height - 1 - (layout.detail.length > 0 ? 1 : 0));
+  const currencyRowsHeight = Math.max(1, height - 1 - (detail.length > 0 ? 1 : 0));
   return (
     <Box flexDirection="column" height={height}>
-      {summaryRow}
-      <Box flexDirection="column" paddingLeft={SUMMARY_DISCLOSURE_WIDTH}>
-        {layout.detail.length > 0 && (
-          <Box height={1} overflow="hidden">
-            {renderSummarySegments(layout.detail, rowWidth)}
-          </Box>
+      <ActionRow label={t("Cash & Margin")} expanded width={width} onPress={onToggle} />
+      {detail.length > 0 && (
+        <Box height={1} overflow="hidden">
+          {renderSummarySegments(detail, width)}
+        </Box>
+      )}
+      <ScrollBox height={currencyRowsHeight} scrollY focusable={false}>
+        {accountState.visibleCashBalances.length === 0 ? (
+          <Text fg={colors.textDim}>{t("No non-zero cash balances.")}</Text>
+        ) : (
+          accountState.visibleCashBalances.map((balance) => (
+            <Box key={balance.currency} height={1} flexDirection="row">
+              <Text fg={colors.textBright}>{padTo(balance.currency, 4)}</Text>
+              <Text fg={colors.textDim}>{" qty "}</Text>
+              <Text fg={colors.text}>{padTo(formatMarketQuantity(balance.quantity, { isCashBalance: true, maxWidth: 14 }), 14, "right")}</Text>
+              <Text fg={colors.textDim}>{"  value "}</Text>
+              <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue) : "—", 10, "right")}</Text>
+            </Box>
+          ))
         )}
-        <ScrollBox height={currencyRowsHeight} scrollY focusable={false}>
-          {accountState.visibleCashBalances.length === 0 ? (
-            <Text fg={colors.textDim}>{t("No non-zero cash balances.")}</Text>
-          ) : (
-            accountState.visibleCashBalances.map((balance) => (
-              <Box key={balance.currency} height={1} flexDirection="row">
-                <Text fg={colors.textBright}>{padTo(balance.currency, 4)}</Text>
-                <Text fg={colors.textDim}>{" qty "}</Text>
-                <Text fg={colors.text}>{padTo(formatMarketQuantity(balance.quantity, { isCashBalance: true, maxWidth: 14 }), 14, "right")}</Text>
-                <Text fg={colors.textDim}>{"  value "}</Text>
-                <Text fg={colors.text}>{padTo(balance.baseValue != null ? formatCompact(balance.baseValue) : "—", 10, "right")}</Text>
-              </Box>
-            ))
-          )}
-        </ScrollBox>
-      </Box>
+      </ScrollBox>
     </Box>
   );
 }

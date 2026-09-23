@@ -734,7 +734,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).not.toMatch(/[▸▾]/);
+    expect(frame).not.toContain("Cash & Margin");
   });
 
   test("renders one-month sparkline column when price history is loaded", async () => {
@@ -1067,6 +1067,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("Cash & Margin");
     expect(frame.match(/Cash -50k/g)).toHaveLength(1);
     expect(frame.match(/Net Liq 125k/g)).toHaveLength(1);
     expect(frame).toContain("Flex Mar 27");
