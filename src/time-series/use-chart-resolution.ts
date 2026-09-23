@@ -59,6 +59,10 @@ export interface UseChartResolutionOptions {
 const TAIL_RECONCILE_SETTLE_MS = 5_000;
 /** Recent-window refreshes stay at least this far apart, whatever the bar size. */
 const TAIL_RECONCILE_MIN_SPACING_MS = 30_000;
+/** Broker history endpoints are paced per account. */
+const BROKER_TAIL_RECONCILE_MIN_SPACING_MS = 120_000;
+/** A window that keeps settling nothing is requested ever less often, down to this. */
+const TAIL_RECONCILE_MAX_SPACING_MS = 10 * 60_000;
 /** A moving viewport end below this is invisible at any bar size. */
 const VIEWPORT_SLIDE_TOLERANCE_MS = 1_000;
 
@@ -313,6 +317,7 @@ export function useChartResolution(
     let forced = false;
     let quoteActivityAt = 0;
     let lastReconcileAt = resumed ? Number.NEGATIVE_INFINITY : liveSince;
+    let unchangedReconciles = 0;
     let reconcileTimer: ReturnType<typeof setTimeout> | null = null;
     let reconcileDue = Number.NaN;
 
@@ -374,9 +379,12 @@ export function useChartResolution(
         .catch(() => false);
       if (disposed) return;
       if (!changed) {
+        // A window that settles nothing, or that this history cannot take, is not asked for again at once.
+        unchangedReconciles += 1;
         scheduleReconcile(false);
         return;
       }
+      unchangedReconciles = 0;
       forced = true;
       refresher.request();
     };
@@ -389,9 +397,11 @@ export function useChartResolution(
       const boundary = Number.isFinite(latestBar)
         ? latestBar + (Math.max(0, Math.floor((now - latestBar) / step)) + 1) * step
         : Math.ceil(now / step) * step;
+      const spacing = Math.min(TAIL_RECONCILE_MAX_SPACING_MS, 2 ** Math.min(unchangedReconciles, 8)
+        * (resolveCacheRef.current.liveTailsUseBroker ? BROKER_TAIL_RECONCILE_MIN_SPACING_MS : TAIL_RECONCILE_MIN_SPACING_MS));
       const due = Math.max(
         soon ? now : boundary + TAIL_RECONCILE_SETTLE_MS,
-        lastReconcileAt + TAIL_RECONCILE_MIN_SPACING_MS,
+        lastReconcileAt + spacing,
       );
       if (reconcileTimer !== null && due >= reconcileDue) return;
       if (reconcileTimer !== null) clearTimeout(reconcileTimer);

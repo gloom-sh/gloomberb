@@ -143,6 +143,9 @@ interface LiveTailRequest {
   accumulationKey: string;
 }
 
+/** Recent-window requests for the same history, shared by every chart asking at once. */
+const tailRequestsInFlight = new WeakMap<DataProvider, Map<string, Promise<PriceHistoryResult | null>>>();
+
 /** Raw source data retained while live quotes recompute the chart tail. */
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
@@ -161,6 +164,12 @@ export class ChartResolveCache {
   /** Histories plotted by the latest resolve that follow the present. */
   liveTails: ReadonlyMap<string, LiveTailRequest> = new Map();
   tailReconcile: Promise<boolean> | null = null;
+
+  /** Broker history endpoints are paced per account, so their recent windows are requested less often. */
+  get liveTailsUseBroker(): boolean {
+    for (const tail of this.liveTails.values()) if (requestContext(tail.source).brokerId) return true;
+    return false;
+  }
 
   liveBarsFor(accumulationKey: string): LiveBarAccumulator {
     let bars = this.liveBars.get(accumulationKey);
@@ -1847,11 +1856,29 @@ export function reconcileChartTail(
     const latest = latestObservationTime(accumulated?.points ?? loaded.points);
     if (!Number.isFinite(latest) || now - latest > MAX_TAIL_RECONCILE_LAG_MS) return false;
     // The newest loaded bar may still have been forming when it was fetched.
-    const start = latest - CHART_RESOLUTION_STEP_MS[tail.resolution];
+    // Whole-bar starts and whole-minute ends let every chart of this history
+    // that asks at the same boundary share one request and one cached window.
+    const step = CHART_RESOLUTION_STEP_MS[tail.resolution];
+    const start = Math.floor((latest - step) / step) * step;
+    const end = Math.ceil(now / 60_000) * 60_000;
     const { symbol, exchange } = tail.source.instrument;
-    const result = await fetchHistoryResult(provider, symbol, exchange ?? "",
-      { kind: "detail", start: new Date(start), end: new Date(now), interval: tail.resolution },
-      requestContext(tail.source)).catch(() => null);
+    const context = requestContext(tail.source);
+    const requestKey = JSON.stringify([symbol, exchange ?? "", context.brokerId ?? null,
+      context.brokerInstanceId ?? null, context.instrument ?? null, tail.resolution, start, end]);
+    const shared = tailRequestsInFlight.get(provider) ?? new Map<string, Promise<PriceHistoryResult | null>>();
+    tailRequestsInFlight.set(provider, shared);
+    let request = shared.get(requestKey);
+    if (!request) {
+      const fetched = fetchHistoryResult(provider, symbol, exchange ?? "",
+        { kind: "detail", start: new Date(start), end: new Date(end), interval: tail.resolution }, context)
+        .catch(() => null)
+        .finally(() => {
+          if (shared.get(requestKey) === fetched) shared.delete(requestKey);
+        });
+      shared.set(requestKey, fetched);
+      request = fetched;
+    }
+    const result = await request;
     if (!result || result.resolution !== loaded.resolution
       || priceHistoryAcquisitionIdentity(result) !== priceHistoryAcquisitionIdentity(loaded)) return false;
     const points = result.points.filter((point) => {

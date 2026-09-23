@@ -225,7 +225,8 @@ describe("reconcileChartTail", () => {
     // 14:02 bar keeps the extremes and latest price watched since.
     tail = [bar("14:01:00", 100, 101.2, 99.4, 101.1, 1_150), bar("14:02:00", 101.1, 103, 101, 102.5, 150)];
     expect(await reconcileChartTail({ dataProvider: provider }, cache, at("14:02:25"))).toBe(true);
-    expect(detailRequests).toEqual([[new Date(at("14:00:00")), new Date(at("14:02:25"))]]);
+    // Whole-bar and whole-minute bounds, so charts asking at once share it.
+    expect(detailRequests).toEqual([[new Date(at("14:00:00")), new Date(at("14:03:00"))]]);
     expect((await bars(resolve("14:02:40", 103.5, 90_450))).slice(-3)).toEqual([
       { time: "14:00", open: 100, high: 101, low: 99, close: 100, volume: 5_000 },
       { time: "14:01", open: 100, high: 101.2, low: 99.4, close: 101.1, volume: 1_150 },
@@ -261,5 +262,29 @@ describe("reconcileChartTail", () => {
     expect(await reconcileChartTail({ dataProvider: provider }, cache, at("14:26:10"))).toBe(true);
     expect(await resolve("14:29:00", 101.0)).toEqual(["14:15=100.5", "14:20=101.5", "14:25=101"]);
     expect(await resolve("14:31:00", 100.7)).toEqual(["14:15=100.5", "14:20=101.5", "14:25=101", "14:30=100.7"]);
+  });
+
+  test("charts of the same history settling at the same boundary share one request", async () => {
+    let detailCalls = 0;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getPriceHistoryForResolution: async () => [bar("14:00:00", 100, 101, 99, 100, 5_000), bar("14:01:00", 100, 100.5, 99.5, 100, 800)],
+      getDetailedPriceHistory: async () => {
+        detailCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return [bar("14:01:00", 100, 101.2, 99.4, 101.1, 1_150), bar("14:02:00", 101.1, 103, 101, 102.5, 150)];
+      },
+    });
+    const caches = [new ChartResolveCache(), new ChartResolveCache()];
+    for (const cache of caches) {
+      await resolveChartSpecData(spec, { dataProvider: provider, now: new Date(at("14:01:30")),
+        loadFredSeries: async () => { throw new Error("unused"); } }, cache);
+    }
+    const settled = await Promise.all([
+      reconcileChartTail({ dataProvider: provider }, caches[0]!, at("14:02:05")),
+      reconcileChartTail({ dataProvider: provider }, caches[1]!, at("14:02:07")),
+    ]);
+    expect(settled).toEqual([true, true]);
+    expect(detailCalls).toBe(1);
   });
 });
