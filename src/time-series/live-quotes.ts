@@ -105,9 +105,19 @@ function isNewerQuote(next: Quote, current: Quote | undefined): boolean {
     && (next.stale === true) !== (current.stale === true));
 }
 
+/** Every chart bar boundary, intraday or calendar, is a whole minute. */
+const QUOTE_TIME_BUCKET_MS = 60_000;
+
+function quoteTimeBucket(quote: Quote): number {
+  return Number.isFinite(quote.lastUpdated) ? Math.floor(quote.lastUpdated / QUOTE_TIME_BUCKET_MS) : Number.NaN;
+}
+
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
-  return next.lastUpdated !== current.lastUpdated
+  // Bid/ask updates restamp a quote many times a second without moving its
+  // price or volume. The stamp alone matters only when it crosses into
+  // another minute, where it can open a bar at the same price.
+  return !Object.is(quoteTimeBucket(next), quoteTimeBucket(current))
     || next.price !== current.price
     || next.volume !== current.volume
     || next.stale !== current.stale

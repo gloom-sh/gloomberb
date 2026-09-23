@@ -146,8 +146,10 @@ describe("live chart quotes", () => {
     const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
     const store = createQuoteStoreFixture();
     const [target] = getLiveChartQuoteTargets(spec);
+    const key = chartQuoteOverrideKeyForTarget(target!);
     let changes = 0;
-    const stop = observeLiveChartQuotes({ spec, store, onChange: () => { changes += 1; } });
+    let latest: ReadonlyMap<string, Quote> = new Map();
+    const stop = observeLiveChartQuotes({ spec, store, onChange: (overrides) => { changes += 1; latest = overrides; } });
 
     store.emit(target!, { ...quote("AAPL", 100, 100), receivedAt: 100 });
     expect(changes).toBe(1);
@@ -159,6 +161,21 @@ describe("live chart quotes", () => {
     expect(changes).toBe(3);
     store.emit(target!, { ...quote("AAPL", 101, 100), receivedAt: 104, volume: 5_000, instrumentType: "Common Stock" });
     expect(changes).toBe(4);
+
+    // Bid/ask traffic restamps an unchanged trade many times a minute. Only a
+    // stamp in the next minute can open a bar at the same price.
+    const restamp = (lastUpdated: number) => ({ ...quote("AAPL", 101, lastUpdated), receivedAt: lastUpdated,
+      volume: 5_000, instrumentType: "Common Stock" });
+    store.emit(target!, restamp(30_000));
+    store.emit(target!, restamp(59_999));
+    expect(changes).toBe(4);
+    store.emit(target!, restamp(60_000));
+    expect(changes).toBe(5);
+    expect(latest.get(key)?.lastUpdated).toBe(60_000);
+    store.emit(target!, restamp(61_000));
+    store.emit(target!, { ...restamp(62_000), price: 101.5 });
+    expect(changes).toBe(6);
+    expect(latest.get(key)?.lastUpdated).toBe(62_000);
     stop();
   });
 

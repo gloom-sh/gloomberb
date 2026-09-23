@@ -63,6 +63,8 @@ const TAIL_RECONCILE_MIN_SPACING_MS = 30_000;
 const BROKER_TAIL_RECONCILE_MIN_SPACING_MS = 120_000;
 /** A window that keeps settling nothing is requested ever less often, down to this. */
 const TAIL_RECONCILE_MAX_SPACING_MS = 10 * 60_000;
+/** Points compared at each end of a series after a live pass that loaded no source data. */
+const LIVE_COMPARE_EDGE_POINTS = 8;
 /** A moving viewport end below this is invisible at any bar size. */
 const VIEWPORT_SLIDE_TOLERANCE_MS = 1_000;
 
@@ -155,8 +157,12 @@ function withQuoteOverrides(
   return { ...live, quoteOverrides: combined };
 }
 
-/** Structural equality over plain chart data. Arrays compare from the end, where live changes land. */
-function sameChartData(left: unknown, right: unknown): boolean {
+/**
+ * Structural equality over plain chart data. Arrays compare from the end, where
+ * live changes land. With `edge`, longer arrays compare only that many items at
+ * each end: the caller knows nothing in between can have changed.
+ */
+function sameChartData(left: unknown, right: unknown, edge = Number.POSITIVE_INFINITY): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false;
   if (left instanceof Date || right instanceof Date) {
@@ -164,8 +170,13 @@ function sameChartData(left: unknown, right: unknown): boolean {
   }
   if (Array.isArray(left) || Array.isArray(right)) {
     if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-    for (let index = left.length - 1; index >= 0; index -= 1) {
-      if (!sameChartData(left[index], right[index])) return false;
+    const length = left.length;
+    const bounded = length > 2 * edge;
+    for (let index = length - 1; index >= (bounded ? length - edge : 0); index -= 1) {
+      if (!sameChartData(left[index], right[index], edge)) return false;
+    }
+    for (let index = 0; bounded && index < edge; index += 1) {
+      if (!sameChartData(left[index], right[index], edge)) return false;
     }
     return true;
   }
@@ -173,11 +184,11 @@ function sameChartData(left: unknown, right: unknown): boolean {
   const rightRecord = right as Record<string, unknown>;
   const keys = Object.keys(leftRecord);
   if (keys.length !== Object.keys(rightRecord).length) return false;
-  return keys.every((key) => Object.hasOwn(rightRecord, key) && sameChartData(leftRecord[key], rightRecord[key]));
+  return keys.every((key) => Object.hasOwn(rightRecord, key) && sameChartData(leftRecord[key], rightRecord[key], edge));
 }
 
 /** A live pass that produced the same chart must not re-render it. */
-function sameChartResolution(current: ChartResolutionResult, next: ChartResolutionResult): boolean {
+function sameChartResolution(current: ChartResolutionResult, next: ChartResolutionResult, edge?: number): boolean {
   const { viewport: currentViewport, ...currentRest } = current;
   const { viewport: nextViewport, ...nextRest } = next;
   if (!currentViewport !== !nextViewport) return false;
@@ -185,7 +196,7 @@ function sameChartResolution(current: ChartResolutionResult, next: ChartResoluti
     Math.abs(currentViewport.start.getTime() - nextViewport.start.getTime()) >= VIEWPORT_SLIDE_TOLERANCE_MS
     || Math.abs(currentViewport.end.getTime() - nextViewport.end.getTime()) >= VIEWPORT_SLIDE_TOLERANCE_MS
   )) return false;
-  return sameChartData(currentRest, nextRest);
+  return sameChartData(currentRest, nextRest, edge);
 }
 
 function latestMarketBarTime(result: ChartResolutionResult): number {
@@ -249,6 +260,9 @@ export function useChartResolution(
   const liveQuoteVersionRef = useRef(0);
   const resolvedQuoteVersionRef = useRef(0);
   const resolveCacheRef = useRef(new ChartResolveCache());
+  // The cache revision each result is known to show. Only a result built from
+  // the same source data can be compared by its newest points alone.
+  const resultRevisionsRef = useRef(new WeakMap<ChartResolutionResult, { cache: ChartResolveCache; revision: number }>());
   const cacheIdentityRef = useRef<{
     spec: ChartSpec | null;
     sources: ChartResolveSources | null;
@@ -329,6 +343,7 @@ export function useChartResolution(
       resolvedQuoteVersionRef.current = liveQuoteVersionRef.current;
       const request = latestRequestRef.current;
       const cache = resolveCacheRef.current;
+      const dataRevision = cache.revision;
       const generation = ++generationRef.current;
       const current = () => !disposed
         && liveSubscriptionGenerationRef.current === subscriptionGeneration
@@ -342,13 +357,21 @@ export function useChartResolution(
         );
         if (!current()) return;
         const requestKey = JSON.stringify(request.spec);
+        // A pass that brought in no source data changed at most the newest points.
+        const settled = cache.revision === dataRevision;
+        const revisions = resultRevisionsRef.current;
+        if (settled) revisions.set(next, { cache, revision: dataRevision });
         setState((state) => {
           if (state.key !== requestKey) return { key: requestKey, result: next };
           if ((request.options.autoViewport || request.options.requestViewport)
             && !state.result.loading
             && hasRenderableData(state.result)
             && !hasRenderableData(next)) return state;
-          return sameChartResolution(state.result, next) ? state : { key: requestKey, result: next };
+          const shown = revisions.get(state.result);
+          const edge = settled && shown?.cache === cache && shown.revision === dataRevision ? LIVE_COMPARE_EDGE_POINTS : undefined;
+          if (!sameChartResolution(state.result, next, edge)) return { key: requestKey, result: next };
+          if (settled) revisions.set(state.result, { cache, revision: dataRevision });
+          return state;
         });
       } catch (error) {
         if (!current()) return;
@@ -444,6 +467,7 @@ export function useChartResolution(
     }
     cacheIdentityRef.current = { spec, sources, revision };
     const cache = resolveCacheRef.current;
+    const dataRevision = cache.revision;
     const current = resultRef.current;
     const backgroundRefresh = state.key === specKey && hasRenderableData(current) && !current.loading && !isExplicitReload;
     if (!backgroundRefresh) {
@@ -459,6 +483,7 @@ export function useChartResolution(
       .then((next) => {
         if (generationRef.current !== generation) return;
         if (backgroundRefresh && !hasRenderableData(next)) return;
+        if (cache.revision === dataRevision) resultRevisionsRef.current.set(next, { cache, revision: dataRevision });
         setState({ key: specKey, result: next });
       })
       .catch((error) => {

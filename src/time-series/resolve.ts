@@ -161,9 +161,16 @@ export class ChartResolveCache {
   readonly capabilitySeriesByRequest = new Map<string, Promise<ResolvedSeries>>();
   /** Forming bars per accumulated history, kept across live re-resolves. */
   readonly liveBars = new Map<string, LiveBarAccumulator>();
+  /** The loaded history each accumulated history last merged, so an unchanged load is not merged again. */
+  readonly accumulatedFrom = new Map<string, LoadedPriceHistory>();
   /** Histories plotted by the latest resolve that follow the present. */
   liveTails: ReadonlyMap<string, LiveTailRequest> = new Map();
   tailReconcile: Promise<boolean> | null = null;
+  /**
+   * Bumped whenever source data enters the cache. A resolve that ran without a
+   * bump changed at most what the quotes change: the newest points.
+   */
+  revision = 0;
 
   /** Broker history endpoints are paced per account, so their recent windows are requested less often. */
   get liveTailsUseBroker(): boolean {
@@ -1239,6 +1246,7 @@ export async function resolveChartSpecData(
         })
         .catch(() => { cache.financialsByInstrument.delete(key); return null; });
       cache.financialsByInstrument.set(key, pending);
+      cache.revision += 1;
     }
     return pending;
   };
@@ -1254,6 +1262,7 @@ export async function resolveChartSpecData(
         .then((metadata) => { if (!metadata) cache.quoteMetadataByInstrument.delete(key); return metadata; })
         .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
       cache.quoteMetadataByInstrument.set(key, pending);
+      cache.revision += 1;
     }
     return pending;
   };
@@ -1282,6 +1291,7 @@ export async function resolveChartSpecData(
         pending = Promise.reject(error);
         cache.resolutionSupportByInstrument.set(key, pending);
         cache.rejectedResolutionSupport.add(key);
+        cache.revision += 1;
         return pending;
       }
       if (Array.isArray(result)) {
@@ -1296,10 +1306,13 @@ export async function resolveChartSpecData(
           .catch(() => [] as ChartResolutionSupport[]);
         const settledPending = pending;
         settledPending.then((settled) => {
-          if (cache.resolutionSupportByInstrument.get(key) === settledPending) cache.settledResolutionSupport.set(key, settled);
+          if (cache.resolutionSupportByInstrument.get(key) !== settledPending) return;
+          cache.settledResolutionSupport.set(key, settled);
+          cache.revision += 1;
         });
       }
       cache.resolutionSupportByInstrument.set(key, pending);
+      cache.revision += 1;
     }
     return pending;
   };
@@ -1428,6 +1441,7 @@ export async function resolveChartSpecData(
     const acquire = () => {
       const next = loadPriceHistory(sources.dataProvider!, source, request);
       cache.priceHistoryByRequest.set(key, next);
+      cache.revision += 1;
       // Retention expiry is independent of the current session/bar boundary.
       void next.then((value) => {
         if (cache.priceHistoryByRequest.get(key) !== next) return;
@@ -1488,12 +1502,25 @@ export async function resolveChartSpecData(
         `Price history for the requested window is unavailable for ${instrumentLabel(source)}.`,
       );
     }
-    const accumulated = loaded.resolution === null ? history : mergePriceHistoryWindows(
-      previousHistory, history, loaded.resolution,
-    );
-    const tail = priceHistoryTailAcquisition(previous, loaded);
-    const combined = { ...loaded, session: tail.session, sourceKey: tail.sourceKey, points: accumulated };
-    if (accumulationKey) cache.accumulatedPriceHistory.set(accumulationKey, combined);
+    // Live passes resolve the same load again; merging it again changes nothing.
+    const unchanged = previous !== undefined && accumulationKey !== null
+      && cache.accumulatedFrom.get(accumulationKey) === loaded;
+    let combined: LoadedPriceHistory;
+    if (unchanged) {
+      combined = previous;
+    } else {
+      const accumulated = loaded.resolution === null ? history : mergePriceHistoryWindows(
+        previousHistory, history, loaded.resolution,
+      );
+      const tail = priceHistoryTailAcquisition(previous, loaded);
+      combined = { ...loaded, session: tail.session, sourceKey: tail.sourceKey, points: accumulated };
+      if (accumulationKey) {
+        cache.accumulatedPriceHistory.set(accumulationKey, combined);
+        cache.accumulatedFrom.set(accumulationKey, loaded);
+        cache.revision += 1;
+      }
+    }
+    const accumulated = combined.points;
     if (accumulationKey && loaded.resolution && isIntradayResolution(loaded.resolution)
       && isMarketFieldId(source.fieldId) && currentWindow()) {
       liveTails.set(key, { source, resolution: loaded.resolution, accumulationKey });
@@ -1512,6 +1539,7 @@ export async function resolveChartSpecData(
     if (!pending) {
       pending = sources.loadFredSeries(request);
       cache.fredSeriesByRequest.set(key, pending);
+      cache.revision += 1;
     }
     return pending;
   };
@@ -1542,6 +1570,7 @@ export async function resolveChartSpecData(
         if (!pending) {
           pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec);
           cache.capabilitySeriesByRequest.set(key, pending);
+          cache.revision += 1;
         }
         return baseCapabilitySeries(seriesSpec, await pending, index);
       }
@@ -1898,6 +1927,7 @@ export function reconcileChartTail(
         points: mergePriceHistoryWindows(accumulated.points, points, tail.resolution),
         session: accumulatedAcquisition.session, sourceKey: accumulatedAcquisition.sourceKey });
     }
+    cache.revision += 1;
     return true;
   })).then((changes) => changes.some(Boolean)).finally(() => {
     if (cache.tailReconcile === run) cache.tailReconcile = null;
