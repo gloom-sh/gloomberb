@@ -165,6 +165,15 @@ export function buildBrowserRows(options: {
   });
 }
 
+export type ThirteenFAmendmentKind = "restatement" | "new-holdings" | "unknown";
+
+/** How a 13F-HR/A combines with its period's report; null for an original filing. */
+export function amendmentKind(form: Pick<ThirteenFFormSummary, "isAmendment" | "amendmentType">): ThirteenFAmendmentKind | null {
+  if (!form.isAmendment) return null;
+  const type = form.amendmentType?.trim().toUpperCase();
+  return type === "RESTATEMENT" ? "restatement" : type === "NEW HOLDINGS" ? "new-holdings" : "unknown";
+}
+
 function browserReportTotal(
   form: ThirteenFFormSummary | undefined,
   report: ThirteenFPeriodReport | undefined,
@@ -172,7 +181,8 @@ function browserReportTotal(
 ): number | null | undefined {
   if (!form) return undefined;
   if (report?.periodOfReport === form.periodOfReport) return report.complete ? report[key] : null;
-  return !form.isAmendment || form.amendmentType?.trim().toUpperCase() === "RESTATEMENT" ? form[key] : null;
+  const kind = amendmentKind(form);
+  return kind == null || kind === "restatement" ? form[key] : null;
 }
 
 export function dedupeLatestForms(forms: ThirteenFFormSummary[]): ThirteenFFormSummary[] {
@@ -194,11 +204,11 @@ export function buildPeriodReports(forms: ThirteenFFormSummary[]): ThirteenFPeri
   const unique = [...new Map(forms.map((form) => [form.accessionNumber, form])).values()];
   for (const form of unique.sort(compareFormRecency)) {
     let report = byPeriod.get(form.periodOfReport);
-    const amendmentType = form.amendmentType?.trim().toUpperCase();
-    if (!form.isAmendment || amendmentType === "RESTATEMENT") {
+    const kind = amendmentKind(form);
+    if (kind == null || kind === "restatement") {
       report = { periodOfReport: form.periodOfReport, filings: [form], complete: true,
         tableValueTotal: form.tableValueTotal, tableEntryTotal: form.tableEntryTotal };
-    } else if (amendmentType === "NEW HOLDINGS") {
+    } else if (kind === "new-holdings") {
       report = report ?? { periodOfReport: form.periodOfReport, filings: [], complete: false,
         tableValueTotal: null, tableEntryTotal: null };
       report.filings.push(form);

@@ -34,6 +34,7 @@ import {
   DEFAULT_TIMELINE_SORT,
   FUND_DETAIL_TABS,
   THIRTEENF_PANE_ID,
+  amendmentKind,
   hasComparable13FQuarter,
   browserSortFor,
   buildBrowserColumns,
@@ -520,7 +521,6 @@ export function FundDetailView({
   const currentSourceUrl = activeTab === "filings"
     ? openFiling?.url ?? selectedFiling?.url
     : selectedHoldingFiling?.url ?? latestForm?.url;
-  const statusFiling = openFiling ?? latestForm;
   useEffect(() => {
     if (holdingSelectedId && visibleHoldingRows.some((row) => row.id === holdingSelectedId)) return;
     setHoldingSelectedId(visibleHoldingRows[0]?.id ?? null);
@@ -610,7 +610,8 @@ export function FundDetailView({
   });
 
   const holdingStats: StatItem[] = [
-    { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--", detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}` },
+    { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--",
+      detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}` },
     data && hasComparable13FQuarter(data)
       ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
       : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
@@ -632,11 +633,6 @@ export function FundDetailView({
   const detailHints = useMemo<PaneHint[]>(() => hasHoldingFiling
     ? [{ id: "filing", key: "f", label: "iling", title: "Open Filing", onPress: openSelectedFilingInPane }]
     : [], [hasHoldingFiling, openSelectedFilingInPane]);
-  const detailStatusInfo = useMemo<PaneFooterSegment[]>(() => (
-    statusFiling?.isAmendment
-      ? [{ id: "amended", parts: [{ text: "amended", tone: "warning" }] }]
-      : []
-  ), [statusFiling?.isAmendment]);
   usePaneStatusLinkFooter({
     registrationId: "thirteenf-detail",
     focused,
@@ -644,7 +640,6 @@ export function FundDetailView({
     source: openFiling ? "SEC 13F" : null,
     loading: activeTab !== "overlap" && status === "loading",
     error: activeTab === "overlap" ? null : error,
-    info: activeTab === "overlap" ? [] : detailStatusInfo,
     showOpenHint: true,
     hints: detailHints,
   });
@@ -873,11 +868,19 @@ function FilingDetailView({
 
   usePaneNoticeFooter({ registrationId: "thirteenf-filing-notices", notices: [...new Set([...sourceWarnings, ...warnings])], focused });
 
+  // An untyped amendment may replace or add to the report, so only it is a caveat.
+  const kind = amendmentKind(filing);
+  const amendmentStat: StatItem | null = kind && {
+    id: "amendment",
+    label: "Amendment",
+    value: kind === "restatement" ? "Restatement" : kind === "new-holdings" ? "New holdings" : "Unknown type",
+    tone: kind === "unknown" ? "warning" : undefined,
+  };
   // The fund names the stack and `o` opens the filing, so neither repeats here.
   const summaryItems: StatItem[] = [
     { id: "filed", label: "Filed", value: filing.filedAsOfDate || "--" },
     { id: "form", label: "Form", value: filing.submissionType || "--" },
-    ...(filing.isAmendment ? [{ id: "amendment", label: "Amendment", value: filing.amendmentType ?? "amended", tone: "warning" as const }] : []),
+    ...(amendmentStat ? [amendmentStat] : []),
     { id: "cik", label: "CIK", value: filing.cik },
     { id: "accession", label: "Accession", value: filing.accessionNumber },
   ];

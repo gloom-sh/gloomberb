@@ -13,7 +13,7 @@ import {
   formatShares,
   formatShortDate,
 } from "./format";
-import { positionType } from "./model";
+import { amendmentKind, positionType } from "./model";
 import type {
   FilingPositionColumn,
   FilingPositionRow,
@@ -157,6 +157,12 @@ export function renderFilingPositionCell(
   }
 }
 
+function amendmentLabel(row: FundTimelineRow): string | null {
+  const kind = amendmentKind(row);
+  if (!kind) return null;
+  return kind === "restatement" ? "Restatement" : kind === "new-holdings" ? "New holdings" : "Amendment (unknown)";
+}
+
 export function renderTimelineCell(
   row: FundTimelineRow,
   column: FundTimelineColumn,
@@ -184,8 +190,8 @@ export function renderTimelineCell(
       };
     case "form":
       return {
-        text: row.isAmendment ? row.amendmentType?.toUpperCase() === "RESTATEMENT" ? "Restatement" : row.amendmentType?.toUpperCase() === "NEW HOLDINGS" ? "New holdings" : "Amendment (unknown)" : row.submissionType,
-        color: selectedColor ?? (row.isAmendment ? colors.warning : colors.textDim),
+        text: amendmentLabel(row) ?? row.submissionType,
+        color: selectedColor ?? (amendmentKind(row) === "unknown" ? colors.warning : colors.textDim),
       };
   }
 }
