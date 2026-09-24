@@ -1,5 +1,4 @@
 import { formatPriceEarnings } from "../../../utils/price-earnings";
-import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
@@ -210,17 +209,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);
   const status = [error, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
     missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
-  const selectedRow = sortedRows[selectedIdx];
-  const selectedCapNotice = selectedRow?.marketCapProvenance?.kind === "fundamentals"
-    ? `${selectedRow.symbol} cap: ${describeFundamentalMarketCap(selectedRow.marketCapProvenance)}.` : undefined;
 
   usePaneNoticeFooter({
     registrationId: "relative-valuation-notices",
-    notices: [
-      ...rows.filter((row) => row.fundamentalsProvenance?.stale)
-        .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
-      ...(selectedCapNotice ? [selectedCapNotice] : []),
-    ],
+    notices: rows.filter((row) => row.fundamentalsProvenance?.stale)
+      .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
     focused,
   });
 
