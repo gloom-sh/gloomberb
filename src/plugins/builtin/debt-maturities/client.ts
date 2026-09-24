@@ -21,6 +21,15 @@ export const BUCKET_IDS = [
   "InYearFive",
   "AfterYearFive",
 ] as const;
+/** Rolling-period concepts some filers (JPM from FY2023) use for the same buckets. */
+const ROLLING_BUCKET_TAGS = [
+  "InNextRollingTwelveMonths",
+  "InRollingYearTwo",
+  "InRollingYearThree",
+  "InRollingYearFour",
+  "InRollingYearFive",
+  "InRollingAfterYearFive",
+] as const;
 const number = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 const nullableNumber = (value: unknown) => value === null || number(value);
@@ -177,8 +186,10 @@ export function validateDebtMaturities(
         : !sameFiling(bucket.fact) ||
           bucket.fact.end !== latest.asOf ||
           bucket.fact.start !== null ||
-          bucket.fact.tag !==
-            `LongTermDebtMaturitiesRepaymentsOfPrincipal${bucket.id}` ||
+          (bucket.fact.tag !==
+            `LongTermDebtMaturitiesRepaymentsOfPrincipal${bucket.id}` &&
+            bucket.fact.tag !==
+              `LongTermDebtMaturitiesRepaymentsOfPrincipal${ROLLING_BUCKET_TAGS[index]}`) ||
           bucket.fact.value !== bucket.value)
     )
       return invalid();

@@ -16,6 +16,8 @@ The latest observation date identifies the source period, not necessarily its re
 
 Ordinary loads and automatic checks reuse series retrieved within six hours. Pressing `r` requests current observations, including revisions to earlier periods. If a request fails, available cached observations remain visible with the existing error and stale status; independently available statistics still update. This is current-series research, not reconstruction of publication-time vintages.
 
+STALE marks a statistic whose newest print is overdue. FRED dates a print at the start of its period, so each limit allows two periods, the group's slowest normal release lag and about two weeks: 90 days for CPI, PPI, jobs, output, retail sales and housing starts; 105 days for PCE, income, spending, new home sales, sentiment and M2; 115 days for JOLTS, durable goods, factory orders and trade; 235 days for GDP and productivity; 6 days for daily and 21 days for weekly series.
+
 Exports retain each statistic's retrieval time separately from its observation-period date. Aggregate `fetchedAt` is the oldest known retrieval among included statistics, or `null` when none is known. `fetchedAtComplete` is false if any included statistic lacks retrieval provenance, so the aggregate does not establish freshness for that statistic. Hydrated or injected observations without retrieval metadata keep a null retrieval time and unknown cache freshness. Reading or projecting cached observations does not advance their retrieval time.
 
 ## Series catalog

@@ -26,6 +26,9 @@ export interface CentralBankRow {
   status: "available" | "stale" | "unavailable"
   unavailableReason: "source-unavailable" | "metadata-mismatch" | "metadata-unavailable" | "no-observations" | "no-policy-rate" | "no-unified-rate" | null
   notes: string[]
+  /** When the bank's own site last showed the same level as a lagging BIS observation. */
+  confirmedAt?: string | null
+  confirmationSourceUrl?: string | null
   nextMeeting: { date: string; sourceUrl: string; verifiedAt: string } | null
 }
 

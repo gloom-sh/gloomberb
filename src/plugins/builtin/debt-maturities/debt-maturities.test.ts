@@ -214,6 +214,14 @@ describe("debt maturity Cloud boundary", () => {
     }
   });
 
+  test("accepts a bucket filed under its rolling-period concept, not another bucket's", () => {
+    const data = fixture();
+    data.latest!.buckets[1]!.fact!.tag = "LongTermDebtMaturitiesRepaymentsOfPrincipalInRollingYearTwo";
+    expect(validateDebtMaturities(data, "TEST").latest?.buckets[1]?.value).toBe(10);
+    data.latest!.buckets[1]!.fact!.tag = "LongTermDebtMaturitiesRepaymentsOfPrincipalInRollingYearThree";
+    expect(() => validateDebtMaturities(data, "TEST")).toThrow();
+  });
+
   test("missing bucket stays a chart gap and prevents a total and concentration denominator", () => {
     const data = fixture(),
       latest = data.latest!;

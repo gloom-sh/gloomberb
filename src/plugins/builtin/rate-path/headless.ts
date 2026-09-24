@@ -29,7 +29,7 @@ const contractColumns: HeadlessPaneColumn[] = [
 
 export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["WIRP", "FFIP"], dataRequirements: ["Gloom Cloud rate-path endpoint"],
-    limitations: ["Conditional two-outcome probabilities", "Sparse SOFR history", "Maintained FOMC schedule and SEP snapshot"] },
+    limitations: ["Conditional two-outcome probabilities", "SR3 history from hourly trades", "Maintained FOMC schedule and SEP snapshot"] },
   shape: "bundle", argument: { kind: "none" }, options: [], describe: "US rate path",
   async load(_args, ctx) {
     const data = await fetchRatePath(ctx.apiClient);
