@@ -7,7 +7,7 @@ import { getBrokerLabel } from "./utils";
 /** Opens the setup link below the steps; the wizard binds it. */
 export const BROKER_GUIDE_KEY = "o";
 
-const IBKR_FLEX_GUIDE_URL = "https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm";
+const IBKR_FLEX_GUIDE_URL = "https://www.ibkrguides.com/clientportal/performanceandstatements/flex.htm";
 const IBKR_GATEWAY_DOWNLOAD_URL = "https://www.interactivebrokers.com/en/trading/ibgateway-stable.php";
 
 /** The link the setup step shows for this broker and connection mode, if any. */
@@ -56,16 +56,16 @@ export function BrokerSetupPanel({
           </Box>
           <Box height={desktop ? 2 : 1} />
           <Box height={1}>
-            <Text fg={colors.textDim}>{t("1. Go to ")}<Underline><Span fg={colors.text}>{t("Reports > Flex Queries")}</Span></Underline></Text>
+            <Text fg={colors.textDim}>{t("1. Go to ")}<Underline><Span fg={colors.text}>{t("Performance & Reports > Flex Queries")}</Span></Underline></Text>
           </Box>
           <Box height={1} overflow="hidden">
-            <Text fg={colors.textDim}>{t("2. Create a Flex Query that includes positions data")}</Text>
+            <Text fg={colors.textDim}>{t("2. Create an Activity Flex Query: Open Positions, Select All")}</Text>
           </Box>
           <Box height={1}>
             <Text fg={colors.textDim}>{t("3. Note the ")}<Strong><Span fg={colors.text}>{t("Query ID")}</Span></Strong>{t(" (numeric)")}</Text>
           </Box>
           <Box height={desktop ? 1 : 2} overflow="hidden">
-            <Text fg={colors.textDim}>{t("4. Under ")}<Underline><Span fg={colors.text}>{t("Reports > Settings")}</Span></Underline>{t(", generate a ")}<Strong><Span fg={colors.text}>{t("Flex Web Service Token")}</Span></Strong></Text>
+            <Text fg={colors.textDim}>{t("4. Click the gear by ")}<Underline><Span fg={colors.text}>{t("Flex Web Service")}</Span></Underline>{t(" for a ")}<Strong><Span fg={colors.text}>{t("Flex Web Service Token")}</Span></Strong></Text>
           </Box>
           <Box height={desktop ? 2 : 1} />
           <GuideLink url={IBKR_FLEX_GUIDE_URL} />
