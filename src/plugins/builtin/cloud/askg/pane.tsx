@@ -190,7 +190,7 @@ function ToolTimelineRow({
           <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(row.argumentSummary, summaryWidth)}`}</Text>
         ) : null}
         <Box flexGrow={1} />
-        {tier ? <Text fg={colors.warning}>{`${tier}  `}</Text> : null}
+        {tier ? <Text fg={row.writeTier === "ui-write" ? colors.textMuted : colors.warning}>{`${tier}  `}</Text> : null}
         {row.status === "running" || row.status === "pending" ? (
           <Spinner label={status} />
         ) : (
