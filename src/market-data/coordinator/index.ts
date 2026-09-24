@@ -23,6 +23,7 @@ import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
 import { measurePerf } from "../../utils/perf-marks";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { hasUsablePriceHistory } from "../../utils/price-history";
+import { fxFreshUntil } from "../../utils/fx-market-hours";
 import {
   createBaselineChartRequest,
   createChartLoadingEntry,
@@ -635,7 +636,7 @@ export class MarketDataCoordinator {
       error: null,
       asOf: live.observedAt,
       fetchedAt: Math.max(entry.fetchedAt ?? 0, live.receivedAt),
-      staleAt: live.observedAt + FX_LIVE_RATE_STALE_MS,
+      staleAt: fxFreshUntil(live.observedAt, FX_LIVE_RATE_STALE_MS),
     };
   }
 

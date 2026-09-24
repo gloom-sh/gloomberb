@@ -1,4 +1,5 @@
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
+import { fxFreshUntil } from "./fx-market-hours";
 
 export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
 const FX_FRESH_MS = 60 * 60_000;
@@ -49,8 +50,8 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   const delay = typeof data.delayMinutes === "number" && Number.isFinite(data.delayMinutes) && data.delayMinutes >= 0
     ? Math.min(data.delayMinutes, 15) * 60_000 : 0;
   const staleAt = Math.min(declaredStaleAt ?? Infinity,
-    fetchedAt === undefined ? Infinity : fetchedAt + FX_FRESH_MS,
-    asOf === undefined ? Infinity : asOf + FX_FRESH_MS + delay,
+    fetchedAt === undefined ? Infinity : fxFreshUntil(fetchedAt, FX_FRESH_MS),
+    asOf === undefined ? Infinity : fxFreshUntil(asOf, FX_FRESH_MS + delay),
     data.stale === true ? now : Infinity);
   return {
     ...(fetchedAt !== undefined ? { fetchedAt } : {}),
