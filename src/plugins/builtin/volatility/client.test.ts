@@ -59,9 +59,9 @@ describe("volatility source loader", () => {
     while (pending.length) { pending.splice(0).forEach((resolve) => resolve()); await settle(); }
     const result = await loading;
     expect(peak).toBe(4);
-    expect(result.loaded).toBe(24);
-    expect(snapshots.at(-1)?.loaded).toBe(24);
-    expect(seen).toHaveLength(22);
+    expect(result.loaded).toBe(23);
+    expect(snapshots.at(-1)?.loaded).toBe(23);
+    expect(seen).toHaveLength(21);
     expect(seen.every((request) => request.instrument.exchange === "" && request.bufferRange === "1Y"
       && request.granularity === "resolution" && request.resolution === "1d")).toBe(true);
     expect(fredRequests).toEqual([["VIXCLS", { limit: 400, sortOrder: "desc" }], ["VXVCLS", { limit: 400, sortOrder: "desc" }]]);
@@ -102,13 +102,13 @@ describe("volatility source loader", () => {
     expect(cached?.data.board.find((row) => row.id === "vix")?.value).toBe(22);
     await loadVolatilityData(false, dependencies);
     await loadVolatilityData(false, dependencies);
-    expect(calls).toHaveLength(22);
+    expect(calls).toHaveLength(21);
     expect(fredCalls).toBe(2);
     await loadVolatilityData(true, dependencies);
-    expect(calls).toHaveLength(44);
+    expect(calls).toHaveLength(42);
     expect(fredCalls).toBe(4);
     expect(calls[0]?.slice(0, 4)).toEqual(["^VIX", "", "1Y", "1d"]);
-    expect(calls[22]?.[4]).toMatchObject({ cacheMode: "refresh" });
+    expect(calls[21]?.[4]).toMatchObject({ cacheMode: "refresh" });
   });
 
   test("failed empty sources do not mark fresh displayed observations stale", async () => {
@@ -170,8 +170,8 @@ describe("volatility source loader", () => {
   test("returns an explicit no-data envelope after independent source failures", async () => {
     const result = await loadVolatilityData(false, { loadChart: async () => { throw new Error("history offline"); },
       loadFred: async () => { throw new Error("cloud offline"); } });
-    expect(result).toMatchObject({ phase: "error", loaded: 24, total: 24, stale: false });
-    expect(result.errors).toHaveLength(24);
+    expect(result).toMatchObject({ phase: "error", loaded: 23, total: 23, stale: false });
+    expect(result.errors).toHaveLength(23);
     expect(result.data.board.every((row) => row.value == null)).toBe(true);
     expect(result.data.curve.date).toBeNull();
   });

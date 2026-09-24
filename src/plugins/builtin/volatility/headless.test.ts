@@ -24,7 +24,7 @@ describe("volatility headless model", () => {
       return { info: null, observations: [{ date: "2026-09-18", value: id === "VIXCLS" ? 18 : 21 }] };
     } } as HeadlessPaneContext["apiClient"];
     const result = await createVolatilityHeadless().load(args, { marketData, apiClient, signal } as HeadlessPaneContext);
-    expect(chartCalls).toHaveLength(22);
+    expect(chartCalls).toHaveLength(21);
     expect(chartCalls.every((call) => call[1] === "" && call[2] === "1Y" && call[3] === "1d")).toBe(true);
     expect(fredCalls).toEqual(["VIXCLS", "VXVCLS"]);
     expect(result.complete).toBe(false);
@@ -45,7 +45,7 @@ describe("volatility headless model", () => {
     const controller = new AbortController();
     const headless = createVolatilityHeadless({ load: async () => {
       controller.abort();
-      return { data: buildVolatilityData({}), phase: "error", stale: false, errors: ["offline"], loaded: 24, total: 24 };
+      return { data: buildVolatilityData({}), phase: "error", stale: false, errors: ["offline"], loaded: 23, total: 23 };
     } });
     await expect(headless.load(args, { signal: controller.signal } as HeadlessPaneContext)).rejects.toMatchObject({ name: "AbortError" });
   });
