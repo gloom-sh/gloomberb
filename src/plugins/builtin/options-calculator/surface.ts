@@ -56,6 +56,8 @@ const positive = (value: unknown): value is number => typeof value === "number" 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const expiryLabel = (expiration: number): string => new Date(expiration * 1000).toISOString().slice(0, 10);
+/** Brackets are fetched separately, so their quote instants never match; the New York session is what must agree. */
+const quoteSession = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 const empty = (error: string, warnings: string[] = []): CalculatorSurfaceVol => ({
   volatility: null, rate: null, dividendYield: null, asOf: null, sourceSpot: null, spotAsOf: null, rateAsOf: [],
   source: "OVDV midpoint", warnings, error,
@@ -120,7 +122,8 @@ export function projectCalculatorSurfaceVol(
   const dates = [...new Set(selected.flatMap((expiry) => expiry?.asOf && Number.isFinite(Date.parse(expiry.asOf)) ? [expiry.asOf] : []))];
   const asOf = dates.length ? dates.toSorted((a, b) => Date.parse(a) - Date.parse(b))[0]! : null;
   if (selected.some((expiry) => !expiry?.asOf || !Number.isFinite(Date.parse(expiry.asOf)))) warnings.push("Surface quote observation date unavailable");
-  if (dates.length > 1) warnings.push(`Surface quote dates differ: ${dates.join(", ")}`);
+  const sessions = [...new Set(dates.map((date) => quoteSession.format(Date.parse(date))))].sort();
+  if (sessions.length > 1) warnings.push(`Surface quote dates differ: ${sessions.join(", ")}`);
   const rateDates = [...new Set(selected.flatMap((expiry) => expiry!.rateAsOf))];
   if (!rateDates.length) warnings.push("Treasury observation date unavailable");
   const fits = selected.map((expiry) => `${expiryLabel(expiry!.expiration)} ${expiry!.fit!.method} (${expiry!.source ?? "source unavailable"})`);
