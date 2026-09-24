@@ -25,3 +25,19 @@ test("daily 1Y ago clamps February 29 to February 28 instead of looking forward 
   const view = projectStat({ stat: findStat("ten-year"), points, trend: fitTrend(points) }, "5Y");
   expect(view.yearAgo).toEqual({ date: "2023-02-28", value: 4.2 });
 });
+
+test("an on-schedule print is not stale until its release is overdue", () => {
+  const stale = (id: string, latest: string, now: string, months = 1) => {
+    const points = Array.from({ length: 8 }, (_, index) => {
+      const date = new Date(`${latest}T00:00:00Z`);
+      date.setUTCMonth(date.getUTCMonth() - (7 - index) * months);
+      return { date: date.toISOString().slice(0, 10), value: index };
+    });
+    return projectStat({ stat: findStat(id), points, trend: fitTrend(points) }, "5Y", { nowMs: Date.parse(`${now}T12:00:00Z`) }).observationStale;
+  };
+  expect(stale("pce-yoy", "2026-07-01", "2026-09-24")).toBe(false);
+  expect(stale("pce-yoy", "2026-07-01", "2026-10-20")).toBe(true);
+  expect(stale("cpi-yoy", "2026-08-01", "2026-10-15")).toBe(false);
+  expect(stale("real-gdp", "2026-04-01", "2026-10-29", 3)).toBe(false);
+  expect(stale("real-gdp", "2026-04-01", "2026-11-30", 3)).toBe(true);
+});
