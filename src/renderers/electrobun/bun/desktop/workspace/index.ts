@@ -1,8 +1,9 @@
 import type { AppSessionSnapshot } from "../../../../../core/state/session-persistence";
 import { clonePaneStateMap, syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../../core/state/app/state";
-import { cloneLayout, type AppConfig } from "../../../../../types/config";
+import { cloneLayout, type AppConfig, type LayoutConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
 import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../plugins/pane-manager";
+import type { WindowFrame } from "../../window/frame";
 
 function cloneSavedLayouts(config: AppConfig): AppConfig["layouts"] {
   return config.layouts.map((entry) => ({
@@ -20,6 +21,48 @@ function filterPaneState(
   return Object.fromEntries(
     Object.entries(paneState).filter(([paneId]) => validPaneIds.has(paneId)),
   );
+}
+
+function setDetachedFrame(layout: LayoutConfig, paneId: string, frame: WindowFrame): LayoutConfig {
+  return {
+    ...layout,
+    detached: layout.detached.map((entry) => (
+      entry.instanceId === paneId
+        ? { ...entry, x: frame.x, y: frame.y, width: frame.width, height: frame.height }
+        : entry
+    )),
+  };
+}
+
+/**
+ * Only this process sees a popped-out window move. A renderer's copy of the
+ * layout can hold an older frame: a popped-out window rehydrates only when its
+ * own pane changes, and the main window can send state it built before the
+ * last move reached it. Applying that frame would throw the window back, so a
+ * pane that stays popped out keeps its window where it is, whatever the
+ * config says; a pane the config newly pops out opens where it puts it.
+ */
+function keepDetachedFrames(layout: LayoutConfig, current: LayoutConfig): LayoutConfig {
+  return current.detached.reduce((next, entry) => (
+    next.detached.some((candidate) => candidate.instanceId === entry.instanceId)
+      ? setDetachedFrame(next, entry.instanceId, entry)
+      : next
+  ), layout);
+}
+
+/** Docking forgets the window, so its frame is kept for the next pop-out. */
+function rememberDetachedFrame(layout: LayoutConfig, paneId: string): LayoutConfig {
+  const entry = layout.detached.find((candidate) => candidate.instanceId === paneId);
+  if (!entry) return layout;
+  const frame = { x: entry.x, y: entry.y, width: entry.width, height: entry.height };
+  return {
+    ...layout,
+    instances: layout.instances.map((instance) => (
+      instance.instanceId === paneId
+        ? { ...instance, placementMemory: { ...instance.placementMemory, detached: frame } }
+        : instance
+    )),
+  };
 }
 
 export interface DesktopWorkspace {
@@ -110,7 +153,7 @@ export function createDesktopWorkspace(
         return getSnapshot();
       }
       const syncedConfig = syncConfigActiveLayoutState(
-        snapshot.config,
+        { ...snapshot.config, layout: keepDetachedFrames(snapshot.config.layout, sharedState.config.layout) },
         snapshot.paneState,
         snapshot.focusedPaneId,
         snapshot.activePanel,
@@ -131,7 +174,7 @@ export function createDesktopWorkspace(
       return getSnapshot();
     },
     replaceConfig(config: AppConfig, options) {
-      return updateConfig(config, options);
+      return updateConfig({ ...config, layout: keepDetachedFrames(config.layout, sharedState.config.layout) }, options);
     },
     replaceDetachedPaneState(paneId, paneState) {
       const nextPaneState = filterPaneState(sharedState.config.layout, {
@@ -153,12 +196,7 @@ export function createDesktopWorkspace(
     updateDetachedFrame(paneId, frame) {
       return updateConfig({
         ...sharedState.config,
-        layout: {
-          ...sharedState.config.layout,
-          detached: sharedState.config.layout.detached.map((entry) => (
-            entry.instanceId === paneId ? { ...entry, ...frame } : entry
-          )),
-        },
+        layout: setDetachedFrame(sharedState.config.layout, paneId, frame),
       }, { layoutChanged: true });
     },
     popOutPane(paneId, frame) {
@@ -168,11 +206,12 @@ export function createDesktopWorkspace(
       }, { layoutChanged: true });
     },
     dockDetachedPane(paneId, edge) {
+      // Only an edge drop passes an edge. That frame is in the dock zone, where
+      // a re-opened window would dock again, so it keeps the one it had.
+      const layout = edge ? sharedState.config.layout : rememberDetachedFrame(sharedState.config.layout, paneId);
       return updateConfig({
         ...sharedState.config,
-        layout: edge
-          ? insertAtRootEdge(sharedState.config.layout, paneId, edge)
-          : dockPane(sharedState.config.layout, paneId),
+        layout: edge ? insertAtRootEdge(layout, paneId, edge) : dockPane(layout, paneId),
       }, { layoutChanged: true });
     },
     closeDetachedPane(paneId) {
