@@ -186,7 +186,8 @@ export function cachedRotation(
   return value
     ? {
         payload: value.data,
-        stale: value.stale,
+        // The pane revalidates this copy on mount; only a failed refresh makes it stale.
+        stale: false,
         refreshError: null as string | null,
       }
     : null;

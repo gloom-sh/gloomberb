@@ -59,7 +59,8 @@ export async function fetchCentralBankRates(client: Pick<typeof apiClient, "getC
 export interface CentralBankRatesResource { payload: CentralBankRatesPayload; stale: boolean; refreshError: string | null }
 export function getCachedCentralBankRates(): CentralBankRatesResource | null {
   const cached = centralBankRatesCache.get("g20", { allowExpired: true });
-  return cached ? { payload: cached.data, stale: cached.stale, refreshError: null } : null;
+  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
+  return cached ? { payload: cached.data, stale: false, refreshError: null } : null;
 }
 export async function loadCentralBankRates(force = false): Promise<CentralBankRatesResource> {
   const result = await centralBankRatesCache.load("g20", () => fetchCentralBankRates(), { force });

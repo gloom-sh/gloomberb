@@ -243,11 +243,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
   const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
+  // The cached first paint is being replaced; its age only counts once that load settles.
+  const showStale = stale && (settled || !loading);
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
-    ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
+    ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [detailEvent, nextText, stale, staleness]);
+  ], [detailEvent, nextText, showStale, staleness]);
   usePaneStatusFooter({
     registrationId: "econ-calendar",
     loading,

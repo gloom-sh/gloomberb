@@ -105,7 +105,8 @@ export function cachedCryptoMarkets(): CryptoMarketsResource | null {
   const cached = cryptoMarketsCache.get("usd", { allowExpired: true });
   if (!cached) return null;
   try {
-    return { payload: validateCryptoMarkets(cached.data), stale: cached.stale, refreshError: null };
+    // The pane revalidates this copy on mount; only a failed refresh makes it stale.
+    return { payload: validateCryptoMarkets(cached.data), stale: false, refreshError: null };
   } catch {
     return null;
   }

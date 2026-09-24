@@ -84,7 +84,8 @@ const cacheKey = (symbol: string, scope: ShortVolumeScope) => `${scope}:${symbol
 export function cachedShortVolume(symbol: string, scope: ShortVolumeScope): ShortVolumeResource | null {
   const cached = shortVolumeCache.get(cacheKey(symbol, scope), { allowExpired: true });
   if (!cached) return null;
-  try { return { payload: validateShortVolume(cached.data, symbol, scope), stale: cached.stale, refreshError: null }; }
+  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
+  try { return { payload: validateShortVolume(cached.data, symbol, scope), stale: false, refreshError: null }; }
   catch { return null; }
 }
 export async function loadShortVolume(symbol: string, scope: ShortVolumeScope, force = false): Promise<ShortVolumeResource> {

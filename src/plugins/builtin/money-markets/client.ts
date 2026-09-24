@@ -56,7 +56,8 @@ export async function fetchMoneyMarkets(client: Pick<typeof apiClient, "getCloud
 export interface MoneyMarketsResource { payload: MoneyMarketsPayload; stale: boolean; refreshError: string | null }
 export function getCachedMoneyMarkets(): MoneyMarketsResource | null {
   const cached = moneyMarketsCache.get("usd", { allowExpired: true });
-  return cached ? { payload: cached.data, stale: cached.stale, refreshError: null } : null;
+  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
+  return cached ? { payload: cached.data, stale: false, refreshError: null } : null;
 }
 export async function loadMoneyMarkets(force = false): Promise<MoneyMarketsResource> {
   const result = await moneyMarketsCache.load("usd", () => fetchMoneyMarkets(), { force });

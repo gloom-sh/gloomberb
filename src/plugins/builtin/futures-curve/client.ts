@@ -60,7 +60,8 @@ export async function fetchFuturesCurve(root: string, client: Pick<typeof apiCli
 
 export function getCachedFuturesCurve(root: string): FuturesCurvePayload | null {
   const cached = futuresCurveCache.get(root, { allowExpired: true });
-  return cached ? { ...cached.data, stale: cached.data.stale || cached.stale } : null;
+  // The pane revalidates this copy on mount; only the source or a failed refresh makes it stale.
+  return cached?.data ?? null;
 }
 
 export async function loadFuturesCurve(root: string, force = false): Promise<FuturesCurvePayload> {

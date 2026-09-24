@@ -232,12 +232,15 @@ test("refresh bypasses fresh caches, shares pending Shiller work and retains fai
     expect(calls).toBe(3);
     expect(cached.errors).toEqual(failed.errors);
     expect(getCachedValuationBundle(indicators)!.errors).toEqual(failed.errors);
+    expect(getCachedValuationBundle(indicators)!.builds[0]!.sourceStale).toBe(true);
     now += 1000; failing = false; cape = 50;
     const recovered = await load(true);
     expect(calls).toBe(4);
     expect(recovered.errors).toEqual([]);
     expect(recovered.sources!.SHILLER_CAPE).toMatchObject({ stale: false, source: "network", fetchedAt: now });
     now += 6 * 60 * 60 * 1000 + 1; cape = 60;
+    // A cache past its refresh time is revalidated, not late at the source.
+    expect(getCachedValuationBundle(indicators)!.builds[0]!.sourceStale).toBe(false);
     const expired = await load();
     expect(calls).toBe(5);
     expect(expired.builds[0]!.series.points.at(-1)!.ratio).toBe(60);

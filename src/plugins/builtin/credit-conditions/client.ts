@@ -45,7 +45,8 @@ export function getCachedCreditConditions(): CreditConditionsLoadResult | null {
     const cached = getCachedFredSeries(requestFor(definition.seriesId), { allowExpired: true });
     if (!cached) continue;
     try {
-      rows.push(normalizeCreditSeries(definition, cached.data, cached.stale));
+      // The pane revalidates this copy on mount; only the source or a failed refresh makes it stale.
+      rows.push(normalizeCreditSeries(definition, cached.data, cached.data.stale === true));
     } catch (error) {
       errors.push(error instanceof Error ? error.message : String(error));
     }

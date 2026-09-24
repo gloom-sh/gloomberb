@@ -87,7 +87,12 @@ function buildIndicators(
       builds.push({
         indicator,
         series,
-        sourceStale: indicatorSeries(indicator).some((def) => legs.get(def.key)?.stale === true || legs.get(def.key)?.provider?.stale === true),
+        // A cached leg past its refresh time is not late at the source; a cached
+        // first paint is revalidated at once, and a failed refresh keeps its error.
+        sourceStale: indicatorSeries(indicator).some((def) => {
+          const leg = legs.get(def.key);
+          return leg?.provider?.stale === true || !!leg?.refreshError;
+        }),
         trend: fitIndicatorTrend(indicator, series.points),
       });
     } catch (error) {

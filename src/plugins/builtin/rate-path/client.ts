@@ -47,7 +47,8 @@ export async function fetchRatePath(client: Pick<typeof apiClient, "getCloudRate
 
 export function getCachedRatePath(): RatePathPayload | null {
   const cached = ratePathCache.get("usd", { allowExpired: true });
-  return cached ? { ...cached.data, stale: cached.data.stale || cached.stale } : null;
+  // The pane revalidates this copy on mount; only the source or a failed refresh makes it stale.
+  return cached?.data ?? null;
 }
 
 export async function loadRatePath(force = false): Promise<RatePathPayload> {

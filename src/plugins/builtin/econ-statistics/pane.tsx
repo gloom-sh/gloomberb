@@ -212,11 +212,13 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = [
       { id: "as-of", parts: [{ text: `as of ${selected.latest.date}`, tone: "muted" }] },
     ];
-    if (selected.observationStale || selected.cacheStale) {
+    // The cached first paint is being replaced; its age only counts once that load fails.
+    const seeding = resource.loading && resource.updatedAt === null && !selected.refreshError;
+    if (selected.observationStale || (selected.cacheStale && !seeding)) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
     return info;
-  }, [selected]);
+  }, [resource.loading, resource.updatedAt, selected]);
 
   usePaneStatusFooter({
     registrationId: "econ-statistics",
