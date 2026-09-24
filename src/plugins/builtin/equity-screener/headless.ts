@@ -46,16 +46,11 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       : DEFAULT_SCREEN;
     const data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient);
     const metric = (args.options.metric ?? "marketCap") as NumericField;
+    // Payload status also counts ordinary per-field sparsity; only generation
+    // warnings are failures, and more pages are not an error.
     return {
-      complete: data.status === "available" && !data.nextCursor,
-      errors: [
-        ...data.warnings,
-        ...(data.nextCursor
-          ? [
-              "Additional matching rows require cursor pagination through the Cloud query API or pane.",
-            ]
-          : []),
-      ],
+      complete: !data.nextCursor && data.warnings.length === 0,
+      errors: data.warnings,
       sections: [
         {
           title: "Matching equities",
@@ -88,7 +83,20 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
           }),
         },
       ],
-      metadata: { ...data },
+      // Per-row metric provenance stays out: 100 annotated rows overflow tool results.
+      metadata: {
+        snapshot: data.snapshot,
+        definition: data.definition,
+        matched: data.universe.matched,
+        covered: data.universe.covered,
+        returned: data.rows.length,
+        hasMore: !!data.nextCursor,
+        notices: data.nextCursor
+          ? [
+              `Top ${data.rows.length} of ${data.universe.matched} matches; narrow the criteria to see the rest.`,
+            ]
+          : [],
+      },
     };
   },
 };
