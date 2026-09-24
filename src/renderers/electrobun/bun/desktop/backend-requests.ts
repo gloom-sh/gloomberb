@@ -31,6 +31,8 @@ interface DesktopBackendRequestOptions {
   getServices: () => AppServices;
   getSessionSnapshot: () => AppSessionSnapshot | null;
   request: DesktopCoreRequest;
+  /** The pane of the popped-out window that sent the request; null for the main window. */
+  senderDetachedPaneId: string | null;
   reconcileDetachedWindows: () => void;
   registerCoreCapabilities: () => void;
   sendDesktopState: (snapshot: DesktopSharedStateSnapshot) => void;
@@ -85,6 +87,7 @@ export async function handleDesktopBackendRequest(
     getDesktopWorkspace,
     getServices,
     request,
+    senderDetachedPaneId,
     setCurrentConfig,
     setDesktopWorkspace,
     startUpdate,
@@ -112,12 +115,14 @@ export async function handleDesktopBackendRequest(
       await getServices().tickerRepository.deleteTicker(request.payload.symbol);
       return null;
     case "config.save": {
-      setCurrentConfig(request.payload.config);
       const desktopWorkspace = getDesktopWorkspace();
       if (desktopWorkspace) {
-        await commitDesktopSnapshot(desktopWorkspace.replaceConfig(getConfig(), { layoutChanged: true }));
+        await commitDesktopSnapshot(senderDetachedPaneId
+          ? desktopWorkspace.replaceConfigFromDetachedPane(senderDetachedPaneId, request.payload.config)
+          : desktopWorkspace.replaceConfig(request.payload.config, { layoutChanged: true }));
         return null;
       }
+      setCurrentConfig(request.payload.config);
       await saveConfig(getConfig());
       return null;
     }
