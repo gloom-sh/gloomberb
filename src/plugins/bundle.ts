@@ -104,10 +104,17 @@ export function createSharedModuleResolver(
   const namespace = "gloom-host";
   const shared = new Set<string>(SHARED_SPECIFIERS);
 
+  // Only the specifiers this plugin handles. A catch-all filter hands every
+  // import in the plugin's dependencies through the hook, and Bun then drops
+  // namespace imports it should have kept (zod's `util` inside the MCP SDK
+  // evaluated as `util3 is not defined`).
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const filter = new RegExp(`^(?:${[...shared].map(escape).join("|")}|gloomberb(?:/.*)?)$`);
+
   return {
     name: "gloomberb-host-modules",
     setup(build) {
-      build.onResolve({ filter: /.*/ }, (args) => {
+      build.onResolve({ filter }, (args) => {
         if (shared.has(args.path)) {
           onShared?.(args.path);
           return { path: args.path, namespace };

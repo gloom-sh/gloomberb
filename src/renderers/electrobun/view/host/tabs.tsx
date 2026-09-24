@@ -53,19 +53,21 @@ export function WebTabs({
   const tabPaddingInline = header ? 10 : dense ? 5 : showUnderline ? 10 : 8;
   const tabPaddingBlock = variant === "bare" || variant === "pill" ? 2 : 0;
 
-  useEffect(() => {
-    activeTabRef.current?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest",
-    });
-  }, [activeValue, tabs]);
-
   useEffect(() => () => dragCleanupRef.current?.(), []);
 
   // A strip wider than its pane scrolls sideways; fade the edge hiding tabs.
   const overflow = useHorizontalOverflow(tabListRef, [tabs]);
   // The fade is set exactly while some tab is out of view.
   const overflowing = overflow.maskStyle.maskImage !== undefined;
+
+  // Again once the overflow chevron appears: it narrows the strip, which would
+  // otherwise push the last tab's label past the edge.
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [activeValue, tabs, overflowing]);
   useEffect(() => {
     if (!overflowing) setOverflowMenuOpen(false);
   }, [overflowing]);
