@@ -22,7 +22,8 @@ export { Menu, MenuPopover } from "./menu";
 export type { MenuItem, MenuProps, MenuPopoverProps } from "./menu";
 
 export { MultiSelectDialogButton, MultiSelectDialogContent } from "./multi-select/dialog";
-export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint } from "./multi-select/dialog";
+export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction } from "./multi-select/dialog";
+export { NumberPromptDialog } from "./number-prompt-dialog";
 
 export { SelectButton } from "./select-button";
 export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./select-button";

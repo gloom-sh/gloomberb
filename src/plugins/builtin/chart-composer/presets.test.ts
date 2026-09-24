@@ -653,3 +653,20 @@ describe("chart composer CLI options", () => {
     });
   });
 });
+
+describe("indicator periods", () => {
+  test("an edited period survives toggling other indicators and names itself in the picker", async () => {
+    const { builtinStudyPeriod, setBuiltinStudyPeriod } = await import("./presets");
+    const { chartStudyLabel } = await import("./settings");
+    const withSma = setBuiltinStudies(buildPriceChartPreset("AAPL"), ["sma50"]);
+    const edited = setBuiltinStudyPeriod(withSma, "sma50", 30);
+    expect(builtinStudyPeriod(edited, "sma50")).toBe(30);
+    // Turning another indicator on and off rebuilds the list from the selection.
+    const toggled = setBuiltinStudies(setBuiltinStudies(edited, ["sma50", "rsi14"]), ["sma50"]);
+    expect(builtinStudyPeriod(toggled, "sma50")).toBe(30);
+    expect(chartStudyLabel("sma50", builtinStudyPeriod(toggled, "sma50"))).toBe("Simple moving average (SMA 30)");
+    // An indicator that is not on keeps its default and is left alone.
+    expect(setBuiltinStudyPeriod(toggled, "ema20", 9)).toBe(toggled);
+    expect(builtinStudyPeriod(toggled, "ema20")).toBe(20);
+  });
+});

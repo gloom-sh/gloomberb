@@ -24,7 +24,10 @@ import {
   chartSeriesLabel,
   formatSeriesExpression,
   getCompatibleSeriesStyles,
+  builtinStudyPeriod,
+  defaultStudyPeriod,
   getSelectedBuiltinStudies,
+  isPeriodStudy,
   getSelectedPairStudies,
   setBuiltinStudies,
   setPairStudies,
@@ -38,17 +41,45 @@ import {
 
 export { CHART_RANGES, CHART_RESOLUTIONS };
 
-export const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = [
-  { value: "volume", label: "Volume", description: "Volume columns in a lower panel." },
-  { value: "sma20", label: "SMA 20", description: "20-bar simple moving average on the primary price series." },
-  { value: "sma50", label: "SMA 50", description: "50-bar simple moving average on the primary price series." },
-  { value: "sma200", label: "SMA 200", description: "200-bar simple moving average on the primary price series." },
-  { value: "ema20", label: "EMA 20", description: "20-bar exponential moving average on the primary price series." },
-  { value: "bollinger20", label: "Bollinger 20", description: "20-bar Bollinger Bands at two standard deviations." },
-  { value: "rsi14", label: "RSI 14", description: "14-bar Relative Strength Index in a lower panel." },
-  { value: "macd", label: "MACD", description: "12/26/9 MACD in a lower panel." },
-  { value: "realized-vol", label: "Realized Volatility", description: "Annualized daily volatility in a lower panel." },
-];
+/** Full name and short form for each builtin indicator; the label adds its period. */
+const CHART_STUDY_NAMES: Record<BuiltinStudySelection, { name: string; short?: string; description: string }> = {
+  volume: { name: "Volume", description: "Volume columns in a lower panel." },
+  sma20: { name: "Simple moving average", short: "SMA", description: "Simple moving average on the primary price series." },
+  sma50: { name: "Simple moving average", short: "SMA", description: "Simple moving average on the primary price series." },
+  sma200: { name: "Simple moving average", short: "SMA", description: "Simple moving average on the primary price series." },
+  ema20: { name: "Exponential moving average", short: "EMA", description: "Exponential moving average on the primary price series." },
+  bollinger20: { name: "Bollinger Bands", short: "BB", description: "Bollinger Bands at two standard deviations." },
+  rsi14: { name: "Relative strength index", short: "RSI", description: "Relative Strength Index in a lower panel." },
+  macd: { name: "MACD", short: "12, 26, 9", description: "12/26/9 MACD in a lower panel." },
+  "realized-vol": { name: "Realized volatility", description: "Annualized daily volatility in a lower panel." },
+};
+
+/** Title of the prompt that edits a study's period: `SMA period`. */
+export function chartStudyPeriodTitle(selection: BuiltinStudySelection): string {
+  return `${CHART_STUDY_NAMES[selection].short ?? CHART_STUDY_NAMES[selection].name} period`;
+}
+
+/** `Simple moving average (SMA 50)`: the name, the acronym and the period it runs with. */
+export function chartStudyLabel(selection: BuiltinStudySelection, period: number | null): string {
+  const { name, short } = CHART_STUDY_NAMES[selection];
+  if (!short) return name;
+  return isPeriodStudy(selection) && period != null ? `${name} (${short} ${period})` : `${name} (${short})`;
+}
+
+function chartStudyOptions(periodOf: (selection: BuiltinStudySelection) => number | null) {
+  return (Object.keys(CHART_STUDY_NAMES) as BuiltinStudySelection[]).map((value) => ({
+    value,
+    label: chartStudyLabel(value, periodOf(value)),
+    description: CHART_STUDY_NAMES[value].description,
+  }));
+}
+
+export const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStudySelection }> = chartStudyOptions(defaultStudyPeriod);
+
+/** The indicator options with the periods this chart actually uses. */
+export function chartStudyOptionsFor(spec: ChartSpec): Array<PaneSettingOption & { value: BuiltinStudySelection }> {
+  return chartStudyOptions((selection) => builtinStudyPeriod(spec, selection));
+}
 
 export const CHART_FORMULA_OPTIONS: Array<PaneSettingOption & { value: PairStudySelection }> = [
   { value: "ratio", label: "Ratio", description: "First series divided by the second series." },
