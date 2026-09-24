@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../api-client";
+import { matchesKeybindingAction, useKeybindings, type KeyChordEventLike } from "../app/keybindings";
 import { collectFeedbackDiagnostics, collectFeedbackLogs, feedbackSource } from "../feedback/diagnostics";
 import { captureAppImageScreenshot, terminalFrameScreenshot } from "../feedback/screenshot";
 import {
@@ -50,7 +51,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : t("Couldn't send. Try again.");
 }
 
-type KeyLike = { name?: string; shift?: boolean; alt?: boolean; meta?: boolean; preventDefault?: () => void };
+type KeyLike = KeyChordEventLike & { preventDefault?: () => void };
 
 /**
  * Enter starts a new line; Shift+Enter sends. Terminals without the kitty
@@ -84,6 +85,7 @@ export function FeedbackDialog({
   useAppLanguage();
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
+  const keybindings = useKeybindings();
   const messageRef = useRef<TextareaRenderable | null>(null);
   const messageValueRef = useRef(draft.message);
   const [screenshot, setScreenshot] = useState<FeedbackScreenshot | null>(null);
@@ -198,6 +200,9 @@ export function FeedbackDialog({
   // desktop and web it gets none and Shift+Enter (or Alt/Cmd+Enter) sends here.
   const sendOnModifiedEnter = (event: KeyLike) => {
     if (event.name !== "return" || !(event.shift || event.alt || event.meta)) return;
+    // Ctrl/Cmd+Shift+Enter and Alt+Enter act on the newest toast; that key
+    // must not also send a half-written report.
+    if (matchesKeybindingAction(keybindings, "notification-action", event)) return;
     event.preventDefault?.();
     void send();
   };
