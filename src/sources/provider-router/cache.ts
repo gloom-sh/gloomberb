@@ -218,6 +218,10 @@ export function listCachedResources<T>(
       // rules (PCX used to mean AMEX). Refetch a conflicting public listing;
       // never relabel it or let it outrank a fresh exact-listing response.
       if (requestedExchange && declaredExchange && requestedExchange !== declaredExchange) return false;
+      // A bare lookup that names no listing cannot say which venue it priced:
+      // the unqualified BA quote is Boeing's, never BAE Systems' London line.
+      if (requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
+        && !/(?:^|;)exchange=/.test(record.variantKey)) return false;
       // An unqualified lookup cannot tell real AMEX metadata from old PCX
       // normalization. Refresh only those legacy records; newly verified
       // AMEX data and explicitly requested AMEX listings remain reusable.

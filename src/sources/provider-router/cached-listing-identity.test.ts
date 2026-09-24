@@ -78,6 +78,25 @@ test("cache selection falls through a conflicting source while preserving valid 
   } finally { store.close(); }
 });
 
+test("a bare lookup that names no listing cannot answer for one venue's line", async () => {
+  const store = new AppPersistence(":memory:");
+  const boeing = makeQuote({ symbol: "BA", name: "Boeing Co/The", price: 201.81 });
+  const bae = makeQuote({ symbol: "BA", name: "BAE Systems plc", listingExchangeName: "LSE", currency: "GBP", price: 20.23 });
+  const requests: Array<string | undefined> = [];
+  try {
+    cacheRouterResource(store.resources, "quote", "BA", "", "provider:gloomberb-cloud", boeing, policy);
+    const router = new AssetDataRouter(createTestDataProvider({ id: "gloomberb-cloud",
+      getQuote: async (_symbol, exchange) => { requests.push(exchange); return bae; } }), [], store.resources);
+    expect((await router.getQuote("BA", "LSE")).name).toBe("BAE Systems plc");
+    expect((await router.getQuote("BA")).name).toBe("Boeing Co/The");
+    expect(requests).toEqual(["LSE"]);
+    // The bare entry still serves a venue it names.
+    cacheRouterResource(store.resources, "quote", "SHOP", "", "provider:gloomberb-cloud",
+      makeQuote({ symbol: "SHOP", listingExchangeName: "NASDAQ" }), policy);
+    expect(listCachedResources(store.resources, "quote", "SHOP", ["exchange=NASDAQ", ""], ["provider:gloomberb-cloud"], true)).toHaveLength(1);
+  } finally { store.close(); }
+});
+
 test("quote-only caches cannot inject another symbol into otherwise valid cached financials", () => {
   const store = new AppPersistence(":memory:");
   try {
