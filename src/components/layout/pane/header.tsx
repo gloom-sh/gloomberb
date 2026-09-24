@@ -1,6 +1,7 @@
 import { Box, Text, useActionShortcut, useNativeRenderer, useUiCapabilities } from "../../../ui";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
+import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { Tabs } from "../../ui/tabs";
@@ -35,6 +36,8 @@ interface PaneHeaderProps {
    * so its contents centre between the visible lines.
    */
   topRule?: boolean;
+  /** Desktop only: the header is a popped-out window's title bar. */
+  titleBar?: PaneHeaderTitleBar | null;
   onHeaderMouseMove?: (event: any) => void;
   onHeaderMouseDown?: (event: any) => void;
   onHeaderMouseDrag?: (event: any) => void;
@@ -42,6 +45,22 @@ interface PaneHeaderProps {
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
+}
+
+/**
+ * A popped-out window has no title bar of its own: the pane header is it. The
+ * window moves by it and closes by its own controls, so there is no grip and
+ * no close button.
+ */
+interface PaneHeaderTitleBar {
+  /** Height in cells. */
+  rows: number;
+  /** Sits in the window's title-bar overlay, beside the macOS traffic lights. */
+  overlay: boolean;
+  /** Cells kept clear before the title for the traffic lights. */
+  leadingInset: number;
+  /** Drawn after the pane actions: the Windows window buttons. */
+  trailing?: ReactNode;
 }
 
 export interface PaneHeaderQuickSetting {
@@ -95,6 +114,7 @@ export function PaneHeader({
   tabs = null,
   bodyBackground,
   topRule = false,
+  titleBar = null,
   onHeaderMouseMove,
   onHeaderMouseDown,
   onHeaderMouseDrag,
@@ -123,13 +143,15 @@ export function PaneHeader({
   }, [nativeRenderer, onHeaderMouseDown]);
 
   if (nativePaneChrome) {
+    const ruleColor = visuallyFocused ? colors.borderFocused : colors.border;
     return (
       <Box
-        height={nativePaneHeaderRows()}
+        height={titleBar?.rows ?? nativePaneHeaderRows()}
         width={width}
         backgroundColor={backgroundColor}
         flexDirection="row"
         data-gloom-role="pane-header"
+        data-titlebar-overlay={titleBar?.overlay ? "true" : undefined}
         data-floating={floating ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-window-mode-selected={windowModeSelected ? "true" : "false"}
@@ -144,16 +166,23 @@ export function PaneHeader({
           // sits, so everything centred in the content box is centred between
           // the two visible lines. Title-bar tabs end on the same edge and the
           // active one covers the rule.
-          paddingInline: 6,
+          paddingInline: titleBar
+            ? `${6 + titleBar.leadingInset * WEB_CELL_WIDTH}px ${titleBar.trailing ? 0 : 6}px`
+            : 6,
           paddingTop: topInset,
           paddingBottom: 1,
-          boxShadow: `inset 0 -1px 0 ${visuallyFocused ? colors.borderFocused : colors.border}`,
+          // A window title bar also keeps the window's top edge its own colour.
+          boxShadow: titleBar
+            ? `inset 0 -1px 0 ${ruleColor}, 0 -1px 0 ${backgroundColor}, inset 0 1px 0 ${backgroundColor}`
+            : `inset 0 -1px 0 ${ruleColor}`,
         }}
       >
         {/* Part of the header, so it clicks and drags like the rest of it. */}
-        <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
-          <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
-        </Box>
+        {!titleBar && (
+          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
+            <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
+          </Box>
+        )}
         {/* Full header height, so trimming the title to its capitals never lets
             this clip cut descenders. */}
         <Box minWidth={0} flexShrink={tabs ? 0 : 1} overflow="hidden" flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", ...(tabs ? { maxWidth: "40%" } : {}) }}>
@@ -195,7 +224,7 @@ export function PaneHeader({
               "--pane-tab-label-lift": `${HEADER_TAB_TOP_GAP + 2 - topInset}px`,
               // Fallback until the tab strip has measured the surface under it.
               "--pane-tab-active-bg": bodyBackground ?? colors.bg,
-              "--pane-tab-border": visuallyFocused ? colors.borderFocused : colors.border,
+              "--pane-tab-border": ruleColor,
               // The active tab reads as active whenever the pane is focused, even
               // while a detail or field inside the pane owns the keyboard.
               "--pane-tab-active-fg": visuallyFocused ? colors.textBright : colors.text,
@@ -244,7 +273,7 @@ export function PaneHeader({
             />
           ) : <Box width={2} />}
         </Box>
-        {floating && (
+        {floating && !titleBar && (
           <Box data-gloom-role="pane-close" marginLeft={1}>
             <IconButton
               icon="close"
@@ -254,6 +283,7 @@ export function PaneHeader({
             />
           </Box>
         )}
+        {titleBar?.trailing}
       </Box>
     );
   }

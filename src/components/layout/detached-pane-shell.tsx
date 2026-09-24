@@ -1,4 +1,4 @@
-import { Box, Text, useActionShortcut, useContextMenu, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
+import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -7,13 +7,14 @@ import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { findPaneInstance } from "../../types/config";
 import { isPaneLocked, PANE_LOCK_SETTING_KEY } from "../../pane-settings";
 import type { PluginRegistry } from "../../plugins/registry";
-import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
+import { floatingPaneBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
-import { IconButton } from "../ui/icon";
 import { hasPaneFooterContent, PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "./pane/footer";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneContent } from "./pane/content";
-import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
+import { PaneHeader } from "./pane/header";
+import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
+import { nativePaneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 import { getPaneDisplayTitle } from "./pane/title";
 import { TITLEBAR_OVERLAY_HEIGHT_PX, getTitlebarLeadingInset } from "./titlebar-overlay";
 import { useWindowFullscreen } from "./window-fullscreen";
@@ -57,7 +58,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const keybindings = useKeybindings();
   const accelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
   const shortcutDisplayMode = getShortcutDisplayMode(useUiHost().kind);
-  const menuShortcut = useActionShortcut("pane-menu");
   const dialogOpen = useDialogState((state) => state.isOpen);
   const [menuState, setMenuState] = useState<ActionMenuState | null>(null);
   const [windowFocused, setWindowFocused] = useState(() => (
@@ -73,6 +73,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     windowControls,
   } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
+  // The pane's primary tabs sit in the title bar, as they do in the main window.
+  const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true);
   const windowFullscreen = useWindowFullscreen();
   const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome
     ? getTitlebarLeadingInset({ windowFullscreen })
@@ -357,9 +359,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const renderFooter = reserveFooter || showFooter;
-        const headerHeightRows = titleBarOverlay ? TITLEBAR_OVERLAY_HEIGHT_PX / cellHeightPx : 1;
+        const headerHeightRows = titleBarOverlay ? TITLEBAR_OVERLAY_HEIGHT_PX / cellHeightPx : nativePaneHeaderRows();
         const background = floatingPaneBg(focused, colors);
-        const titleBackground = floatingPaneTitleBg(focused, colors);
         const bodyFrame = resolvePaneBodyFrame({
           width,
           height,
@@ -385,74 +386,48 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
             })}
             onMouseDown={focusPane}
           >
-            <Box
-              height={1}
+            <PaneHeader
+              title={title}
               width={width}
-              backgroundColor={titleBackground}
-              flexDirection="row"
-              data-gloom-role="pane-header"
-              data-titlebar-overlay={titleBarOverlay ? "true" : undefined}
-              data-floating="true"
-              data-focused={focused ? "true" : "false"}
-              style={{ boxShadow: `0 -1px 0 ${titleBackground}, inset 0 1px 0 ${titleBackground}` }}
-              onMouseDown={startWindowDrag}
-            >
-              <Box
-                flexDirection="row"
-                alignItems="center"
-                flexGrow={1}
-                minWidth={0}
-                backgroundColor={titleBackground}
-                paddingLeft={titleBarOverlay ? titlebarLeadingInset : 1}
-                paddingRight={showWindowControls ? 0 : 1}
-                style={{ position: "relative" }}
-              >
-                <Box minWidth={0} flexShrink={1} overflow="hidden">
-                  <Text fg={paneTitleText(focused, true, colors)} selectable={false} data-gloom-role="pane-title">{title}</Text>
-                </Box>
-                {quickSettings.map((setting) => (
-                  <Box
-                    key={setting.key}
-                    className="electrobun-webkit-app-region-no-drag"
-                    data-gloom-role="pane-quick-setting"
-                    data-setting-key={setting.key}
-                  >
-                    <IconButton
-                      icon="zap"
-                      label={`${setting.label}: ${setting.value ? "on" : "off"}`}
-                      pressed={setting.value}
-                      onPress={() => toggleQuickSetting(setting.key)}
-                    />
-                  </Box>
-                ))}
-                <Box flexGrow={1} minWidth={0} />
-                {locked && (
-                  <Box data-gloom-role="pane-lock">
-                    <IconButton icon="lock" label="Locked: the close shortcut leaves this pane open" />
-                  </Box>
-                )}
-                <Box className="electrobun-webkit-app-region-no-drag" data-gloom-role="pane-action">
-                  <IconButton
-                    icon="more"
-                    label="Pane actions"
-                    shortcut={menuShortcut || undefined}
-                    hasPopup="menu"
-                    onPress={() => openActions()}
-                  />
-                </Box>
-                {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
-                {showWindowControls ? <WindowControls windowKind="detached" /> : null}
-              </Box>
-            </Box>
+              focused={focused}
+              floating
+              locked={locked}
+              showActions
+              quickSettings={quickSettings.map((setting) => ({
+                key: setting.key,
+                icon: setting.icon,
+                label: setting.label,
+                description: setting.description,
+                active: setting.value,
+                onMouseDown: () => toggleQuickSetting(setting.key),
+              }))}
+              tabs={headerTabs}
+              bodyBackground={background}
+              titleBar={{
+                rows: headerHeightRows,
+                overlay: titleBarOverlay === true,
+                leadingInset: titlebarLeadingInset,
+                trailing: showWindowControls ? (
+                  <>
+                    <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} />
+                    <WindowControls windowKind="detached" />
+                  </>
+                ) : null,
+              }}
+              onHeaderMouseDown={startWindowDrag}
+              onActionMouseDown={() => openActions()}
+            />
             <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={background}>
-              <PaneContent
-                component={paneDef.component}
-                paneId={instance.instanceId}
-                paneType={instance.paneId}
-                focused={focused}
-                width={bodyWidth}
-                height={bodyHeight}
-              />
+              <PaneHeaderTabsProvider value={headerTabsContext}>
+                <PaneContent
+                  component={paneDef.component}
+                  paneId={instance.instanceId}
+                  paneType={instance.paneId}
+                  focused={focused}
+                  width={bodyWidth}
+                  height={bodyHeight}
+                />
+              </PaneHeaderTabsProvider>
             </PaneBodyFrame>
             {renderFooter && <PaneFooterBar footer={footer} focused={focused} width={width} />}
             <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={footer} focused={focused} />

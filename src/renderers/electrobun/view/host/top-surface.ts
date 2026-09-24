@@ -85,7 +85,7 @@ export function useTopSurfaceColor(listRef: RefObject<HTMLElement | null>, enabl
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!enabled || !list) return;
-    const body = list.closest("[data-gloom-role=pane-window]")
+    const body = list.closest("[data-gloom-role=pane-window], [data-gloom-role=detached-pane-window]")
       ?.querySelector<HTMLElement>(":scope > [data-gloom-role=pane-body]");
     if (!body) return;
 

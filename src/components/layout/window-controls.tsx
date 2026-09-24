@@ -73,7 +73,9 @@ export function WindowControls({ windowKind = "main" }: WindowControlsProps) {
         position: "fixed",
         top: 0,
         right: 0,
-        height: `${WINDOWS_CONTROL_SIZE_PX}px`,
+        // A popped-out window's title bar is its pane header, which ends in a
+        // 1px rule; the buttons stop above it so the rule runs the full width.
+        height: `${WINDOWS_CONTROL_SIZE_PX - (windowKind === "detached" ? 1 : 0)}px`,
         zIndex: 1000,
         backgroundColor: "inherit",
       }}
