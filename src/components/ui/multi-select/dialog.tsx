@@ -37,6 +37,19 @@ import {
   type MultiSelectOption,
 } from "./index";
 
+/**
+ * One action on the highlighted row, shown beside Done: editing a value the
+ * option carries, such as an indicator's period.
+ */
+export interface MultiSelectRowAction {
+  label: string;
+  shortcut: string;
+  /** Whether the highlighted option offers it; `selected` is its checkbox. */
+  appliesTo(value: string, selected: boolean): boolean;
+  /** A returned label replaces the row's label while the dialog stays open. */
+  run(value: string): Promise<string | void> | string | void;
+}
+
 export interface MultiSelectDialogContentProps extends AlertContext {
   title: string;
   options: MultiSelectOption[];
@@ -45,6 +58,7 @@ export interface MultiSelectDialogContentProps extends AlertContext {
   ordered?: boolean;
   emptyLabel?: string;
   idPrefix?: string;
+  rowAction?: MultiSelectRowAction;
 }
 
 export interface MultiSelectDialogButtonProps {
@@ -61,6 +75,8 @@ export interface MultiSelectDialogButtonProps {
   shortcutKey?: string | string[];
   shortcutActive?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Opens the dialog on desktop too, since the popover menu has no row actions. */
+  rowAction?: MultiSelectRowAction;
 }
 
 export interface MultiSelectPopoverAnchorPoint {
@@ -197,6 +213,7 @@ export function MultiSelectDialogContent({
   onChange,
   ordered = false,
   idPrefix,
+  rowAction,
 }: MultiSelectDialogContentProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const optionByValue = useMemo(() => new Map(options.map((option) => [option.value, option])), [options]);
@@ -216,6 +233,11 @@ export function MultiSelectDialogContent({
   const canMoveDown = ordered
     && selectedValueOrder >= 0
     && selectedValueOrder < knownSelectedValues.length - 1;
+  const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
+  const canRunRowAction = !!rowAction
+    && !!selectedOption
+    && !selectedOption.disabled
+    && rowAction.appliesTo(selectedOption.value, selectedValues.includes(selectedOption.value));
 
   useEffect(() => {
     setSelectedValues((values) => normalizeDialogSelectedValues(options, values, ordered));
@@ -235,7 +257,7 @@ export function MultiSelectDialogContent({
 
     return {
       id: option.value,
-      label: option.label,
+      label: labelOverrides[option.value] ?? option.label,
       disabled: option.disabled,
       enabled: selectedValues.includes(option.value),
       description: [option.description, orderDescription].filter((entry): entry is string => !!entry).join(" "),
@@ -278,6 +300,13 @@ export function MultiSelectDialogContent({
     );
   };
 
+  const runRowAction = async () => {
+    if (!rowAction || !canRunRowAction || !selectedOption) return;
+    const value = selectedOption.value;
+    const label = await rowAction.run(value);
+    if (typeof label === "string") setLabelOverrides((current) => ({ ...current, [value]: label }));
+  };
+
   useDialogKeyboard((event) => {
     event.stopPropagation();
     const move = listCursorMove(event, pageSize);
@@ -290,6 +319,8 @@ export function MultiSelectDialogContent({
       void moveOption("up").catch(() => {});
     } else if (event.name === "]" && ordered) {
       void moveOption("down").catch(() => {});
+    } else if (rowAction && event.name === rowAction.shortcut && !event.ctrl && !event.meta && !event.alt) {
+      void runRowAction().catch(() => {});
     } else if (event.name === "enter" || event.name === "return" || event.name === "escape" || isDetailBackNavigationKey(event)) {
       dismiss();
     }
@@ -331,6 +362,15 @@ export function MultiSelectDialogContent({
               <Button label="Move Down" shortcut="]" variant="ghost" disabled={!canMoveDown} onPress={() => { void moveOption("down").catch(() => {}); }} />
             </>
           )}
+          {rowAction && (
+            <Button
+              label={rowAction.label}
+              shortcut={rowAction.shortcut}
+              variant="ghost"
+              disabled={!canRunRowAction}
+              onPress={() => { void runRowAction().catch(() => {}); }}
+            />
+          )}
           <Button label="Done" shortcut="Enter" variant="primary" onPress={dismiss} />
         </Box>
       </Box>
@@ -352,6 +392,7 @@ function MultiSelectDialogButtonInner({
   shortcutKey,
   shortcutActive = false,
   onOpenChange,
+  rowAction,
 }: MultiSelectDialogButtonProps, ref: ForwardedRef<MultiSelectDialogButtonHandle>) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const dialog = useDialog();
@@ -364,7 +405,7 @@ function MultiSelectDialogButtonInner({
   const openDialog = useCallback((event?: DialogTriggerEvent, anchorPoint?: MultiSelectPopoverAnchorPoint) => {
     stopMouseEvent(event);
     if (disabled) return;
-    if (isDesktopWeb && !ordered) {
+    if (isDesktopWeb && !ordered && !rowAction) {
       setPopoverAnchorPoint(anchorPoint ?? null);
       setPopoverOpen(true);
       onOpenChange?.(true);
@@ -383,10 +424,11 @@ function MultiSelectDialogButtonInner({
           ordered={ordered}
           emptyLabel={emptyLabel}
           idPrefix={idPrefix}
+          rowAction={rowAction}
         />
       ),
     }).catch(() => {}).finally(() => onOpenChange?.(false));
-  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, selectedValues, title]);
+  }, [dialog, disabled, emptyLabel, idPrefix, isDesktopWeb, label, onChange, onOpenChange, options, ordered, rowAction, selectedValues, title]);
 
   const closePopover = useCallback(() => {
     setPopoverOpen(false);
@@ -469,7 +511,7 @@ function MultiSelectDialogButtonInner({
     );
   }
 
-  if (isDesktopWeb && !ordered) {
+  if (isDesktopWeb && !ordered && !rowAction) {
     return (
       <Popover
         open={popoverOpen}

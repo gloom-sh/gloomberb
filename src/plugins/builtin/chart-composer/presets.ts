@@ -794,6 +794,54 @@ export function setBuiltinStudies(spec: ChartSpec, selected: readonly BuiltinStu
   return { ...spec, studies, panels: reconcilePanels(spec.panels, spec.series, studies) };
 }
 
+/** Builtin studies whose lookback the Indicators dialog lets you change. */
+const PERIOD_STUDIES = new Set<BuiltinStudySelection>(["sma20", "sma50", "sma200", "ema20", "bollinger20", "rsi14"]);
+
+export const STUDY_PERIOD_MIN = 2;
+export const STUDY_PERIOD_MAX = 500;
+
+export function isPeriodStudy(selection: string): selection is BuiltinStudySelection {
+  return PERIOD_STUDIES.has(selection as BuiltinStudySelection);
+}
+
+function builtinStudy(spec: ChartSpec, selection: BuiltinStudySelection): ChartStudySpec | undefined {
+  const prefix = `${BUILTIN_STUDY_ID_PREFIX}${selection}:`;
+  return spec.studies.find((study) => study.id.startsWith(prefix));
+}
+
+export function defaultStudyPeriod(selection: BuiltinStudySelection): number | null {
+  const defaults = STUDY_DEFAULTS[selection].parameters as Record<string, unknown>;
+  return typeof defaults.period === "number" ? defaults.period : null;
+}
+
+/** The period a builtin study runs with: its own when selected, the default otherwise. */
+export function builtinStudyPeriod(spec: ChartSpec, selection: BuiltinStudySelection): number | null {
+  const period = builtinStudy(spec, selection)?.parameters.period;
+  return typeof period === "number" && Number.isFinite(period) ? period : defaultStudyPeriod(selection);
+}
+
+/**
+ * Changes the period of a selected builtin study. The study keeps its id, so
+ * `setBuiltinStudies` carries the new period through later toggles; an
+ * unselected study is left alone.
+ */
+export function setBuiltinStudyPeriod(
+  spec: ChartSpec,
+  selection: BuiltinStudySelection,
+  period: number,
+): ChartSpec {
+  if (!isPeriodStudy(selection)) return spec;
+  const bounded = Math.round(Math.min(STUDY_PERIOD_MAX, Math.max(STUDY_PERIOD_MIN, period)));
+  const target = builtinStudy(spec, selection);
+  if (!target) return spec;
+  return {
+    ...spec,
+    studies: spec.studies.map((study) => (
+      study.id === target.id ? { ...study, parameters: { ...study.parameters, period: bounded } } : study
+    )),
+  };
+}
+
 export type PairStudySelection = "ratio" | "spread" | "correlation";
 
 const PAIR_STUDY_ID_PREFIX = "pair:";

@@ -11,7 +11,9 @@ import {
 } from "../../../components";
 import {
   MultiSelectDialogButton,
+  NumberPromptDialog,
   type MultiSelectDialogButtonHandle,
+  type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
@@ -58,11 +60,16 @@ import {
   buildPriceChartPreset,
   chartSeriesLabel,
   defaultFinancialTimestampMode,
+  builtinStudyPeriod,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  isPeriodStudy,
   setBuiltinStudies,
+  setBuiltinStudyPeriod,
   setPairStudies,
   rebindResearchChartSpec,
+  STUDY_PERIOD_MAX,
+  STUDY_PERIOD_MIN,
   type BuiltinStudySelection,
   type PairStudySelection,
 } from "./presets";
@@ -71,7 +78,9 @@ import {
   CHART_FORMULA_OPTIONS,
   CHART_RANGES as RANGES,
   CHART_RESOLUTIONS as RESOLUTIONS,
-  CHART_STUDY_OPTIONS,
+  chartStudyLabel,
+  chartStudyOptionsFor,
+  chartStudyPeriodTitle,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
@@ -310,6 +319,37 @@ function ChartComposerSurface({
   const interactionCaptureRef = useRef(false);
   const interactionCaptureSourcesRef = useRef(new Set<string>());
   const indicatorsDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
+  // The Indicators dialog keeps the callbacks it opened with; reading the spec
+  // through this ref keeps a toggle from undoing a period edit made meanwhile.
+  const specRef = useRef(spec);
+  specRef.current = spec;
+  const studyOptions = useMemo(() => chartStudyOptionsFor(spec), [spec]);
+  const studyPeriodAction = useMemo<MultiSelectRowAction>(() => ({
+    label: "Period",
+    shortcut: "p",
+    appliesTo: (value, selected) => selected && isPeriodStudy(value),
+    run: async (value) => {
+      if (!isPeriodStudy(value)) return;
+      const current = builtinStudyPeriod(specRef.current, value) ?? STUDY_PERIOD_MIN;
+      const next = await dialog.prompt<number>({
+        content: (ctx: PromptContext<number>) => (
+          <NumberPromptDialog
+            {...ctx}
+            title={chartStudyPeriodTitle(value)}
+            initialValue={current}
+            min={STUDY_PERIOD_MIN}
+            max={STUDY_PERIOD_MAX}
+            invalidMessage={`Whole number from ${STUDY_PERIOD_MIN} to ${STUDY_PERIOD_MAX}`}
+          />
+        ),
+      });
+      if (next === undefined || next === current) return;
+      const nextSpec = setBuiltinStudyPeriod(specRef.current, value, next);
+      specRef.current = nextSpec;
+      setSpec(nextSpec);
+      return chartStudyLabel(value, next);
+    },
+  }), [dialog, setSpec]);
   const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
@@ -642,9 +682,14 @@ function ChartComposerSurface({
         ref={indicatorsDialogRef}
         label="Indicators"
         title="Chart Indicators"
-        options={CHART_STUDY_OPTIONS}
+        options={studyOptions}
         selectedValues={selectedStudies}
-        onChange={(values) => setSpec(setBuiltinStudies(spec, values as BuiltinStudySelection[]))}
+        onChange={(values) => {
+          const nextSpec = setBuiltinStudies(specRef.current, values as BuiltinStudySelection[]);
+          specRef.current = nextSpec;
+          setSpec(nextSpec);
+        }}
+        rowAction={studyPeriodAction}
         disabled={indicatorsDisabled}
         idPrefix={`${footerId}:indicators`}
         shortcutKey="i"
