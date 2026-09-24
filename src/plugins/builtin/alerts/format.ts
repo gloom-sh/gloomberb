@@ -39,9 +39,10 @@ export function formatAlertDistance(alert: AlertRule): string {
   }
   const percent = ((alert.targetPrice - currentPrice) / currentPrice) * 100;
   if (!Number.isFinite(percent)) return "-";
-  const abs = Math.abs(percent);
-  const decimals = abs < 10 ? 1 : 0;
-  return `${percent >= 0 ? "+" : ""}${percent.toFixed(decimals)}%`;
+  // One decimal at any distance, so the column holds still as the price moves;
+  // a distance that rounds to zero is unsigned (0.0%, never -0.0%).
+  const fixed = Math.abs(percent).toFixed(1);
+  return `${/[1-9]/.test(fixed) ? (percent > 0 ? "+" : "-") : ""}${fixed}%`;
 }
 
 export function formatQuoteChecked(alert: AlertRule): string {

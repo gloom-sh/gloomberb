@@ -48,6 +48,8 @@ export interface SyncBrokerInstancesArgs {
   existingTickers: Map<string, TickerRecord>;
   resources?: AppResourceStorePort;
   persistResolvedBrokerConfig?: boolean;
+  /** Leave each result's ticker writes to `onResult`, which calls `result.commit()`. */
+  deferPersistence?: boolean;
   onResult?: (result: SyncBrokerInstanceResult, instance: BrokerInstanceConfig, previousConfig: AppConfig) => void | Promise<void>;
 }
 
@@ -75,6 +77,69 @@ function throwIfBrokerImportCancelled(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new Error("Broker import was cancelled.");
   }
+}
+
+/** The fields a sync changed, over an entry the user may have edited meanwhile (a rename, a disable). */
+function rebaseFields<T extends object>(live: T, base: T, synced: T): T {
+  const next = { ...live } as Record<string, unknown>;
+  const before = base as Record<string, unknown>;
+  const after = synced as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (after[key] === before[key]) continue;
+    if (key in after) next[key] = after[key];
+    else delete next[key];
+  }
+  return next as T;
+}
+
+/** Applies the entries a sync added, changed or removed (by id) onto the live list. */
+function rebaseEntriesById<T extends { id: string }>(live: T[], base: T[], synced: T[]): T[] {
+  if (synced === base) return live;
+  const baseById = new Map(base.map((entry) => [entry.id, entry]));
+  const syncedById = new Map(synced.map((entry) => [entry.id, entry]));
+  const liveIds = new Set(live.map((entry) => entry.id));
+  let changed = false;
+  const next: T[] = [];
+  for (const entry of live) {
+    const before = baseById.get(entry.id);
+    const after = syncedById.get(entry.id);
+    if (before && !after) {
+      changed = true;
+      continue;
+    }
+    if (after && after !== before) {
+      changed = true;
+      next.push(before ? rebaseFields(entry, before, after) : after);
+      continue;
+    }
+    next.push(entry);
+  }
+  for (const entry of synced) {
+    if (baseById.has(entry.id) || liveIds.has(entry.id)) continue;
+    changed = true;
+    next.push(entry);
+  }
+  return changed ? next : live;
+}
+
+/**
+ * A broker can take seconds to answer, and the app is usable meanwhile. A sync
+ * only touches portfolios and broker instances, so only its changes to those
+ * are carried onto the live config; a pane opened or a tab switched while the
+ * broker was answering stays. A profile removed meanwhile stays removed.
+ */
+export function rebaseBrokerSyncConfig(
+  live: AppConfig,
+  base: AppConfig,
+  synced: AppConfig,
+  instanceId: string,
+): AppConfig {
+  if (synced === base || !getBrokerInstance(live.brokerInstances, instanceId)) return live;
+  const portfolios = rebaseEntriesById(live.portfolios, base.portfolios, synced.portfolios);
+  const brokerInstances = rebaseEntriesById(live.brokerInstances, base.brokerInstances, synced.brokerInstances);
+  return portfolios === live.portfolios && brokerInstances === live.brokerInstances
+    ? live
+    : { ...live, portfolios, brokerInstances };
 }
 
 async function maybePersistResolvedBrokerConfig(
@@ -311,6 +376,7 @@ export async function syncBrokerInstances({
   existingTickers,
   resources,
   persistResolvedBrokerConfig = false,
+  deferPersistence = false,
   onResult,
 }: SyncBrokerInstancesArgs): Promise<SyncBrokerInstancesResult> {
   let nextConfig = config;
@@ -331,6 +397,7 @@ export async function syncBrokerInstances({
         existingTickers: nextTickers,
         resources,
         persistResolvedBrokerConfig,
+        deferPersistence,
       });
 
       nextConfig = result.config;

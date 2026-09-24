@@ -523,9 +523,10 @@ edits from another device are reported. `x` exports all matches from the display
 snapshot, up to 5,000 rows. The normal pane CSV menu exports currently loaded rows.
 Expired snapshots ask for a refresh before continuing or exporting.
 
-`gloomberb fn EQS --metric trailingPE --json` returns the first page with its
-snapshot, coverage, per-field dates and pagination cursor. `--definition` accepts
-versioned JSON with `criteria`, `currency` and `sort`, for example:
+`gloomberb fn EQS --metric trailingPE --json` returns the first 100 matches with the
+snapshot, match and coverage counts, and the chosen metric's date and state per row.
+A notice says when more rows match; narrow the criteria to reach them. `--definition`
+accepts versioned JSON with `criteria`, `currency` and `sort`, for example:
 
 ```sh
 gloomberb fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json

@@ -16,10 +16,10 @@ const quote: Quote = {
 };
 
 describe("formatTickerBadgeChange", () => {
-  test("keeps one decimal and loses a pointless minus on zero", () => {
+  test("keeps one decimal on whole moves and loses a pointless minus on zero", () => {
     expect(formatTickerBadgeChange(1.24)).toBe("+1.2%");
-    expect(formatTickerBadgeChange(-5)).toBe("-5%");
-    expect(formatTickerBadgeChange(-0.01)).toBe("0%");
+    expect(formatTickerBadgeChange(-5)).toBe("-5.0%");
+    expect(formatTickerBadgeChange(-0.01)).toBe("0.0%");
   });
 });
 

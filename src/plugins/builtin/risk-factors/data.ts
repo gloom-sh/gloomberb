@@ -96,7 +96,14 @@ function loadCached<T extends object>(
 export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string, options?: { force?: boolean }): Promise<RiskReportsResult> {
   const key = ticker.trim().toUpperCase();
   return loadCached(client, LIST_KIND, key, activeListFetches, LIST_CACHE_POLICY, options?.force ?? false, async () => {
-    const payload = await client.getRiskReports(key);
+    let payload: CloudRiskReportListPayload;
+    try {
+      payload = await client.getRiskReports(key);
+    } catch (error) {
+      // The list answers 404 when no 10-K risk report is on file (20-F filers, funds).
+      if (error instanceof ApiRequestError && error.status === 404) return { company: null, reports: [] };
+      throw error;
+    }
     if (!payload || !Array.isArray(payload.reports)) throw new Error(`Risk report list unavailable for ${key}.`);
     return payload;
   });

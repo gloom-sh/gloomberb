@@ -1,7 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
-import { financialStatementLimitations } from "../../plugins/builtin/ticker-detail/financials/model";
 import { useRegularMarketSession } from "../../test-support/market-session";
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
@@ -56,7 +55,6 @@ for (const warm of [false, true]) test(`${warm ? "cached" : "fresh"} extended st
     if (warm) cacheRouterResource(persistence.resources, "financials", "JPM", variant, "provider:gloomberb-cloud", value, cachePolicy);
     const result = await new AssetDataRouter(yahoo, [cloud], persistence.resources).getTickerFinancials("JPM", "NYSE", { statementHistory: "extended" });
     expect(result.profile).toEqual(profile);
-    expect(financialStatementLimitations(result).some(text => text.includes("CET1"))).toBe(true);
     expect(result.quote?.price).toBe(310);
     expect(result.annualStatements).toEqual(value.annualStatements);
     expect(calls).toEqual({ cloud: 1, yahoo: 1, batch: 0 });
@@ -89,7 +87,6 @@ for (const contract of [false, true]) for (const mismatch of ["exchange", "symbo
       const value = await router.getTickerFinancials("JPM", "NYSE", context);
       expect(calls.yahoo).toBe(1);
       expect(value.profile).toBeUndefined();
-      expect(financialStatementLimitations(value).some(text => text.includes("CET1"))).toBe(false);
       const reopened = new AssetDataRouter(yahoo, [cloud], persistence.resources).getCachedFinancialsForTargets([{ symbol: "JPM", exchange: "NYSE", ...context }]).get("JPM");
       expect(reopened?.profile).toBeUndefined();
       expect(reopened?.quote?.price).toBe(310);

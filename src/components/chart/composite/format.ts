@@ -1,4 +1,4 @@
-import { formatMarketPriceWithCurrency, type MarketFormatOptions } from "../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, stablePriceFractionDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
 
@@ -48,12 +48,55 @@ function formatFullCurrencyValue(
   return currency ? formatMarketPriceWithCurrency(value, currency, { ...options, assetCategory }) : null;
 }
 
+function pointPriceValue(point: TimeSeriesPoint | undefined): number | undefined {
+  const value = point && Number.isFinite(point.value) ? point.value : point?.close;
+  return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : undefined;
+}
+
+/**
+ * The value a live price label takes its decimals from: the last completed
+ * bar, which holds still while the live one moves and sits near today's price
+ * even on a ten-year chart. Only market prices have one; fundamentals such as
+ * EPS keep formatting each value on its own.
+ */
+export function seriesPriceReference(series: ResolvedSeries): number | undefined {
+  if (series.observationKind !== "market" && series.dataShape !== "ohlcv" && series.priceAssetCategory === undefined) {
+    return undefined;
+  }
+  for (let index = series.points.length - 2; index >= 0; index -= 1) {
+    const value = pointPriceValue(series.points[index]);
+    if (value !== undefined) return value;
+  }
+  return pointPriceValue(series.points.at(-1));
+}
+
+/** A price label that moves with live data (the last price, the cursor, a
+ * legend value) keeps one decimal count for its asset, read from a reference
+ * price rather than the value itself: $150.10 does not become $150.1. */
+function stablePriceOptions(unit: string, assetCategory: string | undefined, referencePrice: number | undefined): MarketFormatOptions {
+  if (referencePrice === undefined) return {};
+  return {
+    referencePrice,
+    fixedFractionDigits: stablePriceFractionDigits({
+      assetCategory,
+      currency: unitCurrencyCode(unit) ?? undefined,
+      referencePrice,
+      sessionPrices: [referencePrice],
+    }),
+  };
+}
+
 /** An axis can serve several price series. Keep the most precise value the
  * shared formatter produces, rather than inheriting the first asset's rounding. */
-function formatAxisPriceValue(value: number, domain: CompositeAxisDomain, options: MarketFormatOptions = {}): string {
+function formatAxisPriceValue(
+  value: number,
+  domain: CompositeAxisDomain,
+  options: MarketFormatOptions | ((category: string | undefined) => MarketFormatOptions) = {},
+): string {
   const categories = domain.priceAssetCategories?.length ? domain.priceAssetCategories : [undefined];
   return categories.reduce<string>((best, category) => {
-    const formatted = formatFullCurrencyValue(value, domain.unit, category, options) ?? "";
+    const categoryOptions = typeof options === "function" ? options(category) : options;
+    const formatted = formatFullCurrencyValue(value, domain.unit, category, categoryOptions) ?? "";
     return formatted.length > best.length ? formatted : best;
   }, "");
 }
@@ -190,11 +233,24 @@ function compactResolution(value: number): number {
   return absolute > 0 ? 10 ** (Math.floor(Math.log10(absolute)) - 2) : 0;
 }
 
-export function formatCompositeSeriesValue(value: number, series: ResolvedSeries): string {
-  return formatChartLegendValue(value, series.unit, series.unitGroup, series.priceAssetCategory);
+/** `referencePrice` defaults to the series' own; a study on a price axis
+ * passes the axis's reference so it shares the price's decimals. */
+export function formatCompositeSeriesValue(
+  value: number,
+  series: ResolvedSeries,
+  referencePrice = seriesPriceReference(series),
+): string {
+  return formatChartLegendValue(value, series.unit, series.unitGroup, series.priceAssetCategory, referencePrice);
 }
 
-export function formatChartLegendValue(value: number, unit: string, unitGroup = "", assetCategory?: string): string {
+export function formatChartLegendValue(
+  value: number,
+  unit: string,
+  unitGroup = "",
+  assetCategory?: string,
+  /** Set for a live series: its price keeps the decimals this reference calls for. */
+  referencePrice?: number,
+): string {
   const trimmed = unit.trim();
   const group = unitGroup.toLowerCase();
   const compact = compactNumber(value);
@@ -212,7 +268,12 @@ export function formatChartLegendValue(value: number, unit: string, unitGroup = 
       return prefix ? `${value < 0 ? "-" : ""}${prefix}${amount}` : `${amount} ${trimmed}`.trim();
     }
   }
-  const fullPrice = formatFullCurrencyValue(value, trimmed, assetCategory);
+  const fullPrice = formatFullCurrencyValue(
+    value,
+    trimmed,
+    assetCategory,
+    referencePrice === undefined ? {} : stablePriceOptions(trimmed, assetCategory, referencePrice),
+  );
   if (fullPrice) return fullPrice;
   return trimmed && trimmed.length <= 6 ? `${compact}${trimmed.startsWith("/") ? "" : " "}${trimmed}` : compact;
 }
@@ -267,7 +328,9 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   if (group.split(":")[0] === "currency-total") {
     return formatChartLegendValue(value, domain.unit, domain.unitGroup);
   }
-  const fullPrice = formatAxisPriceValue(value, domain);
+  const fullPrice = formatAxisPriceValue(value, domain, (category) => (
+    stablePriceOptions(domain.unit, category, domain.priceReferences?.[category ?? ""])
+  ));
   if (fullPrice) return fullPrice;
   return formatCompositeAxisValue(value, domain);
 }

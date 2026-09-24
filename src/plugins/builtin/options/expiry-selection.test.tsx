@@ -203,7 +203,7 @@ test.each([48, 80, 120])("retains a chosen expiry across unchanged, reordered an
     const result = await f.capture(label);
     expect(result.launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
     expect(result.launch?.marketPrice).toBe(20);
-    expect(result.csv).toContain("19,21,10.0%,20");
+    expect(result.csv).toContain("19.00,21.00,10.0%,20.00");
     expect(result.frame).not.toContain("AAPL261120");
   }
 });

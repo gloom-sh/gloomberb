@@ -5,6 +5,8 @@
  * version here never waits on a deploy. Modeled on `chart-composer/chart-spec`.
  */
 
+import { formatCompact, formatCompactAmount } from "../../../utils/format";
+
 export const VIEW_SPEC_VERSION = 1;
 export const MAX_VIEW_COLUMNS = 24;
 export const MAX_VIEW_FILTERS = 12;
@@ -337,48 +339,78 @@ function naturalDecimals(value: number): number {
   return Number.isInteger(value) ? 0 : Math.abs(value) >= 100 ? 1 : 2;
 }
 
-/**
- * One decimal count for a plain numeric column, so a column never mixes
- * "236" with "232.1": the most any of its values would show on its own.
- */
-export function viewColumnDecimals(rows: readonly ViewRow[], key: string): number | undefined {
+const MAX_NATURAL_DECIMALS = 2;
+
+/** The most decimals any of a column's values would show on its own. */
+function viewColumnDecimals(rows: readonly ViewRow[], key: string): number | undefined {
   let decimals: number | undefined;
   for (const row of rows) {
     const value = row[key];
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
     decimals = Math.max(decimals ?? 0, naturalDecimals(value));
-    if (decimals === 2) break;
+    if (decimals === MAX_NATURAL_DECIMALS) break;
   }
   return decimals;
 }
 
+export interface ViewDecimalColumn {
+  key: string;
+  /** Decimals the column never shows fewer of, such as cents on a price. */
+  minimum?: number;
+}
+
+/**
+ * One decimal count per numeric column, so a column never mixes "236" with
+ * "232.1", grown with the rows now shown and never fewer than `held`. Live
+ * rows tick several times a second, and a count read from each tick flips the
+ * whole column when one value crosses 100 or lands on a whole number. Returns
+ * `held` itself when no count grew.
+ */
+export function growViewColumnDecimals(
+  held: ReadonlyMap<string, number>,
+  rows: readonly ViewRow[],
+  columns: readonly ViewDecimalColumn[],
+): ReadonlyMap<string, number> {
+  let grown: Map<string, number> | null = null;
+  for (const { key, minimum = 0 } of columns) {
+    const current = held.get(key);
+    if (current !== undefined && current >= Math.max(minimum, MAX_NATURAL_DECIMALS)) continue;
+    const seen = viewColumnDecimals(rows, key);
+    if (seen === undefined && current === undefined) continue;
+    const decimals = Math.max(current ?? 0, seen ?? 0, minimum);
+    if (decimals === current) continue;
+    grown ??= new Map(held);
+    grown.set(key, decimals);
+  }
+  return grown ?? held;
+}
+
+/** A value that rounds to zero is unsigned: 0.00, never -0.00. */
+function unsignedZero(text: string): string {
+  return text.startsWith("-") && !/[1-9]/.test(text) ? text.slice(1) : text;
+}
+
 /**
  * A transform's display text, given the raw value, (for index100) the column's
- * first value, and (for plain numbers) the column's decimal count.
+ * first value, and (for plain, abs and compact numbers) the column's decimal count.
  */
 export function formatViewValue(value: unknown, transform: ViewTransform | undefined, base?: number, decimals?: number): string {
   if (value === null || value === undefined) return "";
   if (typeof value !== "number") return typeof value === "string" ? formatViewString(value) : JSON.stringify(value);
   if (!Number.isFinite(value)) return "";
+  const columnDecimals = decimals ?? naturalDecimals(value);
   switch (transform) {
     case "percent":
-      return `${(value * 100).toFixed(2)}%`;
+      return unsignedZero(`${(value * 100).toFixed(2)}%`);
     case "compact":
-      return compactNumber(value);
+      // A whole-number column (counts, volume) stays whole below 1,000; any
+      // other keeps two decimals there. Scaled values keep their zeros either way.
+      return columnDecimals === 0 ? formatCompact(value, { fixedDecimals: true }) : formatCompactAmount(value);
     case "abs":
-      return String(Math.abs(value));
+      return Math.abs(value).toFixed(columnDecimals);
     case "index100":
-      return base && Number.isFinite(base) && base !== 0 ? (value / base * 100).toFixed(1) : "";
+      return base && Number.isFinite(base) && base !== 0 ? unsignedZero((value / base * 100).toFixed(1)) : "";
     default:
-      return value.toFixed(decimals ?? naturalDecimals(value));
+      return unsignedZero(value.toFixed(columnDecimals));
   }
-}
-
-function compactNumber(value: number): string {
-  const abs = Math.abs(value);
-  const units: Array<[number, string]> = [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]];
-  for (const [threshold, suffix] of units) {
-    if (abs >= threshold) return `${(value / threshold).toFixed(abs / threshold >= 100 ? 0 : 1)}${suffix}`;
-  }
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }

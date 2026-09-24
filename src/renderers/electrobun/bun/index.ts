@@ -35,7 +35,7 @@ import {
   defaultMainWindowFrame,
   normalizeWindowFrameWithMinimum,
 } from "./window/frame";
-import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
+import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "./window/focus";
 import { handleHttpFetch } from "./desktop/http-fetch";
 import { DesktopHttpStreamBridge } from "./desktop/http-stream";
 import {
@@ -580,6 +580,7 @@ async function handleBackendRequest(
         getServices: requireServices,
         getSessionSnapshot,
         request,
+        senderDetachedPaneId: paneIdFromDetachedRpcKey(getRpcWindowKey(rpc)),
         reconcileDetachedWindows,
         registerCoreCapabilities,
         sendDesktopState,

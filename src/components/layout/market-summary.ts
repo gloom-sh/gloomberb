@@ -10,7 +10,7 @@ import { useQuoteEntry, useResolvedEntryValue } from "../../market-data/hooks";
 import { useQuoteStreaming } from "../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { formatPercentRaw } from "../../utils/format";
-import { formatMarketPrice } from "../../market-data/market/format";
+import { formatMarketPrice, liveQuoteFormatOptions } from "../../market-data/market/format";
 import { getActiveQuoteDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 
 /**
@@ -115,8 +115,10 @@ export function useMarketSummary(): MarketSummary {
 
   const activeSpyQuote = getActiveQuoteDisplay(spyQuote);
   const spyColor = activeSpyQuote?.change != null ? priceColor(activeSpyQuote.change, colors) : colors.textDim;
+  // Fixed decimals and a percent slot as wide as "+0.53%", so a streamed tick
+  // never slides the market-state label or re-fits the cluster.
   const spyText = activeSpyQuote
-    ? `SPY ${formatMarketPrice(activeSpyQuote.price, { assetCategory: "ETF" })} ${formatPercentRaw(activeSpyQuote.changePercent)}`
+    ? `SPY ${formatMarketPrice(activeSpyQuote.price, liveQuoteFormatOptions(spyQuote, spyQuote?.currency, "ETF"))} ${formatPercentRaw(activeSpyQuote.changePercent).padStart(6)}`
     : "SPY —";
 
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;

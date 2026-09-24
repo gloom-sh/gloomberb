@@ -7,7 +7,7 @@ import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
 import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
-import { optionSpread, type OptionMarketReference } from "./market-reference";
+import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./market-reference";
 
 export interface OptionsCoverageState {
   text: string;
@@ -57,7 +57,7 @@ export function optionContractFooterSegments(
       id: "options-spread",
       parts: [
         { text: "spread", tone: "label" },
-        { text: `${spread.spread} (${spread.percentOfMid.toFixed(1)}% of mid)`, tone: "value" },
+        { text: `${formatOptionPrice(spread.spread)} (${spread.percentOfMid.toFixed(1)}% of mid)`, tone: "value" },
       ],
     };
   return [

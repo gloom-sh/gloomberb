@@ -8,7 +8,7 @@ import type { StaticChartSurfaceProps } from "../../../components/chart/static";
 import type { DataTableCell } from "../../../components/ui/data-table/types";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatCompactAmount, formatPercentRaw } from "../../../utils/format";
 import { formatSignedCompact, formatWeight, renderBar } from "./display";
 import type {
   SectorSortPreference,
@@ -143,7 +143,7 @@ function renderSectorCell(row: SectorTableRow, column: SectorTableColumn): DataT
     case "weight":
       return { text: formatWeight(row.weight) };
     case "value":
-      return { text: row.value == null ? "—" : formatCompact(row.value) };
+      return { text: formatCompactAmount(row.value ?? undefined) };
     case "pnl":
       return {
         text: formatSignedCompact(row.pnl),

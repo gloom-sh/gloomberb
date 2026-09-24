@@ -23,6 +23,7 @@ import {
 } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { LIVE_CHART_TERMINAL_FRAME_MS } from "../../../time-series/live-quotes";
+import { FORWARD_VALUATION_BASIS_NOTICES } from "../../../time-series/forward-valuation";
 import { chartSeriesSourceKey } from "../../../capabilities";
 import { useShortcut } from "../../../react/input";
 import { useDialog, useDialogState, type PromptContext } from "../../../ui/dialog";
@@ -560,6 +561,7 @@ function ChartComposerSurface({
     : []);
   const statusWarnings = resolution.warnings.filter((warning) => (
     warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice
+    && !FORWARD_VALUATION_BASIS_NOTICES.has(warning)
     && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
     && !spec.studies.some((study) => (
       (study.kind === "ratio" && warning.startsWith(`${study.id}: ratio inputs use different currencies (`)

@@ -336,13 +336,15 @@ export interface DebtResource {
   stale: boolean;
   refreshError: string | null;
 }
+// Seeds the first paint while the mount load runs; cache age is not staleness,
+// and a failed refresh reports its own.
 export function cachedDebtMaturities(symbol: string): DebtResource | null {
   const cached = debtMaturitiesCache.get(symbol, { allowExpired: true });
   if (!cached) return null;
   try {
     return {
       payload: validateDebtMaturities(cached.data, symbol),
-      stale: cached.stale,
+      stale: false,
       refreshError: null,
     };
   } catch {

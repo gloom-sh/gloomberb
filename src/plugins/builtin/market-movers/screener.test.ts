@@ -321,9 +321,13 @@ describe("fetchScreener", () => {
 });
 
 test("mover prices keep the currency's minor unit and a sub-cent coin's digits", async () => {
-  const { formatMoverPrice } = await import("./model");
+  const { formatMoverPrice, moverReferencePrice } = await import("./model");
   expect(formatMoverPrice(0.00001234, "USD")).toBe("$0.00001234");
   expect(formatMoverPrice(33.4, "USD")).toBe("$33.40");
   expect(formatMoverPrice(45678, "JPY")).toBe("¥45,678");
   expect(formatMoverPrice(1234.5, "GBp")).toBe("£12.35");
+  // Decimals come from the session's close, never the tick: a sub-dollar stock
+  // landing on $0.50 or crossing $1 keeps its four.
+  expect(formatMoverPrice(0.5, "USD", moverReferencePrice({ price: 0.5, change: -0.0123 }))).toBe("$0.5000");
+  expect(formatMoverPrice(1.2, "USD", moverReferencePrice({ price: 1.2, change: 0.4 }))).toBe("$1.2000");
 });

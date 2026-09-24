@@ -6,9 +6,10 @@ import { buildPriceChartPreset } from "../../../plugins/builtin/chart-composer/p
 import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { applyResolvedSeriesTransform } from "../../../time-series/transforms";
 import type { HeadlessPaneContext } from "../../../types/headless";
-import { formatCompositeCursorValue, formatCompositeSeriesValue } from "./format";
+import { formatCompositeCursorValue, formatCompositeSeriesValue, seriesPriceReference } from "./format";
 import { applyCompositeChartCursor, buildCompositeChartScene, resolveCompositeCursorDate } from "./scene";
 import { reuseResolvedSeriesIdentity } from "./panel-series";
+import { pricePointsToResolvedSeries } from "./price-series";
 
 const cases = [
   ["EURUSD=X", "USD", "CURRENCY", 1.1602274179458618, "$1.160227"],
@@ -26,7 +27,9 @@ const cases = [
 
 async function priceModel(symbol: string, currency: string, instrumentType: string, value: number) {
   const step = Math.min(0.0001, value / 10);
-  const points = [0, 1, 2].map((offset) => ({ date: new Date(Date.UTC(2026, 8, 9 + offset)), close: value + (offset - 2) * step }));
+  // The last completed bar closed where the quote is: a live label takes its
+  // decimals from that close, which a real feed writes like the quote.
+  const points = [value + step, value, value].map((close, offset) => ({ date: new Date(Date.UTC(2026, 8, 9 + offset)), close }));
   const spec = buildPriceChartPreset(symbol);
   spec.viewport = { ...spec.viewport, range: "1M", resolution: "1d", dateWindow: { start: "2026-09-09", end: "2026-09-11" } };
   spec.studies = [{ id: "sma", kind: "sma", inputSeriesIds: [spec.series[0]!.id], parameters: { period: 2 }, panelId: "main", axis: "left" }];
@@ -64,7 +67,9 @@ for (const [symbol, currency, category, value, expected] of cases) {
     expect(formatCompositeCursorValue(cursor.value!, panel.axes[series.axis]!)).toBe(expected);
     const average = model.chart.series.find((entry) => entry.id === "sma")!;
     const averageValue = average.points.at(-1)!.value!;
-    expect(formatCompositeSeriesValue(averageValue, average)).toBe(formatMarketPriceWithCurrency(averageValue, currency, { assetCategory: category }));
+    // On the price's axis, a study of the price is written like the price.
+    expect(formatCompositeSeriesValue(averageValue, average, seriesPriceReference(series)))
+      .toBe(formatCompositeSeriesValue(averageValue, series));
   });
 }
 
@@ -90,4 +95,17 @@ test("FX metadata does not turn normalized returns or ratios into currency price
   expect(latest.rawValue).toBe(fx.points.at(-1)!.value);
   expect(formatCompositeSeriesValue(latest.value!, percent)).toEndWith("%");
   expect(formatCompositeSeriesValue(1.25, { ...fx, unit: "x", unitGroup: "ratio" })).toBe("1.25x");
+});
+
+// Live labels read their decimals from the last completed bar, not the start
+// of the window: a ten-year chart that began under $1 still prints cents.
+test("a long-range chart labels today's price at today's precision", () => {
+  const closes = [0.0376, 12.5, 180.07, 180.12];
+  const series = pricePointsToResolvedSeries(
+    closes.map((close, day) => ({ date: new Date(Date.UTC(2016 + day * 3, 0, 1)), close })),
+    { id: "nvda", label: "NVDA", color: "#fff", unit: "USD" },
+  );
+  expect(formatCompositeSeriesValue(180.12, series)).toBe("$180.12");
+  const earnings = { ...series, dataShape: "scalar" as const, unitGroup: "currency-per-share" };
+  expect(formatCompositeSeriesValue(2.35, earnings)).toBe("$2.35");
 });

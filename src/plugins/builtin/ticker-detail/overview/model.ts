@@ -54,13 +54,21 @@ export function buildOverviewStats({
   const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentals?.financialCurrency, perShare);
 
   if (quote?.volume != null) {
-    stats.push({ label: "Volume", value: formatCompact(quote.volume) });
+    // Live figures keep their decimals (12.30M, not 12.3M) so the digits hold still.
+    stats.push({ label: "Volume", value: formatCompact(quote.volume, { fixedDecimals: true }) });
   }
   // Price-derived statistics follow the quote; see live-valuation for when a stored figure is kept.
   const capitalization = liveMarketCapitalization(quote, fundamentals);
   if (capitalization) {
     const converted = convertMarketCapitalization(capitalization.value, capitalization.currency, baseCurrency, marketCapExchangeRates);
-    stats.push({ label: "Market Cap", value: formatCompactCurrency(converted ?? capitalization.value, converted == null ? capitalization.currency : baseCurrency) });
+    stats.push({
+      label: "Market Cap",
+      value: formatCompactCurrency(
+        converted ?? capitalization.value,
+        converted == null ? capitalization.currency : baseCurrency,
+        { fixedDecimals: true },
+      ),
+    });
   }
   if (fundamentals?.sharesOutstanding) {
     stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });

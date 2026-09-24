@@ -172,11 +172,14 @@ export function useAppPaneRuntime({
     options?: PaneTemplateInstanceConfig,
   ) => {
     const { width, height } = pluginRegistry.getTermSizeFn();
+    // Templates can await ticker resolution before placing their pane, so the
+    // layout from the render that started the request may be out of date.
+    const { config: { layout }, focusedPaneId } = stateRef.current;
     const relativeTo = options?.relativeToPaneId
-      ? resolvePaneTarget(options.relativeToPaneId)
-      : (state.focusedPaneId && isPaneInLayout(state.config.layout, state.focusedPaneId) ? state.focusedPaneId : null);
+      ? resolvePaneTarget(options.relativeToPaneId, layout)
+      : (focusedPaneId && isPaneInLayout(layout, focusedPaneId) ? focusedPaneId : null);
     const relativePosition = options?.relativePosition ?? "right";
-    let nextLayout = state.config.layout;
+    let nextLayout = layout;
     const dockedPaneIds = getDockedPaneIds(nextLayout);
 
     if (options?.placement === "floating" || (options?.placement !== "docked" && paneDef.defaultMode === "floating")) {
@@ -204,8 +207,7 @@ export function useAppPaneRuntime({
     persistLayout,
     pluginRegistry,
     resolvePaneTarget,
-    state.config.layout,
-    state.focusedPaneId,
+    stateRef,
   ]);
 
   const showPane = useCallback((paneId: string) => {

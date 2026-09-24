@@ -177,6 +177,8 @@ export interface ScreenerQuote {
   dayLow: number | undefined;
   exchange: string;
   lastUpdated?: number;
+  /** Session-fixed, so the price column reads its decimals from it rather than from each tick. */
+  previousClose?: number;
 }
 
 export type MarketMoversDataSource = "cloud" | "yahoo";
@@ -260,6 +262,7 @@ export function parseScreenerResponse(data: any): ScreenerQuote[] {
       fiftyTwoWeekLow: screenerNumber(q.fiftyTwoWeekLow) ?? undefined,
       dayHigh: screenerNumber(q.regularMarketDayHigh) ?? undefined,
       dayLow: screenerNumber(q.regularMarketDayLow) ?? undefined,
+      previousClose: screenerNumber(q.regularMarketPreviousClose) ?? undefined,
       exchange: typeof (q.fullExchangeName ?? q.exchange) === "string" ? q.fullExchangeName ?? q.exchange : "",
       lastUpdated: typeof q.regularMarketTime === "number" && Number.isFinite(q.regularMarketTime) && q.regularMarketTime > 0
         ? q.regularMarketTime * 1000 : undefined,

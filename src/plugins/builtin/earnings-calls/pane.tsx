@@ -700,8 +700,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (lookupTicker && lookupState) {
         if (lookupState === "loading" || lookupState === "pending") {
           info.push({ id: "lookup", parts: [{ text: `looking up ${lookupTicker}`, tone: "muted" }] });
-        } else if (lookupState === "unknown" || lookupState === "none") {
+        } else if (lookupState === "unknown") {
           info.push({ id: "lookup", parts: [{ text: `${lookupTicker} not found`, tone: "warning" }] });
+        } else if (lookupState === "none") {
+          info.push({ id: "lookup", parts: [{ text: `no ${lookupTicker} calls yet`, tone: "muted" }] });
         } else if (lookupState === "error") {
           info.push({ id: "lookup", parts: [{ text: `${lookupTicker}: ${lookup?.refreshError ?? "lookup failed"}`, tone: "warning" }] });
         }

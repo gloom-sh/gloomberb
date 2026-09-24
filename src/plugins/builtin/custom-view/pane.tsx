@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient, TeamRevisionConflictError } from "../../../api-client";
 import { DataTableView } from "../../../components/data-table/view";
 import { ChoiceDialog } from "../../../components/ui/choice-dialog";
@@ -29,6 +29,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { normalizeSymbol } from "../../../utils/exchanges";
 import {
   liveViewColumns,
+  liveViewDecimalFloors,
   overlayViewRow,
   viewRowQuote,
   viewRowSymbol,
@@ -39,8 +40,8 @@ import { loadViewSource, type LoadedView } from "./loader";
 import {
   applyViewProjection,
   formatViewValue,
+  growViewColumnDecimals,
   parseViewSpecOr,
-  viewColumnDecimals,
   type ViewColumn,
   type ViewRow,
   type ViewSort,
@@ -56,6 +57,7 @@ const DEFAULT_COLUMN_WIDTH = 14;
 const NO_ROWS: ViewRow[] = [];
 const NO_SYMBOLS: readonly (string | null)[] = [];
 const NO_TARGETS: QuoteSubscriptionTarget[] = [];
+const NO_DECIMALS: ReadonlyMap<string, number> = new Map();
 /** Live values move every tick; filters and sort follow them at most this often. */
 const LIVE_VIEW_ORDER_SAMPLE_MS = 5_000;
 /** Header and border rows above the table body. */
@@ -185,11 +187,20 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     }
     return bases;
   }, [columns, rows]);
-  const decimalsByColumn = useMemo(() => new Map(columns.flatMap((column) => {
-    if (column.transform) return [];
-    const decimals = viewColumnDecimals(rows, column.key);
-    return decimals === undefined ? [] : [[column.key, decimals] as const];
-  })), [columns, rows]);
+  const decimalFloors = useMemo(() => liveViewDecimalFloors(sourceRows, liveFields), [liveFields, sourceRows]);
+  // A column's decimals only grow while this spec is shown, so a tick that
+  // crosses 100 or lands on a whole number never reflows the column.
+  const heldDecimals = useRef<{ spec: ViewSpec | null; decimals: ReadonlyMap<string, number> }>({ spec: null, decimals: NO_DECIMALS });
+  const decimalsByColumn = useMemo(() => {
+    const held = heldDecimals.current.spec === spec ? heldDecimals.current.decimals : NO_DECIMALS;
+    const decimals = growViewColumnDecimals(held, rows, columns.flatMap((column) => (
+      column.transform === "percent" || column.transform === "index100"
+        ? []
+        : [{ key: column.key, minimum: decimalFloors.get(column.key) }]
+    )));
+    heldDecimals.current = { spec, decimals };
+    return decimals;
+  }, [columns, decimalFloors, rows, spec]);
   const activeSort = sort === undefined ? spec?.projection.sort ?? null : sort;
   // Memoized so the table's row memo holds while the selection moves.
   const rowKey = useCallback((row: ViewRow, index: number) => (

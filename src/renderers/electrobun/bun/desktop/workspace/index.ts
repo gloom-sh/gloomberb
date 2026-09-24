@@ -1,6 +1,6 @@
 import type { AppSessionSnapshot } from "../../../../../core/state/session-persistence";
 import { clonePaneStateMap, syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../../core/state/app/state";
-import { cloneLayout, type AppConfig, type LayoutConfig } from "../../../../../types/config";
+import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
 import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../plugins/pane-manager";
 import type { WindowFrame } from "../../window/frame";
@@ -50,6 +50,22 @@ function keepDetachedFrames(layout: LayoutConfig, current: LayoutConfig): Layout
   ), layout);
 }
 
+/**
+ * A popped-out window cannot open, move or close panes, and its copy of the
+ * layout is refreshed only when its own pane changes. So a whole-config save
+ * from it can only mean edits to its own pane (title, settings, binding); the
+ * rest of the layout it sends can predate a pane the main window just opened,
+ * and taking it would close that pane again.
+ */
+function takeOwnPaneInstance(layout: LayoutConfig, sent: LayoutConfig, paneId: string): LayoutConfig {
+  const instance = findPaneInstance(sent, paneId);
+  if (!instance || !findPaneInstance(layout, paneId)) return layout;
+  return {
+    ...layout,
+    instances: layout.instances.map((entry) => (entry.instanceId === paneId ? instance : entry)),
+  };
+}
+
 /** Docking forgets the window, so its frame is kept for the next pop-out. */
 function rememberDetachedFrame(layout: LayoutConfig, paneId: string): LayoutConfig {
   const entry = layout.detached.find((candidate) => candidate.instanceId === paneId);
@@ -69,6 +85,8 @@ export interface DesktopWorkspace {
   getSnapshot(): DesktopSharedStateSnapshot;
   syncMainState(snapshot: DesktopSharedStateSnapshot): DesktopSharedStateSnapshot;
   replaceConfig(config: AppConfig, options?: { layoutChanged?: boolean }): DesktopSharedStateSnapshot;
+  /** A whole-config save from the popped-out window for `paneId`: the open tab's panes count only for that pane. */
+  replaceConfigFromDetachedPane(paneId: string, config: AppConfig): DesktopSharedStateSnapshot;
   replaceDetachedPaneState(paneId: string, paneState: PaneRuntimeState): DesktopSharedStateSnapshot;
   updateDetachedFrame(
     paneId: string,
@@ -175,6 +193,21 @@ export function createDesktopWorkspace(
     },
     replaceConfig(config: AppConfig, options) {
       return updateConfig({ ...config, layout: keepDetachedFrames(config.layout, sharedState.config.layout) }, options);
+    },
+    replaceConfigFromDetachedPane(paneId, config) {
+      const current = sharedState.config;
+      // The Layouts pane can be popped out, so a save can carry a renamed,
+      // added or reordered tab, or a switch: the tab list and the active tab
+      // come from the save. The panes of the tab both windows are on do not.
+      const sent = config.layouts[config.activeLayoutIndex];
+      const shown = current.layouts[current.activeLayoutIndex];
+      const sameTab = !!sent && !!shown && (sent.id && shown.id
+        ? sent.id === shown.id
+        : sent.name === shown.name || config.activeLayoutIndex === current.activeLayoutIndex);
+      return updateConfig({
+        ...config,
+        layout: sameTab ? takeOwnPaneInstance(current.layout, config.layout, paneId) : config.layout,
+      }, { layoutChanged: true });
     },
     replaceDetachedPaneState(paneId, paneState) {
       const nextPaneState = filterPaneState(sharedState.config.layout, {

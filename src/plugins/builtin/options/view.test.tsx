@@ -254,7 +254,7 @@ test("shows volatility statistics and mirrored default Greeks", async () => {
   const frame = testSetup!.captureCharFrame();
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
   expect(frame).toMatch(/HV30\s+--/);
-  expect(frame).toMatch(/Volume\s+4k/);
+  expect(frame).toMatch(/Volume\s+4\.0k/);
   expect(frame).toContain("C Δ");
   expect(frame).toContain("C Γ");
   expect(frame).toContain("P Γ");
@@ -540,7 +540,7 @@ test("starts at a held contract's expiry and preserves a researcher-selected rol
   expect(testSetup!.captureCharFrame()).toContain("Loading options chain");
   await act(async () => { selectTicker(ticker); });
   await renderSettled();
-  expect(testSetup!.captureCharFrame()).toMatch(/34\.05\s+0\.3%\s+34\s+.*340/);
+  expect(testSetup!.captureCharFrame()).toMatch(/34\.05\s+0\.3%\s+34\.00\s+.*340/);
 });
 
 test("keeps the selected chain visible when its refresh fails", async () => {

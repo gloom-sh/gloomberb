@@ -52,6 +52,15 @@ test("a live quote without a change percent is restated from the previous close"
   expect(row!.changePercent).toBeCloseTo(10, 6);
 });
 
+test("a live price crossing a power of ten keeps the decimals of its previous close", () => {
+  const coin = { ...cryptoFixture().assets[0]!, price: 9.95, previousClose: 9.9 };
+  const rowAt = (price: number) => buildCryptoRows(
+    [coin], "coin", new Map([[cryptoQuoteKey(coin), entry({ price, lastUpdated: CRYPTO_FIXTURE_NOW })]]), CRYPTO_FIXTURE_NOW,
+  )[0]!.priceText;
+  expect(rowAt(9.998)).toBe("9.998");
+  expect(rowAt(10.02)).toBe("10.020");
+});
+
 test("tabs split coins from stablecoins and keep market-cap rank order", () => {
   const assets = cryptoFixture().assets;
   expect(buildCryptoRows(assets, "coin", new Map()).map((row) => row.code)).toEqual(["BTC", "HYPE"]);

@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   applyViewProjection,
   formatViewValue,
+  growViewColumnDecimals,
   normalizeViewSpec,
   parseViewSpec,
   parseViewSpecOr,
   serializeViewSpec,
   validateViewSpec,
-  viewColumnDecimals,
+  type ViewRow,
 } from "./view-spec";
 
 const good = {
@@ -98,19 +99,36 @@ describe("applyViewProjection", () => {
 describe("formatViewValue", () => {
   test("applies transforms", () => {
     expect(formatViewValue(0.1234, "percent")).toBe("12.34%");
-    expect(formatViewValue(1_234_567, "compact")).toBe("1.2M");
+    expect(formatViewValue(1_234_567, "compact")).toBe("1.23M");
+    expect(formatViewValue(12_300_000, "compact")).toBe("12.30M");
     expect(formatViewValue(-3, "abs")).toBe("3");
     expect(formatViewValue(110, "index100", 100)).toBe("110.0");
     expect(formatViewValue(3.14159, undefined)).toBe("3.14");
+    expect(formatViewValue(-0.001, undefined, undefined, 2)).toBe("0.00");
     expect(formatViewValue("text", "percent")).toBe("text");
     expect(formatViewValue(null, "compact")).toBe("");
   });
 
-  test("reads midnight ISO stamps as dates and gives a numeric column one decimal count", () => {
+  test("reads midnight ISO stamps as dates", () => {
     expect(formatViewValue("2026-09-01T00:00:00.000Z", undefined)).toBe("2026-09-01");
     expect(formatViewValue("2026-09-01T14:30:00Z", undefined)).toBe("2026-09-01 14:30 UTC");
-    const rows = [{ close: 236 }, { close: 232.1 }, { close: null }];
-    const decimals = viewColumnDecimals(rows, "close");
-    expect(rows.map((row) => formatViewValue(row.close, undefined, undefined, decimals))).toEqual(["236.0", "232.1", ""]);
+  });
+
+  test("a numeric column keeps one decimal count that only grows while the view is shown", () => {
+    const columns = [{ key: "close" }];
+    const format = (rows: ViewRow[], decimals: ReadonlyMap<string, number>) => (
+      rows.map((row) => formatViewValue(row.close, undefined, undefined, decimals.get("close")))
+    );
+    const loaded = [{ close: 236 }, { close: 232.1 }, { close: null }];
+    const held = growViewColumnDecimals(new Map(), loaded, columns);
+    expect(format(loaded, held)).toEqual(["236.0", "232.1", ""]);
+    // A tick lands on whole numbers: the column keeps its decimal rather than reflowing.
+    const whole = [{ close: 236 }, { close: 232 }];
+    expect(growViewColumnDecimals(held, whole, columns)).toBe(held);
+    // One row under 100 grows the whole column, and it stays grown.
+    const grown = growViewColumnDecimals(held, [{ close: 99.5 }], columns);
+    expect(format(whole, growViewColumnDecimals(grown, whole, columns))).toEqual(["236.00", "232.00"]);
+    // A live price keeps its floor on a whole-number tick.
+    expect(growViewColumnDecimals(new Map(), whole, [{ key: "close", minimum: 2 }]).get("close")).toBe(2);
   });
 });

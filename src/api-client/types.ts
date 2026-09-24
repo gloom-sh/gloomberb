@@ -820,7 +820,7 @@ export interface CloudRiskReportListPayload {
     cik: string | null;
     name: string;
     shortName: string;
-  };
+  } | null;
   reports: CloudRiskReportSummaryPayload[];
 }
 

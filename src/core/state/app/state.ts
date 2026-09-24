@@ -41,9 +41,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   if (layoutState) return layoutState;
 
   switch (action.type) {
-    case "SET_CONFIG":
+    case "SET_CONFIG": {
+      // A config that leaves the layouts alone (a broker sync, a setting) keeps
+      // the layout undo history; one that replaces them starts it over.
+      const sameLayouts = action.config.layout === state.config.layout
+        && action.config.layouts === state.config.layouts
+        && action.config.activeLayoutIndex === state.config.activeLayoutIndex;
       return withFocusedPane(
-        { ...state, themePreview: null, layoutHistory: {} },
+        { ...state, themePreview: null, layoutHistory: sameLayouts ? state.layoutHistory : {} },
         action.config,
         {
           paneState: {
@@ -52,6 +57,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           },
         },
       );
+    }
 
     case "SET_ONBOARDING_STATE":
       return {

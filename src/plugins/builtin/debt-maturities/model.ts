@@ -124,7 +124,8 @@ export function sortedDebtHistory(
   );
 }
 export function debtNotices(data: DebtMaturitiesPayload): string[] {
-  // Standing scope and open-ended bucket methodology are documented, not repeated as active failures.
+  // Standing scope and open-ended bucket methodology are documented, not repeated as
+  // active failures. The backend stops sending them; this covers older servers and caches.
   return data.warnings.filter(
     (warning) =>
       !warning.startsWith(

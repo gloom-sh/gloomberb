@@ -11,6 +11,7 @@ import {
   estimateHistory,
   sortPeriods,
   pinnedEstimatePeriods,
+  revisionNotices,
 } from "./model";
 const stats = {
   percentile: null,
@@ -115,6 +116,12 @@ test("period identity and actual-versus-lookback boundaries reject unsafe ranks 
   count.periods[0]!.breadth[0]!.down = -1;
   expect(() => validateEstimates(count, "AAPL", "NASDAQ")).toThrow();
   expect(() => validateEstimates(fixture(), "AAPL", "NYSE")).toThrow();
+});
+test("a young collection history alone raises no notice", () => {
+  const data = fixture();
+  for (const state of Object.values(data.sources)) state.status = "available";
+  expect(data.historyCoverage.recordedDays).toBeLessThan(20);
+  expect(revisionNotices(data)).toEqual([]);
 });
 test("sorting keeps missing consensus last without treating it as zero", () => {
   const first = fixture().periods[0]!;

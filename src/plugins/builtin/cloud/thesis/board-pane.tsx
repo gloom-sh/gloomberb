@@ -17,7 +17,7 @@ import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
 import { Box, TextAttributes, type InputRenderable } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
-import { formatCompactCurrency } from "../../../../utils/format";
+import { formatCompactAmount } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../../utils/search-focus-navigation";
 import { usePluginAppActions } from "../../../runtime";
@@ -344,7 +344,8 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       case "weight":
         return { text: `${pct(row.weight)}${row.hasOptions ? "*" : ""}`, color: selectedColor ?? colors.text };
       case "value":
-        return { text: formatCompactCurrency(row.value, exposure.baseCurrency), color: selectedColor ?? colors.textDim };
+        // A thesis can be worth under 1000, where formatCompactCurrency would trim the cents as prices move.
+        return { text: `${formatCompactAmount(row.value)} ${exposure.baseCurrency}`, color: selectedColor ?? colors.textDim };
       case "gap": {
         const text = row.gap > 0 ? "under-sized" : row.gap < 0 ? "grew big" : "in line";
         const color = row.gap > 0 ? colors.warning : row.gap < 0 ? colors.negative : colors.textDim;

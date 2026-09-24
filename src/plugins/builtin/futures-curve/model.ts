@@ -15,22 +15,26 @@ export function normalizeCurveRoot(value: unknown): string | null {
 
 /**
  * Treasury futures trade in fractions of a 32nd (ZT to 1/256, ZF 1/128, ZN
- * 1/64, ZB and UB 1/32): the decimals that hold every tick exactly. A fixed
- * five decimals put 105.265625 off the tick grid at 105.26563.
+ * 1/64, ZB and UB 1/32), so the catalogue leaves their tick unset. A root
+ * shows every price at the decimals its tick needs to stay exact (ZT 8, ZN 6),
+ * so a column and the M2-M1 spread keep one width: 103.50000000 next to
+ * 103.51562500, never 103.50 next to 103.515625.
  */
-const RATE_TICK_DECIMALS: Readonly<Record<string, number>> = { ZT: 8, ZF: 7, ZN: 6, ZB: 5, UB: 5 };
-const trimZeros = (text: string, minimum: number) => {
-  const [whole, fraction = ""] = text.split(".");
-  const kept = fraction.replace(/0+$/, "").padEnd(minimum, "0");
-  return kept ? `${whole}.${kept}` : whole!;
-};
+const RATE_TICKS: Readonly<Record<string, number>> = { ZT: 1 / 256, ZF: 1 / 128, ZN: 1 / 64, ZB: 1 / 32, UB: 1 / 32 };
+
+function curvePriceDecimals(root: string): number {
+  const rateTick = RATE_TICKS[root];
+  if (rateTick != null) return tickDecimals(rateTick);
+  if (root === "VX") return 4;
+  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick;
+  return tick == null ? 5 : Math.max(2, tickDecimals(tick));
+}
 
 export function curvePrice(value: number | null, root: string): string {
   if (value == null) return "--";
-  const rateDecimals = RATE_TICK_DECIMALS[root];
-  if (rateDecimals != null) return trimZeros(value.toFixed(rateDecimals), 2);
-  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick;
-  return value.toFixed(root === "VX" ? 4 : tick == null ? 5 : Math.max(2, tickDecimals(tick)));
+  const text = value.toFixed(curvePriceDecimals(root));
+  // A spread that rounds to zero is unsigned: 0.00, never -0.00.
+  return /[1-9]/.test(text) ? text : text.replace("-", "");
 }
 
 /**
@@ -38,9 +42,9 @@ export function curvePrice(value: number | null, root: string): string {
  * decimal count across the gutter, only as many as those values use.
  */
 export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root: string): string {
-  if (RATE_TICK_DECIMALS[root] == null) return curvePrice(value, root);
+  if (RATE_TICKS[root] == null) return curvePrice(value, root);
   const decimals = Math.max(0, ...compositeAxisTicks(domain, String)
-    .map((tick) => trimZeros(tick.value.toFixed(4), 0).split(".")[1]?.length ?? 0));
+    .map((tick) => tick.value.toFixed(4).replace(/\.?0+$/, "").split(".")[1]?.length ?? 0));
   return value.toFixed(decimals);
 }
 

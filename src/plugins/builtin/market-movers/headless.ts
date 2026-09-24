@@ -5,13 +5,13 @@ import type {
 } from "../../../types/plugin";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { loadMarketMoverTab, type MarketMoverTabResult } from "./client";
-import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, type TabId } from "./model";
+import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, moverReferencePrice, type MarketMoverRow, type TabId } from "./model";
 
 const COLUMNS = [
   { key: "rank", header: "Rank", align: "right" as const },
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },
-  { key: "price", header: "Last", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "") },
+  { key: "price", header: "Last", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow)) },
   { key: "changePercent", header: "Change %", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatPercentRaw(Number(value)) },
   { key: "volume", header: "Volume", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value), { fixedDecimals: true }) },
   { key: "volumeRatio", header: "Vol / Avg", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatNumber(Number(value), 1) },

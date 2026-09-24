@@ -1,6 +1,5 @@
-import type { PriceBasis } from "../../../../types/instrument";
 import { t } from "../../../../i18n";
-import { formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import { Box, Text, useUiHost } from "../../../../ui";
@@ -83,8 +82,7 @@ export function CompactRangeBar({
   label,
   width,
   currency,
-  assetCategory,
-  priceBasis,
+  priceOptions,
   markerColor,
 }: {
   current: number;
@@ -93,8 +91,8 @@ export function CompactRangeBar({
   label: string;
   width: number;
   currency: string;
-  assetCategory?: string;
-  priceBasis?: PriceBasis;
+  /** The quote's live price options, so the endpoints keep the price's decimals. */
+  priceOptions: MarketFormatOptions;
   markerColor: string;
 }) {
   const range = high - low;
@@ -105,7 +103,7 @@ export function CompactRangeBar({
     RANGE_ENDPOINT_WIDTH,
     Math.max(7, Math.floor((width - 8) / 3)),
   );
-  const endpointOptions = withCurrencyMinorDigits({ assetCategory, priceBasis, maxWidth: endpointWidth }, currency);
+  const endpointOptions = { ...priceOptions, maxWidth: endpointWidth };
   const lowText = formatMarketPriceWithCurrency(low, currency, endpointOptions);
   const highText = formatMarketPriceWithCurrency(high, currency, endpointOptions);
   const barWidth = Math.max(5, width - endpointWidth * 2 - 2);
@@ -152,14 +150,15 @@ function BookRow({
   return (
     <Box flexDirection="row" height={1} width={width}>
       <Text fg={colors.textDim}>{padTo(label, BOOK_LABEL_WIDTH)}</Text>
-      <Text fg={valueColor}>{value}</Text>
+      {/* Right-aligned, so a size changing length does not slide the price. */}
+      <Text fg={valueColor}>{padTo(value, Math.max(0, width - BOOK_LABEL_WIDTH), "right")}</Text>
     </Box>
   );
 }
 
 export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; assetCategory?: string; width: number }) {
-  // Bid and ask share a precision ($224.58 / $224.60), padded to the currency's minor unit.
-  const priceOptions = withCurrencyMinorDigits(quoteFormatOptions(quote, assetCategory), quote.currency);
+  // Bid, ask and spread keep the instrument's decimals on every tick ($224.58 / $224.60 / $0.02).
+  const priceOptions = liveQuoteFormatOptions(quote, quote.currency, assetCategory);
   const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : "—";
   const askPrice = quote.ask != null ? formatMarketPriceWithCurrency(quote.ask, quote.currency, priceOptions) : "—";
   const bidText = quote.bidSize != null && quote.bidSize > 0 ? `${formatNumber(quote.bidSize, 0)} x ${bidPrice}` : bidPrice;

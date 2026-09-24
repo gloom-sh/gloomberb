@@ -53,6 +53,7 @@ import {
   formatCompositeCursorValue,
   formatCompositePointDetails,
   formatCompositeSeriesValue,
+  seriesPriceReference,
   formatCompositeTimeAxisDate,
   type CompositeAxisValueFormatter,
 } from "./format";
@@ -1450,9 +1451,27 @@ function legendValue(
   series: ResolvedSeries,
   value: number | null,
   formatValue: CompositeChartProps["formatValue"],
+  scene: CompositeChartScene | null,
 ): string {
   if (value === null) return "—";
-  return formatValue ? formatValue(value, series) : formatCompositeSeriesValue(value, series);
+  return formatValue ? formatValue(value, series) : formatCompositeSeriesValue(value, series, axisPriceReference(scene, series));
+}
+
+/** The reference the axis holding a series keeps for its asset, so an average
+ * of the price shows the price's decimals rather than its own float tail. A
+ * series far from that price (another coin on a shared axis) keeps its own. */
+function axisPriceReference(scene: CompositeChartScene | null, series: ResolvedSeries): number | undefined {
+  const own = seriesPriceReference(series);
+  for (const panel of scene?.panels ?? []) {
+    for (const domain of [panel.axes.left, panel.axes.right]) {
+      if (!domain?.seriesIds.includes(series.id)) continue;
+      const shared = domain.priceReferences?.[series.priceAssetCategory ?? ""];
+      if (shared === undefined || own === undefined) return own ?? shared;
+      const ratio = Math.abs(own / shared);
+      return ratio > 0.1 && ratio < 10 ? shared : own;
+    }
+  }
+  return own;
 }
 
 const LISTED_TICKER_PATTERN = /(^|[\s(])([A-Z0-9^][A-Z0-9.^=/-]*):([A-Z0-9]{2,})(?=$|[\s),])/g;
@@ -1511,6 +1530,7 @@ function CompositeLegend({
         entry,
         cursorValue?.value ?? null,
         formatValue,
+        scene,
       )}${changeText}`;
     const fullText = [entry.label, valueText].filter(Boolean).join(" ");
     const details = formatCompositePointDetails(cursorValue?.point);

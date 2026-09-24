@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   usePaneFooter,
@@ -22,7 +22,7 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { isStreamCarryingQuote } from "../shared/use-quote-board";
-import { fxLegQuoteKey, fxLegTargets, fxLegs, liveFxLegEntry } from "./live-legs";
+import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, liveFxLegEntry } from "./live-legs";
 import { MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
 import { createFxExportMetadata } from "./export";
 
@@ -64,6 +64,22 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     for (const [currency, entry] of liveEntries) merged.set(currency, entry.data!);
     return merged;
   }, [liveEntries, snapshotRates]);
+  // A cell's decimals are counted at a rate that holds still, the pair's
+  // previous close or else the first rate this pane drew, never at the tick.
+  // The snapshot rates are no reference: they follow the stream too.
+  const firstRates = useRef(new Map<string, number>());
+  const referenceRates = useMemo(() => {
+    const references = new Map<string, number>([["USD", 1]]);
+    for (const leg of legs) {
+      const rate = rates.get(leg.currency);
+      if (!firstRates.current.has(leg.currency) && rate != null && Number.isFinite(rate) && rate > 0) {
+        firstRates.current.set(leg.currency, rate);
+      }
+      const reference = fxLegReferenceRate(leg, legEntries.get(fxLegQuoteKey(leg))) ?? firstRates.current.get(leg.currency);
+      if (reference != null) references.set(leg.currency, reference);
+    }
+    return references;
+  }, [legEntries, legs, rates]);
   // Export the provenance of this render's rates, even if a provider response
   // arrives before React commits the next render and the user exports now.
   const rateEntries = new Map(currencies.map((currency) => {
@@ -137,8 +153,9 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       const pending = status.loading > 0;
       return { text: pending ? "…" : "—", color: dimmed };
     }
-    return { text: formatRate(base / quote, quoteCurrency), color: selectedColor ?? colors.text };
-  }, [rates, status.loading]);
+    const reference = (referenceRates.get(row) ?? base) / (referenceRates.get(quoteCurrency) ?? quote);
+    return { text: formatRate(base / quote, quoteCurrency, reference), color: selectedColor ?? colors.text };
+  }, [rates, referenceRates, status.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (!isPlainKey(event, "r")) return false;

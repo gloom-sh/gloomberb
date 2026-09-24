@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { tapeFixture } from "./test-fixture";
 import { fetchTape, validateTape } from "./client";
-import { newestFirst, quoteKey, quoteSpread, tapeClock, tapeClockMs, tapeStatistics, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClock, tapeClockMs, tapePrice, tapeStatistics, tradeKey } from "./model";
 
 
 test("lossless IDs and nanosecond order determine latest print and weighted observed statistics", () => {
@@ -64,4 +64,20 @@ test("tape rows read at millisecond precision while the exact stamp survives for
   expect(tapeClockMs("2026-09-22T16:59:58.545074403Z")).toBe("16:59:58.545");
   expect(tapeClockMs("2026-09-22T16:59:58Z")).toBe("16:59:58");
   expect(tapeClock("2026-09-22T16:59:58.545074403Z")).toBe("16:59:58.545074403");
+});
+
+test("tape decimals only widen while a symbol is shown and start over for the next symbol", () => {
+  const cents = stickyTapePriceDigits(null, "AAPL", [150.1, 150.25]);
+  expect(tapePrice(150.1, cents?.digits)).toBe("150.10");
+  const subPenny = stickyTapePriceDigits(cents, "AAPL", [150.1, 150.0051]);
+  expect(subPenny?.digits).toBe(4);
+  // The sub-penny print left the rolling window, or a reset emptied it.
+  expect(stickyTapePriceDigits(subPenny, "AAPL", [150.1])?.digits).toBe(4);
+  expect(stickyTapePriceDigits(subPenny, "AAPL", [])?.digits).toBe(4);
+  expect(stickyTapePriceDigits(subPenny, "MSFT", [])).toBeNull();
+  expect(stickyTapePriceDigits(subPenny, "MSFT", [410.5])?.digits).toBe(2);
+  // Magnitude is read from the first prices only: a name first seen below $1 keeps
+  // its $0.0001 tick above $1, and one first seen above $1 does not widen on a whole-penny dip.
+  expect(stickyTapePriceDigits(stickyTapePriceDigits(null, "SNDL", [0.98]), "SNDL", [1.02])?.digits).toBe(4);
+  expect(stickyTapePriceDigits(stickyTapePriceDigits(null, "SNDL", [1.02]), "SNDL", [0.98])?.digits).toBe(2);
 });

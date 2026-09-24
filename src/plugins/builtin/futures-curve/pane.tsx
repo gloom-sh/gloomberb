@@ -7,6 +7,7 @@ import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { formatPercentRaw } from "../../../utils/format";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -24,7 +25,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
-const signedPercent = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+const signedPercent = (value: number | null) => value == null ? "--" : formatPercentRaw(value);
 const integer = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US");
 
 export function FuturesCurvePane(props: PaneProps) {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
-import { liveViewColumns, overlayViewRow, viewStreamTargets } from "./live-quotes";
+import { liveViewColumns, liveViewDecimalFloors, overlayViewRow, viewStreamTargets } from "./live-quotes";
 
 const quote: Quote = { symbol: "NVDA", price: 181.5, change: 3, changePercent: 1.68, volume: 12_000_000, currency: "USD", lastUpdated: 1 };
 
@@ -24,6 +24,11 @@ test("only a listing's own last price, day change and volume stream into a view"
   expect(overlayViewRow(row, quote, fields)).toEqual({ ...row, price: 181.5, changePercent: 1.68, volume: 12_000_000 });
   expect(overlayViewRow(row, { ...quote, currency: "EUR" }, fields)).toBe(row);
   expect(overlayViewRow(row, { ...quote, stale: true }, fields)).toBe(row);
+
+  // A live price keeps cents whatever the tick, and none for a yen-only view.
+  expect(liveViewDecimalFloors([row], fields)).toEqual(new Map([["price", 2], ["changePercent", 2]]));
+  expect(liveViewDecimalFloors([{ ...row, currency: "JPY" }], fields).get("price")).toBe(0);
+  expect(liveViewDecimalFloors([{ ...row, currency: "JPY" }, row], fields).get("price")).toBe(2);
 });
 
 test("a view streams the rows on screen fast and one screen either side in the background", () => {

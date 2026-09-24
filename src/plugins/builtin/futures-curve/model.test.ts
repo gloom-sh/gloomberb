@@ -74,11 +74,13 @@ test("charts the strip within the horizon and dates it by its freshest quote, no
   expect(newestQuote([])).toBeNull();
 });
 
-test("Treasury prices stay on their 32nd tick grid and contracts read by delivery month", () => {
+test("Treasury prices keep one decimal count per root on their 32nd tick grid and contracts read by delivery month", () => {
   expect(curvePrice(105.265625, "ZN")).toBe("105.265625");
-  expect(curvePrice(101.6796875, "ZT")).toBe("101.6796875");
-  expect(curvePrice(108, "ZB")).toBe("108.00");
-  expect(curvePrice(-0.1875, "ZN")).toBe("-0.1875");
+  expect(curvePrice(105.5, "ZN")).toBe("105.500000");
+  expect(curvePrice(101.6796875, "ZT")).toBe("101.67968750");
+  expect(curvePrice(108, "ZB")).toBe("108.00000");
+  expect(curvePrice(-0.1875, "ZN")).toBe("-0.187500");
+  expect(curvePrice(-0.001, "CL")).toBe("0.00");
   expect(curvePrice(0.00635, "6J")).toBe("0.0063500");
   // Crude's November contract expires in October.
   expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 26");

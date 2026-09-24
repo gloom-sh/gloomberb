@@ -38,8 +38,8 @@ describe("selected contract status", () => {
     optionContractFooterSegments(...args).map((segment) => segment.parts.map((part) => part.text).join(" "));
 
   test("yields the spread to a visible SPRD column, but never the reason one is missing", () => {
-    expect(texts(reference(10.05, 10.15), false, NOW)).toContain("spread 0.1 (1.0% of mid)");
-    expect(texts(reference(10.05, 10.15), true, NOW)).not.toContain("spread 0.1 (1.0% of mid)");
+    expect(texts(reference(10.05, 10.15), false, NOW)).toContain("spread 0.10 (1.0% of mid)");
+    expect(texts(reference(10.05, 10.15), true, NOW)).not.toContain("spread 0.10 (1.0% of mid)");
     // The column renders every degenerate quote as one dash, so the status bar
     // keeps naming them whether or not it is shown.
     for (const visible of [false, true]) {

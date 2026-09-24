@@ -59,7 +59,7 @@ describe("buildPortfolioSummarySegments", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-    }), 24);
+    }), 26);
 
     expect(segments.map((segment) => segment.id)).toEqual(["netliq", "val"]);
   });
@@ -85,14 +85,14 @@ describe("buildPortfolioSummarySegments", () => {
       accountState: { account, sourceLabel: "Live" },
     });
 
-    expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175k");
+    expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175.0k");
   });
 
   test("drops low-priority broker segments before required ones", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-    }), 100);
+    }), 112);
 
     expect(segments.map((segment) => segment.id)).toEqual([
       "netliq",
@@ -107,12 +107,12 @@ describe("buildPortfolioSummarySegments", () => {
 
   test("the open cash drawer continues where the header row ran out of room", () => {
     const segments = buildPortfolioSummarySegments({ totals, accountState: { account, sourceLabel: "Live" } });
-    const layout = layoutPortfolioSummaryHeader(segments, 50, { cashDrawer: true, hideHeader: false });
+    const layout = layoutPortfolioSummaryHeader(segments, 56, { cashDrawer: true, hideHeader: false });
     const ids = (list: typeof segments) => list.map((segment) => segment.id);
 
     expect(ids(layout.row)).toEqual(["netliq", "val", "cash"]);
     expect(ids(layout.detail)).toEqual(["day", "pnl", "settled"]);
-    expect(ids(layoutPortfolioSummaryHeader(segments, 50, { cashDrawer: true, hideHeader: true }).detail))
+    expect(ids(layoutPortfolioSummaryHeader(segments, 56, { cashDrawer: true, hideHeader: true }).detail))
       .toEqual(["netliq", "val", "cash"]);
   });
 

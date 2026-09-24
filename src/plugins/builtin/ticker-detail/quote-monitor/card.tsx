@@ -7,7 +7,7 @@ import { resolveEntryData } from "../../../../market-data/selectors";
 import { useDoubleClickActivation } from "../../../../components/use-double-click-activation";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
-import { formatMarketPriceWithCurrency, quoteFormatOptions, formatSignedMarketPrice, withCurrencyMinorDigits } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
@@ -102,7 +102,8 @@ export function QuoteMonitorCard({
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
   const stacked = width < 31;
   const compactQuoteFailure = quoteFailed && stacked && height <= 3;
-  const priceOptions = withCurrencyMinorDigits(quoteFormatOptions(quote, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType), currency);
+  // One decimal count per instrument, so streamed ticks never narrow or widen the price column.
+  const priceOptions = liveQuoteFormatOptions(quote, currency, assetCategory, cachedFinancials?.quoteMetadata?.instrumentType);
   const priceText = display ? formatMarketPriceWithCurrency(display.price, currency, priceOptions) : "";
   const changePercentText = display ? formatPercentRaw(display.changePercent) : "";
   const changeValueText = display ? formatSignedMarketPrice(display.change, priceOptions) : "";

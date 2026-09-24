@@ -3,7 +3,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
@@ -240,7 +240,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "net-liquidation",
       label: "Net Liq",
-      value: formatCompact(netLiquidation),
+      value: formatCompactAmount(netLiquidation),
       color: colors.text,
     });
   }
@@ -249,7 +249,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "total-value",
       label: "Val",
-      value: formatCompact(totalMarketValue),
+      value: formatCompactAmount(totalMarketValue),
       color: colors.text,
     });
   }
@@ -268,7 +268,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "cash",
       label: "Cash",
-      value: formatCompact(convertAccountValue(account.totalCashValue)),
+      value: formatCompactAmount(convertAccountValue(account.totalCashValue)),
       color: colors.text,
     });
   }
@@ -319,7 +319,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "settled-cash",
       label: "Settled",
-      value: formatCompact(convertAccountValue(account.settledCash)),
+      value: formatCompactAmount(convertAccountValue(account.settledCash)),
       color: colors.text,
     });
   }
@@ -327,7 +327,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "available-funds",
       label: "Avail",
-      value: formatCompact(convertAccountValue(account.availableFunds)),
+      value: formatCompactAmount(convertAccountValue(account.availableFunds)),
       color: colors.text,
     });
   }
@@ -335,7 +335,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "excess-liquidity",
       label: "Excess",
-      value: formatCompact(convertAccountValue(account.excessLiquidity)),
+      value: formatCompactAmount(convertAccountValue(account.excessLiquidity)),
       color: colors.text,
     });
   }
@@ -343,7 +343,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "buying-power",
       label: "BP",
-      value: formatCompact(convertAccountValue(account.buyingPower)),
+      value: formatCompactAmount(convertAccountValue(account.buyingPower)),
       color: colors.text,
     });
   }

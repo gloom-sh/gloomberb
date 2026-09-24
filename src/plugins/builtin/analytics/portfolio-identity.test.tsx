@@ -147,9 +147,9 @@ test("actual analytics account switching changes quote, sector denominator and h
   await act(async () => { setup!.mockInput.pressArrow("right"); await setup!.renderOnce(); }); await settleFrame(setup!, 20);
   expect(latestState.paneState[paneId]?.portfolioId).toBe("b");
   const frame = setup!.captureCharFrame();
-  expect(frame).toContain("Val           4k");
-  expect(frame).toContain("P&L           +800");
-  expect(frame).toContain("Technology                50.0%         2k");
+  expect(frame).toContain("Val           4.0k");
+  expect(frame).toContain("P&L           +800.00");
+  expect(frame).toContain("Technology                50.0%       2.0k");
   expect(frame).not.toContain("Weights unavailable");
   const requested = readChart.mock.calls.filter(([request]) => request.instrument.symbol === "ACME").map(([request]) => request.instrument.instrument?.conId);
   expect(requested).toContain(101); expect(requested).toContain(202);
@@ -163,7 +163,7 @@ for (const portfolioId of ["a", "b"]) test(`actual analytics ${portfolioId} reje
   await act(async () => f.coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(ticker, "ACME", { portfolioId })!, financials: financials("ACME", 300) }]));
   await settleFrame(setup!, 20);
   expect(setup!.captureCharFrame()).toContain("60.0%");
-  expect(setup!.captureCharFrame()).toContain("Val           5k");
+  expect(setup!.captureCharFrame()).toContain("Val           5.0k");
 });
 
 test("actual shared-portfolio preview uses its selected quote and history contracts", async () => {
@@ -195,7 +195,7 @@ test("unresolved selected contract skips market requests, keeps its own mark and
   restore.push(() => quotes.mockRestore(), () => charts.mockRestore());
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]));
   const frame = setup!.captureCharFrame();
-  expect(frame).toContain("Technology                50.0%         2k");
+  expect(frame).toContain("Technology                50.0%       2.0k");
   expect(frame).toContain("Broker contract unavailable for ACME");
   expect(quotes.mock.calls.filter(([request]) => request.symbol === "ACME")).toEqual([]);
   expect(charts.mock.calls.filter(([request]) => request.instrument.symbol === "ACME")).toEqual([]);
@@ -249,7 +249,7 @@ test("actual PF rejects another account's symbol-only quote on a scoped cache mi
   const f = fixture(false, "b");
   await render(f, "b", new Map([["ACME", financials("ACME", 999)]]), false, "portfolio-list");
   const frame = setup!.captureCharFrame();
-  expect(frame).toContain("2k"); expect(frame).toContain("50.00%"); expect(frame).not.toContain("9.99k");
+  expect(frame).toContain("2.0k"); expect(frame).toContain("50.00%"); expect(frame).not.toContain("10.0k");
 });
 
 test("actual Kelly uses scoped bankroll, current holding and price without research quote overriding them", async () => {

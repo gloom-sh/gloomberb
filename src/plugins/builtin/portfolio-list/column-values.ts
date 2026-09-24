@@ -6,7 +6,7 @@ import type { EarningsEvent } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { priceColor } from "../../../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
-import { convertCurrency, formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   formatMarketCost,
   quoteFormatOptions,
@@ -14,6 +14,7 @@ import {
   formatMarketPriceWithCurrency,
   formatMarketQuantity,
   formatSignedMarketPrice,
+  withStablePriceDigits,
   type MarketFormatOptions,
 } from "../../../market-data/market/format";
 import {
@@ -239,7 +240,14 @@ export function getColumnValue(
     multiplier: multiplierHint,
     priceBasis: positionMetrics.priceBasis,
   };
-  const currentQuoteOptions = { ...formatOptions, ...quoteFormatOptions(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType) };
+  // Streamed prices keep one decimal count per instrument, so a tick landing on
+  // a whole dime does not print 150.1 and jump the column's digits.
+  const currentQuoteOptions = withStablePriceDigits(
+    { ...formatOptions, ...quoteFormatOptions(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType) },
+    quoteCurrency,
+    quote,
+  );
+  const markOptions = withStablePriceDigits(formatOptions, positionCurrency || quoteCurrency, { price: brokerMarkPrice });
 
   switch (col.id) {
     case "ticker": {
@@ -272,7 +280,7 @@ export function getColumnValue(
     case "tags":
       return { text: ticker.metadata.tags.length > 0 ? ticker.metadata.tags.join(",") : "—" };
     case "price":
-      return resolvePortfolioPriceValue(displayQuote, brokerMarkPrice, displayQuote ? currentQuoteOptions : formatOptions, col.width, quote?.marketState);
+      return resolvePortfolioPriceValue(displayQuote, brokerMarkPrice, displayQuote ? currentQuoteOptions : markOptions, col.width, quote?.marketState);
     case "change":
       if (!displayQuote) return { text: "—" };
       return {
@@ -304,10 +312,10 @@ export function getColumnValue(
         ? { text: formatPercentRaw(displayQuote.changePercent), color: marketChangeColor(displayQuote.changePercent, quote?.marketState) }
         : { text: quote ? formatPercentRaw(quote.changePercent) : "—", color: quote ? marketChangeColor(quote.changePercent, quote.marketState) : undefined };
     case "volume":
-      return { text: finiteNumber(quote?.volume) ? formatCompact(quote.volume) : "—" };
+      return { text: finiteNumber(quote?.volume) ? formatCompact(quote.volume, { fixedDecimals: true }) : "—" };
     case "dollar_volume": {
       if (!displayQuote || !finiteNumber(quote?.volume)) return { text: "—" };
-      return { text: formatCompact(toBaseQuote(displayQuote.price * quote.volume)) };
+      return { text: formatCompact(toBaseQuote(displayQuote.price * quote.volume), { fixedDecimals: true }) };
     }
     case "range_52w": {
       const position = fiftyTwoWeekPosition(displayQuote, quote);
@@ -316,7 +324,7 @@ export function getColumnValue(
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
       const value = cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
-      return { text: value == null ? "—" : formatCompact(value) };
+      return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }) };
     }
     case "pe":
       return { text: formatPriceEarnings(liveTrailingPE(quote, fundamentals)) };
@@ -349,7 +357,7 @@ export function getColumnValue(
       if (baseMetrics.positionCount === 0 || !Number.isFinite(baseMetrics.totalCost)) return { text: "—" };
       return { text: formatCompact(baseMetrics.totalCost) };
     case "mkt_value":
-      return { text: formatCompact(resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? Number.NaN) };
+      return { text: formatCompactAmount(resolvePortfolioMarketValue(baseMetrics, activeQuote ? toBaseQuote(activeQuote.price) : null)?.gross ?? Number.NaN) };
     case "weight": {
       const marketValue = getActiveMarketValue(activeQuote, baseMetrics, toBaseQuote);
       if (marketValue == null || !ctx.portfolioTotalMarketValue) return { text: "—" };
@@ -358,13 +366,13 @@ export function getColumnValue(
     case "day_pnl":
       if (activeQuote && finiteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
-        return { text: `${dayPnl >= 0 ? "+" : ""}${formatCompact(dayPnl)}`, color: priceColor(dayPnl) };
+        return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
       }
       return { text: "—" };
     case "pnl": {
       const pnl = positionPnl.value;
       return pnl === null ? { text: "—", pnlBasis: positionPnl.basis }
-        : { text: `${pnl >= 0 ? "+" : ""}${formatCompact(pnl)}`, color: priceColor(pnl), pnlBasis: positionPnl.basis };
+        : { text: formatCompactAmount(pnl, { signed: true }), color: priceColor(pnl), pnlBasis: positionPnl.basis };
     }
     case "pnl_pct": {
       const percent = portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);

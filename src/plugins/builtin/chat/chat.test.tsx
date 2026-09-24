@@ -1076,8 +1076,8 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const lines = setup().captureCharFrame().split("\n");
-    const row = lines.findIndex((line) => line.includes("TSLA -5%"));
-    const col = lines[row]?.indexOf("TSLA -5%") ?? -1;
+    const row = lines.findIndex((line) => line.includes("TSLA -5.0%"));
+    const col = lines[row]?.indexOf("TSLA -5.0%") ?? -1;
 
     expect(row).toBeGreaterThanOrEqual(0);
     expect(col).toBeGreaterThanOrEqual(0);

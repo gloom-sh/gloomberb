@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig, findPaneInstance } from "../../../../../types/config";
+import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../../../types/config";
+import { addPaneFloating } from "../../../../../plugins/pane-manager";
+import { updatePaneInstance } from "../../../../../pane-settings";
 import { createDesktopWorkspace } from "./index";
 
 describe("desktop workspace", () => {
@@ -64,6 +66,36 @@ describe("desktop workspace", () => {
     // A pane the main window newly pops out still opens where it says.
     expect(synced.config.layout.detached).toEqual([moved, newlyOut]);
     expect(synced.config.layouts[synced.config.activeLayoutIndex]?.layout.detached).toEqual([moved, newlyOut]);
+  });
+
+  // A popped-out window only rehydrates when its own pane changes, so the rest
+  // of the layout it saves can predate a pane the main window just opened.
+  test("a popped-out window's save keeps panes it has not seen and applies its own pane's edits", () => {
+    const workspace = createDesktopWorkspace(createDefaultConfig("/tmp/gloomberb-desktop"), null);
+    const popped = workspace.popOutPane("chat:main", { x: 100, y: 120, width: 800, height: 540 });
+    const opened = createPaneInstance("news", { instanceId: "news:opened" });
+    workspace.syncMainState({
+      ...popped,
+      config: { ...popped.config, layout: addPaneFloating(popped.config.layout, opened, 120, 40) },
+      mainStateRevision: 1,
+    });
+
+    // Its own pane renamed, and (a popped-out Layouts pane) the open tab too.
+    const saved = workspace.replaceConfigFromDetachedPane("chat:main", {
+      ...popped.config,
+      theme: "green",
+      layout: updatePaneInstance(popped.config.layout, "chat:main", (instance) => ({ ...instance, title: "#general" })),
+      layouts: popped.config.layouts.map((entry, index) => (
+        index === popped.config.activeLayoutIndex ? { ...entry, name: "Trading" } : entry
+      )),
+    });
+
+    expect(findPaneInstance(saved.config.layout, "news:opened")).toBeDefined();
+    expect(findPaneInstance(saved.config.layout, "chat:main")?.title).toBe("#general");
+    expect(saved.config.layouts[saved.config.activeLayoutIndex]?.name).toBe("Trading");
+    expect(saved.config.theme).toBe("green");
+    expect(saved.config.layout.detached.map((entry) => entry.instanceId)).toEqual(["chat:main"]);
+    expect(saved.mainStateRevision).toBe(1);
   });
 
   test("docking from the menu remembers the window's frame, an edge drop does not", () => {

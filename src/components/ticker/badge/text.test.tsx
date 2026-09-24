@@ -44,7 +44,7 @@ describe("TickerBadgeText", () => {
 
     await testSetup.renderOnce();
 
-    expect(testSetup.captureCharFrame()).toContain("TSLA -5%");
+    expect(testSetup.captureCharFrame()).toContain("TSLA -5.0%");
   });
 
   test("falls back to the raw token when resolution failed", async () => {
@@ -63,7 +63,7 @@ describe("TickerBadgeText", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("$TSLA");
-    expect(frame).not.toContain("TSLA -5%");
+    expect(frame).not.toContain("TSLA -5.0%");
   });
 
   test("opens the Ticker Research pane when a badge is clicked", async () => {
@@ -82,8 +82,8 @@ describe("TickerBadgeText", () => {
     await testSetup.renderOnce();
 
     const lines = testSetup.captureCharFrame().split("\n");
-    const row = lines.findIndex((line) => line.includes("TSLA -5%"));
-    const col = lines[row]?.indexOf("TSLA -5%") ?? -1;
+    const row = lines.findIndex((line) => line.includes("TSLA -5.0%"));
+    const col = lines[row]?.indexOf("TSLA -5.0%") ?? -1;
 
     expect(row).toBeGreaterThanOrEqual(0);
     expect(col).toBeGreaterThanOrEqual(0);
@@ -112,7 +112,7 @@ describe("TickerBadgeText", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("https://example.com");
-    expect(frame).toContain("TSLA -5%");
+    expect(frame).toContain("TSLA -5.0%");
   });
 
   test("renders usernames as clickable tags when a username opener is provided", async () => {
@@ -186,7 +186,7 @@ describe("TickerBadgeText", () => {
 
     expect(firstRow).toBeGreaterThanOrEqual(0);
     expect(secondRow).toBeGreaterThan(firstRow);
-    expect(lines[firstRow]).toContain("TSLA -5%");
+    expect(lines[firstRow]).toContain("TSLA -5.0%");
   });
 
   test("opens detected links without trailing punctuation when clicked", async () => {

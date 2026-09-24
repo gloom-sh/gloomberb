@@ -422,6 +422,20 @@ for (const alreadyOnShelf of [true, false]) {
 }
 
 
+for (const answer of [{ calls: [], pending: false }, { calls: [], unknownTicker: true }]) {
+  test(`a company lookup with ${answer.unknownTicker ? "an unknown ticker" : "no calls"} says so in the footer`, async () => {
+    signIn();
+    setCloudApiFetchTransport(async url => Response.json(new URL(String(url)).searchParams.get("ticker") ? answer : { calls: [call("OTHER")] }));
+    await mount(80, null);
+    await findInPane("MSFT");
+    await act(async () => { await Bun.sleep(600); });
+    await frames();
+    const frame = setup!.captureCharFrame();
+    expect(frame).toContain(answer.unknownTicker ? "MSFT not found" : "no MSFT calls yet");
+    expect(frame).not.toContain(answer.unknownTicker ? "no MSFT calls yet" : "MSFT not found");
+  });
+}
+
 test("shelf refresh reloads the active company and a slower older lookup cannot override refreshed global rows", async () => {
   signIn();
   let refreshed = false;

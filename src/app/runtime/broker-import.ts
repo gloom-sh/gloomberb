@@ -1,5 +1,10 @@
 import { useCallback, type Dispatch } from "react";
-import { restoreBrokerPortfoliosFromTickerPositions, syncBrokerInstance, syncBrokerInstances } from "../../brokers/sync-broker-instance";
+import {
+  rebaseBrokerSyncConfig,
+  restoreBrokerPortfoliosFromTickerPositions,
+  syncBrokerInstance,
+  syncBrokerInstances,
+} from "../../brokers/sync-broker-instance";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -7,6 +12,7 @@ import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { AppConfig } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
+import { getBrokerInstance } from "../../utils/broker-instances";
 
 export interface AppBrokerImportRuntime {
   importBrokerPositions: (
@@ -49,17 +55,24 @@ export function useBrokerImportRuntime({
     instanceId: string,
     result: SyncBrokerInstanceResult,
     baseConfig: AppConfig,
-    options?: Pick<BrokerImportOptions, "refreshImportedTickers" | "signal">,
+    options?: Pick<BrokerImportOptions, "refreshImportedTickers" | "signal"> & {
+      /** The caller passed its own draft config, so the result replaces the live one. */
+      callerOwnsConfig?: boolean;
+    },
   ) => {
     throwIfBrokerImportCancelled(options?.signal);
     dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts: result.brokerAccounts });
 
-    if (result.config !== baseConfig) {
+    const liveConfig = stateRef.current.config;
+    const nextConfig = options?.callerOwnsConfig
+      ? (result.config !== baseConfig ? result.config : liveConfig)
+      : rebaseBrokerSyncConfig(liveConfig, baseConfig, result.config, instanceId);
+    if (nextConfig !== liveConfig) {
       throwIfBrokerImportCancelled(options?.signal);
-      dispatch({ type: "SET_CONFIG", config: result.config });
-      await saveConfigImmediately(result.config);
+      dispatch({ type: "SET_CONFIG", config: nextConfig });
+      await saveConfigImmediately(nextConfig);
       throwIfBrokerImportCancelled(options?.signal);
-      pluginRegistry.events.emit("config:changed", { config: result.config });
+      pluginRegistry.events.emit("config:changed", { config: nextConfig });
     }
 
     for (const ticker of result.addedTickers) {
@@ -79,7 +92,7 @@ export function useBrokerImportRuntime({
         refreshQuote(position.ticker, position.exchange, undefined, 1);
       }
     }
-  }, [dispatch, pluginRegistry.events, refreshQuote]);
+  }, [dispatch, pluginRegistry.events, refreshQuote, stateRef]);
 
   const importBrokerPositions = useCallback(async (
     instanceId: string,
@@ -99,6 +112,8 @@ export function useBrokerImportRuntime({
       deferPersistence: true,
     });
 
+    // A profile removed while its broker was answering stays removed, positions included.
+    if (!options?.config && !getBrokerInstance(stateRef.current.config.brokerInstances, instanceId)) return result;
     let commitStarted = false;
     try {
       throwIfBrokerImportCancelled(options?.signal);
@@ -106,7 +121,10 @@ export function useBrokerImportRuntime({
       commitStarted = true;
       await result.commit();
       throwIfBrokerImportCancelled(options?.signal);
-      await applyBrokerImportResult(instanceId, result, baseConfig, options);
+      await applyBrokerImportResult(instanceId, result, baseConfig, {
+        ...options,
+        callerOwnsConfig: options?.config !== undefined,
+      });
 
       return result;
     } finally {
@@ -128,7 +146,10 @@ export function useBrokerImportRuntime({
       tickerRepository,
       existingTickers: tickerMap,
       resources: pluginRegistry.persistence.resources,
+      deferPersistence: true,
       onResult: async (result, instance, previousConfig) => {
+        if (!getBrokerInstance(stateRef.current.config.brokerInstances, instance.id)) return;
+        await result.commit();
         await applyBrokerImportResult(instance.id, result, previousConfig, {
           refreshImportedTickers: false,
         });

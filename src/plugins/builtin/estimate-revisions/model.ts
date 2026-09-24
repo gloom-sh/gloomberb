@@ -21,11 +21,6 @@ export function revisionNotices(data: EstimateRevisionsPayload) {
         ? [`${source}: ${state.reason ?? "source unavailable"}`]
         : [],
     ),
-    ...(data.historyCoverage.recordedDays < 20
-      ? [
-          "Fewer than 20 actual observation days; EPS percentiles remain unavailable.",
-        ]
-      : []),
     ...(data.historyCoverage.truncated
       ? ["Stored history is truncated to the latest 4,000 rows."]
       : []),
