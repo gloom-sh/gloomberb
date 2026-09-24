@@ -143,6 +143,8 @@ interface NormalizedHistory {
 /** Last supplied corrections win, including a correction that withdraws a value. */
 function normalizeHistory(observations: readonly { date: Date | string; value: number | null | undefined }[], dateOnly = false): NormalizedHistory {
   const days = new Map<string, { date: string; observedAt: string; value: number | null }>();
+  // A null value is a source placeholder (FRED's "." on a holiday): a gap, not a rejected close.
+  const rejected = new Set<string>();
   let invalidDates = false;
   for (const observation of observations) {
     const raw = observation.date;
@@ -154,12 +156,14 @@ function normalizeHistory(observations: readonly { date: Date | string; value: n
     const observedAt = new Date(time).toISOString();
     const date = observedAt.slice(0, 10);
     const value = observation.value != null && Number.isFinite(observation.value) && observation.value > 0 ? observation.value : null;
+    if (value == null && observation.value != null) rejected.add(date);
+    else rejected.delete(date);
     days.set(date, { date, observedAt, value });
   }
   const rows = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
   return { rows, history: rows.flatMap((row) => row.value == null ? [] : [{ ...row, value: row.value }]),
     warnings: [...(invalidDates ? ["Malformed observation dates rejected"] : []),
-      ...(rows.some((row) => row.value == null) ? ["Nonpositive or missing closes rejected"] : [])] };
+      ...(rejected.size > 0 ? ["Nonpositive or invalid closes rejected"] : [])] };
 }
 export function classifyTermState(spot: number | null, threeMonth: number | null): TermState {
   if (spot == null || threeMonth == null || !(spot > 0)) return "partial";
