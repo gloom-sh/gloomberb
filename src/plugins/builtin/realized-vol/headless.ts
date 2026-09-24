@@ -63,7 +63,7 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
           ] },
         ],
         complete: model.cone.every((row) => row.current != null) && model.warnings.length === 0 && !history.stale && errors.length === 0
-          && (!args.options.showIv || iv?.reference != null),
+          && (!args.options.showIv || iv?.reference != null || iv?.noOptionChain === true),
         unavailableSymbols: model.history.length ? [] : [instrument.symbol], errors,
         metadata: { unit: "decimal annualized volatility", annualization: 252, model, currentIv: iv,
           source: history.source, stale: history.stale, fetchedAt: history.fetchedAt,

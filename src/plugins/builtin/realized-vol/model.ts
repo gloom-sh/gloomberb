@@ -99,6 +99,8 @@ export interface CurrentAtmIvSnapshot {
   reference: CurrentAtmIvReference | null;
   error: string | null;
   warnings: string[];
+  /** The underlying has no option chain in the sources, so there is no IV to show and nothing failed. */
+  noOptionChain?: boolean;
 }
 
 /** A LEAPS ATM IV is not comparable with a 10 to 260 session realized cone. */
@@ -109,6 +111,9 @@ export const MAX_CURRENT_ATM_IV_DAYS = 90;
  * failures are the chosen slice's and the surface's own, not those of expiries the reference does not use.
  */
 export function projectCurrentAtmIv(surface: SurfaceSnapshot): CurrentAtmIvSnapshot {
+  if (surface.catalogue.length === 0 && surface.failures.some((failure) => failure.expiration == null && failure.reasonCode === "NO_DATA")) {
+    return { reference: null, error: null, warnings: [], noOptionChain: true };
+  }
   const eligible = surface.expiries.filter((expiry) => expiry.years > 0 && expiry.years * 365 <= MAX_CURRENT_ATM_IV_DAYS);
   const usable = (expiry: SurfaceExpiry) => expiry.atmIV != null && Number.isFinite(expiry.atmIV) && expiry.atmIV > 0;
   const distance = (expiry: SurfaceExpiry) => Math.abs(expiry.years * 365 - 30);

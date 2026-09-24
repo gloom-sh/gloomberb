@@ -92,7 +92,12 @@ export interface SurfaceExpiry {
   termSlope: number | null;
 }
 
-export interface SurfaceFailure { expiration: number | null; message: string }
+export interface SurfaceFailure {
+  expiration: number | null;
+  message: string;
+  /** The market-data reason, e.g. NO_DATA for an underlying with no option chain. */
+  reasonCode?: string;
+}
 
 export interface SurfaceSnapshot {
   symbol: string;
