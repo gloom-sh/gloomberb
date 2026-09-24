@@ -29,13 +29,16 @@ function holding(symbol: string, quantity = 1): TickerRecord {
     },
   };
 }
-function market(): RiskMarketSnapshot {
+function market(staleQuotes: readonly string[] = []): RiskMarketSnapshot {
   return {
     histories: RISK_FACTOR_INSTRUMENTS.map((instrument) => {
       const history = riskHistory();
       history.providerMeta!.normalizedSymbol = instrument.symbol;
       history.providerMeta!.normalizedExchange = instrument.exchange;
-      const quote = riskQuote(instrument.symbol, instrument.exchange),
+      const quote = {
+          ...riskQuote(instrument.symbol, instrument.exchange),
+          ...(staleQuotes.includes(instrument.symbol) ? { stale: true } : {}),
+        },
         valid = validateRiskHistory(history, instrument, quote, now);
       return { instrument, currency: "USD", quote, ...valid, error: null };
     }),
@@ -95,6 +98,22 @@ test("factor proxies resolve on their own listing venue", () => {
   const factor = model.factors.find((row) => row.id === "momentum")!;
   expect(factor.samples).toBe(60);
   expect(factor.value).not.toBeNull();
+});
+test("only held positions marked at a close raise the close-mark warning", () => {
+  // Factor proxies with no current quote never weight a holding.
+  const snapshot = market(["IWM", "IWD", "IWF", "MTUM", "IEF", "HYG"]);
+  const warning = (model: ReturnType<typeof buildPortfolioRisk>) =>
+    model.warnings.filter((row) => row.includes("no current quote"));
+  expect(
+    warning(buildPortfolioRisk(portfolio, [holding("SPY")], snapshot)),
+  ).toEqual([]);
+  expect(
+    warning(
+      buildPortfolioRisk(portfolio, [holding("SPY"), holding("IWM")], snapshot),
+    ),
+  ).toEqual([
+    "1 holding had no current quote; weighted at the latest completed close.",
+  ]);
 });
 test("signed equity exposure remains in concentration while shorts block the unfinanced basket", () => {
   const model = buildPortfolioRisk(

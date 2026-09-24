@@ -215,8 +215,16 @@ export function buildPortfolioRisk(
   for (const holding of holdings)
     holding.weight =
       book?.rows.find((row) => row.id === holding.id)?.weight ?? null;
+  const closeMarked = holdings.filter(
+    (row) => row.markSource === "close" && row.value != null,
+  ).length;
   const warnings = [
     ...market.warnings,
+    ...(closeMarked
+      ? [
+          `${closeMarked} holding${closeMarked === 1 ? "" : "s"} had no current quote; weighted at the latest completed close.`,
+        ]
+      : []),
     ...market.histories.flatMap((row) =>
       row.error ? [`${row.instrument.symbol}: ${row.error}`] : [],
     ),
