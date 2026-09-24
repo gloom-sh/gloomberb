@@ -25,6 +25,13 @@ for(const status of [401,403,404])test(`report ${status} cannot fall back to cac
  await expect(loadRiskReportWithClient(api,"CONTROL",2025)).rejects.toMatchObject({status});expect(store.getResource("report","CONTROL:2025",{...options,allowExpired:true})).toBeNull();
 });
 
+test("a list 404 is an empty cached list",async()=>{
+ const store=new MemoryPluginPersistence();attachRiskFactorsPersistence(store);const api=client();let calls=0;
+ api.getRiskReports=async()=>{calls++;throw new ApiRequestError("No risk factor reports for this ticker",404);};
+ await expect(loadRiskReportsWithClient(api,"CONTROL")).resolves.toMatchObject({reports:[],stale:false});
+ await loadRiskReportsWithClient(api,"CONTROL");expect(calls).toBe(1);expect(store.getResource("reports","CONTROL",options)?.value).toMatchObject({reports:[]});
+});
+
 test("transient historical refresh retains immutable source dates and expired content",async()=>{
  const store=new MemoryPluginPersistence();attachRiskFactorsPersistence(store);store.seedResource("report","CONTROL:2025",report(2025),{...options,stale:true,expired:true});
  const before=store.getResource("report","CONTROL:2025",{...options,allowExpired:true})!;const api=client();api.getRiskReport=async()=>{throw new ApiRequestError("Temporary outage",503);};
