@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { CentralBankRatesPayload, CentralBankRow } from "../../../api-client/central-bank-rates";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { HeadlessPaneContext } from "../../../types/plugin";
 import { fetchCentralBankRates, validateCentralBankRates } from "./client";
+import { centralBankRatesHeadless } from "./headless";
 import { policyBoardRow, policyHistory, policyNotices } from "./model";
 
 function row(overrides: Partial<CentralBankRow> = {}): CentralBankRow {
@@ -36,7 +38,20 @@ describe("central bank policy boundary", () => {
       previousValue: null, previousAsOf: null, direction: "unavailable", history: [], status: "unavailable", unavailableReason: "no-policy-rate" }));
     expect(validateCentralBankRates(data).rows[1]!.value).toBeNull();
     expect(policyBoardRow(data.rows[1]!).history).toEqual([]);
-    expect(policyNotices(data)).toHaveLength(1);
+    expect(policyNotices(data)).toEqual([]);
+  });
+  test("members without a policy rate stay out of notices and report completeness", async () => {
+    const unavailable = { value: null, range: null, asOf: null, lagDays: null, changeBps: null, lastChangeDate: null,
+      previousValue: null, previousAsOf: null, direction: "unavailable" as const, history: [], status: "unavailable" as const };
+    const data = payload();
+    data.rows.push(row({ id: "AR", label: "Argentina", ...unavailable, unavailableReason: "no-policy-rate" }),
+      row({ id: "african-union", label: "African Union", ...unavailable, unavailableReason: "no-unified-rate" }));
+    const load = (body: CentralBankRatesPayload) => centralBankRatesHeadless.load({ rawArgument: "", argument: null, symbols: [], options: {} },
+      { apiClient: { getCloudCentralBankRates: async () => body } } as unknown as HeadlessPaneContext);
+    expect(await load(data)).toMatchObject({ complete: true, errors: [], unavailableSymbols: [] });
+    data.status = "partial";
+    data.rows.push(row({ id: "IN", label: "India", ...unavailable, unavailableReason: "source-unavailable" }));
+    expect(await load(data)).toMatchObject({ complete: false, errors: ["India: source unavailable."], unavailableSymbols: ["IN"] });
   });
   test("rejects impossible dates, wrong units, contradictory ranges and undated changes", () => {
     for (const overrides of [

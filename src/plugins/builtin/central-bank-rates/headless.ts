@@ -1,6 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCentralBankRates } from "./client";
-import { policyBoardRow, policyNotices } from "./model";
+import { hasNoPolicyRate, policyBoardRow, policyNotices } from "./model";
 
 export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CBR", "ECFC", "CBRT"], dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
@@ -18,7 +18,7 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
     ], rows: data.rows.map(({ history: _history, ...row }) => {
       const board = policyBoardRow({ ...row, history: [] });
       return { ...row, valueText: board.valueText, changeText: board.changeText, percentileValue: row.percentile.value };
-    }) }], errors, unavailableSymbols: data.rows.filter((row) => row.status === "unavailable").map((row) => row.id),
+    }) }], errors, unavailableSymbols: data.rows.filter((row) => row.status === "unavailable" && !hasNoPolicyRate(row)).map((row) => row.id),
       metadata: { ...data, complete } };
   },
 };
