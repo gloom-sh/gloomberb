@@ -308,9 +308,16 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   };
   useShortcut((event) => { if (focused && !["table", "skew", "forwards"].includes(activeTab) && !(activeTab === "surface" && !bitmapAvailable)) handleKey(event); });
   const failures = snapshot?.failures.map((failure) => `${failure.expiration ? expiryLabel(failure.expiration) : "Catalogue"}: ${failure.message}`) ?? [];
-  const notices = [...(snapshot?.warnings ?? []), ...failures,
+  // Each expiry warning is listed once with the expiries carrying it; the snapshot list repeats those, so only
+  // its surface-wide lines (calendar arbitrage) are kept.
+  const expiryWarnings = new Map<string, number[]>();
+  for (const entry of snapshot?.expiries ?? []) {
+    for (const warning of entry.warnings) expiryWarnings.set(warning, [...expiryWarnings.get(warning) ?? [], entry.expiration]);
+  }
+  const notices = [...(snapshot?.warnings ?? []).filter((warning) => !expiryWarnings.has(warning)), ...failures,
     ...(activeTab === "surface" && sheet?.omitted.length ? [`3D sheet omits ${sheet.omitted.map((entry) => expiryLabel(entry.expiration)).join(", ")}: smile fit fell back to interpolation (shown in Table)`] : []),
-    ...(snapshot?.expiries.flatMap((entry) => entry.warnings.map((warning) => `${expiryLabel(entry.expiration)}: ${warning}`)) ?? []),
+    ...[...expiryWarnings].map(([warning, expirations]) => `${expirations.length > 1 && expirations.length === snapshot?.expiries.length
+      ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
     ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
     ...(fallbackDate ? [`Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),

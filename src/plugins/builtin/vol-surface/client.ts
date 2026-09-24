@@ -142,6 +142,7 @@ export async function loadVolatilitySurface(
   let curvePending = true;
   let cataloguePending = true;
   let catalogueError: string | null = null;
+  let catalogueReason: string | undefined;
   let requiredFailures: SurfaceFailure[] = [];
   let catalogueExpiration: number | null = null;
   let treasuryError: string | null = null;
@@ -149,7 +150,7 @@ export async function loadVolatilitySurface(
   const checkAbort = () => { if (request.signal?.aborted) throw abortError(); };
   const snapshot = (): SurfaceSnapshot => {
     const failures: SurfaceFailure[] = [];
-    if (catalogueError) failures.push({ expiration: null, message: catalogueError });
+    if (catalogueError) failures.push({ expiration: null, message: catalogueError, ...catalogueReason ? { reasonCode: catalogueReason } : {} });
     failures.push(...requiredFailures);
     if (treasuryError) failures.push({ expiration: null, message: treasuryError });
     const projected = selected.map((expiration) => {
@@ -207,6 +208,7 @@ export async function loadVolatilitySurface(
     if (representedExpiry != null && initialContracts.every((contract) => contract.expiration === representedExpiry)
       && chain?.expirationDates.includes(representedExpiry)) catalogueExpiration = representedExpiry;
     catalogueError = initial.error?.message ?? null;
+    catalogueReason = initial.error?.reasonCode;
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
       Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
@@ -222,6 +224,7 @@ export async function loadVolatilitySurface(
   } catch (error) {
     if (request.signal?.aborted) throw abortError();
     catalogueError = errorMessage(error);
+    catalogueReason = undefined;
   } finally {
     cataloguePending = false;
     publish();

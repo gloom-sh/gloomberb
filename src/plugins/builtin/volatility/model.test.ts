@@ -119,6 +119,10 @@ describe("dated volatility sources", () => {
     expect(data.fred.metrics.map((metric) => metric.missingDates)).toEqual([["2026-09-18"], ["2026-09-18"]]);
     expect(data.fred.ratioHistory).toEqual([{ date: "2026-09-17", value: 1.5 }, { date: "2026-09-21", value: 1 }]);
     expect(data.fred.termState).toBe("flat");
+    // A null is FRED's holiday placeholder; only a supplied nonpositive close is rejected.
+    expect(data.fred.warnings).toEqual(["VIXCLS: Malformed observation dates rejected"]);
+    expect(buildVolatilityData({ fred: { VIXCLS: fred([["2026-09-17", 10], ["2026-09-18", 0]]) } }).fred.warnings)
+      .toEqual(["VIXCLS: Nonpositive or invalid closes rejected"]);
   });
 });
 

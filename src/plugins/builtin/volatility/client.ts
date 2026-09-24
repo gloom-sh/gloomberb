@@ -79,15 +79,16 @@ function historyInput(entry: QueryEntry<PricePoint[]>, now: number): VolatilityH
     stale: history.length > 0 && (!!entry.error || (entry.staleAt != null && entry.staleAt <= now)),
     error: entry.error?.message ?? (history.length ? null : "Daily index history unavailable") };
 }
+/** Seeds the first paint; the load that replaces each input settles its freshness, so cache age is not stale. */
 function cachedInputs(dependencies: VolatilityLoaderDependencies, now: number): VolatilityInputs {
   const inputs: VolatilityInputs = { history: {}, fred: {} };
   for (const definition of VOLATILITY_INDICES) {
     const entry = dependencies.getChartEntry?.(volatilityHistoryRequest(definition.symbol));
-    if (entry && resolveEntryValue(entry) != null) inputs.history![definition.id] = historyInput(entry, now);
+    if (entry && resolveEntryValue(entry) != null) inputs.history![definition.id] = { ...historyInput(entry, now), stale: false };
   }
   for (const { seriesId } of VOLATILITY_SERIES) {
     const cached = getCachedFredSeries(requestFor(seriesId), { allowExpired: true });
-    if (cached) inputs.fred![seriesId] = fredInput(cached);
+    if (cached) inputs.fred![seriesId] = fredInput({ ...cached, stale: false });
   }
   return inputs;
 }

@@ -6,7 +6,7 @@ import type { OptionsChain, Quote } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
-import { evaluateSurfaceSmile, type SurfaceSnapshot } from "../vol-surface/model";
+import { evaluateSurfaceSmile, surfaceCalendarWarnings, type SurfaceExpiry, type SurfaceSnapshot } from "../vol-surface/model";
 import { interpolateTotalVariance, logForwardMoneyness } from "../shared/volatility";
 import { daysToExpiryFrom } from "./model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -56,6 +56,8 @@ const positive = (value: unknown): value is number => typeof value === "number" 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const expiryLabel = (expiration: number): string => new Date(expiration * 1000).toISOString().slice(0, 10);
+/** Brackets are fetched separately, so their quote instants never match; the New York session is what must agree. */
+const quoteSession = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 const empty = (error: string, warnings: string[] = []): CalculatorSurfaceVol => ({
   volatility: null, rate: null, dividendYield: null, asOf: null, sourceSpot: null, spotAsOf: null, rateAsOf: [],
   source: "OVDV midpoint", warnings, error,
@@ -86,15 +88,19 @@ export function projectCalculatorSurfaceVol(
   snapshot: SurfaceSnapshot,
   request: Pick<CalculatorSurfaceRequest, "symbol" | "strike" | "daysToExpiry">,
 ): CalculatorSurfaceVol {
-  const warnings = [...new Set([...snapshot.warnings, ...snapshot.failures.map((failure) =>
-    `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failure.message}`)])];
+  // Only the brackets price the option: other loaded expiries' caveats do not apply to it.
+  const failures = (expirations: readonly number[]) => snapshot.failures
+    .filter((failure) => failure.expiration == null || expirations.includes(failure.expiration))
+    .map((failure) => `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failure.message}`);
   if (snapshot.symbol !== parsePublicTickerKey(request.symbol).symbol || !positive(snapshot.spot)) {
-    return empty("Surface snapshot does not match the requested underlying mark", warnings);
+    return empty("Surface snapshot does not match the requested underlying mark", failures([]));
   }
   const years = request.daysToExpiry / 365;
   const brackets = bracketingExpiries(snapshot.catalogue, years, snapshot.fetchedAt);
-  if (!brackets.length) return empty("Requested tenor is outside the listed surface range; extrapolation is unavailable", warnings);
+  if (!brackets.length) return empty("Requested tenor is outside the listed surface range; extrapolation is unavailable", failures([]));
   const selected = brackets.map((expiration) => snapshot.expiries.find((expiry) => expiry.expiration === expiration));
+  const slices = selected.filter((expiry): expiry is SurfaceExpiry => expiry != null);
+  const warnings = [...new Set([...slices.flatMap((expiry) => expiry.warnings), ...surfaceCalendarWarnings(slices), ...failures(brackets)])];
   for (let index = 0; index < selected.length; index += 1) {
     const expiry = selected[index];
     if (!expiry || expiry.stale || expiry.error || expiry.state !== "ready" || !expiry.fit
@@ -120,7 +126,8 @@ export function projectCalculatorSurfaceVol(
   const dates = [...new Set(selected.flatMap((expiry) => expiry?.asOf && Number.isFinite(Date.parse(expiry.asOf)) ? [expiry.asOf] : []))];
   const asOf = dates.length ? dates.toSorted((a, b) => Date.parse(a) - Date.parse(b))[0]! : null;
   if (selected.some((expiry) => !expiry?.asOf || !Number.isFinite(Date.parse(expiry.asOf)))) warnings.push("Surface quote observation date unavailable");
-  if (dates.length > 1) warnings.push(`Surface quote dates differ: ${dates.join(", ")}`);
+  const sessions = [...new Set(dates.map((date) => quoteSession.format(Date.parse(date))))].sort();
+  if (sessions.length > 1) warnings.push(`Surface quote dates differ: ${sessions.join(", ")}`);
   const rateDates = [...new Set(selected.flatMap((expiry) => expiry!.rateAsOf))];
   if (!rateDates.length) warnings.push("Treasury observation date unavailable");
   const fits = selected.map((expiry) => `${expiryLabel(expiry!.expiration)} ${expiry!.fit!.method} (${expiry!.source ?? "source unavailable"})`);

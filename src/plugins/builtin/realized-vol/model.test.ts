@@ -111,10 +111,12 @@ describe("realized-volatility projection", () => {
 });
 
 describe("current ATM IV reference", () => {
-  test("selects the listed tenor nearest 30 days and preserves source date and independent failures", () => {
-    const selected = expiry(31, { atmIV: 0.27 });
-    const result = projectCurrentAtmIv(surface([expiry(7), selected, expiry(60)], {
+  test("selects the listed tenor nearest 30 days and keeps only its own and surface-wide caveats", () => {
+    const selected = expiry(31, { atmIV: 0.27, warnings: ["9 butterfly arbitrage warnings"] });
+    const leaps = expiry(800, { warnings: ["SVI did not converge"] });
+    const result = projectCurrentAtmIv(surface([expiry(7), selected, expiry(60), leaps], {
       phase: "partial", failures: [{ expiration: 100, message: "unrelated expiry offline" }],
+      warnings: ["SVI did not converge", "9 butterfly arbitrage warnings", "2 calendar arbitrage warnings"],
     }));
     expect(result.reference!.value).toBe(0.27);
     expect(result.reference!.expiration).toBe(selected.expiration);
@@ -122,7 +124,17 @@ describe("current ATM IV reference", () => {
     expect(result.reference!.date.toISOString()).toBe(new Date(selected.asOf!).toISOString());
     expect(result.reference!.source).toBe("test");
     expect(result.reference!.ivSource).toBe("recomputed");
-    expect(result.error).toBe("unrelated expiry offline");
+    expect(result.error).toBeNull();
+    expect(result.warnings).toEqual(["9 butterfly arbitrage warnings"]);
+    const offline = projectCurrentAtmIv(surface([selected], { failures: [{ expiration: null, message: "Treasury: offline" }] }));
+    expect(offline.error).toBe("Treasury: offline");
+  });
+
+  test("says when nearer expiries without usable quotes pushed the reference to a farther tenor", () => {
+    const result = projectCurrentAtmIv(surface([expiry(1), expiry(29, { atmIV: null, state: "empty" }), expiry(60, { atmIV: null, state: "error" })]));
+    expect(result.reference!.daysToExpiry).toBeCloseTo(1, 12);
+    expect(result.warnings).toContain("Expiries nearer 30 days have no usable ATM quotes; reference uses the 1d expiry");
+    expect(projectCurrentAtmIv(surface([expiry(29), expiry(60, { atmIV: null, state: "empty" })])).warnings).toEqual([]);
   });
 
   test("withholds stale, failed and undated observations and chooses the next eligible expiry", () => {

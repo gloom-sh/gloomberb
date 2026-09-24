@@ -22,7 +22,6 @@ export const VOLATILITY_BOARD_INDICES = [
   { id: "rvx", symbol: "^RVX", label: "Russell 2000" },
   { id: "ovx", symbol: "^OVX", label: "Oil" },
   { id: "gvz", symbol: "^GVZ", label: "Gold" },
-  { id: "evz", symbol: "^EVZ", label: "Euro FX" },
   { id: "vxeem", symbol: "^VXEEM", label: "Emerging markets" },
   { id: "vxewz", symbol: "^VXEWZ", label: "Brazil" },
   { id: "vxapl", symbol: "^VXAPL", label: "Apple" },
@@ -123,8 +122,6 @@ export interface VolatilityBoardRow {
   stale: boolean;
   error: string | null;
   warnings: string[];
-  /** End of the FRED series, not a claim about CBOE publication. */
-  publicationEnd?: string;
 }
 export interface VolatilityData {
   curve: VolatilityCurve;
@@ -146,6 +143,8 @@ interface NormalizedHistory {
 /** Last supplied corrections win, including a correction that withdraws a value. */
 function normalizeHistory(observations: readonly { date: Date | string; value: number | null | undefined }[], dateOnly = false): NormalizedHistory {
   const days = new Map<string, { date: string; observedAt: string; value: number | null }>();
+  // A null value is a source placeholder (FRED's "." on a holiday): a gap, not a rejected close.
+  const rejected = new Set<string>();
   let invalidDates = false;
   for (const observation of observations) {
     const raw = observation.date;
@@ -157,12 +156,14 @@ function normalizeHistory(observations: readonly { date: Date | string; value: n
     const observedAt = new Date(time).toISOString();
     const date = observedAt.slice(0, 10);
     const value = observation.value != null && Number.isFinite(observation.value) && observation.value > 0 ? observation.value : null;
+    if (value == null && observation.value != null) rejected.add(date);
+    else rejected.delete(date);
     days.set(date, { date, observedAt, value });
   }
   const rows = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
   return { rows, history: rows.flatMap((row) => row.value == null ? [] : [{ ...row, value: row.value }]),
     warnings: [...(invalidDates ? ["Malformed observation dates rejected"] : []),
-      ...(rows.some((row) => row.value == null) ? ["Nonpositive or missing closes rejected"] : [])] };
+      ...(rejected.size > 0 ? ["Nonpositive or invalid closes rejected"] : [])] };
 }
 export function classifyTermState(spot: number | null, threeMonth: number | null): TermState {
   if (spot == null || threeMonth == null || !(spot > 0)) return "partial";
@@ -243,15 +244,13 @@ function boardRow(definition: typeof VOLATILITY_INDICES[number], input: Volatili
   if (latest && !broadCoverage) warnings.push(`1Y percentile unavailable: ${history.length} observations across ${coverageDays} days`);
   if (input?.stale) warnings.push("Cached daily history is stale");
   if (input?.error) warnings.push(input.error);
-  if (definition.id === "evz") warnings.push("FRED EVZCLS discontinued after 2025-03-11");
   return { ...definition, unit: "index points", value: latest?.value ?? null, date: latest?.date ?? null,
     source: input?.source ?? null, previousDate: previous?.date ?? null, change1d,
     change1dPercent: change1d != null ? change1d / previous!.value! * 100 : null,
     percentile1y, sampleSize: history.length, coverageDays, history,
     missingDates: normalized.rows.filter((row) => row.value == null && Date.parse(row.date) > cutoff).map((row) => row.date),
     status: !latest ? "unavailable" : warnings.length > 0 ? "limited" : "available",
-    stale: input?.stale ?? false, error: input?.error ?? null, warnings,
-    ...(definition.id === "evz" ? { publicationEnd: "2025-03-11" } : {}) };
+    stale: input?.stale ?? false, error: input?.error ?? null, warnings };
 }
 function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatilityHistory): VolatilityCurve {
   const rows = VOLATILITY_CURVE_INDICES.map((definition) => board.find((row) => row.id === definition.id)!);

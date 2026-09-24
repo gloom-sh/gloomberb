@@ -3,7 +3,7 @@ import {
   REALIZED_VOLATILITY_WINDOWS, realizedVolatilityCadenceIssue, realizedVolatilityResult, rollingRealizedVolatility, volatilityCone,
   type RealizedVolatilityEstimator, type RollingRealizedVolatilityPoint, type VolatilityConeStatistics,
 } from "../shared/volatility";
-import type { SurfaceSnapshot } from "../vol-surface/model";
+import type { SurfaceExpiry, SurfaceSnapshot } from "../vol-surface/model";
 
 export interface RealizedVolatilityModel {
   symbol: string;
@@ -99,32 +99,47 @@ export interface CurrentAtmIvSnapshot {
   reference: CurrentAtmIvReference | null;
   error: string | null;
   warnings: string[];
+  /** The underlying has no option chain in the sources, so there is no IV to show and nothing failed. */
+  noOptionChain?: boolean;
 }
 
 /** A LEAPS ATM IV is not comparable with a 10 to 260 session realized cone. */
 export const MAX_CURRENT_ATM_IV_DAYS = 90;
 
-/** Use a listed expiry nearest 30 days, preserving its own observation date and tenor. */
+/**
+ * Use a listed expiry nearest 30 days, preserving its own observation date and tenor. Warnings and
+ * failures are the chosen slice's and the surface's own, not those of expiries the reference does not use.
+ */
 export function projectCurrentAtmIv(surface: SurfaceSnapshot): CurrentAtmIvSnapshot {
-  const warnings = [...surface.warnings];
-  const candidates = surface.expiries.filter((expiry) => expiry.atmIV != null
-    && Number.isFinite(expiry.atmIV) && expiry.atmIV > 0 && expiry.years > 0 && expiry.years * 365 <= MAX_CURRENT_ATM_IV_DAYS);
+  if (surface.catalogue.length === 0 && surface.failures.some((failure) => failure.expiration == null && failure.reasonCode === "NO_DATA")) {
+    return { reference: null, error: null, warnings: [], noOptionChain: true };
+  }
+  const eligible = surface.expiries.filter((expiry) => expiry.years > 0 && expiry.years * 365 <= MAX_CURRENT_ATM_IV_DAYS);
+  const usable = (expiry: SurfaceExpiry) => expiry.atmIV != null && Number.isFinite(expiry.atmIV) && expiry.atmIV > 0;
+  const distance = (expiry: SurfaceExpiry) => Math.abs(expiry.years * 365 - 30);
+  const warnings: string[] = [];
+  const candidates = eligible.filter(usable);
   const fresh = candidates.filter((expiry) => !expiry.stale && !expiry.error);
   if (fresh.length < candidates.length) warnings.push("Stale or failed ATM IV slices excluded from the current reference");
   const dated = fresh.filter((expiry) => expiry.asOf != null && Number.isFinite(Date.parse(expiry.asOf)));
   if (dated.length < fresh.length) warnings.push("Some ATM IV observations have no valid source date");
-  dated.sort((a, b) => Math.abs(a.years * 365 - 30) - Math.abs(b.years * 365 - 30) || a.expiration - b.expiration);
+  dated.sort((a, b) => distance(a) - distance(b) || a.expiration - b.expiration);
   const expiry = dated[0];
-  const errors = [...new Set(surface.failures.map((failure) => failure.message))];
   if (!expiry) {
-    return { reference: null, error: errors.join("; ") || "Current ATM IV unavailable from cleaned option quotes", warnings };
+    const errors = [...new Set(surface.failures.map((failure) => failure.message))];
+    return { reference: null, error: errors.join("; ") || "Current ATM IV unavailable from cleaned option quotes",
+      warnings: [...new Set([...eligible.flatMap((entry) => entry.warnings), ...warnings])] };
   }
   const daysToExpiry = expiry.years * 365;
+  if (eligible.some((entry) => !usable(entry) && distance(entry) < distance(expiry))) {
+    warnings.push(`Expiries nearer 30 days have no usable ATM quotes; reference uses the ${Math.round(daysToExpiry)}d expiry`);
+  }
   if (surface.spotAsOf == null) warnings.push("Underlying quote observation date unavailable");
+  const errors = [...new Set(surface.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message))];
   return { reference: {
     value: expiry.atmIV!, date: new Date(expiry.asOf!),
     label: `ATM IV ${Math.round(daysToExpiry)}d`,
     daysToExpiry, expiration: expiry.expiration, source: expiry.source, stale: expiry.stale,
     ivSource: surface.settings.ivSource, spot: surface.spot, spotAsOf: surface.spotAsOf ?? null,
-  }, error: errors.join("; ") || null, warnings: [...new Set(warnings)] };
+  }, error: errors.join("; ") || null, warnings: [...new Set([...expiry.warnings, ...warnings])] };
 }

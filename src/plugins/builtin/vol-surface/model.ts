@@ -92,7 +92,12 @@ export interface SurfaceExpiry {
   termSlope: number | null;
 }
 
-export interface SurfaceFailure { expiration: number | null; message: string }
+export interface SurfaceFailure {
+  expiration: number | null;
+  message: string;
+  /** The market-data reason, e.g. NO_DATA for an underlying with no option chain. */
+  reasonCode?: string;
+}
 
 export interface SurfaceSnapshot {
   symbol: string;
@@ -135,6 +140,9 @@ export interface SurfaceRate {
   warnings: string[];
 }
 
+/** The 1M bill is the shortest published Treasury tenor. */
+const SHORTEST_TREASURY_YEARS = 1 / 12;
+
 /** Treasury yields are percent. Linear tenor interpolation uses decimal yields in the pricer. */
 export function surfaceTreasuryRate(curve: readonly YieldPoint[], years: number): SurfaceRate {
   const missing = (): SurfaceRate => ({ rate: null, method: "unavailable", asOf: [], warnings: ["Treasury rate unavailable"] });
@@ -152,7 +160,11 @@ export function surfaceTreasuryRate(curve: readonly YieldPoint[], years: number)
   const asOf = [...new Set([left.asOf, right.asOf].filter((date): date is string => typeof date === "string" && Number.isFinite(Date.parse(date))))];
   const method = exact ? "treasury-exact" : left === right ? "treasury-boundary" : "treasury-interpolated";
   const warnings: string[] = [];
-  if (method === "treasury-boundary") warnings.push(`Treasury ${left.maturity} rate held outside the published tenor range`);
+  // A shorter expiry holding the 1M bill flat is the convention, not a gap; a hold past the long end, or on a
+  // curve missing its 1M point, still warns.
+  if (method === "treasury-boundary" && (years > left.maturityYears || left.maturityYears > SHORTEST_TREASURY_YEARS + 1e-9)) {
+    warnings.push(`Treasury ${left.maturity} rate held outside the published tenor range`);
+  }
   if (asOf.length === 0) warnings.push("Treasury observation date unavailable");
   if (asOf.length > 1) warnings.push("Treasury interpolation uses different source dates");
   if (left.stale || right.stale) warnings.push("Treasury source is stale");

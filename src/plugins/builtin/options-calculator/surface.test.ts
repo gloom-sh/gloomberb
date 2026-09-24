@@ -60,15 +60,30 @@ describe("calculator surface source", () => {
     expect(projected.volatility).toBeCloseTo(month.cells[0]!.volatility!, 10);
   });
 
+  test("brackets quoted in the same New York session do not warn about differing dates", async () => {
+    const quoted = (asOf: Record<number, string>) => dependencies({ loadOptions: async (query) => {
+      const expiration = query.expirationDate ?? expirations[0]!;
+      return ready({ ...chain(expiration), asOf: asOf[expiration] ?? "2026-09-22T13:45:00Z" });
+    } });
+    const same = await loadCalculatorSurfaceVol(request, quoted({ [expirations[0]!]: "2026-09-22T13:45:00.004Z", [expirations[1]!]: "2026-09-22T13:44:00.001Z" }));
+    expect(same.error).toBeNull();
+    expect(same.asOf).toBe("2026-09-22T13:44:00.001Z");
+    expect(same.warnings.some((warning) => warning.startsWith("Surface quote dates differ"))).toBe(false);
+    const mixed = await loadCalculatorSurfaceVol(request, quoted({ [expirations[1]!]: "2026-09-21T19:59:59Z" }));
+    expect(mixed.warnings).toContain("Surface quote dates differ: 2026-09-21, 2026-09-22");
+  });
+
   test("exact listed tenor needs one usable slice and does not require a neighboring smile", async () => {
     const result = await loadCalculatorSurfaceVol({ ...request, daysToExpiry: days(expirations[1]!) }, dependencies({
       loadOptions: async (query) => {
-        if (query.expirationDate === expirations[2]) throw new Error("Unused neighboring expiry offline");
+        if (query.expirationDate != null && query.expirationDate !== expirations[1]) throw new Error("Unused neighboring expiry offline");
         return ready(chain(query.expirationDate ?? expirations[0]!));
       },
     }));
     expect(result.error).toBeNull();
     expect(result.volatility).toBeCloseTo(.4, 4);
+    // The representative front expiry is loaded too, but its failure does not concern this price.
+    expect(result.warnings).toEqual([]);
   });
 
   test("pins actual adjacent listings with bounded requests and reuses the selected OMON cache", async () => {

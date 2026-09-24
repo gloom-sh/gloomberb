@@ -173,6 +173,13 @@ describe("independent current-IV loading", () => {
     expect(calls).toBe(1);
   });
 
+  test("an underlying with no option chain has no IV line and no error", async () => {
+    const empty: OptionsChain = { underlyingSymbol: "7203.T", expirationDates: [], calls: [], puts: [] };
+    const result = await loadCurrentAtmIv({ instrument: { symbol: "7203.T" }, spot: 100 }, { now: () => now, loadYieldCurve: async () => [],
+      loadOptions: async () => ({ ...ready(empty), error: { reasonCode: "NO_DATA", message: "No data available" } }) });
+    expect(result).toEqual({ reference: null, error: null, warnings: [], noOptionChain: true });
+  });
+
   test("surface cancellation remains cancellation rather than a missing-IV result", async () => {
     const gate = deferred<QueryEntry<OptionsChain>>();
     const controller = new AbortController();
