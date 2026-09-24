@@ -86,6 +86,11 @@ describe("volatility source loader", () => {
     expect(result.data.board.find((row) => row.id === "vvix")).toMatchObject({ value: null, date: null, stale: false });
     expect(result.data.curve.ratio).toBe(1);
     expect(result.data.curve.warnings.join(" ")).toContain("stale cached history");
+    // Cache age alone does not mark the first paint stale; the load that follows decides.
+    const seeded = getCachedVolatilityData({ now: () => now, getChartEntry: () => ({ ...ready(), staleAt: now - 1 }),
+      loadChart: async () => ready(), loadFred: async (id) => fred(id) });
+    expect(seeded?.stale).toBe(false);
+    expect(seeded?.data.board.find((row) => row.id === "vix")?.stale).toBe(false);
   });
 
   test("reuses coordinator and FRED caches and forwards explicit refresh only when requested", async () => {
