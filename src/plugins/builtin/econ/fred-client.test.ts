@@ -74,4 +74,6 @@ test("calendar history shows inflation rates, payroll job changes, and annualize
 test("calendar headline PPI uses final demand and cannot alias Conference Board to OECD", () => {
   expect(resolveFredMapping("PPI m/m", "US")?.seriesId).toBe("PPIFIS");
   expect(resolveFredMapping("CB Consumer Confidence", "US")).toBeNull();
+  // ISM withdrew its PMI from FRED; NAPM no longer exists there.
+  expect(resolveFredMapping("ISM Manufacturing PMI", "US")).toBeNull();
 });

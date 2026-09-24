@@ -28,7 +28,6 @@ const SERIES_MAP: Record<string, FredMapping> = {
   "adp non-farm employment change": { seriesId: "NPPTTL", displayMode: "change", relatedTickers: ["SPY"] },
   "retail sales m/m": { seriesId: "RSAFS", displayMode: "mom", relatedTickers: ["XRT", "SPY"] },
   "core retail sales m/m": { seriesId: "RSFSXMV", displayMode: "mom", relatedTickers: ["XRT", "SPY"] },
-  "ism manufacturing pmi": { seriesId: "NAPM", displayMode: "level", relatedTickers: ["SPY", "XLI"] },
   "prelim uom consumer sentiment": { seriesId: "UMCSENT", displayMode: "level", relatedTickers: ["SPY"] },
   "revised uom consumer sentiment": { seriesId: "UMCSENT", displayMode: "level", relatedTickers: ["SPY"] },
   "federal funds rate": { seriesId: "DFEDTARU", displayMode: "level", relatedTickers: ["^TNX", "TLT", "DX-Y.NYB"] },
