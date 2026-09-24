@@ -12,8 +12,14 @@ import { normalizeCik, searchThirteenFFunds } from "./api";
 import { loadFundDetail } from "./data";
 import { formatWeightMaybe } from "./format";
 import { isCikQuery } from "./model";
-import { buildFundOverlap, type FundOverlapRow } from "./overlap";
+import { buildFundOverlap, overlapPeriod, type FundOverlapRow } from "./overlap";
 import type { FundDetailData, ThirteenFFund } from "./types";
+
+/** The quarter compared, and the fund's newer latest quarter when it has one. */
+function periodDetail(data: FundDetailData | null, period: string | null): string | undefined {
+  const latest = data?.latestForm?.periodOfReport;
+  return period && latest && latest !== period ? `${period} · latest ${latest}` : latest;
+}
 
 export function FundOverlapView({ data, focused, width }: { data: FundDetailData; focused: boolean; width: number }) {
   const [query, setQuery] = usePluginPaneState<string>("overlap:query", "");
@@ -74,16 +80,17 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     if (isPlainKey(event, "/") && !target) { event.preventDefault?.(); focusSearch(); }
     if (isPlainKey(event, "m") && target) { event.preventDefault?.(); setMineOnly(value => !value); }
   });
-  const mismatch = peer && data.latestForm?.periodOfReport !== peer.latestForm?.periodOfReport;
+  const period = peer ? overlapPeriod(data, peer) : null;
+  const mismatch = peer && !period;
   usePaneStatusFooter({ registrationId: "13f-overlap", loading: loading || loadingMore, error, hints: target ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", title: mineOnly ? "All Tickers" : "Mine Only", onPress: () => setMineOnly(value => !value) }] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }] });
-  usePaneNoticeFooter({ registrationId: "13f-overlap-notice", focused, notices: [...(peer?.warnings ?? []), ...(mismatch ? ["The funds have different latest reporting quarters; overlap is unavailable."] : [])] });
+  usePaneNoticeFooter({ registrationId: "13f-overlap-notice", focused, notices: [...(peer?.warnings ?? []), ...(mismatch ? ["No reporting quarter is loaded for both funds; overlap is unavailable."] : [])] });
   const rows = useMemo(() => (peer ? buildFundOverlap(data, peer) : []).filter(row => !mineOnly || mine.has(row.ticker)).sort((a, b) => ((a[sort.id] ?? -1) - (b[sort.id] ?? -1)) * (sort.desc ? -1 : 1)), [peer, data, mineOnly, mine, sort]);
   const positionColumns: DataTableColumn[] = [{ id: "mine", label: "MINE", width: 5, align: "left" }, { id: "ticker", label: "TICKER", width: 10, align: "left" }, { id: "type", label: "TYPE", width: 6, align: "left" }, { id: "issuer", label: "ISSUER", width: Math.max(18, width - 58), align: "left" }, { id: "weight", label: "FIRST %", width: 12, align: "right" }, { id: "comparedWeight", label: "SECOND %", width: 12, align: "right" }];
   return <DataTableStackView<ThirteenFFund, DataTableColumn>
     focused={focused && !searchFocused} detailOpen={!!target} onBack={() => setTarget(null)} detailTitle={target?.name}
     detailContent={<Box flexDirection="column" flexGrow={1}>
-      <KeyValueRow label="First" value={data.name} detail={data.latestForm?.periodOfReport} />
-      <KeyValueRow label="Second" value={peer?.name ?? target?.name ?? ""} detail={peer?.latestForm?.periodOfReport} />
+      <KeyValueRow label="First" value={data.name} detail={periodDetail(data, period)} />
+      <KeyValueRow label="Second" value={peer?.name ?? target?.name ?? ""} detail={periodDetail(peer, period)} />
       <QueryBar width={width} filters={[{ id: "mine", kind: "toggle", label: "Mine", value: mineOnly, onChange: setMineOnly }]} />
       <DataTableView<FundOverlapRow, DataTableColumn> focused={focused} columns={positionColumns} items={rows} getItemKey={row => row.id}
         selection={{ kind: "id", selectedId: selectedPositionId, getId: row => row.id, onChange: setSelectedPositionId }}

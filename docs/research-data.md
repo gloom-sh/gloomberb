@@ -511,7 +511,7 @@ Crowding uses the latest broadly available quarter and the top 25 funds ranked b
 
 The Performance list shows the provider's estimated quarterly return and the prior three quarters when that fund appeared among each quarter's top 100. Missing ranks and failed or mismatched periods stay blank. This is a survivor-biased ranking history, not a verified fund track record; the provider's opaque `pnl` estimate is not realized fund performance.
 
-Fund Overlap matches current disclosed positions by CUSIP, option side and share type, then shows each fund's reported weight. It requires matching latest quarter ends, excludes exits, preserves unknown weights for incomplete reports, and does not combine puts or calls with equity. It is overlap of public 13F disclosures, not the managers' complete portfolios.
+Fund Overlap matches current disclosed positions by CUSIP, option side and share type, then shows each fund's reported weight. It uses the latest quarter end both funds reported among their two most recent reports, so a fund that has not filed the newest quarter yet is compared one quarter back and each fund's newer quarter is shown beside it. A previous report that failed to load is not used. Overlap excludes exits, preserves unknown weights for incomplete reports, and does not combine puts or calls with equity. It is overlap of public 13F disclosures, not the managers' complete portfolios.
 
 ## Daily short volume (SIV)
 
