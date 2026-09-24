@@ -6,7 +6,7 @@ import type { OptionsChain, Quote } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
-import { evaluateSurfaceSmile, type SurfaceSnapshot } from "../vol-surface/model";
+import { evaluateSurfaceSmile, surfaceCalendarWarnings, type SurfaceExpiry, type SurfaceSnapshot } from "../vol-surface/model";
 import { interpolateTotalVariance, logForwardMoneyness } from "../shared/volatility";
 import { daysToExpiryFrom } from "./model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -88,15 +88,19 @@ export function projectCalculatorSurfaceVol(
   snapshot: SurfaceSnapshot,
   request: Pick<CalculatorSurfaceRequest, "symbol" | "strike" | "daysToExpiry">,
 ): CalculatorSurfaceVol {
-  const warnings = [...new Set([...snapshot.warnings, ...snapshot.failures.map((failure) =>
-    `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failure.message}`)])];
+  // Only the brackets price the option: other loaded expiries' caveats do not apply to it.
+  const failures = (expirations: readonly number[]) => snapshot.failures
+    .filter((failure) => failure.expiration == null || expirations.includes(failure.expiration))
+    .map((failure) => `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failure.message}`);
   if (snapshot.symbol !== parsePublicTickerKey(request.symbol).symbol || !positive(snapshot.spot)) {
-    return empty("Surface snapshot does not match the requested underlying mark", warnings);
+    return empty("Surface snapshot does not match the requested underlying mark", failures([]));
   }
   const years = request.daysToExpiry / 365;
   const brackets = bracketingExpiries(snapshot.catalogue, years, snapshot.fetchedAt);
-  if (!brackets.length) return empty("Requested tenor is outside the listed surface range; extrapolation is unavailable", warnings);
+  if (!brackets.length) return empty("Requested tenor is outside the listed surface range; extrapolation is unavailable", failures([]));
   const selected = brackets.map((expiration) => snapshot.expiries.find((expiry) => expiry.expiration === expiration));
+  const slices = selected.filter((expiry): expiry is SurfaceExpiry => expiry != null);
+  const warnings = [...new Set([...slices.flatMap((expiry) => expiry.warnings), ...surfaceCalendarWarnings(slices), ...failures(brackets)])];
   for (let index = 0; index < selected.length; index += 1) {
     const expiry = selected[index];
     if (!expiry || expiry.stale || expiry.error || expiry.state !== "ready" || !expiry.fit

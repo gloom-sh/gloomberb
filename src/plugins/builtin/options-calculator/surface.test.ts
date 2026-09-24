@@ -76,12 +76,14 @@ describe("calculator surface source", () => {
   test("exact listed tenor needs one usable slice and does not require a neighboring smile", async () => {
     const result = await loadCalculatorSurfaceVol({ ...request, daysToExpiry: days(expirations[1]!) }, dependencies({
       loadOptions: async (query) => {
-        if (query.expirationDate === expirations[2]) throw new Error("Unused neighboring expiry offline");
+        if (query.expirationDate != null && query.expirationDate !== expirations[1]) throw new Error("Unused neighboring expiry offline");
         return ready(chain(query.expirationDate ?? expirations[0]!));
       },
     }));
     expect(result.error).toBeNull();
     expect(result.volatility).toBeCloseTo(.4, 4);
+    // The representative front expiry is loaded too, but its failure does not concern this price.
+    expect(result.warnings).toEqual([]);
   });
 
   test("pins actual adjacent listings with bounded requests and reuses the selected OMON cache", async () => {
