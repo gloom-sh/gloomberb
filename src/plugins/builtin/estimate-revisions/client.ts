@@ -254,6 +254,8 @@ export async function fetchEstimates(
 }
 const key = (symbol: string, exchange: string) =>
   `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
+// Seeds the first paint while the mount load runs; cache age is not staleness,
+// and a failed refresh reports its own.
 export function cachedEstimates(symbol: string, exchange: string) {
   const result = estimateRevisionsCache.get(key(symbol, exchange), {
     allowExpired: true,
@@ -266,7 +268,7 @@ export function cachedEstimates(symbol: string, exchange: string) {
         symbol,
         exchange || result.data.exchange,
       ),
-      stale: result.stale,
+      stale: false,
       refreshError: null as string | null,
     };
   } catch {
