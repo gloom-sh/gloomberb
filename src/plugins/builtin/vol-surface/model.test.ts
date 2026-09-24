@@ -144,8 +144,10 @@ test("Treasury rates use percent conversion, explicit boundaries, dates and vali
   expect(middle.method).toBe("treasury-interpolated");
   expect(middle.asOf).toEqual(["2026-09-21", "2026-09-18"]);
   expect(middle.warnings).toHaveLength(2);
-  expect(surfaceTreasuryRate(points, 7 / 365).method).toBe("treasury-boundary");
-  expect(surfaceTreasuryRate(points, 7 / 365).rate).toBe(0.03);
+  expect(surfaceTreasuryRate(points, 7 / 365)).toMatchObject({ method: "treasury-boundary", rate: 0.03, warnings: [] });
+  // A long-end hold, or a short-end hold on a curve missing its 1M point, is still flagged.
+  expect(surfaceTreasuryRate(points, 2).warnings).toContain("Treasury 1Y rate held outside the published tenor range");
+  expect(surfaceTreasuryRate(points.slice(1), 7 / 365).warnings).toContain("Treasury 1Y rate held outside the published tenor range");
   expect(surfaceTreasuryRate([{ maturity: "1Y", maturityYears: 1, yield: -0.5 }], 1).rate).toBe(-0.005);
   expect(surfaceTreasuryRate([{ maturity: "1Y", maturityYears: 1, yield: null }], 1).rate).toBeNull();
 });
