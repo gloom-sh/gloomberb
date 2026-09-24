@@ -786,8 +786,8 @@ history, borrow, taxes and slippage beyond the stated cost are not modelled.
 CAGR needs at least half a year. Volatility and Sharpe use daily returns
 annualised with 252 sessions and a zero cash rate. The rolling comparison
 counts 252-session windows ending on each session after the first year and
-needs 20 windows. Fewer than ten closed trades are flagged as too few to judge
-a hit rate. Presets use states (`>`, `<`), so a test that begins inside a
+needs 20 windows. The hit rate sits beside its closed-trade count; with fewer
+than ten closed trades it says little. Presets use states (`>`, `<`), so a test that begins inside a
 regime is invested from the first fill; `crosses` waits for a fresh signal.
 
 ## Known coverage gaps

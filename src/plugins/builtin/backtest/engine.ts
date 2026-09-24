@@ -153,10 +153,7 @@ export function runBacktest(
     windows += 1;
     if (strategy[index]! / strategy[index - TRADING_DAYS]! > benchmark[index]! / benchmark[index - TRADING_DAYS]!) beat += 1;
   }
-  const warnings = [
-    ...(closed.length < 10 ? [`${closed.length} closed trade${closed.length === 1 ? "" : "s"}: too few to judge a hit rate.`] : []),
-    ...(clean.length < bars.length ? [`${bars.length - clean.length} sessions without a positive close were skipped.`] : []),
-  ];
+  const warnings = clean.length < bars.length ? [`${bars.length - clean.length} sessions without a positive close were skipped.`] : [];
   return {
     start: startDate, end: endDate, sessions: dates.length, equity, trades,
     strategy: {
