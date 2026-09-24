@@ -445,14 +445,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                 },
               ]
             : []),
-          ...(data.status !== "available"
-            ? [
-                {
-                  id: "partial",
-                  parts: [{ text: data.status, tone: "warning" as const }],
-                },
-              ]
-            : []),
         ]
       : [],
   });

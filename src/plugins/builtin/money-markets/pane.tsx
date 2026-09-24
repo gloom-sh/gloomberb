@@ -86,7 +86,6 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
     info: data ? [
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-      ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : []),
     ] : [],
   });
   return <Box width={width} height={height} flexDirection="column">

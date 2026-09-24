@@ -74,7 +74,6 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
     info: data ? [
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
       ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-      ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : []),
     ] : [],
   });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view daily short volume" needsVerification={session.needsVerification} />;

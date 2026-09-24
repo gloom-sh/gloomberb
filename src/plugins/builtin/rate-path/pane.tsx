@@ -107,7 +107,6 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     info: data ? [
       { id: "as-of", parts: [{ text: `as of ${timestamp(data.asOf)} UTC`, tone: "muted" }] },
       ...(data.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-      ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : []),
     ] : [],
   });
   const selection = { kind: "id" as const, selectedId: selected, getId: (row: RateMeeting) => row.date, onChange: setSelected };

@@ -97,8 +97,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   ] : [] }), [boardShown]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] },
-      ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : [])] : [] });
+    info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
   if (!data && !open) return <PaneStatusBody loading={resource.loading} error={resource.error} empty={!resource.loading && !resource.error} subject="COT history" />;
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     rootWidth={width} rootHeight={height} selection={{ kind: "id", selectedId: selected, getId: (row) => row.contractCode, onChange: setSelected }}
@@ -150,8 +149,7 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   });
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] },
-      ...(payload.status !== "available" ? [{ id: "partial", parts: [{ text: payload.status, tone: "warning" as const }] }] : [])] : [] });
+    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <Box width={width} height={height} flexDirection="column">
       <CompositeChart series={series} panels={data.price.length ? [{ id: "price", height: 2 }, { id: "net", height: 1 }] : [{ id: "net" }]}
