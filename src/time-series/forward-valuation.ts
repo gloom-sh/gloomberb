@@ -35,6 +35,12 @@ export const FORWARD_PE_BASIS_NOTICE =
 export const REALIZED_NTM_PE_BASIS_NOTICE =
   "Realized NTM P/E: price at each report date over the EPS actually reported in the following four quarters. Hindsight, not a forward multiple.";
 
+/** Methodology, true for every such chart: kept in metadata, never a pane warning. */
+export const FORWARD_VALUATION_BASIS_NOTICES: ReadonlySet<string> = new Set([
+  FORWARD_PE_BASIS_NOTICE,
+  REALIZED_NTM_PE_BASIS_NOTICE,
+]);
+
 function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
