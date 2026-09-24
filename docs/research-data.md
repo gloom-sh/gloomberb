@@ -102,7 +102,7 @@ Market capitalization can come from a financial snapshot when a current quote do
 
 Relative Valuation excludes explicitly stale quote prices, changes, and quote market caps from comparisons. Its exports retain the original quote, source timestamp and stale status, and identify incomplete output. Separately reported fundamentals and fallback market caps retain their own source and retrieval time; these are not dated by the rejected quote.
 
-Bank capital metrics and REIT FFO/AFFO depend on source coverage. Operating cash flow is not a substitute for FFO/AFFO. Missing measures are available through the financial view’s warning indicator.
+Financial statements do not include bank regulatory capital (CET1, risk-weighted assets) or REIT FFO/AFFO. Operating cash flow is not a substitute for FFO/AFFO.
 
 Relative valuation retains stale fundamentals for inspection and marks them through the existing warning indicator, independently of quote freshness. Its CSV export includes quote observation time and fundamentals source, retrieval time, and stale status. Structured reports preserve the same provenance and report incomplete freshness until the source recovers. Retrieval time does not establish a ratio's valuation date.
 

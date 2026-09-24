@@ -24,7 +24,10 @@ export const paneSchemas = {
     discovery: {
       id: "financial-statements",
       aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement"],
-      limitations: ["One company per invocation; use GF for cross-company metric comparisons."],
+      limitations: [
+        "One company per invocation; use GF for cross-company metric comparisons.",
+        "Excludes bank regulatory capital (CET1, risk-weighted assets) and REIT FFO/AFFO.",
+      ],
       screenshotReadiness: "ready",
     },
   },

@@ -200,12 +200,6 @@ export function financialStatementCurrency(
 }
 
 export function financialStatementLimitations(financials: TickerFinancials | null | undefined): string[] {
-  const industry = financials?.profile?.industry ?? "";
-  const records = [financials?.fundamentals, ...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])];
-  const hasMetric = (keys: string[]) => records.some((record) => keys.some((key) => {
-    const value = (record as Record<string, unknown> | undefined)?.[key];
-    return typeof value === "number" && Number.isFinite(value);
-  }));
   const limitations: string[] = [];
   const operatingNotice = financialOperatingSourceNotice(financials);
   if (operatingNotice) limitations.push(operatingNotice);
@@ -214,12 +208,6 @@ export function financialStatementLimitations(financials: TickerFinancials | nul
   }
   if ([...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])].some(row => row.unavailableFields?.includes("netIncome"))) {
     limitations.push("Parent net income is unavailable for some reported periods.");
-  }
-  if (/\breit\b/i.test(industry) && !hasMetric(["fundsFromOperations", "adjustedFundsFromOperations", "ffo", "affo"])) {
-    limitations.push("FFO/AFFO are unavailable.");
-  }
-  if (/\bbanks?\b/i.test(industry) && !hasMetric(["commonEquityTier1Ratio", "cet1Ratio", "riskWeightedAssets"])) {
-    limitations.push("Bank capital measures, including CET1 and risk-weighted assets, are unavailable.");
   }
   return limitations;
 }
