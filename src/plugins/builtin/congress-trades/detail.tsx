@@ -80,7 +80,7 @@ export function TradeDetail({
         {/* The detail title already carries the member and ticker. */}
         <DetailLine label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <DetailLine label="party" value={trade.party ?? "--"} />
-        <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : "warning"} />
+        <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
         <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
         <DetailLine label="amount" value={trade.amount} tone="value" />
         <DetailLine label="owner" value={trade.owner} />
