@@ -118,6 +118,8 @@ test("chart and headless export explain withheld currency ratios and recover whe
   expect(blocked.series[0]?.points).toEqual([]);
   expect(blocked.unavailableSymbols).toHaveLength(1);
   expect(blocked.metadata?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("USD reporting, GBP price")]));
+  // The mismatch is the one explanation for the empty series.
+  expect((blocked.metadata?.warnings as string[]).some((warning) => warning.includes("no observations"))).toBe(false);
   expect(blocked.metadata?.summaries).toEqual(expect.arrayContaining([expect.objectContaining({ endValue: null, unit: "x" })]));
   data.annualStatements[0]!.currency = "GBP";
   const recovered = await loadChartPaneModel(spec, context);

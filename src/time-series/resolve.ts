@@ -52,6 +52,7 @@ import {
 } from "./fundamentals";
 import { FORWARD_PE_BASIS_NOTICE, REALIZED_NTM_PE_BASIS_NOTICE } from "./forward-valuation";
 import { valuationPriceWarning } from "./valuation-price";
+import { VALUATION_CURRENCY_WARNING_PREFIX } from "./valuation-currency";
 import { extractSecuritySeries, collectPriceHistoryIntegrity, chartPriceHistoryIntegrityNotices } from "./market";
 import {
   activeStudyInputSeriesIds,
@@ -1800,7 +1801,10 @@ export async function resolveChartSpecData(
   ];
   for (const entry of resolved) {
     if (entry.warning) warnings.push(`${entry.label}: ${entry.warning}`);
-    if (entry.points.length === 0) warnings.push(`${entry.label}: no observations in the selected date range.`);
+    // A currency mismatch already explains an empty valuation series.
+    if (entry.points.length === 0 && !entry.warning?.startsWith(VALUATION_CURRENCY_WARNING_PREFIX)) {
+      warnings.push(`${entry.label}: no observations in the selected date range.`);
+    }
   }
   for (const panel of spec.panels) {
     if (panel.scale !== "log") continue;

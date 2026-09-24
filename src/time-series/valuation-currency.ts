@@ -10,6 +10,8 @@ function sameUnit(left: CurrencyUnitInfo, right: CurrencyUnitInfo): boolean {
   return left.currency === right.currency && left.divisor === right.divisor;
 }
 
+export const VALUATION_CURRENCY_WARNING_PREFIX = "Valuation currency mismatch or unknown basis:";
+
 /** Price and statement amounts must share a verified monetary basis before division. */
 export function createValuationCurrencyContext(financials: TickerFinancials) {
   const quoteUnit = knownUnit(financials.quote?.currency);
@@ -38,7 +40,7 @@ export function createValuationCurrencyContext(financials: TickerFinancials) {
       });
       if (!incompatible.length) return undefined;
       const currencies = [...new Set(incompatible.map((row) => statementUnit(row)?.currency ?? "unknown"))];
-      return `Valuation currency mismatch or unknown basis: ${currencies.join("/")} reporting, ${quoteUnit?.currency ?? "unknown"} price. Affected ratios are unavailable.`;
+      return `${VALUATION_CURRENCY_WARNING_PREFIX} ${currencies.join("/")} reporting, ${quoteUnit?.currency ?? "unknown"} price. Affected ratios are unavailable.`;
     },
   };
 }
