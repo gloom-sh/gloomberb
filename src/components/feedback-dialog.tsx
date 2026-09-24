@@ -1,5 +1,5 @@
 /**
- * Send Feedback: a title, a message, an optional screenshot, Send. Opened
+ * Send Feedback: a message, an optional screenshot, Send. Opened
  * from the status bar, the `FB` command and Help. The report carries scrubbed
  * debug logs and app details so a bug can be traced without a back-and-forth.
  *
@@ -12,7 +12,6 @@ import { collectFeedbackDiagnostics, collectFeedbackLogs, feedbackSource } from 
 import { captureAppImageScreenshot, terminalFrameScreenshot } from "../feedback/screenshot";
 import {
   FEEDBACK_MESSAGE_MAX,
-  FEEDBACK_TITLE_MAX,
   type FeedbackScreenshot,
   type FeedbackSubmitRequest,
   type FeedbackSubmitResponse,
@@ -30,20 +29,17 @@ import {
   Textarea,
   useNativeRenderer,
   useUiCapabilities,
-  type InputRenderable,
   type TextareaRenderable,
 } from "../ui";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../ui/dialog";
 import { useToastHost } from "../ui/toast";
 import { VERSION } from "../version";
 import { Button } from "./ui/button";
-import { TextField } from "./ui/fields";
+import { Checkbox } from "./ui/checkbox";
 import { DialogFrame } from "./ui/frame";
 
-type Field = "title" | "message";
-
 /** What the person typed, kept when the dialog closes without sending. */
-const draft = { title: "", message: "" };
+const draft = { message: "" };
 
 const CONTENT_WIDTH = 64;
 /** Border plus padding the terminal dialog host draws around the content. */
@@ -53,6 +49,21 @@ const MESSAGE_ROWS = 6;
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : t("Couldn't send. Try again.");
 }
+
+type KeyLike = { name?: string; shift?: boolean; alt?: boolean; meta?: boolean; preventDefault?: () => void };
+
+/**
+ * Enter starts a new line; Shift+Enter sends. Terminals without the kitty
+ * keyboard protocol report Shift+Enter as Enter, so Alt+Enter also sends there.
+ */
+const TERMINAL_MESSAGE_KEYS = [
+  { name: "return", action: "newline" },
+  { name: "linefeed", action: "newline" },
+  { name: "return", shift: true, action: "submit" },
+  { name: "linefeed", shift: true, action: "submit" },
+  { name: "return", meta: true, action: "submit" },
+  { name: "linefeed", meta: true, action: "submit" },
+];
 
 export function FeedbackDialog({
   dialogId,
@@ -64,36 +75,32 @@ export function FeedbackDialog({
   width,
 }: PromptContext<FeedbackSubmitResponse | undefined> & {
   width: number;
-  /** A send that finishes after Esc still counts: the host announces it instead of resolving. */
-  onSentAfterClose: (response: FeedbackSubmitResponse) => void;
   /** The screen as it was when the dialog opened, on the terminal renderer. */
   terminalScreenshot: FeedbackScreenshot | null;
-  buildReport: (input: { title: string; message: string; screenshot: FeedbackScreenshot | null }) => FeedbackSubmitRequest;
+  buildReport: (input: { message: string; screenshot: FeedbackScreenshot | null }) => FeedbackSubmitRequest;
+  /** A send that finishes after Esc still counts: the host announces it instead of resolving. */
+  onSentAfterClose: (response: FeedbackSubmitResponse) => void;
 }) {
   useAppLanguage();
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const titleRef = useRef<InputRenderable | null>(null);
   const messageRef = useRef<TextareaRenderable | null>(null);
-  const [activeField, setActiveField] = useState<Field>("title");
-  const [title, setTitle] = useState(draft.title);
   const messageValueRef = useRef(draft.message);
   const [screenshot, setScreenshot] = useState<FeedbackScreenshot | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [sending, setSending] = useState(false);
-  // State lags a render behind: two Enters in one terminal read would both see `sending` false.
+  // State lags a render behind: two sends in one terminal read would both see `sending` false.
   const sendingRef = useRef(false);
   const closedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const signedIn = apiClient.isSignedIn();
   const canAttach = !!terminalScreenshot || nativePaneChrome;
 
-  const focusActiveField = useCallback(() => {
-    if (activeField === "title") titleRef.current?.focus?.();
-    else messageRef.current?.focus?.();
-  }, [activeField]);
+  const focusMessage = useCallback(() => {
+    messageRef.current?.focus?.();
+  }, []);
 
-  useEffect(focusActiveField, [focusActiveField]);
+  useEffect(focusMessage, [focusMessage]);
   useEffect(() => () => {
     closedRef.current = true;
   }, []);
@@ -124,21 +131,17 @@ export function FeedbackDialog({
   const send = useCallback(async () => {
     if (sendingRef.current || capturing) return;
     const message = readMessage().trim().slice(0, FEEDBACK_MESSAGE_MAX);
-    const trimmedTitle = title.trim().slice(0, FEEDBACK_TITLE_MAX);
-    if (!trimmedTitle && !message) {
-      setError(t("Write a title or a message."));
+    if (!message) {
+      setError(t("Write a message."));
       return;
     }
     sendingRef.current = true;
     setSending(true);
     setError(null);
     try {
-      const response = await apiClient.submitFeedback(buildReport({ title: trimmedTitle, message, screenshot }));
+      const response = await apiClient.submitFeedback(buildReport({ message, screenshot }));
       // Leave a draft alone if it has moved on since (typed into a reopened dialog).
-      if (draft.title.trim() === trimmedTitle && draft.message.trim() === message) {
-        draft.title = "";
-        draft.message = "";
-      }
+      if (draft.message.trim() === message) draft.message = "";
       if (closedRef.current) onSentAfterClose(response);
       else resolve(response);
     } catch (errorValue) {
@@ -147,13 +150,13 @@ export function FeedbackDialog({
       setError(errorMessage(errorValue));
       setSending(false);
     }
-  }, [buildReport, capturing, onSentAfterClose, resolve, screenshot, title]);
+  }, [buildReport, capturing, onSentAfterClose, resolve, screenshot]);
 
-  // A click on the button takes DOM focus; hand it back so Enter still sends.
-  const toggleScreenshot = useCallback(async () => {
-    if (screenshot || terminalScreenshot) {
-      setScreenshot(screenshot ? null : terminalScreenshot);
-      focusActiveField();
+  // A click on the checkbox takes DOM focus; hand it back so typing continues.
+  const setScreenshotAttached = useCallback(async (attach: boolean) => {
+    if (!attach || terminalScreenshot) {
+      setScreenshot(attach ? terminalScreenshot : null);
+      focusMessage();
       return;
     }
     setCapturing(true);
@@ -164,9 +167,9 @@ export function FeedbackDialog({
       setError(errorValue instanceof Error && errorValue.message ? errorValue.message : t("Couldn't take a screenshot."));
     } finally {
       setCapturing(false);
-      focusActiveField();
+      focusMessage();
     }
-  }, [focusActiveField, screenshot, terminalScreenshot]);
+  }, [focusMessage, terminalScreenshot]);
 
   const signIn = () => {
     dismiss();
@@ -183,96 +186,70 @@ export function FeedbackDialog({
       dismiss();
       return;
     }
-    if (event.name === "tab") {
+    // The app's form submit key, for terminals that send neither Shift+Enter nor Alt+Enter.
+    if (event.ctrl && event.name === "s") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setActiveField((field) => (field === "title" ? "message" : "title"));
+      void send();
     }
   }, { scope: dialogId, allowEditable: true });
 
-  // Button translates its own label.
-  const sendLabel = sending ? "Sending..." : "Send";
-  const screenshotLabel = capturing
-    ? "Capturing..."
-    : screenshot ? "Screenshot attached" : "Attach screenshot";
+  // The DOM textarea submits on plain Enter whenever it has `onSubmit`, so on
+  // desktop and web it gets none and Shift+Enter (or Alt/Cmd+Enter) sends here.
+  const sendOnModifiedEnter = (event: KeyLike) => {
+    if (event.name !== "return" || !(event.shift || event.alt || event.meta)) return;
+    event.preventDefault?.();
+    void send();
+  };
 
   return (
-    <DialogFrame title="Send Feedback" footer="Enter send · Shift+Enter newline · Esc cancel">
+    <DialogFrame title="Send Feedback">
       <Box flexDirection="column" width={width} gap={1}>
-        <TextField
-          inputRef={titleRef}
-          value={title}
-          placeholder={t("Short title")}
-          focused={activeField === "title"}
-          width={width}
-          size="comfortable"
-          {...(!nativePaneChrome ? { backgroundColor: colors.panel } : {})}
-          onMouseDown={() => setActiveField("title")}
-          onChange={(value) => {
-            const next = value.slice(0, FEEDBACK_TITLE_MAX);
-            setTitle(next);
-            draft.title = next;
-          }}
-          onSubmit={() => setActiveField("message")}
-        />
         <Box
           height={MESSAGE_ROWS}
           border
-          borderColor={activeField === "message" ? colors.borderFocused : colors.border}
+          borderColor={colors.borderFocused}
           backgroundColor={colors.panel}
-          onMouseDown={() => setActiveField("message")}
-          // Match the title field's corners on the DOM renderers.
+          onMouseDown={focusMessage}
           {...(nativePaneChrome ? { style: { borderRadius: 6, overflow: "hidden" } } : {})}
         >
           <Textarea
             ref={messageRef}
             initialValue={draft.message}
             placeholder={t("What happened, or what would you like to see?")}
-            focused={activeField === "message"}
+            focused
             textColor={colors.text}
             placeholderColor={colors.textDim}
             backgroundColor={colors.panel}
             flexGrow={1}
             wrapText
-            {...(nativePaneChrome ? { style: { padding: "6px 8px", lineHeight: "18px" } } : {})}
-            keyBindings={[
-              { name: "return", action: "submit" },
-              { name: "linefeed", action: "submit" },
-              { name: "return", shift: true, action: "newline" },
-              { name: "linefeed", shift: true, action: "newline" },
-              // Terminals without the kitty keyboard protocol cannot report Shift+Enter.
-              { name: "return", meta: true, action: "newline" },
-              { name: "linefeed", meta: true, action: "newline" },
-            ]}
-            onSubmit={() => { void send(); }}
+            {...(nativePaneChrome
+              ? { style: { padding: "6px 8px", lineHeight: "18px" }, onKeyDown: sendOnModifiedEnter }
+              : { keyBindings: TERMINAL_MESSAGE_KEYS, onSubmit: () => { void send(); } })}
             onInput={(value: string) => {
               messageValueRef.current = value;
               draft.message = value;
             }}
           />
         </Box>
+        {canAttach && (
+          <Checkbox
+            label={t("Attach screenshot")}
+            flush
+            checked={!!screenshot || capturing}
+            disabled={capturing || sending}
+            onChange={(checked) => { void setScreenshotAttached(checked); }}
+          />
+        )}
         {error ? <Text fg={colors.negative} wrapText width={width}>{error}</Text> : null}
         <Box flexDirection="row" gap={1} alignItems="center">
-          <Button label={sendLabel} variant="primary" disabled={sending || capturing} onPress={() => { void send(); }} />
+          <Button label={sending ? "Sending..." : "Send"} variant="primary" disabled={sending || capturing} onPress={() => { void send(); }} />
           <Button label="Cancel" variant="secondary" disabled={sending} onPress={dismiss} />
           <Box flexGrow={1} />
-          {canAttach && (
-            <Button
-              label={screenshotLabel}
-              variant="plain"
-              compact
-              active={!!screenshot}
-              disabled={capturing || sending}
-              title={screenshot ? t("Remove screenshot") : undefined}
-              onPress={() => { void toggleScreenshot(); }}
-            />
+          {!signedIn && (
+            <Button label="Sign in to get a reply" variant="plain" compact disabled={sending} onPress={signIn} />
           )}
         </Box>
-        {!signedIn && (
-          <Box flexDirection="row">
-            <Button label="Sign in to get a reply" variant="plain" compact flush disabled={sending} onPress={signIn} />
-          </Box>
-        )}
       </Box>
     </DialogFrame>
   );
@@ -326,8 +303,9 @@ export function FeedbackDialogHost() {
         } catch {
           terminalScreenshot = null;
         }
-        const buildReport = ({ title, message, screenshot }: { title: string; message: string; screenshot: FeedbackScreenshot | null }): FeedbackSubmitRequest => ({
-          title,
+        const buildReport = ({ message, screenshot }: { message: string; screenshot: FeedbackScreenshot | null }): FeedbackSubmitRequest => ({
+          // No title field: the cloud names the report from its first line.
+          title: "",
           message,
           source: feedbackSource(),
           appVersion: VERSION,

@@ -52,7 +52,6 @@ export interface FeedbackListResponse {
   reports: FeedbackReportSummary[];
 }
 
-export const FEEDBACK_TITLE_MAX = 120;
 export const FEEDBACK_MESSAGE_MAX = 5000;
 export const FEEDBACK_LOGS_MAX = 60_000;
 /** Base64 characters; the server also caps decoded bytes at 520 KB. */

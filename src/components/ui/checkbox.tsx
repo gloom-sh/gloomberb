@@ -16,6 +16,7 @@ export function Checkbox({
   description,
   width,
   variant = "default",
+  flush = false,
 }: CheckboxProps) {
   const colors = useThemeColors();
   useRemoteUiNode({
@@ -67,7 +68,7 @@ export function Checkbox({
       }}
     >
       <Text fg={fg} attributes={active ? TextAttributes.BOLD : 0}>
-        {`${active ? "> " : "  "}[${marker}] ${visibleLabel}`}
+        {`${flush ? "" : active ? "> " : "  "}[${marker}] ${visibleLabel}`}
       </Text>
       {description ? (
         <Text fg={colors.textMuted} wrapText width={descriptionWidth}>

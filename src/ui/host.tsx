@@ -358,6 +358,11 @@ export interface HostCheckboxProps {
   description?: string;
   width?: number | string;
   variant?: "default" | "desktop";
+  /**
+   * Terminal only: drop the column kept for the `>` focus marker, so the box
+   * lines up with the fields above it in a dialog that never moves focus there.
+   */
+  flush?: boolean;
 }
 
 interface HostQueryBarOption {
