@@ -84,7 +84,8 @@ export interface CotDetailData { payload: CotContractPayload; price: PricePoint[
 export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient): Promise<CotDetailData> {
   const payload = await fetchCotContract(contractCode, family, client);
   const mapping = cotPriceMapping(contractCode);
-  if (!mapping?.priceSymbol) return { payload, price: [], priceSymbol: null, priceAsOf: null, priceWarning: "No verified front-price mapping for this CFTC market. Positioning remains available." };
+  // An unmapped market simply has no price panel; that is not a data failure.
+  if (!mapping?.priceSymbol) return { payload, price: [], priceSymbol: null, priceAsOf: null, priceWarning: null };
   try {
     const result = await client.getCloudHistory(mapping.priceSymbol, mapping.exchange, { interval: "1day", rangeKey: "5Y", outputsize: 1500 });
     if (!Array.isArray(result.data)) throw new Error("Front-price history unavailable");

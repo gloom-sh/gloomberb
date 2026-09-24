@@ -20,6 +20,35 @@ const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: strin
   ES: { code: "13874A", exchange: "CME", priceSymbol: "ES=F" },
 };
 /**
+ * Front-month price overlays for major markets without a root alias, each
+ * checked to return five years of daily history (2026-09-24). Keyed by CFTC
+ * code, never added to ROOTS: an alias would also claim the equity ticker under
+ * the cursor (ZM, ZS, PL). No cash index stands in, so the dollar index has none.
+ */
+const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> = {
+  "209742": { exchange: "CME", priceSymbol: "NQ=F" }, "239742": { exchange: "CME", priceSymbol: "RTY=F" },
+  "124603": { exchange: "CBT", priceSymbol: "YM=F" },
+  "042601": { exchange: "CBT", priceSymbol: "ZT=F" }, "044601": { exchange: "CBT", priceSymbol: "ZF=F" },
+  "043607": { exchange: "CBT", priceSymbol: "TN=F" }, "020601": { exchange: "CBT", priceSymbol: "ZB=F" },
+  "020604": { exchange: "CBT", priceSymbol: "UB=F" },
+  "099741": { exchange: "CME", priceSymbol: "6E=F" }, "097741": { exchange: "CME", priceSymbol: "6J=F" },
+  "096742": { exchange: "CME", priceSymbol: "6B=F" }, "090741": { exchange: "CME", priceSymbol: "6C=F" },
+  "232741": { exchange: "CME", priceSymbol: "6A=F" }, "092741": { exchange: "CME", priceSymbol: "6S=F" },
+  "095741": { exchange: "CME", priceSymbol: "6M=F" },
+  "133741": { exchange: "CME", priceSymbol: "BTC=F" }, "146021": { exchange: "CME", priceSymbol: "ETH=F" },
+  "023651": { exchange: "NYM", priceSymbol: "NG=F" }, "111659": { exchange: "NYM", priceSymbol: "RB=F" },
+  "022651": { exchange: "NYM", priceSymbol: "HO=F" }, "06765T": { exchange: "NYM", priceSymbol: "BZ=F" },
+  "085692": { exchange: "CMX", priceSymbol: "HG=F" }, "076651": { exchange: "NYM", priceSymbol: "PL=F" },
+  "075651": { exchange: "NYM", priceSymbol: "PA=F" },
+  "002602": { exchange: "CBT", priceSymbol: "ZC=F" }, "005602": { exchange: "CBT", priceSymbol: "ZS=F" },
+  "001602": { exchange: "CBT", priceSymbol: "ZW=F" }, "001612": { exchange: "CBT", priceSymbol: "KE=F" },
+  "007601": { exchange: "CBT", priceSymbol: "ZL=F" }, "026603": { exchange: "CBT", priceSymbol: "ZM=F" },
+  "083731": { exchange: "NYB", priceSymbol: "KC=F" }, "080732": { exchange: "NYB", priceSymbol: "SB=F" },
+  "033661": { exchange: "NYB", priceSymbol: "CT=F" }, "073732": { exchange: "NYB", priceSymbol: "CC=F" },
+  "057642": { exchange: "CME", priceSymbol: "LE=F" }, "054642": { exchange: "CME", priceSymbol: "HE=F" },
+  "061641": { exchange: "CME", priceSymbol: "GF=F" },
+};
+/**
  * The markets most readers mean by "positioning", verified against the live
  * CFTC boards on 2026-09-22. A code missing from a report family simply does
  * not appear; nothing is substituted. Everything else is one scope switch away.
@@ -55,7 +84,7 @@ export function cotContractCode(value: unknown): string | null {
 export function cotRoot(code: string): string | null {
   return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0] ?? null;
 }
-export function cotPriceMapping(code: string) { return Object.values(ROOTS).find((row) => row.code === code) ?? null; }
+export function cotPriceMapping(code: string) { return Object.values(ROOTS).find((row) => row.code === code) ?? PRICE_OVERLAYS[code] ?? null; }
 export function cotClass(family: CotFamily, value: unknown): CotClass {
   return COT_CLASSES[family].find((row) => row.value === value)?.value ?? COT_CLASSES[family][0]!.value;
 }

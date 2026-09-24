@@ -56,6 +56,15 @@ test("price-source failure leaves report history readable and never substitutes 
   const resultVx = await loadCotDetail("1170E1", "legacy", { getCloudCotContract: async () => vx, getCloudHistory: async () => { priceRequested = true; throw new Error("must not substitute cash VIX"); } });
   expect(priceRequested).toBe(false);
   expect(resultVx.priceSymbol).toBeNull();
+  expect(resultVx.priceWarning).toBeNull();
+  const corn = payload(); corn.contract = { ...corn.contract!, contractCode: "002602", marketName: "CORN" };
+  const requested: string[] = [];
+  const resultCorn = await loadCotDetail("002602", "legacy", { getCloudCotContract: async () => corn,
+    getCloudHistory: async (symbol, exchange) => { requested.push(`${symbol} ${exchange}`); return { status: "success", data: [] } as never; } });
+  expect(requested).toEqual(["ZC=F CBT"]);
+  expect(resultCorn.priceSymbol).toBe("ZC=F");
+  // A market code is never an equity alias: Soybean Meal's ZM stays Zoom's.
+  expect(cotContractCode("ZM")).toBeNull();
 });
 
 test("missing migration gives unavailable state; access failures remain access failures", async () => {
