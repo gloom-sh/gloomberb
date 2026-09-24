@@ -118,7 +118,7 @@ function renderAuctionCell(
       // so the date carries the distinction instead of a second placeholder.
       return {
         text: formatAuctionDate(auction.auctionDate),
-        color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.warning : colors.textDim,
+        color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":
       return {
@@ -150,7 +150,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
           <Text fg={colors.textDim}>{formatAuctionDate(auction.auctionDate, true)}</Text>
-          {isPendingAuction(auction) && <Text fg={colors.warning}>results pending</Text>}
+          {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
         </Box>
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), "—")} />
