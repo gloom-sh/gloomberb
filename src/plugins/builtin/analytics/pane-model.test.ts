@@ -74,13 +74,13 @@ test("converts every account balance while keeping leverage independent of displ
   expect(rows(1).get("margin-leverage")).toBe("1.5x");
   const converted = rows(1.2);
   expect(converted.get("margin-leverage")).toBe("1.5x");
-  expect(converted.get("net-liquidation")).toBe("120k");
-  expect(converted.get("total-value")).toBe("180k");
-  expect(converted.get("cash")).toBe("-60k");
-  expect(converted.get("settled-cash")).toBe("-48k");
-  expect(converted.get("available-funds")).toBe("36k");
-  expect(converted.get("excess-liquidity")).toBe("24k");
-  expect(converted.get("buying-power")).toBe("72k");
+  expect(converted.get("net-liquidation")).toBe("120.0k");
+  expect(converted.get("total-value")).toBe("180.0k");
+  expect(converted.get("cash")).toBe("-60.0k");
+  expect(converted.get("settled-cash")).toBe("-48.0k");
+  expect(converted.get("available-funds")).toBe("36.0k");
+  expect(converted.get("excess-liquidity")).toBe("24.0k");
+  expect(converted.get("buying-power")).toBe("72.0k");
 
   accountState.account.netLiquidation = 0;
   expect(rows(1).has("margin-leverage")).toBe(false);
@@ -103,10 +103,10 @@ test("cash-only summary uses reported account metrics and preserves explicit zer
   accountState.account.grossPositionValue = 0;
   accountState.account.dailyPnl = 0;
   accountState.account.unrealizedPnl = 0;
-  expect(rows().get("total-value")?.value).toBe("0");
+  expect(rows().get("total-value")?.value).toBe("0.00");
   expect(rows().get("margin-leverage")?.value).toBe("0.0x");
-  expect(rows().get("day-pnl")).toMatchObject({ value: "+0", detail: "(0.00%)" });
-  expect(rows().get("pnl")).toMatchObject({ value: "+0", detail: "(—)" });
+  expect(rows().get("day-pnl")).toMatchObject({ value: "0.00", detail: "(0.00%)" });
+  expect(rows().get("pnl")).toMatchObject({ value: "0.00", detail: "(—)" });
   delete accountState.account.netLiquidation;
   expect(rows().get("day-pnl")?.detail).toBe("(—)");
   expect(rows().has("margin-leverage")).toBe(false);

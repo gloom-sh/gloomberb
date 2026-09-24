@@ -119,7 +119,8 @@ export function resolveFuturesColumnIds(visibleIds?: readonly string[]): Futures
  *
  * The contract's own tick wins when the catalog knows it, so silver keeps its
  * $0.005 increments instead of being rounded into two decimals with gold. The
- * magnitude fallback only covers contracts without a declared tick.
+ * magnitude fallback only covers contracts without a declared tick, and reads
+ * the previous close so a live price crossing 10 keeps its decimals.
  *
  * ponytail: rates render as decimals, not the 32nds tick notation traders
  * quote (108'17). Add a tick formatter if rates users ask for it.
@@ -139,7 +140,7 @@ function priceDecimals(price: number, contract: FuturesContract): number {
  */
 function formatContractPrice(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.price)) return "—";
-  const text = formatNumber(quote.price, priceDecimals(quote.price, contract));
+  const text = formatNumber(quote.price, priceDecimals(quote.previousClose ?? quote.price, contract));
   return quote.currency === "USX" ? `${text}c` : text;
 }
 
@@ -151,7 +152,7 @@ function formatContractPrice(quote: Quote, contract: FuturesContract): string {
 function formatContractChange(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.change)) return "—";
   const decimals = contract.tick || Number.isFinite(quote.price)
-    ? priceDecimals(quote.price, contract)
+    ? priceDecimals(quote.previousClose ?? quote.price, contract)
     : 2;
   const text = formatNumber(Math.abs(quote.change), decimals);
   return `${quote.change >= 0 ? "+" : "-"}${text}`;

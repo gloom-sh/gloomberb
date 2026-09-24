@@ -4,7 +4,7 @@ import { CompanyLogo } from "../../../components/company-logo";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
 import { useFxRatesMap } from "../../../market-data/hooks";
-import { formatMarketPriceWithCurrency, formatSignedMarketPrice, quoteFormatOptions, withCurrencyMinorDigits } from "../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { exchangeShortName, marketStateColor, marketStateLabel } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
 import { useViewport } from "../../../react/input";
@@ -108,9 +108,8 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const quoteBookInline = hasBidAsk && contentWidth >= 68;
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
-  const quoteOptions = quoteFormatOptions(quote, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
-  // Prices and changes padded to the currency's minor unit, like the bid and ask beside them.
-  const moneyOptions = withCurrencyMinorDigits(quoteOptions, quote?.currency);
+  // Price, change and ranges keep the instrument's decimals on every streamed tick.
+  const moneyOptions = liveQuoteFormatOptions(quote, quote?.currency, ticker.metadata.assetCategory, financials?.quoteMetadata?.instrumentType);
   const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, moneyOptions) : "";
   const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, moneyOptions) : "";
   const quotePercentText = quote ? `(${formatPercentRaw(quote.changePercent)})` : "";
@@ -216,7 +215,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           </Box>
 
           {quote && hasBidAsk && (
-            <QuoteBook quote={quote} assetCategory={quoteOptions.assetCategory} width={quoteBookWidth} />
+            <QuoteBook quote={quote} assetCategory={moneyOptions.assetCategory} width={quoteBookWidth} />
           )}
         </Box>
 
@@ -230,8 +229,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 label="Day Range"
                 width={rangeWidth}
                 currency={quoteCurrency}
-                priceBasis={quote.priceBasis}
-                assetCategory={quoteOptions.assetCategory}
+                priceOptions={moneyOptions}
                 markerColor={rangeMarkerColor}
               />
             )}
@@ -243,8 +241,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 label="52W Range"
                 width={rangeWidth}
                 currency={quoteCurrency}
-                priceBasis={quote.priceBasis}
-                assetCategory={quoteOptions.assetCategory}
+                priceOptions={moneyOptions}
                 markerColor={rangeMarkerColor}
               />
             )}

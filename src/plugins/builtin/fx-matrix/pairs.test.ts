@@ -9,3 +9,8 @@ test("inverse yen rates retain meaningful precision instead of rounding a materi
   expect(formatRate(Number.POSITIVE_INFINITY, "USD")).toBe("—");
   expect(formatRate(0, "USD")).toBe("—");
 });
+
+test("a cross ticking across a power of ten keeps the decimals of its reference rate", () => {
+  expect(formatRate(0.00999, "AUD", 0.01001)).toBe("0.009990");
+  expect(formatRate(0.01001, "AUD", 0.00999)).toBe("0.0100100");
+});

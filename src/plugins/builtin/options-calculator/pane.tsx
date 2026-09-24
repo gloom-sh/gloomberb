@@ -11,6 +11,7 @@ import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { OPTIONS_CALCULATOR_PANE_ID, daysToExpiryFrom, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, solveImpliedVolatility, updateOptionCalcDraft, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
@@ -126,6 +127,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     // The contract's remaining time runs with the clock while its price is live.
     daysToExpiry: liveInputs.price != null && reference ? daysToExpiryFrom(reference.expiration, Date.now()) : draft.daysToExpiry,
     marketReference: liveInputs.reference }, [draft, liveInputs, reference]);
+  // A spot that follows the underlying keeps the underlying's decimals, so a
+  // tick on a whole dime shows 910.10 rather than 910.1. A typed spot shows as typed.
+  const underlyingQuote = spotLinked ? resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: draft.symbol, exchange: "" }))) : null;
+  const spotText = spotLinked
+    ? linkedDraft.spot.toFixed(liveQuoteFormatOptions(underlyingQuote, underlyingQuote?.currency ?? reference?.currency).fixedFractionDigits ?? 2)
+    : String(linkedDraft.spot);
+  const daysRunning = liveInputs?.price != null && !!reference;
   const effectiveDraft = useMemo(() => ({ ...linkedDraft, dividends: dividendInput.dividends,
     volatility: surfaceSource && surface?.volatility != null ? surface.volatility : linkedDraft.volatility }), [linkedDraft, dividendInput.dividends, surfaceSource, surface?.volatility]);
 
@@ -135,7 +143,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   }, [seed, setDraft]);
 
   const fields = useMemo<GridField[]>(() => [
-    { id: "spot", label: "Spot", value: linkedDraft.spot, valueText: String(linkedDraft.spot), onValue: (value) => updateDraft({ spot: value }) },
+    { id: "spot", label: "Spot", value: linkedDraft.spot, valueText: spotText, onValue: (value) => updateDraft({ spot: value }) },
     { id: "strike", label: "Strike", value: draft.strike, valueText: String(draft.strike), onValue: (value) => updateDraft({ strike: value }) },
     {
       id: "days",
@@ -143,11 +151,14 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       value: linkedDraft.daysToExpiry,
       // Keep intraday expiry visible; rounding six hours to "0 d" makes a
       // live contract appear expired while its time value is still priced.
-      valueText: Number.isInteger(linkedDraft.daysToExpiry)
-        ? String(linkedDraft.daysToExpiry)
-        : linkedDraft.daysToExpiry > 0 && linkedDraft.daysToExpiry < 0.0001
-          ? "<0.0001"
-          : String(Number(linkedDraft.daysToExpiry.toFixed(4))),
+      // Days that run with the clock keep all four decimals from tick to tick.
+      valueText: linkedDraft.daysToExpiry > 0 && linkedDraft.daysToExpiry < 0.0001
+        ? "<0.0001"
+        : daysRunning
+          ? linkedDraft.daysToExpiry.toFixed(4)
+          : Number.isInteger(linkedDraft.daysToExpiry)
+            ? String(linkedDraft.daysToExpiry)
+            : String(Number(linkedDraft.daysToExpiry.toFixed(4))),
       suffix: "d",
       onValue: (value) => updateDraft({ daysToExpiry: Math.max(0, value) }),
     },
@@ -158,14 +169,18 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       id: "marketPrice",
       label: draft.marketPriceSource === "mid" ? "Mid" : draft.marketPriceSource === "last" ? "Last" : draft.marketPrice > 0 ? "Input" : "Market",
       value: linkedDraft.marketPrice,
-      valueText: String(Number(linkedDraft.marketPrice.toPrecision(12))),
+      // A linked mid or last streams, so it keeps fixed decimals; a mid of two
+      // penny quotes can land on a half cent, so it keeps three.
+      valueText: draft.marketPriceSource === "mid" ? linkedDraft.marketPrice.toFixed(3)
+        : draft.marketPriceSource === "last" ? linkedDraft.marketPrice.toFixed(2)
+          : String(Number(linkedDraft.marketPrice.toPrecision(12))),
       // Clearing the field is how a standalone user says "no market price".
       onValue: (value) => updateDraft({ marketPrice: Math.max(0, value), marketPriceSource: undefined }),
       onClear: () => updateDraft({ marketPrice: 0, marketPriceSource: undefined }),
     },
     ...(american ? [{ id: "steps", label: "Steps", value: draft.steps ?? 400, valueText: String(draft.steps ?? 400),
       onValue: (value: number) => updateDraft({ steps: value }) }] : []),
-  ], [draft, linkedDraft, updateDraft, american, surfaceSource, effectiveDraft.volatility, surface?.volatility]);
+  ], [draft, linkedDraft, spotText, daysRunning, updateDraft, american, surfaceSource, effectiveDraft.volatility, surface?.volatility]);
 
   const calculation = useMemo(() => {
     const unavailable = seedError ?? (american ? dividendInput.error : null)

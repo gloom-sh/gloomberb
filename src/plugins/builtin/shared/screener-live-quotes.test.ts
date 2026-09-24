@@ -97,14 +97,14 @@ describe("screener live quotes", () => {
   });
 });
 
-test("replacement snapshots clear unavailable fields and select only the qualified listing", () => {
+test("replacement snapshots clear unavailable fields, keep the listing currency and select only the qualified listing", () => {
   const rows = [{ symbol: "ACME", exchange: "NASDAQ", name: "US", currency: "USD", price: 10, change: 1, changePercent: 10, volume: 200, lastUpdated: 100 },
     { symbol: "ACME", exchange: "LSE", name: "UK", currency: "GBP", price: 8, change: 0, changePercent: 0, volume: 0, lastUpdated: 100 }];
   const targets = buildScreenerQuoteTargets(rows, "ACME:XLON");
   expect(targets.map(target => target.selected)).toEqual([false, true]);
-  const entries = new Map([[buildQuoteKey(rows[0]!), readyEntry({ symbol: "ACME", price: 12, currency: "USD", lastUpdated: 200 })]]);
+  const entries = new Map([[buildQuoteKey(rows[0]!), readyEntry({ symbol: "ACME", price: 12, currency: "", lastUpdated: 200 })]]);
   expect(overlayScreenerQuoteEntries(rows, entries)).toEqual([
-    expect.objectContaining({ price: 12, change: null, changePercent: null, volume: null, lastUpdated: 200 }), rows[1]!,
+    expect.objectContaining({ price: 12, change: null, changePercent: null, volume: null, currency: "USD", lastUpdated: 200 }), rows[1]!,
   ]);
   entries.set(buildQuoteKey(rows[0]!), readyEntry({ symbol: "ACME", price: 12, currency: "USD", lastUpdated: 50, change: 0, changePercent: 0, volume: 0 }));
   expect(overlayScreenerQuoteEntries(rows, entries)).toEqual(rows);

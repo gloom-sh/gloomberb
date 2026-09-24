@@ -68,3 +68,10 @@ export function liveFxLegEntry(
     attempts: [],
   };
 }
+
+/** USD per unit at the pair's previous close: a rate that holds still for the session. */
+export function fxLegReferenceRate(leg: FxLeg, entry: QueryEntry<Quote> | undefined): number | null {
+  const close = resolveEntryData(entry)?.previousClose;
+  if (close == null || !Number.isFinite(close) || close <= 0) return null;
+  return leg.inverted ? 1 / close : close;
+}

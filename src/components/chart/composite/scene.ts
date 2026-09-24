@@ -20,7 +20,7 @@ import {
   projectCompositeTimestamp,
   unprojectCompositeTimestamp,
 } from "./time-scale";
-import { compositeAxisMaxTicks } from "./format";
+import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
 import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -290,6 +290,17 @@ function signBounded(rawMin: number, rawMax: number, padded: { min: number; max:
   };
 }
 
+function axisPriceReferences(axisSeries: ResolvedSeries[]): Record<string, number> {
+  const references: Record<string, number> = {};
+  for (const entry of axisSeries) {
+    const key = entry.priceAssetCategory ?? "";
+    if (key in references) continue;
+    const value = seriesPriceReference(entry);
+    if (value !== undefined) references[key] = value;
+  }
+  return references;
+}
+
 function buildAxisDomain(
   side: CompositeAxisSide,
   series: ResolvedSeries[],
@@ -308,6 +319,7 @@ function buildAxisDomain(
     unit: first.unit,
     unitGroup: first.unitGroup,
     priceAssetCategories: [...new Set(axisSeries.flatMap((entry) => entry.priceAssetCategory ? [entry.priceAssetCategory] : []))],
+    priceReferences: axisPriceReferences(axisSeries),
     seriesIds: axisSeries.map((entry) => entry.id),
     maxTicks: compositeAxisMaxTicks(rows),
     tickRows: rows,

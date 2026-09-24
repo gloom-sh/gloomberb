@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
@@ -9,7 +9,7 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { listingIdentity } from "../shared/ticker-request";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapePriceDigits, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, stickyTapePriceDigits, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tapeTimeSeconds, tradeKey, type TapeDigits } from "./model";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
@@ -68,8 +68,12 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
       abnormal: quotes.filter((quote) => { const state = quoteSpread(quote).state; return state === "locked" || state === "crossed"; }).length,
     };
   }, [data]);
-  const tradeDigits = useMemo(() => tapePriceDigits(data?.trades.map((trade) => trade.price) ?? []), [data]);
-  const quoteDigits = useMemo(() => tapePriceDigits(data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []), [data]);
+  const tradeDecision = useRef<TapeDigits | null>(null);
+  const quoteDecision = useRef<TapeDigits | null>(null);
+  const tradeDigits = useMemo(() => (tradeDecision.current = stickyTapePriceDigits(tradeDecision.current, symbol,
+    [...(data?.trades.map((trade) => trade.price) ?? []), data?.session.low ?? null, data?.session.high ?? null]))?.digits ?? 2, [data, symbol]);
+  const quoteDigits = useMemo(() => (quoteDecision.current = stickyTapePriceDigits(quoteDecision.current, symbol,
+    data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []))?.digits ?? 2, [data, symbol]);
   const freeze = () => { setPaused(frozen || !resource.data ? null : { data: resource.data, epoch: resource.epoch }); setDetail(null); };
   const reload = () => { setPaused(null); setDetail(null); setRefresh((value) => value + 1); };
   useShortcut((event) => {

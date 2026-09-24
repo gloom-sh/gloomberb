@@ -1,5 +1,5 @@
 import { Section } from "../../../../components";
-import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { useInlineTickerQuote } from "../../../../state/hooks/inline-tickers";
 import { useTickerQuoteStream } from "../../../../state/hooks/live-ticker-financials";
 import { colors } from "../../../../theme/colors";
@@ -32,8 +32,8 @@ export function liveCompanyValues(company: BuildoutCompany, quote: Quote | null)
     ? datasetCap * (quote.price / datasetPrice)
     : null;
   return {
-    price: formatMarketPriceWithCurrency(quote.price, quote.currency, { minimumFractionDigits: 2 }),
-    marketCap: liveCap != null ? `$${formatCompact(liveCap)}` : null,
+    price: formatMarketPriceWithCurrency(quote.price, quote.currency, liveQuoteFormatOptions(quote, quote.currency, "STK")),
+    marketCap: liveCap != null ? `$${formatCompact(liveCap, { fixedDecimals: true })}` : null,
   };
 }
 

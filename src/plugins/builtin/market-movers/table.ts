@@ -3,7 +3,7 @@ import { TextAttributes } from "../../../ui";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import type { MarketMoverColumn, MarketMoverRow } from "./model";
-import { fiftyTwoWeekPositionPercent, formatMoverPrice } from "./model";
+import { fiftyTwoWeekPositionPercent, formatMoverPrice, moverReferencePrice } from "./model";
 
 function formatVolRatio(ratio: number | null): string {
   if (ratio == null || !Number.isFinite(ratio) || ratio < 0) return "—";
@@ -68,7 +68,7 @@ export function renderMarketMoverCell(
     case "name":
       return { text: row.name, color: selectedColor };
     case "price":
-      return { text: formatMoverPrice(row.price, row.currency), color: selectedColor };
+      return { text: formatMoverPrice(row.price, row.currency, moverReferencePrice(row)), color: selectedColor };
     case "changePercent":
       return {
         text: formatPercentRaw(row.changePercent ?? undefined),

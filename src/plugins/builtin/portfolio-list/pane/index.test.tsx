@@ -524,7 +524,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       });
       for (let index = 0; index < 6; index++) await flushFrame();
       const frame = testSetup!.captureCharFrame();
-      expect(frame).toContain(source === "unknown currency" ? "Net Liq —" : "Net Liq 15k");
+      expect(frame).toContain(source === "unknown currency" ? "Net Liq —" : "Net Liq 15.0k");
       expect(frame).toContain(source === "CAD" ? "Cash 13.5k" : "Cash —");
       expect(frame).not.toContain("Cash 0");
       if (source !== "unknown currency") expect(requested).toContain("CAD");
@@ -815,7 +815,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     await flushFrame();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toMatch(/AAPL\s+125\s+\+4\.17%/);
+    expect(frame).toMatch(/AAPL\s+125\.00\s+\+4\.17%/);
     expect(frame).toContain("100");
     expect(frame).toContain("1.4k");
     expect(frame).toContain("+275");
@@ -838,7 +838,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await flushFrame();
       const before = testSetup.captureCharFrame();
       expect(before).toContain("⚠");
-      expect(before).toMatch(/AAPL\s+—\s+1\.2k\s+\+200\s+—/);
+      expect(before).toMatch(/AAPL\s+—\s+1\.2k\s+\+200\.00\s+—/);
       expect(before).not.toContain("NaN");
       const corrected = { ...imported, metadata: { ...imported.metadata,
         positions: [{ ...imported.metadata.positions[0]!, avgCost: 100 }],
@@ -847,7 +847,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await flushFrame();
       const after = testSetup.captureCharFrame();
       expect(after).not.toContain("⚠");
-      expect(after).toMatch(/AAPL\s+100\s+1\.2k\s+\+200\s+\+20\.00%/);
+      expect(after).toMatch(/AAPL\s+100\s+1\.2k\s+\+200\.00\s+\+20\.00%/);
     });
   }
 
@@ -1055,8 +1055,8 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("4.25");
     expect(frame).toContain("5");
     expect(frame).toContain("850");
-    expect(frame).toContain("1k");
-    expect(frame).toContain("+150");
+    expect(frame).toContain("1.0k");
+    expect(frame).toContain("+150.00");
     expect(frame).not.toContain("$4.25");
   });
 
@@ -1093,8 +1093,8 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Cash & Margin");
-    expect(frame.match(/Cash -50k/g)).toHaveLength(1);
-    expect(frame.match(/Net Liq 125k/g)).toHaveLength(1);
+    expect(frame.match(/Cash -50.0k/g)).toHaveLength(1);
+    expect(frame.match(/Net Liq 125.0k/g)).toHaveLength(1);
     expect(frame).toContain("Flex Mar 27");
     expect(frame).toContain("-351,957.025");
     expect(frame).not.toContain("Avail");
@@ -1142,7 +1142,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       { width: 60, height: 8 },
     );
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\s+2s/);
+    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\.00\s+2s/);
 
     // A quote received since the clock last ticked reads its true age on the next tick.
     clock += 5_000;
@@ -1150,7 +1150,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await Bun.sleep(AGE_CLOCK_MS + 50);
     });
     await flushFrame();
-    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\s+7s/);
+    expect(testSetup.captureCharFrame()).toMatch(/AAPL\s+125\.00\s+7s/);
   });
 
   test("warms full financials for visible rows when only quote data is loaded", async () => {
@@ -1252,7 +1252,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(calls).toBeGreaterThan(0);
-    expect(frame).toContain("2B");
+    expect(frame).toContain("2.00B");
     expect(frame).toContain("25.0");
     expect(frame).toContain("22.0");
   });
@@ -1511,7 +1511,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(liveCalls).toBe(0);
-    expect(frame).toContain("2B");
+    expect(frame).toContain("2.00B");
     expect(frame).toContain("25.0");
     expect(frame).toContain("22.0");
 

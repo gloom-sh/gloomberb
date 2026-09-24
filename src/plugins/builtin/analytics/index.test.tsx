@@ -224,9 +224,9 @@ describe("PortfolioAnalyticsPane", () => {
       });
       for (let index = 0; index < 6; index++) await flushFrame();
       const frame = testSetup!.captureCharFrame();
-      expect(frame).toContain(currency ? "Net Liq       15k" : "Net Liq       —");
+      expect(frame).toContain(currency ? "Net Liq       15.0k" : "Net Liq       —");
       expect(frame).toContain(currency ? "Cash          13.5k" : "Cash          —");
-      expect(frame).not.toContain("Net Liq       20k");
+      expect(frame).not.toContain("Net Liq       20.0k");
       if (currency) expect(requested).toContain("CAD");
       else expect(frame).toContain("FX            Unavailable");
     });
@@ -253,17 +253,17 @@ describe("PortfolioAnalyticsPane", () => {
     for (let index = 0; index < 6; index++) await flushFrame();
     const frame = testSetup!.captureCharFrame();
     if (withAccount) {
-      expect(frame).toContain("Net Liq       6k");
-      expect(frame).toContain("Cash          6k");
+      expect(frame).toContain("Net Liq       6.0k");
+      expect(frame).toContain("Cash          6.0k");
     } else {
       expect(frame).not.toContain("Net Liq");
       expect(frame).not.toContain("Cash");
       expect(frame).not.toContain("Val           0");
-      expect(frame).not.toContain("P&L           +0");
+      expect(frame).not.toContain("P&L           0");
     }
     expect(frame).toContain("Broker return +10.00%");
-    expect(frame).not.toContain("Day           +0");
-    expect(frame).not.toContain("P&L           +0");
+    expect(frame).not.toContain("Day           0");
+    expect(frame).not.toContain("P&L           0");
     expect(frame).toContain("PORTFOLIO HISTORY");
     expect(frame).toContain("Value (USD)");
     expect(frame).not.toContain("CURRENT-WEIGHT BASKET ESTIMATES");
@@ -284,8 +284,8 @@ describe("PortfolioAnalyticsPane", () => {
     const frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Source        Cached");
     expect(frame).not.toContain("Val           0");
-    expect(frame).not.toContain("Day           +0");
-    expect(frame).not.toContain("P&L           +0");
+    expect(frame).not.toContain("Day           0");
+    expect(frame).not.toContain("P&L           0");
     expect(frame).not.toContain("Net Liq");
     expect(frame).not.toContain("Cash");
   });
@@ -317,7 +317,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Account history unavailable.");
     expect(frame).toContain("Statement service unavailable");
     expect(frame).not.toContain("No positions");
-    expect(frame).not.toContain("P&L           +0");
+    expect(frame).not.toContain("P&L           0");
 
     await act(async () => { testSetup!.mockInput.pressArrow("left"); });
     await flushFrame();
@@ -386,7 +386,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Main Portfolio");
     expect(frame).toContain("Flex DU12345");
     expect(frame).toContain("Val           1.3k");
-    expect(frame).toContain("P&L           +250  (+25.00%)");
+    expect(frame).toContain("P&L           +250.00  (+25.00%)");
     expect(frame).toContain("CURRENT-WEIGHT BASKET ESTIMATES");
     expect(frame).toContain("Est. Sharpe");
     expect(frame).toContain("Beta (SPY)");
@@ -467,17 +467,17 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("Net Liq       125k");
+    expect(frame).toContain("Net Liq       125.0k");
     expect(frame).toContain("Val           113.6k");
     expect(frame).toContain("Margin Lev    0.9x");
-    expect(frame).toContain("Cash          -50k");
-    expect(frame).toContain("Day           +900");
-    expect(frame).toContain("P&L           +777");
-    expect(frame).toContain("Realized      -25");
-    expect(frame).toContain("Settled       -45k");
-    expect(frame).toContain("Avail         15k");
-    expect(frame).toContain("Excess        12k");
-    expect(frame).toContain("BP            30k");
+    expect(frame).toContain("Cash          -50.0k");
+    expect(frame).toContain("Day           +900.00");
+    expect(frame).toContain("P&L           +777.00");
+    expect(frame).toContain("Realized      -25.00");
+    expect(frame).toContain("Settled       -45.0k");
+    expect(frame).toContain("Avail         15.0k");
+    expect(frame).toContain("Excess        12.0k");
+    expect(frame).toContain("BP            30.0k");
     expect(frame).toContain("As Of         Mar 26");
     expect(frame).toContain("Source        Flex Mar 26");
   });
@@ -593,8 +593,8 @@ describe("PortfolioAnalyticsPane", () => {
 
     const frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Val           1.4k");
-    expect(frame).toContain("P&L           +400  (+40.00%)");
-    expect(frame).toContain("Technology               100.0%       1.4k       +400  +40.00%");
+    expect(frame).toContain("P&L           +400.00  (+40.00%)");
+    expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");
   });
 });

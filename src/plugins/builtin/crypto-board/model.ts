@@ -41,6 +41,8 @@ export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
 const finite = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+const positive = (value: number | null | undefined): value is number => finite(value) && value > 0;
+
 const utcDay = (ms: number) => Math.floor(ms / DAY_MS);
 
 /** The close `days` UTC days before today, the basis the day change also uses. */
@@ -102,6 +104,9 @@ export function buildCryptoRow(
     ? [...closes, { date: new Date(Math.max(now, start + closes.length * DAY_MS)), close: price }]
     : closes;
   const updatedAt = quote?.lastUpdated ?? (asset.quoteTime ? Date.parse(asset.quoteTime) : null);
+  // The digits follow a price that holds still for the day, so a tick across a
+  // power of ten (0.9998 to 1.0002) keeps the row's decimals.
+  const referencePrice = [asset.previousClose, quote?.previousClose, quote?.open].find(positive) ?? asset.price;
   return {
     asset,
     id: asset.symbol,
@@ -109,7 +114,7 @@ export function buildCryptoRow(
     code: asset.code,
     name: asset.name,
     price,
-    priceText: formatCryptoPrice(price, asset.kind === "stablecoin" ? 4 : 2),
+    priceText: formatCryptoPrice(price, asset.kind === "stablecoin" ? 4 : 2, referencePrice),
     changePercent,
     return7d: percentChange(price, closeDaysAgo(asset, 7, now)),
     return30d: percentChange(price, closeDaysAgo(asset, 30, now)),
@@ -149,10 +154,13 @@ export function buildCryptoRows(
  * Four significant digits and never fewer than two decimals, with trailing
  * zeros kept, so a column running from 84,399.24 to 0.000005660 reads evenly.
  * Stablecoins ask for four decimals so 1.0001 and 0.9998 show the same peg detail.
+ * The digits are counted at `referencePrice` (a session-fixed price such as the
+ * previous close) when there is one, so a live price crossing a power of ten
+ * keeps its decimals.
  */
-export function formatCryptoPrice(value: number | null, minimumDecimals = 2): string {
+export function formatCryptoPrice(value: number | null, minimumDecimals = 2, referencePrice?: number | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
-  const magnitude = Math.floor(Math.log10(value));
+  const magnitude = Math.floor(Math.log10(positive(referencePrice) ? referencePrice : value));
   const decimals = Math.min(12, Math.max(minimumDecimals, 3 - magnitude));
   return value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }

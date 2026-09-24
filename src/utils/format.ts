@@ -42,11 +42,17 @@ export function formatDistributionAmount(value: number | undefined, currency = "
   return getCurrencyFormatter(currency, 6).format(value);
 }
 
+/** Signs a fixed-decimal move; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */
+function signedFixed(value: number, decimals: number): string {
+  const fixed = Math.abs(value).toFixed(decimals);
+  if (!/[1-9]/.test(fixed)) return fixed;
+  return `${value > 0 ? "+" : "-"}${fixed}`;
+}
+
 /** Format a number as percentage (e.g., +1.23%) */
 export function formatPercent(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${(value * 100).toFixed(2)}%`;
+  return `${signedFixed(value * 100, 2)}%`;
 }
 
 /** Format a level such as a yield or margin (0.0123 -> 1.23%). Levels are not changes, so they carry no sign. */
@@ -59,8 +65,7 @@ export function formatLevelPercent(value: number | undefined): string {
 /** Format a percentage that's already in percent form (e.g., 1.23 -> +1.23%) */
 export function formatPercentRaw(value: number | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
+  return `${signedFixed(value, 2)}%`;
 }
 
 /**
@@ -69,26 +74,56 @@ export function formatPercentRaw(value: number | undefined): string {
  */
 export function formatCompact(value: number | undefined, { fixedDecimals = false }: { fixedDecimals?: boolean } = {}): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  const abs = Math.abs(value);
-  const fmt = (n: number, decimals: number, suffix: string) => {
-    const fixed = n.toFixed(decimals);
-    // Strip unnecessary trailing zeros after decimal point
-    const trimmed = fixed.includes(".") && (!fixedDecimals || !suffix) ? fixed.replace(/\.?0+$/, "") : fixed;
-    // A value that rounds to zero carries no sign.
-    const sign = value < 0 && /[1-9]/.test(trimmed) ? "-" : "";
-    return `${sign}${trimmed}${suffix}`;
-  };
-  if (abs >= 1e12) return fmt(abs / 1e12, 2, "T");
-  if (abs >= 1e9) return fmt(abs / 1e9, 2, "B");
-  if (abs >= 1e6) return fmt(abs / 1e6, 2, "M");
-  if (abs >= 1e3) return fmt(abs / 1e3, 1, "k");
-  return fmt(abs, 2, "");
+  const { fixed, suffix } = compactParts(Math.abs(value));
+  // Strip unnecessary trailing zeros after decimal point
+  const trimmed = fixed.includes(".") && (!fixedDecimals || !suffix) ? fixed.replace(/\.?0+$/, "") : fixed;
+  // A value that rounds to zero carries no sign.
+  const sign = value < 0 && /[1-9]/.test(trimmed) ? "-" : "";
+  return `${sign}${trimmed}${suffix}`;
+}
+
+const COMPACT_UNITS = [
+  { divisor: 1e12, decimals: 2, suffix: "T" },
+  { divisor: 1e9, decimals: 2, suffix: "B" },
+  { divisor: 1e6, decimals: 2, suffix: "M" },
+  { divisor: 1e3, decimals: 1, suffix: "k" },
+  { divisor: 1, decimals: 2, suffix: "" },
+] as const;
+
+/** The unit is picked after rounding, so 999,950 is 1.00M rather than 1000.0k. */
+function compactParts(abs: number): { fixed: string; suffix: string } {
+  let index = COMPACT_UNITS.findIndex((unit) => abs >= unit.divisor);
+  if (index < 0) index = COMPACT_UNITS.length - 1;
+  let unit = COMPACT_UNITS[index]!;
+  let fixed = (abs / unit.divisor).toFixed(unit.decimals);
+  if (index > 0 && Number(fixed) >= 1000) {
+    unit = COMPACT_UNITS[index - 1]!;
+    fixed = (abs / unit.divisor).toFixed(unit.decimals);
+  }
+  return { fixed, suffix: unit.suffix };
+}
+
+/**
+ * A live money amount (market value, P&L) in compact form that keeps its
+ * decimals from tick to tick: 999.50, 12.3k, 1.23M. A signed amount always
+ * carries + or -, except one that rounds to zero.
+ */
+export function formatCompactAmount(value: number | undefined, { signed = false }: { signed?: boolean } = {}): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const { fixed, suffix } = compactParts(Math.abs(value));
+  if (!/[1-9]/.test(fixed)) return `${fixed}${suffix}`;
+  const sign = value < 0 ? "-" : signed && value > 0 ? "+" : "";
+  return `${sign}${fixed}${suffix}`;
 }
 
 /** Format a compact value with an explicit currency code (e.g., 1.5T USD) */
-export function formatCompactCurrency(value: number | undefined, currency = "USD"): string {
+export function formatCompactCurrency(
+  value: number | undefined,
+  currency = "USD",
+  options: { fixedDecimals?: boolean } = {},
+): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return `${formatCompact(value)} ${currency}`;
+  return `${formatCompact(value, options)} ${currency}`;
 }
 
 /** Format a plain number with commas */

@@ -143,11 +143,11 @@ describe("portfolio-metrics", () => {
     const mutedPositive = blendHex(colors.positive, colors.textDim, 0.55);
 
     expect(getColumnValue(priceColumn, ticker, financials, defaultColumnContext)).toEqual({
-      text: "120",
+      text: "120.00",
       color: colors.textDim,
     });
     expect(getColumnValue(changeColumn, ticker, financials, defaultColumnContext)).toEqual({
-      text: "+5",
+      text: "+5.00",
       color: mutedPositive,
     });
     expect(getColumnValue(changePctColumn, ticker, financials, defaultColumnContext)).toEqual({
@@ -337,13 +337,13 @@ describe("portfolio-metrics", () => {
     const latencyColumn: ColumnConfig = { id: "latency", label: "AGE", width: 6, align: "right" };
 
     expect(getColumnValue(dayPnlColumn, ticker, financials, defaultColumnContext)).toEqual({
-      text: "+50",
+      text: "+50.00",
       color: expect.any(String),
     });
     expect(getSortValue(dayPnlColumn, ticker, financials, defaultColumnContext)).toBe(50);
     expect(getColumnValue(pnlColumn, ticker, financials, defaultColumnContext)).toEqual({
       pnlBasis: "quote-and-cost",
-      text: "+200",
+      text: "+200.00",
       color: expect.any(String),
     });
     expect(getSortValue(pnlColumn, ticker, financials, defaultColumnContext)).toBe(200);
@@ -366,7 +366,7 @@ describe("portfolio-metrics", () => {
     expect(getSortValue(pnlColumn, ticker, financials, defaultColumnContext)).toBe(200);
     expect(getColumnValue(pnlColumn, ticker, financials, defaultColumnContext)).toEqual({
       pnlBasis: "quote-and-cost",
-      text: "+200",
+      text: "+200.00",
       color: expect.any(String),
     });
     expect(calculatePortfolioSummaryTotals(
@@ -425,7 +425,7 @@ describe("portfolio-metrics", () => {
     expect(getColumnValue({ id: "weight", label: "WEIGHT", width: 8, align: "right" }, ticker, financials, context).text).toBe("+50.00%");
     expect(getSortValue({ id: "weight", label: "WEIGHT", width: 8, align: "right" }, ticker, financials, context)).toBe(50);
     expect(getColumnValue({ id: "range_52w", label: "52W%", width: 7, align: "right" }, ticker, financials, context).text).toBe("+50.00%");
-    expect(getColumnValue({ id: "dollar_volume", label: "$VOL", width: 9, align: "right" }, ticker, financials, context).text).toBe("1.5B");
+    expect(getColumnValue({ id: "dollar_volume", label: "$VOL", width: 9, align: "right" }, ticker, financials, context).text).toBe("1.50B");
     expect(getColumnValue({ id: "spread_pct", label: "SPR%", width: 7, align: "right" }, ticker, financials, context).text).toBe("+0.83%");
     expect(getColumnValue({ id: "bid_ask_size", label: "B/A SZ", width: 9, align: "right" }, ticker, financials, context).text).toBe("100/150");
     expect(getColumnValue({ id: "mark_delta", label: "MARK%", width: 8, align: "right" }, ticker, financials, context).text).toBe("+1.00%");
@@ -492,8 +492,8 @@ describe("position aggregation across sides, currencies and broker coverage", ()
     expect(getSortValue(column("pnl"), ticker, financials, defaultColumnContext)).toBe(1000);
     expect(getSortValue(column("pnl_pct"), ticker, financials, defaultColumnContext)).toBeCloseTo(1000 / 21000 * 100);
     expect(getColumnValue(column("shares"), ticker, financials, defaultColumnContext).text).toBe("0");
-    expect(getColumnValue(column("pnl"), ticker, financials, defaultColumnContext).text).toBe("+1k");
-    expect(buildPortfolioSummarySegments({ totals, accountState: null }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ")).toContain("Gross 24k Net 0");
+    expect(getColumnValue(column("pnl"), ticker, financials, defaultColumnContext).text).toBe("+1.0k");
+    expect(buildPortfolioSummarySegments({ totals, accountState: null }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ")).toContain("Gross 24.0k Net 0.00");
   });
 
   test("converts each cost basis before summing and withholds averages across native currencies", () => {

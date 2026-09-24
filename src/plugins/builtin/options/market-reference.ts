@@ -1,4 +1,5 @@
 import type { OptionContract } from "../../../types/financials";
+import { formatMarketPrice, stablePriceFractionDigits } from "../../../market-data/market/format";
 import { formatExpDate } from "../../../utils/options";
 
 /** A saved contract observation, never a claim that its prices are executable. */
@@ -33,7 +34,18 @@ function timestamp(milliseconds: number | undefined): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC") : null;
 }
 
-const price = (value: number) => Number.isFinite(value) && value > 0 ? String(Number(value.toPrecision(12))) : "—";
+const OPTION_PRICE_DIGITS = stablePriceFractionDigits({ assetCategory: "OPT" });
+
+/**
+ * A premium at the contract's fixed decimals whatever the quote, so a bid on a
+ * whole dime prints 1.20 rather than 1.2 and streamed prices hold their width.
+ * A cell too narrow drops grouping first, then decimals.
+ */
+export function formatOptionPrice(value: number, maxWidth?: number): string {
+  return formatMarketPrice(value, { assetCategory: "OPT", fixedFractionDigits: OPTION_PRICE_DIGITS, maxWidth });
+}
+
+const price = (value: number) => Number.isFinite(value) && value > 0 ? formatOptionPrice(value) : "—";
 
 /**
  * The spread is the one quote fact the chain table cannot show: its columns
@@ -67,7 +79,7 @@ export function optionMarketReferenceLines(reference: OptionMarketReference): st
   const { bid, ask } = reference;
   const spread = optionSpread(reference);
   const market = spread.kind === "two-sided"
-    ? `spread ${spread.spread} (${spread.percentOfMid.toFixed(2)}% of mid)`
+    ? `spread ${formatOptionPrice(spread.spread)} (${spread.percentOfMid.toFixed(2)}% of mid)`
     : spread.kind === "crossed" ? "crossed quote; no midpoint"
       : spread.kind === "one-sided" ? "one-sided quote; no midpoint" : "bid/ask unavailable";
   const quoteTime = timestamp(reference.lastUpdated);

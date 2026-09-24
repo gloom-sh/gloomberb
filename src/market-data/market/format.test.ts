@@ -11,7 +11,9 @@ import {
   formatMarketPriceWithCurrency,
   formatMarketQuantity,
   formatSignedMarketPrice,
+  liveQuoteFormatOptions,
   resolveAssetDisplayKind,
+  stablePriceFractionDigits,
 } from "./format";
 
 describe("resolveAssetDisplayKind", () => {
@@ -227,4 +229,56 @@ test("money prices pad to the currency's minor unit without cutting crypto, FX o
   expect(pad(1.138045, "USD", { assetCategory: "CURRENCY" })).toBe("$1.138045");
   expect(pad(3025, "JPY", { assetCategory: "EQUITY" })).toBe("¥3,025");
   expect(pad(87, "USD", { assetCategory: "BOND", priceBasis: "percent-of-par" })).toBe("87% par");
+});
+
+// Streamed quotes re-render several times a second. Decimals chosen from each
+// tick made 150.10 print as 150.1 and a coin crossing $100 drop two digits, so
+// the numbers visibly jumped.
+describe("live quote precision", () => {
+  const live = (values: number[], quote: Parameters<typeof liveQuoteFormatOptions>[0], currency = "USD") =>
+    values.map((value) => formatMarketPrice(value, liveQuoteFormatOptions(quote, currency)));
+
+  test("keeps one decimal count per instrument whatever the tick", () => {
+    expect(live([150.1, 150.12, 150], { instrumentType: "EQUITY", previousClose: 149.99 }))
+      .toEqual(["150.10", "150.12", "150.00"]);
+    expect(live([0.9987, 1.0012, 1.01], { instrumentType: "EQUITY", previousClose: 0.9987 }))
+      .toEqual(["0.9987", "1.0012", "1.0100"]);
+    expect(live([99.9912, 100.01, 100], { instrumentType: "CRYPTOCURRENCY", previousClose: 101 }))
+      .toEqual(["99.99", "100.01", "100.00"]);
+    expect(live([0.16234, 0.16], { instrumentType: "CRYPTOCURRENCY", previousClose: 0.16234 }))
+      .toEqual(["0.16234", "0.16000"]);
+    expect(live([1.17364, 1.17], { instrumentType: "CURRENCY", previousClose: 1.17364 }))
+      .toEqual(["1.17364", "1.17000"]);
+    expect(live([153.554, 153.5], { instrumentType: "CURRENCY", previousClose: 153.5540008544922 }, "JPY"))
+      .toEqual(["153.554", "153.500"]);
+    expect(live([6012.25, 6012.5, 6013], { instrumentType: "FUTURE", previousClose: 6010.75 }))
+      .toEqual(["6,012.25", "6,012.50", "6,013.00"]);
+    expect(live([2.35, 2.4], { instrumentType: "OPTION", previousClose: 2.35 })).toEqual(["2.35", "2.40"]);
+  });
+
+  test("takes decimals from the currency's minor unit and from session prices, never from the tick", () => {
+    expect(live([3025, 3026], { instrumentType: "EQUITY", previousClose: 3025 }, "JPY")).toEqual(["3,025", "3,026"]);
+    expect(live([2710, 2710.5], { instrumentType: "EQUITY", previousClose: 2710, open: 2708.5 }, "JPY"))
+      .toEqual(["2,710.0", "2,710.5"]);
+    expect(live([35.365, 35.1], { instrumentType: "EQUITY", previousClose: 35.32, providerPriceDivisor: 100 }, "GBP"))
+      .toEqual(["35.3650", "35.1000"]);
+    // A provider's float32 close does not ask for its binary tail.
+    expect(stablePriceFractionDigits({ assetCategory: "FUTURE", referencePrice: 157.8800048828125, sessionPrices: [157.8800048828125] }))
+      .toBe(2);
+  });
+
+  test("a tick finer than the session prices keeps its digits, and a tiny move never prints as zero", () => {
+    // A half-yen print after whole-yen closes is not rounded to a price that never traded.
+    expect(live([1850.5], { instrumentType: "EQUITY", previousClose: 1850, open: 1851 }, "JPY")).toEqual(["1,850.5"]);
+    const shib = liveQuoteFormatOptions({ instrumentType: "CRYPTOCURRENCY", previousClose: 0.00001234 }, "USD");
+    expect(formatSignedMarketPrice(-0.00000036, { ...shib, maxWidth: 9 })).toBe("-3.6e-7");
+  });
+
+  test("changes use the price's decimals, and a move that rounds to zero is unsigned", () => {
+    const options = liveQuoteFormatOptions({ instrumentType: "EQUITY", previousClose: 150 }, "USD");
+    expect([0.135, 1.2, 0, -0.004, -0.5].map((change) => formatSignedMarketPrice(change, options)))
+      .toEqual(["+0.14", "+1.20", "0.00", "0.00", "-0.50"]);
+    expect(formatMarketChangeWithCurrency(-0.004, "USD", options)).toBe("$0.00");
+    expect(formatMarketPriceWithCurrency(-0.001, "USD", options)).toBe("$0.00");
+  });
 });

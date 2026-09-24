@@ -1,4 +1,5 @@
 import { resolveEntryValue } from "../../../market-data/coordinator";
+import { currencyMinorDigits } from "../../../market-data/market/format";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
@@ -39,6 +40,31 @@ export function liveViewColumns(columns: readonly HeadlessPaneColumn[]): Map<str
     if (match) fields.set(column.key, match.field);
   }
   return fields;
+}
+
+/**
+ * The fewest decimals a live column shows, however a tick lands: a price its
+ * currency's minor unit (cents, none for yen), a percent change two.
+ */
+export function liveViewDecimalFloors(rows: readonly ViewRow[], fields: ReadonlyMap<string, LiveViewField>): Map<string, number> {
+  const floors = new Map<string, number>();
+  let priceDigits: number | undefined;
+  for (const [key, field] of fields) {
+    if (field === "changePercent") {
+      floors.set(key, 2);
+    } else if (field === "price") {
+      priceDigits ??= rowsMinorDigits(rows);
+      floors.set(key, priceDigits);
+    }
+  }
+  return floors;
+}
+
+/** Cents unless every row trades in a currency without them. */
+function rowsMinorDigits(rows: readonly ViewRow[]): number {
+  const currencies = new Set(rows.map((row) => (typeof row.currency === "string" ? row.currency.trim() : "")));
+  if (currencies.size === 0) return 2;
+  return Math.max(...[...currencies].map((currency) => Math.min(2, currencyMinorDigits(currency || undefined))));
 }
 
 export function viewRowSymbol(row: ViewRow, symbolKey: string | null): string | null {

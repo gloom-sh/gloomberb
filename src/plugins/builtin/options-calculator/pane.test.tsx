@@ -122,17 +122,17 @@ test("a chain-seeded calculator follows the contract and underlying until the us
   await act(async () => { emit!(underlying, quote("COST", { price: 910 })); });
   await settle();
   let frame = testSetup!.captureCharFrame();
-  expect(frame).toMatch(/Spot\s+900/);
+  expect(frame).toMatch(/Spot\s+900\.00/);
   expect(frame).toContain("Snapshot:");
   expect(frame).not.toContain("real-time market");
   await act(async () => { emit!(contract, quote(contract.symbol, { price: 24, bid: 23.9, ask: 24.1 })); });
   await settle();
   frame = testSetup!.captureCharFrame();
-  expect(frame).toMatch(/Mid\s+24(?!\.)/);
-  expect(frame).toMatch(/Spot\s+910/);
+  expect(frame).toMatch(/Mid\s+24\.000/);
+  expect(frame).toMatch(/Spot\s+910\.00/);
   // The contract context is the live quote now, not a saved snapshot.
   expect(frame).not.toContain("Snapshot:");
-  expect(frame).toContain("Bid 23.9 · Ask 24.1");
+  expect(frame).toContain("Bid 23.90 · Ask 24.10");
   const liveIv = frame.match(/Implied IV\s+([\d.]+)%/)![1];
   const expected = valueOption({ ...draftFromParams({}), side: "call", spot: 910, strike: 905, rate: 0.04,
     daysToExpiry: daysToExpiryFrom(expiration, Date.now()), volatility: Number(liveIv) / 100, dividendYield: 0 }).price;
@@ -146,8 +146,8 @@ test("a chain-seeded calculator follows the contract and underlying until the us
   await act(async () => { emit!(underlying, quote("COST", { price: 915 })); });
   await settle();
   frame = testSetup!.captureCharFrame();
-  expect(frame).toMatch(/Spot\s+905/);
-  expect(frame).toMatch(/Mid\s+24(?!\.)/);
+  expect(frame).toMatch(/Spot\s+905(?!\.)/);
+  expect(frame).toMatch(/Mid\s+24\.000/);
 });
 
 test("narrow results keep contract context reachable while scrolling Greeks and editing fixed inputs", async () => {

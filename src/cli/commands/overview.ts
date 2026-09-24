@@ -9,7 +9,7 @@ import {
   rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
-import { formatMoverPrice } from "../../plugins/builtin/market-movers/model";
+import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/market-movers/model";
 import { loadCalendar, matchesCountry, matchesImpact, type CountryFilter, type ImpactFilter } from "../../plugins/builtin/econ/calendar-model";
 import { isoDate, requireArg, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
@@ -32,7 +32,11 @@ const BASKET_NAMES = new Map<string, string>([
 // Priced like the MOST pane. Index and yield levels (^GSPC, ^TNX) carry no currency sign.
 const PRICE_COLUMN = { key: "price", header: "Last", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number"
-    ? formatMoverPrice(value, typeof row.currency === "string" && !String(row.symbol ?? "").startsWith("^") ? row.currency : "") : "" };
+    ? formatMoverPrice(
+      value,
+      typeof row.currency === "string" && !String(row.symbol ?? "").startsWith("^") ? row.currency : "",
+      moverReferencePrice(row as Parameters<typeof moverReferencePrice>[0]),
+    ) : "" };
 const MOVER_COLUMNS = [
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },

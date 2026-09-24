@@ -236,7 +236,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "changePercent":
         return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: selectedColor ?? priceColor(row.changePercent ?? 0) };
       case "marketCap":
-        return { text: formatCompact(row.marketCap ?? undefined), color: selectedColor ?? colors.textDim };
+        return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
       case "trailingPE":
         return { text: formatPriceEarnings(row.reportedMultiples.trailingPE), color: selectedColor ?? colors.text };
       case "forwardPE":

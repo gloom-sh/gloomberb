@@ -4,8 +4,7 @@ import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
-import { formatMarketPrice } from "../../../market-data/market/format";
-import { optionQuoteSide, optionSpread } from "./market-reference";
+import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -250,20 +249,18 @@ function formatOptionContractCell(
   const greeks = optionGreeksForColumn(row, column);
   switch (column.field) {
     case "last":
-      return contract.lastPrice > 0
-        ? formatMarketPrice(contract.lastPrice, { assetCategory: "OPT", maxWidth: column.width })
-        : "—";
+      return contract.lastPrice > 0 ? formatOptionPrice(contract.lastPrice, column.width) : "—";
     case "bid":
     case "ask": {
       const quote = optionQuoteSide(contract, column.field);
-      return quote == null ? "—" : formatMarketPrice(quote, { assetCategory: "OPT", maxWidth: column.width });
+      return quote == null ? "—" : formatOptionPrice(quote, column.width);
     }
     case "spread":
       return formatSpreadPercent(contract);
     case "volume":
-      return formatCompact(contract.volume);
+      return formatCompact(contract.volume, { fixedDecimals: true });
     case "openInterest":
-      return formatCompact(contract.openInterest);
+      return formatCompact(contract.openInterest, { fixedDecimals: true });
     case "iv":
       return formatIv(row.impliedVolatility);
     case "delta":

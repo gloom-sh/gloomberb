@@ -770,7 +770,7 @@ describe("TickerResearchPane", () => {
 
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("€125");
-    expect(frame).toContain("2.2B USD");
+    expect(frame).toContain("2.20B USD");
     expect(frame).toContain("Account");
     expect(frame).toContain("Qty");
     expect(frame).toContain("Avg");

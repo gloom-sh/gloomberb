@@ -54,7 +54,7 @@ test("a current mark cannot refresh broker profit without cost, and manual corre
   const record = ticker(lot({ unrealizedPnl: 200, marketValue: 1150, markPrice: 115 }));
   expect(totals(record)).toMatchObject({ totalMktValue: 1200, totalCostBasis: Number.NaN, unrealizedPnl: 200, unrealizedPnlPct: Number.NaN,
     unrealizedPnlBasis: "broker-snapshot", unavailableCostSymbols: ["AAPL"], brokerPnlSymbols: ["AAPL"] });
-  expect(getColumnValue(column("pnl"), record, financials, context)).toMatchObject({ text: "+200", pnlBasis: "broker-snapshot" });
+  expect(getColumnValue(column("pnl"), record, financials, context)).toMatchObject({ text: "+200.00", pnlBasis: "broker-snapshot" });
   expect(getSortValue(column("pnl"), record, financials, context)).toBe(200);
   const summary = buildPortfolioSummarySegments({ totals: totals(record), accountState: null });
   expect(summary.flatMap(segment => segment.parts.map(part => part.text)).join(" ")).toContain("Broker P&L");
@@ -71,7 +71,7 @@ test("mixed lots select each independently, preserve offsetting exposure, and wi
   const record = ticker(lot({ avgCost: 100 }), lot({ shares: -10, unrealizedPnl: 50 }));
   expect(totals(record)).toMatchObject({ netMktValue: 0, totalMktValue: 2400, unrealizedPnl: 250,
     unrealizedPnlBasis: "mixed", totalCostBasis: Number.NaN, unrealizedPnlPct: Number.NaN });
-  expect(getColumnValue(column("pnl"), record, financials, context)).toMatchObject({ text: "+250", pnlBasis: "mixed" });
+  expect(getColumnValue(column("pnl"), record, financials, context)).toMatchObject({ text: "+250.00", pnlBasis: "mixed" });
   expect(getSortValue(column("pnl"), record, financials, context)).toBe(250);
   record.metadata.positions.push(lot({ shares: 1 }));
   expect(totals(record).unrealizedPnl).toBeNaN();

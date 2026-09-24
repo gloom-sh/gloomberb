@@ -1,4 +1,4 @@
-import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
+import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import { displayWidth } from "../../../utils/format";
 
@@ -12,13 +12,11 @@ export type TickerBadgeStatus = "loading" | "ready" | "ambiguous";
 /** Padding inside the chip plus the gap that separates it from the next one. */
 export const TICKER_BADGE_CHROME_WIDTH = 3;
 
+/** One decimal on every tick, so a chip does not narrow when the move lands on a whole percent. */
 export function formatTickerBadgeChange(changePercent: number): string {
-  const rounded = Math.round(changePercent * 10) / 10;
-  const normalized = Object.is(rounded, -0) ? 0 : rounded;
-  if (normalized === 0) return "0%";
-  const abs = Math.abs(normalized);
-  const body = Number.isInteger(abs) ? abs.toFixed(0) : abs.toFixed(1);
-  return `${normalized > 0 ? "+" : "-"}${body}%`;
+  const body = Math.abs(changePercent).toFixed(1);
+  if (!/[1-9]/.test(body)) return `${body}%`;
+  return `${changePercent > 0 ? "+" : "-"}${body}%`;
 }
 
 export interface TickerBadgeTextOptions {
@@ -48,10 +46,14 @@ function tickerBadgeTextCandidates({
   const quoteForDisplay = liveQuote ? quote : null;
   const candidates: string[] = [];
   if (hovered && quoteForDisplay) {
-    candidates.push(`${symbol} ${formatMarketPriceWithCurrency(quoteForDisplay.price, quoteForDisplay.currency, { minimumFractionDigits: 2 })}`);
+    candidates.push(`${symbol} ${formatMarketPriceWithCurrency(
+      quoteForDisplay.price,
+      quoteForDisplay.currency,
+      liveQuoteFormatOptions(quoteForDisplay, quoteForDisplay.currency),
+    )}`);
   }
   if (liveQuote) {
-    if (status === "ready" && quoteForDisplay) {
+    if (status === "ready" && quoteForDisplay && Number.isFinite(quoteForDisplay.changePercent)) {
       candidates.push(`${symbol} ${formatTickerBadgeChange(quoteForDisplay.changePercent)}`);
     } else if (status === "loading") {
       candidates.push(`${symbol} \u2026`);

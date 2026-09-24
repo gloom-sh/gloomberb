@@ -26,6 +26,10 @@ export interface CompositeAxisDomain {
   unitGroup: string;
   /** Each source's price category, retained when different assets share an axis. */
   priceAssetCategories?: string[];
+  /** The reference price of the axis's first market series of each price
+   * category (keyed by category, "" for none). It sets the decimals of the
+   * cursor and last-price labels, so they do not follow the live value. */
+  priceReferences?: Record<string, number>;
   seriesIds: string[];
   /** Most labeled ticks the axis shows, sized to the panel height. */
   maxTicks?: number;

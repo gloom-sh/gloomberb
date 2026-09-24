@@ -1,5 +1,5 @@
 import { colors } from "../../../theme/colors";
-import { formatCompact } from "../../../utils/format";
+import { formatCompactAmount } from "../../../utils/format";
 
 export function sharpeColor(sharpe: number): string {
   if (sharpe > 1) return colors.positive;
@@ -25,9 +25,9 @@ export function betaColor(beta: number): string {
   return colors.positive;
 }
 
+// P&L moves with every streamed price; fixed decimals keep the percent detail after it still.
 export function formatSignedCompact(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return `${value >= 0 ? "+" : ""}${formatCompact(value)}`;
+  return formatCompactAmount(value ?? undefined, { signed: true });
 }
 
 export function formatWeight(weight: number | null): string {

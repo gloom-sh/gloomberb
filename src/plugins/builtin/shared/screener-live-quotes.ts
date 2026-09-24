@@ -3,6 +3,7 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import type { Quote } from "../../../types/financials";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
 const STREAM_CONNECTING_GRACE_MS = 15_000;
@@ -17,6 +18,7 @@ export interface ScreenerQuoteRow {
   currency: string;
   exchange: string;
   lastUpdated?: number;
+  previousClose?: number;
 }
 
 export interface ScreenerQuoteFreshness {
@@ -46,6 +48,18 @@ function quoteKey(row: Pick<ScreenerQuoteRow, "symbol" | "exchange">): string {
 
 function finite(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/** Venues quote these in either the major or the minor unit (GBP or GBp). */
+const TWO_UNIT_CURRENCIES = new Set(["GBP", "ILS", "ZAR"]);
+
+/** A quote without a currency keeps the listing's, so a streamed price never
+ * loses its symbol, unless the listing's currency has two units and the
+ * quote's could be either. */
+function overlayCurrency(row: ScreenerQuoteRow, quote: Quote): string {
+  const quoted = quote.currency?.trim();
+  if (quoted) return quoted;
+  return TWO_UNIT_CURRENCIES.has(resolveCurrencyUnit(row.currency).currency) ? "" : row.currency;
 }
 
 /**
@@ -87,7 +101,8 @@ function overlayQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
       ? quote.changePercent
       : null,
     volume: finite(quote.volume) && quote.volume >= 0 ? quote.volume : null,
-    currency: quote.currency?.trim() || "",
+    currency: overlayCurrency(row, quote),
+    previousClose: finite(quote.previousClose) ? quote.previousClose : undefined,
     lastUpdated: quote.lastUpdated,
   };
 }

@@ -7,7 +7,7 @@ import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
-import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
+import { displayWidth, formatCompactAmount, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
   resolvePortfolioAccountMetrics,
@@ -59,8 +59,9 @@ function createSummarySegment(
   };
 }
 
+// Totals move with every streamed price; fixed decimals keep the segments after them still.
 function formatSignedCompact(value: number): string {
-  return `${value >= 0 ? "+" : ""}${formatCompact(value)}`;
+  return formatCompactAmount(value, { signed: true });
 }
 
 function formatMonthDay(date: Date): string {
@@ -240,26 +241,26 @@ export function buildPortfolioSummarySegments({
   const accountValue = (id: string, label: string, value: number | undefined) => value != null
     ? createSummarySegment(id, [
       { text: label, tone: "label" },
-      { text: formatCompact(convertAccountValue(value)), tone: "value", bold: true },
+      { text: formatCompactAmount(convertAccountValue(value)), tone: "value", bold: true },
     ])
     : null;
 
   if (netLiquidation != null) {
     candidates.push(createSummarySegment("netliq", [
       { text: "Net Liq", tone: "label" },
-      { text: formatCompact(netLiquidation), tone: "value", bold: true },
+      { text: formatCompactAmount(netLiquidation), tone: "value", bold: true },
     ]));
   }
 
   candidates.push(createSummarySegment("val", [
     { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },
-    { text: formatCompact(totalMarketValue), tone: "value", bold: true },
+    { text: formatCompactAmount(totalMarketValue), tone: "value", bold: true },
   ]));
 
   if (totals.hasShorts && totals.netMktValue != null) {
     candidates.push(createSummarySegment("net-value", [
       { text: "Net", tone: "label" },
-      { text: formatCompact(totals.netMktValue), tone: "value", bold: true },
+      { text: formatCompactAmount(totals.netMktValue), tone: "value", bold: true },
     ]));
   }
 
