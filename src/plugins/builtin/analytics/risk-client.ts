@@ -57,7 +57,7 @@ const sessionError = (error: unknown) =>
 export const portfolioRiskCache = createPluginCache<RiskMarketSnapshot>({
   kind: "portfolio-risk",
   source: "gloom-cloud",
-  schemaVersion: 1,
+  schemaVersion: 2,
   policy: { staleMs: 2 * 60_000, expireMs: 24 * 60 * 60_000 },
 });
 type RiskCloudClient = Pick<
@@ -288,8 +288,9 @@ export async function fetchPortfolioRiskMarket(
   const start = new Date(now);
   start.setUTCMonth(start.getUTCMonth() - 18);
   start.setUTCDate(1);
+  const today = now.toISOString().slice(0, 10);
   const startDate = start.toISOString().slice(0, 10),
-    endDate = new Date(Date.parse(now.toISOString().slice(0, 10)) - 86_400_000)
+    endDate = new Date(Date.parse(today) - 86_400_000)
       .toISOString()
       .slice(0, 10);
   const histories: RiskMarketHistory[] = new Array(unique.length);
@@ -307,7 +308,9 @@ export async function fetchPortfolioRiskMarket(
             {
               interval: "1day",
               startDate,
-              endDate,
+              // validateRiskHistory drops today's bar; ending on yesterday
+              // loses yesterday's close for most listings.
+              endDate: today,
               outputsize: 1000,
               rangeKey: "2Y",
             },
@@ -364,11 +367,6 @@ export async function fetchPortfolioRiskMarket(
       );
     }
   }
-  const closeMarked = histories.filter((row) => row?.closeMark).length;
-  if (closeMarked)
-    warnings.push(
-      `${closeMarked} instrument${closeMarked === 1 ? "" : "s"} had no current quote; holdings are weighted at the latest completed close.`,
-    );
   return {
     histories,
     yields: fred[0]!.status === "fulfilled" ? fred[0]!.value : null,

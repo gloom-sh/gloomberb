@@ -21,7 +21,7 @@ export function sideColor(side: CloudCongressTradePayload["side"], selected: boo
   if (selected) return colors.selectedText;
   if (side === "BUY") return colors.positive;
   if (side === "SELL") return colors.negative;
-  if (side === "EXCHANGE") return colors.warning;
+  if (side === "EXCHANGE") return colors.text;
   return colors.textDim;
 }
 

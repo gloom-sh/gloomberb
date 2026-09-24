@@ -1,9 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { YahooFinanceClient } from "./yahoo-finance";
 import { getYahooSymbolsToTry } from "./yahoo-finance/symbols";
 
 describe("YahooFinanceClient exchange aliases", () => {
+  afterEach(() => { setSystemTime(); });
+
   test("FX rates keep the matching price observation time and reject another pair", async () => {
+    // Midweek, so a two-hour-old rate is stale; over the weekend it would not be.
+    setSystemTime(new Date("2026-09-23T15:00:00Z"));
     const provider = new YahooFinanceClient() as any;
     const previous = Date.now() - 7_200_000;
     provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 1 / 154, regularMarketTime: previous / 1000 }, history: [] });

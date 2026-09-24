@@ -248,6 +248,7 @@ describe("ThirteenFPane", () => {
 
     const holdingsFrame = testSetup!.captureCharFrame();
     expect(holdingsFrame).toContain("Holdings");
+    expect(holdingsFrame).toContain("filed 2026-05-15, restated");
     expect(holdingsFrame).toContain("AAPL");
     expect(holdingsFrame).not.toContain("Accession");
   });
@@ -271,7 +272,7 @@ describe("ThirteenFPane", () => {
     const detailFrame = testSetup!.captureCharFrame();
     expect(detailFrame).toContain("Accession");
     expect(detailFrame).toContain("0000000001-26-000001");
-    expect(detailFrame).toContain("RESTATEMENT");
+    expect(detailFrame).toContain("Restatement");
     expect(detailFrame).toContain("Alpha Capital");
     expect(detailFrame).toContain("Apple Inc.");
     expect(detailFrame).toContain("CALL");

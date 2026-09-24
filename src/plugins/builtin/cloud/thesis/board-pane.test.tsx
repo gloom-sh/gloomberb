@@ -6,6 +6,7 @@ import { TestDialogProvider, testRender } from "../../../../renderers/opentui/te
 import { appReducer, createInitialState } from "../../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
+import type { PluginPersistence } from "../../../../types/plugin";
 import { Box, Text } from "../../../../ui";
 import { ThesisBoardPane } from "./board-pane";
 import { thesisStore } from "./store";
@@ -191,6 +192,30 @@ describe("ThesisBoardPane", () => {
     // Scope and view sit in the query bar, not the footer.
     expect(frame).toContain("Portfolio");
     expect(frame).toContain("Weights");
+  });
+
+  test("the on-device copy is only called offline once the refresh fails", async () => {
+    let failList: (error: Error) => void = () => {};
+    setCloudApiFetchTransport(async (url, init) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === "/theses") return new Promise<Response>((_, reject) => { failList = reject; });
+      const { status, body } = respond(parsed.pathname, init?.method ?? "GET");
+      return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+    });
+    const saved = new Map<string, unknown>([["thesis-cache", [nvda, asml]]]);
+    thesisStore.attach({ getState: (key: string) => saved.get(key) ?? null, setState: (key: string, value: unknown) => { saved.set(key, value); } } as unknown as PluginPersistence);
+    thesisStore.start();
+    await act(async () => {
+      setup = await testRender(<Harness />, { width: 110, height: 30 });
+    });
+    await flush(null);
+    const loading = setup!.captureCharFrame();
+    expect(loading).toContain("ASML");
+    expect(loading).toContain("footer: loading");
+    expect(loading).not.toContain("offline copy");
+    await act(async () => { failList(new Error("network down")); });
+    await flush(null);
+    expect(setup!.captureCharFrame()).toContain("offline copy");
   });
 
   test("enter opens the thesis: pillars, kill conditions, catalysts, and the open signal with its source", async () => {

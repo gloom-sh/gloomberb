@@ -5,7 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { normalizeCik } from "./api";
-import { buildFundOverlap } from "./overlap";
+import { buildFundOverlap, overlapPeriod } from "./overlap";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type TickerHoldings } from "./signals";
 import {
   loadBrowserRows,
@@ -261,9 +261,9 @@ export function createThirteenFHeadless(
         const fund = await resolveFund(query, args, ctx, dependencies);
         const other = await resolveFund(String(args.options.compare ?? ""), args, ctx, dependencies);
         const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
-        const samePeriod = !!first.latestForm && first.latestForm.periodOfReport === second.latestForm?.periodOfReport;
+        const comparedPeriod = overlapPeriod(first, second);
         const rows = buildFundOverlap(first, second);
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight", align: "right", format: weight }, { key: "comparedWeight", header: "Second weight", align: "right", format: weight }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!samePeriod ? ["The funds have different latest reporting quarters."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, truncated: rows.length > limit } };
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight", align: "right", format: weight }, { key: "comparedWeight", header: "Second weight", align: "right", format: weight }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!comparedPeriod ? ["No reporting quarter is loaded for both funds."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, comparedPeriod, truncated: rows.length > limit, notices: comparedPeriod ? [`Quarter compared: ${comparedPeriod}`] : [] } };
       }
       if (view === "crowding") {
         const { rows: sourceRows, ...metadata } = await loadCrowding(ctx.signal);

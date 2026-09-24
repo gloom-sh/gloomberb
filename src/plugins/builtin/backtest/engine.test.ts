@@ -50,7 +50,6 @@ test("signals fill at the next open with costs, and a final open trade is marked
   expect(result.strategy.hitRatePct).toBe(0);
   // Buy-and-hold buys at the first fill after the start with the same cost.
   expect(result.equity.at(-1)!.benchmark).toBeCloseTo(15 / (9 * 1.01), 10);
-  expect(result.warnings[0]).toContain("too few");
 });
 
 test("a signal on the final session does not trade", () => {

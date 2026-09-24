@@ -122,7 +122,7 @@ This separation does not resolve cross-filing accounting revisions or justify an
 
 INS retains Form 4 and Form 4/A disclosures separately, with their filing accession, source filing date, transaction dates, reporting owners and explanations. An amendment is labeled in the list; opening it retains its declared original filing date, footnotes and remarks. The existing filing action opens the SEC source. Reports preserve those fields and the transaction's footnote references.
 
-[SEC Form 4, General Instruction 9](https://www.sec.gov/files/form4.pdf) permits amendments that add lines, correct particular lines or explain other changes. Unchanged original lines need not be repeated. The original filing date and owner CIKs can narrow the potentially affected filings, but do not identify transaction lines to replace. INS therefore keeps the disclosures as filed without inventing replacement or additive transactions. Affected security/side totals are unavailable; independent filings remain usable. Missing amendment identity broadens the uncertain scope. Unknown prices remain unknown, and the 90-day summary still covers only loaded non-derivative purchases and sales.
+[SEC Form 4, General Instruction 9](https://www.sec.gov/files/form4.pdf) permits amendments that add lines, correct particular lines or explain other changes. Unchanged original lines need not be repeated. The original filing date and owner CIKs can narrow the potentially affected filings, but do not identify transaction lines to replace. INS therefore keeps the disclosures as filed without inventing replacement or additive transactions. Affected security/side totals are unavailable; independent filings remain usable. Missing amendment identity broadens the uncertain scope. Unknown prices remain unknown. The 90-day summary covers non-derivative purchases and sales; INS reads every Form 4 filed in the window, up to the latest 120, and flags the totals as partial only past that cap.
 
 Amendment status uses the existing footer. Headless reports retain the candidate original accessions and mark affected output incomplete, including an amendment that contains explanations without transaction lines. Owner filtering preserves amendment context for the selected owner's original filings. The loaded window is limited; this is disclosure history, not a reconstructed position ledger or a guarantee that every later amendment has been loaded.
 
@@ -255,7 +255,7 @@ Sector and industry ETF returns are price returns in the listing currency, witho
 
 `r` refreshes the selected currencies, and automatic refresh follows the configured interval. `FXC` streams the USD legs and derives every cross from them; a streamed leg replaces the loaded rate only while its own observation is newer, and the reload relaxes only for legs the stream keeps current. Ordinary renders reuse cached rates. A refresh can still return the provider's cached observation; its source date and any stale or failure status remain visible.
 
-One unit of the row currency buys the amount in the column currency. Indicative cross rates are calculated through USD legs, whose observation times can differ. Missing, stale, or unknown observation times appear as current status.
+One unit of the row currency buys the amount in the column currency. Indicative cross rates are calculated through USD legs, whose observation times can differ. Missing, stale, or unknown observation times appear as current status. A rate is stale an hour after its observation (plus any stated feed delay), counting only time the FX market trades, Sunday 17:00 to Friday 17:00 New York. Friday's last rate therefore stays current over the weekend, while a pair that stopped updating before the close is still stale. Portfolio FX status uses the same rule. Market holidays are not part of this calendar.
 
 The base-currency axis remains visible during horizontal scrolling; partially covered values are shortened with an ellipsis. CSV export retains the full matrix and appends each currency's raw USD leg, observation time, retrieval time, source, and current status. Each cross uses its row's leg divided by its column's leg; same-currency cells are identity. Exported provenance belongs to the displayed rates, and unknown observation times remain blank rather than being replaced by retrieval time.
 
@@ -511,7 +511,7 @@ Crowding uses the latest broadly available quarter and the top 25 funds ranked b
 
 The Performance list shows the provider's estimated quarterly return and the prior three quarters when that fund appeared among each quarter's top 100. Missing ranks and failed or mismatched periods stay blank. This is a survivor-biased ranking history, not a verified fund track record; the provider's opaque `pnl` estimate is not realized fund performance.
 
-Fund Overlap matches current disclosed positions by CUSIP, option side and share type, then shows each fund's reported weight. It requires matching latest quarter ends, excludes exits, preserves unknown weights for incomplete reports, and does not combine puts or calls with equity. It is overlap of public 13F disclosures, not the managers' complete portfolios.
+Fund Overlap matches current disclosed positions by CUSIP, option side and share type, then shows each fund's reported weight. It uses the latest quarter end both funds reported among their two most recent reports, so a fund that has not filed the newest quarter yet is compared one quarter back and each fund's newer quarter is shown beside it. A previous report that failed to load is not used. Overlap excludes exits, preserves unknown weights for incomplete reports, and does not combine puts or calls with equity. It is overlap of public 13F disclosures, not the managers' complete portfolios.
 
 ## Daily short volume (SIV)
 
@@ -786,8 +786,8 @@ history, borrow, taxes and slippage beyond the stated cost are not modelled.
 CAGR needs at least half a year. Volatility and Sharpe use daily returns
 annualised with 252 sessions and a zero cash rate. The rolling comparison
 counts 252-session windows ending on each session after the first year and
-needs 20 windows. Fewer than ten closed trades are flagged as too few to judge
-a hit rate. Presets use states (`>`, `<`), so a test that begins inside a
+needs 20 windows. The hit rate sits beside its closed-trade count; with fewer
+than ten closed trades it says little. Presets use states (`>`, `<`), so a test that begins inside a
 regime is invested from the first fill; `crosses` waits for a fresh signal.
 
 ## Known coverage gaps

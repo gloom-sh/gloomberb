@@ -235,7 +235,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
                       : column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? "0.0%" : `${trade.returnPct > 0 ? "+" : ""}${trade.returnPct.toFixed(1)}%`)
                         : String(trade.sessions),
               color: column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? undefined : trade.returnPct > 0 ? colors.positive : colors.negative)
-                : trade.open && column.id === "exitDate" ? colors.warning : undefined,
+                : trade.open && column.id === "exitDate" ? colors.textMuted : undefined,
             })}
             emptyStateTitle="No trades in this window."
           />

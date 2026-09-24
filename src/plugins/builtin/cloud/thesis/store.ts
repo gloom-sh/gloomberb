@@ -8,7 +8,7 @@ interface ThesisStoreSnapshot {
   loaded: boolean;
   loading: boolean;
   error: string | null;
-  /** Set while the list is served from the on-device copy. */
+  /** Set when the last refresh failed and the list shown is the on-device copy. */
   offline: boolean;
 }
 
@@ -89,7 +89,7 @@ class ThesisStore {
     this.persistence = persistence;
     const cached = persistence.getState<CloudThesis[]>(CACHE_STATE_KEY);
     if (Array.isArray(cached) && cached.length > 0) {
-      this.update({ theses: cached, offline: true });
+      this.update({ theses: cached });
     }
   }
 

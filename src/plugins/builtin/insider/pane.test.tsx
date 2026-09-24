@@ -44,6 +44,16 @@ async function mount(width: number, explanationOnly = false) {
   await act(async () => { setup = await testRender(<Harness width={width} />, { width, height: 30 }); });
   await settle();
 }
+async function mountWindow(inWindow: number) {
+  const day = 24 * 60 * 60 * 1000;
+  const isoDate = (time: number) => new Date(time).toISOString().slice(0, 10);
+  const filings = Array.from({ length: inWindow + 1 }, (_, index) => ({ accessionNumber: `f${index}`, form: "4",
+    filingDate: new Date(Date.now() - (index < inWindow ? 1 + index % 60 : 120) * day), cik: "999", filingUrl: `https://www.sec.gov/f${index}` }));
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
+    getSecFilingContent: async (filing) => `<ownershipDocument><documentType>4</documentType><reportingOwner><reportingOwnerId><rptOwnerName>A. OFFICER</rptOwnerName><rptOwnerCik>111</rptOwnerCik></reportingOwnerId></reportingOwner><nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>${isoDate(new Date(filing.filingDate).getTime())}</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></ownershipDocument>` })));
+  await act(async () => { setup = await testRender(<Harness width={80} />, { width: 80, height: 30 }); });
+  for (let i = 0; i < 40 && (i < 8 || setup!.captureCharFrame().includes("loading")); i++) await settle();
+}
 afterEach(async () => {
   if (setup) await act(async () => { setup!.renderer.destroy(); });
   setup = undefined;
@@ -85,4 +95,18 @@ test("owner filtering keeps explanation-only amendments and clears amendment sta
   expect(setup!.captureCharFrame()).toContain("B. OFFICER");
   expect(setup!.captureCharFrame()).not.toContain("A. OFFICER");
   expect(setup!.captureCharFrame()).not.toContain("⚠");
+});
+
+test("the 90-day totals load every filing in the window, past the first page", async () => {
+  await mountWindow(25);
+  const frame = setup!.captureCharFrame();
+  expect(frame).toContain("2.5k shares");
+  expect(frame).not.toContain("⚠");
+});
+
+test("a window larger than the cap still says the totals are partial", async () => {
+  await mountWindow(121);
+  const frame = setup!.captureCharFrame();
+  expect(frame).toContain("12k shares");
+  expect(frame).toContain("⚠");
 });

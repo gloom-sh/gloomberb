@@ -42,6 +42,9 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 export { insiderHeadless } from "./headless";
 
 const FORM4_PAGE_SIZE = 20;
+// The first page grows to every filing inside the 90-day window, up to this
+// many, so the totals do not depend on how far the list is scrolled.
+const INSIDER_WINDOW_CAP = 120;
 // Recent EDGAR dumps cap at 1,000 mixed forms. Older archives are fetched
 // until this many filings or company history ends.
 const SEC_FILING_SCAN_LIMIT = 20_000;
@@ -142,16 +145,22 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     () => allFilings.filter((f) => isInsiderForm(f.form)),
     [allFilings],
   );
+  const windowCount = useMemo(() => {
+    const cutoff = insiderSummaryCutoff();
+    return form4Filings.findLastIndex((filing) => new Date(filing.filingDate).getTime() >= cutoff) + 1;
+  }, [form4Filings]);
+  const windowShown = Math.min(windowCount, INSIDER_WINDOW_CAP);
   const [visibleCount, setVisibleCount] = useState(FORM4_PAGE_SIZE);
+  const shownCount = Math.max(visibleCount, windowShown);
   const visibleForm4Filings = useMemo(
-    () => form4Filings.slice(0, visibleCount),
-    [form4Filings, visibleCount],
+    () => form4Filings.slice(0, shownCount),
+    [form4Filings, shownCount],
   );
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMore = useTableLoadMore(
     scrollRef,
-    visibleCount < form4Filings.length,
-    () => setVisibleCount((current) => Math.min(form4Filings.length, current + FORM4_PAGE_SIZE)),
+    shownCount < form4Filings.length,
+    () => setVisibleCount((current) => Math.min(form4Filings.length, Math.max(current, windowShown) + FORM4_PAGE_SIZE)),
   );
   useEffect(() => {
     setVisibleCount(FORM4_PAGE_SIZE);
@@ -202,14 +211,8 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   if (summary) lastSummaryRef.current = { scope: summaryScope, figures: summary };
   const shownSummary = summary ?? (lastSummaryRef.current?.scope === summaryScope ? lastSummaryRef.current.figures : null);
   const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary) : [], [shownSummary]);
-  // The totals only cover pages already loaded; they are whole once the
-  // oldest loaded filing predates the window or every filing is loaded.
-  const oldestLoaded = visibleForm4Filings.reduce<number | null>((oldest, filing) => {
-    const time = new Date(filing.filingDate).getTime();
-    return Number.isFinite(time) && (oldest == null || time < oldest) ? time : oldest;
-  }, null);
-  const windowPartial = visibleCount < form4Filings.length
-    && oldestLoaded != null && oldestLoaded >= insiderSummaryCutoff();
+  // The totals miss window filings only when the window passes the cap.
+  const windowPartial = shownCount < windowCount;
   const insiderOptions = useMemo(() => {
     const names = new Set<string>();
     for (const entry of allParsed) {

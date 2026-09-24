@@ -1,5 +1,6 @@
 import { hasAsmlEarningsIdentity, promoteReportedEarningsResults } from "../utils/reported-earnings-result";
 import { exchangeRateMetadata } from "../utils/exchange-rate-snapshot";
+import { fxFreshUntil } from "../utils/fx-market-hours";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, CompanyProfile, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
 import type { PriceHistoryResult } from "../types/price-history";
@@ -254,7 +255,7 @@ export class YahooFinanceClient implements DataProvider {
     const time = useBar ? last.date.getTime() : currentTime;
     const asOf = typeof time === "number" && Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : undefined;
     const retrieved = Date.now();
-    const staleAt = Math.min(retrieved + 60 * 60_000, asOf ? Date.parse(asOf) + 60 * 60_000 : Infinity);
+    const staleAt = Math.min(fxFreshUntil(retrieved, 60 * 60_000), asOf ? fxFreshUntil(Date.parse(asOf), 60 * 60_000) : Infinity);
     const snapshot: ExchangeRateSnapshot = { fromCurrency: normalized, toCurrency: "USD", rate, source: this.id, asOf, fetchedAt: new Date(retrieved).toISOString(),
       staleAt: new Date(staleAt).toISOString(), stale: staleAt <= retrieved, delayMinutes: 0 };
     exchangeRateMetadata(snapshot, normalized, retrieved);
