@@ -146,14 +146,31 @@ export class MarketDataCoordinator {
     onEvict: (key) => { this.financialsSnapshotCache.delete(key); },
   };
 
+  /**
+   * Options, filings and article summaries mirror a provider query that holds
+   * the same value. Evicting the entry only frees it once the subscription to
+   * that query goes too; the router then drops queries nothing holds.
+   */
+  private readonly retainedCachedQueries: QueryStoreRetention = {
+    ...this.retained,
+    onEvict: (key) => {
+      this.cachedQueries.get(key)?.dispose();
+      this.cachedQueries.delete(key);
+    },
+  };
+
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key));
   private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key), this.retainedSnapshots);
   private readonly chartStore = new QueryStore<PricePoint[]>((key) => this.events.bump(key), this.retained);
-  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), this.retained);
-  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), this.retained);
-  private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retained);
-  private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retained);
-  private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retained);
+  private readonly optionsStore = new QueryStore<OptionsChain>((key) => this.events.bump(key), this.retainedCachedQueries);
+  private readonly secFilingsStore = new QueryStore<SecFilingItem[]>((key) => this.events.bump(key), this.retainedCachedQueries);
+  private readonly secDocumentsStore = new QueryStore<SecFilingDocument[]>((key) => this.events.bump(key), this.retainedCachedQueries);
+  private readonly secContentStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
+  private readonly articleSummaryStore = new QueryStore<string | null>((key) => this.events.bump(key), this.retainedCachedQueries);
+  private readonly retainedStores: ReadonlyArray<Pick<QueryStore<unknown>, "watch" | "release">> = [
+    this.snapshotStore, this.chartStore, this.optionsStore, this.secFilingsStore,
+    this.secDocumentsStore, this.secContentStore, this.articleSummaryStore,
+  ];
   private readonly liveFxRates = new Map<string, { rate: number; observedAt: number; receivedAt: number }>();
   /**
    * The last rate a request loaded per currency; a streamed rate must stay
@@ -178,7 +195,11 @@ export class MarketDataCoordinator {
   };
 
   constructor(private readonly dataProvider: DataProvider, options: MarketDataCoordinatorOptions = {}) {
-    this.events = new MarketDataCoordinatorEvents(options.frames);
+    // A key a pane lets go of becomes the most recently used entry of its store.
+    this.events = new MarketDataCoordinatorEvents(options.frames, {
+      watched: (key) => { for (const store of this.retainedStores) store.watch(key); },
+      released: (key) => { for (const store of this.retainedStores) store.release(key); },
+    });
     this.quoteSubscriptionManager = new QuoteSubscriptionManager(
       dataProvider,
       (instrument, quote) => this.applyStreamQuote(instrument, quote),
@@ -554,11 +575,18 @@ export class MarketDataCoordinator {
       this.cachedQueries.set(key, { query, dispose: query.subscribe(update) });
       update();
     }
+    const settle = (loaded: boolean) => {
+      if (this.destroyed) return store.get(key);
+      const held = this.cachedQueries.get(key)?.query;
+      // An entry evicted while it loaded goes back: its caller asked for it just now.
+      if (!held || (loaded && held === query)) update();
+      return store.get(key);
+    };
     // A CLI report exits before a background refresh lands, so it would
     // print a stale entry (options chains stay stored for two days).
     return query.load({ force, background: this.dataProvider.revalidatesInBackground ?? true }).then(
-      () => { if (this.cachedQueries.get(key)?.query === query) update(); return store.get(key); },
-      () => store.get(key),
+      () => settle(true),
+      () => settle(false),
     );
   }
 

@@ -52,6 +52,11 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     return result && (this.options.acceptResult?.(result) ?? true) ? result : null;
   }
 
+  /** True while something listens or a load is running; an idle query can be dropped and rebuilt from the cache. */
+  get inUse(): boolean {
+    return this.listeners.size > 0 || this.active !== null;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

@@ -1,6 +1,12 @@
 import { measurePerf } from "../../utils/perf-marks";
 import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
 
+/** Hears when a key gains its first listener and loses its last. */
+export interface KeyWatchHooks {
+  watched?(key: string): void;
+  released?(key: string): void;
+}
+
 /**
  * Store writes mark their keys changed; listeners hear about every change of
  * a frame in one pass after that frame's stream quotes are applied, so a
@@ -14,7 +20,10 @@ export class MarketDataCoordinatorEvents {
   private readonly keyVersions = new Map<string, number>();
   private readonly notifyFrame = () => this.flushNotify();
 
-  constructor(private readonly frames: DataFrameScheduler = marketDataFrames) {}
+  constructor(
+    private readonly frames: DataFrameScheduler = marketDataFrames,
+    private readonly watchHooks: KeyWatchHooks = {},
+  ) {}
 
   bump(changeKey?: string): void {
     if (changeKey) this.pendingChangedKeys.add(changeKey);
@@ -31,7 +40,10 @@ export class MarketDataCoordinatorEvents {
   subscribeKeys(keys: readonly string[], listener: () => void): () => void {
     const uniqueKeys = [...new Set(keys)];
     for (const key of uniqueKeys) {
-      if (!this.keyListeners.has(key)) this.keyListeners.set(key, new Set());
+      if (!this.keyListeners.has(key)) {
+        this.keyListeners.set(key, new Set());
+        this.watchHooks.watched?.(key);
+      }
       this.keyListeners.get(key)!.add(listener);
     }
     return () => {
@@ -40,6 +52,7 @@ export class MarketDataCoordinatorEvents {
         listeners?.delete(listener);
         if (listeners?.size === 0) {
           this.keyListeners.delete(key);
+          this.watchHooks.released?.(key);
         }
       }
     };

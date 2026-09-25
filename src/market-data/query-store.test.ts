@@ -15,73 +15,43 @@ function ready(value: string): QueryEntry<string> {
   };
 }
 
+function retainedKeys(store: QueryStore<string>, keys: string[]): string[] {
+  return keys.filter((key) => store.get(key).phase !== "idle");
+}
+
 describe("QueryStore retention", () => {
-  it("keeps every entry when no ceiling is configured", () => {
-    const store = new QueryStore<string>(() => {});
-    for (let index = 0; index < 500; index += 1) store.set(`k${index}`, ready(`v${index}`));
-    expect(store.size).toBe(500);
-  });
-
-  it("drops the oldest unwatched entries once past the ceiling", () => {
-    const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 3 });
-    for (const key of ["a", "b", "c", "d", "e"]) store.set(key, ready(key));
-
-    expect(store.size).toBe(3);
-    expect(store.get("a").phase).toBe("idle");
-    expect(store.get("b").phase).toBe("idle");
-    expect(store.get("e").data).toBe("e");
-  });
-
-  it("never evicts a key a pane is watching, even past the ceiling", () => {
-    const watched = new Set(["a", "b", "c", "d"]);
-    const store = new QueryStore<string>(() => {}, {
-      maxRetainedEntries: 2,
-      isWatched: (key) => watched.has(key),
-    });
-    for (const key of ["a", "b", "c", "d"]) store.set(key, ready(key));
-
-    // Four visible panes outrank a ceiling of two: blanking one would be worse
-    // than holding the memory.
-    expect(store.size).toBe(4);
-
-    // Once they unmount, the next write collects them.
-    watched.clear();
-    store.set("e", ready("e"));
-    expect(store.size).toBe(2);
-    expect(store.get("e").data).toBe("e");
-  });
-
-  it("evicts around watched keys rather than stopping at the first one", () => {
-    const store = new QueryStore<string>(() => {}, {
-      maxRetainedEntries: 2,
-      isWatched: (key) => key === "a",
-    });
-    for (const key of ["a", "b", "c", "d"]) store.set(key, ready(key));
-
-    expect(store.size).toBe(2);
-    expect(store.get("a").data).toBe("a");
-    expect(store.get("d").data).toBe("d");
-  });
-
-  it("reports every evicted key so derived caches can drop it too", () => {
+  it("drops the least recently written unwatched entries past the ceiling", () => {
     const evicted: string[] = [];
-    const store = new QueryStore<string>(() => {}, {
-      maxRetainedEntries: 2,
-      onEvict: (key) => evicted.push(key),
-    });
-    for (const key of ["a", "b", "c", "d"]) store.set(key, ready(key));
+    const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 2, onEvict: (key) => evicted.push(key) });
+    for (const key of ["a", "b", "c"]) store.set(key, ready(key));
+    // A refresh of b makes it newer than c, though c was opened later.
+    store.update("b", () => ready("b2"));
+    store.set("d", ready("d"));
 
-    expect(evicted).toEqual(["a", "b"]);
+    expect(evicted).toEqual(["a", "c"]);
+    expect(retainedKeys(store, ["a", "b", "c", "d"])).toEqual(["b", "d"]);
   });
 
-  it("returns an evicted key to idle so the next read refetches", () => {
-    const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 1 });
-    store.set("a", ready("a"));
-    store.set("b", ready("b"));
+  it("keeps watched keys outside the ceiling, so a large portfolio still leaves room to browse", () => {
+    const watched = new Set(["w1", "w2", "w3"]);
+    const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 2, isWatched: (key) => watched.has(key) });
+    for (const key of ["w1", "w2", "w3", "a", "b", "c"]) store.set(key, ready(key));
 
-    const evicted = store.get("a");
-    expect(evicted.phase).toBe("idle");
-    expect(evicted.data).toBeNull();
-    expect(evicted.lastGoodData).toBeNull();
+    expect(retainedKeys(store, ["w1", "w2", "w3", "a", "b", "c"])).toEqual(["w1", "w2", "w3", "b", "c"]);
+  });
+
+  it("treats a key a pane lets go of as the most recently used", () => {
+    const watched = new Set(["a"]);
+    const store = new QueryStore<string>(() => {}, { maxRetainedEntries: 3, isWatched: (key) => watched.has(key) });
+    for (const key of ["a", "b", "c"]) store.set(key, ready(key));
+    watched.add("b");
+    store.watch("b");
+    watched.delete("a");
+    store.release("a");
+    store.set("d", ready("d"));
+    store.set("e", ready("e"));
+
+    // a was opened first but left last; b is on screen again.
+    expect(retainedKeys(store, ["a", "b", "c", "d", "e"])).toEqual(["a", "b", "d", "e"]);
   });
 });

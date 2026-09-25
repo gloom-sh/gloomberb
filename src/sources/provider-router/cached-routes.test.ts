@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
+import { buildArticleSummaryKey } from "../../market-data/selectors";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { BrokerAdapter } from "../../types/broker";
 import { AssetDataRouter } from "./index";
@@ -229,4 +230,31 @@ describe("shared cached market queries", () => {
     } finally { Date.now = actualNow; coordinator.destroy(); persistence.close(); }
   });
 
+  test("lets go of summaries browsed past the limit but keeps one a pane watched or just left", async () => {
+    const fetched: string[] = [];
+    const provider = createTestDataProvider({ id: "news", getArticleSummary: async (url) => { fetched.push(url); return `summary of ${url}`; } });
+    const router = new AssetDataRouter(provider);
+    const coordinator = new MarketDataCoordinator(router);
+    const url = (index: number) => `https://example.com/${index}`;
+    try {
+      const release = coordinator.subscribeKeys([buildArticleSummaryKey(url(0))], () => {});
+      await coordinator.loadArticleSummary(url(0));
+      // The coordinator keeps 64 unwatched summaries and the router 64 it no
+      // longer holds, so the first browsed one is gone by the 130th.
+      for (let index = 1; index <= 130; index += 1) await coordinator.loadArticleSummary(url(index));
+      expect(coordinator.getArticleSummaryEntry(url(1)).phase).toBe("idle");
+      fetched.length = 0;
+      await coordinator.loadArticleSummary(url(0));
+      await coordinator.loadArticleSummary(url(1));
+      expect(fetched).toEqual([url(1)]);
+
+      // Just left, so it outlives everything browsed while it was open, and
+      // then 64 newer summaries push it out like any other.
+      release();
+      await coordinator.loadArticleSummary(url(131));
+      expect(coordinator.getArticleSummaryEntry(url(0)).data).toBe(`summary of ${url(0)}`);
+      for (let index = 132; index < 196; index += 1) await coordinator.loadArticleSummary(url(index));
+      expect(coordinator.getArticleSummaryEntry(url(0)).phase).toBe("idle");
+    } finally { coordinator.destroy(); }
+  });
 });
