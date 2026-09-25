@@ -27,6 +27,14 @@ interface Route {
   brokerRequest?: { ticker: string; exchange?: string; expiration?: number; context?: MarketDataRequestContext };
 }
 
+/**
+ * Queries nothing listens to or loads that stay in memory. Each holds its last
+ * value, and one exists per ticker, chain and filing ever asked for, so an
+ * unbounded map kept everything a session browsed. A dropped query reads its
+ * value back from the persisted cache when asked again.
+ */
+const IDLE_QUERY_LIMIT = 64;
+
 /** One query owns both persisted source selection and live refreshes for a resource. */
 export class ProviderRouterCachedRoutes {
   private readonly objectIds = new WeakMap<object, number>();
@@ -51,7 +59,12 @@ export class ProviderRouterCachedRoutes {
     const key = JSON.stringify([method, route.entityKey, route.variants, sourceKeys,
       providers.map(objectId), brokers.map(({ broker, instance }) => [objectId(broker), objectId(instance)])]);
     const existing = this.queries.get(key);
-    if (existing) return existing;
+    if (existing) {
+      // Most recently asked for last, so the idle drop takes the oldest first.
+      this.queries.delete(key);
+      this.queries.set(key, existing);
+      return existing;
+    }
     const staticUsd = method === "getExchangeRate" && route.entityKey === "USD/USD";
     const read = (allowExpired: boolean): CachedValue<unknown> | null => {
       if (staticUsd) return { value: 1, fetchedAt: 0, staleAt: Infinity, expiresAt: Infinity, source: "static" };
@@ -123,7 +136,19 @@ export class ProviderRouterCachedRoutes {
       },
     });
     this.queries.set(key, query);
+    this.dropIdleQueries();
     return query as CachedQuery<CachedAssetValue<K>>;
+  }
+
+  private dropIdleQueries(): void {
+    let idle = 0;
+    for (const query of this.queries.values()) if (!query.inUse) idle += 1;
+    for (const [key, query] of this.queries) {
+      if (idle <= IDLE_QUERY_LIMIT) return;
+      if (query.inUse) continue;
+      this.queries.delete(key);
+      idle -= 1;
+    }
   }
 
   getCachedExchangeRates(currencies: string[], options: { allowExpired?: boolean } = {}): Map<string, number> {

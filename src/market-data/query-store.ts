@@ -4,10 +4,11 @@ import { createIdleEntry } from "./result-types";
 /** How many entries a store keeps once nothing is watching them. */
 export interface QueryStoreRetention {
   /**
-   * Entries to keep once nothing on screen is watching them. Browsing a ticker
-   * adds an entry to every store its panes touch, and nothing used to remove
-   * one, so a session that researched a few hundred symbols held every price
-   * history, statement set and filing it had ever shown until exit (#452).
+   * Entries to keep once nothing on screen is watching them, on top of the
+   * watched ones. Browsing a ticker adds an entry to every store its panes
+   * touch, and nothing used to remove one, so a session that researched a few
+   * hundred symbols held every price history, statement set and filing it had
+   * ever shown until exit (#452).
    */
   maxRetainedEntries?: number;
   /** True while a mounted pane is subscribed to this key, so it must be kept. */
@@ -26,6 +27,8 @@ export interface QueryStoreOptions<T> extends QueryStoreRetention {
 
 export class QueryStore<T> {
   private readonly entries = new Map<string, QueryEntry<T>>();
+  /** Stored keys no pane is watching, least recently used first. */
+  private readonly unwatched = new Set<string>();
 
   constructor(
     private readonly onChange: (key: string) => void,
@@ -47,17 +50,14 @@ export class QueryStore<T> {
     return next;
   }
 
-  /**
-   * Only a new key can push the store over its ceiling, so only a new key
-   * runs the eviction scan. Streamed updates rewrite existing keys many times
-   * a second and skip it.
-   */
-  private store(key: string, entry: QueryEntry<T>): QueryEntry<T> {
-    const next = this.options.project ? this.options.project(key, entry) : entry;
-    const added = !this.entries.has(key);
-    this.entries.set(key, next);
-    if (added) this.evictUnwatched();
-    return next;
+  /** A pane started watching `key`, so it is kept until released. */
+  watch(key: string): void {
+    this.unwatched.delete(key);
+  }
+
+  /** The last pane watching `key` let go: it is now the most recently used entry. */
+  release(key: string): void {
+    if (this.entries.has(key)) this.retain(key);
   }
 
   /** Entries held right now. */
@@ -65,25 +65,31 @@ export class QueryStore<T> {
     return this.entries.size;
   }
 
+  private store(key: string, entry: QueryEntry<T>): QueryEntry<T> {
+    const next = this.options.project ? this.options.project(key, entry) : entry;
+    this.entries.set(key, next);
+    this.retain(key);
+    return next;
+  }
+
   /**
-   * Drop the oldest entries no pane is watching. A watched key is never
-   * evicted, so this cannot blank a visible pane; an evicted key returns to
-   * idle and refetches the next time something asks for it.
-   *
-   * ponytail: oldest-first over insertion order rather than true LRU. Reading
-   * an entry does not renew it, so a key held open only by a long read with no
-   * subscription can still age out and refetch. Move to touch-on-read if that
-   * refetch ever shows up in a profile.
+   * Marks an unwatched key as the most recently used and drops the least
+   * recently used unwatched entries past the ceiling. A watched key is never
+   * evicted and does not count, so a pane cannot blank and a large portfolio
+   * still leaves room to go back to the tickers just browsed. An evicted key
+   * returns to idle and refetches the next time something asks for it.
    */
-  private evictUnwatched(): void {
+  private retain(key: string): void {
     const limit = this.options.maxRetainedEntries;
-    if (limit === undefined || this.entries.size <= limit) return;
-    const isWatched = this.options.isWatched;
-    for (const key of [...this.entries.keys()]) {
-      if (this.entries.size <= limit) return;
-      if (isWatched?.(key)) continue;
-      this.entries.delete(key);
-      this.options.onEvict?.(key);
+    if (limit === undefined) return;
+    this.unwatched.delete(key);
+    if (this.options.isWatched?.(key)) return;
+    this.unwatched.add(key);
+    for (const oldest of this.unwatched) {
+      if (this.unwatched.size <= limit) return;
+      this.unwatched.delete(oldest);
+      this.entries.delete(oldest);
+      this.options.onEvict?.(oldest);
     }
   }
 }
