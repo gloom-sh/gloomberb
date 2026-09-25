@@ -639,7 +639,9 @@ export const themes: Record<string, Theme> = Object.fromEntries(
   Object.entries(rawThemes).map(([id, theme]) => [id, normalizeTheme(theme)]),
 ) as Record<string, Theme>;
 
-export const DEFAULT_THEME = "amber";
+// The monochrome theme the website and web app show, so a new install looks
+// like the screenshots.
+export const DEFAULT_THEME = "white";
 
 export function getThemeIds(): string[] {
   return Object.keys(themes);

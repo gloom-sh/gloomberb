@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://gloom.sh/gloomberb-logo-grayscale.svg" alt="Gloomberb 标志" width="76" />
+<img src="src/assets/gloomberb-logo.svg" alt="Gloomberb 标志" width="76" />
 
 # Gloomberb
 

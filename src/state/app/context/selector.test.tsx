@@ -5,6 +5,7 @@ import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, useP
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import { applyTheme } from "../../../theme/colors";
 import { useThemeId } from "../../../theme/theme-context";
+import { DEFAULT_THEME } from "../../../theme/themes";
 import type { DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "../../../types/desktop-window";
 
 const TEST_PANE_ID = "ticker-detail:test";
@@ -109,7 +110,7 @@ describe("pane selectors", () => {
     testSetup = undefined;
     capturedDispatch = null;
     capturedPaneSetting = null;
-    applyTheme("amber");
+    applyTheme(DEFAULT_THEME);
   });
 
   test("pane settings and derived titles preserve the saved layout when pane scoping changes", async () => {
@@ -203,7 +204,7 @@ describe("pane selectors", () => {
     );
 
     await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:amber`);
+    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
 
     await act(() => {
       capturedDispatch?.({ type: "SET_THEME", theme: "green" });
@@ -224,7 +225,7 @@ describe("pane selectors", () => {
     );
 
     await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:amber`);
+    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
 
     await act(() => {
       capturedDispatch?.({ type: "PREVIEW_THEME", theme: "green" });
@@ -284,7 +285,7 @@ describe("pane selectors", () => {
 
     await testSetup.renderOnce();
     await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:amber`);
+    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
   });
 
   test("uses the configured theme on the first provider render", async () => {
@@ -411,7 +412,7 @@ describe("pane selectors", () => {
 
     await testSetup.renderOnce();
     expect(previewListener).not.toBeNull();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:amber`);
+    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
 
     await act(() => {
       previewListener?.({ theme: "green" });

@@ -66,6 +66,7 @@ import { handleDesktopBackendRequest } from "./desktop/backend-requests";
 import { initializeDesktopBackend } from "./desktop/initialization";
 import { applyWindowsCustomChrome } from "./desktop/windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./desktop/windows-icons";
+import { applyMacosDockIcon } from "./desktop/macos-dock-icon";
 import {
   desktopTitleBarStyle,
   desktopWindowRenderer,
@@ -257,6 +258,7 @@ function setCurrentConfig(nextConfig: AppConfig): void {
   // The native menu shows the same accelerators the keys use, so a rebind
   // rebuilds it.
   if (JSON.stringify(currentConfig.keybindings ?? null) !== previousKeybindings) installApplicationMenu();
+  applyMacosDockIcon(currentConfig.theme);
 }
 
 function sendUpdateProgress(rpc: DesktopRpc, progress: UpdateProgress): void {

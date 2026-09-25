@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
 import {
-  BROWSER_DEFAULT_THEME,
   BROWSER_ECON_CALENDAR_ID,
   BROWSER_RESEARCH_CHART_ID,
   BROWSER_RESEARCH_NEWS_ID,
@@ -11,6 +10,7 @@ import {
   createBrowserConfigStore,
 } from "./config-host";
 import type { StorageLike } from "../../data/json-storage";
+import { DEFAULT_THEME } from "../../theme/themes";
 
 function memoryStorage(): StorageLike {
   const map = new Map<string, string>();
@@ -25,7 +25,7 @@ test("a first visit opens six panes with one company down the middle", async () 
   const store = createBrowserConfigStore(memoryStorage(), "?ticker=aapl&tab=financials");
   const config = await store.loadConfig("browser://local");
 
-  expect(config.theme).toBe(BROWSER_DEFAULT_THEME);
+  expect(config.theme).toBe(DEFAULT_THEME);
   expect(config.layouts[0]?.name).toBe("Research");
   expect(getDockedPaneIds(config.layout)).toEqual([
     BROWSER_WORLD_INDICES_ID,
