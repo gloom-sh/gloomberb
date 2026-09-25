@@ -944,10 +944,11 @@ function Assert-GloomberbIconImage {
 
   $Bitmap = [System.Drawing.Bitmap]::FromFile($Path)
   try {
+    # The Halo icon: a mint disk on a dark rounded square. Enough of both means
+    # the packaged icon is Gloomberb's and not a default or stale one.
     $OpaquePixels = 0
-    $RedPixels = 0
-    $GreenPixels = 0
-    $LightPixels = 0
+    $MintPixels = 0
+    $DarkPixels = 0
 
     for ($Y = 0; $Y -lt $Bitmap.Height; $Y += 1) {
       for ($X = 0; $X -lt $Bitmap.Width; $X += 1) {
@@ -957,22 +958,20 @@ function Assert-GloomberbIconImage {
         }
 
         $OpaquePixels += 1
-        if ($Color.R -ge 170 -and $Color.G -le 140 -and $Color.B -le 140) {
-          $RedPixels += 1
+        if ($Color.G -ge 170 -and $Color.R -le 170 -and $Color.B -ge 110 -and $Color.B -le 225 -and $Color.G -gt $Color.B -and $Color.B -gt $Color.R) {
+          $MintPixels += 1
         }
-        if ($Color.G -ge 170 -and $Color.R -le 150 -and $Color.B -le 130) {
-          $GreenPixels += 1
-        }
-        if ($Color.R -ge 210 -and $Color.G -ge 210 -and $Color.B -ge 210) {
-          $LightPixels += 1
+        if ($Color.R -le 80 -and $Color.G -le 80 -and $Color.B -le 80) {
+          $DarkPixels += 1
         }
       }
     }
 
     $BaseAccentMinimum = if ($Bitmap.Width -le 16 -or $Bitmap.Height -le 16) { 2 } else { 4 }
-    $MinimumAccentPixels = [Math]::Max($BaseAccentMinimum, [int][Math]::Floor($OpaquePixels * 0.01))
-    if ($RedPixels -lt $MinimumAccentPixels -or $GreenPixels -lt $MinimumAccentPixels -or $LightPixels -lt $MinimumAccentPixels) {
-      throw "$Label does not look like the Gloomberb icon: $(@{ width = $Bitmap.Width; height = $Bitmap.Height; opaque = $OpaquePixels; red = $RedPixels; green = $GreenPixels; light = $LightPixels; minimum = $MinimumAccentPixels } | ConvertTo-Json -Compress)"
+    $MinimumMintPixels = [Math]::Max($BaseAccentMinimum, [int][Math]::Floor($OpaquePixels * 0.05))
+    $MinimumDarkPixels = [Math]::Max($BaseAccentMinimum, [int][Math]::Floor($OpaquePixels * 0.2))
+    if ($MintPixels -lt $MinimumMintPixels -or $DarkPixels -lt $MinimumDarkPixels) {
+      throw "$Label does not look like the Gloomberb icon: $(@{ width = $Bitmap.Width; height = $Bitmap.Height; opaque = $OpaquePixels; mint = $MintPixels; dark = $DarkPixels; minimumMint = $MinimumMintPixels; minimumDark = $MinimumDarkPixels } | ConvertTo-Json -Compress)"
     }
   } finally {
     $Bitmap.Dispose()
