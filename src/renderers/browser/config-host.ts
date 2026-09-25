@@ -30,9 +30,6 @@ export const BROWSER_WORLD_INDICES_ID = "world-indices:main";
 export const BROWSER_SECTORS_ID = "sectors:main";
 export const BROWSER_ECON_CALENDAR_ID = "econ-calendar:main";
 
-/** The browser ships the monochrome theme the website uses. */
-export const BROWSER_DEFAULT_THEME = "white";
-
 function column(first: string, second: string, ratio = 0.5): DockLayoutNode {
   return {
     kind: "split",
@@ -85,7 +82,6 @@ export function createBrowserResearchLayout(symbol: string): LayoutConfig {
 
 function createBrowserDefaultConfig(dataDir: string, search = ""): AppConfig {
   const config = createDefaultConfig(dataDir);
-  config.theme = BROWSER_DEFAULT_THEME;
   const entry = researchEntryFromSearch(search) ?? { symbol: "NVDA", tab: "overview" };
   // A first visit starts with a research workspace around one company. Saved
   // layouts retain their existing panes and bindings when a visitor returns.

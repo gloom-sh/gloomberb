@@ -842,7 +842,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     seededPlugins: [],
     disabledSources: [],
     pluginConfig: {},
-    theme: "amber",
+    theme: "white",
     chartPreferences: {
       renderer: "auto",
     },

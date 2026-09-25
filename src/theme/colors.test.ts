@@ -45,12 +45,12 @@ afterEach(() => {
 
 describe("theme colors", () => {
   test("provides immutable palette snapshots while the compatibility facade follows the active theme", () => {
-    const amber = getThemeColors(DEFAULT_THEME);
+    const initial = getThemeColors(DEFAULT_THEME);
     const midnight = getThemeColors("midnight");
 
-    expect(Object.isFrozen(amber)).toBe(true);
+    expect(Object.isFrozen(initial)).toBe(true);
     expect(Object.isFrozen(midnight)).toBe(true);
-    expect(amber).not.toBe(midnight);
+    expect(initial).not.toBe(midnight);
   });
 
   test("syncs CSS variables when a theme is applied", () => {
