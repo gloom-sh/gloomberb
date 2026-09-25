@@ -69,7 +69,7 @@ export function MembersSection({
   const nameWidth = compact ? 0 : Math.max(0, Math.min(22, width - handleWidth - 40));
   return (
     <Box flexDirection="column" gap={1} width={width}>
-      <SectionTitle detail={`${members.length} of 25`}>Members</SectionTitle>
+      <SectionTitle detail={`${members.length} of ${team.memberLimit ?? 25}`}>Members</SectionTitle>
       <Box flexDirection="column">
         {members.map((member) => {
           const self = member.user.id === selfUserId;
