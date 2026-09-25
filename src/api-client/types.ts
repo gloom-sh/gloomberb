@@ -1553,6 +1553,8 @@ export interface TeamSummary {
   accentColor: TeamAccentColor;
   shortName: string;
   allowMemberInvites: boolean;
+  /** Seats the team can fill; a Team plan deal sets it, otherwise 25. */
+  memberLimit?: number;
   channelId: string;
   createdAt: string;
   role: TeamRole;
