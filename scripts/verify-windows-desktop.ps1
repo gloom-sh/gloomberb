@@ -1208,6 +1208,9 @@ function Seed-DesktopConfig {
   Write-JsonFile $DataConfigPath @{
     dataDir = $DataDir
     onboardingComplete = $true
+    # The window-control checks find the close glyph as light pixels on a dark
+    # title bar, so the fixture pins a dark theme; the default is White.
+    theme = "amber"
     # This fixture covers window behavior. Plugin restoration has separate tests
     # and must not add network installs to the desktop screenshot check.
     seededPlugins = @((& bun -e 'import { EXTRACTED_PLUGINS } from "./src/plugins/seed"; console.log(JSON.stringify(EXTRACTED_PLUGINS.map(plugin => plugin.id)))') | ConvertFrom-Json)
