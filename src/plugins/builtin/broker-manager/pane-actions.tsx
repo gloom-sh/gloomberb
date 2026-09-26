@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { ApiRequestError } from "../../../api-client/errors";
 import { ConfirmDialog } from "../../../components";
 import {
   buildBrokerProfileConfig,
@@ -7,8 +6,7 @@ import {
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
-import { disconnectSignedInBroker } from "../../../brokers/signed-in/client";
-import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
+import { disconnectSignedInProfile, signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
 import type { BrokerProfileAction } from "../../../types/broker";
@@ -185,17 +183,13 @@ export function useBrokerManagerActions({
 
     try {
       setBusy(t("Disconnecting…"));
-      if (signedIn) {
-        await disconnectSignedInBroker(signedIn.id).catch((error: unknown) => {
-          // Already disconnected elsewhere.
-          if (error instanceof ApiRequestError && error.status === 404) return;
-          throw error;
-        });
-      }
+      const { stillConnected } = await disconnectSignedInProfile(selectedRow.instance);
       await removeBrokerInstance(selectedRow.id);
       setEditDraft(null);
       setDetailOpen(false);
-      setMessage(tf("Removed {label}.", { label: selectedRow.label }));
+      setMessage(stillConnected && signedIn
+        ? tf("Removed {label}. Sign in to Gloom to disconnect {broker} from your account.", { label: selectedRow.label, broker: signedIn.name })
+        : tf("Removed {label}.", { label: selectedRow.label }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : tf("Failed to remove {label}.", { label: selectedRow.label }));
     } finally {

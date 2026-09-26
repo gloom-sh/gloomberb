@@ -3,9 +3,10 @@
  * lives in the Gloom account, so a device needs one profile per broker:
  * connecting again syncs the profile it already has.
  */
+import { ApiRequestError } from "../../api-client/errors";
 import type { AppConfig, BrokerInstanceConfig } from "../../types/config";
 import { findSignedInBroker } from "./catalog";
-import type { SignedInBroker } from "./client";
+import { disconnectSignedInBroker, type SignedInBroker } from "./client";
 import { SIGNED_IN_BROKER_TYPE, isSignedInBrokerProfile, signedInBrokerId } from "./profile";
 import { requestBrokerSignIn } from "./sign-in-dialog";
 
@@ -48,3 +49,21 @@ export async function connectSignedInBrokerProfile<T>(
     ?? await deps.createBrokerInstance(SIGNED_IN_BROKER_TYPE, broker.name, { connectionMode: broker.id, broker: broker.id });
   return { instance, synced: await deps.syncBrokerInstance(instance.id) };
 }
+
+/**
+ * Disconnects the Gloom account's connection behind a signed-in profile before
+ * the profile goes. Already gone is fine; signed out of Gloom, the account
+ * keeps the broker, which the caller reports as `stillConnected`.
+ */
+export async function disconnectSignedInProfile(instance: BrokerInstanceConfig): Promise<{ stillConnected: boolean }> {
+  if (!isSignedInBrokerProfile(instance)) return { stillConnected: false };
+  try {
+    await disconnectSignedInBroker(signedInBrokerId(instance));
+    return { stillConnected: false };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return { stillConnected: false };
+    if (error instanceof ApiRequestError && error.status === 401) return { stillConnected: true };
+    throw error;
+  }
+}
+
