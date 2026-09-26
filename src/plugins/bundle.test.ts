@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { bundleExternalPlugin, buildSharedModuleSource } from "./bundle";
-import { PLUGIN_HOST_GLOBAL } from "./host-contract";
+import { PLUGIN_HOST_GLOBAL } from "./host-modules";
 
 /**
  * This is the seam that lets a plugin on disk run inside the desktop and

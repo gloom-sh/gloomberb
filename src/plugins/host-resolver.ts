@@ -1,4 +1,4 @@
-import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-module-imports";
+import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-modules";
 
 /**
  * Serves `gloomberb/*` and `react` to external plugins from inside the
@@ -94,9 +94,4 @@ export function installPluginHostResolver(): boolean {
 /** Whether the resolver is serving host modules in this process. */
 export function isPluginHostResolverInstalled(): boolean {
   return installed;
-}
-
-/** The specifiers the resolver answers, for diagnostics. */
-export function pluginHostResolverSpecifiers(): string[] {
-  return Object.keys(PLUGIN_HOST_RESOLVER_IMPORTERS);
 }

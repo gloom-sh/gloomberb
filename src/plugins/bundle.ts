@@ -4,8 +4,7 @@ import { join } from "path";
 
 import { findHostPackageRoot } from "./host-link";
 import { resolvePluginBrowserEntry } from "./loader";
-import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
-import { importPluginHostModule } from "./host-module-imports";
+import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from "./host-modules";
 
 /**
  * Compiles an external plugin for a renderer that cannot read the filesystem.

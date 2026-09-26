@@ -26,7 +26,7 @@ import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
  */
 
 // No react-dom: plugins are renderer-neutral (see SHARED_SPECIFIERS in
-// host-contract.ts), so one that imports it should fail to resolve.
+// host-modules.ts), so one that imports it should fail to resolve.
 const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 let cachedHostRoot: string | null | undefined;

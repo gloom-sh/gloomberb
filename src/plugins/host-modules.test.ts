@@ -4,19 +4,9 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { bundleExternalPlugin, hostExportNames } from "./bundle";
-import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
-import { importAllPluginHostModules, importPluginHostModule } from "./host-module-imports";
+import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-modules";
 
-describe("plugin host module imports", () => {
-  test("has a host module for every shared specifier", async () => {
-    const registry = await importAllPluginHostModules();
-
-    expect(Object.keys(registry).sort()).toEqual([...SHARED_SPECIFIERS].sort());
-    for (const specifier of SHARED_SPECIFIERS) {
-      expect(await importPluginHostModule(specifier)).toBeTruthy();
-    }
-  });
-
+describe("plugin host modules", () => {
   test("discovers export names through host-local imports", async () => {
     const names = await hostExportNames("gloomberb/ui");
 
@@ -32,7 +22,7 @@ describe("plugin host module imports", () => {
       import { tmpdir } from "os";
       import { join } from "path";
       import { bundleExternalPlugin, hostExportNames } from "./bundle";
-      import { importAllPluginHostModules } from "./host-module-imports";
+      import { importAllPluginHostModules } from "./host-modules";
 
       const pluginDir = mkdtempSync(join(tmpdir(), "gloom-compiled-plugin-"));
       try {

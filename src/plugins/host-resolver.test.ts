@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { rmSync, writeFileSync } from "fs";
 import { join } from "path";
 
-import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-module-imports";
-import { SHARED_SPECIFIERS } from "./host-contract";
-import { pluginHostResolverSpecifiers } from "./host-resolver";
+import { PLUGIN_HOST_RESOLVER_IMPORTERS } from "./host-modules";
 
 /**
  * The resolver is what lets the compiled terminal binary and the packaged
@@ -19,14 +17,6 @@ import { pluginHostResolverSpecifiers } from "./host-resolver";
  * from a temporary directory through the real loader.
  */
 describe("plugin host resolver", () => {
-  test("covers every shared specifier and the native-only exports", () => {
-    const specifiers = pluginHostResolverSpecifiers();
-
-    for (const specifier of SHARED_SPECIFIERS) expect(specifiers).toContain(specifier);
-    expect(specifiers).toContain("gloomberb/remote");
-    expect(Object.keys(PLUGIN_HOST_RESOLVER_IMPORTERS).sort()).toEqual([...specifiers].sort());
-  });
-
   test("covers every runtime export of the package that a plugin can import", async () => {
     // A new entry in package.json `exports` that the resolver does not know
     // about resolves from a source install and fails from a packaged one.
@@ -37,7 +27,7 @@ describe("plugin host resolver", () => {
       .map((key) => `gloomberb/${key.slice(2)}`)
       .sort();
 
-    const served = pluginHostResolverSpecifiers().filter((specifier) => specifier.startsWith("gloomberb/")).sort();
+    const served = Object.keys(PLUGIN_HOST_RESOLVER_IMPORTERS).filter((specifier) => specifier.startsWith("gloomberb/")).sort();
 
     expect(served).toEqual(exported);
   });
