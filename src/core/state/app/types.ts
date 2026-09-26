@@ -59,6 +59,10 @@ export interface AppState {
   config: AppConfig;
   tickers: Map<string, TickerRecord>;
   financials: Map<string, TickerFinancials>;
+  /**
+   * @deprecated The app neither reads it nor dispatches updates to it, so it stays `{ USD: 1 }`.
+   * Read live rates with `useFxRatesMap` from `gloomberb/react`.
+   */
   exchangeRates: Map<string, number>;
   brokerAccounts: Record<string, BrokerAccount[]>;
   activePanel: "left" | "right";
@@ -96,9 +100,11 @@ export type AppAction =
   | { type: "SET_TICKERS"; tickers: Map<string, TickerRecord> }
   | { type: "UPDATE_TICKER"; ticker: TickerRecord }
   | { type: "REMOVE_TICKER"; symbol: string }
+  /** @deprecated Never dispatched by the app. Use `HYDRATE_FINANCIALS`. */
   | { type: "SET_FINANCIALS"; symbol: string; data: TickerFinancials }
   | { type: "MERGE_QUOTE"; symbol: string; quote: Quote }
   | { type: "HYDRATE_FINANCIALS"; financials: Map<string, TickerFinancials> }
+  /** @deprecated Never dispatched by the app. Recent tickers follow a pane's `cursorSymbol`. */
   | { type: "TRACK_TICKER"; symbol: string | null }
   | { type: "SET_ACTIVE_PANEL"; panel: "left" | "right"; preserveFocus?: boolean }
   | { type: "TOGGLE_COMMAND_BAR" }
@@ -121,7 +127,9 @@ export type AppAction =
   | { type: "SET_UPDATE_NOTICE"; notice: string | null }
   | { type: "TOGGLE_PLUGIN"; pluginId: string }
   | { type: "SET_INPUT_CAPTURED"; captured: boolean }
+  /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */
   | { type: "SET_EXCHANGE_RATE"; currency: string; rate: number }
+  /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */
   | { type: "HYDRATE_EXCHANGE_RATES"; exchangeRates: Map<string, number> }
   | { type: "PUSH_LAYOUT_HISTORY" }
   | { type: "UNDO_LAYOUT" }

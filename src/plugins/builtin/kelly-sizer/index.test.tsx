@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
-import { setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { KellySizerHarness, createFinancials, createSizerConfig, createTicker } from "./test-support";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -111,16 +112,14 @@ describe("KellySizerPane", () => {
       }],
     });
     const financials = createFinancials({ symbol: "SIVE", price: 100, currency: "SEK" });
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+      getExchangeRate: async (currency) => (currency === "SEK" ? 0.1 : 1),
+    })));
 
-    await renderPane({
-      config: createSizerConfig("SIVE"),
-      ticker,
-      financials,
-      exchangeRates: new Map([["USD", 1], ["SEK", 0.1]]),
-    });
+    await renderPane({ config: createSizerConfig("SIVE"), ticker, financials });
     await flushFrame();
 
-    const frame = testSetup!.captureCharFrame();
+    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("Current  1000");
     expect(frame).toContain("SIVE");
     expect(frame).toContain("Main Portfolio");
     expect(frame).toMatch(/Current\s+1000\s+USD/);

@@ -20,7 +20,6 @@ import {
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
-import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
 import { accountDailyReturns, buildAccountRiskRows } from "./account-returns";
@@ -69,7 +68,6 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
-  const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const config = usePaneAppConfig();
   const paneInstance = usePaneInstance();
@@ -178,25 +176,24 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     () => [...buildTrackedCurrencies(portfolioTickers, financials, baseCurrency), accountState?.account.currency],
     [accountState?.account.currency, baseCurrency, financials, portfolioTickers],
   );
-  const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
-  const effectiveExchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const exchangeRates = useFxRatesMap(trackedCurrencies);
   const columnContext = useMemo<ColumnContext>(() => ({
     activeTab: activePortfolioId || undefined,
     baseCurrency,
-    exchangeRates: effectiveExchangeRates,
+    exchangeRates,
     now: Date.now(),
-  }), [activePortfolioId, baseCurrency, effectiveExchangeRates]);
+  }), [activePortfolioId, baseCurrency, exchangeRates]);
 
   const portfolioStats = useMemo(
     () => calculatePortfolioSummaryTotals(
       portfolioTickers,
       financials,
       baseCurrency,
-      effectiveExchangeRates,
+      exchangeRates,
       true,
       activePortfolioId || null,
     ),
-    [activePortfolioId, baseCurrency, effectiveExchangeRates, financials, portfolioTickers],
+    [activePortfolioId, baseCurrency, exchangeRates, financials, portfolioTickers],
   );
 
   const returnSeriesResult = useMemo(
@@ -264,10 +261,10 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
         value,
         accountState?.account.currency ?? "",
         baseCurrency,
-        effectiveExchangeRates,
+        exchangeRates,
       ),
     }),
-    [accountState, activePortfolio, baseCurrency, brokerPerformance.performance, effectiveExchangeRates, portfolioStats],
+    [accountState, activePortfolio, baseCurrency, brokerPerformance.performance, exchangeRates, portfolioStats],
   );
 
   const riskRows = useMemo(

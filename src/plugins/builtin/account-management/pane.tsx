@@ -14,7 +14,6 @@ import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
-import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import {
@@ -209,7 +208,6 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const baseCurrency = config.baseCurrency;
   const tickers = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
-  const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const [sessionMarker, setSessionMarker] = useState(() => buildAccountSessionMarker());
   const [hasSession, setHasSession] = useState(() => apiClient.isSignedIn());
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -317,8 +315,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     () => buildTrackedCurrencies(portfolioTickers, financials, baseCurrency),
     [baseCurrency, financials, portfolioTickers],
   );
-  const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
-  const effectiveExchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const exchangeRates = useFxRatesMap(trackedCurrencies);
   const chartTargets = useMemo(
     () => buildPortfolioChartTargets(portfolioTickers, instrumentOptions),
     [portfolioTickers, instrumentOptions],
@@ -344,9 +341,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const columnContext = useMemo(() => ({
     activeTab: draft.sharedPortfolioId || undefined,
     baseCurrency,
-    exchangeRates: effectiveExchangeRates,
+    exchangeRates,
     now: Date.now(),
-  }), [baseCurrency, draft.sharedPortfolioId, effectiveExchangeRates]);
+  }), [baseCurrency, draft.sharedPortfolioId, exchangeRates]);
   const portfolioReturnSeries = useMemo(
     () => buildPortfolioReturnSeries({
       chartTargets,

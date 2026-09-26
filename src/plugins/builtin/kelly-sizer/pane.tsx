@@ -22,7 +22,6 @@ import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../st
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency, formatCurrency } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -90,7 +89,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const financials = liveFinancials ?? cachedFinancials;
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedPortfolioFinancials = useAppSelector((state) => state.financials);
-  const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const { nativePaneChrome } = useUiCapabilities();
@@ -222,8 +220,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     () => buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency),
     [accountState, config.baseCurrency, portfolioFinancials, portfolioTickers],
   );
-  const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
-  const exchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const exchangeRates = useFxRatesMap(trackedCurrencies);
   const portfolioSummary = useMemo(
     () => calculatePortfolioSummaryTotals(
       portfolioTickers,
