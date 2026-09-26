@@ -97,7 +97,7 @@ function brokerSnapshotDelta(
 
 /** A broker's day P&L belongs to the session it was taken in. */
 function isCurrentSessionSnapshot(account: BrokerAccount, now = Date.now()): boolean {
-  const takenAt = account.updatedAt;
+  const takenAt = account.dailyPnlAsOf ?? account.updatedAt;
   if (!finiteNumber(takenAt) || takenAt <= 0) return true;
   return !isTimestampStaleForExchangeSession(takenAt, "NYSE", now);
 }
@@ -161,10 +161,15 @@ export function resolvePortfolioAccountMetrics(
   const dailyPnl = brokerDailyPnl != null
     ? brokerDailyPnl + (currentSession ? delta.net : 0)
     : totals.dailyPnl;
-  // The prior close does not move intraday, so the snapshot's own pair defines it.
-  const previousNetLiquidation = brokerDailyPnl != null && finiteNumber(account?.netLiquidation)
-    ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
-    : null;
+  // The prior close does not move intraday. A broker that reports it directly
+  // is used as is; otherwise the snapshot's own pair defines it.
+  const previousNetLiquidation = brokerDailyPnl == null
+    ? null
+    : finiteNumber(account?.previousNetLiquidation)
+      ? convertAccountValue(account.previousNetLiquidation)
+      : finiteNumber(account?.netLiquidation)
+        ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
+        : null;
   const dailyPnlPct = previousNetLiquidation != null
     ? percentChange(dailyPnl, previousNetLiquidation)
     : totals.dailyPnlPct;

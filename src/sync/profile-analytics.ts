@@ -8,15 +8,18 @@ function finiteMetric(value: number | null | undefined): number | null {
 
 function normalizeAnalytics(analytics: PublicPortfolioAnalytics | null | undefined): PublicPortfolioAnalytics | null {
   if (!analytics) return null;
-  const normalized = {
+  const normalized: PublicPortfolioAnalytics = {
     oneYearReturn: finiteMetric(analytics.oneYearReturn),
     spyBeta: finiteMetric(analytics.spyBeta),
+    basis: analytics.basis === "account" || analytics.basis === "holdings" ? analytics.basis : null,
   };
   return normalized.oneYearReturn != null || normalized.spyBeta != null ? normalized : null;
 }
 
 function sameAnalytics(left: PublicPortfolioAnalytics | null, right: PublicPortfolioAnalytics | null): boolean {
-  return left?.oneYearReturn === right?.oneYearReturn && left?.spyBeta === right?.spyBeta;
+  return left?.oneYearReturn === right?.oneYearReturn
+    && left?.spyBeta === right?.spyBeta
+    && (left?.basis ?? null) === (right?.basis ?? null);
 }
 
 export function setSyncedProfileAnalytics(

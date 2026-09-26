@@ -418,16 +418,21 @@ function collectAnalyticsByPortfolio(
     }
     const portfolioReturns = unsupported ? [] : computeWeightedPortfolioReturns(datedReturnSeries);
     const previewAnalytics = getSyncedProfileAnalytics(portfolio.id);
+    // The broker's own returns do not depend on the holdings' price histories.
+    const accountBasis = previewAnalytics?.basis === "account";
+    // A weighted history of today's holdings is not the investor's actual
+    // one-year account return. Only preserve an explicitly supplied preview.
+    const oneYearReturn = invalidHistory && !accountBasis ? null : previewAnalytics?.oneYearReturn ?? null;
+    const spyBeta = (invalidHistory && !accountBasis) || spySample.integrity ? null : previewAnalytics?.spyBeta
+      ?? (
+        portfolioReturns.length > 0 && spyReturns.length > 0
+          ? computeDatedBeta(portfolioReturns, spyReturns)
+          : null
+      );
     output[portfolio.id] = {
-      // A weighted history of today's holdings is not the investor's actual
-      // one-year account return. Only preserve an explicitly supplied preview.
-      oneYearReturn: invalidHistory ? null : previewAnalytics?.oneYearReturn ?? null,
-      spyBeta: invalidHistory || spySample.integrity ? null : previewAnalytics?.spyBeta
-        ?? (
-          portfolioReturns.length > 0 && spyReturns.length > 0
-            ? computeDatedBeta(portfolioReturns, spyReturns)
-            : null
-        ),
+      oneYearReturn,
+      spyBeta,
+      basis: oneYearReturn == null && spyBeta == null ? null : previewAnalytics?.basis ?? "holdings",
     };
   }
   return output;
@@ -501,6 +506,7 @@ function hydrateProfileAnalytics(payload: Record<string, unknown>): void {
     setSyncedProfileAnalytics(portfolioId, {
       oneYearReturn: typeof analytics.oneYearReturn === "number" ? analytics.oneYearReturn : null,
       spyBeta: typeof analytics.spyBeta === "number" ? analytics.spyBeta : null,
+      basis: analytics.basis === "account" || analytics.basis === "holdings" ? analytics.basis : null,
     });
   }
 }

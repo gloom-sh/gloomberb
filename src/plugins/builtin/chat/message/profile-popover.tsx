@@ -56,7 +56,7 @@ function analyticsMetrics(analytics: PublicPortfolioAnalytics): AnalyticsMetric[
     analytics.oneYearReturn != null
       ? {
         id: "one-year",
-        label: "1Y",
+        label: analytics.basis === "holdings" ? "1Y est." : "1Y",
         value: formatSignedPercent(analytics.oneYearReturn),
         rawValue: analytics.oneYearReturn,
       }

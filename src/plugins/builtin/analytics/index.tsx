@@ -23,6 +23,7 @@ import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-fina
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
+import { accountDailyReturns, buildAccountRiskRows } from "./account-returns";
 import {
   buildPerformanceChartPoints,
   performanceHistoryNote,
@@ -166,6 +167,11 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     () => buildPerformanceChartPoints(brokerPerformance.performance),
     [brokerPerformance.performance],
   );
+  // The broker's own daily returns, when it has them, replace the holdings basket for risk.
+  const accountReturns = useMemo(
+    () => accountDailyReturns(brokerPerformance.performance),
+    [brokerPerformance.performance],
+  );
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
   const { accountState, accountsError } = usePortfolioAccountState(activePortfolio, accountStateInput);
   const trackedCurrencies = useMemo(
@@ -265,7 +271,11 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   );
 
   const riskRows = useMemo(
-    () => hasPositions ? buildAnalyticsRiskRows({
+    () => !hasPositions ? [] : accountReturns ? buildAccountRiskRows({
+      returns: accountReturns,
+      benchmarkReturns: spyReturnSeries.returns,
+      benchmarkIntegrity: spyReturnSeries.integrity,
+    }) : buildAnalyticsRiskRows({
       sharpe,
       beta,
       coverage: returnSeriesResult.coverage,
@@ -280,8 +290,8 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       benchmarkTimestamps: betaResult.benchmarkTimestamps,
       returns: portfolioReturnSeries,
       benchmarkReturns: spyReturnSeries.returns,
-    }) : [],
-    [beta, betaResult, hasPositions, returnSeriesResult, spyReturnSeries, sharpe],
+    }),
+    [accountReturns, beta, betaResult, hasPositions, returnSeriesResult, spyReturnSeries, sharpe],
   );
   const metricsHeight = summaryRows.length === 0 && riskRows.length === 0
     ? 0 : summaryRows.length + (riskRows.length > 0 ? riskRows.length + 5 : 3);

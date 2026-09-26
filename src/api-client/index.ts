@@ -346,6 +346,27 @@ class GloomApiClient {
     });
   }
 
+  /**
+   * A broker connection held by the Cloud account, under `/brokers/{broker}`.
+   * Broker plugins reach it through `gloomberb/broker`, so the path is confined
+   * to that prefix rather than the whole API.
+   */
+  async brokerRequest<T>(
+    broker: string,
+    path: string,
+    options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
+  ): Promise<T> {
+    if (!/^[a-z][a-z0-9-]{0,31}$/.test(broker)) throw new Error(`Invalid broker id "${broker}".`);
+    if (path !== "" && (!/^\/[A-Za-z0-9/_.~%?=&-]*$/.test(path) || path.includes(".."))) {
+      throw new Error(`Invalid broker path "${path}".`);
+    }
+    return this.request<T>(`/brokers/${broker}${path}`, {
+      method: options.method ?? "GET",
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  }
+
   /** Stripe billing portal for an account that already has a subscription. */
   async createBillingPortal(): Promise<{ url: string }> {
     return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });

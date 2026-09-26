@@ -98,11 +98,12 @@ describe("account management model", () => {
     expect(preview.status).toBe("ready");
     expect(preview.subtitle).toBe("");
     expect(preview.metrics).toHaveLength(2);
-    expect(preview.metrics[0]).toMatchObject({ label: "1Y", value: "+10.00%", tone: "positive" });
+    expect(preview.metrics[0]).toMatchObject({ label: "1Y est.", value: "+10.00%", tone: "positive" });
     expect(preview.metrics[1]).toMatchObject({ label: "SPY Beta", value: "1.10" });
     expect(preview.publicAnalytics).toEqual({
       oneYearReturn: 0.1,
       spyBeta: 1.1,
+      basis: "holdings",
     });
   });
 
@@ -125,7 +126,7 @@ describe("account management model", () => {
       { id: "one-year", label: "1Y", value: "+15.00%", tone: "positive" },
       { id: "beta", label: "SPY Beta", value: "1.25" },
     ]);
-    expect(preview.publicAnalytics).toEqual({ oneYearReturn: 0.15, spyBeta: 1.25 });
+    expect(preview.publicAnalytics).toEqual({ oneYearReturn: 0.15, spyBeta: 1.25, basis: null });
   });
 
   test("does not show stale published analytics when the selected profile portfolio is unsaved", () => {

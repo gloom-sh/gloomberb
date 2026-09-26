@@ -39,7 +39,7 @@ export interface PortfolioSummaryAccountState {
 }
 
 export interface ResolvedPortfolioAccountState extends PortfolioSummaryAccountState {
-  sourceKind: "live" | "cached" | "flex";
+  sourceKind: "live" | "cached" | "flex" | "cloud";
   visibleCashBalances: BrokerCashBalance[];
 }
 
@@ -109,9 +109,21 @@ export function fitSummarySegments(candidates: PortfolioSummarySegment[], widthB
   return fitted;
 }
 
-function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { label: string; kind: "live" | "cached" | "flex" } {
+function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { label: string; kind: "live" | "cached" | "flex" | "cloud" } {
   if (liveGateway) {
     return { label: "Live", kind: "live" };
+  }
+  if (account.source === "cloud") {
+    const syncedAt = account.updatedAt ? new Date(account.updatedAt) : null;
+    const today = syncedAt?.toDateString() === new Date().toDateString();
+    return {
+      label: !syncedAt
+        ? "Synced"
+        : today
+          ? `Synced ${syncedAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+          : `Synced ${formatMonthDay(syncedAt)}`,
+      kind: "cloud",
+    };
   }
   if (account.source === "flex") {
     const asOfDate = account.asOfDate ? parseIsoDateAsLocalDate(account.asOfDate) : null;

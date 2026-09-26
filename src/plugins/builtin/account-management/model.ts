@@ -203,6 +203,7 @@ function normalizePublicAnalytics(analytics: PublicPortfolioAnalytics | null | u
   const normalized: PublicPortfolioAnalytics = {
     oneYearReturn: finiteMetric(analytics?.oneYearReturn),
     spyBeta: finiteMetric(analytics?.spyBeta),
+    basis: analytics?.basis === "account" || analytics?.basis === "holdings" ? analytics.basis : null,
   };
   return normalized.oneYearReturn != null || normalized.spyBeta != null ? normalized : null;
 }
@@ -212,7 +213,7 @@ function buildPublicAnalyticsMetrics(analytics: PublicPortfolioAnalytics): Profi
   if (analytics.oneYearReturn != null) {
     metrics.push({
       id: "one-year",
-      label: "1Y",
+      label: analytics.basis === "holdings" ? "1Y est." : "1Y",
       value: signedReturn(analytics.oneYearReturn),
       tone: signedTone(analytics.oneYearReturn),
     });
@@ -256,12 +257,14 @@ export function buildProfileAnalyticsPreview({
   portfolioTickers,
   selectedPortfolioId,
   oneYearReturn,
+  basis = "holdings",
 }: {
   beta: number | null;
   portfolio: Portfolio | null;
   portfolioTickers: TickerRecord[];
   selectedPortfolioId: string;
   oneYearReturn: number | null;
+  basis?: "account" | "holdings";
 }): ProfileAnalyticsPreview {
   if (!selectedPortfolioId) {
     return {
@@ -296,6 +299,7 @@ export function buildProfileAnalyticsPreview({
   const publicAnalytics: PublicPortfolioAnalytics = {
     oneYearReturn: finiteMetric(oneYearReturn),
     spyBeta: finiteMetric(beta),
+    basis,
   };
   const hasSharedMetric = publicAnalytics.oneYearReturn != null || publicAnalytics.spyBeta != null;
 
@@ -307,7 +311,7 @@ export function buildProfileAnalyticsPreview({
     metrics: [
       {
         id: "one-year",
-        label: "1Y",
+        label: basis === "holdings" ? "1Y est." : "1Y",
         value: oneYearReturn == null ? t("Pending") : signedReturn(oneYearReturn),
         detail: oneYearReturn == null ? t("needs price history") : undefined,
         tone: signedTone(oneYearReturn),

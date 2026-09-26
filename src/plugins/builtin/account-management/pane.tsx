@@ -72,6 +72,8 @@ import {
   buildPortfolioReturnSeries,
 } from "../analytics/pane-model";
 import { computeDatedBeta } from "../analytics/metrics";
+import { accountDailyReturns } from "../analytics/account-returns";
+import { useBrokerPortfolioPerformance } from "../analytics/broker-performance";
 import { useCloudSyncStatus } from "../../../sync/react";
 import { cloudSyncController } from "../../../sync/controller";
 import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
@@ -358,13 +360,22 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     () => buildBenchmarkReturnSeries(spyRequest, spyChartEntries),
     [spyChartEntries, spyRequest],
   );
+  // The account's own returns over the last year, when the broker has them, instead of today's holdings.
+  const brokerPerformance = useBrokerPortfolioPerformance(selectedAnalyticsPortfolio ?? null, config);
+  const accountReturns = useMemo(() => {
+    const returns = accountDailyReturns(brokerPerformance.performance);
+    const since = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+    const lastYear = returns?.filter((point) => point.startDateKey >= since) ?? [];
+    return lastYear.length >= 10 ? lastYear : null;
+  }, [brokerPerformance.performance]);
+  const analyticsReturns = accountReturns ?? portfolioReturnSeries;
   const oneYearReturn = useMemo(
-    () => portfolioReturnSeries ? computeCumulativeReturn(portfolioReturnSeries) : null,
-    [portfolioReturnSeries],
+    () => analyticsReturns ? computeCumulativeReturn(analyticsReturns) : null,
+    [analyticsReturns],
   );
   const beta = useMemo(
-    () => (portfolioReturnSeries ? computeDatedBeta(portfolioReturnSeries, spyReturnSeries.returns) : null),
-    [portfolioReturnSeries, spyReturnSeries],
+    () => (analyticsReturns ? computeDatedBeta(analyticsReturns, spyReturnSeries.returns) : null),
+    [analyticsReturns, spyReturnSeries],
   );
   const localAnalyticsPreview = useMemo(
     () => buildProfileAnalyticsPreview({
@@ -373,8 +384,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       portfolioTickers,
       selectedPortfolioId: draft.sharedPortfolioId,
       oneYearReturn,
+      basis: accountReturns ? "account" : "holdings",
     }),
     [
+      accountReturns,
       beta,
       draft.sharedPortfolioId,
       language,
@@ -394,6 +407,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     activeTab,
     localAnalyticsPreview.publicAnalytics?.oneYearReturn,
     localAnalyticsPreview.publicAnalytics?.spyBeta,
+    localAnalyticsPreview.publicAnalytics?.basis,
     selectedAnalyticsPortfolio?.id,
   ]);
   const publicAnalyticsPreview = useMemo(

@@ -22,6 +22,7 @@ export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://command-bar", description: "Current command-bar state and semantic result rows." },
   { uri: "app://command-bar/results", description: "Current semantic command-bar result rows." },
   { uri: "app://capabilities", description: "Registered plugin capability manifests." },
+  { uri: "app://accounts", description: "Broker profiles and their accounts: net liquidation, cash by currency, margin requirements, margin loan, leverage, day and unrealized P&L, with source and as-of times." },
   { uri: "app://auth", description: "What the client believes about its cloud session: credential present, checked, cached user plan and verification. No secrets." },
   { uri: "app://remote/help", description: "Agent-oriented remote usage guide with efficient recipes and caveats." },
   { uri: "ui://tree", description: "Live semantic UI node tree populated by shared controls and interactive primitives." },
