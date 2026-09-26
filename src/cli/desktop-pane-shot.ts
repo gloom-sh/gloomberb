@@ -14,6 +14,7 @@ import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
+import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../utils/http-proxy-response";
 import { readVisibleKeyValues } from "./visible-key-values";
 import {
   electrobunViewPath,
@@ -82,22 +83,7 @@ export interface DesktopPaneShotApiProxy {
  */
 export interface DesktopPaneShotBridge {
   marketData(operation: string, args: unknown[]): Promise<unknown>;
-  httpFetch(request: DesktopPaneShotHttpRequest): Promise<DesktopPaneShotHttpResponse>;
-}
-
-export interface DesktopPaneShotHttpRequest {
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string;
-}
-
-export interface DesktopPaneShotHttpResponse {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie: string[];
-  body: string;
+  httpFetch(request: HttpProxyRequestEnvelope): Promise<HttpProxyResponseEnvelope>;
 }
 
 export interface DesktopPaneShotRenderedCell {
@@ -283,7 +269,7 @@ async function runShotHttpBridge(
 ): Promise<Response> {
   if (!bridge) return Response.json({ ok: false, error: "No HTTP bridge" }, { status: 404 });
   try {
-    const payload = await request.json() as DesktopPaneShotHttpRequest;
+    const payload = await request.json() as HttpProxyRequestEnvelope;
     const data = await bridge.httpFetch(payload);
     return Response.json({ ok: true, data });
   } catch (error) {

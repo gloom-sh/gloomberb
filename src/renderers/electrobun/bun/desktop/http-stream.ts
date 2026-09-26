@@ -3,12 +3,8 @@ import type {
   DesktopHttpStreamOpenResponse,
   DesktopHttpStreamRequest,
 } from "../../shared/protocol";
-import {
-  collectResponseHeaders,
-  normalizeHttpFetchHeaders,
-  reportCloudRequest,
-  requireProxyableUrl,
-} from "./http-fetch";
+import { readRequestInit, toResponseHead } from "../../../../utils/http-proxy-response";
+import { reportCloudRequest, requireProxyableUrl } from "./http-fetch";
 
 interface DesktopHttpStreamRpc {
   send: {
@@ -89,8 +85,7 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
     // A reused id can only mean the view lost track of the old stream.
     this.streams.get(scopedId)?.abort();
 
-    const init = payload.init ?? {};
-    const method = init.method?.trim().toUpperCase() || "GET";
+    const { method, headers, body } = readRequestInit(payload.init);
     const controller = new AbortController();
     this.streams.set(scopedId, controller);
 
@@ -99,10 +94,8 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
     try {
       response = await this.fetch(url, {
         method,
-        headers: normalizeHttpFetchHeaders(init.headers),
-        ...(typeof init.body === "string" && method !== "GET" && method !== "HEAD"
-          ? { body: init.body }
-          : {}),
+        headers,
+        ...(body === undefined ? {} : { body }),
         signal: controller.signal,
       });
     } catch (error) {
@@ -118,13 +111,7 @@ export class DesktopHttpStreamBridge<Rpc extends DesktopHttpStreamRpc> {
       response.ok ? undefined : new Error(`${response.status} ${response.statusText}`.trim()),
     );
 
-    const { headers, setCookie } = collectResponseHeaders(response);
-    const head: DesktopHttpStreamOpenResponse = {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-      setCookie,
-    };
+    const head: DesktopHttpStreamOpenResponse = toResponseHead(response);
     // The view decides what a refusal means, so its body is delivered the same
     // way a successful one is rather than thrown from here.
     void this.pump(rpc, payload.streamId, scopedId, response, controller);

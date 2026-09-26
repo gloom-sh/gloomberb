@@ -1,4 +1,8 @@
-import { createProxyResponse, type HttpProxyResponseEnvelope } from "../../utils/http-proxy-response";
+import {
+  createProxyResponse,
+  toRequestEnvelope,
+  type HttpProxyResponseEnvelope,
+} from "../../utils/http-proxy-response";
 import type { HttpFetchTransport } from "../../utils/http-transport";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
 
@@ -29,28 +33,6 @@ function needsProxy(url: string, hosts: readonly string[]): boolean {
   }
 }
 
-function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
-  const record: Record<string, string> = {};
-  if (!headers) return record;
-  if (headers instanceof Headers) {
-    headers.forEach((value, key) => {
-      record[key] = value;
-    });
-    return record;
-  }
-  if (Array.isArray(headers)) {
-    for (const [key, value] of headers) record[key] = value;
-    return record;
-  }
-  return { ...headers };
-}
-
-async function serializeBody(body: BodyInit | null | undefined): Promise<string | undefined> {
-  if (body == null) return undefined;
-  if (typeof body === "string") return body;
-  return new Response(body).text();
-}
-
 export function createBrowserHttpProxyTransport(
   send: typeof fetch = fetch,
   hosts: readonly string[] = PROXY_ALLOWED_HOSTS,
@@ -63,15 +45,7 @@ export function createBrowserHttpProxyTransport(
       headers: { "content-type": "application/json" },
       credentials: "include",
       signal: init?.signal ?? null,
-      body: JSON.stringify({
-        url,
-        init: {
-          method: init?.method,
-          headers: headersToRecord(init?.headers),
-          body: await serializeBody(init?.body),
-          redirect: init?.redirect,
-        },
-      }),
+      body: JSON.stringify(await toRequestEnvelope(url, init)),
     });
 
     if (!proxied.ok) {

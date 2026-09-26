@@ -48,6 +48,11 @@ import type {
 } from "../../../types/financials";
 import type { NewsCapability } from "../../../capabilities/types";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import {
+  createProxyResponse,
+  toRequestEnvelope,
+  type HttpProxyResponseEnvelope,
+} from "../../../utils/http-proxy-response";
 import type { AppState } from "../../../core/state/app/state";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { hydrateValuationSeries } from "../../../plugins/builtin/market-valuation/cache";
@@ -161,57 +166,16 @@ function installShotCloudApiTransport(): void {
  * handshake still works.
  */
 function installShotHttpFetchTransport(): void {
-  setHttpFetchTransport(async (url, init = {}) => {
-    const headers: Record<string, string> = {};
-    new Headers(init.headers).forEach((value, name) => {
-      headers[name] = value;
-    });
+  setHttpFetchTransport(async (url, init) => {
     const response = await window.fetch(SHOT_HTTP_BRIDGE_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url,
-        method: init.method,
-        headers,
-        body: typeof init.body === "string" ? init.body : undefined,
-      }),
+      body: JSON.stringify(await toRequestEnvelope(url, init)),
     });
-    const result = await response.json() as {
-      ok: boolean;
-      error?: string;
-      data?: {
-        status: number;
-        statusText: string;
-        headers: Record<string, string>;
-        setCookie: string[];
-        body: string;
-      };
-    };
+    const result = await response.json() as { ok: boolean; error?: string; data?: HttpProxyResponseEnvelope };
     if (!result.ok || !result.data) throw new Error(result.error ?? `Request failed: ${url}`);
-    return createShotHttpResponse(result.data);
+    return createProxyResponse(result.data);
   });
-}
-
-function createShotHttpResponse(payload: {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie: string[];
-  body: string;
-}): Response {
-  // Yahoo's crumb handshake reads set-cookie, which fetch hides from a page.
-  const headers = new Headers(payload.headers);
-  const originalGet = headers.get.bind(headers);
-  headers.get = ((name: string) => (
-    name.toLowerCase() === "set-cookie" ? payload.setCookie[0] ?? null : originalGet(name)
-  )) as Headers["get"];
-  (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie = () => [...payload.setCookie];
-  const response = new Response(payload.body, {
-    status: payload.status,
-    statusText: payload.statusText,
-  });
-  Object.defineProperty(response, "headers", { value: headers, configurable: true });
-  return response;
 }
 
 async function restoreShotCloudSession(): Promise<void> {

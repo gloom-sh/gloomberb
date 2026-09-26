@@ -12,6 +12,12 @@ import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, PricePoint, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
+import {
+  readRequestInit,
+  toResponseEnvelope,
+  type HttpProxyRequestEnvelope,
+  type HttpProxyResponseEnvelope,
+} from "../../utils/http-proxy-response";
 import { getTheme, getThemeIds } from "../../theme/themes";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
@@ -19,8 +25,6 @@ import {
   renderDesktopPaneScreenshot,
   type DesktopPaneShotApiProxy,
   type DesktopPaneShotBridge,
-  type DesktopPaneShotHttpRequest,
-  type DesktopPaneShotHttpResponse,
   type DesktopPaneShotIntradayHistory,
   type DesktopPaneShotPayload,
   type DesktopPaneShotRenderResult,
@@ -214,30 +218,21 @@ export function createDesktopShotBridge(
  * its native half; the screenshot page gets the same treatment.
  */
 async function runDesktopShotHttpFetch(
-  request: DesktopPaneShotHttpRequest,
-): Promise<DesktopPaneShotHttpResponse> {
+  request: HttpProxyRequestEnvelope,
+): Promise<HttpProxyResponseEnvelope> {
   const target = new URL(request.url);
   if (target.protocol !== "http:" && target.protocol !== "https:") {
     throw new Error(`Screenshot HTTP bridge refuses ${target.protocol} requests.`);
   }
-  const response = await fetch(request.url, {
-    method: request.method ?? "GET",
-    headers: request.headers,
-    body: request.body,
-    redirect: "follow",
+  const { method, headers, body, redirect } = readRequestInit(request.init);
+  const response = await fetch(target, {
+    method,
+    headers,
+    body,
+    redirect,
     signal: AbortSignal.timeout(SHOT_BRIDGE_HTTP_TIMEOUT_MS),
   });
-  const headers: Record<string, string> = {};
-  response.headers.forEach((value, name) => {
-    headers[name] = value;
-  });
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-    setCookie: response.headers.getSetCookie?.() ?? [],
-    body: await response.text(),
-  };
+  return toResponseEnvelope(response);
 }
 
 /** Same reason as the valuation legs: the renderer cannot fill its own cache. */

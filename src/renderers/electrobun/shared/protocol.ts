@@ -8,6 +8,7 @@ import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../up
 import type { CapabilityManifest } from "../../../capabilities";
 import type { PluginOperationResult, PluginPin } from "../../../plugins/builtin/plugin-marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
+import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
 
@@ -53,48 +54,18 @@ export interface DesktopPluginStateSetEntry {
   schemaVersion?: number;
 }
 
-export interface DesktopHttpFetchRequest {
-  url: string;
-  init?: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-    redirect?: "follow" | "error" | "manual";
-    timeoutMs?: number;
-  };
-}
-
-export interface DesktopHttpFetchResponse {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie?: string[];
-  body: string;
-}
-
 /**
  * A response the view must read while it arrives, such as the Ask Gloom turn
  * stream. `http.fetch` buffers the whole body, which would hold every token
  * back until the answer finished, so the Bun process keeps the body open and
  * forwards it as `http.stream.chunk` messages keyed by `streamId`.
  */
-export interface DesktopHttpStreamOpenRequest {
+export interface DesktopHttpStreamOpenRequest extends HttpProxyRequestEnvelope {
   streamId: string;
-  url: string;
-  init?: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-  };
 }
 
 /** The response head. Its body follows as `http.stream.chunk` messages. */
-export interface DesktopHttpStreamOpenResponse {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie?: string[];
-}
+export type DesktopHttpStreamOpenResponse = Omit<HttpProxyResponseEnvelope, "body">;
 
 /**
  * One slice of a streamed body. Exactly one terminal message ends a stream:
@@ -160,7 +131,7 @@ export interface DesktopBackendRequestMap {
     request: { kind?: "main" | "detached"; paneId?: string };
     response: ElectrobunBackendInit;
   };
-  "http.fetch": { request: DesktopHttpFetchRequest; response: DesktopHttpFetchResponse };
+  "http.fetch": { request: HttpProxyRequestEnvelope; response: HttpProxyResponseEnvelope };
   "http.stream.open": {
     request: DesktopHttpStreamOpenRequest;
     response: DesktopHttpStreamOpenResponse;

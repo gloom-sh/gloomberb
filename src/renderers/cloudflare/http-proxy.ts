@@ -14,6 +14,7 @@
  * running on our bandwidth and our IP reputation. Everything below exists to
  * keep that from happening.
  */
+import { readRequestInit, toResponseEnvelope } from "../../utils/http-proxy-response";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
@@ -33,14 +34,6 @@ const STRIPPED_REQUEST_HEADERS = new Set([
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const MAX_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 20_000;
-
-export interface HttpProxyEnvelope {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie: string[];
-  body: string;
-}
 
 /**
  * Rejects anything that is not a plain https host on the allowlist.
@@ -86,11 +79,9 @@ function hasSessionCookie(request: Request): boolean {
   return SESSION_COOKIE_NAMES.some((name) => new RegExp(`(?:^|;\\s*)${name}=[^;]`).test(cookie));
 }
 
-function upstreamHeaders(raw: unknown): Headers {
+function upstreamHeaders(raw: Record<string, string>): Headers {
   const headers = new Headers();
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return headers;
-  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof value !== "string") continue;
+  for (const [name, value] of Object.entries(raw)) {
     if (STRIPPED_REQUEST_HEADERS.has(name.toLowerCase())) continue;
     try {
       headers.set(name, value);
@@ -100,12 +91,6 @@ function upstreamHeaders(raw: unknown): Headers {
     }
   }
   return headers;
-}
-
-function clampTimeout(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.min(value, MAX_TIMEOUT_MS)
-    : DEFAULT_TIMEOUT_MS;
 }
 
 function proxyError(message: string, status: number): Response {
@@ -143,55 +128,30 @@ export async function handleHttpProxy(
   const target = validateProxyTarget(payload.url, hosts);
   if ("error" in target) return proxyError(target.error, target.status);
 
-  const init = payload.init && typeof payload.init === "object" && !Array.isArray(payload.init)
-    ? payload.init as Record<string, unknown>
-    : {};
-  const method = typeof init.method === "string" && init.method.trim()
-    ? init.method.trim().toUpperCase()
-    : "GET";
-  if (!PROXY_METHODS.has(method)) {
+  const init = readRequestInit(payload.init);
+  if (!PROXY_METHODS.has(init.method)) {
     return proxyError("Method not allowed", 405);
   }
-  const body = typeof init.body === "string" && method !== "GET" && method !== "HEAD"
-    ? init.body
-    : undefined;
 
   let response: Response;
   try {
     response = await fetchUpstream(target.url, {
-      method,
+      method: init.method,
       headers: upstreamHeaders(init.headers),
-      body,
-      redirect: init.redirect === "manual" || init.redirect === "error" ? init.redirect : "follow",
-      signal: AbortSignal.timeout(clampTimeout(init.timeoutMs)),
+      body: init.body,
+      redirect: init.redirect ?? "follow",
+      signal: AbortSignal.timeout(Math.min(init.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS)),
     });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     return proxyError(timedOut ? "The upstream request timed out." : "The upstream request failed.", 504);
   }
 
-  const text = await response.text();
-  if (text.length > MAX_BODY_BYTES) {
+  // `set-cookie` comes back in `setCookie`, never as a header, so a third party
+  // cannot set cookies on the Gloomberb origin.
+  const envelope = await toResponseEnvelope(response);
+  if (envelope.body.length > MAX_BODY_BYTES) {
     return proxyError("The upstream response is too large.", 502);
   }
-
-  const headers: Record<string, string> = {};
-  response.headers.forEach((value, key) => {
-    // Carried in `setCookie` instead. Emitting it here would let a third party
-    // set cookies on the Gloomberb origin.
-    if (key.toLowerCase() === "set-cookie") return;
-    headers[key] = value;
-  });
-  const setCookie = [...(response.headers.getSetCookie?.() ?? [])];
-  const singleSetCookie = response.headers.get("set-cookie");
-  if (setCookie.length === 0 && singleSetCookie) setCookie.push(singleSetCookie);
-
-  const envelope: HttpProxyEnvelope = {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-    setCookie,
-    body: text,
-  };
   return Response.json(envelope, { headers: { "cache-control": "no-store" } });
 }
