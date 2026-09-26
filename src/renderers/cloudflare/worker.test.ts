@@ -45,6 +45,46 @@ describe("static Cloudflare host", () => {
     }
   });
 
+  test("keeps only the bare root indexable", async () => {
+    const { env } = fixture();
+    const root = await handleRequest(new Request("https://term.example/"), env);
+    expect(root.headers.has("x-robots-tag")).toBe(false);
+
+    // Deep links from gloom.sh CTAs were showing up in search as duplicate
+    // "Gloomberb" pages.
+    for (const path of ["/?ticker=GPC&tab=executives", "/?ticker=AAPL", "/settings"]) {
+      const response = await handleRequest(new Request(`https://term.example${path}`), env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-robots-tag")).toBe("noindex");
+    }
+  });
+
+  test("leaves robots headers off deep-link assets that are not HTML", async () => {
+    const env: WorkerEnv = {
+      ASSETS: {
+        async fetch() {
+          return new Response("export {}", { headers: { "content-type": "text/javascript" } });
+        },
+      },
+    };
+    const response = await handleRequest(new Request("https://term.example/assets/app/main.js"), env);
+    expect(response.headers.has("x-robots-tag")).toBe(false);
+  });
+
+  test("serves a robots.txt that lets crawlers reach the noindex header", async () => {
+    const { env, requests } = fixture();
+    const response = await handleRequest(new Request("https://term.example/robots.txt"), env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toStartWith("text/plain");
+    expect(requests).toHaveLength(0);
+
+    // A Disallow would hide the noindex header from crawlers and leave pages
+    // that are already indexed stuck in the index.
+    const body = await response.text();
+    expect(body).toBe("User-agent: *\nAllow: /\n");
+    expect(body).not.toMatch(/disallow/i);
+  });
+
   test("serves the Apple app site association without touching static assets", async () => {
     const { env, requests } = fixture();
     const response = await handleRequest(
