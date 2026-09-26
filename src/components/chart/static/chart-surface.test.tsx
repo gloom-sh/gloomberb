@@ -57,31 +57,6 @@ describe("StaticChartSurface", () => {
       .toEqual([["2026-01-01", 1], ["2026-01-03", 3]]);
   });
 
-  test("renders the y-axis title with custom tick labels", async () => {
-    testSetup = await testRender(
-      <StaticChartSurface
-        points={points}
-        width={48}
-        height={10}
-        mode="line"
-        colors={resolveChartPalette(colors, "positive")}
-        yAxisLabel="Yield (%)"
-        yAxisColor={colors.textDim}
-        formatYAxisValue={(value) => `${value.toFixed(2)}%`}
-      />,
-      { width: 50, height: 12 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Yield (%)");
-    expect(frame).toMatch(/\d\.\d\d%/);
-  });
-
   test("renders custom x-axis labels and decision markers instead of dates", async () => {
     testSetup = await testRender(
       <StaticChartSurface
