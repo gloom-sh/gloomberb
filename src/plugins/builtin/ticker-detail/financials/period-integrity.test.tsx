@@ -11,7 +11,7 @@ import type { TickerFinancials } from "../../../../types/financials";
 import type { HeadlessRowsResult } from "../../../../types/headless";
 import { Box } from "../../../../ui";
 import { financialStatementsHeadless } from "../headless";
-import { FinancialsTab } from "./tab";
+import { ResolvedFinancialsTab } from "./tab";
 
 type Period = "annual" | "quarterly";
 
@@ -79,7 +79,7 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
           <PaneFooterProvider>
             {(footer) => (
               <Box width={120} height={28} flexDirection="column">
-                <Box height={27}><FinancialsTab width={120} focused /></Box>
+                <Box height={27}><ResolvedFinancialsTab width={120} focused financials={financials} /></Box>
                 <PaneFooterBar footer={footer} focused width={120} />
               </Box>
             )}

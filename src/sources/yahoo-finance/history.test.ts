@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { loadYahooPriceHistoryForResolution } from "./history";
+import { loadYahooPriceHistoryForResolutionWithMetadata } from "./history";
 
 describe("Yahoo chart history", () => {
   test("repairs an isolated intraday wick without dropping the bar", async () => {
-    const history = await loadYahooPriceHistoryForResolution({
+    const { points: history } = await loadYahooPriceHistoryForResolutionWithMetadata({
       ticker: "AMD",
       exchange: "NASDAQ",
       bufferRange: "1M",

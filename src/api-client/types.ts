@@ -1,8 +1,6 @@
 import type {
   AnalystResearchData,
-  CompanyProfile,
   CorporateActionsData,
-  Fundamentals,
   HolderData,
   HolderRecord,
   OptionsChain,
@@ -245,15 +243,6 @@ export interface CloudSyncPushResponse {
   settings: SyncSettings;
 }
 
-export interface CloudRoundupPreviewResponse {
-  subject: string;
-  text: string;
-  html: string;
-  sender: string;
-  replyTo: string;
-  recipient: string;
-}
-
 export interface CloudQuotePayload extends Omit<Quote, "change" | "changePercent"> {
   // JSON encodes the provider's unavailable numeric values as null.
   change?: number | null;
@@ -293,10 +282,6 @@ export interface CloudWorldVenueMapPayload {
 export interface CloudOptionsChainPayload extends OptionsChain {
   providerId: "gloomberb-cloud";
 }
-
-export interface CloudCompanyProfile extends CompanyProfile {}
-
-export interface CloudFundamentals extends Fundamentals {}
 
 interface CloudHolderPayload extends HolderRecord {
   providerId: "gloomberb-cloud";
@@ -1581,18 +1566,6 @@ export interface TeamInviteLink {
   createdAt: string;
 }
 
-export interface TeamInvitePreview {
-  team: {
-    id: string;
-    name: string;
-    accentColor: TeamAccentColor;
-    shortName: string;
-    memberCount: number;
-  };
-  expiresAt: string;
-  viewer: { signedIn: boolean; emailVerified: boolean; role: TeamRole | null };
-}
-
 /** A Better Auth organization invitation as returned by /auth/organization/* endpoints. */
 export interface TeamUser {
   id: string;
@@ -1833,19 +1806,6 @@ export interface ThesisSignal {
   createdAt: string;
   resolvedAt: string | null;
   snoozedUntil: string | null;
-}
-
-export interface ThesisRevision {
-  id: string;
-  thesisId: string;
-  revision: number;
-  title: string;
-  status: ThesisStatus;
-  conviction: number;
-  document: ThesisDocument;
-  note: string | null;
-  createdBy: ThesisEditor;
-  createdAt: string;
 }
 
 export interface ThesisDraft extends ThesisDocument {

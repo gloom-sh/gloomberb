@@ -75,10 +75,6 @@ export function resolveFredMapping(eventTitle: string, country: string): FredMap
   return null;
 }
 
-export function getRelatedTickers(eventTitle: string, country: string): string[] {
-  return resolveFredMapping(eventTitle, country)?.relatedTickers ?? [];
-}
-
 const SERIES_LABELS: Record<string, string> = {
   CPIAUCSL: "Consumer price index · seasonally adjusted",
   CPIAUCNS: "Consumer price index · not seasonally adjusted",

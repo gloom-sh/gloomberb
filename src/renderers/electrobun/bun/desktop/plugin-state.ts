@@ -4,7 +4,6 @@ import { apiClient } from "../../../../api-client";
 import type { DesktopPluginStateRequest, DesktopPluginStateSetEntry } from "../../shared/protocol";
 
 interface PluginStateBackendStore {
-  set(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;
   setMany(entries: DesktopPluginStateSetEntry[]): void;
   delete(pluginId: string, key: string): void;
 }
@@ -44,12 +43,6 @@ export function handleDesktopPluginStateRequest(
   request: DesktopPluginStateRequest,
 ): null {
   switch (request.method) {
-    case "pluginState.set": {
-      const { pluginId, key, value, schemaVersion } = request.payload;
-      store.set(pluginId, key, value, schemaVersion);
-      syncBackendCloudAuthState(pluginId, key, value);
-      return null;
-    }
     case "pluginState.setMany": {
       const entries = Array.isArray(request.payload.entries)
         ? request.payload.entries.flatMap((entry) => {

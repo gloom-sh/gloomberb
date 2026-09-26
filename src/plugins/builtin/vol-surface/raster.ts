@@ -1,5 +1,5 @@
 import {
-  clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera,
+  DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera,
   type Surface3DCamera, type Surface3DInput,
 } from "../../../components/chart/surface3d/model";
 
@@ -20,7 +20,6 @@ export interface VolatilitySurfaceGrid {
 export type SurfaceCamera = Surface3DCamera;
 export interface SurfaceCell { tenorIndex: number; moneynessIndex: number }
 export const DEFAULT_SURFACE_CAMERA = DEFAULT_SURFACE3D_CAMERA;
-export const clampSurfaceCamera = clampSurface3DCamera;
 export const rotateSurfaceCamera = rotateSurface3DCamera;
 export const zoomSurfaceCamera = zoomSurface3DCamera;
 

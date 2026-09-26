@@ -5,7 +5,6 @@ import type {
   ThesisDocument,
   ThesisDraft,
   ThesisPatch,
-  ThesisRevision,
   ThesisSignal,
   ThesisStatus,
 } from "./types";
@@ -118,16 +117,6 @@ export class CloudThesesApi {
       if (error instanceof ApiRequestError && error.status === 404) return;
       throw error;
     }
-  }
-
-  async listThesisRevisions(id: string): Promise<ThesisRevision[]> {
-    const body = await this.request<{ items: ThesisRevision[] }>(`/theses/${encode(id)}/revisions`);
-    return body.items;
-  }
-
-  async listThesisSignals(id: string): Promise<ThesisSignal[]> {
-    const body = await this.request<{ items: ThesisSignal[] }>(`/theses/${encode(id)}/signals`);
-    return body.items;
   }
 
   createThesisSignal(id: string, input: {

@@ -2,7 +2,7 @@ import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plug
 import { CUSTOM_VIEW_PANE_ID, CUSTOM_VIEW_SPEC_SETTING, CustomViewPane } from "./pane";
 import { parseViewSpec, serializeViewSpec, type ViewSpec } from "./view-spec";
 
-export { CUSTOM_VIEW_PANE_ID, CUSTOM_VIEW_SPEC_SETTING } from "./pane";
+export { CUSTOM_VIEW_PANE_ID } from "./pane";
 export { setViewRefResolver } from "./loader";
 export * from "./view-spec";
 

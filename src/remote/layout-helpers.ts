@@ -1,8 +1,7 @@
-import {
-  getPlacedPaneInstanceIds,
-  type DockLayoutNode,
-  type LayoutConfig,
-  type PaneInstanceConfig,
+import type {
+  DockLayoutNode,
+  LayoutConfig,
+  PaneInstanceConfig,
 } from "../types/config";
 
 export function requirePaneInstance(layout: LayoutConfig, paneId: string): PaneInstanceConfig {
@@ -26,10 +25,6 @@ export function buildGridDockRoot(paneIds: string[], columns?: number): DockLayo
     ));
   }
   return buildSplit(rows, "vertical");
-}
-
-export function visiblePaneIds(layout: LayoutConfig): string[] {
-  return getPlacedPaneInstanceIds(layout);
 }
 
 export function regionToDockPosition(region: string): "left" | "right" | "above" | "below" {

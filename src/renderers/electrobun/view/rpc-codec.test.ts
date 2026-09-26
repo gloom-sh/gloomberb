@@ -39,7 +39,6 @@ test("successful research preserves dates, maps, nulls and response-shaped paylo
   expect(await requestThroughRpc(() => value)).toEqual(value);
   expect(await requestThroughRpc(() => null)).toBeNull();
   expect(await requestThroughRpc(() => undefined)).toBeUndefined();
-  expect(decodeRpcResponse(encodeRpcValue(value.nested))).toEqual(value.nested);
   expect(decodeRpcValue(encodeRpcValue(value.dated))).toEqual(value.dated);
 });
 
@@ -62,6 +61,7 @@ test("malformed response metadata cannot become a trusted API rejection", () => 
     }
   }
   expect(() => decodeRpcResponse({ __gloomRpcResponse: 2, ok: true, value: 42 })).toThrow("Unsupported desktop response");
+  expect(() => decodeRpcResponse(encodeRpcValue(new Map([["symbol", 1]])))).toThrow("Invalid desktop response");
 });
 
 function retentionFixture(): { retention: HistoryRetention; candidate: HistoryRecoveryCandidate } {

@@ -14,10 +14,8 @@ import {
   deletePluginPaneStateValue,
   getPluginPaneStateValue,
   setPluginPaneStateValue,
-  usePluginAppActions,
   useDebouncedPluginPaneState,
   usePluginConfigState,
-  usePluginPaneActions,
   usePluginPaneState,
   usePluginState,
   usePluginTickerActions,
@@ -192,64 +190,6 @@ describe("plugin runtime hooks", () => {
     expect(runtime.getResumeState("news", "provider")).toBe("codex");
   });
 
-  test("exposes renderer app actions through the plugin hook", async () => {
-    const calls: string[] = [];
-    let actions: ReturnType<typeof usePluginAppActions> | null = null;
-
-    const runtime = createTestPluginRuntime({
-      openCommandBar(query?: string) {
-        calls.push(`command:${query ?? ""}`);
-      },
-      showPane(paneId: string) {
-        calls.push(`show:${paneId}`);
-      },
-      createPaneFromTemplate(templateId: string) {
-        calls.push(`create:${templateId}`);
-      },
-      hidePane(paneId: string) {
-        calls.push(`hide:${paneId}`);
-      },
-      openPluginCommandWorkflow(commandId: string) {
-        calls.push(`workflow:${commandId}`);
-      },
-      notify(notification) {
-        calls.push(`notify:${notification.body}`);
-      },
-    });
-
-    function HookProbe() {
-      actions = usePluginAppActions();
-      return <text>actions</text>;
-    }
-
-    testSetup = await testRender(
-      <PluginRenderProvider pluginId="application" runtime={runtime}>
-        <HookProbe />
-      </PluginRenderProvider>,
-      { width: 40, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    actions?.openCommandBar("PL ");
-    actions?.showPane("debug");
-    actions?.createPaneFromTemplate("twitter-feed-pane");
-    actions?.hidePane("chat");
-    actions?.openPluginCommandWorkflow("set-alert");
-    actions?.notify({ body: "Saved", type: "success" });
-
-    expect(calls).toEqual([
-      "command:PL ",
-      "show:debug",
-      "create:twitter-feed-pane",
-      "hide:chat",
-      "workflow:set-alert",
-      "notify:Saved",
-    ]);
-  });
-
   test("scopes ticker navigation to the rendering pane", async () => {
     const calls: string[] = [];
     let actions: ReturnType<typeof usePluginTickerActions> | null = null;
@@ -281,48 +221,5 @@ describe("plugin runtime hooks", () => {
     actions?.navigateTicker("MSFT");
 
     expect(calls).toEqual(["MSFT:comparison-chart:main"]);
-  });
-
-  test("exposes renderer pane actions through the plugin hook", async () => {
-    const calls: string[] = [];
-    let actions: ReturnType<typeof usePluginPaneActions> | null = null;
-
-    const runtime = createTestPluginRuntime({
-      selectTicker(symbol: string, paneId?: string) {
-        calls.push(`select:${symbol}:${paneId ?? ""}`);
-      },
-      switchTab(tabId: string, paneId?: string) {
-        calls.push(`tab:${tabId}:${paneId ?? ""}`);
-      },
-      switchPanel(panel: "left" | "right") {
-        calls.push(`panel:${panel}`);
-      },
-    });
-
-    function HookProbe() {
-      actions = usePluginPaneActions();
-      return <text>pane-actions</text>;
-    }
-
-    testSetup = await testRender(
-      <PluginRenderProvider pluginId="ibkr" runtime={runtime}>
-        <HookProbe />
-      </PluginRenderProvider>,
-      { width: 40, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    actions?.selectTicker("AAPL", "ibkr:main");
-    actions?.switchTab("ibkr-trade", "ibkr:main");
-    actions?.switchPanel("right");
-
-    expect(calls).toEqual([
-      "select:AAPL:ibkr:main",
-      "tab:ibkr-trade:ibkr:main",
-      "panel:right",
-    ]);
   });
 });

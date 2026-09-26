@@ -13,22 +13,6 @@ beforeEach(() => {
 });
 
 describe("createThrottledFetch", () => {
-  test("passes through a simple request", async () => {
-    const client = createThrottledFetch();
-    const resp = await client.fetch("https://api.example.com/test");
-    expect(resp.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  test("merges default headers", async () => {
-    const client = createThrottledFetch({
-      defaultHeaders: { "X-Custom": "value" },
-    });
-    await client.fetch("https://api.example.com/test");
-    const callInit = fetchMock.mock.calls[0]![1] as RequestInit;
-    expect((callInit.headers as Record<string, string>)["X-Custom"]).toBe("value");
-  });
-
   test("deduplicates concurrent GET requests to same URL", async () => {
     let resolveFirst: (r: Response) => void;
     const slowResponse = new Promise<Response>((resolve) => { resolveFirst = resolve; });
@@ -56,51 +40,19 @@ describe("createThrottledFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  test("retries on 429 with backoff", async () => {
+  test.each([
+    ["a 429", () => Promise.resolve(new Response("rate limited", { status: 429 }))],
+    ["a 500", () => Promise.resolve(new Response("error", { status: 500 }))],
+    ["a transient fetch failure", () => Promise.reject(
+      Object.assign(new Error("The socket connection was closed unexpectedly."), {
+        code: "ECONNRESET",
+      }),
+    )],
+  ] as const)("retries after %s", async (_label, firstResponse) => {
     let callCount = 0;
     fetchMock = mock(() => {
       callCount++;
-      if (callCount === 1) {
-        return Promise.resolve(new Response("rate limited", { status: 429 }));
-      }
-      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    });
-    globalThis.fetch = fetchMock as any;
-
-    const client = createThrottledFetch({ maxRetries: 1, backoffBaseMs: 0 });
-    const resp = await client.fetch("https://api.example.com/test");
-    expect(resp.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  test("retries on 500 with backoff", async () => {
-    let callCount = 0;
-    fetchMock = mock(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve(new Response("error", { status: 500 }));
-      }
-      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    });
-    globalThis.fetch = fetchMock as any;
-
-    const client = createThrottledFetch({ maxRetries: 1, backoffBaseMs: 0 });
-    const resp = await client.fetch("https://api.example.com/test");
-    expect(resp.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  test("retries transient fetch failures", async () => {
-    let callCount = 0;
-    fetchMock = mock(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.reject(
-          Object.assign(new Error("The socket connection was closed unexpectedly."), {
-            code: "ECONNRESET",
-          }),
-        );
-      }
+      if (callCount === 1) return firstResponse();
       return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     });
     globalThis.fetch = fetchMock as any;

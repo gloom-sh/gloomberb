@@ -30,14 +30,6 @@ export interface CloudLayoutEntry extends LayoutMarketplacePayload {
   updatedAt: string;
 }
 
-export interface CloudLayoutRevisionSummary {
-  revision: number;
-  note: string | null;
-  requires: LayoutRequirement[];
-  author: LayoutMarketplaceAuthor;
-  publishedAt: string;
-}
-
 /** A publish refused because someone published in between. */
 export class LayoutRevisionConflictError extends Error {
   constructor(
@@ -117,24 +109,6 @@ export function parseCloudLayoutList(value: unknown): CloudLayoutEntry[] | null 
   if (!record(value) || !Array.isArray(value.items)) return null;
   const items = value.items.map(parseCloudLayoutEntry);
   return items.every((item): item is CloudLayoutEntry => item !== null) ? items : null;
-}
-
-export function parseCloudLayoutRevisions(value: unknown): CloudLayoutRevisionSummary[] | null {
-  if (!record(value) || !Array.isArray(value.items)) return null;
-  const items: CloudLayoutRevisionSummary[] = [];
-  for (const entry of value.items) {
-    if (!record(entry) || typeof entry.revision !== "number") return null;
-    const author = parseAuthor(entry.author);
-    if (!author || typeof entry.publishedAt !== "string") return null;
-    items.push({
-      revision: entry.revision,
-      note: typeof entry.note === "string" ? entry.note : null,
-      requires: parseLayoutRequirements(entry.requires),
-      author,
-      publishedAt: entry.publishedAt,
-    });
-  }
-  return items;
 }
 
 // Content fingerprint

@@ -160,11 +160,6 @@ function point(date: string, value: number): TimeSeriesPoint {
   return { date: observedAt, observedAt, value };
 }
 
-function timestampPoint(timestamp: string, value: number): TimeSeriesPoint {
-  const observedAt = new Date(timestamp);
-  return { date: observedAt, observedAt, value };
-}
-
 function series(id: string, panelId: string, axis: ResolvedSeries["axis"], unit: string, values: number[]): ResolvedSeries {
   return {
     id,
@@ -1984,36 +1979,5 @@ describe("CompositeChart", () => {
     });
 
     expect(restored.equals(blank)).toBe(false);
-  });
-
-  test("shows useful UTC times for an intraday shared cursor and time axis", async () => {
-    const intraday = {
-      ...series("price", "main", "left", "USD", []),
-      points: [
-        timestampPoint("2025-01-02T09:30:00.000Z", 100),
-        timestampPoint("2025-01-02T12:05:00.000Z", 103),
-        timestampPoint("2025-01-02T16:00:00.000Z", 101),
-      ],
-    };
-    testSetup = await testRender(
-      <CompositeChart
-        width={78}
-        height={12}
-        series={[intraday]}
-        panels={[{ id: "main" }]}
-        cursorDate={new Date("2025-01-02T12:05:00.000Z")}
-      />,
-      { width: 80, height: 14 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("12:05 UTC");
-    expect(frame).toContain("09:30 UTC");
-    expect(frame).toContain("16:00 UTC");
   });
 });

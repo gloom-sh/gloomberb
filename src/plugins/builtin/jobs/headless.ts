@@ -1,8 +1,6 @@
 import type {
   HeadlessBundleResult,
-  HeadlessPaneContext,
   HeadlessPaneDefinition,
-  HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { fetchJobs, fetchJobsMovers, type JobsCloudClient, type JobsCompanyState } from "./client";
@@ -14,16 +12,6 @@ import {
   formatShare,
   functionLabel,
 } from "./model";
-
-export interface JobsHeadlessDependencies {
-  loadCompany(symbol: string, args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext): Promise<JobsCompanyState>;
-  loadMovers(ctx: HeadlessPaneContext): ReturnType<typeof fetchJobsMovers>;
-}
-
-const defaultDependencies: JobsHeadlessDependencies = {
-  loadCompany: (symbol, _args, ctx) => fetchJobs(symbol, { force: true, client: ctx.apiClient as JobsCloudClient }),
-  loadMovers: (ctx) => fetchJobsMovers(ctx.apiClient as JobsCloudClient),
-};
 
 function companyBundle(symbol: string, state: JobsCompanyState, roleLimit: number): HeadlessBundleResult {
   if (state.kind === "denied") throw new Error(state.message);
@@ -161,68 +149,62 @@ function companyBundle(symbol: string, state: JobsCompanyState, roleLimit: numbe
  * `fn JOBS NVDA`: the company's hiring picture. `fn JOBS`: every covered
  * company ranked, as one table section, so both are the same report shape.
  */
-export function createJobsHeadless(
-  dependencies: JobsHeadlessDependencies = defaultDependencies,
-): HeadlessPaneDefinition<"bundle"> {
-  return {
-    shape: "bundle",
-    argument: {
-      kind: "ticker",
-      placeholder: "ticker",
-      optional: true,
-      description: "Listed company. Without one, every covered company ranked by open roles.",
+export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
+  shape: "bundle",
+  argument: {
+    kind: "ticker",
+    placeholder: "ticker",
+    optional: true,
+    description: "Listed company. Without one, every covered company ranked by open roles.",
+  },
+  options: [
+    {
+      key: "roles",
+      aliases: ["limit"],
+      description: "Open roles listed for a company, newest first; companies listed without one.",
+      type: "integer",
+      defaultValue: 15,
+      minimum: 0,
+      maximum: 200,
     },
-    options: [
-      {
-        key: "roles",
-        aliases: ["limit"],
-        description: "Open roles listed for a company, newest first; companies listed without one.",
-        type: "integer",
-        defaultValue: 15,
-        minimum: 0,
-        maximum: 200,
-      },
-    ],
-    describe: (args) => (args.symbols[0] ? `Hiring | ${args.symbols[0]}` : "Hiring | coverage"),
-    async load(args, ctx): Promise<HeadlessBundleResult> {
-      const limit = Number(args.options.roles);
-      const symbol = args.symbols[0];
-      if (symbol) {
-        const state = await dependencies.loadCompany(symbol, args, ctx);
-        return companyBundle(symbol, state, limit);
-      }
-      const payload = await dependencies.loadMovers(ctx);
-      const rows = buildMoverRows(payload.movers).slice(0, Math.max(limit, 15)).map((row) => ({
-        ticker: row.ticker,
-        company: row.company,
-        openCount: row.mover.openCount,
-        change30d: row.mover.change30d?.count ?? null,
-        posted30d: row.mover.posted30d ?? null,
-        new7d: row.mover.new7d,
-        topFunction: functionLabel(row.mover.topFunction),
-        topCountry: row.mover.topCountry?.code ?? null,
-      }));
-      return {
-        sections: [
-          {
-            title: "Companies by open roles",
-            columns: [
-              { key: "ticker", header: "Ticker" },
-              { key: "company", header: "Company" },
-              { key: "openCount", header: "Open", align: "right", format: (value) => formatCompact(Number(value)) },
-              { key: "change30d", header: "30d", align: "right", format: (value) => (value == null ? "-" : `${Number(value) > 0 ? "+" : ""}${formatNumber(Number(value), 0)}`) },
-              { key: "posted30d", header: "Posted 30d", align: "right", format: (value) => (value == null ? "-" : formatCompact(Number(value))) },
-              { key: "new7d", header: "New 7d", align: "right" },
-              { key: "topFunction", header: "Top function" },
-              { key: "topCountry", header: "Top country", format: (value) => (value == null ? "-" : String(value)) },
-            ],
-            rows,
-          },
-        ],
-        metadata: { asOf: payload.asOf, covered: payload.covered },
-      };
-    },
-  };
-}
-
-export const jobsHeadless = createJobsHeadless();
+  ],
+  describe: (args) => (args.symbols[0] ? `Hiring | ${args.symbols[0]}` : "Hiring | coverage"),
+  async load(args, ctx): Promise<HeadlessBundleResult> {
+    const limit = Number(args.options.roles);
+    const symbol = args.symbols[0];
+    if (symbol) {
+      const state = await fetchJobs(symbol, { force: true, client: ctx.apiClient as JobsCloudClient });
+      return companyBundle(symbol, state, limit);
+    }
+    const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient);
+    const rows = buildMoverRows(payload.movers).slice(0, Math.max(limit, 15)).map((row) => ({
+      ticker: row.ticker,
+      company: row.company,
+      openCount: row.mover.openCount,
+      change30d: row.mover.change30d?.count ?? null,
+      posted30d: row.mover.posted30d ?? null,
+      new7d: row.mover.new7d,
+      topFunction: functionLabel(row.mover.topFunction),
+      topCountry: row.mover.topCountry?.code ?? null,
+    }));
+    return {
+      sections: [
+        {
+          title: "Companies by open roles",
+          columns: [
+            { key: "ticker", header: "Ticker" },
+            { key: "company", header: "Company" },
+            { key: "openCount", header: "Open", align: "right", format: (value) => formatCompact(Number(value)) },
+            { key: "change30d", header: "30d", align: "right", format: (value) => (value == null ? "-" : `${Number(value) > 0 ? "+" : ""}${formatNumber(Number(value), 0)}`) },
+            { key: "posted30d", header: "Posted 30d", align: "right", format: (value) => (value == null ? "-" : formatCompact(Number(value))) },
+            { key: "new7d", header: "New 7d", align: "right" },
+            { key: "topFunction", header: "Top function" },
+            { key: "topCountry", header: "Top country", format: (value) => (value == null ? "-" : String(value)) },
+          ],
+          rows,
+        },
+      ],
+      metadata: { asOf: payload.asOf, covered: payload.covered },
+    };
+  },
+};

@@ -8,7 +8,6 @@ import {
   describeExpiry,
   describeTeamNotification,
   findTeam,
-  isTeamChannelId,
   normalizeTeamChannelName,
   normalizeTeamShortName,
   sortTeamChannels,
@@ -123,7 +122,6 @@ describe("team channels and names", () => {
     expect(teamIdFromChannelId("team:org-1")).toBe("org-1");
     expect(teamIdFromChannelId("everyone")).toBeNull();
     expect(teamIdFromChannelId("team:")).toBeNull();
-    expect(isTeamChannelId("team:x")).toBe(true);
   });
 
   test("#general leads, the rest sort by name", () => {

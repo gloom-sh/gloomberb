@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildSections,
-  getRowPresentation,
   rankTickerSearchItems,
   resolveCommandBarMode,
 } from "./view-model";
@@ -154,34 +153,6 @@ describe("command bar view model helpers", () => {
       "other",
       "fund",
     ]);
-  });
-
-  test("derives row presentation for toggles and current rows", () => {
-    expect(getRowPresentation({
-      id: "plugin:news",
-      label: "News",
-      detail: "Latest headlines",
-      category: "Plugins",
-      kind: "plugin",
-      checked: true,
-    }, false, true)).toMatchObject({
-      glyph: " ",
-      trailing: "on",
-      primaryMuted: false,
-    });
-
-    expect(getRowPresentation({
-      id: "current:amber",
-      label: "Amber",
-      detail: "Warm terminal palette",
-      category: "Config",
-      kind: "command",
-      right: "amber",
-      current: true,
-    }, false, true)).toMatchObject({
-      glyph: " ",
-      trailing: "current",
-    });
   });
 
   test("ranks ticker search matches by symbol relevance and hides duplicate open symbols", () => {

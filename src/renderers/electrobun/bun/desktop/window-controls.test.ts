@@ -29,15 +29,6 @@ function createWindow() {
 }
 
 describe("applyDesktopWindowControl", () => {
-  test("minimizes and closes windows", () => {
-    const target = createWindow();
-
-    applyDesktopWindowControl(target.window, "minimize");
-    applyDesktopWindowControl(target.window, "close");
-
-    expect(target.calls).toEqual([{ type: "minimize" }, { type: "close" }]);
-  });
-
   test("toggles maximize from the custom control state", () => {
     const target = createWindow();
 

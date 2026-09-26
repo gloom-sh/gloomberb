@@ -17,28 +17,6 @@ import {
   type SensitivityGrid,
   type SensitivityGridCell,
 } from "./types";
-export {
-  DEFAULT_KELLY_COMMON_ASSUMPTIONS,
-  DEFAULT_KELLY_DRAFTS,
-  KELLY_MODES,
-} from "./types";
-export type {
-  AsymmetricKellyAssumptions,
-  BinaryKellyAssumptions,
-  KellyCommonAssumptions,
-  KellyOutcome,
-  KellySizerDraft,
-  KellySizerModeDrafts,
-  KellySizingMode,
-  KellySizingResult,
-  KellySolveResult,
-  PredictionMarketKellyAssumptions,
-  RiskBudgetKellyAssumptions,
-  ScenarioKellyAssumptions,
-  ScenarioKellyOutcome,
-  SensitivityGrid,
-  SensitivityGridCell,
-} from "./types";
 
 const MAX_NUMERIC_KELLY_FRACTION = 10;
 /** Widest Kelly curve window worth drawing: 200% of bankroll. */

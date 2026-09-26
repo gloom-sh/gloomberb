@@ -4,9 +4,8 @@ import { swapPanes } from "../../plugins/pane-manager";
 import type { LayoutConfig } from "../../types/config";
 import type { PaneSettingField } from "../../types/plugin";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
-import type { CollectionCommandId } from "./commands/collection";
 import type { OpenInlineConfirm } from "./routing/confirm";
-import { isCollectionCommand } from "./helpers";
+import { isCollectionCommand, type CollectionCommandId } from "./helpers";
 import type {
   CommandBarFieldValue,
   CommandBarPickerRoute,

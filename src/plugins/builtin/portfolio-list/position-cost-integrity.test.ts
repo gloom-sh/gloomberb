@@ -6,7 +6,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import { buildPositionRows } from "../ticker-detail/overview/model";
 import { buildSetPortfolioPositionWorkflow } from "./command-bar";
 import { setManualPortfolioPosition } from "./mutations";
-import { getPortfolioPositionMetrics, resolvePortfolioPositionPnl, resolveBrokerFallbackMarketValue } from "./position-metrics";
+import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "./position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPortfolioSummarySegments } from "./summary";
 
@@ -91,7 +91,7 @@ test("lot currencies convert before selection, including a quote in a third curr
 test("profit alone never manufactures cost or a complete market value, and overflow stays unavailable", () => {
   const metrics = getPortfolioPositionMetrics(ticker(lot({ unrealizedPnl: 200 })), "main", "USD");
   expect(metrics.hasBrokerMktValue).toBe(false);
-  expect(resolveBrokerFallbackMarketValue(metrics)).toBeNull();
+  expect(resolvePortfolioMarketValue(metrics)?.gross ?? null).toBeNull();
   expect(resolvePortfolioPositionPnl(metrics)).toEqual({ value: 200, basis: "broker-snapshot" });
   const absentQuote = { ...financials, quote: undefined };
   expect(totals(ticker(lot({ unrealizedPnl: 200 })), absentQuote)).toMatchObject({ totalMktValue: Number.NaN, unrealizedPnl: 200, unavailableSymbols: ["AAPL"] });

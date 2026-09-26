@@ -25,7 +25,6 @@ import {
   type WorldIndexColumn,
 } from "./table";
 
-export { worldIndicesHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would remount the board every render. */
 const NO_SAVED_SYMBOLS: string[] = [];

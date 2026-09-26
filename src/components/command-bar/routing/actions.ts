@@ -4,10 +4,8 @@ import type { AppAction, AppState } from "../../../state/app/context";
 import type { TickerFinancials } from "../../../types/financials";
 import type { PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
-import {
-  executeCollectionCommandAction,
-  type CollectionCommandId,
-} from "../commands/collection";
+import { executeCollectionCommandAction } from "../commands/collection";
+import type { CollectionCommandId } from "../helpers";
 import {
   buildLayoutResultItems,
   buildWindowModeResultItems,

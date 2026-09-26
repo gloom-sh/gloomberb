@@ -73,12 +73,6 @@ function HooksHarness() {
   return <text>{String(tick)}</text>;
 }
 
-function FxRatesHarness() {
-  latestFxRates = useFxRatesMap(["usd", "EUR", null]);
-
-  return <text>fx</text>;
-}
-
 function ChartQueriesHarness({
   initialRequests,
   debounceMs,
@@ -153,31 +147,6 @@ describe("market-data hooks", () => {
 
     expect(latestFxRates).toBe(initialFxRates);
     expect(latestFinancialsMap).toBe(initialFinancialsMap);
-  });
-
-  test("does not load USD exchange rates from providers", async () => {
-    const loadedFxCurrencies: string[] = [];
-    const coordinator = {
-      subscribe: () => () => {},
-      getVersion: () => 1,
-      getFxEntry: (currency: string) => (currency === "EUR" ? readyEurEntry : readyUsdEntry),
-      loadFxRate: async (currency: string) => {
-        loadedFxCurrencies.push(currency);
-      },
-    };
-    setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
-
-    testSetup = await testRender(<FxRatesHarness />, {
-      width: 20,
-      height: 1,
-    });
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    expect(latestFxRates?.get("USD")).toBe(1);
-    expect(loadedFxCurrencies).toEqual(["EUR"]);
   });
 
   test("debounces chart query batches and cancels superseded schedules", async () => {

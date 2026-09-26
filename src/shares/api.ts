@@ -105,11 +105,6 @@ export async function deleteShare(id: string, fetchImpl: ShareFetch = fetch): Pr
   }
 }
 
-export function publicShareUrl(id: string, origin = PUBLIC_SHARE_ORIGIN): string {
-  if (!SHARE_ID.test(id)) throw new Error("Invalid share id.");
-  return new URL(`/s/${encodeURIComponent(id)}`, origin).toString();
-}
-
 export function openLiveShareUrl(id: string, origin = PUBLIC_SHARE_ORIGIN): string {
   if (!SHARE_ID.test(id)) throw new Error("Invalid share id.");
   return new URL(`/api/shares/${encodeURIComponent(id)}/open`, origin).toString();

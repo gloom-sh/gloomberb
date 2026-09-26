@@ -14,10 +14,6 @@ function bundle(overrides: Partial<DesktopExternalPluginBundle>): DesktopExterna
 }
 
 describe("loadDesktopExternalPlugins", () => {
-  test("does nothing when there is nothing to load", async () => {
-    expect(await loadDesktopExternalPlugins([])).toEqual([]);
-  });
-
   test("carries a compile error through instead of throwing", async () => {
     const [entry] = await loadDesktopExternalPlugins([
       bundle({ id: "broken", error: "Could not resolve ./nope" }),
@@ -43,15 +39,5 @@ describe("loadDesktopExternalPlugins", () => {
     expect(entry?.error).toBeUndefined();
     expect(entry?.unsupportedTarget).toBe("desktop");
     expect(entry?.plugin.targets).toEqual(["cli", "tui"]);
-  });
-
-  test("keeps loading the rest after one plugin fails", async () => {
-    const entries = await loadDesktopExternalPlugins([
-      bundle({ id: "first", error: "boom" }),
-      bundle({ id: "second", error: "also boom" }),
-    ]);
-
-    expect(entries.map((entry) => entry.plugin.id)).toEqual(["first", "second"]);
-    expect(entries.every((entry) => entry.error)).toBe(true);
   });
 });

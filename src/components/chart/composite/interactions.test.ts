@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import {
   buildCompositeNavigationFrame,
-  clampCompositeViewport,
   compositeViewportPositions,
   fitCompositeViewport,
   panCompositeViewport,
@@ -163,14 +162,9 @@ describe("composite chart interactions", () => {
     expect(panCompositeViewport(frame, older, -slots)).toEqual(requested);
   });
 
-  test("fits an authored window onto the data it overlaps and leaves a disjoint one alone", () => {
+  test("fits a window that misses the data onto the loaded data", () => {
     const frame = frameFor(series([1, 2, 3, 4, 5, 6, 7, 8, 9]));
 
-    expect(clampCompositeViewport(frame, viewport(5, 12))).toEqual(viewport(2, 9));
-    expect(clampCompositeViewport(frame, viewport(0, 30))).toEqual(viewport(1, 9));
-    // An observation-free window keeps its date axis so navigation can bring
-    // it back; fitting it to the data would silently teleport the chart.
-    expect(clampCompositeViewport(frame, viewport(20, 30))).toEqual(viewport(20, 30));
     expect(fitCompositeViewport(frame, viewport(20, 30))).toEqual(viewport(1, 9));
   });
 

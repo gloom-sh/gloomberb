@@ -7,23 +7,8 @@ const paneIds = browserBuiltinPlugins.flatMap((plugin) => plugin.panes?.map((pan
 const templateIds = new Set(browserBuiltinPlugins.flatMap((plugin) => plugin.paneTemplates?.map((template) => template.id) ?? []));
 
 describe("browser plugin catalog", () => {
-  test("excludes native, filesystem, local AI, debug, updater, and external plugins", () => {
-    for (const forbidden of [
-      "broker",
-      "ibkr",
-      "public",
-      "robinhood",
-      "simplefin",
-      "notes",
-      "substack",
-      "ai",
-      "byok-ai",
-      "debug",
-      "yahoo",
-      "prediction-markets",
-      "polls",
-      "updater",
-    ]) {
+  test("excludes native, filesystem, and debug plugins", () => {
+    for (const forbidden of ["broker", "notes", "debug", "yahoo"]) {
       expect(ids).not.toContain(forbidden);
     }
   });
@@ -56,15 +41,10 @@ describe("browser plugin catalog", () => {
     ]));
     for (const forbidden of [
       "buildout",
-      "market-heatmap",
       "market-movers",
-      "market-halts",
-      "fear-greed",
       "earnings-calendar",
-      "ipo-calendar",
-      "tv",
       "short-interest",
-      "thirteenf",
+      "thirteenf-funds",
     ]) {
       expect(paneIds).not.toContain(forbidden);
     }

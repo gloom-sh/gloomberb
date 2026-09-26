@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, spyOn } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { attachValuationPersistence, loadCachedSeries, resetValuationPersistence } from "./cache";
+import { attachValuationPersistence, loadCachedSeriesEntry, resetValuationPersistence } from "./cache";
 import { createValuationSeriesLoader, getCachedValuationBundle, loadValuationBundle, requiredSeries, type ValuationSeriesLoader } from "./client";
 import { BUFFETT_INDICATOR, INDICATORS, EXCESS_CAPE_YIELD, SHILLER_CAPE, TOBINS_Q } from "./indicators";
 import type { DatedObservation, DatedSeries } from "./series";
@@ -168,8 +168,8 @@ describe("shillerObservations", () => {
 
 describe("market-capitalization source basis", () => {
   test("a legacy persisted index-points cache cannot feed the monetary ratios; the Z.1 sum does", async () => {
-    await loadCachedSeries("W5000", async () => obs([["2024-01-02", 40_000], ["2025-01-02", 45_000]]));
-    await Promise.all(Object.entries(LEGS).map(([key, observations]) => loadCachedSeries(key, async () => observations)));
+    await loadCachedSeriesEntry("W5000", async () => obs([["2024-01-02", 40_000], ["2025-01-02", 45_000]]));
+    await Promise.all(Object.entries(LEGS).map(([key, observations]) => loadCachedSeriesEntry(key, async () => observations)));
     const cached = getCachedValuationBundle()!;
     expect(cached.builds).toHaveLength(INDICATORS.length);
     expect(cached.errors).toHaveLength(0);

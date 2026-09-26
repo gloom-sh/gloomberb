@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type Dispatch } from "react";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker, type InstrumentRef } from "../../market-data/request-types";
-import { buildInstrumentKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction } from "../../state/app/context";
 import type { InitializeAppStateArgs } from "../../state/app/bootstrap";
@@ -28,7 +28,7 @@ function resolveRefreshEntries(entries: RefreshEntry[]): InstrumentRefreshEntry[
   for (const entry of entries) {
     const instrument = entry.instrument ?? instrumentFromTicker(entry.ticker, entry.ticker.metadata.ticker);
     if (!instrument) continue;
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     const previous = targets.get(key);
     targets.set(key, { ...entry, instrument, key, priority: Math.min(previous?.priority ?? entry.priority, entry.priority) });
   }
@@ -66,7 +66,7 @@ export function useTickerRefreshRuntime({
   }, [dispatch]);
 
   const performRefreshTicker = useCallback(async (instrument: InstrumentRef) => {
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     if (refreshInFlight.has(key)) return;
     refreshInFlight.add(key);
     setRefreshing(instrument.symbol, true);
@@ -86,7 +86,7 @@ export function useTickerRefreshRuntime({
   }, [baseCurrency, marketData, pluginRegistry.events, setRefreshing]);
 
   const performRefreshQuote = useCallback(async (instrument: InstrumentRef) => {
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     if (refreshInFlight.has(key) || quoteRefreshInFlight.has(key)) return;
     quoteRefreshInFlight.add(key);
     try {
@@ -105,7 +105,7 @@ export function useTickerRefreshRuntime({
   const refreshTicker = useCallback<AppTickerRefreshRuntime["refreshTicker"]>((symbol, _exchange = "", tickerOverride, priority = 2, target) => {
     const instrument = target ?? instrumentFromTicker(tickerOverride ?? tickers.get(symbol), symbol);
     if (!instrument) return;
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     if (refreshInFlight.has(key) || pendingRefreshesRef.current.financials.has(key)) return;
     pendingRefreshesRef.current.financials.add(key);
     refreshQueueRef.current.queue.enqueue({
@@ -120,7 +120,7 @@ export function useTickerRefreshRuntime({
   const refreshQuote = useCallback<AppTickerRefreshRuntime["refreshQuote"]>((symbol, _exchange = "", tickerOverride, priority = 2, target) => {
     const instrument = target ?? instrumentFromTicker(tickerOverride ?? tickers.get(symbol), symbol);
     if (!instrument) return;
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     if (refreshInFlight.has(key) || quoteRefreshInFlight.has(key)
       || pendingRefreshesRef.current.financials.has(key) || pendingRefreshesRef.current.quotes.has(key)) return;
     pendingRefreshesRef.current.quotes.add(key);

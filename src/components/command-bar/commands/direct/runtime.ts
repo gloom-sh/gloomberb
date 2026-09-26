@@ -13,7 +13,7 @@ import { normalizeTickerInput } from "../../../../tickers/search";
 import { useRendererHost } from "../../../../ui";
 import type { ThemePickerHandle } from "../../theme-picker";
 import type { Command } from "../registry";
-import type { CollectionCommandId } from "../collection";
+import type { CollectionCommandId } from "../../helpers";
 import {
   runDirectCommandAction,
 } from "./index";
