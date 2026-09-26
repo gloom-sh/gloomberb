@@ -28,6 +28,10 @@ export interface AppSessionSnapshot {
   statusBarVisible: boolean;
   openPaneIds: string[];
   hydrationTargets: HydrationTarget[];
+  /**
+   * @deprecated Always empty. Exchange rates are not restored from the
+   * session; read live rates with `useFxRatesMap` from `gloomberb/react`.
+   */
   exchangeCurrencies: string[];
   savedAt: number;
 }
@@ -40,7 +44,6 @@ interface SessionStateInput {
   statusBarVisible: boolean;
   recentTickers: string[];
   tickers: Map<string, TickerRecord>;
-  exchangeRates: Map<string, number>;
 }
 
 function normalizeHydrationTarget(target: HydrationTarget): HydrationTarget {
@@ -66,11 +69,6 @@ function tickerInCollection(ticker: TickerRecord, collectionId: string | null): 
 export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSnapshot {
   const seen = new Set<string>();
   const hydrationTargets: HydrationTarget[] = [];
-  const exchangeCurrencies = [...new Set(
-    [...state.exchangeRates.keys()]
-      .map((currency) => currency.trim().toUpperCase())
-      .filter(Boolean),
-  )];
 
   const pushTarget = (input: HydrationTarget | null | undefined) => {
     if (!input) return;
@@ -116,7 +114,7 @@ export function buildAppSessionSnapshot(state: SessionStateInput): AppSessionSna
       ...state.config.layout.floating.map((entry) => entry.instanceId),
     ],
     hydrationTargets,
-    exchangeCurrencies,
+    exchangeCurrencies: [],
     savedAt: Date.now(),
   };
 }
@@ -148,11 +146,7 @@ export function reconcileAppSessionSnapshot(
     statusBarVisible: snapshot.statusBarVisible !== false,
     openPaneIds,
     hydrationTargets,
-    exchangeCurrencies: [...new Set(
-      (snapshot.exchangeCurrencies ?? [])
-        .map((currency) => currency.trim().toUpperCase())
-        .filter(Boolean),
-    )],
+    exchangeCurrencies: [],
     savedAt: typeof snapshot.savedAt === "number" ? snapshot.savedAt : Date.now(),
   };
 }

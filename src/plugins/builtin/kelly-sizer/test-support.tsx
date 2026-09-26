@@ -137,13 +137,11 @@ export function KellySizerHarness({
   config = createSizerConfig(),
   ticker = createTicker(),
   financials = createFinancials({ symbol: ticker.metadata.ticker, currency: ticker.metadata.currency }),
-  exchangeRates,
   paneState,
 }: {
   config?: AppConfig;
   ticker?: TickerRecord;
   financials?: TickerFinancials;
-  exchangeRates?: Map<string, number>;
   paneState?: Record<string, unknown>;
 }) {
   const initialState = createInitialState(config);
@@ -151,7 +149,6 @@ export function KellySizerHarness({
   if (paneState) initialState.paneState[TEST_PANE_ID] = paneState;
   initialState.tickers = new Map([[ticker.metadata.ticker, ticker]]);
   initialState.financials = new Map([[ticker.metadata.ticker, financials]]);
-  if (exchangeRates) initialState.exchangeRates = exchangeRates;
   initialState.brokerAccounts = { "ibkr-flex": [createBrokerAccount()] };
 
   const [state, dispatch] = useReducer(appReducer, initialState);

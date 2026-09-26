@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
+import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
+import { createTestDataProvider } from "../test-support/data-provider";
 import { createDefaultConfig } from "../types/config";
 import type { PricePoint } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
@@ -486,7 +488,6 @@ describe("core sync contributors", () => {
       },
     });
     const state = createInitialState(config);
-    state.exchangeRates = new Map([["USD", 1], ["JPY", 0.0067]]);
     state.tickers = new Map([
       ["7203.T", ticker("7203.T", "main")],
       ["6758.T", ticker("6758.T", "broker:ibkr:U123")],
@@ -530,7 +531,6 @@ describe("core sync contributors", () => {
     const payload = await coreCollectionsSyncContributor.collect({ state }) as any;
 
     expect(payload.baseCurrency).toBe("USD");
-    expect(payload.exchangeRates).toEqual({ USD: 1, JPY: 0.0067 });
     expect(payload.analyticsByPortfolio.main.oneYearReturn).toBeNull();
     expect(payload.analyticsByPortfolio.main.spyBeta).toBeNull();
     expect(payload.analyticsByPortfolio["broker:ibkr:U123"].oneYearReturn).toBeNull();
@@ -577,6 +577,39 @@ describe("core sync contributors", () => {
     mainTicker.metadata.positions[0]!.side = "short";
     const short = await coreCollectionsSyncContributor.collect({ state }) as any;
     expect(short.analyticsByPortfolio.main.spyBeta).toBeNull();
+  });
+
+  test("values holdings in a non-USD base currency with the loaded exchange rates", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-test");
+    config.baseCurrency = "EUR";
+    config.portfolios = [{ id: "main", name: "Main", currency: "EUR" }];
+    const state = createInitialState(config);
+    state.tickers = new Map([["NVDA", {
+      metadata: {
+        ticker: "NVDA", exchange: "NASDAQ", currency: "USD", name: "NVIDIA",
+        portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+        positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual", currency: "USD" }],
+      },
+    }]]);
+    const history = (returns: number[]) => ({
+      quote: { symbol: "", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1 },
+      priceHistory: priceHistoryFromReturns(returns), annualStatements: [], quarterlyStatements: [],
+    });
+    state.financials = new Map([
+      ["NVDA", history([0.015, -0.0045, 0.018, 0.009, -0.006, 0.012, 0.0045, -0.003, 0.0105, 0.006, -0.0015])],
+      ["SPY", history([0.01, -0.003, 0.012, 0.006, -0.004, 0.008, 0.003, -0.002, 0.007, 0.004, -0.001])],
+    ]);
+    const requested: string[] = [];
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+      getExchangeRate: async (currency) => { requested.push(currency); return 1.1; },
+    })));
+    try {
+      const payload = await coreCollectionsSyncContributor.collect({ state }) as any;
+      expect(payload.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
+      expect(requested).toEqual(["EUR"]);
+    } finally {
+      setSharedMarketDataCoordinator(null);
+    }
   });
 
   test("redaction removes nested credential-shaped fields", () => {

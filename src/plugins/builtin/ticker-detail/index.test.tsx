@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
 import {
   AppContext,
@@ -230,16 +230,12 @@ function createDetailState(
   ticker: TickerRecord,
   financials: TickerFinancials | null,
   activeTabId = "overview",
-  exchangeRates?: Map<string, number>,
 ) {
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([[ticker.metadata.ticker, ticker]]);
   state.financials = financials ? new Map([[ticker.metadata.ticker, financials]]) : new Map();
   state.paneState[TEST_PANE_ID] = { activeTabId };
-  if (exchangeRates) {
-    state.exchangeRates = exchangeRates;
-  }
   return state;
 }
 
@@ -248,7 +244,6 @@ function DetailHarness({
   ticker,
   financials,
   activeTabId = "overview",
-  exchangeRates,
   width = 90,
   height = 24,
 }: {
@@ -256,11 +251,10 @@ function DetailHarness({
   ticker: TickerRecord;
   financials: TickerFinancials | null;
   activeTabId?: string;
-  exchangeRates?: Map<string, number>;
   width?: number;
   height?: number;
 }) {
-  const initialState = createDetailState(config, ticker, financials, activeTabId, exchangeRates);
+  const initialState = createDetailState(config, ticker, financials, activeTabId);
   const [state, dispatch] = useReducer(appReducer, initialState);
   harnessDispatch = dispatch;
   detailHarnessState = state;
@@ -760,7 +754,6 @@ describe("TickerResearchPane", () => {
             marketState: "REGULAR",
           },
         })}
-        exchangeRates={new Map([["USD", 1], ["EUR", 1.1]])}
         height={32}
       />,
       { width: 90, height: 32 },
@@ -768,9 +761,9 @@ describe("TickerResearchPane", () => {
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    // The EUR rate arrives from the market data coordinator a frame later.
+    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("2.20B USD");
     expect(frame).toContain("€125");
-    expect(frame).toContain("2.20B USD");
     expect(frame).toContain("Account");
     expect(frame).toContain("Qty");
     expect(frame).toContain("Avg");

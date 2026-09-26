@@ -38,7 +38,7 @@ describe("session persistence", () => {
     config.layout.instances = config.portfolios.map(({ id }) => createPaneInstance("portfolio-list", { instanceId: id, params: { collectionId: id } }));
     config.layout.instances.push(createPaneInstance("ticker-detail", { instanceId: "follow-b", binding: { kind: "follow", sourceInstanceId: "b" } }));
     const state = { config, paneState: Object.fromEntries(config.portfolios.map(({ id }) => [id, { cursorSymbol: "DUAL", collectionId: id }])),
-      focusedPaneId: "b", activePanel: "left" as const, statusBarVisible: true, recentTickers: [], tickers: new Map([["DUAL", ticker]]), exchangeRates: new Map<string, number>() };
+      focusedPaneId: "b", activePanel: "left" as const, statusBarVisible: true, recentTickers: [], tickers: new Map([["DUAL", ticker]]) };
     const snapshot = buildAppSessionSnapshot(state);
     expect(snapshot.hydrationTargets.map(({ instrument }) => instrument?.conId ?? null)).toEqual([101, 202, null]);
     expect(snapshot.hydrationTargets.map(buildInstrumentKey)).toHaveLength(3);
@@ -60,12 +60,12 @@ describe("session persistence", () => {
     }));
     config.layout.instances.push(createPaneInstance("ticker-detail", { instanceId: "follow", binding: { kind: "follow", sourceInstanceId: "fixed:1" } }));
     const snapshot = buildAppSessionSnapshot({ config, paneState: {}, focusedPaneId: "follow", activePanel: "right", statusBarVisible: true,
-      recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]), exchangeRates: new Map() });
+      recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]) });
     expect(snapshot.hydrationTargets.map(({ instrument }) => instrument?.lastTradeDateOrContractMonth)).toEqual(["202610", "202611"]);
     expect(new Set(snapshot.hydrationTargets.map(buildInstrumentKey)).size).toBe(2);
     config.layout.instances = [];
     expect(buildAppSessionSnapshot({ config, paneState: {}, focusedPaneId: null, activePanel: "right", statusBarVisible: true,
-      recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]), exchangeRates: new Map() }).hydrationTargets).toEqual([]);
+      recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]) }).hydrationTargets).toEqual([]);
   });
 
   test("builds a working-set snapshot from runtime state", () => {
@@ -106,12 +106,10 @@ describe("session persistence", () => {
       recentTickers: ["AAPL"],
       tickers,
       financials,
-      exchangeRates: new Map([["USD", 1], ["JPY", 0.0067]]),
     });
 
     expect(snapshot.focusedPaneId).toBe("ticker-detail:main");
     expect(snapshot.hydrationTargets.map((target) => target.symbol)).toEqual(["AAPL", "MSFT"]);
-    expect(snapshot.exchangeCurrencies).toContain("JPY");
     expect(snapshot.paneState["portfolio-list:main"]).toEqual({
       cursorSymbol: "AAPL",
       collectionId: "main",
