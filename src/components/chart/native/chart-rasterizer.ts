@@ -6,6 +6,7 @@ export {
   computeNativePlacements,
   excludeCellRects,
   intersectCellRects,
+  sameCellRect,
 } from "./raster/placement";
 
 export type {

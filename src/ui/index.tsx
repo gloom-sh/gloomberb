@@ -1,7 +1,8 @@
-import { createElement, forwardRef, useCallback, useRef, type ComponentProps, type ForwardedRef } from "react";
+import { createElement, forwardRef, useCallback, useRef, type ComponentProps } from "react";
 import { useForwardedScrollBoxRef, useRegisterPaneScrollBox } from "../state/pane-scroll-registry";
 import { useUiHost, type UiHost } from "./host";
 import { useRemoteUiNode } from "../remote/semantic-tree";
+import { assignRef } from "../react/assign-ref";
 import {
   remoteChartEvent,
   remoteEvent,
@@ -229,21 +230,13 @@ export const Textarea = forwardRef<any, ComponentProps<UiHost["Textarea"]>>((pro
 });
 Textarea.displayName = "Textarea";
 
-function assignForwardedRef(ref: ForwardedRef<any>, value: any): void {
-  if (typeof ref === "function") {
-    ref(value);
-  } else if (ref) {
-    ref.current = value;
-  }
-}
-
 export const ChartSurface = forwardRef<any, ComponentProps<UiHost["ChartSurface"]>>((props, ref) => {
   const { ChartSurface: HostChartSurface } = useUiHost();
   const rawProps = props as Record<string, unknown>;
   const localRef = useRef<any>(null);
   const setSurfaceRef = useCallback((value: any) => {
     localRef.current = value;
-    assignForwardedRef(ref, value);
+    assignRef(ref, value);
   }, [ref]);
   const onMouseMove = rawProps.onMouseMove as ((event?: unknown) => unknown) | undefined;
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;

@@ -1,6 +1,12 @@
 import type { PixelResolution } from "../../../../ui";
 import type { CellRect, NativeChartBitmap, NativePlacement } from "./types";
 
+export function sameCellRect(a: CellRect | null, b: CellRect | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
 export function intersectCellRects(a: CellRect, b: CellRect): CellRect | null {
   const x = Math.max(a.x, b.x);
   const y = Math.max(a.y, b.y);

@@ -3,6 +3,7 @@ import {
   computeNativePlacements,
   excludeCellRects,
   intersectCellRects,
+  sameCellRect,
   type CellRect,
   type NativeChartBitmap,
 } from "../chart-rasterizer";
@@ -56,12 +57,6 @@ function compareRects(a: CellRect, b: CellRect): number {
   return a.width - b.width;
 }
 
-function sameRect(a: CellRect | null, b: CellRect | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
-}
-
 function samePaneLayer(a: NativePaneLayer, b: NativePaneLayer): boolean {
   return a.paneId === b.paneId && a.zIndex === b.zIndex;
 }
@@ -71,7 +66,7 @@ function sameOccluder(a: NativeOccluder, b: NativeOccluder): boolean {
     && (a.paneId ?? null) === (b.paneId ?? null)
     && a.zIndex === b.zIndex
     && a.occludesOwnPane === b.occludesOwnPane
-    && sameRect(a.rect, b.rect);
+    && sameCellRect(a.rect, b.rect);
 }
 
 function sameWindowState(a: NativeWindowState, b: NativeWindowState): boolean {
@@ -99,8 +94,8 @@ function sameSnapshot(a: NativeSurfaceSnapshot, b: NativeSurfaceSnapshot): boole
     && a.paneId === b.paneId
     && a.bitmapKey === b.bitmapKey
     && a.imageZIndex === b.imageZIndex
-    && sameRect(a.rect, b.rect)
-    && sameRect(a.visibleRect, b.visibleRect);
+    && sameCellRect(a.rect, b.rect)
+    && sameCellRect(a.visibleRect, b.visibleRect);
 }
 
 export function computeSurfaceVisibleFragments(
@@ -167,8 +162,8 @@ export class NativeSurfaceManager {
     const entry = this.surfaces.get(id);
     if (!entry) return;
     if (entry.snapshot.paneId === geometry.paneId
-      && sameRect(entry.snapshot.rect, geometry.rect)
-      && sameRect(entry.snapshot.visibleRect, geometry.visibleRect)) {
+      && sameCellRect(entry.snapshot.rect, geometry.rect)
+      && sameCellRect(entry.snapshot.visibleRect, geometry.visibleRect)) {
       return;
     }
     entry.snapshot = {
@@ -190,7 +185,7 @@ export class NativeSurfaceManager {
     if (
       existing
       && existing.paneId === occluder.paneId
-      && sameRect(existing.rect, occluder.rect)
+      && sameCellRect(existing.rect, occluder.rect)
     ) {
       return;
     }
