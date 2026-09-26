@@ -5,7 +5,6 @@ import { marketValuationHeadless } from "./headless";
 import { MarketValuationPane } from "./pane";
 import { buildValuationSettingsDef, VALUATION_DEFAULTS } from "./settings";
 
-export { marketValuationHeadless } from "./headless";
 
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 

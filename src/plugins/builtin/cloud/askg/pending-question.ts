@@ -31,8 +31,3 @@ export function subscribeASKGQuestions(listener: PendingQuestionListener): () =>
     listeners.delete(listener);
   };
 }
-
-/** Test helper: drops a question no pane ever claimed. */
-export function clearPendingASKGQuestion(): void {
-  pendingQuestion = null;
-}

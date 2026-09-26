@@ -10,7 +10,6 @@ import { teamStore } from "./store";
 import { installTeamStateHost } from "./team-state-host";
 import { createCloudViewsCapability, teamViewsStore } from "./views";
 
-export { TeamsAccountTab } from "./acm-tab";
 export { teamStore } from "./store";
 
 /**

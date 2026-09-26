@@ -1,5 +1,4 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
-import type { MultiLineChartSeries } from "../../../../components/chart/static";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
 import { formatNumber } from "../../../../utils/format";
@@ -9,6 +8,13 @@ import type {
   RelationshipRegressionStats,
   RelationshipReturnPoint,
 } from "./model";
+
+export interface MultiLineChartSeries {
+  id: string;
+  label: string;
+  color: string;
+  points: Array<{ date: Date; value: number | null }>;
+}
 
 export function formatNullableNumber(value: number | null | undefined, decimals: number): string {
   return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";
@@ -85,23 +91,6 @@ export function buildRelationshipScatterPointsForDate(
       ? index === returns.length - 1
       : entry.date.getTime() === cursorTime,
   }));
-}
-
-export function findRelationshipAlignedPoint(
-  aligned: RelationshipAlignedPoint[],
-  cursorDate: Date | null,
-): RelationshipAlignedPoint | null {
-  if (aligned.length === 0) return null;
-  if (!cursorDate) return aligned.at(-1) ?? null;
-  return aligned.find((entry) => entry.date.getTime() === cursorDate.getTime()) ?? aligned.at(-1) ?? null;
-}
-
-export function findRelationshipCorrelationAtDate(
-  points: ProjectedChartPoint[],
-  cursorDate: Date | null,
-): number | null {
-  if (!cursorDate) return points.at(-1)?.close ?? null;
-  return points.find((point) => point.date.getTime() === cursorDate.getTime())?.close ?? null;
 }
 
 /**

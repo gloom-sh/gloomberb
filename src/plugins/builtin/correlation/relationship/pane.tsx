@@ -9,7 +9,7 @@ import {
   usePaneNoticeFooter,
   type CompositeAxisDomain,
 } from "../../../../components";
-import { StaticScatterChartSurface, type MultiLineChartSeries } from "../../../../components/chart/static";
+import { StaticScatterChartSurface } from "../../../../components/chart/static";
 import { scalarPoint, staticSeries } from "../../../../components/chart/static/series";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
@@ -43,10 +43,11 @@ import {
   buildRelationshipRatioSeries,
   buildRelationshipScatterPointsForDate,
   buildRelationshipStatItems,
+  type MultiLineChartSeries,
 } from "./view-model";
 
 export {
-  RELATIONSHIP_GRAPH_PANE_ID, buildRelationshipAnalysis,
+  RELATIONSHIP_GRAPH_PANE_ID,
   buildRelationshipGraphSettingsDef
 } from "./model";
 

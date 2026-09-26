@@ -6,7 +6,6 @@ import {
 } from "./data";
 import { riskFactorsHeadless } from "./headless";
 
-export { riskFactorsHeadless } from "./headless";
 
 import { RISK_FACTORS_PANE_ID, RiskFactorsPane, RiskFactorsResearchTab } from "./pane";
 import { isKnownNonUsListing } from "../../../utils/sec";

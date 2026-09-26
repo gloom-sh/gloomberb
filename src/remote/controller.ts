@@ -17,7 +17,7 @@ import {
   customViewInstanceSettings,
   parseViewSpecOr,
 } from "../plugins/builtin/custom-view";
-import { findPaneInstance, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
+import { findPaneInstance, getPlacedPaneInstanceIds, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
 import type { DesktopWindowBridge } from "../types/desktop-window";
 import { applyJsonPatch } from "./json-patch";
 import { revisionFor } from "./revision";
@@ -46,7 +46,6 @@ import {
   regionToDockPosition,
   regionToRootEdge,
   requirePaneInstance,
-  visiblePaneIds,
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
 
@@ -477,7 +476,7 @@ export function createAppRemoteController({
         return getAfterMutationSummary({ affectedPaneIds: [target.instanceId] });
       }
       case "layout.setGrid": {
-        const rawPaneIds = Array.isArray(input.paneIds) ? input.paneIds : visiblePaneIds(getState().config.layout);
+        const rawPaneIds = Array.isArray(input.paneIds) ? input.paneIds : getPlacedPaneInstanceIds(getState().config.layout);
         const paneIds = rawPaneIds.map((id) => requirePaneInstance(getState().config.layout, String(id)).instanceId);
         const nextLayout = {
           ...getState().config.layout,

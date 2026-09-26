@@ -1,7 +1,13 @@
 import type { CommandDef } from "../../../types/plugin";
 import { commands as coreCommands } from "../../../components/command-bar/commands/registry";
 import { getSharedRegistry } from "../../registry";
-import type { HelpShortcutEntry } from "./components";
+
+export interface HelpShortcutEntry {
+  id: string;
+  badges: string[];
+  description: string;
+  category: string;
+}
 
 type SharedRegistry = ReturnType<typeof getSharedRegistry>;
 

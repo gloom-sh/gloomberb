@@ -9,6 +9,7 @@ import { normalizeTickerInput } from "../../../tickers/search";
 import { debugLog } from "../../../utils/debug-log";
 import {
   isCollectionCommand,
+  type CollectionCommandId,
 } from "../helpers";
 import type { ResultItem } from "../list/model";
 import {
@@ -26,7 +27,6 @@ import {
   resolveTickerListInput,
   type SharedWorkflowDeps,
 } from "../workflow/ops";
-import type { CollectionCommandId } from "../commands/collection";
 import type { PluginRegistry } from "../../../plugins/registry";
 import {
   buildPaneTemplateWorkflowRoute,

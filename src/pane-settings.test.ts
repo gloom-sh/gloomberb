@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, createPaneInstance, DEFAULT_PORTFOLIO_COLUMN_IDS, type LayoutConfig } from "./types/config";
-import { deletePaneSetting, getPaneSettingValue, setPaneSetting } from "./pane-settings";
+import { deletePaneSetting, getPaneSettings, setPaneSetting } from "./pane-settings";
 
 describe("pane settings helpers", () => {
   test("cloneLayout deep-clones pane settings", () => {
@@ -29,10 +29,10 @@ describe("pane settings helpers", () => {
     };
 
     const updated = setPaneSetting(layout, "quote-monitor:test", "symbol", "MSFT");
-    expect(getPaneSettingValue(updated.instances.find((instance) => instance.instanceId === "quote-monitor:test"), "symbol", "")).toBe("MSFT");
-    expect(getPaneSettingValue(layout.instances.find((instance) => instance.instanceId === "quote-monitor:test"), "symbol", "")).toBe("AAPL");
+    expect(getPaneSettings(updated.instances.find((instance) => instance.instanceId === "quote-monitor:test")).symbol).toBe("MSFT");
+    expect(getPaneSettings(layout.instances.find((instance) => instance.instanceId === "quote-monitor:test")).symbol).toBe("AAPL");
 
     const cleared = deletePaneSetting(updated, "quote-monitor:test", "symbol");
-    expect(getPaneSettingValue(cleared.instances.find((instance) => instance.instanceId === "quote-monitor:test"), "symbol", null)).toBeNull();
+    expect(getPaneSettings(cleared.instances.find((instance) => instance.instanceId === "quote-monitor:test")).symbol).toBeUndefined();
   });
 });

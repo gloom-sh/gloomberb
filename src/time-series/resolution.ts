@@ -9,6 +9,7 @@ export interface ChartResolutionSupport {
   maxRange: TimeRange;
 }
 
+/** @deprecated Use `TIME_RANGES` from `gloomberb/time-series`; this is the same array. */
 export const TIME_RANGE_ORDER = TIME_RANGES;
 const CHART_RESOLUTION_ORDER = CHART_RESOLUTIONS;
 
@@ -84,7 +85,7 @@ const TIME_RANGE_APPROXIMATE_DAYS: Record<TimeRange, number> = {
 
 const MINIMUM_USEFUL_CHART_POINTS = 2;
 
-const TIME_RANGE_INDEX = new Map(TIME_RANGE_ORDER.map((range, index) => [range, index]));
+const TIME_RANGE_INDEX = new Map(TIME_RANGES.map((range, index) => [range, index]));
 
 function getTimeRangeIndex(range: TimeRange): number {
   return TIME_RANGE_INDEX.get(range) ?? 0;
@@ -102,6 +103,7 @@ function isManualChartResolution(value: unknown): value is ManualChartResolution
   return value !== "auto" && CHART_RESOLUTION_ORDER.includes(value as ChartResolution);
 }
 
+/** @deprecated Slated for removal. Check the value against `CHART_RESOLUTIONS` instead. */
 export function normalizeChartResolution(value: unknown, fallback: ChartResolution = "auto"): ChartResolution {
   return isChartResolution(value) ? value : fallback;
 }
@@ -146,6 +148,7 @@ export function getNextBufferRange(range: TimeRange): TimeRange {
   return RANGE_PRELOAD_BUFFER[range];
 }
 
+/** @deprecated Slated for removal. Combine `getNextBufferRange` with `clampTimeRangeToMaxRange` instead. */
 export function getExpandedBufferRange(
   bufferRange: TimeRange,
   resolution: ChartResolution,
@@ -271,6 +274,10 @@ export function isIntradayResolution(resolution: ManualChartResolution): boolean
     || resolution === "1h";
 }
 
+/**
+ * @deprecated Slated for removal. Compare the range with
+ * `getSupportMaxRange(support, getPresetResolution(range))` instead.
+ */
 export function isRangePresetSupported(
   range: TimeRange,
   support: readonly ChartResolutionSupport[] | readonly ManualChartResolution[],

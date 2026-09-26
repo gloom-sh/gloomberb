@@ -3,13 +3,12 @@ import { yahooSuffixExchange } from "../yahoo-finance/symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
-import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import type { Quote, TickerFinancials } from "../../types/financials";
 import { retractKnownCloudValuation } from "../gloomberb-cloud/valuation-observations";
 import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";
 import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
 import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
-import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 import { brokerContractIdentityKey } from "../../utils/instrument-identity";
 import { providerFinancialsMatchTarget, providerQuoteMatchesTarget } from "./financials";
 import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../../utils/operating-result";
@@ -76,10 +75,6 @@ export function getTickerVariantCandidates(exchange?: string): string[] {
 
 export function isIntradayRange(range: TimeRange): boolean {
   return range === "1D" || range === "1W" || range === "1M" || range === "3M";
-}
-
-export function isStaleIntradayHistory(points: PricePoint[], enabled: boolean, exchange?: string, intervalMs?: number | null): boolean {
-  return enabled && isPriceHistoryStaleForCurrentWindow(points, Date.now(), { exchange, intervalMs });
 }
 
 export function isCurrentHistoryWindow(endDate?: Date): boolean {
@@ -319,16 +314,4 @@ export function selectCachedResource<T>(
   allowExpired: boolean,
 ): CachedResourceRecord<T> | null {
   return listCachedResources<T>(resources, kind, entityKey, variantKeys, sourceKeys, allowExpired)[0] ?? null;
-}
-
-export function selectCachedArrayResource<T>(
-  resources: ResourceStore | undefined,
-  kind: string,
-  entityKey: string,
-  variantKeys: string[],
-  sourceKeys: string[],
-  allowExpired: boolean,
-): CachedResourceRecord<T[]> | null {
-  const records = listCachedResources<T[]>(resources, kind, entityKey, variantKeys, sourceKeys, allowExpired);
-  return records.find((record) => record.value.length > 0) ?? records[0] ?? null;
 }

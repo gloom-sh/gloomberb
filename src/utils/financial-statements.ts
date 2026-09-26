@@ -1,7 +1,7 @@
 import type { FinancialStatement } from "../types/financials";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
 import { hasStatementWithdrawals, mergeStatementWithdrawals, redactWithdrawnStatement } from "./statement-observations";
-import { mergeStatementOperatingResult, normalizeStatementOperatingResult, reportedOperatingCohort, REPORTED_OPERATING_FIELDS } from "./operating-result";
+import { mergeStatementOperatingResult, normalizeStatementOperatingResult, reportedOperatingCohort, OPERATING_FIELDS } from "./operating-result";
 import { EARNINGS_FIELDS, mergeReportedEarningsResult, ownedReportedEarningsCohort } from "./reported-earnings-result";
 import { normalizeStatementEarningsResult } from "./earnings-result";
 
@@ -13,7 +13,7 @@ const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** An explicit field map is authoritative: omitted fields have unknown availability. */
 export function statementFieldAvailability(row: FinancialStatement | undefined, field: string): string | undefined {
-  if (REPORTED_OPERATING_FIELDS.includes(field as typeof REPORTED_OPERATING_FIELDS[number])) {
+  if (OPERATING_FIELDS.includes(field as typeof OPERATING_FIELDS[number])) {
     const reported = reportedOperatingCohort(row);
     if (reported) return reported.filed;
   }
@@ -229,7 +229,7 @@ export function mergeFinancialStatementRows(
     // Retained fallback fields still carry their own per-field provenance.
     mergeStatementOperatingResult(merged, row, fallback);
     const reported = reportedOperatingCohort(merged);
-    if (reported) for (const field of REPORTED_OPERATING_FIELDS) fieldAvailability[field] = reported.filed;
+    if (reported) for (const field of OPERATING_FIELDS) fieldAvailability[field] = reported.filed;
     mergeReportedEarningsResult(merged, [row, ...(fallback ? [fallback] : [])]);
     const earnings = ownedReportedEarningsCohort(merged);
     if (earnings) for (const field of EARNINGS_FIELDS) fieldAvailability[field] = earnings.filed;

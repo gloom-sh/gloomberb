@@ -14,10 +14,10 @@ import {
   looksDestructiveCommand,
   normalizeWizardFields,
   routeCommandIdToScreen,
-  slugifyName,
   summarizeError,
   summarizeWorkflowFieldValue,
 } from "./helpers";
+import { slugifyName } from "../../utils/slugify";
 
 const workflowFields: CommandBarWorkflowField[] = [
   {

@@ -50,11 +50,6 @@ export interface EarningsCallsResult {
   sourceLimitReached?: boolean;
 }
 
-/** A call that has been found but whose transcript is not produced yet. */
-export function isShelved(call: CloudEarningsCallPayload): boolean {
-  return !call.hasTranscript;
-}
-
 /** Short label for the state of a call without a transcript. */
 export function callStatusLabel(call: CloudEarningsCallPayload): string {
   switch (call.status) {

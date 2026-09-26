@@ -3,7 +3,6 @@ import { withMarketData } from "../../../../cli/scoped-context";
 import {
   countCollectionTickers,
   formatSignedCurrency,
-  formatSignedPercentRaw,
 } from "../../../../cli/helpers";
 import {
   cliStyles,
@@ -12,7 +11,7 @@ import {
   renderStats,
   renderTable,
 } from "../../../../utils/cli-output";
-import { formatCompact } from "../../../../utils/format";
+import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
@@ -157,7 +156,7 @@ async function showCollectionWithMarketData(
       const priceText = quote && activeQuote
         ? colorBySign(formatMarketPriceWithCurrency(activeQuote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), activeQuote.change)
         : "—";
-      const changeText = activeQuote ? colorBySign(formatSignedPercentRaw(activeQuote.changePercent), activeQuote.change) : "—";
+      const changeText = activeQuote ? colorBySign(formatPercentRaw(activeQuote.changePercent), activeQuote.change) : "—";
 
       if (positions.length === 0) {
         rows.push([ticker.metadata.ticker, priceText, changeText, "—", "—", "—"]);
@@ -245,7 +244,7 @@ async function showCollectionWithMarketData(
       const priceText = quote
         ? colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), quote.change)
         : "—";
-      const changeText = quote ? colorBySign(formatSignedPercentRaw(quote.changePercent), quote.change) : "—";
+      const changeText = quote ? colorBySign(formatPercentRaw(quote.changePercent), quote.change) : "—";
       const marketCapText = quote?.marketCap != null
         ? `${formatCompact(await toBase(quote.marketCap, quote.currency || ticker.metadata.currency || baseCurrency))} ${baseCurrency}`
         : "—";

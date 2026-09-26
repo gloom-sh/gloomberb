@@ -3,7 +3,6 @@ import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from ".
 import { EarningsCallsPane, EARNINGS_CALLS_PANE_ID } from "./pane";
 import { earningsCallsHeadless } from "./headless";
 
-export { earningsCallsHeadless } from "./headless";
 
 const description =
   "Earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.";

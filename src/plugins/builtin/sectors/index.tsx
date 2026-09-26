@@ -46,7 +46,6 @@ import {
 import { loadSectorRows } from "./client";
 import { sectorsHeadless } from "./headless";
 
-export { sectorsHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would refetch the board every render. */
 const NO_SAVED_ETFS: string[] = [];

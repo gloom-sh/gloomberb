@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { daysToExpiryFrom, valueOption } from "../options-calculator/model";
 import {
-  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioValue, serializeLegs, validatePosition,
+  buildScenario, expiryRisk, optionExpirationClose, parseLegs, scenarioValue, validatePosition,
   type ScenarioLeg, type ScenarioPosition,
 } from "./model";
 
@@ -187,14 +187,12 @@ describe("scenario controls and dates", () => {
 });
 
 describe("typed legs and restored inputs", () => {
-  test("round-trips signed legs, zero premium/IV and custom multipliers", () => {
+  test("parses signed legs, zero premium/IV, custom multipliers and exponents", () => {
     const legs = parseLegs("call,100,2026-12-18,2,5.25,25; put,90,2026-12-18,-1,0,0,10");
     expect(legs[0]).toMatchObject({ quantity: 2, price: 5.25, volatility: 0.25, multiplier: 100 });
     expect(legs[1]).toMatchObject({ side: "put", quantity: -1, price: 0, volatility: 0, multiplier: 10 });
-    expect(parseLegs(serializeLegs(legs))).toEqual(legs);
     expect(validatePosition(JSON.parse(JSON.stringify(position(legs))))).toBeNull();
-    const small = [leg({ price: 1e-10, volatility: 1e-12, multiplier: 1e-8 })];
-    expect(parseLegs(serializeLegs(small))[0]).toMatchObject({ price: 1e-10, volatility: 1e-12, multiplier: 1e-8 });
+    expect(parseLegs("call,100,2026-12-18,1,1e-10,1e-10,1e-8")[0]).toMatchObject({ price: 1e-10, volatility: 1e-12, multiplier: 1e-8 });
   });
 
   test("rejects malformed leg syntax without silently coercing blanks, dates or fractions", () => {

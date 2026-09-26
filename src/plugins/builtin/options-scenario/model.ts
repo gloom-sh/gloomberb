@@ -168,16 +168,6 @@ export function parseLegs(text: string): ScenarioLeg[] {
   });
 }
 
-export function serializeLegs(legs: ScenarioLeg[]): string {
-  if (!Array.isArray(legs) || !legs.length || legs.length > MAX_SCENARIO_LEGS) throw new Error("Invalid option legs.");
-  return legs.map((leg) => {
-    const problem = legProblem(leg);
-    if (problem) throw new Error(problem);
-    return [leg.side, leg.strike, new Date(leg.expiration * 1000).toISOString().slice(0, 10),
-      leg.quantity, leg.price, leg.volatility * 100, leg.multiplier].join(",");
-  }).join(";");
-}
-
 interface PreparedPosition { position: ScenarioPosition; closes: number[]; expiryDate: number }
 
 function prepare(position: ScenarioPosition): PreparedPosition {

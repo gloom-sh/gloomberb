@@ -1,8 +1,6 @@
 import type { PluginModule } from "../plugin-module";
-import { PluginMarketplacePane, PLUGIN_MARKETPLACE_PANE_ID } from "./pane";
-
-export { PLUGIN_MARKETPLACE_PANE_ID } from "./pane";
-export { setMarketplaceHost } from "./store";
+import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
+import { PluginMarketplacePane } from "./pane";
 
 export const pluginMarketplaceModule: PluginModule = {
   panes: [

@@ -105,7 +105,3 @@ export function missingPanePlaceholderDef(paneId: string): PaneDef {
   }
   return def;
 }
-
-export function isMissingPanePlaceholder(def: PaneDef): boolean {
-  return placeholders.get(def.id) === def;
-}

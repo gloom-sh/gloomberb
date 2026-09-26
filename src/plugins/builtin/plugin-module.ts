@@ -18,7 +18,8 @@ type PluginMetadataKey =
   | "isConfigured";
 type PluginMetadata = Pick<GloomPlugin, PluginMetadataKey>;
 
-export type PluginModule = Omit<GloomPlugin, PluginMetadataKey>;
+// Brokers and declared hosts belong to external plugins; no built-in module contributes them.
+export type PluginModule = Omit<GloomPlugin, PluginMetadataKey | "broker" | "hosts">;
 
 const HANDLED_MODULE_KEYS = [
   "cliCommands",
@@ -26,10 +27,8 @@ const HANDLED_MODULE_KEYS = [
   "dispose",
   "panes",
   "paneTemplates",
-  "broker",
   "capabilities",
   "slots",
-  "hosts",
 ] as const satisfies readonly (keyof PluginModule)[];
 
 type MissingModuleKey = Exclude<keyof PluginModule, typeof HANDLED_MODULE_KEYS[number]>;
@@ -78,10 +77,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
   const panes = modules.flatMap((module) => module.panes ?? []);
   const paneTemplates = modules.flatMap((module) => module.paneTemplates ?? []);
   const capabilities = modules.flatMap((module) => module.capabilities ?? []);
-  const brokers = modules.flatMap((module) => module.broker ? [module.broker] : []);
   const slots = composeSlots(modules);
-  // The plugin reaches every host any of its modules reaches.
-  const hosts = [...new Set(modules.flatMap((module) => module.hosts ?? []))];
   let startedModules: PluginModule[] = [];
 
   return {
@@ -91,13 +87,9 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
     ...(paneTemplates.length > 0 ? { paneTemplates } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),
     ...(slots ? { slots } : {}),
-    ...(hosts.length > 0 ? { hosts } : {}),
 
     async setup(ctx: GloomPluginContext) {
       startedModules = [];
-      for (const broker of brokers) {
-        ctx.registerBroker(broker);
-      }
       for (const module of modules) {
         startedModules.push(module);
         try {

@@ -11,8 +11,6 @@ const CANVAS = 1024;
 const CENTER = CANVAS / 2;
 // Apple's icon grid: an 824px tile centered on the 1024px canvas.
 export const MACOS_ICON_TILE = 824;
-// Windows icons fill more of the canvas.
-export const WINDOWS_ICON_TILE = 896;
 
 // Dot radius as a share of the tile; the halos are multiples of it.
 const DOT_RADIUS = 0.2924;
@@ -84,8 +82,8 @@ const stops = (colors: readonly string[]) =>
 export function appIconSvg({
   accent = APP_ICON_ACCENT,
   background = APP_ICON_BACKGROUND,
-  tile = MACOS_ICON_TILE,
-}: Partial<AppIconColors> & { tile?: number } = {}): string {
+}: Partial<AppIconColors> = {}): string {
+  const tile = MACOS_ICON_TILE;
   const light = relativeLuminance(background) > 0.5;
   const shade = light ? 0.55 : 1;
   const body = squircle(tile);

@@ -15,7 +15,6 @@ import { thirteenFHeadless } from "./headless";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
-export { thirteenFHeadless } from "./headless";
 
 function queryFromOptions(options?: PaneTemplateCreateOptions): string {
   return (options?.arg ?? options?.values?.query ?? "").trim();

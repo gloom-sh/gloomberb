@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { getBrowserBuiltinPlugins } from "../src/plugins/catalog-browser";
+import { browserBuiltinPlugins } from "../src/plugins/catalog-browser";
 import type { GloomPlugin } from "../src/types/plugin";
 import { compileWebBundledPlugins } from "./web-plugins";
 
@@ -45,7 +45,7 @@ async function webBundledPlugins(): Promise<GloomPlugin[]> {
 }
 
 const byHost = new Map<string, string[]>();
-for (const plugin of [...getBrowserBuiltinPlugins(), ...await webBundledPlugins()]) {
+for (const plugin of [...browserBuiltinPlugins, ...await webBundledPlugins()]) {
   for (const host of plugin.hosts ?? []) {
     const normalized = normalizeHost(host, plugin.id);
     byHost.set(normalized, [...(byHost.get(normalized) ?? []), plugin.id]);

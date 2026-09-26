@@ -4,7 +4,7 @@ import type { CloudMarketResponse, CloudShortInterestPayload } from "../../../ap
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { fetchShortInterest } from "./client";
+import { loadShortInterest } from "./client";
 import { createShortInterestHeadless } from "./headless";
 
 const records = [
@@ -65,7 +65,7 @@ describe("short interest client", () => {
       } as CloudMarketResponse<CloudShortInterestPayload> as T;
     });
 
-    const result = await fetchShortInterest("aapl", dataApi);
+    const { records: result } = await loadShortInterest("aapl", dataApi);
 
     expect(paths).toEqual(["/market/short-interest?symbol=AAPL"]);
     expect(result[0]).toMatchObject({ sharesShort: 15_000_000, shortRatio: 3 });

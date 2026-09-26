@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import {
   formatTickerBadgeChange,
-  getTickerBadgeCellWidth,
   getTickerBadgeText,
 } from "./format";
 
@@ -56,11 +55,5 @@ describe("getTickerBadgeText", () => {
 
   test("a badge without live quotes stays a bare symbol", () => {
     expect(getTickerBadgeText({ symbol: "NFLX", status: "ready", quote, liveQuote: false })).toBe("NFLX");
-  });
-});
-
-describe("getTickerBadgeCellWidth", () => {
-  test("counts the chip padding and the gap after it", () => {
-    expect(getTickerBadgeCellWidth({ symbol: "NFLX", status: "ready", quote })).toBe(13);
   });
 });

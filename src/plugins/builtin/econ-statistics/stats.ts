@@ -520,11 +520,6 @@ export const STATS: readonly StatDef[] = [
   }),
 ];
 
-export function findStat(id: string | null | undefined): StatDef {
-  const normalized = id?.trim().toLowerCase();
-  return STATS.find((entry) => entry.id === normalized) ?? STATS[0]!;
-}
-
 export const DEFAULT_STAT_ID = STATS[0]!.id;
 
 /** Resolves shortcut arguments like `ECST cpi` onto a statistic. */

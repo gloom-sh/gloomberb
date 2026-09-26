@@ -42,12 +42,6 @@ export async function loadYieldCurve(
   return loader();
 }
 
-export function parseYieldPoints(points: YieldPoint[]): YieldPoint[] {
-  return points
-    .filter((p) => p.yield != null && Number.isFinite(p.yield))
-    .sort((a, b) => a.maturityYears - b.maturityYears);
-}
-
 /**
  * A curve has one as-of date only when all its available tenors agree.
  */

@@ -5,7 +5,7 @@ import { AssetDataRouter } from "../sources/provider-router";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import { ChartResolveCache, resolveChartSpecData } from "./resolve";
-import { parsedPriceHistoryKey, readParsedPriceHistory } from "./parsed-history-cache";
+import { parsedPriceHistoryKey, readParsedHistoryResult } from "./parsed-history-cache";
 import type { ChartSpec } from "./types";
 
 const DAY = 86_400_000, STEP = 900_000;
@@ -63,7 +63,7 @@ test("price and volume share one retained acquisition across quotes and study ed
   expect(recovery.end).toBe(NOW);
   expect(captures.every(value => value.priceHistoryResolution === "15m")).toBe(true);
   expect(captures[0]!.priceHistory).toHaveLength(data.length);
-  expect(readParsedPriceHistory(parsedPriceHistoryKey({ symbol: "RETENTION", exchange: "CCC" }, "3M", "15m"))).toBeUndefined();
+  expect(readParsedHistoryResult(parsedPriceHistoryKey({ symbol: "RETENTION", exchange: "CCC" }, "3M", "15m"))).toBeUndefined();
   const studied = { ...spec, studies: [{ id: "sma", kind: "sma" as const, inputSeriesIds: ["close"], parameters: { period: 200 }, panelId: "main", axis: "left" as const }] };
   const result = await resolveChartSpecData(studied, sources(input.dataProvider, NOW + 1000), cache, { awaitResolutionSupport: true });
   expect(calls.map(call => call.kind)).toEqual(["15m", "recovery"]);

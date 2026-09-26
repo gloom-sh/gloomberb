@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import type { TeamAccentColor, TeamSummary } from "../../../../api-client";
+import type { TeamAccentColor } from "../../../../api-client";
 import { Badge, Button, Checkbox, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes, type BoxRenderable } from "../../../../ui";
@@ -326,8 +326,4 @@ export function AccentRow({
       {children}
     </Box>
   );
-}
-
-export function teamHeaderColor(team: Pick<TeamSummary, "accentColor">): string {
-  return teamAccentHex(team.accentColor);
 }

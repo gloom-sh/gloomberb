@@ -18,7 +18,7 @@ import type {
   CommandBarFieldValue,
   CommandBarRoute,
 } from "./workflow/types";
-import type { CollectionCommandId } from "./commands/collection";
+import type { CollectionCommandId } from "./helpers";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
 import {
   acceptRootShortcutTabAction,

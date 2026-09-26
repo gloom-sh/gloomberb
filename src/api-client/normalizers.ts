@@ -31,13 +31,6 @@ export function normalizeSavedSearchResponse(
   return search;
 }
 
-export function normalizeSavedSearchHits(response: unknown): CloudSearchHit[] {
-  const hits = (response as { hits?: unknown } | null)?.hits;
-  return Array.isArray(hits)
-    ? (hits as CloudSearchHit[]).map(normalizeSearchHit)
-    : [];
-}
-
 /**
  * A wire story or filing need not name an issuer, and the server sends `ticker:
  * null` when it does not. Coerced to an empty string at the boundary so the

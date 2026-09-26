@@ -5,7 +5,7 @@ import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { normalizeBuiltinPaneStatePluginOwners } from "../../plugins/ownership";
 import { canonicalExchange, normalizeSymbol } from "../../utils/exchanges";
 import { instrumentFromTicker } from "../../market-data/request-types";
-import { buildInstrumentKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import { hasAmbiguousTickerContracts, resolveInstrumentForPane } from "./app/instrument";
 import { resolveCollectionForPane } from "./app/layout";
 import type { AppState } from "./app/types";
@@ -54,7 +54,7 @@ function normalizeHydrationTarget(target: HydrationTarget): HydrationTarget {
 }
 
 function hydrationTargetKey(target: HydrationTarget): string {
-  return buildInstrumentKey(normalizeHydrationTarget(target));
+  return instrumentIdentityKey(normalizeHydrationTarget(target));
 }
 
 function tickerInCollection(ticker: TickerRecord, collectionId: string | null): boolean {

@@ -27,11 +27,10 @@ import {
   intersectChartResolutionSupport,
   isIntradayResolution,
   normalizeChartResolutionSupport,
-  TIME_RANGE_ORDER,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "./resolution";
-import type { TimeRange } from "./range";
+import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
@@ -473,7 +472,7 @@ function calculationBounds(
 
 function trailingRangeForStart(start: number | null, referenceDate: Date): TimeRange {
   if (start === null) return "ALL";
-  for (const range of TIME_RANGE_ORDER) {
+  for (const range of TIME_RANGES) {
     if (range === "ALL" || start >= subtractTimeRange(referenceDate, range).getTime()) return range;
   }
   return "ALL";
@@ -899,7 +898,7 @@ async function loadPriceHistory(
       CHART_RESOLUTION_STEP_MS[resolution] > CHART_RESOLUTION_STEP_MS[request.resolution]
       && isResolutionFineEnoughForMarketPeriod(resolution, source.period)
       && request.support.some((entry) => entry.resolution === resolution
-        && TIME_RANGE_ORDER.indexOf(entry.maxRange) >= TIME_RANGE_ORDER.indexOf(request.fallbackRange))) : undefined;
+        && TIME_RANGES.indexOf(entry.maxRange) >= TIME_RANGES.indexOf(request.fallbackRange))) : undefined;
   if (coarser) {
     try {
       const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",

@@ -10,8 +10,6 @@ import {
 // The pure cohort parser/merge is shared with the Cloud adapter. Keep its
 // source in parity; this module owns application type/context boundaries.
 export * from "./reported-operating-result";
-export const REPORTED_OPERATING_FIELDS = OPERATING_FIELDS;
-export const PROVIDER_OPERATING_FIELDS = OPERATING_PROVIDER_FIELDS;
 type Period = "annual" | "quarterly";
 
 export function reportedOperatingCohort(row: FinancialStatement | undefined, period?: Period) {

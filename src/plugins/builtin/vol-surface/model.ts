@@ -414,8 +414,6 @@ export interface SurfaceCell {
   fitResidual: number | null;
 }
 
-export type SurfaceGridCell = SurfaceCell;
-
 export interface SurfaceGridRow {
   expiration: number | null;
   years: number;

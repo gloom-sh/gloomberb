@@ -148,13 +148,6 @@ export function thesesCovering(theses: readonly CloudThesis[], symbol: string | 
   return theses.filter((thesis) => heldSymbols(thesis.document).includes(upper));
 }
 
-/** Worst health among the theses covering a symbol, for the portfolio dot. */
-export function symbolHealth(theses: readonly CloudThesis[], symbol: string): ThesisHealth | null {
-  const covering = thesesCovering(theses, symbol).filter((thesis) => thesis.status !== "closed");
-  if (covering.length === 0) return null;
-  return covering.map((thesis) => thesis.health).sort((a, b) => HEALTH_ORDER[a] - HEALTH_ORDER[b])[0]!;
-}
-
 export type ThesisAttention = "signals" | "broken" | "weakening" | "review" | "catalyst" | null;
 
 /** The one reason a thesis sits at the top of the board, if any. */

@@ -13,7 +13,7 @@ import { parseHistorySession } from "../../market-data/history-session";
 import { getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { CANONICAL_EXCHANGE_ALIASES, canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { canonicalHistoryInterval } from "../history-retention";
-import { normalizeSubUnitCurrency } from "./mappers";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { getYahooSymbol, getYahooSymbolsToTry } from "./symbols";
 import type { ChartResult } from "./types";
 import { matchesYahooChartInterval } from "./yahoo-chart-interval";
@@ -106,20 +106,6 @@ export function getYahooChartResolutionCapabilities(): ManualChartResolution[] {
   return YAHOO_RESOLUTION_SUPPORT.map((entry) => entry.resolution);
 }
 
-export async function loadYahooPriceHistory({
-  ticker,
-  exchange,
-  range,
-  fetchChart,
-}: {
-  ticker: string;
-  exchange: string;
-  range: TimeRange;
-  fetchChart: YahooChartFetcher;
-}): Promise<PricePoint[]> {
-  return (await loadYahooPriceHistoryWithMetadata({ ticker, exchange, range, fetchChart })).points;
-}
-
 export async function loadYahooPriceHistoryWithMetadata({ ticker, exchange, range, fetchChart }: {
   ticker: string; exchange: string; range: TimeRange; fetchChart: YahooChartFetcher;
 }): Promise<PriceHistoryResult> {
@@ -131,12 +117,6 @@ export async function loadYahooPriceHistoryWithMetadata({ ticker, exchange, rang
     resolution: params.interval,
     fetchChart,
   });
-}
-
-export async function loadYahooPriceHistoryForResolution(
-  input: Parameters<typeof loadYahooPriceHistoryForResolutionWithMetadata>[0],
-): Promise<PricePoint[]> {
-  return (await loadYahooPriceHistoryForResolutionWithMetadata(input)).points;
 }
 
 export async function loadYahooPriceHistoryForResolutionWithMetadata({
@@ -164,7 +144,7 @@ export async function loadYahooPriceHistoryForResolutionWithMetadata({
       const { meta, history } = result;
       const session = yahooHistorySession(ticker, exchange, symbol, resolution, result);
 
-      const { divisor } = normalizeSubUnitCurrency(meta.currency || "USD");
+      const { divisor } = resolveCurrencyUnit(meta.currency || "USD");
       if (divisor !== 1) {
         for (const point of history) {
           point.close /= divisor;

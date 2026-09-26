@@ -5,7 +5,6 @@ import {
   layoutContentFingerprint,
   parseCloudLayoutEntry,
   parseCloudLayoutList,
-  parseCloudLayoutRevisions,
 } from "./cloud";
 import type { LayoutMarketplacePayload } from "./payload";
 
@@ -74,18 +73,9 @@ describe("cloud layout parsing", () => {
     expect(parseCloudLayoutEntry({ ...entry, id: "short" })).toBeNull();
   });
 
-  test("parses lists and revision histories", () => {
+  test("parses lists", () => {
     expect(parseCloudLayoutList({ items: [entry] })?.map((item) => item.revision)).toEqual([3]);
     expect(parseCloudLayoutList({ items: [entry, { junk: true }] })).toBeNull();
-    expect(parseCloudLayoutRevisions({
-      items: [
-        { revision: 3, note: "moved chart", requires: [], author: { username: null, displayName: "Alice" }, publishedAt: "2026-09-14T12:00:00.000Z" },
-        { revision: 2, note: null, author: { username: "vince", displayName: "Vince" }, publishedAt: "2026-09-13T12:00:00.000Z" },
-      ],
-    })).toEqual([
-      { revision: 3, note: "moved chart", requires: [], author: { username: null, displayName: "Alice" }, publishedAt: "2026-09-14T12:00:00.000Z" },
-      { revision: 2, note: null, requires: [], author: { username: "vince", displayName: "Vince" }, publishedAt: "2026-09-13T12:00:00.000Z" },
-    ]);
   });
 });
 

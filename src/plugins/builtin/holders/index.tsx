@@ -3,7 +3,6 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { holdersHeadless } from "./headless";
 import { HoldersView } from "./pane";
 
-export { holdersHeadless } from "./headless";
 
 export const holdersModule: PluginModule = {
   setup(ctx) {

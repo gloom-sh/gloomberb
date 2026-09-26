@@ -121,10 +121,6 @@ export function resolveDatedReturns(history: PricePoint[]): ReturnHistoryResult 
   return { returns, integrity: null };
 }
 
-export function computeDatedReturns(history: PricePoint[]): DatedReturn[] {
-  return resolveDatedReturns(history).returns;
-}
-
 function validReturnInterval(point: DatedReturn): boolean {
   return typeof point.startDateKey === "string" && point.startDateKey < point.dateKey && Number.isFinite(point.value);
 }
@@ -168,28 +164,6 @@ function alignReturnSeries(assetReturns: DatedReturn[], marketReturns: DatedRetu
 export function computeDatedBeta(assetReturns: DatedReturn[], marketReturns: DatedReturn[]): number | null {
   const aligned = alignReturnSeries(assetReturns, marketReturns);
   return computeBeta(aligned.asset, aligned.market);
-}
-
-export interface SectorAllocation {
-  sector: string;
-  weight: number;
-  value: number;
-}
-
-export function computeSectorAllocation(
-  positions: Array<{ sector: string; marketValue: number }>,
-): SectorAllocation[] {
-  const sectorMap = new Map<string, number>();
-  let total = 0;
-  for (const pos of positions) {
-    const sector = pos.sector || "Unknown";
-    sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + pos.marketValue);
-    total += pos.marketValue;
-  }
-  if (total === 0) return [];
-  return [...sectorMap.entries()]
-    .map(([sector, value]) => ({ sector, weight: value / total, value }))
-    .sort((a, b) => b.weight - a.weight || a.sector.localeCompare(b.sector));
 }
 
 export function hasPortfolioPosition(ticker: TickerRecord, portfolioId: string): boolean {

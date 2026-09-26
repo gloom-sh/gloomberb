@@ -17,7 +17,7 @@ import {
 } from "./aggregation";
 import { FINANCIAL_SUB_TABS } from "./schema";
 
-export { buildPreviousStatementMap, computeTTM } from "./aggregation";
+export { computeTTM } from "./aggregation";
 export { FINANCIAL_SUB_TABS } from "./schema";
 export type { FinancialPeriod } from "./aggregation";
 

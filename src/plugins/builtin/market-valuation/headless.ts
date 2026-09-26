@@ -2,13 +2,11 @@ import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
-  HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatNumber } from "../../../utils/format";
 import {
   createValuationSeriesLoader,
   loadValuationBundle,
-  type ValuationSeriesLoader,
 } from "./client";
 import type { ValuationRangeId } from "./defs";
 import { DEFAULT_INDICATOR_ID, INDICATORS, resolveIndicatorArg } from "./indicators";
@@ -120,56 +118,38 @@ export function projectValuationHeadlessBundle(
   };
 }
 
-export interface MarketValuationHeadlessDependencies {
-  loadBundle(args: HeadlessPaneLoadArgs, loader: ValuationSeriesLoader): Promise<ValuationBundle>;
-}
-
-const defaultDependencies: MarketValuationHeadlessDependencies = {
-  loadBundle: (args, loader) => {
+export const marketValuationHeadless: HeadlessPaneDefinition<"bundle"> = {
+  shape: "bundle",
+  argument: {
+    kind: "free-text",
+    placeholder: "indicator",
+    description: "Optional valuation indicator id, label, or prefix.",
+    optional: true,
+  },
+  options: [{
+    key: "range",
+    description: "History window used by the selected indicator view.",
+    type: "enum",
+    values: [{ value: "10Y" }, { value: "25Y" }, { value: "ALL", aliases: ["all"] }],
+    defaultValue: "25Y",
+  }],
+  describe: (args) => `Market Valuation | ${String(args.options.range)}`,
+  async load(args, ctx) {
     const requested = typeof args.argument === "string" ? resolveIndicatorArg(args.argument) : null;
-    return loadValuationBundle({
-      loader,
+    if (args.argument && !requested) {
+      throw new Error(
+        `Unknown valuation indicator "${String(args.argument)}". Use one of: ${INDICATORS.map(({ id }) => id).join(", ")}.`,
+      );
+    }
+    const range = args.options.range as ValuationRangeId;
+    const bundle = await loadValuationBundle({
+      loader: createValuationSeriesLoader(createCloudSourceDeps(ctx.apiClient)),
       ...(requested ? { indicators: [requested] } : {}),
     });
+    return projectValuationHeadlessBundle(
+      bundle,
+      range,
+      requested?.id ?? DEFAULT_INDICATOR_ID,
+    );
   },
 };
-
-export function createMarketValuationHeadless(
-  dependencies: MarketValuationHeadlessDependencies = defaultDependencies,
-): HeadlessPaneDefinition<"bundle"> {
-  return {
-    shape: "bundle",
-    argument: {
-      kind: "free-text",
-      placeholder: "indicator",
-      description: "Optional valuation indicator id, label, or prefix.",
-      optional: true,
-    },
-    options: [{
-      key: "range",
-      description: "History window used by the selected indicator view.",
-      type: "enum",
-      values: [{ value: "10Y" }, { value: "25Y" }, { value: "ALL", aliases: ["all"] }],
-      defaultValue: "25Y",
-    }],
-    describe: (args) => `Market Valuation | ${String(args.options.range)}`,
-    async load(args, ctx) {
-      const requested = typeof args.argument === "string" ? resolveIndicatorArg(args.argument) : null;
-      if (args.argument && !requested) {
-        throw new Error(
-          `Unknown valuation indicator "${String(args.argument)}". Use one of: ${INDICATORS.map(({ id }) => id).join(", ")}.`,
-        );
-      }
-      const range = args.options.range as ValuationRangeId;
-      const loader = createValuationSeriesLoader(createCloudSourceDeps(ctx.apiClient));
-      const bundle = await dependencies.loadBundle(args, loader);
-      return projectValuationHeadlessBundle(
-        bundle,
-        range,
-        requested?.id ?? DEFAULT_INDICATOR_ID,
-      );
-    },
-  };
-}
-
-export const marketValuationHeadless = createMarketValuationHeadless();

@@ -10,10 +10,8 @@ import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from ".
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
-import type { TickerFinancials } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
-  normalizeSavedSearchHits,
   normalizeSavedSearchResponse,
   normalizeSearchResponse,
   normalizeTweetSearchResponse,
@@ -44,12 +42,10 @@ import {
   cloudMarketSymbolPath,
   cloudNewsPath,
   cloudOptionsChainPath,
-  cloudSavedSearchHitsPath,
   cloudSavedSearchPath,
   cloudSavedSearchesPath,
   cloudSearchDocumentPath,
   cloudSearchPath,
-  cloudStatementsPath,
   cloudTickerTweetsPath,
   cloudTweetSearchPath,
   type CloudCdsParams,
@@ -68,7 +64,6 @@ import type {
   CloudAnalystResearchPayload,
   CloudShortInterestPayload,
   CloudCdsResponse,
-  CloudCompanyProfile,
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
   CloudEarningsTranscriptPayload,
@@ -86,7 +81,6 @@ import type {
   CloudEquityDiagnosticResult,
   CloudFredSeriesPayload,
   CloudShillerPayload,
-  CloudFundamentals,
   CloudFinancialsPayload,
   CloudHoldersPayload,
   CloudMarketBatchPayload,
@@ -102,7 +96,6 @@ import type {
   CloudSearchDocType,
   CloudSearchDocument,
   CloudSearchDocumentResponse,
-  CloudSearchHit,
   CloudSearchResponse,
   CloudSecContentResponse,
   CloudSecDocumentsResponse,
@@ -214,20 +207,6 @@ export class CloudDataApi {
     );
   }
 
-  async getCloudProfile(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudCompanyProfile>> {
-    return this.requestMarketSymbol("/market/profile", symbol, exchange);
-  }
-
-  async getCloudFundamentals(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudFundamentals>> {
-    return this.requestMarketSymbol("/market/fundamentals", symbol, exchange);
-  }
-
   async getCloudFinancials(
     symbol: string,
     exchange?: string,
@@ -278,22 +257,6 @@ export class CloudDataApi {
       symbol,
       exchange,
     );
-  }
-
-  async getCloudStatements(
-    symbol: string,
-    exchange?: string,
-    period: "annual" | "quarterly" | "both" = "both",
-  ): Promise<
-    CloudMarketResponse<
-      Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
-    >
-  > {
-    return this.request<
-      CloudMarketResponse<
-        Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
-      >
-    >(cloudStatementsPath(symbol, exchange, period));
   }
 
   async getCloudHistory(
@@ -593,17 +556,6 @@ export class CloudDataApi {
 
   async deleteCloudSavedSearch(id: string): Promise<void> {
     await this.request<void>(cloudSavedSearchPath(id), { method: "DELETE" });
-  }
-
-  async getCloudSavedSearchHits(
-    id: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<CloudSearchHit[]> {
-    return normalizeSavedSearchHits(
-      await this.request<unknown>(cloudSavedSearchHitsPath(id), {
-        signal: options?.signal,
-      }),
-    );
   }
 
   async getCloudNews(
