@@ -21,17 +21,6 @@ export class CloudCollectionsApi {
     });
   }
 
-  async updateTeamCollection(teamId: string, collectionId: string, patch: { name?: string; currency?: string | null }): Promise<TeamCollection> {
-    return this.request(`/teams/${encodeURIComponent(teamId)}/collections/${encodeURIComponent(collectionId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    });
-  }
-
-  async deleteTeamCollection(teamId: string, collectionId: string): Promise<void> {
-    await this.request(`/teams/${encodeURIComponent(teamId)}/collections/${encodeURIComponent(collectionId)}`, { method: "DELETE" });
-  }
-
   async putTeamCollectionItem(
     teamId: string,
     collectionId: string,

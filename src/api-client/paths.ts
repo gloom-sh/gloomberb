@@ -153,16 +153,6 @@ export function cloudOptionsChainPath(
   return appendQuery("/market/options", search);
 }
 
-export function cloudStatementsPath(
-  symbol: string,
-  exchange: string | undefined,
-  period: "annual" | "quarterly" | "both",
-): string {
-  const search = new URLSearchParams({ symbol, period });
-  if (exchange) search.set("exchange", exchange);
-  return appendQuery("/market/statements", search);
-}
-
 export function cloudHistoryPath(
   symbol: string,
   exchange: string,
@@ -436,10 +426,6 @@ export function cloudSavedSearchesPath(): string {
 
 export function cloudSavedSearchPath(id: string): string {
   return `/cloud/search/saved/${encodeURIComponent(id)}`;
-}
-
-export function cloudSavedSearchHitsPath(id: string): string {
-  return `${cloudSavedSearchPath(id)}/hits`;
 }
 
 export function cloudNewsPath(params: CloudNewsParams = {}): string {

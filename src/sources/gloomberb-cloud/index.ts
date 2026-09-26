@@ -2,6 +2,7 @@ import { assertTradingPriceHistory } from "../listing-history";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
+import { subtractTimeRange } from "../../time-series/date-window";
 import { hasShellCoverageRestriction, HistoryCoverageError, isShellLondonTarget, SHELL_VERIFIED_LINEAGE_START } from "../history-coverage";
 import {
   normalizeChartResolutionSupport,
@@ -50,7 +51,6 @@ import {
 import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
   formatCloudDateTime,
-  getRangeStartDate,
   isEmptyCloudStatus,
   mapBatchError,
   mapCloudFinancials,
@@ -547,7 +547,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       () => apiClient.getCloudHistory(target.symbol, exchange, request),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, target.symbol, exchange, request.interval, getRangeStartDate(range, new Date()));
+    return mapCloudPriceHistory(response, target.symbol, exchange, request.interval, subtractTimeRange(new Date(), range));
   }
 
   async getPriceHistoryForResolution(
@@ -569,7 +569,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(resolution);
     const endDate = new Date();
-    const startDate = getRangeStartDate(bufferRange, endDate);
+    const startDate = subtractTimeRange(endDate, bufferRange);
     const includeTime = /^\d+(min|h)$/i.test(interval);
     const response = await withCloudFallback(
       () => apiClient.getCloudHistory(target.symbol, exchange, {
