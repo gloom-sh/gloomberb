@@ -1,7 +1,5 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext } from "../../../types/headless";
 import type { QuoteMetadata } from "../../../types/financials";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { AssetDataRouter } from "../../../sources/provider-router";
@@ -9,6 +7,7 @@ import { loadChartPaneModel } from "./headless";
 import { buildPriceChartPreset } from "./presets";
 import { ChartResolveCache, resolveChartSpecData } from "../../../time-series/resolve";
 import { AppPersistence } from "../../../data/app-persistence";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 test("historical quote metadata survives headless export and snapshot reload without a current price", async () => {
   for (const [symbol, exchange, currency, instrumentType, unit] of [
@@ -33,8 +32,7 @@ test("historical quote metadata survives headless export and snapshot reload wit
     const routed = new AssetDataRouter(provider);
     const spec = buildPriceChartPreset(exchange ? `${symbol}:${exchange}` : symbol);
     spec.viewport = { range: "1M", resolution: "1d", dateWindow: { start: "2026-01-15", end: "2026-01-16" } };
-    const context: HeadlessPaneContext = { marketData: routed, apiClient: {} as HeadlessPaneContext["apiClient"],
-      config: createDefaultConfig("/tmp/metadata-test-unused"), signal: new AbortController().signal };
+    const context = createTestHeadlessContext({ marketData: routed });
     const model = await loadChartPaneModel(spec, context);
     expect(model.series[0]?.unit).toBe(unit);
     expect(model.series[0]?.points.map(point => point.value)).toEqual([1.1, 1.2]);
@@ -80,7 +78,7 @@ test("direct and captured metadata cannot cross identities or lose known fields 
     const spec = buildPriceChartPreset("EURUSD=X");
     spec.viewport.dateWindow = { start: "2026-01-15", end: "2026-01-16" };
     spec.viewport.resolution = "1d";
-    const model = await loadChartPaneModel(spec, { marketData: provider, apiClient: {} as HeadlessPaneContext["apiClient"], config: createDefaultConfig("/tmp/metadata-unused"), signal: new AbortController().signal });
+    const model = await loadChartPaneModel(spec, createTestHeadlessContext({ marketData: provider }));
     expect(model.series[0]?.unit).toBe(expected);
     expect(model.series[0]?.points.map(point => point.value)).toEqual([1.16]);
     const retained = model.snapshot.financials[0]?.[1].quoteMetadata;
@@ -113,8 +111,7 @@ test("legacy and optional metadata paths reject wrong or absent listing identity
         getDetailedPriceHistory: async () => history });
       const spec = buildPriceChartPreset("EURUSD=X:CCY");
       spec.viewport = { range: "1M", resolution: "1d", dateWindow: { start: "2026-01-15", end: "2026-01-16" } };
-      const model = await loadChartPaneModel(spec, { marketData: provider, apiClient: {} as HeadlessPaneContext["apiClient"],
-        config: createDefaultConfig("/tmp/metadata-identity-unused"), signal: new AbortController().signal });
+      const model = await loadChartPaneModel(spec, createTestHeadlessContext({ marketData: provider }));
       expect(model.series[0]?.unit).toBe(expected);
       expect(model.series[0]?.points.map(point => point.value)).toEqual([1.16]);
       expect(model.snapshot.financials[0]?.[1].quote).toBeUndefined();
@@ -133,7 +130,7 @@ test("existing complete quote facts avoid an additional metadata request", async
   const spec = buildPriceChartPreset("AAPL");
   spec.viewport.dateWindow = { start: "2026-01-15", end: "2026-01-16" };
   spec.viewport.resolution = "1d";
-  const model = await loadChartPaneModel(spec, { marketData: provider, apiClient: {} as HeadlessPaneContext["apiClient"], config: createDefaultConfig("/tmp/metadata-unused"), signal: new AbortController().signal });
+  const model = await loadChartPaneModel(spec, createTestHeadlessContext({ marketData: provider }));
   expect(model.series[0]?.unit).toBe("USD/share");
   expect(model.series[0]?.points.map(point => point.value)).toEqual([100]);
   expect(metadataCalls).toBe(0);

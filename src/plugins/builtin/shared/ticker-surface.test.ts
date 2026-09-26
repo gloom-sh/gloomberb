@@ -1,14 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createTickerSurfacePaneTemplate } from "./ticker-surface";
-import type { PaneTemplateContext } from "../../../types/plugin";
+import { createTestTemplateContext } from "../../../test-support/headless";
 
-const context: PaneTemplateContext = {
-  config: {} as PaneTemplateContext["config"],
-  layout: { dockRoot: null, instances: [], floating: [], detached: [] },
-  focusedPaneId: null,
-  activeTicker: null,
-  activeCollectionId: null,
-};
+const context = createTestTemplateContext();
 
 describe("createTickerSurfacePaneTemplate", () => {
   test("creates a stable ticker-specific instance id for shortcut pane reuse", () => {

@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { statsCache } from "./cache";
 import { econStatisticsHeadless } from "./headless";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 beforeEach(() => statsCache.reset());
 afterEach(() => statsCache.reset());
@@ -35,14 +34,7 @@ describe("economic statistics headless model", () => {
         return { seriesId, observations: monthlyCpi() };
       },
     } as unknown as HeadlessPaneContext["apiClient"];
-    const context: HeadlessPaneContext = {
-      marketData: createTestDataProvider(),
-      apiClient,
-      config: createDefaultConfig("/tmp/gloomberb-headless-econ"),
-      signal: new AbortController().signal,
-    };
-
-    const result = await econStatisticsHeadless.load(args, context);
+    const result = await econStatisticsHeadless.load(args, createTestHeadlessContext({ apiClient }));
 
     expect(requested).toEqual(["CPIAUCNS"]);
     expect(result.sections.map(({ title }) => title)).toEqual(["Inflation", "CPI"]);

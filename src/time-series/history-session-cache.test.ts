@@ -9,7 +9,7 @@ import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "../plugi
 import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
 import { fetchHistoryResult } from "../sources/history-result";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { createDefaultConfig } from "../types/config";
+import { createTestHeadlessContext } from "../test-support/headless";
 
 const time = (value: string) => Date.parse(value);
 const NOW = time("2026-09-22T12:42:00Z");
@@ -199,8 +199,7 @@ test("GIP captures preserve source session metadata separately from requested se
     const spec = chart();
     spec.viewport.range = "1D";
     spec.studies = [];
-    const context: HeadlessPaneContext = { marketData: dataProvider, settings: { chartSpec: spec },
-      apiClient: {} as HeadlessPaneContext["apiClient"], config: createDefaultConfig(":memory:"), signal: new AbortController().signal };
+    const context = createTestHeadlessContext({ marketData: dataProvider, settings: { chartSpec: spec } });
     const args = { argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"],
       options: requestedSession ? { session: requestedSession } : {} };
     const definition = chartHeadless("graph-intraday-price-pane");
@@ -229,8 +228,7 @@ test("GIP snapshot replay retains study warmup outside the visible session", asy
     spec.studies.push({ id: "ema", kind: "ema", inputSeriesIds: ["close"], parameters: { period: 20 }, panelId: "main", axis: "left" });
     spec.viewport.range = explicitWindow ? "1D" : "1W";
     if (explicitWindow) spec.viewport.dateWindow = { start: "2026-09-21T13:30:00Z", end: "2026-09-21T19:45:00Z" };
-    const context: HeadlessPaneContext = { marketData: dataProvider, settings: { chartSpec: spec },
-      apiClient: {} as HeadlessPaneContext["apiClient"], config: createDefaultConfig(":memory:"), signal: new AbortController().signal };
+    const context = createTestHeadlessContext({ marketData: dataProvider, settings: { chartSpec: spec } });
     const args = { argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options: {} };
     const definition = chartHeadless("graph-intraday-price-pane");
     const model = await definition.load(args, context) as ChartPaneModel;

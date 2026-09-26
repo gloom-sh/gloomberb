@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
 import type { AnalystResearchData } from "../../../types/financials";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createAnalystResearchHeadless } from "./analyst-headless";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const data: AnalystResearchData = {
   symbol: "AMD",
@@ -19,15 +19,6 @@ const data: AnalystResearchData = {
   revenueEstimates: [],
 };
 
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-analyst"),
-    signal: new AbortController().signal,
-  };
-}
-
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
     rawArgument: "AMD",
@@ -42,7 +33,7 @@ describe("analyst research headless model", () => {
     const headless = createAnalystResearchHeadless({ loadData: async () => ({ ...data,
       stale: true, fetchedAt: "2026-09-09T16:00:00Z", priceTarget: { average: 0, current: 2, currency: "USD" },
     }) });
-    const result = await headless.load(args(), context());
+    const result = await headless.load(args(), createTestHeadlessContext());
     expect(result.sections[0]?.entries?.slice(0, 3)).toMatchObject([
       { label: "Average target", value: 0 }, { label: "Target upside", value: -1 }, { label: "Upside reference price", value: 2 },
     ]);
@@ -52,7 +43,7 @@ describe("analyst research headless model", () => {
   test("projects summary and ratings while applying sort and limit", async () => {
     const headless = createAnalystResearchHeadless({ loadData: async () => data });
 
-    const latest = await headless.load(args({ limit: 1 }), context());
+    const latest = await headless.load(args({ limit: 1 }), createTestHeadlessContext());
     expect(latest.sections[0]?.title).toBe("Summary");
     const entries = "entries" in latest.sections[0]! ? latest.sections[0]!.entries : [];
     expect(entries.slice(0, 2)).toMatchObject([
@@ -64,7 +55,7 @@ describe("analyst research headless model", () => {
       rows: [{ firm: "Alpha", currentPriceTarget: 210, priorPriceTarget: 180 }],
     });
 
-    const byFirm = await headless.load(args({ sort: "firm", order: "desc", limit: 2 }), context());
+    const byFirm = await headless.load(args({ sort: "firm", order: "desc", limit: 2 }), createTestHeadlessContext());
     const ratings = "rows" in byFirm.sections[1]! ? byFirm.sections[1]!.rows : [];
     expect(ratings.map((row) => row.firm)).toEqual(["Beta", "Alpha"]);
   });
@@ -73,7 +64,7 @@ describe("analyst research headless model", () => {
 test("default analyst loader keeps remembered venue and returns unknown currency/counts without defaults", async () => {
   const calls: Array<[string, string | undefined]> = [];
   const headless = createAnalystResearchHeadless();
-  const ctx = context();
+  const ctx = createTestHeadlessContext();
   ctx.resolveInstrument = async (symbol) => ({ symbol, exchange: "LSE" });
   ctx.marketData = createTestDataProvider({ getAnalystResearch: async (symbol, exchange) => {
     calls.push([symbol, exchange]);

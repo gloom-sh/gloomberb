@@ -1,19 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  GloomPluginContext,
-  PaneTemplateContext,
-  PaneTemplateDef,
-} from "../../../types/plugin";
+import type { GloomPluginContext, PaneTemplateDef } from "../../../types/plugin";
+import { createTestTemplateContext } from "../../../test-support/headless";
 import { createFeed } from "./model";
 import { registerTwitterFeedFeature } from "./registration";
 
-const context: PaneTemplateContext = {
-  config: {} as PaneTemplateContext["config"],
-  layout: { dockRoot: null, instances: [], floating: [], detached: [] },
-  focusedPaneId: null,
-  activeTicker: null,
-  activeCollectionId: null,
-};
+const context = createTestTemplateContext();
 
 function twitterTemplate(): PaneTemplateDef {
   let template: PaneTemplateDef | null = null;

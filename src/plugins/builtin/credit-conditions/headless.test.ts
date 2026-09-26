@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneContext } from "../../../types/plugin";
+import { createTestHeadlessArgs } from "../../../test-support/headless";
 import { createCreditConditionsHeadless } from "./headless";
 
-const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
 describe("credit conditions headless model", () => {
   test("returns normalized spread rows and partial errors", async () => {
@@ -27,7 +27,7 @@ describe("credit conditions headless model", () => {
         errors: ["one series unavailable"],
       }),
     });
-    const result = await headless.load(args, {} as HeadlessPaneContext);
+    const result = await headless.load(createTestHeadlessArgs(), {} as HeadlessPaneContext);
 
     expect(result.rows).toEqual([expect.objectContaining({ label: "US IG", oasBp: 82.4 })]);
     expect(result.errors).toEqual(["one series unavailable"]);

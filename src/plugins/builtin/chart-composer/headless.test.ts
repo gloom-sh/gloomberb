@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext } from "../../../types/headless";
 import { chartHeadless, type ChartPaneModel } from "./headless";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset, setPairStudies } from "./presets";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]
   .flatMap((date, day) => [0, 1].map((bar) => ({
@@ -14,7 +13,7 @@ const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-0
 function fixture() {
   const calls: Array<{ kind: string; start?: Date; end?: Date; range?: string; resolution?: string }> = [];
   const spec = buildIntradayPriceChartPreset("AAPL:NASDAQ");
-  const context: HeadlessPaneContext = {
+  const context = createTestHeadlessContext({
     marketData: createTestDataProvider({
       getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
       getQuote: async () => ({ symbol: "AAPL", price: 106, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() }),
@@ -27,11 +26,8 @@ function fixture() {
         return history.filter((point) => point.date >= start && point.date < end);
       },
     }),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloom-headless-chart"),
-    signal: new AbortController().signal,
     settings: { chartSpec: spec },
-  };
+  });
   return { spec, context, calls, load: async (options = {}) => await chartHeadless("graph-intraday-price-pane").load({
     argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options,
   }, context) as ChartPaneModel };

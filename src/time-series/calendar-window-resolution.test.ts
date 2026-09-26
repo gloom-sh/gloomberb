@@ -4,18 +4,15 @@ import { buildComparisonChartPreset } from "../plugins/builtin/chart-composer/pr
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { parseChartSpec, serializeChartSpec } from "../plugins/builtin/chart-composer/chart-spec";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig } from "../types/config";
 import type { HeadlessPaneContext } from "../types/headless";
 import { ChartResolveCache, resolveChartSpecData } from "./resolve";
 import type { ChartResolutionSupport } from "./resolution";
+import { createTestHeadlessContext } from "../test-support/headless";
 
 const history = Array.from({ length: 368 }, (_, index) => ({
   date: new Date(Date.UTC(2025, 8, 14 + index)), close: 100 + index,
 }));
-const context = (marketData: HeadlessPaneContext["marketData"]): HeadlessPaneContext => ({
-  marketData, apiClient: {} as HeadlessPaneContext["apiClient"],
-  config: createDefaultConfig("/tmp/gloom-calendar-window"), signal: new AbortController().signal,
-});
+const context = (marketData: HeadlessPaneContext["marketData"]) => createTestHeadlessContext({ marketData });
 const noLive = createTestDataProvider({
   getQuote: async () => { throw Error("Unexpected live quote"); },
   getTickerFinancials: async () => { throw Error("Unexpected live financials"); },
