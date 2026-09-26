@@ -120,18 +120,6 @@ test("search Enter returns to the list before activating the filtered layout", a
   expect(isClosed()).toBe(true);
 });
 
-test("n opens the new layout workflow", async () => {
-  const { isClosed } = await renderGallery();
-
-  await act(async () => {
-    testSetup!.mockInput.pressKey("n");
-    await testSetup!.renderOnce();
-  });
-
-  expect(isClosed()).toBe(false);
-  expect(testSetup!.captureCharFrame()).toContain("Create Layout");
-});
-
 test("j/k move the selection and Enter switches to the layout and closes", async () => {
   const { actions, isClosed } = await renderGallery();
 

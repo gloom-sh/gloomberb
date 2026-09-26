@@ -15,17 +15,6 @@ interface DialogState {
 
 let nextDialogId = 1;
 
-export function isDialogDismissKey(event: Pick<KeyboardEvent, "key" | "isComposing">): boolean {
-  return !event.isComposing && (event.key === "Escape" || event.key === "Esc");
-}
-
-export function shouldFocusDialogContainer(
-  dialog: Pick<HTMLElement, "contains">,
-  activeElement: Element | null,
-): boolean {
-  return activeElement === null || !dialog.contains(activeElement);
-}
-
 /**
  * Dialogs stack, as they do in the terminal: a dialog opened from another one
  * (a field editor from pane settings) sits on top, and closing it returns to
@@ -80,10 +69,8 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
     if (!topmost) return;
     const frame = requestAnimationFrame(() => {
       const dialogElement = dialogElementsRef.current.get(topmost.id);
-      if (
-        dialogElement
-        && shouldFocusDialogContainer(dialogElement, document.activeElement)
-      ) {
+      // Leave focus alone when the dialog content already owns it.
+      if (dialogElement && !dialogElement.contains(document.activeElement)) {
         dialogElement.focus({ preventScroll: true });
       }
     });
@@ -93,7 +80,8 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!topmost) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
-      if (!isDialogDismissKey(event)) return;
+      // Older WebViews report Escape as "Esc".
+      if (event.isComposing || (event.key !== "Escape" && event.key !== "Esc")) return;
       // A menu open inside the dialog (a select field) closes first; the next
       // Esc closes the dialog.
       if (document.querySelector(".gloom-popover")) return;

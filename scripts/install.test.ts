@@ -128,14 +128,8 @@ describe("install.sh architecture detection", () => {
 
     expect(run.downloadLog).toContain("gloomberb-darwin-x64.gz");
     expect(run.downloadLog).not.toContain("stable-macos-arm64");
-  });
-
-  test("explains itself when a release ships no Intel asset", async () => {
-    const run = await runInstall({
-      unameSystem: "Darwin",
-      unameMachine: "x86_64",
-    });
-
+    // Downloads always fail here, so this also covers a release that ships no
+    // Intel asset: the installer has to explain itself.
     expect(run.exitCode).not.toBe(0);
     expect(run.stderr).toContain("gloomberb-darwin-x64.gz is not available");
     expect(run.stderr).toContain("https://term.gloom.sh");

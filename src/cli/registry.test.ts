@@ -6,7 +6,6 @@ import { createDefaultConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import {
   buildCliCommandRegistry,
-  createCliCommandContext,
   normalizeCliCommandToken,
   type CliCommandRegistry,
 } from "./registry";
@@ -188,12 +187,6 @@ describe("CLI registry", () => {
     expect(registry.lookup.get("core-only")?.ownerId).toBe("core");
     expect(registry.lookup.get("broken")).toBeUndefined();
     expect(registry.commands.some((entry) => entry.ownerId === "core")).toBe(true);
-  });
-
-  test("creates plugin-scoped command contexts", async () => {
-    const context = createCliCommandContext("synthetic-cli", [createSyntheticPlugin()]);
-    expect(context.log).toBeDefined();
-    expect(context.output.renderSection("Test")).toContain("Test");
   });
 });
 

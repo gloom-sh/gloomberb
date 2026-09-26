@@ -194,7 +194,7 @@ describe("pane selectors", () => {
     expect(testSetup.captureCharFrame()).toContain("table:1");
   });
 
-  test("rerenders theme hook consumers when the theme changes", async () => {
+  test("theme hook consumers follow theme changes and previews", async () => {
     testSetup = await testRender(
       <AppProvider config={createTickerDetailConfig("AAPL")}>
         <DispatchCapture />
@@ -206,106 +206,36 @@ describe("pane selectors", () => {
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
 
-    await act(() => {
-      capturedDispatch?.({ type: "SET_THEME", theme: "green" });
-    });
+    const dispatchAndCapture = async (action: AppAction) => {
+      await act(() => {
+        capturedDispatch?.(action);
+      });
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+      return testSetup!.captureCharFrame();
+    };
 
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:green`);
+    expect(await dispatchAndCapture({ type: "PREVIEW_THEME", theme: "green" })).toContain(`${TEST_PANE_ID}:green`);
+
+    // Committing a theme clears the active preview.
+    const committed = await dispatchAndCapture({ type: "SET_THEME", theme: "red" });
+    expect(committed).toContain(`${TEST_PANE_ID}:red`);
+    expect(committed).not.toContain(`${TEST_PANE_ID}:green`);
+
+    expect(await dispatchAndCapture({ type: "PREVIEW_THEME", theme: "green" })).toContain(`${TEST_PANE_ID}:green`);
+    // Clearing the preview falls back to the committed theme.
+    expect(await dispatchAndCapture({ type: "PREVIEW_THEME", theme: null })).toContain(`${TEST_PANE_ID}:red`);
   });
 
-  test("rerenders theme hook consumers when the theme preview changes", async () => {
-    testSetup = await testRender(
-      <AppProvider config={createTickerDetailConfig("AAPL")}>
-        <DispatchCapture />
-        <ThemeSelectorHarness />
-      </AppProvider>,
-      { width: 32, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
-
-    await act(() => {
-      capturedDispatch?.({ type: "PREVIEW_THEME", theme: "green" });
-    });
-
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:green`);
-  });
-
-  test("set theme updates the theme hook and clears the active preview", async () => {
-    testSetup = await testRender(
-      <AppProvider config={createTickerDetailConfig("AAPL")}>
-        <DispatchCapture />
-        <ThemeSelectorHarness />
-      </AppProvider>,
-      { width: 32, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-    await act(() => {
-      capturedDispatch?.({ type: "PREVIEW_THEME", theme: "green" });
-    });
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:green`);
-
-    await act(() => {
-      capturedDispatch?.({ type: "SET_THEME", theme: "red" });
-    });
-
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain(`${TEST_PANE_ID}:red`);
-    expect(frame).not.toContain(`${TEST_PANE_ID}:green`);
-  });
-
-  test("falls back to the committed theme when theme preview clears", async () => {
-    testSetup = await testRender(
-      <AppProvider config={createTickerDetailConfig("AAPL")}>
-        <DispatchCapture />
-        <ThemeSelectorHarness />
-      </AppProvider>,
-      { width: 32, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-    await act(() => {
-      capturedDispatch?.({ type: "PREVIEW_THEME", theme: "green" });
-    });
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:green`);
-
-    await act(() => {
-      capturedDispatch?.({ type: "PREVIEW_THEME", theme: null });
-    });
-
-    await testSetup.renderOnce();
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:${DEFAULT_THEME}`);
-  });
-
-  test("uses the configured theme on the first provider render", async () => {
+  test.each([
+    { source: "the configured theme", configTheme: "green", initialThemePreview: null },
+    { source: "the initial desktop theme preview", configTheme: null, initialThemePreview: { theme: "green" } },
+  ])("uses $source on the first provider render", async ({ configTheme, initialThemePreview }) => {
     const config = createTickerDetailConfig("AAPL");
-    config.theme = "green";
+    if (configTheme) config.theme = configTheme;
 
     testSetup = await testRender(
-      <AppProvider config={config}>
-        <ThemeSelectorHarness />
-      </AppProvider>,
-      { width: 32, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain(`${TEST_PANE_ID}:green`);
-  });
-
-  test("uses the initial desktop theme preview on the first provider render", async () => {
-    testSetup = await testRender(
-      <AppProvider config={createTickerDetailConfig("AAPL")} initialThemePreview={{ theme: "green" }}>
+      <AppProvider config={config} initialThemePreview={initialThemePreview}>
         <ThemeSelectorHarness />
       </AppProvider>,
       { width: 32, height: 4 },

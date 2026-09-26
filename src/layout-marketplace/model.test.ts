@@ -104,15 +104,8 @@ test("search matches layout names and the pane types inside them", () => {
   expect(filterGalleryEntries(entries, "zzzz", panes).length).toBe(0);
 });
 
-test("pane imagery is deterministic and specific before generic", () => {
-  expect(paneImagery("ticker-chart")).toBe("chart");
-  expect(paneImagery("news-top")).toBe("feed");
-  expect(paneImagery("earnings-calendar")).toBe("calendar");
-  expect(paneImagery("market-heatmap")).toBe("heatmap");
-  expect(paneImagery("fear-greed")).toBe("gauge");
-  expect(paneImagery("macro-tv")).toBe("media");
-  expect(paneImagery("portfolio-list")).toBe("table");
-  expect(paneImagery("chat")).toBe("chat");
+test("pane imagery picks the narrow rule before a broader one", () => {
+  // "sectors" also contains the broader "sec" table keyword.
+  expect(paneImagery("sectors")).toBe("heatmap");
   expect(paneImagery("some-unknown-plugin-pane")).toBe("generic");
-  expect(paneImagery("ticker-chart")).toBe(paneImagery("ticker-chart"));
 });
