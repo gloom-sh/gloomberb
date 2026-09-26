@@ -106,3 +106,11 @@ See the [plugin development guide](PLUGINS.md), [TV setup](docs/usage.md#live-tv
 Available in English, Spanish, Simplified Chinese, Traditional Chinese, Japanese, and Korean. Use `LANG` in the command bar to switch; see [language settings](docs/usage.md#localized-interface).
 
 [MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/).
+
+## Sponsors
+
+<a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
+
+[Adjacent](https://adjacent.markets/?ref=gloomberb) builds prediction-market indices, reference rates, and data. Thank you for backing Gloomberb's open-source work.
+
+To sponsor Gloomberb, email [hello@gloom.sh](mailto:hello@gloom.sh).
