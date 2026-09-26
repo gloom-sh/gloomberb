@@ -5,23 +5,16 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PriceHistoryResult } from "../../../types/price-history";
 import { HistoryRetentionError, type HistoryRetention } from "../../../sources/history-retention";
 import { DesktopCapabilityBridge } from "../bun/desktop/capability-bridge";
+import { createRpcLoopback } from "../../../test-support/rpc-loopback";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "./rpc-codec";
-
-const { createRPC } = await import(new URL("../shared/rpc.ts", import.meta.resolve("electrobun/view")).href);
 
 function transport(provider: DataProvider) {
   const registry = new CapabilityRegistry();
   registry.register("test", assetDataProvider(provider));
   const bridge = new DesktopCapabilityBridge({ getRegistry: () => registry, getWindowKey: () => "research" });
-  let receiveClient: (value: unknown) => void, receiveServer: (value: unknown) => void;
-  const client = createRPC({ maxRequestTime: 1000 });
-  const server = createRPC({ requestHandler: { "backend.request": (request: unknown) =>
-    encodeRpcResponse(() => bridge.handle({ send: { "capability.event": () => {} } }, decodeRpcValue(request))) } });
-  client.setTransport({ registerHandler: (handler: typeof receiveClient) => { receiveClient = handler; },
-    send: (value: unknown) => { queueMicrotask(() => receiveServer(JSON.parse(JSON.stringify(value)))); } });
-  server.setTransport({ registerHandler: (handler: typeof receiveServer) => { receiveServer = handler; },
-    send: (value: unknown) => { queueMicrotask(() => receiveClient(JSON.parse(JSON.stringify(value)))); } });
-  return { registry, request: (operationId: string, payload: unknown) => client.request["backend.request"](encodeRpcValue({
+  const send = createRpcLoopback((request) =>
+    encodeRpcResponse(() => bridge.handle({ send: { "capability.event": () => {} } }, decodeRpcValue(request))));
+  return { registry, request: (operationId: string, payload: unknown) => send(encodeRpcValue({
     method: "capability.invoke", payload: { capabilityId: `asset-data.${provider.id}`, operationId, payload },
   })).then(decodeRpcResponse) };
 }

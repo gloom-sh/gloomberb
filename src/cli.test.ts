@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -14,6 +14,7 @@ import { TickerRepository } from "./data/ticker-repository";
 import type { TickerRecord } from "./types/ticker";
 import { createTestDataProvider } from "./test-support/data-provider";
 import { createTestTicker } from "./test-support/ticker";
+import { captureConsole } from "./test-support/console";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
@@ -67,76 +68,6 @@ async function createCliFixture({
   persistence.close();
 
   return { dataDir };
-}
-
-async function captureConsole<T>(fn: () => Promise<T> | T): Promise<{ result: T; stdout: string; stderr: string }> {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-
-  const stdout = spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    logs.push(String(chunk).replace(/\n$/, ""));
-    return true;
-  });
-
-  console.log = (...args: unknown[]) => {
-    logs.push(args.map(String).join(" "));
-  };
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-  };
-
-  try {
-    const result = await fn();
-    return {
-      result,
-      stdout: logs.join("\n"),
-      stderr: errors.join("\n"),
-    };
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
-    stdout.mockRestore();
-  }
-}
-
-async function captureConsoleFailure(fn: () => Promise<unknown> | unknown): Promise<{ stdout: string; stderr: string; exitCode: string | number | undefined }> {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-  const originalExitCode = process.exitCode;
-
-  const stdout = spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    logs.push(String(chunk).replace(/\n$/, ""));
-    return true;
-  });
-
-  console.log = (...args: unknown[]) => {
-    logs.push(args.map(String).join(" "));
-  };
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-  };
-  process.exitCode = undefined;
-
-  try {
-    await fn();
-    if (process.exitCode == null || process.exitCode === 0) {
-      throw new Error("Expected command to fail.");
-    }
-    return {
-      stdout: logs.join("\n"),
-      stderr: errors.join("\n"),
-      exitCode: process.exitCode,
-    };
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
-    process.exitCode = originalExitCode ?? 0;
-    stdout.mockRestore();
-  }
 }
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("NVDA", "NVIDIA Corporation", overrides);
@@ -220,7 +151,7 @@ describe("CLI portfolio commands", () => {
       watchlists: [],
     });
 
-    const result = await captureConsoleFailure(() => runCli(["portfolio", "create", "Research"]));
+    const result = await captureConsole(() => runCli(["portfolio", "create", "Research"]));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Portfolio "Research" already exists.');
   });
@@ -364,7 +295,7 @@ describe("CLI portfolio commands", () => {
       tickers: [makeTicker()],
     });
 
-    const result = await captureConsoleFailure(() => runCli(["portfolio", "add", "IBKR Account", "NVDA"]));
+    const result = await captureConsole(() => runCli(["portfolio", "add", "IBKR Account", "NVDA"]));
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Portfolio "IBKR Account" is broker-managed and cannot be modified manually.');
   });

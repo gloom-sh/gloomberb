@@ -6,7 +6,7 @@ import { createDefaultConfig } from "../../../types/config";
 import { createTestTicker } from "../../../test-support/ticker";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../cli/commands/ticker";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { MarketContext } from "../../../cli/types";
+import { createTestCliContext } from "../../../test-support/cli-context";
 import type { TickerFinancials } from "../../../types/financials";
 import { OverviewTab } from "./overview-tab";
 
@@ -48,18 +48,14 @@ for (const withSummary of [true, false]) for (const covered of [false, true]) {
     const report = await buildTickerReport({ symbol: "NEWF", tickerFile: savedTicker, financials, config, toBase: async value => value });
     expect(report.includes("1Y Return")).toBe(covered);
     expect(report.includes("3Y Return")).toBe(covered);
-    let captured: any;
-    let closed = 0;
-    await runTickerCommand("NEWF", {
-      initMarketData: async () => ({
-        config, dataDir: "/tmp/gloom-fund-coverage-test-unused",
-        store: { loadTicker: async () => savedTicker },
-        persistence: { close: () => { closed++; } },
-        dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
-      }) as unknown as MarketContext,
-      printResult: result => { captured = result.data; },
+    const cli = createTestCliContext({
+      config, dataDir: "/tmp/gloom-fund-coverage-test-unused",
+      store: { loadTicker: async () => savedTicker },
+      dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
     });
-    expect(closed).toBe(1);
+    await runTickerCommand("NEWF", cli.context);
+    expect(cli.closeCount()).toBe(1);
+    const captured = cli.printed[0]!.result.data;
     expect(captured.fundamentals?.return1Y).toBe(covered ? 0 : undefined);
     expect(captured.fundamentals?.return3Y).toBe(covered ? 0 : undefined);
     expect(financials.fundamentals?.return1Y).toBe(withSummary ? .05 : undefined);

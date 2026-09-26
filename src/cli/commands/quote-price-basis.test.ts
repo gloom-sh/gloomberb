@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote, TickerFinancials } from "../../types/financials";
-import type { CliCommandContext } from "../../types/plugin";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { renderHeadlessPaneText } from "../pane-functions/headless";
 import { quoteComparisonHeadless } from "../../plugins/builtin/ticker-detail/headless";
 import { marketDataCliCommands } from "./market";
 import { buildTickerReport } from "./ticker";
+import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 
 const config = createDefaultConfig("/tmp/gloom-quote-basis-test");
 const rawQuote = { symbol: "BONDTEST", price: 87, change: 1, changePercent: 100 / 86,
@@ -43,28 +43,20 @@ test("quote command preserves raw declarations and formats its actual output row
     { ...rawQuote, symbol: "^N225", instrumentType: "INDEX", currency: "JPY", price: 65018.95, change: 882.75 },
     { ...rawQuote, symbol: "7203.T", instrumentType: "EQUITY", currency: "JPY", price: 2710, change: 12 },
   ];
-  let closed = 0;
-  let captured: unknown;
-  let rows: Array<Record<string, unknown>> = [];
-  const ctx = {
-    cliOptions: {},
-    initMarketData: async () => ({ config, persistence: { close() { closed++; } }, dataProvider: {
-      getQuotesBatch: async () => quotes.map(quote => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
-    } }),
-    printResult: (result: { data: unknown }, options: { rows: (data: unknown) => Array<Record<string, unknown>> }) => {
-      captured = result.data;
-      rows = options.rows(result.data);
-    },
-    fail(message: string): never { throw new Error(message); },
-  } as unknown as CliCommandContext;
-  await marketDataCliCommands.find(command => command.name === "quote")!.execute(quotes.map(quote => quote.symbol), ctx);
+  const cli = createTestCliContext({ config, dataProvider: {
+    getQuotesBatch: async () => quotes.map(quote => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
+  } });
+  await marketDataCliCommands.find(command => command.name === "quote")!.execute(quotes.map(quote => quote.symbol), cli.context);
+  const [{ result, options }] = cli.printed as [PrintedCliResult];
+  const captured = result.data;
+  const rows = options!.rows!(result.data) as Array<Record<string, unknown>>;
   expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toEqual(quotes);
   // An index level is in points, never dollars.
   // A yen-listed index pads its points like any other; yen prices keep no decimals.
   expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00", "87.00", "65,018.95", "¥2,710"]);
   expect(rows[4]!.previousClose).toBe("64,136.20");
   expect(rows.map(row => row.rawPrice)).toEqual([87, 87, 87, 87, 65018.95, 2710]);
-  expect(closed).toBe(1);
+  expect(cli.closeCount()).toBe(1);
 });
 
 test("quote monitor headless text and raw rows agree on par, unknown and monetary units", async () => {

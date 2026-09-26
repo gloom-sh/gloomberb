@@ -2,7 +2,6 @@ import { expect, spyOn, test } from "bun:test";
 import { serializeCliResult, type CliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { createDefaultConfig } from "../../../../types/config";
-import type { CliCommandContext } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../../cli/commands/ticker";
@@ -11,6 +10,7 @@ import { calculatePortfolioSummaryTotals, getSortValue } from "../metrics";
 import { showCollection } from "./render";
 import { portfolioCliCommand } from "./portfolio-command";
 import { createTestTicker } from "../../../../test-support/ticker";
+import { createTestCliContext } from "../../../../test-support/cli-context";
 
 const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
   portfolios: ["main"],
@@ -22,13 +22,10 @@ test("CLI rejects blank acquisition cost before resolving or writing a ticker, a
   const config = createDefaultConfig("/unused-cost-parser");
   let reads = 0;
   const saved: TickerRecord[] = [];
-  const ctx = {
-    initMarketData: async () => ({ config, persistence: { close() {} },
-      store: { loadTicker: async () => { reads++; return ticker; }, saveTicker: async (record: TickerRecord) => { saved.push(record); } },
-      dataProvider: createTestDataProvider(),
-    }),
-    fail: (message: string) => { throw new Error(message); },
-  } as unknown as CliCommandContext;
+  const ctx = createTestCliContext({ config,
+    store: { loadTicker: async () => { reads++; return ticker; }, saveTicker: async (record: TickerRecord) => { saved.push(record); } },
+    dataProvider: createTestDataProvider(),
+  }).context;
   for (const cost of ["", "  ", "NaN"]) {
     await expect(portfolioCliCommand.execute(["position", "set", "main", "AAPL", "10", cost], ctx)).rejects.toThrow("Average cost must be a valid number");
     expect(saved).toEqual([]);
@@ -52,12 +49,9 @@ test("ticker and collection CLI reconcile short P&L and withhold totals for a mi
   const output: string[] = [];
   const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
   try {
-    await showCollection("main", {
-      initMarketData: async () => ({ config, persistence: { close() {} }, store: { loadAllTickers: async () => [ticker, missing] },
-        dataProvider: createTestDataProvider({ getQuote: async symbol => { if (symbol === "MISSING") throw new Error("No quote"); return quote; } }),
-      }),
-      fail: (message: string) => { throw new Error(message); },
-    } as unknown as CliCommandContext);
+    await showCollection("main", createTestCliContext({ config, store: { loadAllTickers: async () => [ticker, missing] },
+      dataProvider: createTestDataProvider({ getQuote: async symbol => { if (symbol === "MISSING") throw new Error("No quote"); return quote; } }),
+    }).context);
   } finally { logger.mockRestore(); }
   const result = output.join("\n");
   expect(result).toMatch(/Total P&L[^\n]*—/);
@@ -166,19 +160,13 @@ test("no-quote ticker command does not assign display currency to untyped broker
 test("portfolio JSON and CSV exports preserve signed positions, currencies and unknown totals", async () => {
   const config = createDefaultConfig("/unused-test-data");
   const missing: TickerRecord = { metadata: { ...ticker.metadata, ticker: "MISSING" } };
-  let result: CliResult | undefined;
+  const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [ticker, missing] },
+    dataProvider: createTestDataProvider({ getQuote: async symbol => { if (symbol === "MISSING") throw new Error("No quote"); return quote; } }),
+  }, { format: "json" });
   const output: string[] = [];
   const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
-  try {
-    await showCollection("main", {
-      cliOptions: { ...DEFAULT_CLI_OPTIONS, format: "json" },
-      printResult: (value: CliResult) => { result = value; },
-      initMarketData: async () => ({ config, persistence: { close() {} }, store: { loadAllTickers: async () => [ticker, missing] },
-        dataProvider: createTestDataProvider({ getQuote: async symbol => { if (symbol === "MISSING") throw new Error("No quote"); return quote; } }),
-      }),
-      fail: (message: string) => { throw new Error(message); },
-    } as unknown as CliCommandContext);
-  } finally { logger.mockRestore(); }
+  try { await showCollection("main", cli.context); } finally { logger.mockRestore(); }
+  const result = cli.printed[0]?.result;
   expect(output).toEqual([]);
   const json = JSON.parse(serializeCliResult(result!, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
   expect(json.data[0]).toMatchObject({ symbol: "AAPL", shares: -10, costBasis: -1000, marketValue: -900, unrealizedPnl: 100, positionCurrency: "USD", baseCurrency: "USD" });
@@ -198,15 +186,12 @@ test("portfolio exports retain missing cost and broker P&L basis without borrowi
   let result: CliResult | undefined;
   const live = { ...quote, price: 120 };
   const exportRecord = async (record: TickerRecord, hasQuote: boolean) => {
-    await showCollection("main", {
-      cliOptions: { ...DEFAULT_CLI_OPTIONS, format: "json" },
-      printResult: (value: CliResult) => { result = value; },
-      initMarketData: async () => ({ config, persistence: { close() {} }, store: { loadAllTickers: async () => [record] },
-        dataProvider: createTestDataProvider({ getQuote: async () => { if (!hasQuote) throw new Error("No quote"); return live; } }),
-      }),
-      fail: (message: string) => { throw new Error(message); },
-    } as unknown as CliCommandContext);
-    return JSON.parse(serializeCliResult(result!, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+    const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [record] },
+      dataProvider: createTestDataProvider({ getQuote: async () => { if (!hasQuote) throw new Error("No quote"); return live; } }),
+    }, { format: "json" });
+    await showCollection("main", cli.context);
+    result = cli.printed[0]!.result;
+    return JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
   };
   const exported = await exportRecord(unknown, true);
   expect(exported.data[0]).toMatchObject({ avgCost: null, costBasis: null, marketValue: 1200, unrealizedPnl: 200,
@@ -241,20 +226,18 @@ test("portfolio CLI quote context follows the selected contract and unresolved i
     calls.push(context);
     return { ...quote, symbol: "ACME", price: context?.instrument?.conId === 202 ? 200 : 100 };
   } });
-  let result: { data: any[]; metadata: any };
-  const ctx = { cliOptions: { ...DEFAULT_CLI_OPTIONS, format: "json" }, printResult: (value: typeof result) => { result = value; },
-    initMarketData: async () => ({ config, persistence: { close() {} }, store: { loadAllTickers: async () => [record] }, dataProvider: provider }),
-  } as unknown as CliCommandContext;
+  const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [record] }, dataProvider: provider }, { format: "json" });
+  const ctx = cli.context;
   for (const id of ["a", "b"]) {
     await showCollection(id, ctx);
     expect(calls.at(-1)).toMatchObject({ brokerId: "ibkr", brokerInstanceId: `feed-${id}`, instrument: { conId: id === "a" ? 101 : 202 } });
-    expect(result!.data[0]).toMatchObject({ quotePrice: id === "a" ? 100 : 200, marketValue: id === "a" ? 1000 : 2000, unrealizedPnl: id === "a" ? 200 : 400 });
+    expect(cli.printed.at(-1)!.result.data[0]).toMatchObject({ quotePrice: id === "a" ? 100 : 200, marketValue: id === "a" ? 1000 : 2000, unrealizedPnl: id === "a" ? 200 : 400 });
   }
   record.metadata.broker_contracts!.pop();
   await showCollection("b", ctx);
   expect(calls).toHaveLength(2);
-  expect(result!.data[0]).toMatchObject({ quotePrice: null, marketValue: 2000, unrealizedPnl: 400, pnlBasis: "broker-snapshot" });
-  expect(result!.metadata.complete).toBe(true);
+  expect(cli.printed.at(-1)!.result.data[0]).toMatchObject({ quotePrice: null, marketValue: 2000, unrealizedPnl: 400, pnlBasis: "broker-snapshot" });
+  expect(cli.printed.at(-1)!.result.metadata?.complete).toBe(true);
   const output: string[] = [], logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
   try { await showCollection("b", { ...ctx, cliOptions: DEFAULT_CLI_OPTIONS }); } finally { logger.mockRestore(); }
   expect(output.join("\n")).toContain("+$400");

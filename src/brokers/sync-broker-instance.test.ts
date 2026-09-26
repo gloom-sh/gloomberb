@@ -7,10 +7,7 @@ import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
 import { showCollection } from "../plugins/builtin/portfolio-list/cli/render";
-import { createTestDataProvider } from "../test-support/data-provider";
-import { DEFAULT_CLI_OPTIONS } from "../cli/options";
-import type { CliResult } from "../cli/result";
-import type { CliCommandContext } from "../types/plugin";
+import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { loadPersistedBrokerAccounts, persistBrokerAccounts } from "./account-cache";
 import {
   restoreBrokerPortfoliosFromTickerPositions,
@@ -19,6 +16,7 @@ import {
 } from "./sync-broker-instance";
 import { createTestTicker } from "../test-support/ticker";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
+import { createTestCliContext } from "../test-support/cli-context";
 
 function createBrokerInstance(): BrokerInstanceConfig {
   return {
@@ -148,16 +146,10 @@ describe("syncBrokerInstance", () => {
         expect(reloaded.metadata.positions[0]!.dateAcquired).toBe(dateAcquired);
         expect(getColumnValue(column, reloaded, undefined, context).text).toBe(held);
         expect(getSortValue(column, reloaded, undefined, context)).toBe(held === "—" ? null : 2445);
-        let exported: CliResult | undefined;
-        await showCollection(portfolioId, {
-          cliOptions: { ...DEFAULT_CLI_OPTIONS, format: "json" },
-          printResult: (result) => { exported = result; },
-          initMarketData: async () => ({ config, persistence: { close() {} }, store: tickerRepository,
-            dataProvider: createTestDataProvider({ getQuote: async () => ({ symbol: "AAPL", price: 60,
-              currency: "USD", change: 0, changePercent: 0, previousClose: 60, lastUpdated: now }) }) }),
-          fail: (message) => { throw new Error(message); },
-        } as unknown as CliCommandContext);
-        expect((exported?.data as Array<{ dateAcquired: string | null }>)[0]!.dateAcquired).toBe(dateAcquired ?? null);
+        const cli = createTestCliContext({ config, store: tickerRepository,
+          dataProvider: createTestDataProvider({ getQuote: async () => createTestQuote({ price: 60, previousClose: 60, lastUpdated: now }) }) }, { format: "json" });
+        await showCollection(portfolioId, cli.context);
+        expect((cli.printed[0]?.result.data as Array<{ dateAcquired: string | null }>)[0]!.dateAcquired).toBe(dateAcquired ?? null);
       }
     } finally {
       persistence.close();

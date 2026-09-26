@@ -5,6 +5,7 @@ import {
   type ConnectionHealthStatus,
 } from "../core/connection-health";
 import { CloudApiSocket } from "./socket";
+import { createTestSocketDeps } from "../test-support/cloud-api";
 
 function waitForStatus(
   health: ConnectionHealthRegistry,
@@ -50,19 +51,7 @@ describe("CloudApiSocket connection health", () => {
       name: "Gloom Cloud Stream",
       kind: "websocket",
     });
-    const socket = new CloudApiSocket(
-      {
-        getBaseUrl: () => `http://127.0.0.1:${server.port}`,
-        getSocketAuthToken: () => null,
-        hasSessionCredential: () => false,
-        hasVerifiedUser: () => false,
-        isUsingWebSocketToken: () => false,
-        clearWebSocketTokenForFallback: () => false,
-        markCurrentUserUnverified: () => {},
-        updateCurrentUserFromSocket: () => {},
-      },
-      health,
-    );
+    const socket = new CloudApiSocket(createTestSocketDeps({ getBaseUrl: () => `http://127.0.0.1:${server.port}` }), health);
 
     try {
       socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});

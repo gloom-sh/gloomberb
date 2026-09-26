@@ -6,22 +6,14 @@ import {
   Box,
   Text,
   UiHostProvider,
-  type RendererHost,
   type UiHost,
 } from "../../ui";
 import { PageStackView, type PageStackViewProps } from "./page-stack-view";
+import { noopRendererHost } from "../../test-support/renderer-host";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setUseHost: ((useHost: boolean) => void) | undefined;
 let backCalls = 0;
-
-const rendererHost: RendererHost = {
-  requestExit() {},
-  openExternal: async () => {},
-  copyText: async () => {},
-  readText: async () => "",
-  notify() {},
-};
 
 afterEach(async () => {
   setUseHost = undefined;
@@ -51,7 +43,7 @@ function HostSwitchHarness() {
   }), [useHost]);
 
   return (
-    <UiHostProvider ui={ui} renderer={rendererHost}>
+    <UiHostProvider ui={ui} renderer={noopRendererHost}>
       <PageStackView
         focused
         detailOpen

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
+import { createTestCliContext } from "../../../test-support/cli-context";
 const source = process.env.CHAIN_SOURCE ?? new URL("../../../../", import.meta.url).pathname.replace(/\/$/, "");
 const out = process.env.CHAIN_OUT;
 const { Box } = await import(`${source}/src/ui`);
@@ -122,24 +123,18 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
         await settle();
     }
     async function cli(name: string) {
-        let data: any;
-        let renderedRows: any;
-        let text = "";
-        let json = "";
-        await marketDataCliCommands.find(c => c.name === "options")!.execute(["AAPL", "--expiration", String(EXPIRY)], { cliOptions: {}, initMarketData: async () => ({ dataProvider: provider, destroy() {
-                }, persistence: { close() {
-                    } } }), printResult: (result: any, options: any) => {
-                data = result.data;
-                renderedRows = options.rows(result.data);
-                text = serializeCliResult(result, { format: "text" }, options);
-                json = serializeCliResult(result, { format: "json" }, options);
-            }, fail: (message: string) => {
-                throw new Error(message);
-            } } as any);
-        const value = { data, rows: renderedRows, text, json };
+        const run = createTestCliContext({ dataProvider: provider, destroy() {} });
+        await marketDataCliCommands.find(c => c.name === "options")!.execute(["AAPL", "--expiration", String(EXPIRY)], run.context);
+        const { result, options } = run.printed[0]!;
+        const value = {
+            data: result.data,
+            rows: options!.rows!(result.data),
+            text: serializeCliResult(result, { format: "text" }, options),
+            json: serializeCliResult(result, { format: "json" }, options),
+        };
         if (out) {
             await Bun.write(`${out}/${width}-${name}-cli.json`, JSON.stringify(value, null, 2));
-            await Bun.write(`${out}/${width}-${name}-cli.txt`, text);
+            await Bun.write(`${out}/${width}-${name}-cli.txt`, value.text);
         }
         return value;
     }

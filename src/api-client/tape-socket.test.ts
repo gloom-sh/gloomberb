@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { CloudApiSocket } from "./socket";
 import type { TapeFeedEvent } from "./tape";
+import { createTestSocketDeps } from "../test-support/cloud-api";
 
 async function until(predicate: () => boolean) {
   const deadline = Date.now() + 2500;
@@ -16,9 +17,7 @@ test("tape subscriptions share a socket, replay after auth reset and release the
     fetch(request, server) { return server.upgrade(request) ? undefined : new Response("Upgrade required", { status: 426 }); },
     websocket: { open(peer) { peers.push(peer); }, message(_peer, raw) { frames.push(JSON.parse(String(raw))); } },
   });
-  const socket = new CloudApiSocket({ getBaseUrl: () => `http://127.0.0.1:${server.port}`, getSocketAuthToken: () => null,
-    hasSessionCredential: () => false, hasVerifiedUser: () => false, isUsingWebSocketToken: () => false,
-    clearWebSocketTokenForFallback: () => false, markCurrentUserUnverified() {}, updateCurrentUserFromSocket() {} });
+  const socket = new CloudApiSocket(createTestSocketDeps({ getBaseUrl: () => `http://127.0.0.1:${server.port}` }));
   const first: TapeFeedEvent[] = [], second: TapeFeedEvent[] = [];
   try {
     const closeFirst = socket.subscribeTape("aapl", "NASDAQ", (event) => first.push(event));
