@@ -3,7 +3,7 @@ import { act } from "react";
 import { testRender, settleFrame } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
-import { createTestTicker } from "../../test-support/pane";
+import { createTestTicker } from "../../test-support/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { HeadlessPaneContext } from "../../types/headless";
 import type { Quote, TickerFinancials } from "../../types/financials";

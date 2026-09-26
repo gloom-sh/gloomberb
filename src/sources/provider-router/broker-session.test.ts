@@ -3,7 +3,8 @@ import { AppPersistence } from "../../data/app-persistence";
 import type { Quote } from "../../types/financials";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { AssetDataRouter } from "./index";
-import { attachTestRegistry, brokerInstance, fallbackProvider, makeFinancials, setBrokerInstances } from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { createTestFinancials, fallbackProvider } from "../../test-support/data-provider";
 
 test("broker price and provider session survive scalar, batch and cached financials composition", async () => {
   for (const [time, marketState] of [["2026-04-08T11:00:00Z", "PRE"], ["2026-04-08T22:00:00Z", "POST"]] as const) {
@@ -19,11 +20,11 @@ test("broker price and provider session survive scalar, batch and cached financi
         ...(marketState === "PRE" ? { preMarketPrice: 101 } : { postMarketPrice: 102 }) };
       let brokerCalls = 0;
       const router = new AssetDataRouter({ ...fallbackProvider, id: "yahoo",
-        getQuote: async () => yahoo, getTickerFinancials: async () => makeFinancials({ quote: yahoo }) }, [], store.resources);
+        getQuote: async () => yahoo, getTickerFinancials: async () => createTestFinancials({ quote: yahoo }) }, [], store.resources);
       attachTestRegistry(router, { brokers: [["ibkr", {
         id: "ibkr", name: "Test broker", configSchema: [], validate: async () => true, importPositions: async () => [],
         getQuote: async () => { brokerCalls += 1; return brokerQuote; },
-        getTickerFinancials: async () => makeFinancials({ quote: { ...brokerQuote, price: 100 } }),
+        getTickerFinancials: async () => createTestFinancials({ quote: { ...brokerQuote, price: 100 } }),
       }]] });
       setBrokerInstances(router, [brokerInstance()]);
       const context = { brokerId: "ibkr", brokerInstanceId: "ibkr-work" };

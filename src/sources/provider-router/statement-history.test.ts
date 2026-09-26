@@ -2,14 +2,15 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { MarketDataRequestContext } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 const rows = Array.from({ length: 19 }, (_, index) => ({ date: `${2007 + index}-12-31`, currency: "USD", totalRevenue: 100 + index, operatingIncome: 40, inventory: 5 }));
-const financials = (extended: boolean, status: "available" | "retryable-failure" = "available", symbol = "MSFT", exchange = "NASDAQ") => makeFinancials({
- quote: makeQuote({ symbol, listingExchangeName: exchange }), profile: { description: "Microsoft Corporation" }, annualStatements: extended ? rows : rows.slice(-5),
+const financials = (extended: boolean, status: "available" | "retryable-failure" = "available", symbol = "MSFT", exchange = "NASDAQ") => createTestFinancials({
+ quote: createTestQuote({ symbol, listingExchangeName: exchange }), profile: { description: "Microsoft Corporation" }, annualStatements: extended ? rows : rows.slice(-5),
  ...(extended ? { statementHistory: { mode: "extended" as const, source: "sec" as const, status, fetchedAt: new Date().toISOString() } } : {}),
 });
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
 test("extended requests bypass a default deep cache and reuse the whole extended source for later counts", async () => {
  const persistence = new AppPersistence(createTempDbPath("extended"));

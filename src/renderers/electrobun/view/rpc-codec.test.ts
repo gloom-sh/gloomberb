@@ -1,25 +1,12 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { HistoryRetentionError, type HistoryRecoveryCandidate, type HistoryRetention } from "../../../sources/history-retention";
+import { createRpcLoopback } from "../../../test-support/rpc-loopback";
 import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "./rpc-codec";
 
-// Load Electrobun's actual transport core without starting its window/socket entrypoint.
-const { createRPC } = await import(new URL("../shared/rpc.ts", import.meta.resolve("electrobun/view")).href);
-
-function requestThroughRpc(load: () => unknown | Promise<unknown>, encode = encodeRpcResponse) {
-  let receiveClient: (packet: unknown) => void;
-  let receiveServer: (packet: unknown) => void;
-  const client = createRPC({ maxRequestTime: 1000 });
-  const server = createRPC({ requestHandler: { "backend.request": () => encode(load) } });
-  client.setTransport({
-    registerHandler: (handler: typeof receiveClient) => { receiveClient = handler; },
-    send: (packet: unknown) => { queueMicrotask(() => receiveServer(JSON.parse(JSON.stringify(packet)))); },
-  });
-  server.setTransport({
-    registerHandler: (handler: typeof receiveServer) => { receiveServer = handler; },
-    send: (packet: unknown) => { queueMicrotask(() => receiveClient(JSON.parse(JSON.stringify(packet)))); },
-  });
-  return client.request["backend.request"]({ method: "capability.invoke", payload: null }).then(decodeRpcResponse);
+function requestThroughRpc(load: () => unknown | Promise<unknown>): Promise<any> {
+  const request = createRpcLoopback(() => encodeRpcResponse(load));
+  return request({ method: "capability.invoke", payload: null }).then(decodeRpcResponse);
 }
 
 test.each([401, 402, 403, 429, 503, undefined])("API error %s survives Electrobun's JSON transport", async (status) => {

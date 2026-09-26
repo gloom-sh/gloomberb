@@ -1,9 +1,9 @@
-import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import type { Quote } from "../../types/financials";
-import type { InstrumentRef } from "../../market-data/request-types";
-import { createIdleEntry, type QueryEntry } from "../../market-data/result-types";
-import { buildQuoteKey } from "../../market-data/selectors";
-import type { ChartQuoteStore } from "../live-quotes";
+import type { QuoteSubscriptionTarget } from "../types/data-provider";
+import type { Quote } from "../types/financials";
+import type { InstrumentRef } from "../market-data/request-types";
+import { createIdleEntry, type QueryEntry } from "../market-data/result-types";
+import { buildQuoteKey } from "../market-data/selectors";
+import type { ChartQuoteStore } from "../time-series/live-quotes";
 
 /** An in-memory quote store with the coordinator's key subscription contract. */
 export function createQuoteStoreFixture(): ChartQuoteStore & {

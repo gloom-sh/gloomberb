@@ -5,6 +5,7 @@ import { normalizePriceHistory } from "../../../utils/price-history";
 import { buildChartKey } from "../../../market-data/selectors";
 import { computeDatedBeta, computeWeightedPortfolioReturns, resolveDatedReturns } from "./metrics";
 import { buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const datedReturns = (history: PricePoint[]) => resolveDatedReturns(history).returns;
 
@@ -56,10 +57,11 @@ test("missing, zero and omitted closes cannot bridge the other holding's one-ses
 });
 
 test("an entirely missing nonzero holding blocks the basket while zero exposure does not", () => {
-  const tickers = ["AAA", "BBB"].map((ticker): TickerRecord => ({ metadata: {
-    ticker, exchange: "NYSE", currency: "USD", name: ticker, portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+  const tickers = ["AAA", "BBB"].map((ticker): TickerRecord => (createTestTicker(ticker, ticker, {
+    exchange: "NYSE",
+    portfolios: ["main"],
     positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 100, currency: "USD", broker: "manual" }],
-  } }));
+  })));
   const targets = buildPortfolioChartTargets(tickers);
   const input = {
     chartTargets: targets,

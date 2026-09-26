@@ -14,6 +14,7 @@ import { createDefaultConfig } from "../../types/config";
 import { AppContext, createInitialState } from "../app/context";
 import { INLINE_TICKER_STREAM_WEIGHT, useInlineTickers } from "./inline-tickers";
 import { resetInlineTickerFailures } from "./inline-ticker-failures";
+import { createTestTicker } from "../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -52,20 +53,7 @@ describe("useInlineTickers", () => {
   test("keeps the badge for a ticker the provider cannot quote, and stops asking", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-inline-tickers-test");
     const state = createInitialState(config);
-    state.tickers.set("LGD1L", {
-      metadata: {
-        ticker: "LGD1L",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Unsupported quote",
-        portfolios: [],
-        watchlists: [],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    });
+    state.tickers.set("LGD1L", createTestTicker("LGD1L", "Unsupported quote", { broker_contracts: [] }));
     const actions: unknown[] = [];
     setSharedRegistryForTests({
       marketData: {
@@ -92,20 +80,7 @@ describe("useInlineTickers", () => {
   test("can resolve inline ticker badges without live quote lookups", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-inline-tickers-static-test");
     const state = createInitialState(config);
-    state.tickers.set("LGD1L", {
-      metadata: {
-        ticker: "LGD1L",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Static badge",
-        portfolios: [],
-        watchlists: [],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    });
+    state.tickers.set("LGD1L", createTestTicker("LGD1L", "Static badge", { broker_contracts: [] }));
     let quoteCalls = 0;
     setSharedRegistryForTests({
       marketData: {
@@ -166,20 +141,7 @@ describe("useInlineTickers", () => {
   test("streams badges as low-priority background targets and redraws only the badge on a tick", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-inline-tickers-badge-quotes-test");
     const state = createInitialState(config);
-    state.tickers.set("AAPL", {
-      metadata: {
-        ticker: "AAPL",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Apple",
-        portfolios: [],
-        watchlists: [],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    });
+    state.tickers.set("AAPL", createTestTicker("AAPL", "Apple", { broker_contracts: [] }));
     // A store with the shape the hooks read: entries, per-key versions and listeners.
     const entries = new Map<string, QueryEntry<Quote>>();
     const versions = new Map<string, number>();

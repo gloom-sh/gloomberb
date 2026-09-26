@@ -12,6 +12,7 @@ import { AmbiguousTickerError, buildTickerSearchCandidates, resolveTickerSearch,
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { PluginRegistry } from "../plugins/registry";
 import type { TickerRecord } from "../types/ticker";
+import { createTestTicker } from "../test-support/ticker";
 
 // Exact catalogue order and fields from /market/search?q=SHOP&limit=10,
 // captured 2026-09-22. A restored SHOP:XNAS row used to hide the first listing.
@@ -32,8 +33,7 @@ const shopResults: InstrumentSearchResult[] = [
 }));
 
 function savedTicker(symbol: string, exchange: string, assetCategory = "STK"): TickerRecord {
-  return { metadata: { ticker: symbol, exchange, currency: "USD", name: "Saved issuer", assetCategory,
-    portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
+  return createTestTicker(symbol, "Saved issuer", { exchange, assetCategory });
 }
 
 test("restored qualified Shopify stays in the five root results and retargets the focused research pane", async () => {

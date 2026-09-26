@@ -5,12 +5,14 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { PricePoint } from "../../../types/financials";
 import { buildChartKey } from "../../../market-data/selectors";
 import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function riskTicker(symbol: string): TickerRecord {
-  return { metadata: { ticker: symbol, exchange: "NYSE", currency: "USD", name: symbol,
+  return createTestTicker(symbol, symbol, {
+    exchange: "NYSE",
     positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 120, broker: "manual", currency: "USD" }],
-    portfolios: ["main"], watchlists: [], custom: {}, tags: [],
-  } };
+    portfolios: ["main"],
+  });
 }
 
 function riskHistory(): PricePoint[] {
@@ -113,11 +115,12 @@ test("cash-only summary uses reported account metrics and preserves explicit zer
 });
 
 test("does not publish portfolio risk from just the valued portion when FX is missing", () => {
-  const tickers = ["USD", "EUR"].map((currency): TickerRecord => ({ metadata: {
-    ticker: currency === "USD" ? "AAPL" : "SAP", exchange: currency === "USD" ? "NASDAQ" : "XETRA", currency,
-    name: currency, positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 120, broker: "manual", currency }],
-    portfolios: ["main"], watchlists: [], custom: {}, tags: [],
-  } }));
+  const tickers = ["USD", "EUR"].map((currency): TickerRecord => (createTestTicker(currency === "USD" ? "AAPL" : "SAP", currency, {
+    exchange: currency === "USD" ? "NASDAQ" : "XETRA",
+    currency,
+    positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 120, broker: "manual", currency }],
+    portfolios: ["main"],
+  })));
   const targets = buildPortfolioChartTargets(tickers);
   const sessionDates = ["01", "02", "03", "04", "05", "08", "09", "10", "11", "12", "15", "16", "17", "18", "22", "23", "24", "25", "26", "29"];
   const chartEntries = new Map(targets.map(({ request }) => [buildChartKey(request), {

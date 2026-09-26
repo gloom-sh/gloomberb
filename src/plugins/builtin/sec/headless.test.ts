@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
 import type { SecFilingItem } from "../../../types/data-provider";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createSecHeadless } from "./headless";
 import { buildSecFilingRows, secAcceptanceTimestamp } from "./model";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const filings: SecFilingItem[] = [
   {
@@ -25,15 +24,6 @@ const filings: SecFilingItem[] = [
   },
 ];
 
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-sec"),
-    signal: new AbortController().signal,
-  };
-}
-
 function args(limit: number): HeadlessPaneLoadArgs {
   return {
     rawArgument: "AAPL",
@@ -53,7 +43,7 @@ describe("SEC headless model", () => {
       },
     });
 
-    const first = await headless.load(args(1), context());
+    const first = await headless.load(args(1), createTestHeadlessContext());
     expect(first.rows).toEqual([{
       filedAt: "2026-08-25T00:00:00.000Z",
       acceptedAt: null,
@@ -69,7 +59,7 @@ describe("SEC headless model", () => {
       url: "https://www.sec.gov/filing/one",
     }]);
 
-    const both = await headless.load(args(2), context());
+    const both = await headless.load(args(2), createTestHeadlessContext());
     expect(both.rows).toHaveLength(2);
     expect(requestedLimits).toEqual([1, 2]);
   });
@@ -79,7 +69,7 @@ test("ticker reuse preserves the actual filing issuer rather than the requested 
   const headless = createSecHeadless({ loadFilings: async () => [{
     ...filings[0]!, cik: "0001826011", companyName: "Banzai International, Inc."
   }] });
-  const result = await headless.load({ ...args(1), argument: "PARA", symbols: ["PARA"] }, context());
+  const result = await headless.load({ ...args(1), argument: "PARA", symbols: ["PARA"] }, createTestHeadlessContext());
   expect(result.rows[0]).toMatchObject({ cik: "0001826011", companyName: "Banzai International, Inc." });
   expect(result.metadata?.issuers).toEqual([{ cik: "0001826011", companyName: "Banzai International, Inc." }]);
 });

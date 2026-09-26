@@ -3,10 +3,10 @@ import { act } from "react";
 import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
-import { createTestTicker } from "../../../test-support/pane";
+import { createTestTicker } from "../../../test-support/ticker";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../cli/commands/ticker";
-import type { MarketContext } from "../../../cli/types";
+import { createTestCliContext } from "../../../test-support/cli-context";
 import type { TickerFinancials } from "../../../types/financials";
 import { OverviewTab } from "./overview-tab";
 
@@ -14,6 +14,14 @@ const config = createDefaultConfig("/tmp/gloom-fund-profile-test-unused");
 const ticker = createTestTicker("CLASSA", "Controlled accumulating fund", { assetCategory: "STK", exchange: "XETRA", currency: "EUR" });
 const quote = { symbol: "CLASSA", instrumentType: "ETF", currency: "EUR", price: 100, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
 const profile = { description: "Controlled accumulating share class follows a published index." };
+
+function tickerCommandContext(financials: TickerFinancials) {
+  return createTestCliContext({
+    config, dataDir: "/tmp/gloom-fund-profile-test-unused", store: { loadTicker: async () => ticker },
+    dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
+  });
+}
+
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 afterEach(async () => {
   if (setup) await act(async () => setup!.renderer.destroy());
@@ -39,17 +47,10 @@ for (const quoted of [true, false]) test(`fund classification and profile surviv
   expect(text).toContain("Type ETF");
   expect(text).toContain(profile.description);
   expect(text).toContain("0.00%");
-  let captured: any;
-  let warnings: string[] | undefined;
-  let closed = 0;
-  await runTickerCommand("CLASSA", {
-    initMarketData: async () => ({
-      config, dataDir: "/tmp/gloom-fund-profile-test-unused", store: { loadTicker: async () => ticker }, persistence: { close: () => { closed++; } },
-      dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
-    }) as unknown as MarketContext,
-    fail: message => { throw new Error(message); }, printResult: result => { captured = result.data; warnings = result.warnings; },
-  });
-  expect(closed).toBe(1);
+  const cli = tickerCommandContext(financials);
+  await runTickerCommand("CLASSA", cli.context);
+  expect(cli.closeCount()).toBe(1);
+  const { data: captured, warnings } = cli.printed[0]!.result;
   expect(captured.profile).toEqual(profile);
   expect(captured.fundamentals.dividendYield).toBe(0);
   expect(captured.quote?.instrumentType ?? captured.quoteMetadata?.instrumentType).toBe("ETF");
@@ -71,18 +72,14 @@ for (const scenario of ["zero", "nonfinite", "empty", "legacy-return", "covered-
     annualStatements: [], quarterlyStatements: [],
     priceHistory: scenario === "covered-return" ? [{ date: new Date("2025-09-10"), close: 100 }, { date: new Date("2026-09-11"), close: 100 }] : [],
   };
-  let captured: any;
-  let closed = 0;
-  const command = runTickerCommand("CLASSA", {
-    initMarketData: async () => ({
-      config, dataDir: "/tmp/gloom-fund-profile-test-unused", store: { loadTicker: async () => ticker }, persistence: { close: () => { closed++; } },
-      dataProvider: { ...createTestDataProvider({ getTickerFinancials: async () => financials }), getNews: async () => [] },
-    }) as unknown as MarketContext,
-    fail: message => { throw new Error(message); }, printResult: result => { captured = result.data; },
-  });
-  if (valid) { await command; expect(scenario === "zero" ? captured.fundamentals.dividendYield : captured.fundamentals.return1Y).toBe(0); }
-  else { await expect(command).rejects.toThrow("No research data available"); expect(captured).toBeUndefined(); }
-  expect(closed).toBe(1);
+  const cli = tickerCommandContext(financials);
+  const command = runTickerCommand("CLASSA", cli.context);
+  if (valid) {
+    await command;
+    const captured = cli.printed[0]!.result.data;
+    expect(scenario === "zero" ? captured.fundamentals.dividendYield : captured.fundamentals.return1Y).toBe(0);
+  } else { await expect(command).rejects.toThrow("No research data available"); expect(cli.printed).toHaveLength(0); }
+  expect(cli.closeCount()).toBe(1);
 });
 
 

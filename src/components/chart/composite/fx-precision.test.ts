@@ -1,15 +1,14 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
 import { loadChartPaneModel } from "../../../plugins/builtin/chart-composer/headless";
 import { buildPriceChartPreset } from "../../../plugins/builtin/chart-composer/presets";
 import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { applyResolvedSeriesTransform } from "../../../time-series/transforms";
-import type { HeadlessPaneContext } from "../../../types/headless";
 import { formatCompositeCursorValue, formatCompositeSeriesValue, seriesPriceReference } from "./format";
 import { applyCompositeChartCursor, buildCompositeChartScene, resolveCompositeCursorDate } from "./scene";
 import { reuseResolvedSeriesIdentity } from "./panel-series";
 import { pricePointsToResolvedSeries } from "./price-series";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const cases = [
   ["EURUSD=X", "USD", "CURRENCY", 1.1602274179458618, "$1.160227"],
@@ -40,10 +39,7 @@ async function priceModel(symbol: string, currency: string, instrumentType: stri
     getPriceHistoryForResolution: async () => points,
     getDetailedPriceHistory: async () => points,
   });
-  const model = await loadChartPaneModel(spec, {
-    marketData: provider, config: createDefaultConfig("/tmp/fx-precision-unused"),
-    apiClient: {} as HeadlessPaneContext["apiClient"], signal: new AbortController().signal,
-  });
+  const model = await loadChartPaneModel(spec, createTestHeadlessContext({ marketData: provider }));
   return { model, points };
 }
 

@@ -5,6 +5,7 @@ import {
   needsVisibleQuoteWatchdogRefresh,
   VISIBLE_QUOTE_STREAM_MAX_AGE_MS,
 } from "./data";
+import { createTestFinancials } from "../../../../test-support/data-provider";
 
 function quote(overrides: Partial<Quote> = {}): Quote {
   return {
@@ -19,12 +20,7 @@ function quote(overrides: Partial<Quote> = {}): Quote {
 }
 
 function financials(quoteValue: Quote): TickerFinancials {
-  return {
-    annualStatements: [],
-    quarterlyStatements: [],
-    priceHistory: [],
-    quote: quoteValue,
-  };
+  return createTestFinancials({ quote: quoteValue });
 }
 
 describe("portfolio visible quote warmup", () => {

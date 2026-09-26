@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
-import { createQuoteStoreFixture } from "./fixtures/quote-store";
+import { createQuoteStoreFixture } from "../test-support/quote-store";
 import {
   chartQuoteOverrideKeyForTarget,
   createLiveChartRefresher,
   getLiveChartQuoteTargets,
   observeLiveChartQuotes,
 } from "./live-quotes";
+import { createTestQuote } from "../test-support/data-provider";
 
 function securitySeries(
   id: string,
@@ -38,14 +39,7 @@ function specWithSeries(series: ChartSeriesSpec[]): ChartSpec {
 }
 
 function quote(symbol: string, price: number, lastUpdated: number): Quote {
-  return {
-    symbol,
-    price,
-    currency: "USD",
-    change: 0,
-    changePercent: 0,
-    lastUpdated,
-  };
+  return createTestQuote({ symbol, price, lastUpdated });
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

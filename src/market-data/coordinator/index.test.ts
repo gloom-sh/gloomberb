@@ -4,8 +4,8 @@ import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler"
 import { MarketDataCoordinator } from "./index";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
-import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
-import { createTestDataProvider } from "../../test-support/data-provider";
+import type { PricePoint, Quote } from "../../types/financials";
+import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
 
 // Stream ticks apply on a data frame; these tests step that frame directly.
 const streamClock = createManualFrameDriver(0);
@@ -16,7 +16,7 @@ useRegularMarketSession();
 function createProvider(overrides: Partial<DataProvider> = {}): DataProvider {
   return createTestDataProvider({
     id: "test-provider",
-    getTickerFinancials: async () => ({
+    getTickerFinancials: async () => createTestFinancials({
       quote: {
         symbol: "AAPL",
         price: 100,
@@ -27,9 +27,6 @@ function createProvider(overrides: Partial<DataProvider> = {}): DataProvider {
       },
       fundamentals: { marketCap: 1 } as any,
       profile: { sector: "Tech" },
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
     }),
     getQuote: async () => ({
       symbol: "AAPL",
@@ -47,7 +44,7 @@ function createProvider(overrides: Partial<DataProvider> = {}): DataProvider {
 describe("MarketDataCoordinator", () => {
   it("builds a ticker snapshot from the centralized stores", async () => {
     const provider = createProvider({
-      getTickerFinancials: async () => ({
+      getTickerFinancials: async () => createTestFinancials({
         quote: {
           symbol: "AAPL",
           providerId: "gloomberb-cloud",
@@ -61,8 +58,7 @@ describe("MarketDataCoordinator", () => {
         profile: { sector: "Technology", industry: "Consumer Electronics" },
         annualStatements: [{ date: "2024-09-30", totalRevenue: 1 }],
         quarterlyStatements: [{ date: "2024-12-31", totalRevenue: 1 }],
-        priceHistory: [],
-      } satisfies TickerFinancials),
+      }),
     });
     const coordinator = new MarketDataCoordinator(provider);
     const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
@@ -105,7 +101,7 @@ describe("MarketDataCoordinator", () => {
     const provider = createProvider({
       getTickerFinancials: async () => {
         calls += 1;
-        return {
+        return createTestFinancials({
           quote: {
             symbol: "AAPL",
             price: 100 + calls,
@@ -115,10 +111,7 @@ describe("MarketDataCoordinator", () => {
             lastUpdated: Date.now(),
           },
           fundamentals: { marketCap: calls } as any,
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-        } satisfies TickerFinancials;
+        });
       },
     });
     const coordinator = new MarketDataCoordinator(provider);
@@ -388,7 +381,7 @@ describe("MarketDataCoordinator", () => {
     const provider = createProvider({
       getCachedFinancialsForTargets: () => new Map([[
         "VICR",
-        {
+        createTestFinancials({
           quote: {
             symbol: "VICR",
             providerId: "gloomberb-cloud",
@@ -427,10 +420,7 @@ describe("MarketDataCoordinator", () => {
               dataSource: "delayed",
             },
           },
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-        },
+        }),
       ]]),
       subscribeQuotes: (_targets, onQuote) => {
         streamed = onQuote as typeof streamed;
@@ -497,7 +487,7 @@ describe("MarketDataCoordinator", () => {
         cacheReads += 1;
         return new Map([[
           "VICR",
-          {
+          createTestFinancials({
             quote: {
               symbol: "VICR",
               providerId: "gloomberb-cloud",
@@ -510,10 +500,7 @@ describe("MarketDataCoordinator", () => {
               marketState: "REGULAR",
               dataSource: "live",
             },
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
-          },
+          }),
         ]]);
       },
       subscribeQuotes: (_targets, onQuote) => {
@@ -551,7 +538,7 @@ describe("MarketDataCoordinator", () => {
     const provider = createProvider({
       getCachedFinancialsForTargets: () => new Map([[
         "VICR",
-        {
+        createTestFinancials({
           quote: {
             symbol: "VICR",
             providerId: "gloomberb-cloud",
@@ -590,10 +577,7 @@ describe("MarketDataCoordinator", () => {
               dataSource: "delayed",
             },
           },
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-        },
+        }),
       ]]),
       getQuotesBatch: async (targets) => targets.map((target) => ({
         target,
@@ -695,7 +679,7 @@ describe("MarketDataCoordinator", () => {
   it("projects live quote updates into premarket display fields when the stream lacks explicit ext-hours fields", async () => {
     let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
     const provider = createProvider({
-      getTickerFinancials: async () => ({
+      getTickerFinancials: async () => createTestFinancials({
         quote: {
           symbol: "AAPL",
           price: 100,
@@ -708,9 +692,6 @@ describe("MarketDataCoordinator", () => {
           preMarketChange: 0,
           preMarketChangePercent: 0,
         },
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
       }),
       subscribeQuotes: (_targets, onQuote) => {
         streamed = onQuote as typeof streamed;
@@ -756,7 +737,7 @@ describe("MarketDataCoordinator", () => {
 
   it("keeps the snapshot quote when a quote-only refresh is off by a likely 100x unit mismatch", async () => {
     const provider = createProvider({
-      getTickerFinancials: async () => ({
+      getTickerFinancials: async () => createTestFinancials({
         quote: {
           symbol: "IQE.L",
           price: 0.245,
@@ -766,9 +747,6 @@ describe("MarketDataCoordinator", () => {
           lastUpdated: Date.now() - 1000,
           dataSource: "delayed",
         },
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
       }),
       getQuote: async () => ({
         symbol: "IQE",
@@ -795,7 +773,7 @@ describe("MarketDataCoordinator", () => {
   it("keeps the snapshot quote when a streaming update is off by a likely 100x unit mismatch", async () => {
     let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
     const provider = createProvider({
-      getTickerFinancials: async () => ({
+      getTickerFinancials: async () => createTestFinancials({
         quote: {
           symbol: "IQE.L",
           price: 0.245,
@@ -805,9 +783,6 @@ describe("MarketDataCoordinator", () => {
           lastUpdated: Date.now() - 1000,
           dataSource: "delayed",
         },
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
       }),
       subscribeQuotes: (_targets, onQuote) => {
         streamed = onQuote as typeof streamed;
@@ -847,7 +822,7 @@ describe("MarketDataCoordinator", () => {
     try {
       let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
       const provider = createProvider({
-        getTickerFinancials: async () => ({
+        getTickerFinancials: async () => createTestFinancials({
           quote: {
             symbol: "HY9H",
             providerId: "yahoo",
@@ -861,9 +836,6 @@ describe("MarketDataCoordinator", () => {
             marketState: "REGULAR",
             sessionConfidence: "derived",
           },
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
         }),
         subscribeQuotes: (_targets, onQuote) => {
           streamed = onQuote as typeof streamed;
@@ -953,7 +925,7 @@ describe("MarketDataCoordinator", () => {
 
     coordinator.primeCachedFinancials([{
       instrument,
-      financials: {
+      financials: createTestFinancials({
         quote: {
           symbol: "AAPL",
           price: 246.63,
@@ -970,10 +942,8 @@ describe("MarketDataCoordinator", () => {
         profile: {
           sector: "Technology",
         },
-        annualStatements: [],
-        quarterlyStatements: [],
         priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 248.8 }],
-      },
+      }),
     }]);
 
     const financials = coordinator.getTickerFinancialsSync(instrument);
@@ -998,7 +968,7 @@ describe("MarketDataCoordinator", () => {
 
     coordinator.primeCachedFinancials([{
       instrument,
-      financials: {
+      financials: createTestFinancials({
         quote: {
           symbol: "AAPL",
           price: 248.8,
@@ -1014,10 +984,7 @@ describe("MarketDataCoordinator", () => {
         profile: {
           sector: "Technology",
         },
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
-      },
+      }),
     }]);
     await coordinator.loadQuote(instrument);
 
@@ -1096,7 +1063,7 @@ describe("MarketDataCoordinator", () => {
 
       coordinator.primeCachedFinancials([{
         instrument,
-        financials: {
+        financials: createTestFinancials({
           quote: {
             symbol: "6324.T",
             price: 6230,
@@ -1108,10 +1075,7 @@ describe("MarketDataCoordinator", () => {
             listingExchangeName: "JPX",
             providerId: "gloomberb-cloud",
           },
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-        },
+        }),
       }]);
 
       await coordinator.loadQuotesBatch([instrument]);
@@ -1132,7 +1096,7 @@ describe("MarketDataCoordinator", () => {
         batchSymbols.push(targets.map((target) => target.symbol));
         return targets.map((target) => ({
           target,
-          financials: {
+          financials: createTestFinancials({
             quote: {
               symbol: target.symbol,
               price: target.symbol === "AAPL" ? 150 : 250,
@@ -1142,10 +1106,7 @@ describe("MarketDataCoordinator", () => {
               lastUpdated: 1_700_000_000_000,
             },
             fundamentals: { trailingPE: target.symbol === "AAPL" ? 20 : 30 },
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
-          },
+          }),
         }));
       },
     });

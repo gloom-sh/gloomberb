@@ -8,25 +8,10 @@ import {
   scopedSymbolsFromSettings,
   trackedEarningsSymbols,
 } from "./model";
+import { createTestTicker } from "../../../test-support/ticker";
 
-function ticker(
-  symbol: string,
-  portfolios: string[] = [],
-  watchlists: string[] = [],
-): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "",
-      currency: "USD",
-      name: symbol,
-      portfolios,
-      watchlists,
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+function ticker(symbol: string, portfolios: string[] = [], watchlists: string[] = []): TickerRecord {
+  return createTestTicker(symbol, symbol, { exchange: "", portfolios, watchlists });
 }
 
 describe("ERN pane scope", () => {

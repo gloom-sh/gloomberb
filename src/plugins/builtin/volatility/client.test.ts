@@ -20,11 +20,6 @@ function fred(id: string): FredSeriesData {
     source: "FRED", notes: "", observationEnd: "2026-09-17",
   } };
 }
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
 const settle = () => new Promise<void>((done) => setTimeout(done, 0));
 beforeEach(resetFredSeriesPersistence);
 afterEach(() => { resetFredSeriesPersistence(); setSharedMarketDataCoordinator(null); });
@@ -37,7 +32,7 @@ describe("volatility source loader", () => {
     const seen: ChartRequest[] = [];
     const fredRequests: unknown[][] = [];
     const delayed = <T,>(value: T) => {
-      const gate = deferred<T>();
+      const gate = Promise.withResolvers<T>();
       active += 1; peak = Math.max(peak, active);
       pending.push(() => { active -= 1; gate.resolve(value); });
       return gate.promise;
@@ -182,7 +177,7 @@ describe("volatility source loader", () => {
   });
 
   test("cancellation suppresses late publications and queued jobs without cancelling shared work", async () => {
-    const gate = deferred<void>();
+    const gate = Promise.withResolvers<void>();
     let calls = 0;
     const snapshots: VolatilityLoadResult[] = [];
     const controller = new AbortController();

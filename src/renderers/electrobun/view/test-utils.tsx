@@ -3,21 +3,14 @@ import { afterAll, afterEach, beforeAll } from "bun:test";
 import { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { UiHostProvider, type RendererHost } from "../../../ui";
+import { UiHostProvider } from "../../../ui";
 import type { UiHost } from "../../../ui/host";
 import { WebBox } from "./host/box";
 import { WebText, WebSpan } from "./host/text";
 import { WebScrollBox } from "./host/scroll-box";
 import { WebInput } from "./host/input";
 import { WebButton, WebTextField } from "./desktop/controls";
-
-const renderer: RendererHost = {
-  requestExit() {},
-  async openExternal() {},
-  async copyText() {},
-  async readText() { return ""; },
-  notify() {},
-};
+import { noopRendererHost } from "../../../test-support/renderer-host";
 
 const BASE_CAPABILITIES = { cellWidthPx: 8, cellHeightPx: 18, fractionalViewport: true };
 
@@ -77,7 +70,7 @@ export function createDomTestHarness({ withUi = true, capabilities }: {
     const root = createRoot(container as unknown as HTMLElement);
     roots.add(root);
     await act(async () => {
-      root.render(withUi ? <UiHostProvider ui={ui} renderer={renderer}>{node}</UiHostProvider> : node);
+      root.render(withUi ? <UiHostProvider ui={ui} renderer={noopRendererHost}>{node}</UiHostProvider> : node);
     });
     return container as unknown as HTMLElement;
   }

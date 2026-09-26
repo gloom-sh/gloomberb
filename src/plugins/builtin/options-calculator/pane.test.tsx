@@ -13,7 +13,6 @@ import {
 } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { PluginRenderProvider } from "../../runtime";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { OPTIONS_CALCULATOR_PANE_ID } from "./model";
 import { OptionsCalculatorPane } from "./pane";
 import { valueBinomialOption } from "./binomial";
@@ -22,6 +21,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
+import { createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "options-calculator:test";
 
@@ -38,20 +38,13 @@ function GlobalTabHandler() {
 }
 
 function Harness({ params, settings, width = 90, height = 18 }: { params?: Record<string, string>; settings?: Record<string, unknown>; width?: number; height?: number }) {
-  const config = createDefaultConfig("/tmp/gloomberb-options-calculator-test");
-  config.layout = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: OPTIONS_CALCULATOR_PANE_ID,
-      binding: { kind: "none" },
-      params,
-      settings,
-    }],
-    floating: [],
-    detached: [],
-  };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
+  const config = createTestPaneConfig("/tmp/gloomberb-options-calculator-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: OPTIONS_CALCULATOR_PANE_ID,
+    binding: { kind: "none" },
+    params,
+    settings,
+  });
 
   const initialState = createInitialState(config);
   initialState.focusedPaneId = TEST_PANE_ID;

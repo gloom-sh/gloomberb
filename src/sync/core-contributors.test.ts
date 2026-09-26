@@ -11,6 +11,8 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { setSyncedProfileAnalytics } from "./profile-analytics";
+import { createTestTicker } from "../test-support/ticker";
+import { createTestFinancials } from "../test-support/data-provider";
 
 describe("core sync contributors", () => {
   function priceHistoryFromReturns(returns: number[]): PricePoint[] {
@@ -321,33 +323,27 @@ describe("core sync contributors", () => {
       brokerInstanceId: "broker-id",
     }];
     config.watchlists = [{ id: "ai", name: "AI" }];
-    const ticker: TickerRecord = {
-      metadata: {
-        ticker: "NVDA",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "NVIDIA",
-        portfolios: ["main"],
-        watchlists: ["ai"],
-        positions: [{
-          portfolio: "main",
-          shares: 10,
-          avgCost: 100,
-          broker: "manual",
-          marketValue: 1500,
-          brokerAccountId: "account-id",
-          brokerInstanceId: "broker-id",
-          brokerContractId: 42,
-        }],
-        custom: { secretToken: "hidden", note: "keep" },
-        tags: ["semis"],
-      },
-    };
+    const ticker: TickerRecord = createTestTicker("NVDA", "NVIDIA", {
+      portfolios: ["main"],
+      watchlists: ["ai"],
+      positions: [{
+        portfolio: "main",
+        shares: 10,
+        avgCost: 100,
+        broker: "manual",
+        marketValue: 1500,
+        brokerAccountId: "account-id",
+        brokerInstanceId: "broker-id",
+        brokerContractId: 42,
+      }],
+      custom: { secretToken: "hidden", note: "keep" },
+      tags: ["semis"],
+    });
     const state = createInitialState(config);
     state.tickers = new Map([["NVDA", ticker]]);
     state.financials = new Map([[
       "NVDA",
-      {
+      createTestFinancials({
         quote: {
           symbol: "NVDA",
           price: 150,
@@ -357,13 +353,11 @@ describe("core sync contributors", () => {
           lastUpdated: 1,
         },
         fundamentals: { return1Y: 0.42 },
-        annualStatements: [],
-        quarterlyStatements: [],
         priceHistory: [
           { date: new Date("2026-06-23T20:00:00.000Z"), close: 125 },
           { date: new Date("2026-06-30T20:00:00.000Z"), close: 149 },
         ],
-      },
+      }),
     ]]);
 
     const payload = await coreCollectionsSyncContributor.collect({ state });
@@ -406,19 +400,7 @@ describe("core sync contributors", () => {
   test("keeps a position written while the app was closed", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-position-test");
     config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
-    const withoutPosition: TickerRecord = {
-      metadata: {
-        ticker: "NVDA",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "NVIDIA",
-        portfolios: ["main"],
-        watchlists: [],
-        positions: [],
-        custom: {},
-        tags: [],
-      },
-    };
+    const withoutPosition: TickerRecord = createTestTicker("NVDA", "NVIDIA", { portfolios: ["main"] });
     const syncedState = createInitialState(config);
     syncedState.tickers = new Map([["NVDA", withoutPosition]]);
     const syncedPayload = await coreCollectionsSyncContributor.collect({ state: syncedState });
@@ -468,51 +450,38 @@ describe("core sync contributors", () => {
       config: {},
       enabled: true,
     }];
-    const ticker = (symbol: string, portfolio: string): TickerRecord => ({
-      metadata: {
-        ticker: symbol,
-        exchange: "TSE",
+    const ticker = (symbol: string, portfolio: string): TickerRecord => (createTestTicker(symbol, symbol, {
+      exchange: "TSE",
+      currency: "JPY",
+      portfolios: [portfolio],
+      positions: [{
+        portfolio,
+        shares: 10,
+        avgCost: 900,
+        broker: "manual",
         currency: "JPY",
-        name: symbol,
-        portfolios: [portfolio],
-        watchlists: [],
-        positions: [{
-          portfolio,
-          shares: 10,
-          avgCost: 900,
-          broker: "manual",
-          currency: "JPY",
-        }],
-        custom: {},
-        tags: [],
-      },
-    });
+      }],
+    }));
     const state = createInitialState(config);
     state.tickers = new Map([
       ["7203.T", ticker("7203.T", "main")],
       ["6758.T", ticker("6758.T", "broker:ibkr:U123")],
     ]);
     state.financials = new Map([
-      ["7203.T", {
+      ["7203.T", createTestFinancials({
         quote: { symbol: "7203.T", price: 1000, currency: "JPY", change: 0, changePercent: 0, lastUpdated: 1 },
         fundamentals: { return1Y: 0.1 },
         priceHistory: priceHistoryFromReturns([0.015, -0.0045, 0.018, 0.009, -0.006, 0.012, 0.0045, -0.003, 0.0105, 0.006, -0.0015]),
-        annualStatements: [],
-        quarterlyStatements: [],
-      }],
-      ["6758.T", {
+      })],
+      ["6758.T", createTestFinancials({
         quote: { symbol: "6758.T", price: 1000, currency: "JPY", change: 0, changePercent: 0, lastUpdated: 1 },
         fundamentals: { return1Y: 0.2 },
         priceHistory: priceHistoryFromReturns([0.03, -0.009, 0.036, 0.018, -0.012, 0.024, 0.009, -0.006, 0.021, 0.012, -0.003]),
-        annualStatements: [],
-        quarterlyStatements: [],
-      }],
-      ["SPY", {
+      })],
+      ["SPY", createTestFinancials({
         quote: { symbol: "SPY", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1 },
         priceHistory: priceHistoryFromReturns([0.01, -0.003, 0.012, 0.006, -0.004, 0.008, 0.003, -0.002, 0.007, 0.004, -0.001]),
-        annualStatements: [],
-        quarterlyStatements: [],
-      }],
+      })],
     ]);
     state.brokerAccounts = {
       ibkr: [{

@@ -4,9 +4,11 @@ import type { BrokerAdapter } from "../../types/broker";
 import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
 import { cacheRouterResource } from "./cache";
-import { attachTestRegistry, brokerInstance, cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote, setBrokerInstances } from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 const policy = { staleMs: 60_000, expireMs: 600_000 };
 const bad = [{ date: new Date("1997-06-30"), close: 63.8935986328125 }, { date: new Date("2026-09-07"), close: 35.33 }];
 const good: PricePoint[] = [{ date: new Date("2005-07-25"), close: 17.47 }, { date: new Date("2026-09-07"), close: 35.33 }]
@@ -87,7 +89,7 @@ test("legacy financial snapshots lose affected history while valid accounts and 
     const store = new AppPersistence(createTempDbPath("shell-financial-history"));
     try {
       const legacy = origin === "twelvedata" ? bad.map((point) => ({ ...point, historySource: { provider: origin, symbol: "SHEL" as const, exchange: "LSE" as const, currency: "GBP" as const } })) : bad;
-      const financials = makeFinancials({ quote: makeQuote({ symbol: "SHEL", currency: "GBP", listingExchangeName: "LSE", providerId: id }),
+      const financials = createTestFinancials({ quote: createTestQuote({ symbol: "SHEL", currency: "GBP", listingExchangeName: "LSE", providerId: id }),
         profile: { description: "Recorded research fixture" }, annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }], priceHistory: legacy });
       cacheRouterResource(store.resources, "financials", "SHEL", "exchange=LSE", `provider:${id}`, financials, policy);
       const provider = { ...fallbackProvider, id, async getTickerFinancials() { return financials; } };

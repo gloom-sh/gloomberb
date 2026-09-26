@@ -1,17 +1,21 @@
 import { expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "./request-types";
+import { createTestTicker } from "../test-support/ticker";
 
 function fixture(): TickerRecord {
-  return { metadata: { ticker: "ACME", exchange: "NASDAQ", name: "ACME", currency: "USD", portfolios: ["a", "b", "manual"],
-    watchlists: [], custom: {}, tags: [], positions: [
+  return createTestTicker("ACME", "ACME", {
+    portfolios: ["a", "b", "manual"],
+    positions: [
       { portfolio: "a", broker: "ibkr", brokerInstanceId: "feed-a", brokerContractId: 101, shares: 10 },
       { portfolio: "b", broker: "ibkr", brokerInstanceId: "feed-b", brokerContractId: 202, shares: 10 },
       { portfolio: "manual", broker: "manual", shares: 10 },
-    ], broker_contracts: [
+    ],
+    broker_contracts: [
       { brokerId: "ibkr", brokerInstanceId: "feed-a", conId: 101, symbol: "ACME", currency: "USD", secType: "STK" },
       { brokerId: "ibkr", brokerInstanceId: "feed-b", conId: 202, symbol: "ACME", currency: "USD", secType: "STK" },
-    ] } };
+    ],
+  });
 }
 const resolve = (ticker: TickerRecord, portfolioId: string) => instrumentFromTicker(ticker, "ACME", { portfolioId });
 

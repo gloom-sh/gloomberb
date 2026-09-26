@@ -9,9 +9,10 @@ import {
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
 } from "./model";
+import { createTestFinancials } from "../../../../test-support/data-provider";
 
 function createFinancials(): TickerFinancials {
-  return {
+  return createTestFinancials({
     annualStatements: [
       { date: "2024-12-31", totalRevenue: 100, netIncome: 25 },
       { date: "2025-12-31", totalRevenue: 150, netIncome: 45 },
@@ -22,8 +23,7 @@ function createFinancials(): TickerFinancials {
       { date: "2025-09-30", totalRevenue: 30, netIncome: 3 },
       { date: "2025-12-31", totalRevenue: 40, netIncome: 4 },
     ],
-    priceHistory: [],
-  };
+  });
 }
 
 describe("financial statement table model", () => {
@@ -68,14 +68,12 @@ describe("financial statement table model", () => {
   });
 
   test("hides lines that repeat their group's headline in every shown period", () => {
-    const labels = (netIncomeCommonStockholders: number) => buildFinancialTableModel({
+    const labels = (netIncomeCommonStockholders: number) => buildFinancialTableModel(createTestFinancials({
       annualStatements: [
         { date: "2024-12-31", totalRevenue: 100, operatingRevenue: 100, netIncome: 25, netIncomeCommonStockholders: 25, eps: 1 },
         { date: "2025-12-31", totalRevenue: 150, operatingRevenue: 150, netIncome: 45, netIncomeCommonStockholders, eps: 2 },
       ],
-      quarterlyStatements: [],
-      priceHistory: [],
-    }, { period: "annual", statement: "income", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
+    }), { period: "annual", statement: "income", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
     expect(labels(45)).not.toContain("Operating Revenue");
     expect(labels(45)).not.toContain("Income Common");
     expect(labels(44)).toContain("Income Common");
@@ -84,21 +82,19 @@ describe("financial statement table model", () => {
 
   // MSFT cash flow: D&A and Depreciation, Buybacks and Stock Payments.
   test("hides a line that repeats a sibling above it in every shown period", () => {
-    const labels = (depreciation: number) => buildFinancialTableModel({
+    const labels = (depreciation: number) => buildFinancialTableModel(createTestFinancials({
       annualStatements: [
         { date: "2024-12-31", operatingCashFlow: 100, depreciationAndAmortization: 20, depreciation: 20, stockBasedCompensation: 5 },
         { date: "2025-12-31", operatingCashFlow: 120, depreciationAndAmortization: 30, depreciation, stockBasedCompensation: 6 },
       ],
-      quarterlyStatements: [],
-      priceHistory: [],
-    }, { period: "annual", statement: "cashflow", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
+    }), { period: "annual", statement: "cashflow", expandAll: true })?.rows.map((row) => row.unitLabel) ?? [];
     expect(labels(30)).toContain("D&A");
     expect(labels(30)).not.toContain("Depreciation");
     expect(labels(25)).toContain("Depreciation");
   });
 
   test("applies financial row semantics to growth color values", () => {
-    const table = buildFinancialTableModel({
+    const table = buildFinancialTableModel(createTestFinancials({
       financialCurrency: "USD",
       annualStatements: [
         {
@@ -116,9 +112,7 @@ describe("financial statement table model", () => {
           basicShares: 9,
         },
       ],
-      quarterlyStatements: [],
-      priceHistory: [],
-    }, {
+    }), {
       period: "annual",
       statement: "income",
       expandAll: true,
@@ -230,15 +224,14 @@ test("annual balance sheets show the latest dated snapshot with comparable year-
 
 test("an EPS-only quarter cannot replace the latest available balance sheet", () => {
   // Reduced from the public BAC capture: June coverage has EPS but no balance sheet.
-  const financials: TickerFinancials = {
+  const financials: TickerFinancials = createTestFinancials({
     annualStatements: [{ date: "2025-12-31", currency: "USD", totalAssets: 3_411_738_000_000 }],
     quarterlyStatements: [
       { date: "2025-03-31", currency: "USD", totalAssets: 3_349_424_000_000 },
       { date: "2026-03-31", currency: "USD", totalAssets: 3_496_186_000_000 },
       { date: "2026-06-30", currency: "USD", eps: 1.21 },
     ],
-    priceHistory: [],
-  };
+  });
   const source = structuredClone(financials);
   const balance = buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!;
   expect(balance.statements.map(({ date }) => date)).toEqual(["2026-03-31", "2025-12-31"]);

@@ -4,6 +4,7 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { buildTickerSearchCandidates, rankTickerSearchItems, resolveTickerSearch } from "./search";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
+import { createTestTicker } from "../test-support/ticker";
 
 // Exact ASML catalogue order/fields captured 2026-09-22 from Cloud search.
 const asmlResults: InstrumentSearchResult[] = [
@@ -35,8 +36,7 @@ test("ASML registered shares retain provider relevance within the five exact-sym
 });
 
 test("issuer descriptor grouping keeps explicit ASML venues independent of a saved Amsterdam listing", async () => {
-  const saved: TickerRecord = { metadata: { ticker: "ASML", name: "ASML Holding N.V.", exchange: "AMS", currency: "EUR",
-    portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
+  const saved: TickerRecord = createTestTicker("ASML", "ASML Holding N.V.", { exchange: "AMS", currency: "EUR" });
   const tickers = new Map([["ASML", saved]]);
   const provider = createTestDataProvider({ search: async () => asmlResults,
     getQuote: async () => { throw new Error("Explicit venues must not need default quote disambiguation"); } });

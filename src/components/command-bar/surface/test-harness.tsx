@@ -20,32 +20,12 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, Text } from "../../../ui";
 import { Header } from "../../layout/header";
 import { CommandBar } from "./index";
+import { createTestTicker } from "../../../test-support/ticker";
 
 export { createTestControls as createCommandBarTestControls, emitKeypress, settleFrame } from "../../../renderers/opentui/test-utils";
 
 export function expectSingleBackControl(frame: string): void {
   expect(frame.match(/\bBack\b/g)?.length ?? 0).toBe(1);
-}
-
-export function makeTicker(
-  symbol: string,
-  name: string,
-  overrides: Partial<TickerRecord["metadata"]> = {},
-): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
 }
 
 export function makeDataProvider(searchImpl: DataProvider["search"] = async () => []): DataProvider {
@@ -281,7 +261,7 @@ export function CommandBarHarness({
   if (configureConfig) {
     config = configureConfig(config);
   }
-  const tickers = [makeTicker("AAPL", "Apple Inc."), makeTicker("MSFT", "Microsoft Corp."), ...extraTickers];
+  const tickers = [createTestTicker("AAPL", "Apple Inc."), createTestTicker("MSFT", "Microsoft Corp."), ...extraTickers];
   let state: AppState = {
     ...createInitialState(config),
     commandBarOpen: true,

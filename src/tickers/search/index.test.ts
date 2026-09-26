@@ -15,27 +15,7 @@ import {
   searchTickerCandidates,
   upsertTickerFromSearchResult,
 } from "./index";
-
-function makeTicker(
-  symbol: string,
-  name = symbol,
-  overrides: Partial<TickerRecord["metadata"]> = {},
-): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+import { createTestTicker } from "../../test-support/ticker";
 
 function makeSearchResult(
   symbol: string,
@@ -110,7 +90,7 @@ describe("ticker-search utilities", () => {
       expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }))
         .toMatchObject({ kind: "provider", result: { exchange } });
     }
-    const saved = makeTicker("VOD", "Saved Vodafone", { exchange: "LSE", currency: "GBP" });
+    const saved = createTestTicker("VOD", "Saved Vodafone", { exchange: "LSE", currency: "GBP" });
     expect(await resolveTickerSearch({ query: "VOD", activeTicker: null, tickers: new Map([["VOD", saved]]), dataProvider }))
       .toMatchObject({ kind: "local", ticker: saved });
     expect(quoteCalls).toBe(0);
@@ -131,7 +111,7 @@ describe("ticker-search utilities", () => {
     const quote = { symbol: "SHIB-USD", instrumentType: "CRYPTOCURRENCY", price: 0.00000509, currency: "USD", lastUpdated: 1789077420000,
       change: 0, changePercent: 0, listingExchangeName: "CCC" };
     const dataProvider = createTestDataProvider({ search: async () => [alias], getQuote: async () => quote });
-    const savedAlias = makeTicker("SHIB/USD", "SHIBA INU US Dollar", { exchange: "COINBASE PRO", assetCategory: "Digital Currency" });
+    const savedAlias = createTestTicker("SHIB/USD", "SHIBA INU US Dollar", { exchange: "COINBASE PRO", assetCategory: "Digital Currency" });
     const tickers = new Map([["SHIB/USD", savedAlias]]);
     expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers, dataProvider }))
       .toMatchObject({ kind: "provider", symbol: "SHIB-USD", result: { exchange: "CCC", currency: "USD", type: "CRYPTOCURRENCY" } });
@@ -175,7 +155,7 @@ describe("ticker-search utilities", () => {
   test("preserves futures, FX and index identity across saved and provider search matches", async () => {
     for (const symbol of ["ES=F", "6J=F", "JPY=X", "EURUSD=X", "EUR/USD", "^GSPC"]) {
       const lookalike = symbol.replace(/[^A-Z0-9]/g, "");
-      const tickers = new Map([[lookalike, makeTicker(lookalike)]]);
+      const tickers = new Map([[lookalike, createTestTicker(lookalike)]]);
       const queries: string[] = [];
       const dataProvider = createTestDataProvider({
         search: async (query) => {
@@ -204,7 +184,7 @@ describe("ticker-search utilities", () => {
         dataProvider: makeDataProvider([makeSearchResult(symbol, "Currency Pair", { type: "Physical Currency" })]),
       })).toMatchObject({ kind: "provider", result: { symbol, currency: "JPY" } });
     }
-    const future = makeTicker("ES=F:CME", "S&P 500 Futures", { exchange: "CME", assetCategory: "FUTURE" });
+    const future = createTestTicker("ES=F:CME", "S&P 500 Futures", { exchange: "CME", assetCategory: "FUTURE" });
     for (const query of ["ES=F", "ES=F:CME"]) {
       expect(await resolveTickerSearch({
         query, activeTicker: null, tickers: new Map([[future.metadata.ticker, future]]),
@@ -249,7 +229,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("resolves explicit venues ahead of punctuation lookalikes and saved foreign listings", async () => {
-    const tickers = new Map([["VOD", makeTicker("VOD", "Vodafone ADR", { exchange: "NASDAQ" })]]);
+    const tickers = new Map([["VOD", createTestTicker("VOD", "Vodafone ADR", { exchange: "NASDAQ" })]]);
     const dataProvider = makeDataProvider([
       makeSearchResult("VODL", "Vodafone", { exchange: "CBOE" }),
       makeSearchResult("VOD", "Vodacom", { exchange: "JSE" }),
@@ -285,7 +265,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("finds exact provider matches for direct ticker resolution", async () => {
-    const tickers = new Map<string, TickerRecord>([["AAPL", makeTicker("AAPL", "Apple")]]);
+    const tickers = new Map<string, TickerRecord>([["AAPL", createTestTicker("AAPL", "Apple")]]);
     const resolved = await resolveTickerSearch({
       query: "MSFT",
       activeTicker: null,
@@ -303,7 +283,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("combines local and provider candidates without duplicate saved symbols", async () => {
-    const tickers = new Map<string, TickerRecord>([["AAPL", makeTicker("AAPL", "Apple")]]);
+    const tickers = new Map<string, TickerRecord>([["AAPL", createTestTicker("AAPL", "Apple")]]);
     const results = await searchTickerCandidates({
       query: "appl",
       tickers,
@@ -318,7 +298,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("uses provider metadata to keep stale saved tickers intuitive in search results", async () => {
-    const tickers = new Map<string, TickerRecord>([["AAPL", makeTicker("AAPL", "AAPL")]]);
+    const tickers = new Map<string, TickerRecord>([["AAPL", createTestTicker("AAPL", "AAPL")]]);
     const results = await searchTickerCandidates({
       query: "apple",
       tickers,
@@ -341,8 +321,8 @@ describe("ticker-search utilities", () => {
     const results = buildTickerSearchCandidates({
       query: "Apple NASDAQ",
       tickers: new Map<string, TickerRecord>([
-        ["APC", makeTicker("APC", "Apple Inc.", { exchange: "XETRA", assetCategory: "STK" })],
-        ["AAPL", makeTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", assetCategory: "STK" })],
+        ["APC", createTestTicker("APC", "Apple Inc.", { exchange: "XETRA", assetCategory: "STK" })],
+        ["AAPL", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", assetCategory: "STK" })],
       ]),
       providerResults: [
         makeSearchResult("APC", "Apple Inc.", { exchange: "XETRA" }),
@@ -374,7 +354,7 @@ describe("ticker-search utilities", () => {
       query: "Apple BUE",
       tickers: new Map<string, TickerRecord>([[
         "AAPL",
-        makeTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", assetCategory: "STK" }),
+        createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ", assetCategory: "STK" }),
       ]]),
       providerResults: [
         makeSearchResult("AAPL", "Apple Inc.", {
@@ -392,7 +372,7 @@ describe("ticker-search utilities", () => {
   test("a saved listing keeps its own venue and type when only another venue's line matches", () => {
     const results = buildTickerSearchCandidates({
       query: "Microsoft",
-      tickers: new Map([["MSFT", makeTicker("MSFT", "Microsoft Corporation", { exchange: "NASDAQ", assetCategory: "STK" })]]),
+      tickers: new Map([["MSFT", createTestTicker("MSFT", "Microsoft Corporation", { exchange: "NASDAQ", assetCategory: "STK" })]]),
       providerResults: [makeSearchResult("MSFT", "Microsoft Corporation", {
         exchange: "BYMA", primaryExchange: "BYMA", currency: "ARS", type: "Depositary Receipt",
       })],
@@ -407,7 +387,7 @@ describe("ticker-search utilities", () => {
     test(`saved ${savedSymbol} deduplicates venue aliases while retaining the unsaved TSX listing`, () => {
       const results = buildTickerSearchCandidates({
         query: "Shopify",
-        tickers: new Map([[savedSymbol, makeTicker(savedSymbol, "Shopify Inc.", { exchange: "NASDAQ" })]]),
+        tickers: new Map([[savedSymbol, createTestTicker(savedSymbol, "Shopify Inc.", { exchange: "NASDAQ" })]]),
         providerResults: [
           makeSearchResult("SHOP", "Shopify Inc.", { exchange: "XNAS", currency: "USD" }),
           makeSearchResult("SHOP", "Shopify Inc.", { exchange: "NASDAQ", currency: "USD" }),
@@ -426,12 +406,12 @@ describe("ticker-search utilities", () => {
 
   test("uses provider ordering to prefer the canonical saved listing for company-name queries", () => {
     const tickers = new Map<string, TickerRecord>([
-      ["APC", makeTicker("APC", "Apple Inc.", {
+      ["APC", createTestTicker("APC", "Apple Inc.", {
         exchange: "XETRA",
         currency: "EUR",
         assetCategory: "STK",
       })],
-      ["AAPL", makeTicker("AAPL", "Apple Inc.", {
+      ["AAPL", createTestTicker("AAPL", "Apple Inc.", {
         exchange: "NASDAQ",
         currency: "USD",
         assetCategory: "STK",
@@ -467,12 +447,12 @@ describe("ticker-search utilities", () => {
 
   test("keeps explicit symbol, exchange, and asset-class intent ahead of provider ordering", () => {
     const tickers = new Map<string, TickerRecord>([
-      ["APC", makeTicker("APC", "Apple Inc.", {
+      ["APC", createTestTicker("APC", "Apple Inc.", {
         exchange: "XETRA",
         currency: "EUR",
         assetCategory: "STK",
       })],
-      ["AAPL", makeTicker("AAPL", "Apple Inc.", {
+      ["AAPL", createTestTicker("AAPL", "Apple Inc.", {
         exchange: "NASDAQ",
         currency: "USD",
         assetCategory: "STK",
@@ -502,7 +482,7 @@ describe("ticker-search utilities", () => {
       query: "Toyota",
       tickers: new Map<string, TickerRecord>([[
         "TM",
-        makeTicker("TM", "Toyota Motor Corporation", {
+        createTestTicker("TM", "Toyota Motor Corporation", {
           exchange: "NYSE",
           currency: "USD",
           assetCategory: "STK",
@@ -752,7 +732,7 @@ describe("ticker-search utilities", () => {
       query: "Vanguard",
       tickers: new Map<string, TickerRecord>([[
         "VTI",
-        makeTicker("VTI", "Vanguard Total Stock Market ETF", {
+        createTestTicker("VTI", "Vanguard Total Stock Market ETF", {
           exchange: "NYSE Arca",
           assetCategory: "ETF",
         }),
@@ -872,7 +852,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("refreshes low-quality saved metadata when opening a provider-backed result", async () => {
-    const existing = makeTicker("AAPL", "AAPL");
+    const existing = createTestTicker("AAPL", "AAPL");
     const saved: TickerRecord[] = [];
     const repository = {
       loadTicker: async () => existing,
@@ -897,7 +877,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("keeps holdings intact when opening a second listing with the same symbol", async () => {
-    const existing = makeTicker("AAPL", "Apple Inc.");
+    const existing = createTestTicker("AAPL", "Apple Inc.");
     existing.metadata.exchange = "NASDAQ";
     existing.metadata.currency = "USD";
     existing.metadata.portfolios = ["Core"];
@@ -938,7 +918,7 @@ describe("ticker-search utilities", () => {
   });
 
   test("exposes local ticker candidates in saved category", () => {
-    expect(createLocalTickerSearchCandidates([makeTicker("TSLA", "Tesla")])).toEqual([
+    expect(createLocalTickerSearchCandidates([createTestTicker("TSLA", "Tesla")])).toEqual([
       expect.objectContaining({
         id: "goto:TSLA",
         label: "TSLA",

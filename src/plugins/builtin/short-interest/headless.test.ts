@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { CloudDataApi } from "../../../api-client/data";
 import type { CloudMarketResponse, CloudShortInterestPayload } from "../../../api-client/types";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { loadShortInterest } from "./client";
 import { createShortInterestHeadless } from "./headless";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const records = [
   {
@@ -23,15 +22,6 @@ const records = [
     shortPercentFloat: 4.1,
   },
 ];
-
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-short-interest"),
-    signal: new AbortController().signal,
-  };
-}
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -78,7 +68,7 @@ describe("short interest headless model", () => {
       loadRecords: async () => records,
     });
 
-    const newest = await headless.load(args({ limit: 1 }), context());
+    const newest = await headless.load(args({ limit: 1 }), createTestHeadlessContext());
     expect(newest.rows).toEqual([{
       settlementDate: "2026-08-31",
       sharesShort: 15_000_000,
@@ -87,7 +77,7 @@ describe("short interest headless model", () => {
       shortPercentFloat: 4.1,
     }]);
 
-    const oldest = await headless.load(args({ order: "oldest", limit: 1 }), context());
+    const oldest = await headless.load(args({ order: "oldest", limit: 1 }), createTestHeadlessContext());
     expect(oldest.rows[0]).toMatchObject({
       settlementDate: "2026-08-15",
       sharesShort: 12_000_000,

@@ -6,13 +6,14 @@ import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils"
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
+import type { AppConfig } from "../../../types/config";
 import { Box } from "../../../ui";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { type ScenarioEvidence } from "./evidence";
 import { buildScenario, parseLegs, type ScenarioPosition } from "./model";
 import { OptionsScenarioPane } from "./pane";
 import { type SavedScenarioStrategy } from "./state";
+import { createTestPaneConfig } from "../../../test-support/pane";
 
 const ID = "options-scenario:test";
 const PLUGIN = "ticker-research";
@@ -29,11 +30,10 @@ let latestState: ReturnType<typeof createInitialState>;
 let runtime: PluginRuntimeAccess;
 
 function configFor(settings: Record<string, unknown> = {}, paneState: Record<string, unknown> = {}): AppConfig {
-  const config = createDefaultConfig("/tmp/gloomberb-options-scenario-test");
-  config.layout = { dockRoot: { kind: "pane", instanceId: ID }, instances: [{ instanceId: ID,
-    paneId: "options-scenario", binding: { kind: "none" }, settings: { ...SETTINGS, ...settings } }], floating: [], detached: [] };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout),
-    paneState: { [ID]: { pluginState: { [PLUGIN]: { activeTabId: "legs", ...paneState } } } } }];
+  const config = createTestPaneConfig("/tmp/gloomberb-options-scenario-test", {
+    instanceId: ID, paneId: "options-scenario", binding: { kind: "none" }, settings: { ...SETTINGS, ...settings },
+  });
+  config.layouts[0]!.paneState = { [ID]: { pluginState: { [PLUGIN]: { activeTabId: "legs", ...paneState } } } };
   return config;
 }
 

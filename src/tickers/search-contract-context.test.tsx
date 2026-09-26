@@ -22,13 +22,8 @@ const results: InstrumentSearchResult[] = [100, 110].map((strike) => ({
   brokerContract: { brokerId: "test", brokerInstanceId: "desk", symbol: "ACME", secType: "OPT", currency: "USD", exchange: "CBOE", lastTradeDateOrContractMonth: "20270115", right: "C", strike, multiplier: "100" },
 }));
 const financials = (price: number): TickerFinancials => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { symbol: "ACME", currency: "USD", price, change: 0, changePercent: 0, lastUpdated: Date.now() } });
-function repository() {
-  const storage = new Map<string, string>();
-  return new JsonTickerRepository({ getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); }, removeItem: (key) => { storage.delete(key); } });
-}
-
 test.each([48, 80, 120])("search keeps broker and explicit public panes through metadata reorder and restore at %s columns", async (width) => {
-  const repo = repository();
+  const repo = new JsonTickerRepository();
   const config = createDefaultConfig(":memory:");
   config.layout = { dockRoot: null, floating: [], detached: [], instances: [] };
   const initial = createInitialState(config);
@@ -118,7 +113,7 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
 });
 
 test("contract identity survives ranking, saved rows and both command-bar merges; ambiguous symbols never choose the first", async () => {
-  const repo = repository();
+  const repo = new JsonTickerRepository();
   for (const result of results) await upsertTickerFromSearchResult(repo, result);
   const ticker = (await repo.loadTicker("ACME"))!;
   const tickers = new Map([["ACME", ticker]]);

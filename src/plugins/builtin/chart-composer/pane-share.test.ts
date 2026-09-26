@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { PaneTemplateContext } from "../../../types/plugin";
+import { createTestTemplateContext } from "../../../test-support/headless";
 import { chartComposerModule } from "./index";
 import {
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
@@ -17,13 +17,7 @@ import { buildPaneSharePayload } from "../../../shares/pane";
 import type { PluginRegistry } from "../../registry";
 import type { TickerRecord } from "../../../types/ticker";
 
-const context: PaneTemplateContext = {
-  config: {} as PaneTemplateContext["config"],
-  layout: { dockRoot: null, instances: [], floating: [], detached: [] },
-  focusedPaneId: null,
-  activeTicker: null,
-  activeCollectionId: null,
-};
+const context = createTestTemplateContext();
 
 describe("chart pane sharing", () => {
   test("a live pane share carries drawings and viewport, pins the listing venue, and survives a listing binding", () => {

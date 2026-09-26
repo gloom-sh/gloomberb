@@ -8,6 +8,7 @@ import {
   loadEarningsCalendar,
   resetEarningsCalendarPersistence,
 } from "./cache";
+import { createTestDataProvider } from "../../../../test-support/data-provider";
 
 function eventFor(symbol: string): EarningsEvent {
   return {
@@ -24,21 +25,11 @@ function eventFor(symbol: string): EarningsEvent {
 }
 
 function makeProvider(getEarningsCalendar: NonNullable<DataProvider["getEarningsCalendar"]>): DataProvider {
-  return {
+  return createTestDataProvider({
     id: "test",
     name: "Test",
-    getTickerFinancials: async () => {
-      throw new Error("getTickerFinancials is unused in this test");
-    },
-    getQuote: async () => {
-      throw new Error("getQuote is unused in this test");
-    },
-    getExchangeRate: async () => 1,
-    search: async () => [],
-    getArticleSummary: async () => null,
-    getPriceHistory: async () => [],
     getEarningsCalendar,
-  };
+  });
 }
 
 afterEach(() => {

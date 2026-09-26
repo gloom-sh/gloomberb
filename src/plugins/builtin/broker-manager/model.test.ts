@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../../../types/broker";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
-import { testBroker } from "../../../brokers/test-broker";
+import { testBroker } from "../../../test-support/broker";
 import { buildBrokerProfileRows } from "./model";
 
 function createInstance(patch: Partial<BrokerInstanceConfig> = {}): BrokerInstanceConfig {

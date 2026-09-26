@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { resetValuationPersistence } from "./cache";
 import { marketValuationHeadless } from "./headless";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 beforeEach(resetValuationPersistence);
 afterEach(resetValuationPersistence);
@@ -44,13 +43,7 @@ describe("market valuation headless model", () => {
         };
       },
     } as unknown as HeadlessPaneContext["apiClient"];
-    const context: HeadlessPaneContext = {
-      marketData: createTestDataProvider(),
-      apiClient,
-      config: createDefaultConfig("/tmp/gloomberb-headless-valuation"),
-      signal: new AbortController().signal,
-    };
-
+    const context = createTestHeadlessContext({ apiClient });
     const result = await marketValuationHeadless.load(loadArgs(), context);
 
     expect(shillerCalls).toBe(1);

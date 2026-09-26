@@ -2,21 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
 import { collectSavedLayoutInstruments } from "./layout-warmup";
+import { createTestTicker } from "../../test-support/ticker";
 
 function ticker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      positions: [],
-      portfolios: [],
-      watchlists: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol);
 }
 
 function fixedLayout(entries: Array<{ instanceId: string; symbol: string; floating?: boolean }>): LayoutConfig {

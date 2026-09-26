@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
-import type { AuthUser } from "./index";
 import { apiClient, setCloudApiFetchTransport } from "./index";
 import { publishableMarketplaceLayout } from "../layout-marketplace/payload";
 import { createDefaultConfig } from "../types/config";
@@ -7,40 +6,10 @@ import type { PaneDef } from "../types/plugin";
 import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";
 import type { Quote } from "../types/financials";
 import { getActiveQuoteDisplay } from "../market-data/market/status";
+import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
-
-const verifiedUser: AuthUser = {
-  id: "user-1",
-  name: "Test User",
-  email: "test@example.com",
-  username: "test",
-  emailVerified: true,
-  image: null,
-  createdAt: "2026-03-30T00:00:00.000Z",
-  updatedAt: "2026-03-30T00:00:00.000Z",
-};
-
-function createResponse(
-  body: unknown,
-  options: { status?: number; cookies?: string[] } = {},
-): Response {
-  const headers = {
-    getSetCookie: () => options.cookies ?? [],
-    get: (name: string) => {
-      if (name.toLowerCase() !== "set-cookie") return null;
-      return options.cookies?.[0] ?? null;
-    },
-  } as Headers;
-
-  return {
-    ok: (options.status ?? 200) >= 200 && (options.status ?? 200) < 300,
-    status: options.status ?? 200,
-    headers,
-    text: async () => JSON.stringify(body),
-  } as Response;
-}
 
 function mockFetch(
   handler: (
@@ -49,62 +18,6 @@ function mockFetch(
   ) => Response | Promise<Response>,
 ): typeof fetch {
   return handler as unknown as typeof fetch;
-}
-
-class TestWebSocket {
-  readyState: number;
-  onopen: ((event: unknown) => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: ((event: unknown) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-  readonly sent: unknown[] = [];
-  closeCalls = 0;
-
-  constructor(
-    readonly url: string,
-    initialReadyState: number,
-  ) {
-    this.readyState = initialReadyState;
-  }
-
-  send(payload: string): void {
-    this.sent.push(JSON.parse(payload));
-  }
-
-  close(): void {
-    this.closeCalls += 1;
-    this.readyState = 3;
-  }
-
-  open(): void {
-    this.readyState = 1;
-    this.onopen?.({});
-  }
-
-  receive(payload: unknown): void {
-    this.onmessage?.({ data: JSON.stringify(payload) });
-  }
-
-  closeWith(event: { code: number; reason: string }): void {
-    this.readyState = 3;
-    this.onclose?.(event);
-  }
-}
-
-function installTestWebSocket(initialReadyState = 1): TestWebSocket[] {
-  const sockets: TestWebSocket[] = [];
-
-  class InstalledTestWebSocket extends TestWebSocket {
-    static readonly OPEN = 1;
-
-    constructor(url: string) {
-      super(url, initialReadyState);
-      sockets.push(this);
-    }
-  }
-
-  globalThis.WebSocket = InstalledTestWebSocket as unknown as typeof WebSocket;
-  return sockets;
 }
 
 function flushQuoteSubscriptionUpdates(): void {
@@ -135,11 +48,11 @@ test("normalizes unavailable JSON changes through REST, embedded financials, bat
   };
   setCloudApiFetchTransport(mockFetch((input) => {
     const path = new URL(String(input)).pathname;
-    if (path.endsWith("/auth/session")) return createResponse({ user: verifiedUser });
+    if (path.endsWith("/auth/session")) return Response.json({ user: verifiedUser });
     const data = path.includes("/financials")
       ? { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] }
       : quote;
-    return createResponse({ status: "success", data: path.endsWith("/batch")
+    return Response.json({ status: "success", data: path.endsWith("/batch")
       ? { items: [{ ...target, status: "success", data }] } : data });
   }));
   const seen: Quote[] = [];
@@ -205,7 +118,7 @@ describe("apiClient layout marketplace", () => {
           : {}),
       });
       const path = new URL(url).pathname;
-      return createResponse(
+      return Response.json(
         path === `/layouts/${entry.id}` || init?.method === "POST"
           ? entry
           : { items: [entry] },
@@ -239,7 +152,7 @@ describe("apiClient auth cookies", () => {
   test("accepts a browser-managed api.gloom.sh cookie without exposing its value", async () => {
     apiClient.setCookieSessionMode(true);
     setCloudApiFetchTransport(
-      mockFetch(() => createResponse({ user: verifiedUser })),
+      mockFetch(() => Response.json({ user: verifiedUser })),
     );
 
     await expect(
@@ -252,7 +165,7 @@ describe("apiClient auth cookies", () => {
   test("reports signed-in from the restored user when the cookie hides the raw token", async () => {
     apiClient.setCookieSessionMode(true);
     setCloudApiFetchTransport(
-      mockFetch(() => createResponse({ user: verifiedUser })),
+      mockFetch(() => Response.json({ user: verifiedUser })),
     );
 
     expect(apiClient.isSignedIn()).toBe(false);
@@ -270,7 +183,7 @@ describe("apiClient auth cookies", () => {
       await new Promise<void>((resolve) => {
         finishRequest = resolve;
       });
-      return createResponse({ user: null });
+      return Response.json({ user: null });
     });
 
     const checks = [
@@ -302,9 +215,9 @@ describe("apiClient auth cookies", () => {
         await new Promise<void>((resolve) => {
           releaseFirst = resolve;
         });
-        return createResponse({ user: null });
+        return Response.json({ user: null });
       }
-      return createResponse({ user: verifiedUser });
+      return Response.json({ user: verifiedUser });
     });
 
     // A cookie-less check goes out first.
@@ -335,17 +248,13 @@ describe("apiClient auth cookies", () => {
         seenCookies.push(headers.get("Cookie"));
 
         if (seenCookies.length === 1) {
-          return createResponse(
+          return Response.json(
             { token: "ws-token", user: verifiedUser },
-            {
-              cookies: [
-                "__Secure-gloomberb.session_token=signed-token.value; Path=/; HttpOnly; Secure; SameSite=Lax",
-              ],
-            },
+            { headers: { "set-cookie": "__Secure-gloomberb.session_token=signed-token.value; Path=/; HttpOnly; Secure; SameSite=Lax" } },
           );
         }
 
-        return createResponse({ user: verifiedUser });
+        return Response.json({ user: verifiedUser });
       },
     );
 
@@ -373,18 +282,14 @@ describe("apiClient auth cookies", () => {
       await new Promise<void>((resolve) => {
         releaseResponse = resolve;
       });
-      return createResponse(
+      return Response.json(
         {
           channels: [],
           onlineCount: 0,
           channelStates: [],
           notifications: [],
         },
-        {
-          cookies: [
-            "__Secure-gloomberb.session_token=old-session.value; Path=/; HttpOnly; Secure; SameSite=None",
-          ],
-        },
+        { headers: { "set-cookie": "__Secure-gloomberb.session_token=old-session.value; Path=/; HttpOnly; Secure; SameSite=None" } },
       );
     });
 
@@ -405,13 +310,9 @@ describe("apiClient auth cookies", () => {
     setCloudApiFetchTransport(async (_url, init) => {
       const headers = new Headers(init?.headers);
       seenCookies.push(headers.get("Cookie"));
-      return createResponse(
+      return Response.json(
         { token: "ws-token", user: verifiedUser },
-        {
-          cookies: [
-            "gloomberb.session_token=signed-token.value; Path=/; HttpOnly; SameSite=Lax",
-          ],
-        },
+        { headers: { "set-cookie": "gloomberb.session_token=signed-token.value; Path=/; HttpOnly; SameSite=Lax" } },
       );
     });
 
@@ -424,7 +325,7 @@ describe("apiClient auth cookies", () => {
 
   test("rejects login success without a captured session cookie", async () => {
     globalThis.fetch = mockFetch(async () =>
-      createResponse({ token: "raw-session-token", user: verifiedUser }),
+      Response.json({ token: "raw-session-token", user: verifiedUser }),
     );
 
     await expect(
@@ -443,7 +344,7 @@ describe("apiClient auth cookies", () => {
       async (_input: Request | string | URL, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         seenCookies.push(headers.get("Cookie"));
-        return createResponse({ user: verifiedUser });
+        return Response.json({ user: verifiedUser });
       },
     );
 
@@ -462,7 +363,7 @@ describe("apiClient auth cookies", () => {
       async (input: Request | string | URL, init?: RequestInit) => {
         requestedUrl = String(input);
         requestedCookie = new Headers(init?.headers).get("Cookie");
-        return createResponse({
+        return Response.json({
           url: "https://api.gloom.sh/cloud/auth/browser-handoff?token=opaque-one-time-token",
         });
       },
@@ -483,7 +384,7 @@ describe("apiClient auth cookies", () => {
     apiClient.restoreCachedUser(verifiedUser);
 
     globalThis.fetch = mockFetch(async () =>
-      createResponse({ message: "Unauthorized" }, { status: 401 }),
+      Response.json({ message: "Unauthorized" }, { status: 401 }),
     );
 
     await expect(apiClient.getSession()).rejects.toThrow("Unauthorized");
@@ -501,7 +402,7 @@ describe("apiClient auth cookies", () => {
     apiClient.restoreCachedUser(verifiedUser);
 
     globalThis.fetch = mockFetch(async () =>
-      createResponse({ code: "USER_NOT_FOUND" }, { status: 403 }),
+      Response.json({ code: "USER_NOT_FOUND" }, { status: 403 }),
     );
 
     await expect(apiClient.getSession()).resolves.toBeNull();
@@ -516,7 +417,7 @@ describe("apiClient auth cookies", () => {
     apiClient.restoreCachedUser(verifiedUser);
 
     globalThis.fetch = mockFetch(async () =>
-      createResponse({ message: "server unavailable" }, { status: 503 }),
+      Response.json({ message: "server unavailable" }, { status: 503 }),
     );
 
     await expect(apiClient.signOut()).rejects.toThrow("server unavailable");
@@ -1062,7 +963,7 @@ describe("apiClient chat timestamps", () => {
   ];
 
   test.each(timestampCases)("$call normalizes timestamps to UTC ISO strings", async ({ payload, read, expected }) => {
-    globalThis.fetch = mockFetch(async () => createResponse(payload));
+    globalThis.fetch = mockFetch(async () => Response.json(payload));
 
     expect(await read()).toEqual(expected);
   });
@@ -1157,7 +1058,7 @@ describe("apiClient account profile", () => {
       async (input: Request | string | URL, init?: RequestInit) => {
         requestedUrl = String(input);
         requestedBody = String(init?.body ?? "");
-        return createResponse({
+        return Response.json({
           profile: {
             id: verifiedUser.id,
             email: verifiedUser.email,
@@ -1212,7 +1113,7 @@ describe("apiClient cloud news", () => {
     let seenUrl = "";
     globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
       seenUrl = String(input);
-      return createResponse({ items: [], nextCursor: null });
+      return Response.json({ items: [], nextCursor: null });
     });
 
     const result = await apiClient.getCloudNews({
@@ -1250,7 +1151,7 @@ describe("apiClient document search", () => {
     let seenUrl = "";
     globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
       seenUrl = String(input);
-      return createResponse({
+      return Response.json({
         hits: [],
         total: 0,
         countCapped: false,
@@ -1309,7 +1210,7 @@ describe("apiClient document search", () => {
     };
 
     globalThis.fetch = mockFetch(async () =>
-      createResponse({ search: record }),
+      Response.json({ search: record }),
     );
     expect(
       (
@@ -1320,7 +1221,7 @@ describe("apiClient document search", () => {
       ).id,
     ).toBe("saved-1");
 
-    globalThis.fetch = mockFetch(async () => createResponse(record));
+    globalThis.fetch = mockFetch(async () => Response.json(record));
     expect(
       (
         await apiClient.updateCloudSavedSearch("saved-1", {
@@ -1329,7 +1230,7 @@ describe("apiClient document search", () => {
       ).id,
     ).toBe("saved-1");
 
-    globalThis.fetch = mockFetch(async () => createResponse({}));
+    globalThis.fetch = mockFetch(async () => Response.json({}));
     await expect(
       apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false }),
     ).rejects.toThrow("missing a record");

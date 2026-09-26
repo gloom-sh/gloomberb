@@ -9,25 +9,18 @@ import {
 import { riskHistory, riskQuote, now } from "./risk-test-data";
 import { portfolioOptionGreeks } from "./risk-options";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
+import { createTestTicker } from "../../../test-support/ticker";
 const portfolio: Portfolio = {
   id: "local",
   name: "Test basket",
   currency: "USD",
 };
 function holding(symbol: string, quantity = 1): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "ARCA",
-      name: symbol,
-      currency: "USD",
-      portfolios: ["local"],
-      watchlists: [],
-      positions: [{ portfolio: "local", shares: quantity, broker: "manual" }],
-      tags: [],
-      custom: {},
-    },
-  };
+  return createTestTicker(symbol, symbol, {
+    exchange: "ARCA",
+    portfolios: ["local"],
+    positions: [{ portfolio: "local", shares: quantity, broker: "manual" }],
+  });
 }
 function market(staleQuotes: readonly string[] = []): RiskMarketSnapshot {
   return {

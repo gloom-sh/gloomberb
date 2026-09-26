@@ -1,21 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createGloomberbCloudCapabilities, GloomberbCloudProvider } from "./index";
 import type { NewsCapability } from "../../capabilities";
-import { apiClient, type AuthUser, type CloudNewsPayload } from "../../api-client";
+import { apiClient, type CloudNewsPayload } from "../../api-client";
 import { cloudNewsParams } from "./news";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { ProviderMissError } from "../provider-errors";
-
-const verifiedUser: AuthUser = {
-  id: "user-1",
-  name: "Test User",
-  email: "test@example.com",
-  username: "test",
-  emailVerified: true,
-  image: null,
-  createdAt: "2026-03-30T00:00:00.000Z",
-  updatedAt: "2026-03-30T00:00:00.000Z",
-};
+import { verifiedUser } from "../../test-support/cloud-api";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
 const originalGetCloudSecFilings = apiClient.getCloudSecFilings.bind(apiClient);

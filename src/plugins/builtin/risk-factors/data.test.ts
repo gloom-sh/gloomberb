@@ -16,12 +16,6 @@ function client() {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 test("failed forced discovery retains its original timestamp and retries on reopen before normal cache TTL", async () => {
   const store = new MemoryPluginPersistence();
   attachRiskFactorsPersistence(store);
@@ -99,7 +93,7 @@ test("transient historical refresh retains immutable source dates and expired co
 test("late discovery cannot rewind forced refresh persistence", async () => {
   const store = new MemoryPluginPersistence();
   attachRiskFactorsPersistence(store);
-  const old = deferred<CloudRiskReportListPayload>();
+  const old = Promise.withResolvers<CloudRiskReportListPayload>();
   const api = client();
   let calls = 0;
   api.getRiskReports = () => ++calls === 1 ? old.promise : Promise.resolve(list([2026, 2025]));
@@ -118,7 +112,7 @@ test("a request from the previous persistence lifetime cannot write into its rep
   const firstStore = new MemoryPluginPersistence();
   const nextStore = new MemoryPluginPersistence();
   attachRiskFactorsPersistence(firstStore);
-  const pending = deferred<CloudRiskReportListPayload>();
+  const pending = Promise.withResolvers<CloudRiskReportListPayload>();
   const api = client();
   api.getRiskReports = () => pending.promise;
 

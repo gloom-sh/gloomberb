@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudFilingEventPayload } from "../../../api-client";
-import { PaneFooterBar, PaneFooterProvider, type CombinedPaneFooter } from "../../../components/layout/pane/footer";
+import type { CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { emitKeypress, settleFrame, testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { Box, UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from "../../../ui";
+import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from "../../../ui";
 import { FilingEventsPane } from "./pane";
 
 const PANE_ID = "filing-events:test";
@@ -53,19 +53,12 @@ function Harness() {
   const renderer = { ...host, openExternal: async (url: string) => { opened.push(url); } };
   return (
     <UiHostProvider ui={ui} nativeRenderer={native} renderer={renderer}>
-      <TestPaneProvider state={state} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
-        <PaneFooterProvider>
-          {(value) => {
-            footer = value;
-            return (
-              <Box width={100} height={24} flexDirection="column">
-                <Box height={23}><FilingEventsPane focused width={100} height={23} /></Box>
-                <PaneFooterBar footer={value} focused width={100} />
-              </Box>
-            );
-          }}
-        </PaneFooterProvider>
-      </TestPaneProvider>
+      <TestPaneFrame state={state} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime} width={100} height={24}>
+        {(body, value) => {
+          footer = value;
+          return <FilingEventsPane focused {...body} />;
+        }}
+      </TestPaneFrame>
     </UiHostProvider>
   );
 }

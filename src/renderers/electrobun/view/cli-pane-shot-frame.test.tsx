@@ -3,20 +3,16 @@ import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterScope, usePaneFooter } from "../../../components/layout/pane/footer";
 import { usePaneNoticeFooter } from "../../../components/use-pane-notice-footer";
-import { UiHostProvider, type RendererHost } from "../../../ui";
+import { UiHostProvider } from "../../../ui";
 import { createDomUiHost } from "./dom-ui-host";
 import { WebInputHostProvider } from "./input-host";
 import { WebDialogHostProvider } from "./dialog-host";
 import { createDomTestHarness } from "./test-utils";
 import { PaneShotFrame } from "./cli-pane-shot-frame";
 import { nativePaneFooterRows, nativePaneHeaderRows } from "../../../components/layout/pane/sizing";
+import { noopRendererHost } from "../../../test-support/renderer-host";
 
 const { render } = createDomTestHarness({ withUi: false });
-const renderer: RendererHost = {
-  requestExit() {}, async openExternal() {}, async copyText() {},
-  async readText() { return ""; }, notify() {},
-};
-
 function Source({ warning }: { warning: boolean }) {
   usePaneNoticeFooter({ registrationId: "shot-notice", notices: warning ? ["Source publication date unavailable."] : [], focused: true });
   usePaneFooter("shot-actions", () => ({
@@ -32,7 +28,7 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   function Harness() {
     const [state, setState] = useState<{ warning: boolean; active: boolean; preserveStatus?: boolean }>({ warning: false, active: true });
     update = setState;
-    return <UiHostProvider ui={ui} renderer={renderer}>
+    return <UiHostProvider ui={ui} renderer={noopRendererHost}>
       <WebInputHostProvider><WebDialogHostProvider>
         <PaneShotFrame paneId="shot" title="Research" width={40} height={24} preserveStatus={state.preserveStatus}>
           {(frame) => <div data-body-height={frame.height}>

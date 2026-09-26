@@ -4,11 +4,12 @@ import { testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult } from "../../../types/data-provider";
-import type { PluginRuntimeAccess } from "../../runtime";
 import { worldIndicesModule } from "./index";
 import { Box } from "../../../ui";
 import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 
 const WorldIndicesPane = worldIndicesModule.panes![0]!.component as (props: {
   paneId: string;
@@ -51,8 +52,8 @@ function Harness() {
   const [mode, setMode] = useState<"ok" | "fail">("ok");
   breakProvider = () => setMode("fail");
   const runtime = useMemo(() => {
-    const provider = makeProvider(mode);
-    return { getMarketData: () => provider } as unknown as PluginRuntimeAccess;
+    const provider = createTestDataProvider(makeProvider(mode));
+    return createTestPluginRuntime({ getMarketData: () => provider });
   }, [mode]);
 
   return (
@@ -109,13 +110,13 @@ describe("WorldIndicesPane", () => {
 test.each([80, 120])("saved index selection prunes unavailable counts and source times at %i cells", async (width) => {
   const times = { "^GSPC": Date.parse("2026-09-11T20:46:00Z"), "^FTSE": Date.parse("2026-09-11T15:35:00Z") };
   let selectSymbols!: (symbols: string[]) => void;
-  const provider = { getQuotesBatch: async (targets: Array<{ symbol: string }>) => targets.map((target) => ({
+  const provider = createTestDataProvider({ getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => targets.map((target) => ({
     target, quote: target.symbol === "DX-Y.NYB" ? null : {
-      symbol: target.symbol, price: PRICES[target.symbol], change: 12.5, changePercent: 0.42,
-      currency: "USD", marketState: "CLOSED", lastUpdated: times[target.symbol as keyof typeof times],
+      symbol: target.symbol, price: PRICES[target.symbol]!, change: 12.5, changePercent: 0.42,
+      currency: "USD", marketState: "CLOSED" as const, lastUpdated: times[target.symbol as keyof typeof times],
     },
-  })) };
-  const runtime = { getMarketData: () => provider } as unknown as PluginRuntimeAccess;
+  })) });
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
   function SelectionHarness() {
     const [symbols, setSymbols] = useState(["^GSPC", "^FTSE", "DX-Y.NYB"]);
     selectSymbols = setSymbols;

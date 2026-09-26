@@ -2,21 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { buildComparisonChartPreset } from "../plugins/builtin/chart-composer/presets";
 import type { TickerRecord } from "../types/ticker";
 import { hydrateChartSpecInstruments } from "./hooks";
+import { createTestTicker } from "../test-support/ticker";
 
 function ticker(symbol: string, exchange: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange,
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, { exchange });
 }
 
 describe("hydrateChartSpecInstruments", () => {

@@ -8,14 +8,14 @@ import { mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { redactWithdrawnStatement, withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import { AssetDataRouter } from "./index";
 import { cacheRouterResource, listCachedResources } from "./cache";
-import { fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import fixture from "./fixtures/quarterly-source-disagreements.json";
 
 const target = { symbol: "BAC", exchange: "NYSE" };
 const policy = { staleMs: 60_000, expireMs: 600_000 };
 const q4 = <T extends { date: string }>(rows: T[]) => rows.find(row => row.date === "2025-12-31")!;
-const captured = (symbol: "BAC" | "O" = "BAC") => makeFinancials({ ...fixture.issuers[symbol].financials,
-  quote: makeQuote({ symbol, listingExchangeName: "NYSE", currency: "USD", providerId: "gloomberb-cloud" }),
+const captured = (symbol: "BAC" | "O" = "BAC") => createTestFinancials({ ...fixture.issuers[symbol].financials,
+  quote: createTestQuote({ symbol, listingExchangeName: "NYSE", currency: "USD", providerId: "gloomberb-cloud" }),
   profile: { description: "Recorded issuer" },
 });
 

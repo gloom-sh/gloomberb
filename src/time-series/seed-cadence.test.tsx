@@ -4,7 +4,7 @@ import { testRender } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
-import { IDLE_COORDINATOR_QUOTES } from "./fixtures/quote-store";
+import { IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
 import { parsedPriceHistoryKey, readParsedHistoryResult, rememberParsedPriceHistory } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";

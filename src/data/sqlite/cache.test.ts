@@ -1,26 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, rmSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
 import { AppPersistence } from "../app-persistence";
 import { ResourceStore } from "../resource-store";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-const tempPaths: string[] = [];
-
-function createTempDbPath(name: string): string {
-  const path = join(tmpdir(), `gloomberb-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  tempPaths.push(path);
-  return path;
-}
-
-afterEach(() => {
-  for (const path of tempPaths.splice(0)) {
-    for (const candidate of [path, `${path}-wal`, `${path}-shm`]) {
-      if (existsSync(candidate)) rmSync(candidate, { force: true });
-    }
-  }
-});
+afterEach(removeTempDbFiles);
 
 describe("AppPersistence", () => {
   test("stores and returns cached resources", () => {

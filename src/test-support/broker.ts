@@ -1,5 +1,17 @@
 import type { BrokerAdapter } from "../types/broker";
 
+/** The minimum a BrokerAdapter must implement; a test overrides only the calls it exercises. */
+export function createTestBrokerAdapter(overrides: Partial<BrokerAdapter> = {}): BrokerAdapter {
+  return {
+    id: "test-broker",
+    name: "Test Broker",
+    configSchema: [],
+    validate: async () => true,
+    importPositions: async () => [],
+    ...overrides,
+  };
+}
+
 /**
  * A stand-in broker for tests of the generic broker machinery.
  *
@@ -8,7 +20,7 @@ import type { BrokerAdapter } from "../types/broker";
  * anyway: it made a core test fail whenever that plugin's schema changed, and
  * it hid which behaviour was actually under test.
  *
- * The shape mirrors what the machinery has to handle — a mode switch, a nested
+ * The shape mirrors what the machinery has to handle: a mode switch, a nested
  * config, and a password field that must survive an edit left blank.
  */
 export const testBroker: BrokerAdapter = {

@@ -4,6 +4,7 @@ import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance 
 import type { AppSessionSnapshot } from "../../../core/state/session-persistence";
 import { removePane } from "../../../plugins/pane-manager";
 import { buildBrokerPortfolioId } from "../../../utils/broker-instances";
+import { createTestFinancials } from "../../../test-support/data-provider";
 
 describe("resolveTickerForPane", () => {
   test("uses a portfolio pane cursor for inspector follow panes", () => {
@@ -369,10 +370,7 @@ describe("quote merging", () => {
   test("does not overwrite live broker quotes with cloud updates", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const initial = createInitialState(config);
-    initial.financials.set("AAPL", {
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
+    initial.financials.set("AAPL", createTestFinancials({
       quote: {
         symbol: "AAPL",
         providerId: "ibkr",
@@ -383,7 +381,7 @@ describe("quote merging", () => {
         lastUpdated: Date.now(),
         dataSource: "live",
       },
-    });
+    }));
 
     const next = appReducer(initial, {
       type: "MERGE_QUOTE",
@@ -407,13 +405,7 @@ describe("quote merging", () => {
   test("merges cloud quotes into existing fundamentals without wiping them", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const initial = createInitialState(config);
-    initial.financials.set("AAPL", {
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
-      profile: { description: "Apple" },
-      fundamentals: { trailingPE: 30 },
-    });
+    initial.financials.set("AAPL", createTestFinancials({ profile: { description: "Apple" }, fundamentals: { trailingPE: 30 } }));
 
     const next = appReducer(initial, {
       type: "MERGE_QUOTE",
@@ -438,10 +430,7 @@ describe("quote merging", () => {
   test("preserves existing bid ask when a streaming quote only updates last price", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const initial = createInitialState(config);
-    initial.financials.set("AAPL", {
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
+    initial.financials.set("AAPL", createTestFinancials({
       quote: {
         symbol: "AAPL",
         providerId: "gloomberb-cloud",
@@ -456,7 +445,7 @@ describe("quote merging", () => {
         lastUpdated: Date.now() - 1000,
         dataSource: "delayed",
       },
-    });
+    }));
 
     const next = appReducer(initial, {
       type: "MERGE_QUOTE",
@@ -483,10 +472,7 @@ describe("quote merging", () => {
   test("ignores same-currency quotes that differ by a likely 100x unit mismatch", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const initial = createInitialState(config);
-    initial.financials.set("IQE", {
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
+    initial.financials.set("IQE", createTestFinancials({
       quote: {
         symbol: "IQE.L",
         providerId: "yahoo",
@@ -497,7 +483,7 @@ describe("quote merging", () => {
         lastUpdated: Date.now() - 1000,
         dataSource: "delayed",
       },
-    });
+    }));
 
     const next = appReducer(initial, {
       type: "MERGE_QUOTE",

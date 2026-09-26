@@ -3,14 +3,11 @@ import { act, useEffect, useReducer } from "react";
 import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { apiClient } from "../../../api-client";
 import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
-import { PluginRenderProvider } from "../../runtime";
+import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { YieldCurvePane } from "./index";
 import { TREASURY_MATURITIES } from "./treasury-data";
-import { PaneFooterProvider, PaneFooterBar, PaneFooterKeys } from "../../../components/layout/pane/footer";
-import { Box } from "../../../ui";
 
 const id = "yield-curve:test";
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -25,21 +22,12 @@ function RegistryProbe() {
 }
 
 function Harness() {
-  const config = createDefaultConfig("/tmp/gloom-curve-test");
-  config.layout = { dockRoot: { kind: "pane", instanceId: id }, instances: [{ instanceId: id, paneId: "yield-curve", binding: { kind: "none" } }], floating: [], detached: [] };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
-  const initial = createInitialState(config);
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-curve-test", { instanceId: id, paneId: "yield-curve", binding: { kind: "none" } }));
   initial.focusedPaneId = id;
   const [state, dispatch] = useReducer(appReducer, initial);
-  return <AppContext value={{state, dispatch}}><PaneInstanceProvider paneId={id}>
-    <PluginRenderProvider pluginId="macro" runtime={createTestPluginRuntime()}>
-      <PaneFooterProvider>{(footer) => <Box width={70} height={30} flexDirection="column">
-        <YieldCurvePane paneId={id} paneType="yield-curve" focused width={70} height={29} />
-        <PaneFooterBar footer={footer} focused width={70} />
-        <PaneFooterKeys paneId={id} footer={footer} focused />
-      </Box>}</PaneFooterProvider>
-    </PluginRenderProvider>
-  </PaneInstanceProvider></AppContext>;
+  return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="macro" runtime={createTestPluginRuntime()} width={70} height={30} footerKeys>
+    {(body) => <YieldCurvePane paneId={id} paneType="yield-curve" focused {...body} />}
+  </TestPaneFrame>;
 }
 
 async function frame() {

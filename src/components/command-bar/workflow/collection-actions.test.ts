@@ -7,21 +7,10 @@ import type { TickerRecord } from "../../../types/ticker";
 import { EventBus } from "../../../plugins/event-bus";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { createCommandBarCollectionWorkflowActions } from "./collection-actions";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function ticker(symbol: string, portfolios: string[] = []): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios,
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, { portfolios });
 }
 
 function createHarness(initialTicker: TickerRecord) {

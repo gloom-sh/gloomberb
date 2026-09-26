@@ -10,11 +10,12 @@ import type { AppConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
-import type { BrokerAdapter } from "../../../types/plugin";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { portfolioAnalyticsModule } from "./index";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestTicker } from "../../../test-support/ticker";
+import { createTestBrokerAdapter } from "../../../test-support/broker";
 
 const TEST_PANE_ID = "analytics:test";
 const BROKER_PORTFOLIO_ID = "broker:ibkr-flex:DU12345";
@@ -57,68 +58,50 @@ function createAnalyticsConfig(initialPortfolioId: string): AppConfig {
 }
 
 function createSharedTicker(): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple",
-      sector: "Technology",
-      portfolios: ["main", BROKER_PORTFOLIO_ID],
-      watchlists: [],
-      positions: [
-        {
-          portfolio: "main",
-          shares: 10,
-          avgCost: 100,
-          currency: "USD",
-          broker: "manual",
-          marketValue: 1200,
-          unrealizedPnl: 200,
-        },
-        {
-          portfolio: BROKER_PORTFOLIO_ID,
-          shares: 10,
-          avgCost: 100,
-          currency: "USD",
-          broker: "ibkr",
-          brokerInstanceId: "ibkr-flex",
-          brokerAccountId: "DU12345",
-          marketValue: 1250,
-          unrealizedPnl: 250,
-        },
-      ],
-      custom: {},
-      tags: [],
-    },
-  };
-}
-
-function createBrokerTicker(portfolioId: string, brokerInstanceId: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple",
-      sector: "Technology",
-      portfolios: [portfolioId],
-      watchlists: [],
-      positions: [{
-        portfolio: portfolioId,
+  return createTestTicker("AAPL", "Apple", {
+    sector: "Technology",
+    portfolios: ["main", BROKER_PORTFOLIO_ID],
+    positions: [
+      {
+        portfolio: "main",
+        shares: 10,
+        avgCost: 100,
+        currency: "USD",
+        broker: "manual",
+        marketValue: 1200,
+        unrealizedPnl: 200,
+      },
+      {
+        portfolio: BROKER_PORTFOLIO_ID,
         shares: 10,
         avgCost: 100,
         currency: "USD",
         broker: "ibkr",
-        brokerInstanceId,
+        brokerInstanceId: "ibkr-flex",
         brokerAccountId: "DU12345",
         marketValue: 1250,
         unrealizedPnl: 250,
-      }],
-      custom: {},
-      tags: [],
-    },
-  };
+      },
+    ],
+  });
+}
+
+function createBrokerTicker(portfolioId: string, brokerInstanceId: string): TickerRecord {
+  return createTestTicker("AAPL", "Apple", {
+    sector: "Technology",
+    portfolios: [portfolioId],
+    positions: [{
+      portfolio: portfolioId,
+      shares: 10,
+      avgCost: 100,
+      currency: "USD",
+      broker: "ibkr",
+      brokerInstanceId,
+      brokerAccountId: "DU12345",
+      marketValue: 1250,
+      unrealizedPnl: 250,
+    }],
+  });
 }
 
 function createFinancials(price: number): TickerFinancials {
@@ -237,13 +220,13 @@ describe("PortfolioAnalyticsPane", () => {
     config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
-    const adapter: BrokerAdapter = {
-      id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
+    const adapter = createTestBrokerAdapter({
+      id: "ibkr",
       getPortfolioPerformance: async () => ({ accountId: "DU12345", source: "flex", currency: "USD", period: "2026", fetchedAt: 1,
         points: [{ date: "2026-01-01", value: 10000, cumulativeReturn: 0 },
           { date: "2026-05-01", value: 21000, cumulativeReturn: .1 },
           { date: "2026-09-01", value: 6000, cumulativeReturn: .1 }] }),
-    };
+    });
     await act(async () => {
       testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker} height={36}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })}
@@ -295,12 +278,11 @@ describe("PortfolioAnalyticsPane", () => {
     config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
-    let rejectHistory!: (reason: Error) => void;
-    const history = new Promise<BrokerPortfolioPerformance>((_resolve, reject) => { rejectHistory = reject; });
-    const adapter: BrokerAdapter = {
-      id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
+    const { promise: history, reject: rejectHistory } = Promise.withResolvers<BrokerPortfolioPerformance>();
+    const adapter = createTestBrokerAdapter({
+      id: "ibkr",
       getPortfolioPerformance: async () => history,
-    };
+    });
     await act(async () => {
       testSetup = await testRender(<AnalyticsHarness config={config} ticker={ticker}
         runtime={createTestPluginRuntime({ getBrokerAdapter: () => adapter })} />, { width: 100, height: 24 });
@@ -330,15 +312,14 @@ describe("PortfolioAnalyticsPane", () => {
   test("switching accounts hides prior performance while the next account is pending", async () => {
     const firstId = BROKER_PORTFOLIO_ID;
     const secondId = "broker:ibkr-flex:DU54321";
-    let completeSecond!: (value: BrokerPortfolioPerformance) => void;
-    const second = new Promise<BrokerPortfolioPerformance>((resolve) => { completeSecond = resolve; });
-    const adapter: BrokerAdapter = {
-      id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
+    const { promise: second, resolve: completeSecond } = Promise.withResolvers<BrokerPortfolioPerformance>();
+    const adapter = createTestBrokerAdapter({
+      id: "ibkr",
       getPortfolioPerformance: async (_instance, accountId) => accountId === "DU54321" ? second : {
         accountId, source: "flex", period: "First account", fetchedAt: 1,
         points: [{ date: "2026-01-01", value: 10000, cumulativeReturn: 0 }, { date: "2026-02-01", value: 11000, cumulativeReturn: .1 }],
       },
-    };
+    });
     const runtime = createTestPluginRuntime({ getBrokerAdapter: () => adapter });
     const config = createAnalyticsConfig(firstId);
     config.portfolios = [
@@ -435,13 +416,9 @@ describe("PortfolioAnalyticsPane", () => {
 
   test("falls back from a Gateway portfolio to a configured Flex profile for IBKR history", async () => {
     const calls: Array<{ instanceId: string; accountId: string }> = [];
-    const historyBroker = {
+    const historyBroker = createTestBrokerAdapter({
       id: "ibkr",
-      name: "Interactive Brokers",
-      configSchema: [],
-      validate: async () => true,
-      importPositions: async () => [],
-      getPortfolioPerformance: async (instance: { id: string }, accountId: string) => {
+      getPortfolioPerformance: async (instance, accountId) => {
         calls.push({ instanceId: instance.id, accountId });
         if (instance.id !== "ibkr-flex") return null;
         return {
@@ -456,7 +433,7 @@ describe("PortfolioAnalyticsPane", () => {
           ],
         };
       },
-    };
+    });
     const runtime = createTestPluginRuntime({
       getBrokerAdapter: (brokerType) => brokerType === "ibkr"
         ? historyBroker
@@ -568,10 +545,7 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
       currency: scenario === "unknown currency" ? undefined : "USD",
       points: scenario === "empty observations" ? points.map(({ date }) => ({ date })) : points,
     };
-    const adapter: BrokerAdapter = {
-      id: "ibkr", name: "Controlled history", configSchema: [], validate: async () => true,
-      importPositions: async () => [], getPortfolioPerformance: async () => performance,
-    };
+    const adapter = createTestBrokerAdapter({ id: "ibkr", getPortfolioPerformance: async () => performance });
     const config = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
     config.baseCurrency = "EUR";
     config.portfolios[1]!.currency = "JPY";

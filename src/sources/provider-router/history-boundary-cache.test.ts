@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 const bad = [{ date: new Date("2013-03-25"), close: .55227 }];
 const good = [{ date: new Date("2022-05-02"), close: 49.21 }, { date: new Date("2026-08-24"), close: 59.87 }];
 const equalHistory = (value: unknown) => expect(JSON.stringify(value)).toBe(JSON.stringify(good));

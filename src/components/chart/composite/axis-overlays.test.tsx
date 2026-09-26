@@ -2,22 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   UiHostProvider,
-  type RendererHost,
   type UiHost,
 } from "../../../ui";
 import { WebBox } from "../../../renderers/electrobun/view/host/box";
 import { WebText } from "../../../renderers/electrobun/view/host/text";
 import { StaticXAxisLabels } from "./axis-overlays";
-
-const renderer: RendererHost = {
-  requestExit() {},
-  async openExternal() {},
-  async copyText() {},
-  async readText() {
-    return "";
-  },
-  notify() {},
-};
+import { noopRendererHost } from "../../../test-support/renderer-host";
 
 function renderAxis(
   kind: "opentui" | "desktop-web",
@@ -34,7 +24,7 @@ function renderAxis(
   } as unknown as UiHost;
   const fallback = "Nov 3 2025                    Mar                    Jul 29 2026";
   return renderToStaticMarkup(
-    <UiHostProvider ui={ui} renderer={renderer}>
+    <UiHostProvider ui={ui} renderer={noopRendererHost}>
       <StaticXAxisLabels
         labels={[fallback]}
         positionedLabels={[

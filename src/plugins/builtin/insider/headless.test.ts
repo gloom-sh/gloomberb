@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { loadParsedInsiderFilings } from "./client";
 import { createInsiderHeadless } from "./headless";
 import type { ParsedInsiderFiling } from "./model";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -51,15 +51,6 @@ const parsed: ParsedInsiderFiling[] = [
   },
 ];
 
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-insider"),
-    signal: new AbortController().signal,
-  };
-}
-
 function args(name = "", limit = 20): HeadlessPaneLoadArgs {
   return {
     rawArgument: "AMD",
@@ -103,7 +94,7 @@ describe("insider client", () => {
         ? `<ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerName>SU LISA T</rptOwnerName></reportingOwnerId></reportingOwner>${tx(55)}${tx(294)}</ownershipDocument>`
         : null,
     });
-    const result = await createInsiderHeadless().load(args("su lisa t", 2), { ...context(), marketData: provider });
+    const result = await createInsiderHeadless().load(args("su lisa t", 2), { ...createTestHeadlessContext(), marketData: provider });
     expect(result.rows.map((row) => [row.id, row.shares, row.side])).toEqual([["one:0", 55, "GIFT"], ["one:1", 294, "GIFT"]]);
     expect(result.metadata).toMatchObject({ parsed: 1, transactions: 2, requested: 2 });
     expect(result.errors).toEqual(["two: Form 4 transactions are unavailable or incomplete."]);
@@ -120,7 +111,7 @@ describe("insider headless model", () => {
       },
     });
 
-    const all = await headless.load(args("", 2), context());
+    const all = await headless.load(args("", 2), createTestHeadlessContext());
     expect(all.rows[0]).toMatchObject({
       insider: "SU LISA T",
       side: "BUY",
@@ -128,7 +119,7 @@ describe("insider headless model", () => {
       totalValue: 3_750_000,
     });
 
-    const filtered = await headless.load(args("other officer", 2), context());
+    const filtered = await headless.load(args("other officer", 2), createTestHeadlessContext());
     expect(filtered.rows).toHaveLength(1);
     expect(filtered.rows[0]).toMatchObject({ insider: "OTHER OFFICER", side: "SELL" });
     expect(requestedLimits).toEqual([2, 2]);

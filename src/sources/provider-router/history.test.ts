@@ -3,13 +3,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
-import {
-  cleanupProviderRouterTestFiles,
-  createTempDbPath,
-  fallbackProvider,
-  makeFinancials,
-  makeQuote,
-} from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 const originalConsoleError = console.error;
 const originalDateNow = Date.now;
@@ -19,7 +14,7 @@ useRegularMarketSession();
 afterEach(() => {
   console.error = originalConsoleError;
   Date.now = originalDateNow;
-  cleanupProviderRouterTestFiles();
+  removeTempDbFiles();
 });
 
 describe("AssetDataRouter chart history", () => {
@@ -390,9 +385,9 @@ describe("AssetDataRouter chart history", () => {
     const seedRouter = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-27T00:00:00Z"), close: 101 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             price: 101,
             change: 1,
             changePercent: 1,
@@ -407,9 +402,9 @@ describe("AssetDataRouter chart history", () => {
       ...fallbackProvider,
       async getTickerFinancials() {
         providerCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 202 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             price: 202,
             change: 2,
             changePercent: 1,

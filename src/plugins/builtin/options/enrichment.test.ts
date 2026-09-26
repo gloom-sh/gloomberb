@@ -40,12 +40,6 @@ function selection(overrides: Partial<OptionsEnrichmentSelection> = {}): Options
   return { instrument, expiration: selected, selectedEntry: ready(chain()), catalogue: [selected, next],
     spot: 100, spotAsOf: now - 1000, ...overrides };
 }
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
-}
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
 describe("options enrichment projection", () => {
@@ -173,8 +167,8 @@ describe("options enrichment projection", () => {
 
 describe("options enrichment loading", () => {
   test("publishes quoted then modeled selected metrics before the adjacent request completes", async () => {
-    const rateGate = deferred<typeof curve>();
-    const neighbourGate = deferred<QueryEntry<OptionsChain>>();
+    const rateGate = Promise.withResolvers<typeof curve>();
+    const neighbourGate = Promise.withResolvers<QueryEntry<OptionsChain>>();
     const snapshots: OptionsEnrichmentSnapshot[] = [];
     const calls: { expiration?: number; force?: boolean; instrument: unknown }[] = [];
     const loading = loadOptionsEnrichment({ ...selection(), forceRefresh: true, onSnapshot: (value) => snapshots.push(value) }, {
@@ -233,7 +227,7 @@ describe("options enrichment loading", () => {
   });
 
   test("cancellation rejects promptly and prevents late snapshots or new dependency calls", async () => {
-    const gate = deferred<QueryEntry<OptionsChain>>();
+    const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
     const snapshots: OptionsEnrichmentSnapshot[] = [];
     let calls = 0;
     const dependencies = { now: () => now, loadYieldCurve: async () => curve,

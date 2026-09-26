@@ -12,12 +12,6 @@ const emptyChain = (dates = expirations): OptionsChain => ({ underlyingSymbol: "
 const ready = (data: OptionsChain): QueryEntry<OptionsChain> => ({ phase: "ready", data, lastGoodData: data,
   source: "test", fetchedAt: now, staleAt: now + 60_000, error: null, attempts: [] });
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((a, b) => { resolve = a; reject = b; });
-  return { promise, resolve, reject };
-}
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
 describe("surface expiry selection", () => {
@@ -67,14 +61,14 @@ describe("surface loader", () => {
   });
 
   test("caps default catalogue, publishes partial failures and bounds concurrency at four", async () => {
-    const outstanding = new Map<number, ReturnType<typeof deferred<QueryEntry<OptionsChain>>>>();
+    const outstanding = new Map<number, PromiseWithResolvers<QueryEntry<OptionsChain>>>();
     let active = 0, maximum = 0;
     const snapshots: SurfaceSnapshot[] = [];
     const deps: SurfaceLoaderDependencies = { now: () => now, loadYieldCurve: async () => curve,
       loadOptions: async (request) => {
         if (request.expirationDate == null) return ready(emptyChain());
         active += 1; maximum = Math.max(maximum, active);
-        const gate = deferred<QueryEntry<OptionsChain>>();
+        const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
         outstanding.set(request.expirationDate, gate);
         try { return await gate.promise; } finally { active -= 1; }
       } };
@@ -107,7 +101,7 @@ describe("surface loader", () => {
   });
 
   test("abort promptly rejects without scheduling or emitting superseded results", async () => {
-    const gate = deferred<QueryEntry<OptionsChain>>();
+    const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
     let calls = 0;
     const snapshots: SurfaceSnapshot[] = [];
     const controller = new AbortController();

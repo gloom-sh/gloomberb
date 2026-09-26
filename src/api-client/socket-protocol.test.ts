@@ -2,43 +2,19 @@ import { afterEach, expect, test } from "bun:test";
 import { CloudApiSocket } from "./socket";
 import { getServerClockOffsetMs, resetServerClockForTests } from "../market-data/quotes/clock";
 import type { CloudQuotePayload, QuoteStreamTarget } from "./types";
+import { createTestSocketDeps, installTestWebSocket, type TestWebSocket } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
-const sockets: TestSocket[] = [];
-
-class TestSocket {
-  static readonly OPEN = 1;
-  readyState = 0;
-  sent: any[] = [];
-  onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  constructor(_url: string) { sockets.push(this); }
-  send(data: string) { this.sent.push(JSON.parse(data)); }
-  close() { this.readyState = 3; }
-  open() { this.readyState = 1; this.onopen?.(); }
-  receive(message: unknown) { this.onmessage?.({ data: JSON.stringify(message) }); }
-}
+let sockets: TestWebSocket[] = [];
 
 afterEach(() => {
   globalThis.WebSocket = originalWebSocket;
-  sockets.length = 0;
   resetServerClockForTests();
 });
 
 function createSocket() {
-  globalThis.WebSocket = TestSocket as unknown as typeof WebSocket;
-  const socket = new CloudApiSocket({
-    getBaseUrl: () => "https://api.example.test",
-    getSocketAuthToken: () => null,
-    hasSessionCredential: () => false,
-    hasVerifiedUser: () => false,
-    isUsingWebSocketToken: () => false,
-    clearWebSocketTokenForFallback: () => false,
-    markCurrentUserUnverified: () => {},
-    updateCurrentUserFromSocket: () => {},
-  });
+  sockets = installTestWebSocket(0);
+  const socket = new CloudApiSocket(createTestSocketDeps());
   const received: Array<{ target: QuoteStreamTarget; quote: CloudQuotePayload }> = [];
   socket.subscribeQuotes(
     [{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "MSFT", exchange: "NASDAQ" }],

@@ -1,11 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useMemo, useReducer } from "react";
-import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { insiderModule } from "./index";
@@ -25,13 +23,9 @@ function Harness({ width }: { width: number }) {
     return initial;
   });
   const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
-  return <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
-    <PaneFooterProvider>{(footer) => <Box width={width} height={30} flexDirection="column">
-      <Box width={width} height={29}><InsiderView paneId={paneId} paneType="insider" focused width={width} height={29} /></Box>
-      <PaneFooterBar footer={footer} focused width={width} />
-      <PaneFooterKeys paneId={paneId} footer={footer} focused />
-    </Box>}</PaneFooterProvider>
-  </TestPaneProvider>;
+  return <TestPaneFrame state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={30} footerKeys>
+    {(body) => <InsiderView paneId={paneId} paneType="insider" focused {...body} />}
+  </TestPaneFrame>;
 }
 async function settle() {
   for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await setup!.renderOnce(); });

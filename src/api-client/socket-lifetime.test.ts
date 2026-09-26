@@ -1,28 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { apiClient } from "./index";
+import { installTestWebSocket, type TestWebSocket } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
-const sockets: TestSocket[] = [];
-
-class TestSocket {
-  static readonly OPEN = 1;
-  readyState = 0;
-  closeCalls = 0;
-  onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  constructor(_url: string) { sockets.push(this); }
-  send() {}
-  close() { this.closeCalls++; this.readyState = 3; }
-  receive(message: unknown) { this.onmessage?.({ data: JSON.stringify(message) }); }
-}
+let sockets: TestWebSocket[] = [];
 
 afterEach(() => {
   apiClient.dispose();
   apiClient.setSessionToken(null);
   globalThis.WebSocket = originalWebSocket;
-  sockets.length = 0;
 });
 
 function signIn(id: string, plan: "free" | "pro") {
@@ -32,14 +18,14 @@ function signIn(id: string, plan: "free" | "pro") {
 
 function start() {
   apiClient.dispose();
-  globalThis.WebSocket = TestSocket as unknown as typeof WebSocket;
+  sockets = installTestWebSocket(0);
   signIn("first-user", "free");
   const quotes: number[] = [];
   apiClient.subscribeQuotes([{ symbol: "CONTROL", exchange: "NASDAQ" }], (_target, quote) => quotes.push(quote.price));
   return { retired: sockets[0]!, quotes };
 }
 
-function retiredMessages(socket: TestSocket) {
+function retiredMessages(socket: TestWebSocket) {
   socket.receive({ type: "ready", user: { id: "first-user", emailVerified: true, plan: "free", effectivePlan: "free" } });
   socket.receive({ type: "auth.unverified" });
   socket.receive({ type: "market.quote", symbol: "CONTROL", exchange: "NASDAQ", quote: { price: 1 } });

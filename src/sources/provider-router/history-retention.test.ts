@@ -7,9 +7,11 @@ import { HistoryCoverageError } from "../history-coverage";
 import { HistoryRetentionError, parseHistoryRetention, type HistoryRecoveryCandidate, type HistoryRetention } from "../history-retention";
 import { ProviderMissError } from "../provider-errors";
 import { AssetDataRouter } from "./index";
-import { attachTestRegistry, brokerInstance, cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, setBrokerInstances } from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 const DAY = 86_400_000;
 const proof = (patch: Partial<HistoryRetention> = {}): HistoryRetention => {
   const observedAt = Math.floor(Date.now() / 1000) * 1000;

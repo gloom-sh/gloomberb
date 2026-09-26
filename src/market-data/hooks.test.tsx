@@ -7,6 +7,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "./coordin
 import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "./hooks";
 import type { ChartRequest } from "./request-types";
 import { createIdleEntry } from "./result-types";
+import { createTestTicker } from "../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
@@ -48,19 +49,7 @@ const sampleFinancials: TickerFinancials = {
   },
 };
 const tickers: TickerRecord[] = [
-  {
-    metadata: {
-      ticker: "SAP",
-      exchange: "XETRA",
-      currency: "EUR",
-      name: "SAP",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  },
+  createTestTicker("SAP", "SAP", { exchange: "XETRA", currency: "EUR" }),
 ];
 
 function HooksHarness() {

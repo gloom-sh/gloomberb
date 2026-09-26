@@ -14,8 +14,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import type { PaneInstanceConfig } from "../types/config";
 
 test("selected futures and public listing survive actual templates, chart models and public-share restore", async () => {
-  const storage = new Map<string, string>();
-  const repo = new JsonTickerRepository({ getItem: key => storage.get(key) ?? null, setItem: (key, value) => { storage.set(key, value); }, removeItem: key => { storage.delete(key); } });
+  const repo = new JsonTickerRepository();
   const futures: InstrumentSearchResult[] = ["20261218", "20270319"].map(expiry => ({ providerId: "fixture", symbol: "ACME", name: `ACME ${expiry} future`, exchange: "CBOE", currency: "USD", type: "FUT",
     brokerContract: { brokerId: "fixture", brokerInstanceId: "desk", symbol: "ACME", secType: "FUT", exchange: "CBOE", currency: "USD", lastTradeDateOrContractMonth: expiry, multiplier: "100" } }));
   for (const result of futures) await upsertTickerFromSearchResult(repo, result);

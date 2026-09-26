@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudCongressHousePayload } from "../../../api-client";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneContext } from "../../../types/plugin";
 import { createCongressHeadless } from "./headless";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 
 const payload: CloudCongressHousePayload = {
   asOf: "2026-09-04T12:00:00.000Z",
@@ -60,23 +59,14 @@ const payload: CloudCongressHousePayload = {
   ],
 };
 
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-congress"),
-    signal: new AbortController().signal,
-  };
-}
-
-function args(tab: "trades" | "members", limit = 50): HeadlessPaneLoadArgs {
-  return { rawArgument: "", argument: null, symbols: [], options: { tab, year: 2026, limit } };
+function args(tab: "trades" | "members", limit = 50) {
+  return createTestHeadlessArgs({ options: { tab, year: 2026, limit } });
 }
 
 describe("congress headless model", () => {
   test("passes ticker and both cursors to the server without hiding source gaps", async () => {
     let requested: unknown;
-    const ctx = context();
+    const ctx = createTestHeadlessContext();
     ctx.apiClient = { getCloudCongressHouse: async (params: unknown) => {
       requested = params;
       return { ...payload, filingsPending: 3, hasMoreFilings: true, nextFilingOffset: 120 };
@@ -92,7 +82,7 @@ describe("congress headless model", () => {
   test("projects the active tab and applies its row limit", async () => {
     const headless = createCongressHeadless({ loadHouse: async () => payload });
 
-    const trades = await headless.load(args("trades", 1), context());
+    const trades = await headless.load(args("trades", 1), createTestHeadlessContext());
     expect(trades.rows).toMatchObject([{
       memberName: "Nancy Pelosi",
       side: "BUY",
@@ -102,7 +92,7 @@ describe("congress headless model", () => {
     }]);
     expect(trades.columns?.map((column) => column.key)).toContain("ticker");
 
-    const members = await headless.load(args("members", 1), context());
+    const members = await headless.load(args("members", 1), createTestHeadlessContext());
     expect(members.rows).toMatchObject([{
       memberName: "Nancy Pelosi",
       tradeCount: 12,

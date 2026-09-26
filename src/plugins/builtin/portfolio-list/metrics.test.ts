@@ -13,44 +13,21 @@ import {
   resolvePortfolioPriceValue,
   type ColumnContext,
 } from "./metrics";
+import { createTestTicker } from "../../../test-support/ticker";
+import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 
-function createTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      positions: [],
-      portfolios: [],
-      watchlists: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+const createTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 
 function createFinancials(
   overrides: Omit<Partial<TickerFinancials>, "quote"> & { quote?: Partial<Quote> } = {},
 ): TickerFinancials {
   const { quote: quoteOverrides, ...financialOverrides } = overrides;
-  return {
-    annualStatements: [],
-    quarterlyStatements: [],
-    priceHistory: [],
+  return createTestFinancials({
     ...financialOverrides,
-    quote: {
-      symbol: "AAPL",
-      price: 120,
-      currency: "USD",
-      change: 5,
-      changePercent: 4.35,
-      previousClose: 115,
-      lastUpdated: 1_700_000_000_000,
-      ...quoteOverrides,
-    },
-  };
+    quote: createTestQuote({
+      price: 120, change: 5, changePercent: 4.35, previousClose: 115, lastUpdated: 1_700_000_000_000, ...quoteOverrides,
+    }),
+  });
 }
 
 const defaultColumnContext: ColumnContext = {

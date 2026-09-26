@@ -4,7 +4,6 @@ import { Box } from "../../../ui";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { correlationModule } from ".";
@@ -13,12 +12,6 @@ import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../
 const TEST_PANE_ID = "correlation:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-function makeTicker(symbol: string): TickerRecord {
-  return createTestTicker(symbol, symbol, {
-    broker_contracts: []
-  });
-}
 
 function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
   const config = createTestPaneConfig("/tmp/gloomberb-correlation-test", {
@@ -34,8 +27,8 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
     const initial = createInitialState(config);
     initial.focusedPaneId = TEST_PANE_ID;
     initial.tickers = new Map([
-      ["AAPL", makeTicker("AAPL")],
-      ["MSFT", makeTicker("MSFT")],
+      ["AAPL", createTestTicker("AAPL", "AAPL", { broker_contracts: [] })],
+      ["MSFT", createTestTicker("MSFT", "MSFT", { broker_contracts: [] })],
     ]);
     return initial;
   });

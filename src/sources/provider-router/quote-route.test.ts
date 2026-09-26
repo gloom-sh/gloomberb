@@ -2,17 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../types/broker";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
-import {
-  attachTestRegistry,
-  brokerInstance,
-  cleanupProviderRouterTestFiles,
-  fallbackProvider,
-  makeQuote,
-  setBrokerInstances,
-} from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { removeTempDbFiles } from "../../test-support/temp-db";
 
 afterEach(() => {
-  cleanupProviderRouterTestFiles();
+  removeTempDbFiles();
 });
 
 const flushReroute = () => new Promise<void>((resolve) => queueMicrotask(resolve));
@@ -92,7 +87,7 @@ function createGateway(log: StreamLog, initial: BrokerConnectionStatus) {
     subscribeQuotes(_instance, targets, onQuote) {
       const symbols = targets.map((target) => target.symbol);
       log.opened.push(symbols);
-      emitters.push((target, dataSource) => onQuote(target, makeQuote({ symbol: target.symbol, dataSource })));
+      emitters.push((target, dataSource) => onQuote(target, createTestQuote({ symbol: target.symbol, dataSource })));
       return () => { log.closed.push(symbols); };
     },
   };

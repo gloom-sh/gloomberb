@@ -1,17 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createHoldersHeadless } from "./headless";
-
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-holders"),
-    signal: new AbortController().signal,
-  };
-}
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -39,7 +29,7 @@ describe("holders headless model", () => {
       }),
     });
 
-    const byValue = await headless.load(args({ limit: 1 }), context());
+    const byValue = await headless.load(args({ limit: 1 }), createTestHeadlessContext());
     expect(byValue.rows).toEqual([{
       name: "Large Fund",
       ownerType: "fund",
@@ -52,7 +42,7 @@ describe("holders headless model", () => {
       currency: "USD",
     }]);
 
-    const byName = await headless.load(args({ sort: "holder", order: "asc", limit: 2 }), context());
+    const byName = await headless.load(args({ sort: "holder", order: "asc", limit: 2 }), createTestHeadlessContext());
     expect(byName.rows.map((row) => row.name)).toEqual(["Large Fund", "Small Fund"]);
   });
 });

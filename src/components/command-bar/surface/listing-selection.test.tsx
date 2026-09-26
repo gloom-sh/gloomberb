@@ -4,7 +4,8 @@ import { testRender } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { PaneTemplateCreateOptions, PaneTemplateDef } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
-import { CommandBarHarness, createCommandBarTestControls, emitKeypress, makeTicker } from "./test-harness";
+import { CommandBarHarness, createCommandBarTestControls, emitKeypress } from "./test-harness";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 afterEach(async () => { await act(async () => { setup?.renderer.destroy(); }); setup = undefined; });
@@ -17,7 +18,7 @@ for (const savedDefault of [false, true]) {
     setup = await testRender(<CommandBarHarness
       query="EE SHOP"
       live
-      extraTickers={savedDefault ? [makeTicker("SHOP", "Shopify Inc.")] : []}
+      extraTickers={savedDefault ? [createTestTicker("SHOP", "Shopify Inc.")] : []}
       dataProvider={createTestDataProvider({
         search: async (query) => {
           searchQueries.push(query);

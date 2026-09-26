@@ -10,22 +10,23 @@ import { mapCloudFinancials } from "../gloomberb-cloud/normalizers";
 import fixture from "../fixtures/sec-operating-expenses.json";
 import { AssetDataRouter } from "./index";
 import { cacheRouterResource, listCachedResources } from "./cache";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 const NOW = Date.parse("2026-09-14T18:00:00Z");
 const ordinaryPolicy = { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 };
 const originalQ4 = 745_000_000;
 const originalCloudFinancials = apiClient.getCloudFinancials;
 const q4 = (financials: TickerFinancials) => financials.quarterlyStatements.find(row => row.date === "2025-12-31");
-const vendorFinancials = (symbol = "SHOP", exchange = "NASDAQ", currency = "USD") => makeFinancials({
-  quote: makeQuote({ symbol, listingExchangeName: exchange, exchangeName: exchange, currency }),
+const vendorFinancials = (symbol = "SHOP", exchange = "NASDAQ", currency = "USD") => createTestFinancials({
+  quote: createTestQuote({ symbol, listingExchangeName: exchange, exchangeName: exchange, currency }),
   financialCurrency: currency,
   profile: { description: "Company profile" },
   annualStatements: Array.from({ length: 5 }, (_, index) => ({ date: `${2021 + index}-12-31`, currency, inventory: 5 })),
   quarterlyStatements: [{ date: "2025-12-31", currency, operatingIncome: originalQ4 }],
 });
 
-afterEach(() => { apiClient.getCloudFinancials = originalCloudFinancials; setSystemTime(); cleanupProviderRouterTestFiles(); });
+afterEach(() => { apiClient.getCloudFinancials = originalCloudFinancials; setSystemTime(); removeTempDbFiles(); });
 
 for (const extended of [false, true]) {
   test(`native ${extended ? "extended" : "default"} financial cache reaches a completed background SEC table after restart`, async () => {

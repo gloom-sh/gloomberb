@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createTestTicker } from "../test-support/pane";
+import { createTestTicker } from "../test-support/ticker";
 import type { TickerFinancials } from "../types/financials";
 import { resolveTickerInstrumentKind } from "./instrument-kind";
 

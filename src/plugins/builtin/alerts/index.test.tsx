@@ -4,14 +4,12 @@ import { testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import type { AppConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createConfigBackedTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { Box } from "../../../ui";
 import { deserializeAlerts, serializeAlerts } from "./alert-engine";
 import { alertsPlugin } from "./index";
 import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
-import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -87,22 +85,9 @@ function AlertsHarness({
   harnessDispatch = dispatch;
 
   return (
-    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="alerts" runtime={runtime}>
-      <PaneFooterProvider>
-        {(footer) => (
-          <Box flexDirection="column" width={width} height={height}>
-            <AlertsPane
-              paneId={TEST_PANE_ID}
-              paneType="alerts"
-              focused
-              width={width}
-              height={Math.max(1, height - 1)}
-            />
-            <PaneFooterBar footer={footer} focused width={width} />
-          </Box>
-        )}
-      </PaneFooterProvider>
-    </TestPaneProvider>
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="alerts" runtime={runtime} width={width} height={height}>
+      {(body) => <AlertsPane paneId={TEST_PANE_ID} paneType="alerts" focused {...body} />}
+    </TestPaneFrame>
   );
 }
 

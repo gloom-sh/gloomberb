@@ -4,9 +4,11 @@ import type { DataProvider, MarketDataRequestContext } from "../../types/data-pr
 import type { PricePoint } from "../../types/financials";
 import { ProviderMissError } from "../provider-errors";
 import { AssetDataRouter } from "./index";
-import { attachTestRegistry, brokerInstance, cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, setBrokerInstances } from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 const start = new Date("2026-09-21T09:00:00Z");
 const end = new Date("2026-09-21T10:00:00Z");
 const laterStart = new Date("2026-09-21T09:30:00Z");

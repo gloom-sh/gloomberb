@@ -8,23 +8,9 @@ import {
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
 } from "./mutations";
+import { createTestTicker } from "../../../test-support/ticker";
 
-function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 
 describe("portfolio-list mutations", () => {
   test("rejects duplicate manual portfolio names", () => {

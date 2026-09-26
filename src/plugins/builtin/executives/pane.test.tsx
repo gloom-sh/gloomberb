@@ -2,13 +2,11 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, createTestTicker, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { Box } from "../../../ui";
 import { attachExecutivesPersistence, loadProxyStatement, loadProxyStatements, resetExecutivesPersistence } from "./data";
 import { ExecutivesPane } from "./pane";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -23,12 +21,6 @@ function statement(ticker: string, year: number): CloudProxyStatementPayload {
     docUrl: `https://example.com/${ticker}/${year}`, ceo: null, namedExecutives: [],
     highlights: `${ticker} compensation ${year}`, keyFigures: [], otherYears: [],
   };
-}
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
 }
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 const restore: Array<() => void> = [];
@@ -61,12 +53,9 @@ async function mount(initialSymbol = "ALPHA", width = 100, height = 24) {
     const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
     const listing = parsePublicTickerKey(symbol);
     state.tickers.set(symbol, createTestTicker(listing.symbol, listing.symbol, { exchange: listing.exchange ?? "NASDAQ" }));
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
-      <PaneFooterProvider>{footer => <Box width={width} height={height} flexDirection="column">
-        <Box height={height - 1}><ExecutivesPane focused width={width} height={height - 1} /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={height}>
+      {(body) => <ExecutivesPane focused {...body} />}
+    </TestPaneFrame>;
   }
   setup = await testRender(<Harness />, { width, height });
   await settle();
@@ -113,7 +102,7 @@ test("the CEO summary preserves reported zero compensation and its full decline"
 });
 
 test("a different proxy year clears the prior figures and filing action, and a failed year remains recoverable", async () => {
-  const earlier = deferred<CloudProxyStatementPayload>();
+  const earlier = Promise.withResolvers<CloudProxyStatementPayload>();
   const list = spyOn(apiClient, "getProxyStatements").mockResolvedValue({ company: statement("ALPHA", 2026).company, proxies: [statement("ALPHA", 2026), statement("ALPHA", 2025)] });
   const detail = spyOn(apiClient, "getProxyStatement").mockImplementation(async (ticker, year) => year === 2025 ? earlier.promise : statement(ticker, year));
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
@@ -133,8 +122,8 @@ test("a different proxy year clears the prior figures and filing action, and a f
 });
 
 test("changing ticker waits for its own proxy years and discards a late previous-company response", async () => {
-  const betaList = deferred<CloudProxyStatementListPayload>();
-  const oldYear = deferred<CloudProxyStatementPayload>();
+  const betaList = Promise.withResolvers<CloudProxyStatementListPayload>();
+  const oldYear = Promise.withResolvers<CloudProxyStatementPayload>();
   const list = spyOn(apiClient, "getProxyStatements").mockImplementation(async ticker => ticker === "BETA" ? betaList.promise : { company: statement(ticker, 2026).company, proxies: [statement(ticker, 2026), statement(ticker, 2025)] });
   const detail = spyOn(apiClient, "getProxyStatement").mockImplementation(async (ticker, year) => ticker === "ALPHA" && year === 2025 ? oldYear.promise : statement(ticker, year));
   restore.push(() => list.mockRestore(), () => detail.mockRestore());
@@ -247,7 +236,7 @@ for (const status of [401, 402, 403, 404]) test(`authoritative ${status} respons
 
 test("an older forced request cannot replace a newer cached statement or mark its refresh failed", async () => {
   const { persistence, report } = seedCache(false);
-  const old = deferred<CloudProxyStatementPayload>();
+  const old = Promise.withResolvers<CloudProxyStatementPayload>();
   const current = { ...report, highlights: "Current revised extraction" };
   const detail = spyOn(apiClient, "getProxyStatement")
     .mockImplementationOnce(() => old.promise).mockResolvedValue(current);

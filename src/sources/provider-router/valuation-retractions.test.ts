@@ -7,12 +7,14 @@ import { buildOverviewStats } from "../../plugins/builtin/ticker-detail/overview
 import { cacheRouterResource, listCachedResources } from "./cache";
 import { mergeFinancials, mergeRefreshedFinancials, sanitizeCachedFinancials } from "./financials";
 import { AssetDataRouter } from "./index";
-import { attachTestRegistry, brokerInstance, cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote, setBrokerInstances } from "./test-support";
+import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
-const sapObservation = makeFinancials({
-  quote: makeQuote({ symbol: "SAP", listingExchangeName: "NYSE", currency: "USD", providerId: "gloomberb-cloud" }),
+const sapObservation = createTestFinancials({
+  quote: createTestQuote({ symbol: "SAP", listingExchangeName: "NYSE", currency: "USD", providerId: "gloomberb-cloud" }),
   fundamentals: { source: "twelvedata", enterpriseValue: 4_095_338_359_014, enterpriseToRevenue: 92.879,
     sharesOutstanding: 1_154_204_232, revenue: 44_093_047_102, trailingPE: 28.056555, marketCapCurrency: "USD" },
 });
@@ -25,7 +27,7 @@ test("old Cloud SAP response is withdrawn before consumers and cannot return thr
   expect(mapped.fundamentals?.revenue).toBe(44_093_047_102);
   expect(mapped.fundamentals?.trailingPE).toBe(28.056555);
   expect(sapObservation.fundamentals?.enterpriseValue).toBe(4_095_338_359_014);
-  const merged = mergeFinancials(makeFinancials({ profile: { description: "SAP" } }), roundTrip(mapped))!;
+  const merged = mergeFinancials(createTestFinancials({ profile: { description: "SAP" } }), roundTrip(mapped))!;
   expect(merged.fundamentals?.enterpriseValue).toBeUndefined();
   expect(buildOverviewStats({ quote: merged.quote, fundamentals: merged.fundamentals,
     quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value }).find((row) => row.label === "EV")?.value).toBe("—");
@@ -87,8 +89,8 @@ test("new and legacy Cloud caches retract SAP before quote stripping while other
 });
 
 const fields = ["enterpriseValue", "enterpriseToRevenue"] as const;
-const recorded = makeFinancials({
-  quote: makeQuote({ symbol: "ASML", listingExchangeName: "NASDAQ", currency: "USD", providerId: "gloomberb-cloud" }),
+const recorded = createTestFinancials({
+  quote: createTestQuote({ symbol: "ASML", listingExchangeName: "NASDAQ", currency: "USD", providerId: "gloomberb-cloud" }),
   fundamentals: { financialCurrency: "EUR", enterpriseValue: 43_716_311_028_848, enterpriseToRevenue: 1065.865,
     dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 32_667_300_000 },
   annualStatements: [{ date: "2025-12-31", currency: "EUR", totalRevenue: 32_667_300_000 }],
@@ -96,14 +98,14 @@ const recorded = makeFinancials({
 const roundTrip = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 test("explicit cloud retraction survives serialization, cached fallback, and further sparse merges", () => {
-  const corrected = mapCloudFinancials(roundTrip(makeFinancials({
+  const corrected = mapCloudFinancials(roundTrip(createTestFinancials({
     quote: recorded.quote, fundamentals: { financialCurrency: "EUR", trailingPE: 58.7, unavailableFields: [...fields] },
   })));
   const merged = mergeFinancials(corrected, roundTrip(recorded))!;
   expect(merged.fundamentals).toEqual({ financialCurrency: "EUR", trailingPE: 58.7, unavailableFields: [...fields],
     dividendYield: 0.0054, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 32_667_300_000 });
   expect(merged.annualStatements).toEqual(recorded.annualStatements);
-  const sparse = makeFinancials({ fundamentals: { financialCurrency: "EUR", forwardPE: 28.8 } });
+  const sparse = createTestFinancials({ fundamentals: { financialCurrency: "EUR", forwardPE: 28.8 } });
   expect(mergeFinancials(sparse, roundTrip(merged))?.fundamentals?.unavailableFields).toEqual(fields);
   expect(mergeFinancials(merged, recorded)?.fundamentals?.enterpriseValue).toBeUndefined();
   // Omission is still a partial response, not a retraction.
@@ -111,16 +113,16 @@ test("explicit cloud retraction survives serialization, cached fallback, and fur
 });
 
 test("authoritative finite observations clear inherited markers without suppressing valid native values", () => {
-  const unavailable = makeFinancials({ fundamentals: { financialCurrency: "EUR", unavailableFields: [...fields] } });
+  const unavailable = createTestFinancials({ fundamentals: { financialCurrency: "EUR", unavailableFields: [...fields] } });
   for (const value of [662_293_158_034, 0, -100]) {
-    const native = makeFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" },
+    const native = createTestFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" },
       fundamentals: { financialCurrency: "EUR", enterpriseValue: value } });
     const merged = mergeFinancials(native, unavailable)!;
     expect(merged.fundamentals?.enterpriseValue).toBe(value);
     expect(merged.fundamentals?.unavailableFields).toEqual(["enterpriseToRevenue"]);
   }
-  expect(mergeFinancials(makeFinancials({ fundamentals: { enterpriseValue: Number.NaN } }), unavailable)?.fundamentals?.enterpriseValue).toBeUndefined();
-  const repaired = makeFinancials({ fundamentals: { enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { enterpriseValue: Number.NaN } }), unavailable)?.fundamentals?.enterpriseValue).toBeUndefined();
+  const repaired = createTestFinancials({ fundamentals: { enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
   expect(mergeFinancials(repaired, unavailable)?.fundamentals?.unavailableFields).toBeUndefined();
 });
 
@@ -146,7 +148,7 @@ test("malformed optional retraction metadata cannot throw or erase unrelated fie
 });
 
 test("enrichment preserves reporting currency for finite corrections but permits explicit retractions", () => {
-  const fresh = makeFinancials({ fundamentals: { financialCurrency: "USD", enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
+  const fresh = createTestFinancials({ fundamentals: { financialCurrency: "USD", enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
   expect(mergeRefreshedFinancials(recorded, fresh).fundamentals).toEqual(recorded.fundamentals);
   const unavailable = { ...fresh, fundamentals: { ...fresh.fundamentals, unavailableFields: [...fields] } };
   expect(mergeRefreshedFinancials(recorded, unavailable).fundamentals?.enterpriseValue).toBeUndefined();
@@ -211,7 +213,7 @@ test("a newly fetched retraction overrides an earlier finite cache during profil
     const router = new AssetDataRouter({ ...fallbackProvider, id: "gloomberb-cloud",
       async getTickerFinancials() {
         loads++;
-        return makeFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } });
+        return createTestFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } });
       },
     }, [], persistence.resources);
     const value = await router.getTickerFinancials("ASML", "NASDAQ");
@@ -223,7 +225,7 @@ test("a newly fetched retraction overrides an earlier finite cache during profil
     // The next authoritative finite correction must also replace the cached retraction.
     const repaired = new AssetDataRouter({ ...fallbackProvider, id: "gloomberb-cloud",
       async getTickerFinancials() {
-        return makeFinancials({ quote: recorded.quote, fundamentals: { enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
+        return createTestFinancials({ quote: recorded.quote, fundamentals: { enterpriseValue: 662_293_158_034, enterpriseToRevenue: 16 } });
       },
     }, [], persistence.resources);
     const recovered = await repaired.getTickerFinancials("ASML", "NASDAQ");
@@ -245,7 +247,7 @@ test("provider enrichment preserves authoritative native and broker valuation co
     const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "yahoo", priority: 1,
       async getTickerFinancials() { throw new Error("Native provider temporarily unavailable"); },
     }, { ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
-      async getTickerFinancials() { cloudLoads++; return makeFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },
+      async getTickerFinancials() { cloudLoads++; return createTestFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },
     }], persistence.resources);
     const broker: BrokerAdapter = { id: "ibkr", name: "IBKR", configSchema: [], async validate() { return true; }, async importPositions() { return []; } };
     attachTestRegistry(router, { brokers: [["ibkr", broker]] });
@@ -264,12 +266,12 @@ test("a quote-only primary cache cannot shield a fallback provider valuation fro
   const persistence = new AppPersistence(createTempDbPath("mixed-valuation-origin"));
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
   cacheRouterResource(persistence.resources, "financials", "ASML", "exchange=NASDAQ", "provider:yahoo",
-    makeFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" } }), cachePolicy);
+    createTestFinancials({ quote: { ...recorded.quote!, providerId: "yahoo" } }), cachePolicy);
   cacheRouterResource(persistence.resources, "financials", "ASML", "exchange=NASDAQ", "provider:gloomberb-cloud", recorded, cachePolicy);
   const router = new AssetDataRouter(fallbackProvider, [{ ...fallbackProvider, id: "yahoo", priority: 1,
     async getTickerFinancials() { throw new Error("Native snapshot unavailable"); },
   }, { ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
-    async getTickerFinancials() { return makeFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },
+    async getTickerFinancials() { return createTestFinancials({ quote: recorded.quote, fundamentals: { unavailableFields: [...fields] } }); },
   }], persistence.resources);
   const result = await router.getTickerFinancials("ASML", "NASDAQ");
   expect(result.fundamentals?.enterpriseValue).toBeUndefined();

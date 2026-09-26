@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -11,6 +11,7 @@ import {
 } from "./registry";
 import { renderCliHelp, renderCommandHelp } from "./help";
 import { dispatchCli } from "./index";
+import { captureConsole } from "../test-support/console";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
@@ -25,38 +26,6 @@ async function createTempHome(prefix: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
-}
-
-async function captureConsole<T>(fn: () => Promise<T> | T): Promise<{ result: T; stdout: string; stderr: string }> {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  const originalLog = console.log;
-  const originalError = console.error;
-
-  const stdout = spyOn(process.stdout, "write").mockImplementation((chunk) => {
-    logs.push(String(chunk).replace(/\n$/, ""));
-    return true;
-  });
-
-  console.log = (...args: unknown[]) => {
-    logs.push(args.map(String).join(" "));
-  };
-  console.error = (...args: unknown[]) => {
-    errors.push(args.map(String).join(" "));
-  };
-
-  try {
-    const result = await fn();
-    return {
-      result,
-      stdout: logs.join("\n"),
-      stderr: errors.join("\n"),
-    };
-  } finally {
-    console.log = originalLog;
-    console.error = originalError;
-    stdout.mockRestore();
-  }
 }
 
 function renderOverview(registry: CliCommandRegistry): string {
@@ -210,40 +179,34 @@ describe("CLI dispatch", () => {
 
   test("renders plugin command failures through structured output", async () => {
     process.env.HOME = await createTempHome("gloomberb-cli-registry-failure-home-");
-    const originalExitCode = process.exitCode;
-    process.exitCode = undefined;
-    try {
-      const { result, stderr } = await captureConsole(() => dispatchCli(
-        ["fail-example", "--json"],
-        {
-          externalPlugins: [{
-            plugin: {
-              id: "failing-cli",
-              name: "Failing CLI",
-              version: "1.0.0",
-              cliCommands: [{
-                name: "fail-example",
-                description: "Fail on purpose",
-                execute: (_args, ctx) => ctx.fail("Synthetic failure.", "Synthetic details."),
-              }],
-            },
-            path: "/tmp/failing-cli",
-          }],
-        },
-      ));
+    const { result, stderr, exitCode } = await captureConsole(() => dispatchCli(
+      ["fail-example", "--json"],
+      {
+        externalPlugins: [{
+          plugin: {
+            id: "failing-cli",
+            name: "Failing CLI",
+            version: "1.0.0",
+            cliCommands: [{
+              name: "fail-example",
+              description: "Fail on purpose",
+              execute: (_args, ctx) => ctx.fail("Synthetic failure.", "Synthetic details."),
+            }],
+          },
+          path: "/tmp/failing-cli",
+        }],
+      },
+    ));
 
-      expect(result).toEqual({ kind: "handled" });
-      expect(process.exitCode).toBe(1);
-      expect(JSON.parse(stderr)).toEqual({
-        ok: false,
-        error: {
-          code: "cli_error",
-          message: "Synthetic failure.",
-          details: "Synthetic details.",
-        },
-      });
-    } finally {
-      process.exitCode = originalExitCode ?? 0;
-    }
+    expect(result).toEqual({ kind: "handled" });
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(stderr)).toEqual({
+      ok: false,
+      error: {
+        code: "cli_error",
+        message: "Synthetic failure.",
+        details: "Synthetic details.",
+      },
+    });
   });
 });

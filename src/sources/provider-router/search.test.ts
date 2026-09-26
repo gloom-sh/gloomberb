@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DataProvider, SearchRequestContext } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import { ProviderRouterSearchRoutes } from "./search";
+import { createTestDataProvider } from "../../test-support/data-provider";
 
 function result(symbol: string, extra: Partial<InstrumentSearchResult> = {}): InstrumentSearchResult {
   return { symbol, name: symbol, exchange: "NASDAQ", type: "EQUITY", ...extra };
@@ -12,13 +13,13 @@ function provider(
   items: InstrumentSearchResult[],
   delayMs = 0,
 ): DataProvider {
-  return {
+  return createTestDataProvider({
     id,
     search: async () => {
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
       return items;
     },
-  } as unknown as DataProvider;
+  });
 }
 
 function broker(
@@ -114,13 +115,13 @@ describe("provider search racing", () => {
    */
   test("a fallback provider is not asked when the preferred one answers", async () => {
     let fallbackCalls = 0;
-    const fallback = {
+    const fallback = createTestDataProvider({
       id: "fallback",
       search: async () => {
         fallbackCalls += 1;
         return [result("WRONG")];
       },
-    } as unknown as DataProvider;
+    });
     const routes = makeRoutes({ providers: [provider("preferred", [result("NVDA")]), fallback] });
 
     const results = await routes.search("nvidia", { interactive: true });
@@ -131,13 +132,13 @@ describe("provider search racing", () => {
 
   test("a fallback provider is asked when the preferred one finds nothing", async () => {
     let fallbackCalls = 0;
-    const fallback = {
+    const fallback = createTestDataProvider({
       id: "fallback",
       search: async () => {
         fallbackCalls += 1;
         return [result("NVDA")];
       },
-    } as unknown as DataProvider;
+    });
     const routes = makeRoutes({ providers: [provider("preferred", []), fallback] });
 
     const results = await routes.search("nvidia", { interactive: true });
@@ -158,14 +159,14 @@ describe("provider search racing", () => {
 
   test("concurrent identical queries share one run", async () => {
     let calls = 0;
-    const counting = {
+    const counting = createTestDataProvider({
       id: "cloud",
       search: async () => {
         calls += 1;
         await new Promise((resolve) => setTimeout(resolve, 30));
         return [result("TSLA")];
       },
-    } as unknown as DataProvider;
+    });
     const routes = makeRoutes({ providers: [counting] });
 
     const [a, b] = await Promise.all([routes.search("tesla"), routes.search("tesla")]);

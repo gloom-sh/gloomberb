@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { createTestDataProvider } from "../../../test-support/data-provider";
-import { createDefaultConfig } from "../../../types/config";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
+import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createThirteenFHeadless } from "./headless";
 import type { FundDetailData } from "./types";
+import { createTestHeadlessContext } from "../../../test-support/headless";
 
 const detail: FundDetailData = {
   cik: "0001067983",
@@ -62,15 +61,6 @@ detail.latestHoldings = [
 ];
 detail.previousHoldings = [{ ...detail.latestHoldings[0]!, accessionNumber: "previous", value: 200, shares: 2 }];
 
-function context(): HeadlessPaneContext {
-  return {
-    marketData: createTestDataProvider(),
-    apiClient: {} as HeadlessPaneContext["apiClient"],
-    config: createDefaultConfig("/tmp/gloomberb-headless-thirteenf"),
-    signal: new AbortController().signal,
-  };
-}
-
 function args(view: string, limit = 50): HeadlessPaneLoadArgs {
   return {
     rawArgument: "1067983",
@@ -89,7 +79,7 @@ describe("13F headless model", () => {
         { ...detail.previousHoldings[0]!, cusip: "21036P108", ticker: "STZ", shares: 632890, value: 94933500 },
       ] }),
     });
-    const result = await headless.load(args("holdings"), context());
+    const result = await headless.load(args("holdings"), createTestHeadlessContext());
     expect(result.rows.find((row) => row.ticker === "STZ")).toMatchObject({
       action: "exit", previousShares: 632890, sharesChange: -632890,
       shares: null, value: null, estimatedPnl: null,
@@ -109,11 +99,11 @@ describe("13F headless model", () => {
       },
       loadDetail: async () => { loaded = true; return detail; },
     });
-    await expect(headless.load({ ...args("holdings", 1), argument: "Berkshire" }, context()))
+    await expect(headless.load({ ...args("holdings", 1), argument: "Berkshire" }, createTestHeadlessContext()))
       .rejects.toThrow(/Ambiguous 13F fund.*0001067983/);
     expect(loaded).toBe(false);
     expect(lookups).toEqual([25]);
-    const exact = await headless.load({ ...args("holdings", 1), argument: "Berkshire Hathaway" }, context());
+    const exact = await headless.load({ ...args("holdings", 1), argument: "Berkshire Hathaway" }, createTestHeadlessContext());
     expect(exact.metadata?.cik).toBe(detail.cik);
   });
 
@@ -129,14 +119,14 @@ describe("13F headless model", () => {
       loadDetail: async () => detail,
     });
 
-    const browser = await headless.load(args("performance", 1), context());
+    const browser = await headless.load(args("performance", 1), createTestHeadlessContext());
     expect(browser.rows).toEqual([expect.objectContaining({
       cik: detail.cik,
       name: detail.name,
       estQuarterReturn: 8.2,
     })]);
 
-    const holdings = await headless.load(args("holdings", 5), context());
+    const holdings = await headless.load(args("holdings", 5), createTestHeadlessContext());
     expect(holdings.rows).toEqual([expect.objectContaining({
       ticker: "AAPL",
       value: 300,
@@ -163,7 +153,7 @@ describe("13F headless model", () => {
         return page(params.offset, 25, params.offset < 50);
       }) as never);
       const headless = createThirteenFHeadless({ loadBrowser: async () => ({ rows: [] }), loadDetail: async () => detail });
-      const result = await headless.load({ ...args("auto", 40), argument: "KO", rawArgument: "KO" }, context());
+      const result = await headless.load({ ...args("auto", 40), argument: "KO", rawArgument: "KO" }, createTestHeadlessContext());
       expect(offsets).toEqual([0, 25]);
       expect(result.rows).toHaveLength(40);
       expect(result.metadata).toMatchObject({ view: "ticker-holdings", truncated: true });
@@ -173,10 +163,10 @@ describe("13F headless model", () => {
       spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async () => { throw new Error("No 13F CUSIP found for ZZZZ"); }) as never);
       const tabs: string[] = [];
       const headless = createThirteenFHeadless({ loadBrowser: async (tab) => { tabs.push(tab); return { rows: [], warning: "No 13F holders for ZZZZ" }; }, loadDetail: async () => detail });
-      const result = await headless.load({ ...args("auto"), argument: "ZZZZ", rawArgument: "ZZZZ" }, context());
+      const result = await headless.load({ ...args("auto"), argument: "ZZZZ", rawArgument: "ZZZZ" }, createTestHeadlessContext());
       expect(tabs).toEqual(["byTicker"]);
       expect(result.metadata).toMatchObject({ view: "byTicker" });
-      await expect(headless.load({ ...args("ticker-holdings"), argument: "ZZZZ", rawArgument: "ZZZZ" }, context())).rejects.toThrow(/No 13F CUSIP/);
+      await expect(headless.load({ ...args("ticker-holdings"), argument: "ZZZZ", rawArgument: "ZZZZ" }, createTestHeadlessContext())).rejects.toThrow(/No 13F CUSIP/);
     });
   });
 });

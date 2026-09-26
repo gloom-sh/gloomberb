@@ -5,6 +5,7 @@ import { qualifySharpeCadence, qualifyReturnTimestamps } from "./sharpe-cadence"
 import { buildBenchmarkReturnSeries, buildPortfolioBetaResult, buildPortfolioChartTargets, buildPortfolioReturnSeries, PORTFOLIO_BENCHMARK } from "./pane-model";
 import { buildChartKey } from "../../../market-data/selectors";
 import type { TickerRecord } from "../../../types/ticker";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const datedReturns = (history: PricePoint[]) => resolveDatedReturns(history).returns;
 
@@ -87,10 +88,11 @@ test("beta timestamp eligibility does not borrow a calendar or a missing benchma
 });
 
 test("beta validates both sources on its actual overlap, preserving valid comparison beyond unrelated old observations", () => {
-  const ticker: TickerRecord = { metadata: {
-    ticker: "CONTROL", exchange: "NYSE", currency: "USD", name: "Controlled", portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+  const ticker: TickerRecord = createTestTicker("CONTROL", "Controlled", {
+    exchange: "NYSE",
+    portfolios: ["main"],
     positions: [{ portfolio: "main", shares: 1, avgCost: 100, markPrice: 100, currency: "USD", broker: "manual" }],
-  } };
+  });
   const dates = ["03", "04", "05", "06", "09", "10", "11", "12", "13", "16", "17", "18", "19", "20"];
   const prices = (factor: number) => {
     let close = 100;

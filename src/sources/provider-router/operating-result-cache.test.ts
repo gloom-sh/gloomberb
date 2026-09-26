@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { cacheRouterResource, listCachedResources } from "./cache";
-import { cleanupProviderRouterTestFiles, createTempDbPath, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 import { parseCompanyFactsFinancialStatements } from "../sec-edgar";
 import { mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { buildYahooStatements } from "../yahoo-finance/financials";
 import fixture from "../fixtures/sec-operating-expenses.json";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
 test("qualified SHOP legacy caches refresh and repaired ownership survives disk reopen without disturbing other listings", () => {
   const path = createTempDbPath("operating-cohorts");
@@ -21,12 +22,12 @@ test("qualified SHOP legacy caches refresh and repaired ownership survives disk 
     annualEBITDA: [{ asOfDate: "2025-12-31", currency: "USD", value: 1_916_000_000 }],
   }, "annual", true)[0]!;
   const direct = parseCompanyFactsFinancialStatements(fixture.shop).annualStatements;
-  const old = makeFinancials({ quote: makeQuote({ symbol: "SHOP", exchangeName: "NASDAQ", currency: "USD" }),
+  const old = createTestFinancials({ quote: createTestQuote({ symbol: "SHOP", exchangeName: "NASDAQ", currency: "USD" }),
     financialCurrency: "USD", annualStatements: [{ ...vendor, operatingResult: undefined }], quarterlyStatements: [] });
   persistence.resources.set(key, old, { schemaVersion: 9, cachePolicy: policy });
   const read = (exchange = "NASDAQ") => listCachedResources(persistence.resources, "financials", "SHOP", [`exchange=${exchange}`], [key.sourceKey], true);
   expect(read()).toEqual([]);
-  const toronto = makeFinancials({ ...old, quote: makeQuote({ symbol: "SHOP", exchangeName: "TSX", currency: "CAD" }) });
+  const toronto = createTestFinancials({ ...old, quote: createTestQuote({ symbol: "SHOP", exchangeName: "TSX", currency: "CAD" }) });
   persistence.resources.set({ ...key, variantKey: "exchange=TSX" }, toronto, { schemaVersion: 9, cachePolicy: policy });
   expect(read("TSX")).toHaveLength(1);
   const corrected = { ...old, annualStatements: mergeFinancialStatementRows([vendor], direct) };

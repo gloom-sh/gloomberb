@@ -4,7 +4,8 @@ import type { DataProvider } from "../../types/data-provider";
 import type { PricePoint } from "../../types/financials";
 import type { HistorySession, PriceHistoryResult } from "../../types/price-history";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 const PREOPEN = Date.parse("2026-09-22T12:42:12Z");
 const start = new Date("2026-09-01T00:00:00Z");
@@ -24,7 +25,7 @@ function provider(load: () => PriceHistoryResult, calls: string[], id = "gloombe
     async getDetailedPriceHistoryWithMetadata() { calls.push("detail"); return load(); },
   };
 }
-afterEach(() => { setSystemTime(); cleanupProviderRouterTestFiles(); });
+afterEach(() => { setSystemTime(); removeTempDbFiles(); });
 
 test("regular history survives range, exact cadence and current detailed routes through persisted reopen with original acquisition metadata", async () => {
   setSystemTime(PREOPEN);

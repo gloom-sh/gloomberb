@@ -1,30 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { TickerRecord } from "../types/ticker";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "./request-types";
-
-function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple",
-      broker_contracts: [],
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+import { createTestTicker } from "../test-support/ticker";
 
 describe("quoteSubscriptionTargetFromTicker", () => {
   test("selects the broker contract that belongs to the active portfolio", () => {
-    const ticker = makeTicker({
-      ticker: "VICR",
-      name: "Vicor",
+    const ticker = createTestTicker("VICR", "Vicor", {
       portfolios: [
         "broker:ibkr-live:DU111",
         "broker:ibkr-coldstart:DU222",
@@ -82,7 +62,7 @@ describe("quoteSubscriptionTargetFromTicker", () => {
   });
 
   test("preserves broker contract context for streaming targets", () => {
-    const ticker = makeTicker({
+    const ticker = createTestTicker("AAPL", "Apple", {
       broker_contracts: [{
         brokerId: "ibkr",
         brokerInstanceId: "ibkr-live",

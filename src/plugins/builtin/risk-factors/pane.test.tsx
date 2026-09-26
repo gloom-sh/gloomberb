@@ -103,12 +103,6 @@ async function key(value: string) {
   await settle();
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 afterEach(async () => {
   if (setup) await act(async () => setup!.renderer.destroy());
   setup = null;
@@ -157,7 +151,7 @@ test("stale discovery is disclosed; standard refresh follows latest until an exp
 });
 
 test("historical year loading and failure cannot display the previous report or its filing action", async () => {
-  const pending = deferred<Response>();
+  const pending = Promise.withResolvers<Response>();
   let recovery = false;
   transport((path) => {
     if (path.endsWith("/ACME")) return Response.json(list([2026, 2025]));
@@ -211,7 +205,7 @@ test("a ticker without a 10-K report shows the empty state, not a load error", a
 });
 
 test("changing ticker while a historical report is pending cannot adopt the old security or year", async () => {
-  const pending = deferred<Response>();
+  const pending = Promise.withResolvers<Response>();
   const otherList = list([2024]);
   transport((path) => {
     if (path.endsWith("/ACME")) return Response.json(list([2026, 2025]));

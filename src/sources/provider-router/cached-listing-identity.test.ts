@@ -5,14 +5,15 @@ import { useRegularMarketSession } from "../../test-support/market-session";
 import type { TickerFinancials } from "../../types/financials";
 import { cacheRouterResource, listCachedResources } from "./cache";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 useRegularMarketSession();
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 const target = { symbol: "SHOP", exchange: "XNAS" };
 const policy = { staleMs: 60_000, expireMs: 600_000 };
-const value = (overrides: Partial<TickerFinancials> = {}) => makeFinancials({
-  quote: makeQuote({ symbol: "SHOP", listingExchangeName: "NASDAQ", currency: "USD", providerId: "gloomberb-cloud" }),
+const value = (overrides: Partial<TickerFinancials> = {}) => createTestFinancials({
+  quote: createTestQuote({ symbol: "SHOP", listingExchangeName: "NASDAQ", currency: "USD", providerId: "gloomberb-cloud" }),
   profile: { description: "Requested issuer" },
   annualStatements: [{ date: "2025-12-31", currency: "USD", totalRevenue: 100 }],
   ...overrides,
@@ -80,8 +81,8 @@ test("cache selection falls through a conflicting source while preserving valid 
 
 test("a bare lookup that names no listing cannot answer for one venue's line", async () => {
   const store = new AppPersistence(":memory:");
-  const boeing = makeQuote({ symbol: "BA", name: "Boeing Co/The", price: 201.81 });
-  const bae = makeQuote({ symbol: "BA", name: "BAE Systems plc", listingExchangeName: "LSE", currency: "GBP", price: 20.23 });
+  const boeing = createTestQuote({ symbol: "BA", name: "Boeing Co/The", price: 201.81 });
+  const bae = createTestQuote({ symbol: "BA", name: "BAE Systems plc", listingExchangeName: "LSE", currency: "GBP", price: 20.23 });
   const requests: Array<string | undefined> = [];
   try {
     cacheRouterResource(store.resources, "quote", "BA", "", "provider:gloomberb-cloud", boeing, policy);
@@ -92,7 +93,7 @@ test("a bare lookup that names no listing cannot answer for one venue's line", a
     expect(requests).toEqual(["LSE"]);
     // The bare entry still serves a venue it names.
     cacheRouterResource(store.resources, "quote", "SHOP", "", "provider:gloomberb-cloud",
-      makeQuote({ symbol: "SHOP", listingExchangeName: "NASDAQ" }), policy);
+      createTestQuote({ symbol: "SHOP", listingExchangeName: "NASDAQ" }), policy);
     expect(listCachedResources(store.resources, "quote", "SHOP", ["exchange=NASDAQ", ""], ["provider:gloomberb-cloud"], true)).toHaveLength(1);
   } finally { store.close(); }
 });
@@ -102,7 +103,7 @@ test("quote-only caches cannot inject another symbol into otherwise valid cached
   try {
     cacheRouterResource(store.resources, "financials", "SHOP", "exchange=NASDAQ", "provider:gloomberb-cloud", value({ quote: undefined }), policy);
     cacheRouterResource(store.resources, "quote", "SHOP", "exchange=NASDAQ", "provider:gloomberb-cloud",
-      makeQuote({ symbol: "OTHER", listingExchangeName: "NASDAQ", price: 999 }), policy);
+      createTestQuote({ symbol: "OTHER", listingExchangeName: "NASDAQ", price: 999 }), policy);
     const router = new AssetDataRouter(createTestDataProvider({ id: "gloomberb-cloud" }), [], store.resources);
     const cached = router.getCachedFinancialsForTargets([target]).get("SHOP")!;
     expect(cached.quote).toBeUndefined();
@@ -117,10 +118,10 @@ test("public cache identity checks retain exact suffix aliases, unidentified sta
   const cases = [
     { entity: "SHOP", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value({ quote: undefined }) },
     { entity: "SHOP", variant: variants[0]!, source: "provider:yahoo", financials: value({ quote: undefined, quoteMetadata: { symbol: "SHOP" } }) },
-    { entity: "SHOP", variant: variants[0]!, source: "provider:twelvedata", financials: value({ quote: makeQuote({ symbol: "SHOP" }) }) },
-    { entity: "2330", variant: "exchange=TWSE", source: "provider:yahoo", financials: value({ quote: makeQuote({ symbol: "2330.TW", listingExchangeName: "TAI", currency: "TWD" }) }) },
+    { entity: "SHOP", variant: variants[0]!, source: "provider:twelvedata", financials: value({ quote: createTestQuote({ symbol: "SHOP" }) }) },
+    { entity: "2330", variant: "exchange=TWSE", source: "provider:yahoo", financials: value({ quote: createTestQuote({ symbol: "2330.TW", listingExchangeName: "TAI", currency: "TWD" }) }) },
     { entity: "contract:12345", variant: variants[0]!, source: "provider:gloomberb-cloud", financials: value() },
-    { entity: "SHOP", variant: variants[0]!, source: "broker:account", financials: value({ quote: makeQuote({ symbol: "BROKER-LOCAL", listingExchangeName: "SMART" }) }) },
+    { entity: "SHOP", variant: variants[0]!, source: "broker:account", financials: value({ quote: createTestQuote({ symbol: "BROKER-LOCAL", listingExchangeName: "SMART" }) }) },
   ];
   try {
     for (const entry of cases) {

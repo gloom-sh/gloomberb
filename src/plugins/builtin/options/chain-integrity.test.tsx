@@ -9,11 +9,12 @@ import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-u
 import { loadYahooOptionsChain } from "../../../sources/yahoo-finance/options";
 import { createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { OptionsChain } from "../../../types/financials";
-import type { CliCommandContext, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { draftFromParams, type OptionCalcDraft } from "../options-calculator/model";
 import { OptionsView } from "./view";
@@ -160,23 +161,15 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
   }
 
   async function cli() {
-    let data: OptionsChain | undefined;
-    let renderedRows: Record<string, unknown>[] = [];
-    let text = "";
-    const printResult: CliCommandContext["printResult"] = (result, options) => {
-      data = result.data as OptionsChain;
-      renderedRows = options?.rows?.(result.data) ?? [];
-      text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
-    };
-    const context = {
-      cliOptions: {},
-      initMarketData: async () => ({ dataProvider: provider, destroy() {}, persistence: { close() {} } }),
-      printResult,
-      fail: (message: string) => { throw new Error(message); },
-    };
+    const run = createTestCliContext({ dataProvider: provider, destroy() {} });
     await marketDataCliCommands.find((command) => command.name === "options")!
-      .execute(["AAPL", "--expiration", String(EXPIRY)], context as never);
-    return { data: data!, rows: renderedRows, text };
+      .execute(["AAPL", "--expiration", String(EXPIRY)], run.context);
+    const { result, options } = run.printed[0]!;
+    return {
+      data: result.data as OptionsChain,
+      rows: (options?.rows?.(result.data) ?? []) as Record<string, unknown>[],
+      text: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options),
+    };
   }
 
   async function scenario() {

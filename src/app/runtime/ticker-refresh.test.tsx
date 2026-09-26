@@ -5,7 +5,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { createTestTicker } from "../../test-support/pane";
+import { createTestTicker } from "../../test-support/ticker";
 import { testRender } from "../../renderers/opentui/test-utils";
 import type { TickerFinancials } from "../../types/financials";
 import { useTickerRefreshRuntime, type AppTickerRefreshRuntime } from "./ticker-refresh";

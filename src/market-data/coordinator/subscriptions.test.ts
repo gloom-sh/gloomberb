@@ -2,7 +2,7 @@ import { describe, expect, jest, test } from "bun:test";
 import { MarketDataCoordinator } from "./index";
 import { buildQuoteKey } from "../selectors";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
-import { createTestDataProvider } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import {
@@ -33,15 +33,7 @@ function createProvider(): {
 }
 
 function quote(symbol: string, price: number, overrides: Partial<Quote> = {}): Quote {
-  return {
-    symbol,
-    price,
-    currency: "USD",
-    change: 0,
-    changePercent: 0,
-    lastUpdated: Date.now(),
-    ...overrides,
-  };
+  return createTestQuote({ symbol, price, ...overrides });
 }
 
 async function flushCoordinator(): Promise<void> {

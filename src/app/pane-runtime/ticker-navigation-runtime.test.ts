@@ -1,18 +1,11 @@
 import { expect, test } from "bun:test";
 import { createInitialState } from "../../state/app/context";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { createTestTicker } from "../../test-support/pane";
+import { createTestTicker } from "../../test-support/ticker";
 import { createDefaultConfig, type LayoutConfig, type PaneBinding } from "../../types/config";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { TickerOpenTarget } from "../../tickers/open-target";
 import { bindAppPanePluginRegistry } from "./plugin-bindings";
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
 
 async function settle() {
   for (let turn = 0; turn < 4; turn++) await Promise.resolve();
@@ -40,7 +33,7 @@ function runtime() {
   const focused: string[] = [];
   const placed: TickerOpenTarget[] = [];
   const notifications: unknown[] = [];
-  const requests = new Map<string, ReturnType<typeof deferred<TickerOpenTarget | null>>>();
+  const requests = new Map<string, PromiseWithResolvers<TickerOpenTarget | null>>();
   const feedbackOwners = new Map<string, (() => boolean) | undefined>();
   const registry = { panes: new Map(), getTermSizeFn: () => ({ width: 120, height: 40 }),
     notify: (message: unknown) => notifications.push(message) } as any;
@@ -57,7 +50,7 @@ function runtime() {
     publishTickerOpenTarget: (value) => published.push(value),
     resolveOpenTickerTarget: (symbol, _publicOnly, canPresentFeedback) => {
       feedbackOwners.set(symbol, canPresentFeedback);
-      const request = deferred<TickerOpenTarget | null>(); requests.set(symbol, request); return request.promise;
+      const request = Promise.withResolvers<TickerOpenTarget | null>(); requests.set(symbol, request); return request.promise;
     },
     resolvePaneTarget: () => null, selectTickerInPane() {}, showPane() {}, state: stateRef.current, stateRef,
     switchTickerResearchTab() {}, tickerRepository: {} as any,

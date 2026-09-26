@@ -1,33 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { AuthUser, TeamNotification } from "./index";
+import type { TeamNotification } from "./index";
 import { apiClient, setCloudApiFetchTransport } from "./index";
+import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
 
 const originalWebSocket = globalThis.WebSocket;
-
-const verifiedUser: AuthUser = {
-  id: "user-1",
-  name: "Test User",
-  email: "test@example.com",
-  username: "test",
-  emailVerified: true,
-  image: null,
-  createdAt: "2026-03-30T00:00:00.000Z",
-  updatedAt: "2026-03-30T00:00:00.000Z",
-};
-
-function createResponse(body: unknown): Response {
-  const headers = {
-    getSetCookie: () => [],
-    get: () => null,
-  } as unknown as Headers;
-
-  return {
-    ok: true,
-    status: 200,
-    headers,
-    text: async () => JSON.stringify(body),
-  } as Response;
-}
 
 interface RecordedRequest {
   path: string;
@@ -49,48 +25,9 @@ function recordRequests(
       body: init?.body ? JSON.parse(String(init.body)) : null,
     };
     requests.push(request);
-    return createResponse(respond(request));
+    return Response.json(respond(request));
   });
   return requests;
-}
-
-class TestWebSocket {
-  static readonly OPEN = 1;
-  readyState = 1;
-  onopen: ((event: unknown) => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: ((event: unknown) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-
-  constructor(readonly url: string) {}
-
-  send(): void {}
-
-  close(): void {
-    this.readyState = 3;
-  }
-
-  open(): void {
-    this.onopen?.({});
-  }
-
-  receive(payload: unknown): void {
-    this.onmessage?.({ data: JSON.stringify(payload) });
-  }
-}
-
-function installTestWebSocket(): TestWebSocket[] {
-  const sockets: TestWebSocket[] = [];
-
-  class InstalledTestWebSocket extends TestWebSocket {
-    constructor(url: string) {
-      super(url);
-      sockets.push(this);
-    }
-  }
-
-  globalThis.WebSocket = InstalledTestWebSocket as unknown as typeof WebSocket;
-  return sockets;
 }
 
 afterEach(() => {

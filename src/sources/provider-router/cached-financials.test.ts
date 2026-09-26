@@ -1,16 +1,10 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
-import type { DataProvider } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
 import { getRouterEntityKey } from "./cache";
 import { mergeFinancials, sanitizeCachedFinancials } from "./financials";
-import {
-  cleanupProviderRouterTestFiles,
-  createTempDbPath,
-  fallbackProvider,
-  makeFinancials,
-  makeQuote,
-} from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 let clock: ReturnType<typeof spyOn> | undefined;
 // These price-only fixtures describe regular trading; explicit freshness tests override it.
@@ -18,14 +12,14 @@ beforeEach(() => { clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-0
 afterEach(() => {
   clock?.mockRestore();
   clock = undefined;
-  cleanupProviderRouterTestFiles();
+  removeTempDbFiles();
 });
 
 test("confirmed fund classification prevents cached company accounts from returning after merge", () => {
   const now = Date.now();
-  const fund = makeFinancials({ quote: makeQuote({ symbol: "IWDA.L", providerId: "gloomberb-cloud", instrumentType: "ETF", currency: "USD", lastUpdated: now }) });
-  const contaminated = makeFinancials({
-    quote: makeQuote({ symbol: "IWDA.L", providerId: "yahoo", currency: "USD", lastUpdated: now - 1000 }),
+  const fund = createTestFinancials({ quote: createTestQuote({ symbol: "IWDA.L", providerId: "gloomberb-cloud", instrumentType: "ETF", currency: "USD", lastUpdated: now }) });
+  const contaminated = createTestFinancials({
+    quote: createTestQuote({ symbol: "IWDA.L", providerId: "yahoo", currency: "USD", lastUpdated: now - 1000 }),
     fundamentals: { trailingPE: 0.238, revenue: 0 }, profile: { industry: "Specialty Chemicals" },
     annualStatements: [{ date: "2025-12-31", totalRevenue: 0 }],
   });
@@ -40,8 +34,8 @@ test("confirmed fund classification prevents cached company accounts from return
 
 test("fund research keeps distribution yield and description through cache and merge boundaries", () => {
   const now = Date.now();
-  const fund = makeFinancials({
-    quote: makeQuote({ symbol: "SGOV", providerId: "gloomberb-cloud", instrumentType: "ETF", lastUpdated: now }),
+  const fund = createTestFinancials({
+    quote: createTestQuote({ symbol: "SGOV", providerId: "gloomberb-cloud", instrumentType: "ETF", lastUpdated: now }),
     fundamentals: { dividendYield: 0.036658540225881886, dividendYieldBasis: "forward", dividendYieldSource: "twelvedata", source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true,
       enterpriseValue: 0, revenue: 0, netIncome: 0, freeCashFlow: 0 },
     profile: { description: "Short Treasury bond fund", sector: "Contaminated issuer sector" },
@@ -52,11 +46,11 @@ test("fund research keeps distribution yield and description through cache and m
     expect(value.profile).toEqual({ description: "Short Treasury bond fund" });
     expect(value.annualStatements).toEqual([]);
   }
-  const company = makeFinancials({
-    quote: makeQuote({ symbol: "SGOV", providerId: "yahoo", instrumentType: "EQUITY", lastUpdated: now - 1000 }),
+  const company = createTestFinancials({
+    quote: createTestQuote({ symbol: "SGOV", providerId: "yahoo", instrumentType: "EQUITY", lastUpdated: now - 1000 }),
     fundamentals: { dividendYield: 0.99, revenue: 0 }, profile: { description: "Wrong company" },
   });
-  const emptyFund = makeFinancials({ quote: fund.quote });
+  const emptyFund = createTestFinancials({ quote: fund.quote });
   for (const value of [mergeFinancials(emptyFund, company)!, mergeFinancials(company, emptyFund)!]) {
     expect(value.quote?.instrumentType).toBe("ETF");
     expect(value.fundamentals).toBeUndefined();
@@ -83,8 +77,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=FWB2",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "HY9H",
           price: 528,
           currency: "EUR",
@@ -118,8 +112,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=FWB2",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "HY9H.F",
           price: 596,
           currency: "EUR",
@@ -184,8 +178,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "AMD",
           price: 221.53,
           change: 1.35,
@@ -212,8 +206,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "AMD",
           price: 221.53,
           change: 1.35,
@@ -277,8 +271,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "OLD",
           price: 42,
           change: -1,
@@ -337,8 +331,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "AMD",
           price: 445.38,
           change: -2.91,
@@ -393,8 +387,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=JPX",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "4092.T",
           providerId: "yahoo",
           price: 3770,
@@ -421,8 +415,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=JPX",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "4092.T",
           providerId: "yahoo",
           price: 3925,
@@ -489,8 +483,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "VICR",
           providerId: "gloomberb-cloud",
           price: 292.83,
@@ -525,7 +519,7 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
+      createTestFinancials({
         annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }],
       }),
       {
@@ -542,8 +536,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=NASDAQ",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "VICR",
           providerId: "yahoo",
           price: 294.39,
@@ -603,7 +597,7 @@ describe("AssetDataRouter cached financials", () => {
     // A reference captured for this exact target can still enrich its quote.
     const referenceKey = { namespace: "market", kind: "financials", entityKey: "VICR",
       variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
-    const reference = persistence.resources.get<ReturnType<typeof makeFinancials>>(referenceKey)!.value;
+    const reference = persistence.resources.get<ReturnType<typeof createTestFinancials>>(referenceKey)!.value;
     persistence.resources.set({ ...referenceKey, entityKey: "contract:275759" }, reference, {
       schemaVersion: 4, cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 }, fetchedAt: now,
     });
@@ -630,8 +624,8 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=JPX",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "6315.T",
           providerId: "yahoo",
           price: 3380,
@@ -662,7 +656,7 @@ describe("AssetDataRouter cached financials", () => {
         variantKey: "exchange=JPX",
         sourceKey: "provider:yahoo",
       },
-      makeQuote({
+      createTestQuote({
         symbol: "6315.T",
         providerId: "yahoo",
         price: 2688,

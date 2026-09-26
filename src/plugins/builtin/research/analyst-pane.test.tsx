@@ -6,7 +6,6 @@ import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRecord } from "../../../types/ticker";
 import { Box } from "../../../ui";
 import { AnalystResearchView } from "./analyst-pane";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
@@ -53,12 +52,6 @@ const research: AnalystResearchData = {
   revenueEstimates: [],
 };
 
-function makeTicker(symbol: string): TickerRecord {
-  return createTestTicker(symbol, symbol, {
-    exchange: "NYSE"
-  });
-}
-
 function AnalystHarness({ provider, height }: { provider: DataProvider; height: number }) {
   const config = createTestPaneConfig("/tmp/gloomberb-analyst-pane-test", {
     instanceId: TEST_PANE_ID,
@@ -68,7 +61,7 @@ function AnalystHarness({ provider, height }: { provider: DataProvider; height: 
 
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
-  state.tickers = new Map([["NKE", makeTicker("NKE")]]);
+  state.tickers = new Map([["NKE", createTestTicker("NKE", "NKE", { exchange: "NYSE" })]]);
 
   return (
     <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => provider })}>

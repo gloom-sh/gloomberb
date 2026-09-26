@@ -4,21 +4,10 @@ import { testRender } from "../../../renderers/opentui/test-utils";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { TickerRecord } from "../../../types/ticker";
 import { useCursorNeighborPrefetch } from "./use-cursor-neighbor-prefetch";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function createTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      positions: [],
-      portfolios: [],
-      watchlists: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol);
 }
 
 const TICKERS = ["AAPL", "MSFT", "NVDA", "AMD", "TSLA", "META"].map(createTicker);

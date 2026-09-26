@@ -12,23 +12,18 @@ import type { CollectionCommandId } from "../helpers";
 import { createCommandBarCollectionWorkflowActions } from "./collection-actions";
 import { resolveCollectionTicker, AmbiguousCollectionTickerError } from "./collection-ticker";
 import type { SharedWorkflowDeps } from "./tickers";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function holding(ticker = "ASML", patch: Partial<TickerMetadata> = {}): TickerRecord {
-  return { metadata: {
-    ticker, name: ticker, exchange: "NASDAQ", currency: "USD", assetCategory: "Depositary Receipt",
-    portfolios: ["main"], watchlists: ["watchlist"],
+  return createTestTicker(ticker, ticker, {
+    assetCategory: "Depositary Receipt", portfolios: ["main"], watchlists: ["watchlist"],
     positions: [{ portfolio: "main", shares: 10, avgCost: 500, currency: "USD", broker: "manual" }],
-    tags: [], custom: {}, ...patch,
-  } };
+    ...patch,
+  });
 }
 
 async function harness(saved = holding(), query = "ASML:XNAS") {
-  const storage = new Map<string, string>();
-  const tickerRepository = new JsonTickerRepository({
-    getItem: (key) => storage.get(key) ?? null,
-    setItem: (key, value) => { storage.set(key, value); },
-    removeItem: (key) => { storage.delete(key); },
-  });
+  const tickerRepository = new JsonTickerRepository();
   await tickerRepository.saveTicker(saved);
   const state = createInitialState(createDefaultConfig(":memory:"));
   state.config.portfolios.push({ id: "other", name: "Other", currency: "USD" });

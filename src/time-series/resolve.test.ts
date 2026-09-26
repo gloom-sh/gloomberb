@@ -3,7 +3,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { chartSeriesSourceKey } from "../capabilities";
 import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
 import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
-import { createTestDataProvider } from "../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import {
@@ -22,11 +22,7 @@ function chartSpec(input: Pick<ChartSpec, "viewport" | "series"> & Partial<Chart
   return { version: CHART_SPEC_VERSION, panels: [{ id: "main" }], studies: [], ...input };
 }
 
-const emptyFinancials = (): TickerFinancials => ({
-  annualStatements: [],
-  quarterlyStatements: [],
-  priceHistory: [],
-});
+const emptyFinancials = (): TickerFinancials => createTestFinancials();
 
 const fredLoad = (
   data: FredSeriesData = { observations: [], info: null },
@@ -2435,9 +2431,8 @@ describe("mergePriceHistoryWindows", () => {
 });
 
 test("financial charts disclose snapshot vintages once without changing period or availability timestamps", async () => {
-  const dataProvider = createTestDataProvider({ getTickerFinancials: async () => ({
+  const dataProvider = createTestDataProvider({ getTickerFinancials: async () => createTestFinancials({
     annualStatements: [{ date: "2017-06-30", totalRevenue: 96_571_000_000, netIncome: 25_489_000_000, fieldAvailability: { totalRevenue: "2018-08-03", netIncome: "2018-08-03" } }],
-    quarterlyStatements: [], priceHistory: [],
   }) });
   for (const timestampMode of ["period-end", "available-at"] as const) {
     const result = await resolveChartSpecData(chartSpec({ viewport: { range: "ALL", resolution: "auto" },
