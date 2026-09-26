@@ -49,8 +49,6 @@ async function flushCoordinator(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-const flushCoordinatorNotify = flushCoordinator;
-
 /** A coordinator on a manual 100 ms frame clock, so frame tiers can be stepped exactly. */
 function createFramedCoordinator() {
   const clock = createManualFrameDriver(100);
@@ -537,11 +535,11 @@ describe("MarketDataCoordinator key subscriptions", () => {
 
       Date.now = () => firstTimestamp;
       emitQuote({ symbol: "AAPL", exchange: "NASDAQ" }, quote("AAPL", 100, { lastUpdated: firstTimestamp }));
-      await flushCoordinatorNotify();
+      await flushCoordinator();
 
       Date.now = () => firstTimestamp + 10_000;
       emitQuote({ symbol: "AAPL", exchange: "NASDAQ" }, quote("AAPL", 100, { lastUpdated: firstTimestamp + 10_000 }));
-      await flushCoordinatorNotify();
+      await flushCoordinator();
 
       expect(calls).toBe(2);
       expect(coordinator.getQuoteEntry(aapl).data?.lastUpdated).toBe(firstTimestamp + 10_000);
@@ -549,7 +547,7 @@ describe("MarketDataCoordinator key subscriptions", () => {
 
       Date.now = () => firstTimestamp + 20_000;
       emitQuote({ symbol: "AAPL", exchange: "NASDAQ" }, quote("AAPL", 101, { lastUpdated: firstTimestamp + 10_000 }));
-      await flushCoordinatorNotify();
+      await flushCoordinator();
 
       expect(calls).toBe(3);
       expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(101);
@@ -583,11 +581,11 @@ describe("MarketDataCoordinator key subscriptions", () => {
         stale: false,
       });
       emitQuote(option, heartbeat);
-      await flushCoordinatorNotify();
+      await flushCoordinator();
 
       Date.now = () => firstTimestamp + 60_000;
       emitQuote(option, heartbeat);
-      await flushCoordinatorNotify();
+      await flushCoordinator();
 
       expect(calls).toBe(2);
       expect(coordinator.getQuoteEntry(option).data).toMatchObject({

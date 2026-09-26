@@ -5,7 +5,6 @@ import { MarketDataCoordinator } from "./index";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
-import type { NewsArticle } from "../../news/types";
 import { createTestDataProvider } from "../../test-support/data-provider";
 
 // Stream ticks apply on a data frame; these tests step that frame directly.
@@ -14,17 +13,7 @@ const streamFrames = new DataFrameScheduler(streamClock.driver);
 
 useRegularMarketSession();
 
-type CoordinatorTestProviderOverrides = Partial<DataProvider> & {
-  getNews?: (query: {
-    feed: "ticker";
-    ticker: string;
-    exchange?: string;
-    tickerTier: "primary";
-    limit?: number;
-  }) => Promise<NewsArticle[]>;
-};
-
-function createProvider(overrides: CoordinatorTestProviderOverrides = {}): DataProvider {
+function createProvider(overrides: Partial<DataProvider> = {}): DataProvider {
   return createTestDataProvider({
     id: "test-provider",
     getTickerFinancials: async () => ({

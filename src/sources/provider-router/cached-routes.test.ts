@@ -20,9 +20,11 @@ describe("shared cached market queries", () => {
     let calls = 0;
     const provider = createTestDataProvider({ id: "offline", getExchangeRate: async () => { calls++; throw new Error("offline"); } });
     const router = new AssetDataRouter(provider);
-    expect(await router.getExchangeRate("USD")).toBe(1);
+    expect(await router.getExchangeRate("usd")).toBe(1);
     expect(router.getCachedExchangeRates(["USD"]).get("USD")).toBe(1);
     expect(router.getCachedExchangeRates(["USD"], { allowExpired: false }).get("USD")).toBe(1);
+    // A background revalidation would only reach the provider after a yield.
+    await tick();
     expect(calls).toBe(0);
   });
   test("retries partial corporate actions and invalidates cached estimates without reporting currency", async () => {

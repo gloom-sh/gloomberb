@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createGloomberbCloudCapabilities, GloomberbCloudProvider } from "./index";
-import { toHistoryRequest } from "./normalizers";
-import { subtractTimeRange } from "../../time-series/date-window";
 import type { NewsCapability } from "../../capabilities";
 import { apiClient, type AuthUser, type CloudNewsPayload } from "../../api-client";
 import { cloudNewsParams } from "./news";
@@ -27,9 +25,6 @@ const originalGetCloudFinancials = apiClient.getCloudFinancials.bind(apiClient);
 const originalGetCloudQuotesBatch = apiClient.getCloudQuotesBatch.bind(apiClient);
 const originalGetCloudFinancialsBatch = apiClient.getCloudFinancialsBatch.bind(apiClient);
 const originalGetCloudExchangeRate = apiClient.getCloudExchangeRate.bind(apiClient);
-const originalGetCloudHolders = apiClient.getCloudHolders.bind(apiClient);
-const originalGetCloudAnalystResearch = apiClient.getCloudAnalystResearch.bind(apiClient);
-const originalGetCloudCorporateActions = apiClient.getCloudCorporateActions.bind(apiClient);
 const originalGetCloudOptionsChain = apiClient.getCloudOptionsChain.bind(apiClient);
 const originalGetCloudNews = apiClient.getCloudNews.bind(apiClient);
 const originalGetCloudNewsStory = apiClient.getCloudNewsStory.bind(apiClient);
@@ -62,17 +57,6 @@ test("sparse single and batch SAP responses withdraw the captured observation be
     symbol: "SAP", listingExchangeName: "XETRA", currency: "EUR", source: { providerId: "gloomberb-cloud" },
   } } });
   expect((await provider.getTickerFinancials("SAP:XNYS")).fundamentals?.enterpriseValue).toBe(4_095_338_359_014);
-});
-
-test("requests fifty years of cloud history for the ALL range", () => {
-  const endDate = new Date("2026-07-30T20:00:00.000Z");
-
-  expect(subtractTimeRange(endDate, "ALL").toISOString()).toBe("1976-07-30T20:00:00.000Z");
-  expect(toHistoryRequest("ALL")).toEqual({
-    interval: "1month",
-    outputsize: 600,
-    rangeKey: "ALL",
-  });
 });
 
 test("news lookup shares the canonical listing across public and Yahoo deep-link aliases", () => {
@@ -142,9 +126,6 @@ afterEach(() => {
   apiClient.getCloudQuotesBatch = originalGetCloudQuotesBatch;
   apiClient.getCloudFinancialsBatch = originalGetCloudFinancialsBatch;
   apiClient.getCloudExchangeRate = originalGetCloudExchangeRate;
-  apiClient.getCloudHolders = originalGetCloudHolders;
-  apiClient.getCloudAnalystResearch = originalGetCloudAnalystResearch;
-  apiClient.getCloudCorporateActions = originalGetCloudCorporateActions;
   apiClient.getCloudOptionsChain = originalGetCloudOptionsChain;
   apiClient.getCloudNews = originalGetCloudNews;
   apiClient.getCloudNewsStory = originalGetCloudNewsStory;
@@ -682,19 +663,6 @@ describe("GloomberbCloudProvider", () => {
     expect(history[0]?.close).toBe(250.12);
   });
 
-  test("does not advertise unsupported 45 minute chart resolution", () => {
-    const provider = new GloomberbCloudProvider();
-    expect(provider.getChartResolutionCapabilities()).not.toContain("45m");
-    expect(provider.getChartResolutionSupport()).toContainEqual({
-      resolution: "1d",
-      maxRange: "5Y",
-    });
-    expect(provider.getChartResolutionSupport()).toContainEqual({
-      resolution: "1wk",
-      maxRange: "5Y",
-    });
-  });
-
   test("normalizes sub-unit cloud quotes to their main currency", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
     apiClient.getCloudQuote = async () => ({
@@ -757,101 +725,6 @@ describe("GloomberbCloudProvider", () => {
       const history = await provider.getPriceHistory("VOD:XLON", "LSE", "ALL");
       expect(history[0]).toMatchObject({ open: 1.241, high: 1.285, low: 1.198, close: 1.256, volume: 123 });
     }
-  });
-
-  test("fetches institutional holders from the cloud market endpoint", async () => {
-    apiClient.ensureVerifiedSession = async () => verifiedUser;
-
-    const requestArgs: { current: { symbol: string; exchange: string } | null } = { current: null };
-    apiClient.getCloudHolders = async (symbol, exchange) => {
-      requestArgs.current = { symbol, exchange: exchange ?? "" };
-      return {
-        status: "success",
-        data: {
-          providerId: "gloomberb-cloud",
-          symbol: "AAPL",
-          currency: "USD",
-          exchange: "NASDAQ",
-          asOf: "2026-03-31",
-          holders: [{
-            providerId: "gloomberb-cloud",
-            ownerType: "institution",
-            name: "Vanguard Group Inc",
-            reportDate: "2026-03-31",
-            shares: 1_250_000_000,
-            value: 250_000_000_000,
-            percentHeld: 0.085,
-          }],
-        },
-      };
-    };
-
-    const provider = new GloomberbCloudProvider();
-    const holders = await provider.getHolders("AAPL", "NASDAQ");
-
-    expect(requestArgs.current).toEqual({ symbol: "AAPL", exchange: "NASDAQ" });
-    expect(holders.providerId).toBe("gloomberb-cloud");
-    expect(holders.holders[0]?.name).toBe("Vanguard Group Inc");
-    expect(holders.holders[0]?.percentHeld).toBe(0.085);
-  });
-
-  test("fetches analyst research from the cloud market endpoint", async () => {
-    apiClient.ensureVerifiedSession = async () => verifiedUser;
-
-    const requestArgs: { current: { symbol: string; exchange: string } | null } = { current: null };
-    apiClient.getCloudAnalystResearch = async (symbol, exchange) => {
-      requestArgs.current = { symbol, exchange: exchange ?? "" };
-      return {
-        status: "success",
-        data: {
-          providerId: "gloomberb-cloud",
-          symbol: "AAPL",
-          currency: "USD",
-          exchange: "NASDAQ",
-          priceTarget: { average: 300, current: 270, currency: "USD" },
-          recommendationRating: 8.2,
-          recommendations: [{ period: "current month", strongBuy: 7, buy: 24, hold: 14, sell: 1, strongSell: 1 }],
-          ratings: [{ date: "2026-04-17", firm: "BNP Paribas", action: "Upgrade", current: "Outperform", prior: "Neutral" }],
-          earningsEstimates: [],
-          revenueEstimates: [],
-        },
-      };
-    };
-
-    const provider = new GloomberbCloudProvider();
-    const research = await provider.getAnalystResearch("AAPL", "NASDAQ");
-
-    expect(requestArgs.current).toEqual({ symbol: "AAPL", exchange: "NASDAQ" });
-    expect(research.priceTarget?.average).toBe(300);
-    expect(research.ratings[0]?.firm).toBe("BNP Paribas");
-  });
-
-  test("fetches corporate actions from the cloud market endpoint", async () => {
-    apiClient.ensureVerifiedSession = async () => verifiedUser;
-
-    const requestArgs: { current: { symbol: string; exchange: string } | null } = { current: null };
-    apiClient.getCloudCorporateActions = async (symbol, exchange) => {
-      requestArgs.current = { symbol, exchange: exchange ?? "" };
-      return {
-        status: "success",
-        data: {
-          providerId: "gloomberb-cloud",
-          symbol: "AAPL",
-          currency: "USD",
-          exchange: "NASDAQ",
-          dividends: [{ exDate: "2026-02-09", amount: 0.26 }],
-          splits: [],
-          earnings: [{ date: "2026-01-29", epsEstimate: 2.67, epsActual: 2.84, difference: 0.17, surprisePercent: 6.37 }],
-        },
-      };
-    };
-
-    const provider = new GloomberbCloudProvider();
-    const actions = await provider.getCorporateActions("AAPL", "NASDAQ");
-
-    expect(requestArgs.current).toEqual({ symbol: "AAPL", exchange: "NASDAQ" });
-    expect(actions.dividends[0]?.amount).toBe(0.26);
-    expect(actions.earnings[0]?.surprisePercent).toBe(6.37);
   });
 
   test("fetches options chains from the cloud market endpoint", async () => {

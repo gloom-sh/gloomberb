@@ -14,21 +14,15 @@ function failingSource() {
 }
 
 describe("ProviderRouterNewsRoutes", () => {
-  test("throws when every ticker news source fails", async () => {
+  test.each([
+    ["ticker", { feed: "ticker", ticker: "AAPL" }],
+    ["global", { feed: "latest" }],
+  ] as const)("throws when every %s news source fails", async (_label, query) => {
     const routes = new ProviderRouterNewsRoutes({
       newsSourcesInPriorityOrder: () => [failingSource()],
       logProviderError: () => {},
     });
 
-    await expect(routes.getNews({ feed: "ticker", ticker: "AAPL" })).rejects.toThrow("cloud down");
-  });
-
-  test("throws when every global news source fails", async () => {
-    const routes = new ProviderRouterNewsRoutes({
-      newsSourcesInPriorityOrder: () => [failingSource()],
-      logProviderError: () => {},
-    });
-
-    await expect(routes.getNews({ feed: "latest" })).rejects.toThrow("cloud down");
+    await expect(routes.getNews(query)).rejects.toThrow("cloud down");
   });
 });
