@@ -6,6 +6,25 @@
   "assets": {
     "directory": "./dist/web",
     "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
     "run_worker_first": true
+  },
+  "env": {
+    // term.gloom.sh, deployed from main by the Verify workflow.
+    "production": {
+      "name": "gloomberb-terminal",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [
+        {
+          "pattern": "term.gloom.sh",
+          "custom_domain": true
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      }
+    }
   }
 }
