@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
   useAsyncResource,
@@ -13,6 +13,7 @@ import {
   Icon,
   PaneFooterScope,
   PaneStatusBody,
+  Popover,
   QueryBar,
   type DataTableCell,
   type DataTableColumn,
@@ -31,7 +32,7 @@ import { usePaneStatusFooter } from "../shared/pane-footer";
 import { usePlanAccess } from "../shared/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { listingIdentity } from "../shared/ticker-request";
-import { QuarterBars } from "./bars";
+import { QuarterBars, type BarHover } from "./bars";
 import {
   cachedRevenueBreakdown,
   loadRevenueBreakdown,
@@ -42,6 +43,7 @@ import {
   barLevels,
   growthPercent,
   nextRevenueSort,
+  quarterLabel,
   REVENUE_MODES,
   reportedSpan,
   revenueAmount,
@@ -190,6 +192,26 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
       : base;
   }, [isDesktopWeb, mode, noun.plural, payload, preview]);
 
+  // The quarter under the pointer. Moving between bars sends an out before
+  // the next over, so clearing waits a beat and a new hover cancels it.
+  const [hover, setHover] = useState<(BarHover & { rowKey: string }) | null>(null);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (clearTimer.current) clearTimeout(clearTimer.current); }, []);
+  const hoverRow = useCallback((rowKey: string, next: BarHover | null) => {
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    clearTimer.current = null;
+    if (next) setHover({ ...next, rowKey });
+    else clearTimer.current = setTimeout(() => setHover(null), 80);
+  }, []);
+  const hoverText = useMemo(() => {
+    if (!hover || !payload) return null;
+    const row = payload.rows.find((item) => item.key === hover.rowKey);
+    const period = payload.periods[hover.index];
+    if (!row || !period) return null;
+    const value = row.values[hover.index] ?? null;
+    return `${quarterLabel(period)}  ${value === null ? "not reported" : revenueAmount(value)}`;
+  }, [hover, payload]);
+
   const placeholder = blendHex(colors.bg, colors.textMuted, 0.35);
   const renderCell = useCallback((item: Item, column: DataTableColumn): DataTableCell => {
     if (item.kind === "locked") {
@@ -212,14 +234,24 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     const row = item.row;
     if (column.id === "label") return { text: row.label, color: colors.text };
     if (column.id === "trend") {
-      return { text: "", content: <QuarterBars levels={barLevels(row.values, mode, sharedMax)} width={column.width} /> };
+      return {
+        text: "",
+        content: (
+          <QuarterBars
+            levels={barLevels(row.values, mode, sharedMax)}
+            width={column.width}
+            activeIndex={hover?.rowKey === row.key ? hover.index : null}
+            onHover={(next) => hoverRow(row.key, next)}
+          />
+        ),
+      };
     }
     if (column.id === "revenue") return { text: revenueAmount(row.values.at(-1) ?? null), color: colors.textBright };
     if (column.id === "ttm") return { text: revenueAmount(row.ttm), color: colors.text };
     if (column.id === "share") return { text: sharePercent(row.share), color: colors.text };
     if (column.id === "yoy") return { text: growthPercent(row.yoy), color: row.yoy === null ? colors.textDim : priceColor(row.yoy) };
     return { text: revenueAmount(row.values[Number(column.id.slice(1))] ?? null), color: colors.textDim };
-  }, [colors, isDesktopWeb, mode, noun.plural, openUpgrade, payload?.periods.length, placeholder, sharedMax]);
+  }, [colors, hover, hoverRow, isDesktopWeb, mode, noun.plural, openUpgrade, payload?.periods.length, placeholder, sharedMax]);
 
   if (!symbol) return <EmptyState title="Select a ticker." />;
   if (!payload && resource.error === NO_BREAKDOWN) {
@@ -275,10 +307,26 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
                 options: REVENUE_MODES,
                 onChange: (value: RevenueMode) => setMode(value),
               }}
-              meta={payload.currency}
+              // The terminal has no pointer tooltip, so the hovered quarter reads out here.
+              meta={!isDesktopWeb && hover && hoverText
+                ? `${payload.rows.find((item) => item.key === hover.rowKey)?.label ?? ""}  ${hoverText}`
+                : payload.currency}
             />
           )}
         />
+      ) : null}
+      {isDesktopWeb && hover && hoverText && hover.x !== undefined && hover.y !== undefined ? (
+        <Popover
+          open
+          onOpenChange={(open) => { if (!open) setHover(null); }}
+          trigger={null}
+          anchorPoint={{ x: hover.x, y: hover.y + 14 }}
+          focusOnOpen={false}
+          density="menu"
+          label="Quarter value"
+        >
+          <Text fg={colors.textBright}>{hoverText}</Text>
+        </Popover>
       ) : null}
     </PaneStatusBody>
   );

@@ -10,7 +10,7 @@ describe("revenue breakdown model", () => {
   test("Trend scales a row to its own range; Actual shares one scale", () => {
     const values = [40, null, 80, 60];
     const rounded = (levels: (number | null)[]) => levels.map((level) => (level === null ? null : Math.round(level * 100) / 100));
-    expect(rounded(barLevels(values, "trend", 200))).toEqual([0.14, null, 1, 0.57]);
+    expect(rounded(barLevels(values, "trend", 200))).toEqual([0.25, null, 1, 0.63]);
     expect(barLevels(values, "actual", 200)).toEqual([0.2, null, 0.4, 0.3]);
     // A flat line still draws, and a tiny row stays visible on the shared scale.
     expect(barLevels([5, 5], "trend", 200)).toEqual([0.6, 0.6]);

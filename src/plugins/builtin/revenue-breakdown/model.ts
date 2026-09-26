@@ -32,10 +32,14 @@ export interface RevenueSort {
 export const quarterLabel = (period: RevenueBreakdownPeriod) =>
   `Q${period.fiscalQuarter} ${period.fiscalYear}`;
 
-/** Drop leading quarters nothing was reported for, so a young company starts at its first quarter. */
+/**
+ * Drop leading quarters no row was reported for, so a young company, or rows
+ * a company only started disclosing (NVIDIA's Hyperscale), start at their
+ * first quarter instead of a run of empty slots.
+ */
 export function reportedSpan(payload: RevenueBreakdownPayload): RevenueBreakdownPayload {
   const first = payload.periods.findIndex((_, index) =>
-    payload.total[index] !== null || payload.rows.some((row) => row.values[index] !== null));
+    payload.rows.some((row) => row.values[index] !== null));
   if (first <= 0) return payload;
   return {
     ...payload,
@@ -57,8 +61,9 @@ export function barLevels(values: (number | null)[], mode: RevenueMode, sharedMa
   return values.map((value) => {
     if (value === null) return null;
     if (value <= 0) return 0;
-    // The row's own low still draws, so a flat line reads as a line.
-    return high > low ? 0.14 + 0.86 * ((value - low) / (high - low)) : 0.6;
+    // The row's lowest quarter still draws a quarter-height bar, so a reported
+    // quarter never reads as an empty slot, and a flat row reads as a line.
+    return high > low ? 0.25 + 0.75 * ((value - low) / (high - low)) : 0.6;
   });
 }
 
