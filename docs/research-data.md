@@ -54,6 +54,14 @@ Contradictory OHLC bars are unavailable rather than silently repaired. Charts le
 
 Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. In a narrow legend, scroll over the row or use `[` / `]` to reveal each series; Space toggles the selected series. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
 
+## Price history corrections
+
+These rules apply to every symbol. The app keeps no per-company history fixes.
+
+- **Coverage boundaries.** A source can declare the first date it vouches for, such as a verified share lineage start or a fund's first allowed bar. An empty response for a window that starts before that date is reported as outside the source's coverage rather than as missing data. When a chart's visible window starts earlier, it keeps the returned prices and shows the boundary in the chart warning. The app does not trim other sources' history to that date.
+- **Leading zero-volume bars.** A series can begin with bars that have zero volume and one price (open, high, low and close equal), such as an offer price dated before the first trade. Those leading bars are dropped when the same series reports volume elsewhere. Series without volume, such as indices and FX, keep every bar. Aggregated weekly or monthly bars that already include such a price are kept as reported.
+- **Cache schema.** Cached quotes and financials carry a schema version, and price history cache keys carry a history version. A record written under another version is ignored and fetched again rather than repaired on read, so a correction reaches cached data after one refresh.
+
 ## Financial statements and valuation
 
 Statements are the latest available source snapshots and may include restatements. Historical as-of values are not reconstructed. A period end identifies the reporting period, not necessarily when every metric became public.
@@ -357,7 +365,7 @@ Consensus estimates are forecasts for the stated fiscal period. The provider's p
 
 Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered. Source failures and unavailable event data remain visible rather than appearing as an empty event calendar.
 
-IPO offering prices are distinct from exchange trades. The Cloud CRCL US history captured on September 16, 2026 inserted the [June 4, 2025 $31 offering](https://www.circle.com/pressroom/circle-announces-pricing-of-upsized-initial-public-offering) before NYSE trading began June 5, carried that open/low into its inception aggregates, and inserted the offer into the first trading day’s intraday bars before the opening auction. Requests containing that exact source defect use another available history provider or remain unavailable; the app does not remove the first bar and silently shorten the window or invent replacement OHLC. A corrected source response is accepted. Valid zero-volume observations, other listings, and partial inception buckets with traded prices remain unchanged. Older embedded financial snapshots lose the affected price history while their statements and quotes remain available. Their fixed-horizon returns become unavailable; that snapshot contract does not retain a separate history-rejection reason. Direct history/chart requests retain the source failure when no valid fallback is available. This targeted check does not establish complete IPO or corporate-action coverage.
+An offer price dated before a listing's first trade follows the [leading zero-volume bar rule](#price-history-corrections). This does not establish complete IPO or corporate-action coverage.
 
 ## Earnings estimate comparisons
 
