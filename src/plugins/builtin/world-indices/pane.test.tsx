@@ -86,22 +86,12 @@ async function settle() {
 }
 
 describe("WorldIndicesPane", () => {
-  test("renders regions and prices from the shared quote board", async () => {
-    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
-    await settle();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Americas");
-    expect(frame).toContain("SPX");
-    expect(frame).toContain("6,812.44");
-    expect(frame).not.toContain("$6,812.44");
-    expect(frame).toContain("+0.42%");
-  });
-
   test("keeps the last good prices when the provider starts failing", async () => {
     testSetup = await testRender(<Harness />, { width: 80, height: 24 });
     await settle();
     expect(testSetup.captureCharFrame()).toContain("6,812.44");
+    // Index levels are points, not money.
+    expect(testSetup.captureCharFrame()).not.toContain("$6,812.44");
 
     await act(async () => {
       breakProvider();

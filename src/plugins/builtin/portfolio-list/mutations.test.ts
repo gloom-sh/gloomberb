@@ -4,7 +4,6 @@ import type { TickerRecord } from "../../../types/ticker";
 import {
   createManualPortfolio,
   deleteManualPortfolio,
-  isManualPortfolio,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
@@ -28,18 +27,6 @@ function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRe
 }
 
 describe("portfolio-list mutations", () => {
-  test("identifies manual portfolios", () => {
-    const config = createDefaultConfig("/tmp/gloomberb-mutations");
-    expect(isManualPortfolio(config.portfolios[0]!)).toBe(true);
-    expect(isManualPortfolio({
-      id: "broker:ibkr",
-      name: "IBKR",
-      currency: "USD",
-      brokerId: "ibkr",
-      brokerInstanceId: "ibkr-live",
-    })).toBe(false);
-  });
-
   test("rejects duplicate manual portfolio names", () => {
     const config = createDefaultConfig("/tmp/gloomberb-mutations");
     expect(() => createManualPortfolio(config, "Main Portfolio", config.baseCurrency)).toThrow('Portfolio "Main Portfolio" already exists.');

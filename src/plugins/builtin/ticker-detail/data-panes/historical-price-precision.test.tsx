@@ -72,15 +72,19 @@ test("history exports retain listing ownership and active caveats through failed
   expect(current).toContain("Status,Available");
 });
 
-for (const [symbol, prior, close] of [
-  ["NG=F", 3.124, 3.125],
-  ["RB=F", 2.1233, 2.1234],
-  ["6J=F", .006282, .0062825],
+for (const [symbol, prior, close, change] of [
+  ["NG=F", 3.124, 3.125, null],
+  ["RB=F", 2.1233, 2.1234, null],
+  ["6J=F", .006282, .0062825, null],
+  // Tiny crypto prices keep a negative change inside the numeric columns too.
+  ["SHIB-USD:CCC", 0.00000532, 0.00000529, "-0.00000003"],
 ] as const) {
   test(`${symbol}: history without instrument metadata keeps OHLC precision in pane, CSV and report`, async () => {
+    const high = Math.max(prior, close);
+    const low = Math.min(prior, close);
     const points = [
       { date: new Date("2026-09-08"), close: prior },
-      { date: new Date("2026-09-09"), open: prior, high: close, low: prior, close, volume: 0 },
+      { date: new Date("2026-09-09"), open: prior, high, low, close, volume: 0 },
       { date: new Date("2026-09-10"), close: NaN },
       { date: new Date("2026-09-11"), close: 0 },
     ];
@@ -102,6 +106,7 @@ for (const [symbol, prior, close] of [
     await settleFrame(setup!, 8);
     expect(setup!.captureCharFrame()).toContain(String(close));
     expect(setup!.captureCharFrame()).toContain(String(prior));
+    if (change) expect(setup!.captureCharFrame()).toContain(change);
     await exportPaneTable(paneId, "history.csv");
     const csv = takeSavedTextFile()!.text;
     expect(csv).toContain(String(close));
@@ -109,7 +114,7 @@ for (const [symbol, prior, close] of [
 
     const args = { symbols: [symbol], argument: [symbol], rawArgument: symbol, options: { range: "ALL" } };
     const result = await historicalPricesHeadless.load(args, { marketData: provider, signal: new AbortController().signal });
-    expect(result.rows[1]).toMatchObject({ open: prior, high: close, low: prior, close, volume: 0 });
+    expect(result.rows[1]).toMatchObject({ open: prior, high, low, close, volume: 0 });
     expect(result.rows[2].close).toBeNull();
     expect(result.rows[3].close).toBe(0);
     const text = renderHeadlessPaneText(historicalPricesHeadless, result, args, "Historical Prices");

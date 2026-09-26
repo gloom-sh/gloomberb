@@ -9,8 +9,6 @@ import { buildDesktopShotPayload, createDesktopShotBridge } from "../cli/pane-fu
 import { decodeRpcValue, encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
 import type { InstrumentRef } from "./request-types";
 import type { Quote } from "../types/financials";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 const target = (expiry: string): InstrumentRef => ({ symbol: "ACME", exchange: "CBOE", brokerId: "fixture", brokerInstanceId: "desk", instrument: {
   brokerId: "fixture", brokerInstanceId: "desk", symbol: "ACME", secType: "FUT", currency: "USD", exchange: "CBOE", lastTradeDateOrContractMonth: expiry, multiplier: "100",
@@ -68,12 +66,6 @@ test("two contract chart observations survive JSON snapshot and actual screensho
   expect((await missingProvider.getQuote("ACME", "CBOE", missing)).price).toBe(30);
   expect((await missingProvider.getPriceHistory("ACME", "CBOE", "1Y", missing)).at(-1)?.close).toBe(30);
   expect(bridgeRequests).toEqual([missing, missing]);
-  if (process.env.SEARCH_REPLAY_OUTPUT) {
-    await mkdir(process.env.SEARCH_REPLAY_OUTPUT, { recursive: true });
-    await writeFile(join(process.env.SEARCH_REPLAY_OUTPUT, "chart-capture.json"), JSON.stringify({
-      first, reconstructed, encodedDesktopPayload: encodeRpcValue(payload), bridgeRequests, fallbackCalls,
-    }, null, 2));
-  }
 });
 
 test("intraday capture and context-aware quote/history batches preserve identities and legacy public snapshots", async () => {

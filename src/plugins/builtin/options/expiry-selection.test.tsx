@@ -149,12 +149,6 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
     const csv = takeSavedTextFile()?.text ?? "";
     const frame = setup!.captureCharFrame();
     const result = { frame, csv, launch: launches.length > count ? launches.at(-1) : undefined, requests: [...requests] };
-    const evidence = process.env.OPTIONS_EXPIRY_EVIDENCE;
-    if (evidence) {
-      await Bun.write(`${evidence}/${width}-${label}.txt`, frame);
-      await Bun.write(`${evidence}/${width}-${label}.csv`, csv);
-      await Bun.write(`${evidence}/${width}-${label}.json`, JSON.stringify(result, null, 2));
-    }
     return result;
   }
   async function refresh(dates: number[], expiration?: number, advanceClock = true) {

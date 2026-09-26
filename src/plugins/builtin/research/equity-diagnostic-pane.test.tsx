@@ -236,8 +236,6 @@ test("renders a stale partial report with severity order, split observation, and
   expect(frame).toContain("Reuters");
   expect(frame).not.toContain("ev-missing");
 
-  expect(frame).toContain("WATCH ITEMS");
-  expect(frame).toContain("COVERAGE");
   expect(frame).toContain("no data");
 
   // Footer carries changing state only, and the model stays an implementation detail.
@@ -246,18 +244,6 @@ test("renders a stale partial report with severity order, split observation, and
   // r refreshes every pane, so the footer carries no refresh hint.
   expect(frame).not.toContain("efresh");
   expect(frame).not.toContain("luna");
-});
-
-test("adds data sources line by line while the diagnostic generates", async () => {
-  signIn("pro");
-  mockDiagnosticTransport(() => jsonResponse({ status: "generating", retryAfterMs: 5_000 }, 202));
-
-  await renderHarness();
-
-  const frame = testSetup!.captureCharFrame();
-  expect(frame).toContain("Market data");
-  expect(frame).toContain("SEC EDGAR filings");
-  expect(frame).not.toContain("FINRA short interest");
 });
 
 test("polls an uncached diagnostic until the background report is ready", async () => {

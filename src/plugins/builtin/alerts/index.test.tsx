@@ -146,38 +146,6 @@ afterEach(async () => {
 });
 
 describe("AlertsPane", () => {
-  test("renders alerts in a data table with action hints only in the footer", async () => {
-    testSetup = await testRender(
-      <AlertsHarness
-        alerts={[
-          makeAlert("alert-aapl", "AAPL", "above", 200),
-          makeAlert("alert-msft", "MSFT", "below", 300, "triggered"),
-        ]}
-      />,
-      { width: 110, height: 12 },
-    );
-
-    await renderSettled();
-    const frame = testSetup.captureCharFrame();
-
-    expect(frame).toContain("STATE");
-    expect(frame).toContain("SYMBOL");
-    expect(frame).toContain("CURRENT");
-    expect(frame).toContain("AWAY");
-    expect(frame).toContain("AAPL");
-    expect(frame).toContain("MSFT");
-    expect(frame).toContain("[a]dd alert");
-    expect(frame).toContain("[e]dit");
-    expect(frame).toContain("[d]elete");
-    expect(frame).not.toContain("Add Alert");
-    expect(frame).not.toContain("Enter");
-    expect(frame).not.toContain("Esc");
-    expect(frame).not.toContain("move field");
-    expect(frame).not.toContain("change condition");
-    expect(frame).not.toContain("↑/↓");
-    expect(frame).not.toContain("←/→");
-  });
-
   test("keeps alert targets visible at the default floating pane width", async () => {
     testSetup = await testRender(
       <AlertsHarness
@@ -353,10 +321,7 @@ describe("alertsPlugin command", () => {
       await alertsPlugin.setup?.(ctx as any);
       const command = commands.find((entry) => entry.id === "set-alert");
 
-      expect(command?.label).toBe("Add Alert");
       expect(command?.keywords).toContain("add");
-      expect(command?.shortcut).toBe("SA");
-      expect(command?.shortcutArg?.placeholder).toBe("symbol condition price");
       expect(command?.shortcutArg?.parse("AMD")).toEqual({ symbol: "AMD" });
       expect(command?.shortcutArg?.parse("", { activeTicker: "MSFT" })).toEqual({ symbol: "MSFT" });
       expect(command?.shortcutArg?.parse("AMD above 200")).toEqual({

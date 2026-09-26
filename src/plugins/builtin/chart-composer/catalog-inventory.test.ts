@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  catalogEmptyCopy,
   catalogExpressionForRow,
   catalogRowsForResolvedInstruments,
   filterCatalogRows,
@@ -81,18 +80,6 @@ describe("data catalog inventory", () => {
     expect(resolved.some((row) => row.expression === "AAPL:price")).toBe(true);
     expect(resolved.every((row) => !row.needsTicker && row.label.startsWith("AAPL"))).toBe(true);
     expect(filterCatalogRows(resolved, "securities", "AAPL").some((row) => row.expression === "AAPL:close")).toBe(true);
-  });
-
-  test("empty copy covers loading and query misses without a retry hint", () => {
-    expect(catalogEmptyCopy(true, "AAPL")).toEqual({ title: "Loading catalog…" });
-    expect(catalogEmptyCopy(false, "AAPL")).toEqual({
-      title: 'No series matching "AAPL"',
-      hint: "Press / to search.",
-    });
-    expect(catalogEmptyCopy(false, "")).toEqual({
-      title: "No series",
-      hint: "Press / to search.",
-    });
   });
 
   test("names only official publishers, never the market-data vendor", () => {

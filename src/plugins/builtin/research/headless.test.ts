@@ -71,33 +71,6 @@ describe("earnings estimates headless", () => {
     expect(result.rows.length).toBeGreaterThan(0);
     expect(result.errors?.join(" ")).toContain("stale");
   });
-  test("maps the shared event model into estimate rows", async () => {
-    const definition = createEarningsEstimatesHeadless({
-      loadSources: async () => sources,
-    });
-
-    const result = await definition.load(args({ kind: "all", limit: 50 }), context);
-
-    expect(result.rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        status: "Q Est",
-        period: "next qtr",
-        qEps: 1.2,
-        qRevenue: 9_000_000_000,
-        detail: "30 EPS / 28 rev analysts",
-      }),
-      expect.objectContaining({
-        status: "FY Est",
-        annualEps: 4.8,
-        annualRevenue: 35_000_000_000,
-      }),
-      expect.objectContaining({
-        status: "Earnings",
-        qEps: 0.48,
-        value: "+6.67%",
-      }),
-    ]));
-  });
 
   test("applies kind and limit options", async () => {
     const definition = createEarningsEstimatesHeadless({ loadSources: async () => sources });

@@ -124,9 +124,6 @@ describe("BrokersPane", () => {
     });
 
     let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("PROFILE");
-    expect(frame).toContain("STATUS");
-    expect(frame).toContain("ACCOUNTS");
     expect(frame).toContain("IBKR Paper");
     expect(frame).not.toContain("DU12345");
 

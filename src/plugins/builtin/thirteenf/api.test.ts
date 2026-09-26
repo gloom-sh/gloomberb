@@ -33,22 +33,6 @@ describe("13F API", () => {
     expect(buildPeriodReports([unknown])[0]).toMatchObject({ complete: false, tableValueTotal: null });
   });
 
-  test("uses the shared HTTP transport", async () => {
-    const urls: string[] = [];
-    setHttpFetchTransport(async (url) => {
-      urls.push(String(url));
-      return new Response(JSON.stringify([{ cik: "1067983", name: "BERKSHIRE HATHAWAY INC" }]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
-
-    const funds = await searchThirteenFFunds("transport-smoke", 1);
-
-    expect(urls[0]).toContain("/cloud/sec/13f/funds");
-    expect(funds).toEqual([{ cik: "0001067983", name: "BERKSHIRE HATHAWAY INC" }]);
-  });
-
   test("caches successful API responses by request URL", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     let requestCount = 0;

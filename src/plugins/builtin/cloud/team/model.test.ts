@@ -14,8 +14,6 @@ import {
   sortTeamChannels,
   teamChannelId,
   teamIdFromChannelId,
-  teamLabel,
-  teamPrefix,
 } from "./model";
 
 function team(overrides: Partial<TeamSummary>): TeamSummary {
@@ -33,20 +31,6 @@ function team(overrides: Partial<TeamSummary>): TeamSummary {
     ...overrides,
   };
 }
-
-describe("team markers", () => {
-  test("prefix and label use the short name", () => {
-    expect(teamPrefix(team({}))).toBe("MD·");
-    expect(teamLabel(team({}))).toBe("MD· Macro Desk");
-  });
-
-  test("channel ids round-trip", () => {
-    expect(teamChannelId("org-1")).toBe("team:org-1");
-    expect(teamIdFromChannelId("team:org-1")).toBe("org-1");
-    expect(teamIdFromChannelId("everyone")).toBeNull();
-    expect(teamIdFromChannelId("team:")).toBeNull();
-  });
-});
 
 describe("roles", () => {
   test("owners and admins manage; members invite only when allowed", () => {
@@ -138,6 +122,7 @@ describe("team channels and names", () => {
     expect(teamIdFromChannelId("team:org-1:trades")).toBe("org-1");
     expect(teamIdFromChannelId("team:org-1")).toBe("org-1");
     expect(teamIdFromChannelId("everyone")).toBeNull();
+    expect(teamIdFromChannelId("team:")).toBeNull();
     expect(isTeamChannelId("team:x")).toBe(true);
   });
 

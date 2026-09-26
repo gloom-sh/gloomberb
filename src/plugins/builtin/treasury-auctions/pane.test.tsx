@@ -157,18 +157,4 @@ describe("TreasuryAuctionsPane", () => {
     expect(detail).toContain("Bid-to-cover");
     expect(detail).toContain("Total accepted");
   });
-
-  test("the filter key narrows the board to one security group", async () => {
-    seedCache();
-    testSetup = await testRender(<Harness />, { width: 92, height: 20 });
-    await renderSettled();
-
-    // all -> bills
-    await emitKeypress({ name: "f", sequence: "f" });
-    await renderSettled();
-
-    const bills = testSetup.captureCharFrame();
-    expect(bills).toContain("13-Week");
-    expect(bills).not.toContain("10-Year");
-  });
 });

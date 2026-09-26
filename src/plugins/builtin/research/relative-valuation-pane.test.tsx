@@ -47,7 +47,6 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   await act(async () => { setup = await testRender(<Harness width={120} />, { width: 120, height: 16 }); });
   await settle();
   const frame = setup!.captureCharFrame();
-  if (process.env.RV_AUDIT_EVIDENCE) await Bun.write(`${process.env.RV_AUDIT_EVIDENCE}/stale-ui.txt`, frame);
   expect(frame).toContain("Stale quotes: PLD");
   expect(frame).toContain("MISSING: source unavailable");
   expect(frame).toContain("PLD");
@@ -55,7 +54,6 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   expect(frame).not.toContain("$135.75");
   await exportPaneTable(paneId, "rv-stale.csv");
   const csv = takeSavedTextFile()!.text;
-  if (process.env.RV_AUDIT_EVIDENCE) await Bun.write(`${process.env.RV_AUDIT_EVIDENCE}/stale-ui.csv`, csv);
   expect(csv).toContain("PLD,'-,'-,—,30.2");
   stale = false;
   await act(async () => { setup!.mockInput.pressKey("r"); });
@@ -64,7 +62,6 @@ test("stale peer remains inspectable with contextual failure, excluded quote val
   expect(recovered).toContain("$135.75");
   expect(recovered).not.toContain("Stale quotes:");
   expect(recovered).toContain("MISSING: source unavailable");
-  if (process.env.RV_AUDIT_EVIDENCE) await Bun.write(`${process.env.RV_AUDIT_EVIDENCE}/recovered-ui.txt`, recovered);
 });
 
 test("stale fundamentals retain their disclosure and export provenance with a fresh quote, then clear on refresh", async () => {

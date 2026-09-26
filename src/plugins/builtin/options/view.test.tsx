@@ -587,13 +587,11 @@ test("stale underlying preserves contract observations but cannot seed current G
   });
   await renderSettled();
   const frame = testSetup!.captureCharFrame();
-  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/stale-underlying.txt`, frame);
   expect(frame).toMatch(/ATM IV\s+--/);
   expect(frame).toContain("Underlying quote stale");
   expect(frame).not.toContain("[c]alc");
   await exportPaneTable(TEST_PANE_ID, "stale-options.csv");
   const saved = takeSavedTextFile()!.text;
-  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/stale-underlying.csv`, saved);
   const lines = saved.trim().split("\n").map((line) => line.split(","));
   const deltaColumns = lines[0]!.flatMap((cell, i) => cell.includes("Δ") ? [i] : []);
   expect(deltaColumns).toHaveLength(2);
@@ -605,7 +603,6 @@ test("stale underlying preserves contract observations but cannot seed current G
   expect(recovered).toMatch(/ATM IV\s+90\.1%/);
   expect(recovered).toContain("[c]alc");
   expect(recovered).not.toContain("Underlying quote stale");
-  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/underlying-recovery.txt`, recovered);
 });
 
 
@@ -628,7 +625,6 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   });
   await renderSettled();
   const frame = testSetup!.captureCharFrame();
-  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/rejected-history.txt`, frame);
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
   expect(frame).toMatch(/HV30\s+--/);
   expect(frame).toMatch(/IV\/HV\s+--/);

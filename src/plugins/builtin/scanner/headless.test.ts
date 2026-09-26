@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
+import type { ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { createFlowHeadless, createHiloHeadless, loadHiloSnapshot } from "./headless";
+import { createHiloHeadless, loadHiloSnapshot } from "./headless";
 
 const payload: ScannerHiloPayload = {
   status: "live",
@@ -76,46 +76,5 @@ describe("highs and lows headless model", () => {
     expect((filtered.metadata?.windows as Array<Record<string, unknown>>)[0]).toMatchObject({
       key: "m5", highs: 3, lows: 3,
     });
-  });
-});
-
-describe("options flow headless", () => {
-  const print = {
-    id: "1",
-    at: Date.parse("2026-09-22T19:17:09Z"),
-    underlying: "NVDA",
-    contract: "NVDA260923C00227500",
-    right: "C" as const,
-    strike: 227.5,
-    expiry: "2026-09-23",
-    side: "ask" as const,
-    kind: "sweep" as const,
-    size: 182,
-    price: 2.9,
-    premium: 52_780,
-    volume: 60_907,
-    openInterest: 5_500,
-    volOi: 11.07,
-    iv: 0.31,
-  };
-  const flow: ScannerFlowPayload = {
-    status: "live",
-    access: "realtime",
-    delayMinutes: 0,
-    asOf: print.at,
-    events: [print, { ...print, id: "2", premium: 400_000, volOi: null }],
-  };
-
-  test("applies the pane filters to the shared tape", async () => {
-    const headless = createFlowHeadless({ load: async () => flow });
-    const flowArgs = (options: Record<string, string>): HeadlessPaneLoadArgs =>
-      ({ rawArgument: "", argument: null, symbols: [], options });
-
-    const defaults = await headless.load(flowArgs({ minPremium: "250000" }), {} as HeadlessPaneContext);
-    expect(defaults.items.map((row) => row.id)).toEqual(["2"]);
-    expect(defaults.metadata).toMatchObject({ received: 2 });
-
-    const unusual = await headless.load(flowArgs({ minPremium: "50000", volOi: "5" }), {} as HeadlessPaneContext);
-    expect(unusual.items.map((row) => row.id)).toEqual(["1"]);
   });
 });

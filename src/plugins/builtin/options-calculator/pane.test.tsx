@@ -9,6 +9,7 @@ import {
   PaneInstanceProvider,
   appReducer,
   createInitialState,
+  type AppState,
 } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { PluginRenderProvider } from "../../runtime";
@@ -16,7 +17,7 @@ import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { OPTIONS_CALCULATOR_PANE_ID } from "./model";
 import { OptionsCalculatorPane } from "./pane";
 import { valueBinomialOption } from "./binomial";
-import { daysToExpiryFrom, draftFromParams, valueOption } from "./model";
+import { daysToExpiryFrom, draftFromParams, valueOption, type OptionCalcDraft } from "./model";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -25,6 +26,7 @@ import type { Quote } from "../../../types/financials";
 const TEST_PANE_ID = "options-calculator:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+let harnessState: AppState | undefined;
 
 function GlobalTabHandler() {
   useShortcut((event) => {
@@ -54,6 +56,7 @@ function Harness({ params, settings, width = 90, height = 18 }: { params?: Recor
   const initialState = createInitialState(config);
   initialState.focusedPaneId = TEST_PANE_ID;
   const [state, dispatch] = useReducer(appReducer, initialState);
+  harnessState = state;
 
   return (
     <AppContext value={{ state, dispatch }}>
@@ -93,8 +96,13 @@ afterEach(async () => {
     await act(async () => { testSetup!.renderer.destroy(); });
     testSetup = undefined;
   }
+  harnessState = undefined;
   setSharedMarketDataCoordinator(null);
 });
+
+function savedDraft(): OptionCalcDraft {
+  return harnessState!.paneState[TEST_PANE_ID]!.draft as OptionCalcDraft;
+}
 
 test("a chain-seeded calculator follows the contract and underlying until the user edits them", async () => {
   const targets: QuoteSubscriptionTarget[] = [];
@@ -207,6 +215,44 @@ test("displays fractional strikes and spot prices without rounding them to whole
   expect(frame).toMatch(/Strike\s+217\.5/);
   expect(frame).toMatch(/Mid\s+100\.125/);
   expect(frame).toContain("per unit");
+});
+
+for (const entry of [
+  { field: "spot", tabs: 1, input: "217.987" },
+  { field: "daysToExpiry", tabs: 3, input: "0.000347" },
+] as const) {
+  test(`keyboard submission retains the actual ${entry.field} input`, async () => {
+    await render({});
+    // e edits the first field; Tab walks on from there.
+    await emitKeypress(testSetup!, { name: "e", sequence: "e" });
+    for (let i = 1; i < entry.tabs; i++) await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+    await act(async () => {
+      await testSetup!.mockInput.typeText(entry.input);
+      testSetup!.mockInput.pressEnter();
+      await testSetup!.renderOnce();
+    });
+    await act(async () => { await testSetup!.renderOnce(); });
+    expect(savedDraft()[entry.field]).toBe(Number(entry.input));
+    expect(testSetup!.captureCharFrame()).toContain(entry.input);
+  });
+}
+
+test("mouse rate editing preserves entered negative percentage precision", async () => {
+  await render({ days: "1095" });
+  const lines = testSetup!.captureCharFrame().split("\n");
+  const y = lines.findIndex((line) => line.includes("Rate"));
+  const x = lines[y]!.indexOf("Rate");
+  await act(async () => {
+    await testSetup!.mockMouse.click(x + 1, y);
+    await testSetup!.renderOnce();
+  });
+  await act(async () => {
+    await testSetup!.mockInput.typeText("-1.235");
+    testSetup!.mockInput.pressEnter();
+    await testSetup!.renderOnce();
+  });
+  expect(testSetup!.captureCharFrame()).toContain("-1.235");
+  expect(savedDraft().rate).toBeCloseTo(-0.01235, 10);
 });
 
 test("Tab stays the pane key until a field is edited, and the fields let go of it at either end", async () => {

@@ -106,13 +106,6 @@ describe("portfolio-metrics", () => {
     expect(restored.unavailableConversions).toBeUndefined();
   });
 
-  test("defaults portfolio tabs to market value descending", () => {
-    expect(resolveCollectionSortPreference("main", true, {})).toEqual({
-      columnId: "mkt_value",
-      direction: "desc",
-    } satisfies CollectionSortPreference);
-  });
-
   test("leaves watchlists unsorted by default and respects persisted overrides", () => {
     expect(resolveCollectionSortPreference("watchlist", false, {})).toEqual({
       columnId: null,

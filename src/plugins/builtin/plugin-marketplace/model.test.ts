@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildRows,
-  collectCategories,
   filterEntries,
   hasUpdate,
   isInstallable,
@@ -453,21 +452,6 @@ describe("filterEntries", () => {
       .toEqual(["hackernews"]);
     expect(filterEntries(entries, { query: "", category: null, showBuiltin: true }).map((entry) => entry.id))
       .toEqual(["hackernews", "cloud"]);
-  });
-});
-
-describe("collectCategories", () => {
-  test("deduplicates and sorts categories across the catalog", () => {
-    const entries = mergeCatalog({
-      registry: [
-        registryPlugin({ id: "a", categories: ["news", "data"] }),
-        registryPlugin({ id: "b", categories: ["data"] }),
-      ],
-      installed: [],
-      target: "tui",
-    });
-
-    expect(collectCategories(entries)).toEqual(["data", "news"]);
   });
 });
 

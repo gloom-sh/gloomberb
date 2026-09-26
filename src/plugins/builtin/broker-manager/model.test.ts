@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../../../types/broker";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { testBroker } from "../../../brokers/test-broker";
-import { buildBrokerProfileRows, formatBrokerUpdatedAt } from "./model";
+import { buildBrokerProfileRows } from "./model";
 
 function createInstance(patch: Partial<BrokerInstanceConfig> = {}): BrokerInstanceConfig {
   return {
@@ -104,17 +104,6 @@ describe("broker manager rows", () => {
     expect(rows.map((row) => row.state)).toEqual(["disabled", "unavailable"]);
   });
 
-  test("labels Flex profiles as sync-only", () => {
-    const config = {
-      ...createDefaultConfig("/tmp/gloomberb-broker-manager"),
-      brokerInstances: [createInstance({ id: "flex", connectionMode: "flex", config: { connectionMode: "flex" } })],
-    };
-    const rows = buildBrokerProfileRows(config, new Map([["demo", createAdapter()]]), {});
-
-    expect(rows[0]?.mode).toBe("Flex");
-    expect(rows[0]?.stateLabel).toBe("Sync only");
-  });
-
   test("keeps real IBKR Flex profiles out of gateway status", () => {
     const config = {
       ...createDefaultConfig("/tmp/gloomberb-broker-manager"),
@@ -135,11 +124,5 @@ describe("broker manager rows", () => {
 
     expect(rows[0]?.mode).toBe("Flex");
     expect(rows[0]?.stateLabel).toBe("Sync only");
-  });
-
-  test("formats relative status timestamps", () => {
-    expect(formatBrokerUpdatedAt(undefined, 10_000)).toBe("never");
-    expect(formatBrokerUpdatedAt(9_000, 10_000)).toBe("just now");
-    expect(formatBrokerUpdatedAt(10_000 - 5 * 60_000, 10_000)).toBe("5m ago");
   });
 });

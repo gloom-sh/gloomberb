@@ -201,7 +201,6 @@ async function ask(question: string): Promise<string> {
 describe("ASKGPane failures", () => {
   test("a failure too long for the pane keeps its tail instead of running off the edge", async () => {
     const frame = await ask("what does a 5y bond return");
-    if (process.env.PRINT_FRAMES) console.log(frame);
 
     expect(frame).toContain("Streaming unavailable");
     // The tail is the part the old single-line render lost.
@@ -213,7 +212,6 @@ describe("ASKGPane failures", () => {
   test("a failure a new attempt could answer offers a retry that asks again", async () => {
     sessionStatus = 503;
     const frame = await ask("what does a 5y bond return");
-    if (process.env.PRINT_FRAMES) console.log(frame);
 
     expect(frame).toContain("Ask Gloom is unavailable");
     expect(frame).toContain("Retry");
@@ -236,7 +234,6 @@ describe("ASKGPane conversations", () => {
   test("one conversation is the one on screen, so no list is drawn for it", async () => {
     storedConversations = [conversation("conv-1", "Bonds")];
     const frame = await renderPane(WIDE_PANE_WIDTH);
-    if (process.env.PRINT_FRAMES) console.log(frame);
 
     expect(requests).toContain("GET /askg/conversations");
     expect(frame).not.toContain("Conversations");
@@ -249,7 +246,6 @@ describe("ASKGPane conversations", () => {
       conversation("conv-2", "Nvidia margins"),
     ];
     const frame = await renderPane(WIDE_PANE_WIDTH);
-    if (process.env.PRINT_FRAMES) console.log(frame);
 
     expect(frame).toContain("Conversations");
     expect(frame).toContain("Bond returns");
@@ -268,7 +264,7 @@ describe("ASKGPane conversations", () => {
     expect(frame).not.toContain("Bond returns");
   });
 
-  test("walking the list loads nothing until a row is opened", async () => {
+  test("walking the list loads nothing until a row is opened, and only the open row is marked", async () => {
     storedConversations = [
       conversation("conv-1", "Bond returns"),
       conversation("conv-2", "Nvidia margins"),
@@ -277,6 +273,7 @@ describe("ASKGPane conversations", () => {
       "conv-2": transcript("conv-2", "how are Nvidia margins", "Holding above 70%."),
     };
     await renderPane(WIDE_PANE_WIDTH);
+    expect(setup!.captureCharFrame()).not.toContain("\u203a");
 
     // Left hands the keyboard to the list; arrows only move the cursor.
     await emitKeypress(setup!, { name: "escape" });
@@ -291,31 +288,7 @@ describe("ASKGPane conversations", () => {
 
     expect(requests).toContain("GET /askg/conversations/conv-2");
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("how are Nvidia margins");
-    expect(frame).toContain("Holding above 70%");
-  });
-
-  test("the open conversation is the one the list marks active", async () => {
-    storedConversations = [
-      conversation("conv-1", "Bond returns"),
-      conversation("conv-2", "Nvidia margins"),
-    ];
-    storedTranscripts = {
-      "conv-2": transcript("conv-2", "how are Nvidia margins", "Holding above 70%."),
-    };
-    await renderPane(WIDE_PANE_WIDTH);
-    expect(setup!.captureCharFrame()).not.toContain("\u203a");
-
-    await emitKeypress(setup!, { name: "escape" });
-    await emitKeypress(setup!, { name: "left" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "down" });
-    await emitKeypress(setup!, { name: "return" });
-    await flush();
-
-    const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("Holding above 70%");
     // The marker sits on the row that is open, and only on that row.
     const marked = frame
@@ -348,7 +321,6 @@ describe("ASKGPane conversations", () => {
     await flush();
 
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).not.toContain("About 4.2%");
     expect(frame).toContain("Ask about anything on screen");
     expect(frame).toContain("Bond returns");

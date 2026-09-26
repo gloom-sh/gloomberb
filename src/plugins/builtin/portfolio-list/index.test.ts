@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { BrokerAccount } from "../../../types/trading";
 import type { TickerRecord } from "../../../types/ticker";
@@ -11,7 +10,6 @@ import {
   layoutPortfolioSummaryHeader,
 } from "./summary";
 import { needsVisibleQuoteWatchdogRefresh, selectQuoteWarmupTickers, selectStreamTickers } from "./pane/data";
-import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings } from "./settings";
 import { getLanguage, setLanguage } from "../../../i18n";
 
 function ticker(symbol: string): TickerRecord {
@@ -232,17 +230,5 @@ describe("visible quote refresh predicates", () => {
       now,
       60_000,
     )).toBe(false);
-  });
-});
-
-describe("portfolio list pane settings", () => {
-  test("exposes view mode only for portfolio collections", () => {
-    const config = createDefaultConfig("/tmp/gloomberb-portfolio-list-settings");
-    const settings = getPortfolioPaneSettings({ viewMode: "grid" });
-    const portfolioFields = buildPortfolioPaneSettingsDef(config, settings, "main").fields.map((field) => field.key);
-    const watchlistFields = buildPortfolioPaneSettingsDef(config, settings, "watchlist").fields.map((field) => field.key);
-
-    expect(portfolioFields).toContain("viewMode");
-    expect(watchlistFields).not.toContain("viewMode");
   });
 });

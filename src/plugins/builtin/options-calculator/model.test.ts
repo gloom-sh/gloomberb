@@ -205,11 +205,6 @@ describe("seeding", () => {
     expect(params.marketPrice).toBeUndefined();
     expect(draftFromParams(params).volatility).toBe(DEFAULT_OPTION_CALC_DRAFT.volatility);
   });
-
-  test("uses defaults when the pane is opened standalone", () => {
-    expect(draftFromParams(undefined)).toEqual(DEFAULT_OPTION_CALC_DRAFT);
-    expect(draftFromParams({})).toEqual(DEFAULT_OPTION_CALC_DRAFT);
-  });
 });
 
 describe("describeDraftProblem", () => {

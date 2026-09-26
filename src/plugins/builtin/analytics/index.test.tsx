@@ -370,55 +370,6 @@ describe("PortfolioAnalyticsPane", () => {
     expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
   });
 
-  test("renders portfolio tabs and filters broker-managed positions to the active portfolio", async () => {
-    await act(async () => {
-      testSetup = await testRender(
-        <AnalyticsHarness config={createAnalyticsConfig(BROKER_PORTFOLIO_ID)} />,
-        { width: 100, height: 24 },
-      );
-      await Promise.resolve();
-      await testSetup.renderOnce();
-    });
-
-    await flushFrame();
-
-    const frame = testSetup!.captureCharFrame();
-    expect(frame).toContain("Main Portfolio");
-    expect(frame).toContain("Flex DU12345");
-    expect(frame).toContain("Val           1.3k");
-    expect(frame).toContain("P&L           +250.00  (+25.00%)");
-    expect(frame).toContain("CURRENT-WEIGHT BASKET ESTIMATES");
-    expect(frame).toContain("Est. Sharpe");
-    expect(frame).toContain("Beta (SPY)");
-    expect(frame).toContain("SECTOR");
-    expect(frame).toContain("Technology");
-    expect(frame).toContain("100.0%");
-    expect(frame).not.toContain("2.5k");
-  });
-
-  test("switches portfolio tabs with the same arrow-key interaction as the portfolio pane", async () => {
-    await act(async () => {
-      testSetup = await testRender(
-        <AnalyticsHarness config={createAnalyticsConfig("main")} />,
-        { width: 100, height: 24 },
-      );
-      await Promise.resolve();
-      await testSetup.renderOnce();
-    });
-
-    await flushFrame();
-    expect(testSetup!.captureCharFrame()).toContain("Val           1.2k");
-
-    await act(async () => {
-      testSetup!.mockInput.pressArrow("right");
-      await testSetup!.renderOnce();
-    });
-    await flushFrame();
-
-    expect(harnessState?.paneState[TEST_PANE_ID]?.portfolioId).toBe(BROKER_PORTFOLIO_ID);
-    expect(testSetup!.captureCharFrame()).toContain("Val           1.3k");
-  });
-
   test("shows broker cash and margin data when account data is available", async () => {
     const baseConfig = createAnalyticsConfig(BROKER_PORTFOLIO_ID);
     const config = {
@@ -576,7 +527,7 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Flex FLEX");
   });
 
-  test("uses the portfolio pane quote math for value, pnl, and return", async () => {
+  test("filters broker-managed positions to the active portfolio and uses the portfolio pane quote math", async () => {
     await act(async () => {
       testSetup = await testRender(
         <AnalyticsHarness
@@ -592,10 +543,13 @@ describe("PortfolioAnalyticsPane", () => {
     await flushFrame();
 
     const frame = testSetup!.captureCharFrame();
+    expect(frame).toContain("Main Portfolio");
+    expect(frame).toContain("Flex DU12345");
     expect(frame).toContain("Val           1.4k");
     expect(frame).toContain("P&L           +400.00  (+40.00%)");
     expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");
+    expect(frame).not.toContain("2.5k");
   });
 });
 

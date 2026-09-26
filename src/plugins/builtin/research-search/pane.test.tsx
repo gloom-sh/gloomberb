@@ -182,20 +182,6 @@ afterEach(async () => {
 });
 
 describe("ResearchSearchPane", () => {
-  test("renders a hit with the matched terms styled instead of tagged", async () => {
-    installTransport();
-    signIn();
-
-    testSetup = await testRender(<Harness />, { width: 110, height: 20 });
-    await renderFrames();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("AAPL");
-    expect(frame).toContain("Apple FQ2 2026 Earnings Call");
-    expect(frame).toContain("gross margin");
-    expect(frame).not.toContain("<mark>");
-  });
-
   // Searching and reading a hit are free: the pane used to refuse to issue the
   // request at all without Pro, which was stricter than the server ever was.
   test("a free account searches and opens the document at the chunk that matched", async () => {

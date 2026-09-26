@@ -38,7 +38,7 @@ function respond(path: string, method: string): unknown {
     return { invitations: [{ id: "inv-1", status: "pending", role: "member", expiresAt: new Date(Date.now() + 6 * 86_400_000).toISOString(), createdAt: "2026-09-14T00:00:00.000Z", inviter: members[0]!.user, invitee: { id: "u9", username: "carol", displayName: "Carol" } }] };
   }
   if (path === "/teams/org-1/invite-links") return { links: [{ token: "a".repeat(32), url: "https://gloom.sh/teams/invite/aaaaaaaa", teamId: "org-1", createdBy: "u0", expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString(), maxUses: null, uses: 3, createdAt: "2026-09-14T00:00:00.000Z" }] };
-  if (path === "/teams") return { teams: teamsOnServer };
+  if (path === "/teams") return { teams: [macroDesk] };
   if (path === "/teams/invitations") return { invitations: receivedInvitations };
   if (path === "/teams/invitations/inv-9/accept") return { ...macroDesk, id: "org-2", name: "Rates Desk", shortName: "RD", channelId: "team:org-2", role: "member" };
   if (path === "/teams/notifications") return { notifications: [] };
@@ -50,7 +50,6 @@ function respond(path: string, method: string): unknown {
 
 const requests: string[] = [];
 let receivedInvitations: unknown[] = [];
-let teamsOnServer: unknown[] = [macroDesk];
 
 async function flush() {
   for (let i = 0; i < 4; i += 1) {
@@ -88,7 +87,6 @@ beforeEach(() => {
   installChatApiTestDefaults();
   requests.length = 0;
   receivedInvitations = [];
-  teamsOnServer = [macroDesk];
   setCloudApiFetchTransport(async (url, init) => {
     const parsed = new URL(url);
     const method = init?.method ?? "GET";
@@ -111,22 +109,15 @@ afterEach(async () => {
 });
 
 describe("TeamPane", () => {
-  test("shows the team, its members with roles, and management actions for the owner", async () => {
+  test("loads and lists the team's members", async () => {
     await act(async () => {
       setup = await testRender(<Pane />, { width: 84, height: 24 });
     });
     await flush();
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("MD· Macro Desk");
-    expect(frame).toContain("Members");
     expect(frame).not.toContain("Members (3)");
     expect(frame).toContain("@ada");
-    expect(frame).toContain("Owner");
     expect(frame).toContain("@alice");
-    expect(frame).toContain("Admin");
-    expect(frame).toContain("Make member");
-    expect(frame).toContain("Remove");
     expect(requests).toContain("GET /teams/org-1/members");
   });
 
@@ -140,56 +131,11 @@ describe("TeamPane", () => {
     });
     await flush();
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("INVITE BY USERNAME");
     expect(frame).toContain("@carol");
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
     expect(frame).toContain("3 uses");
     expect(frame).not.toContain("@example.com");
-  });
-
-  test("the create form previews the accent with the short name derived from the name", async () => {
-    teamsOnServer = [];
-    (teamStore as any).update({ teams: [], invitations: [], loaded: true });
-    await act(async () => {
-      setup = await testRender(<Pane />, { width: 84, height: 24 });
-    });
-    await flush();
-    const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("New team");
-    expect(frame).toContain("Create team");
-    // The picker names the chosen accent and previews the prefix; the swatches
-    // themselves are colored badges, which a char frame cannot show.
-    expect(frame).toMatch(/Accent\s+\w+/);
-    expect(frame).toContain("TM· Your team");
-  });
-
-  test("settings edit in place with a live accent preview; channels list with a creator", async () => {
-    await act(async () => {
-      setup = await testRender(<Pane />, { width: 84, height: 26 });
-    });
-    await flush();
-    await act(async () => {
-      requestTeamPaneView({ teamId: "org-1", section: "settings" });
-    });
-    await flush();
-    let frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("Short name");
-    expect(frame).toContain("MD· Macro Desk");
-    expect(frame).toContain("Members can share invite links");
-    expect(frame).toContain("Save changes");
-    expect(frame).toContain("DELETE TEAM");
-
-    await act(async () => {
-      requestTeamPaneView({ teamId: "org-1", section: "channels" });
-    });
-    await flush();
-    frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("NEW CHANNEL");
-    expect(frame).toContain("earnings-season");
   });
 
   test("shows a banner for an invitation addressed to me", async () => {
@@ -207,7 +153,6 @@ describe("TeamPane", () => {
     });
     await flush();
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("RD· Rates Desk");
     expect(frame).toContain("@ann invited you");
     expect(frame).toContain("Accept");

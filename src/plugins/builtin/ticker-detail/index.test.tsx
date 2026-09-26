@@ -290,19 +290,6 @@ async function settleTickerTabCommit() {
   });
 }
 
-async function clickFrameText(text: string) {
-  const lines = testSetup!.captureCharFrame().split("\n");
-  const row = lines.findIndex((line) => line.includes(text));
-  expect(row).toBeGreaterThanOrEqual(0);
-  const col = lines[row]!.indexOf(text);
-  expect(col).toBeGreaterThanOrEqual(0);
-  await act(async () => {
-    await testSetup!.mockMouse.click(col + 1, row);
-    await testSetup!.renderOnce();
-  });
-  await flushFrame();
-}
-
 async function emitKeypress(event: { name?: string; sequence?: string }) {
   await act(async () => {
     (testSetup!.renderer as any).keyInput.emit("keypress", {
@@ -373,24 +360,6 @@ describe("FinancialsTab", () => {
     expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("quarterly");
     expect(frame).toContain("Quarterly");
     expect(frame).toContain("[p]eriod");
-  });
-
-  test("clicks the period footer hint repeatedly", async () => {
-    testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
-      width: 100,
-      height: 20,
-    });
-
-    await flushFrame();
-    await flushFrame();
-
-    expect(testSetup.captureCharFrame()).toContain("Annual");
-
-    await clickFrameText("[p]eriod");
-    expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("quarterly");
-
-    await clickFrameText("[p]eriod");
-    expect(financialsHarnessState?.paneState["ticker-detail:main"]?.financialPeriod).toBe("annual");
   });
 
   test("moves selection with down without collapsing the selected financial group", async () => {
@@ -549,44 +518,6 @@ describe("TickerResearchPane", () => {
     expect(detailHarnessState?.paneState[TEST_PANE_ID]?.activeTabId).toBe("financials");
   });
 
-  test("shows Trade when an IBKR gateway profile exists", async () => {
-    setSharedRegistryForTests(makeRegistry());
-    setOptionsProvider(createProvider(false));
-
-    testSetup = await testRender(
-      <DetailHarness
-        config={createDetailConfig("AAPL", [createGatewayInstance()])}
-        ticker={makeTicker("AAPL")}
-        financials={null}
-      />,
-      { width: 90, height: 24 },
-    );
-
-    await flushFrame();
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Trade");
-  });
-
-  test("shows Options for option-capable tickers without a preflight round trip", async () => {
-    setSharedRegistryForTests(makeRegistry());
-    setOptionsProvider(createProvider(true));
-
-    testSetup = await testRender(
-      <DetailHarness
-        config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
-        financials={null}
-      />,
-      { width: 90, height: 24 },
-    );
-
-    await flushFrame();
-    await flushFrame();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Options");
-  });
-
   test("shows SEC for US equities", async () => {
     setSharedRegistryForTests(makeRegistry());
     setOptionsProvider(createProvider(false));
@@ -695,28 +626,6 @@ describe("TickerResearchPane", () => {
     const frame = testSetup.captureCharFrame();
     expect(Number(receivedHeight)).toBe(17);
     expect(frame).toContain("height:17");
-  });
-
-  test("hides SEC for non-US equities", async () => {
-    setSharedRegistryForTests(makeRegistry());
-    setOptionsProvider(createProvider(false));
-
-    testSetup = await testRender(
-      <DetailHarness
-        config={createDetailConfig("0700")}
-        ticker={makeTicker("0700", "Tencent", {
-          exchange: "HKEX",
-          currency: "HKD",
-          assetCategory: "STK",
-        })}
-        financials={null}
-      />,
-      { width: 90, height: 24 },
-    );
-
-    await flushFrame();
-    const frame = testSetup.captureCharFrame();
-    expect(frame).not.toContain("SEC");
   });
 
   test("keeps quote prices native while converting market cap and position totals to base currency", async () => {

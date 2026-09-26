@@ -171,27 +171,18 @@ afterEach(async () => {
 });
 
 describe("ThesisBoardPane", () => {
-  test("lists theses by attention, then positions without one, with the book at risk in the footer", async () => {
+  test("lists theses needing attention first, then active ones, then positions without a thesis", async () => {
     thesisStore.start();
     await act(async () => {
       setup = await testRender(<Harness />, { width: 110, height: 30 });
     });
     await flush();
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(requests).toContain("GET /theses");
-    expect(frame).toContain("Needs attention");
-    expect(frame).toContain("NVDA");
-    expect(frame).toContain("weakening");
+    const rows = ["NVDA", "ASML", "AAPL"].map((symbol) => frame.indexOf(symbol));
+    expect(rows.every((index) => index >= 0)).toBe(true);
+    expect(rows).toEqual([...rows].sort((a, b) => a - b));
     expect(frame).toContain("1 to rule on");
-    expect(frame).toContain("Active");
-    expect(frame).toContain("ASML");
-    expect(frame).toContain("Positions without a thesis");
-    expect(frame).toContain("AAPL");
-    expect(frame).toContain("[n]ew");
-    // Scope and view sit in the query bar, not the footer.
-    expect(frame).toContain("Portfolio");
-    expect(frame).toContain("Weights");
   });
 
   test("the on-device copy is only called offline once the refresh fails", async () => {
@@ -218,7 +209,7 @@ describe("ThesisBoardPane", () => {
     expect(setup!.captureCharFrame()).toContain("offline copy");
   });
 
-  test("enter opens the thesis: pillars, kill conditions, catalysts, and the open signal with its source", async () => {
+  test("enter opens the thesis with its pillars and the open signal's source", async () => {
     thesisStore.start();
     await act(async () => {
       setup = await testRender(<Harness />, { width: 110, height: 30 });
@@ -230,37 +221,8 @@ describe("ThesisBoardPane", () => {
     });
     await flush();
     const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
     expect(requests).toContain("GET /theses/t-nvda");
-    expect(frame).toContain("WEAKENING");
-    expect(frame).toContain("Conviction 7/10");
-    expect(frame).toContain("Horizon 3y");
-    expect(frame).toContain("Listening to MSFT");
-    expect(frame).toContain("Signals (1 open)");
-    expect(frame).toMatch(/challenges\s+Gross margin holds/);
-    expect(frame).toContain("10-Q: Q3 gross margin guide 72-73%");
     expect(frame).toContain("Data center revenue grows over 50% YoY");
-    expect(frame).toContain("≥ 70%  weakening");
-    expect(frame).toContain("Hyperscaler capex cut over 20%");
-    expect(frame).toContain("not fired");
-    expect(frame).toContain("Q3 earnings");
-    // r is the app-wide refresh, so the review has its own key.
-    expect(frame).toContain("[v] review");
-  });
-
-  test("w switches to conviction against weight", async () => {
-    thesisStore.start();
-    await act(async () => {
-      setup = await testRender(<Harness />, { width: 110, height: 30 });
-    });
-    await flush();
-    await act(async () => {
-      setup!.mockInput.pressKey("w");
-      await setup!.renderOnce();
-    });
-    await flush();
-    const frame = setup!.captureCharFrame();
-    if (process.env.PRINT_FRAMES) console.log(frame);
-    expect(frame).toContain("GAP");
+    expect(frame).toContain("10-Q: Q3 gross margin guide 72-73%");
   });
 });

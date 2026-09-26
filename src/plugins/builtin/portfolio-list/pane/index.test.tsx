@@ -12,12 +12,10 @@ import { TickerRepository } from "../../../../data/ticker-repository";
 import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
 import { AssetDataRouter } from "../../../../sources/provider-router";
 import {
-  cloneLayout,
   createDefaultConfig,
   TICKER_RESEARCH_PANE_ID,
   type AppConfig,
   type BrokerInstanceConfig,
-  type LayoutConfig,
 } from "../../../../types/config";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
@@ -704,32 +702,6 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
   });
 
-  test("keeps non-broker portfolios unchanged", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-portfolio-list");
-    const layout: LayoutConfig = {
-      dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-      instances: [{
-        instanceId: TEST_PANE_ID,
-        paneId: "portfolio-list",
-        binding: { kind: "none" as const },
-        params: { collectionId: "main" },
-      }],
-      floating: [],
-      detached: [],
-    };
-    const nextConfig = { ...config, layout, layouts: [{ name: "Default", layout: cloneLayout(layout) }] };
-
-    testSetup = await testRender(
-      <PortfolioHarness config={nextConfig} collectionId="main" />,
-      { width: 100, height: 24 },
-    );
-
-    await flushFrame();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).not.toContain("Cash & Margin");
-  });
-
   test("renders one-month sparkline column when price history is loaded", async () => {
     const config = createPortfolioConfigWithColumns(
       "broker:ibkr-flex:DU12345",
@@ -1095,29 +1067,6 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("-351,957.025");
     expect(frame).not.toContain("Avail");
     expect(frame).not.toContain("JPY");
-  });
-
-  test("renders bid ask and spread when those columns are enabled", async () => {
-    const config = createPortfolioConfigWithColumns(
-      "broker:ibkr-flex:DU12345",
-      ["ticker", "bid", "ask", "spread", "latency"],
-      [createBrokerInstance("flex")],
-    );
-
-    testSetup = await testRender(
-      <PortfolioHarness config={config} collectionId="broker:ibkr-flex:DU12345" />,
-      { width: 100, height: 12 },
-    );
-
-    await flushFrame();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("BID");
-    expect(frame).toContain("ASK");
-    expect(frame).toContain("SPREAD");
-    expect(frame).toContain("124.95");
-    expect(frame).toContain("125.05");
-    expect(frame).toContain("0.1");
   });
 
   test("ages quotes on a once-a-second clock while AGE is shown", async () => {

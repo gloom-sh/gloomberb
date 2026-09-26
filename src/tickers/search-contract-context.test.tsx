@@ -16,8 +16,6 @@ import type { TickerFinancials } from "../types/financials";
 import type { PinTickerOptions } from "../types/plugin";
 import { resolveInstrumentForPane } from "../core/state/app/instrument";
 import { tickerInstrumentLabel } from "./instrument-label";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 
 const results: InstrumentSearchResult[] = [100, 110].map((strike) => ({
   providerId: "broker", symbol: "ACME", exchange: "CBOE", currency: "USD", type: "OPT", name: `ACME 2027-01-15 ${strike} Call`,
@@ -113,14 +111,6 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
     expect(frame).toContain("follower strike=100 price=10");
     expect(observed.get("research:3")?.ticker?.metadata).toMatchObject({ name: "ACME common stock", currency: "EUR", assetCategory: "STK" });
     expect(observed.get("public-follower")?.financials?.quote?.price).toBe(30);
-    if (process.env.SEARCH_REPLAY_OUTPUT) {
-      await mkdir(process.env.SEARCH_REPLAY_OUTPUT, { recursive: true });
-      await writeFile(join(process.env.SEARCH_REPLAY_OUTPUT, `context-${width}.txt`), frame);
-      await writeFile(join(process.env.SEARCH_REPLAY_OUTPUT, `context-${width}.json`), JSON.stringify({
-        width, layout: stateRef.current.config.layout,
-        observations: [...observed].map(([id, value]) => ({ id, ticker: value.ticker, quote: value.financials?.quote })),
-      }, null, 2));
-    }
   } finally {
     await act(async () => { rendered.renderer.destroy(); });
     setSharedMarketDataCoordinator(null); coordinator.destroy();
