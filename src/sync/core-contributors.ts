@@ -8,6 +8,7 @@ import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { SyncContributor } from "./types";
 import { convertCurrency } from "../utils/format";
+import { getSharedMarketDataCoordinator, resolveEntryValue } from "../market-data/coordinator";
 import {
   computeDatedBeta,
   resolveDatedReturns,
@@ -469,6 +470,39 @@ function isSyncableTicker(metadata: Pick<SanitizedTickerMetadata, "portfolios" |
     || metadata.positions.length > 0;
 }
 
+/**
+ * USD-per-unit rates for the base currency and every currency a holding is
+ * valued in, read from the same FX store the portfolio panes use. A currency
+ * without a usable rate stays missing, so its holdings count as unsupported.
+ */
+async function loadHoldingExchangeRates(
+  config: AppConfig,
+  tickers: Map<string, TickerRecord>,
+  financials: Map<string, TickerFinancials>,
+): Promise<Map<string, number>> {
+  const rates = new Map([["USD", 1]]);
+  const coordinator = getSharedMarketDataCoordinator();
+  if (!coordinator) return rates;
+  const currencies = new Set<string>();
+  const track = (currency: string | undefined) => {
+    const normalized = currency?.trim().toUpperCase();
+    if (normalized && normalized !== "USD") currencies.add(normalized);
+  };
+  track(config.baseCurrency);
+  for (const ticker of tickers.values()) {
+    if (ticker.metadata.positions.length === 0) continue;
+    track(financials.get(ticker.metadata.ticker)?.quote?.currency);
+    for (const position of ticker.metadata.positions) track(position.currency);
+  }
+  await Promise.all([...currencies].map(async (currency) => {
+    // A failed FX load must not hold back the rest of the push.
+    await coordinator.loadFxRate(currency).catch(() => {});
+    const rate = resolveEntryValue(coordinator.getFxEntry(currency));
+    if (rate != null) rates.set(currency, rate);
+  }));
+  return rates;
+}
+
 function collectCoreCollectionsPayload(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
@@ -480,17 +514,10 @@ function collectCoreCollectionsPayload(
     .map((ticker) => sanitizeTickerMetadata(ticker.metadata, financials.get(ticker.metadata.ticker)))
     .filter(isSyncableTicker);
 
+  // Rates stay out of the payload: readers of the snapshot use any rate found
+  // here instead of fetching a current one, and this rate ages with the push.
   return {
     baseCurrency: config.baseCurrency,
-    exchangeRates: Object.fromEntries(
-      [...exchangeRates.entries()]
-        .filter(([currency, rate]) => (
-          typeof currency === "string" &&
-          Number.isFinite(rate) &&
-          rate > 0
-        ))
-        .map(([currency, rate]) => [currency.trim().toUpperCase(), rate]),
-    ),
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
     analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates, brokerAccounts),
@@ -698,11 +725,11 @@ export const coreConfigSyncContributor: SyncContributor = {
 export const coreCollectionsSyncContributor: SyncContributor = {
   id: "core.collections",
   schemaVersion: 1,
-  collect: ({ state }) => collectCoreCollectionsPayload(
+  collect: async ({ state }) => collectCoreCollectionsPayload(
     state.config,
     state.tickers,
     state.financials,
-    state.exchangeRates,
+    await loadHoldingExchangeRates(state.config, state.tickers, state.financials),
     state.brokerAccounts,
   ),
   apply: async (payload, { baselinePayload, getState, isCurrent, dispatch, tickerRepository }) => {
