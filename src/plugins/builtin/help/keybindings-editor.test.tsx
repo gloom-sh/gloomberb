@@ -2,12 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { requestKeybindingCapture } from "../../../app/keybindings";
 import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig, type KeybindingsConfig } from "../../../types/config";
-import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { PluginRenderProvider } from "../../runtime";
+import type { KeybindingsConfig } from "../../../types/config";
+import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { helpModule } from "./index";
 
 const id = "help:test";
@@ -16,29 +14,16 @@ let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let latestState: AppState | null = null;
 
 function Harness({ keybindings }: { keybindings?: KeybindingsConfig }) {
-  const config = createDefaultConfig(`/tmp/gloom-help-keybindings-${process.pid}-${Date.now()}`);
+  const config = createTestPaneConfig(`/tmp/gloom-help-keybindings-${process.pid}-${Date.now()}`, { instanceId: id, paneId: "help", binding: { kind: "none" } });
   config.keybindings = keybindings;
-  config.layout = { dockRoot: { kind: "pane", instanceId: id }, instances: [{ instanceId: id, paneId: "help", binding: { kind: "none" } }], floating: [], detached: [] };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
   const initial = createInitialState(config);
   initial.focusedPaneId = id;
   const [state, dispatch] = useReducer(appReducer, initial);
   latestState = state;
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={id}>
-        <PluginRenderProvider pluginId="help" runtime={createTestPluginRuntime()}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box width={90} height={30} flexDirection="column">
-                <HelpPane paneId={id} paneType="help" focused width={90} height={29} />
-                <PaneFooterBar footer={footer} focused width={90} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="help" runtime={createTestPluginRuntime()} width={90} height={30}>
+      {(body) => <HelpPane paneId={id} paneType="help" focused {...body} />}
+    </TestPaneFrame>
   );
 }
 

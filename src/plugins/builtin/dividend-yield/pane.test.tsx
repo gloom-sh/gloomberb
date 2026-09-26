@@ -1,10 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { createInitialState } from "../../../state/app/context";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
-import { Box } from "../../../ui";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { DividendYieldPane } from "./pane";
@@ -56,12 +54,9 @@ test("summary failures retain cash and recover dated payment information through
     instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol: "INCOME" },
   }));
   state.tickers.set("INCOME", createTestTicker("INCOME"));
-  setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
-    <PaneFooterProvider>{(footer) => <Box width={80} height={24} flexDirection="column">
-      <Box height={23} flexShrink={0}><DividendYieldPane focused width={80} height={23}/></Box>
-      <PaneFooterBar footer={footer} focused width={80}/>
-    </Box>}</PaneFooterProvider>
-  </TestPaneProvider>, { width: 80, height: 24 });
+  setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={80} height={24}>
+    {(body) => <DividendYieldPane focused {...body} />}
+  </TestPaneFrame>, { width: 80, height: 24 });
   expect(await frame()).toContain(new Date(payDate * 1000).toISOString().slice(0, 10));
   for (const nextMode of ["failed", "invalid-ex", "invalid-pay", "valid"] as const) {
     mode = nextMode;
@@ -105,12 +100,9 @@ test.each([48, 80, 120])("native dividend refresh keeps the selected price's tim
   }));
   state.tickers.set("FUND", createTestTicker("FUND"));
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={24} flexDirection="column">
-        <Box height={23} flexShrink={0}><DividendYieldPane focused width={width} height={23} /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>, { width, height: 24 });
+    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+      {(body) => <DividendYieldPane focused {...body} />}
+    </TestPaneFrame>, { width, height: 24 });
   });
   const before = await frame();
   expect(before).toContain("4.00%");
@@ -169,12 +161,9 @@ test.each([48, 80, 120])("cash integrity failures preserve usable rows and recov
   }));
   state.tickers.set("CASHFUND", createTestTicker("CASHFUND"));
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={24} flexDirection="column">
-        <Box height={23} flexShrink={0}><DividendYieldPane focused width={width} height={23} /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>, { width, height: 24 });
+    setup = await testRender(<TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={createTestPluginRuntime()} width={width} height={24}>
+      {(body) => <DividendYieldPane focused {...body} />}
+    </TestPaneFrame>, { width, height: 24 });
   });
   const complete = await frame();
   expect(complete).toContain("4.00%");
@@ -257,12 +246,9 @@ test.each(["invalid", "unknown-currency"] as const)("direct %s integrity failure
       instanceId: id, paneId: "dividend-yield", binding: { kind: "fixed", symbol },
     }));
     state.tickers.set(symbol, createTestTicker(symbol));
-    return <TestPaneProvider state={state} paneId={id} pluginId="dividend-yield" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={24} flexDirection="column">
-        <Box height={23} flexShrink={0}><DividendYieldPane focused width={width} height={23} loadData={loadData} /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} paneId={id} pluginId="dividend-yield" runtime={runtime} width={width} height={24}>
+      {(body) => <DividendYieldPane focused {...body} loadData={loadData} />}
+    </TestPaneFrame>;
   }
   await act(async () => { setup = await testRender(<Harness />, { width, height: 24 }); });
   const complete = await frame();

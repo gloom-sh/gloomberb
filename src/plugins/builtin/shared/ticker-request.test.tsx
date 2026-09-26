@@ -1,13 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { ApiRequestError } from "../../../api-client/errors";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { Box } from "../../../ui";
 import { AnalystResearchView } from "../research/analyst-pane";
 import { CorporateActionsView } from "../research/corporate-actions-pane";
 import { HistoricalPricesPane } from "../ticker-detail/data-panes/historical-prices";
@@ -63,12 +61,9 @@ async function mount(pane: Pane, width: number, state: { failure: Error | null; 
       ? <HistoricalPricesPane focused width={width} height={23} paneId={paneId} paneType={pane} />
       : <CorporateActionsView focused width={width} height={23} variant={pane} footerPaneId={pane} />;
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={app} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={24} flexDirection="column">
-        <Box width={width} height={23}>{content}</Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>, { width, height: 24 });
+    setup = await testRender(<TestPaneFrame state={app} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={24}>
+      {() => content}
+    </TestPaneFrame>, { width, height: 24 });
   });
   await settle();
   return requests;

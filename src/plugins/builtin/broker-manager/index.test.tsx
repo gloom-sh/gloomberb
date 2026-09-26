@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { testBroker } from "../../../test-support/broker";
 import { BrokersPane } from "./index";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { TestPaneFrame } from "../../../test-support/pane";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -40,11 +38,11 @@ function createGatewayInstance(): BrokerInstanceConfig {
 function Harness({
   instance,
   calls,
-  paneHeight = 24,
+  height = 25,
 }: {
   instance?: BrokerInstanceConfig;
   calls: string[];
-  paneHeight?: number;
+  height?: number;
 }) {
   // Pane state (the open profile) lives in the app state, so it needs a real reducer.
   const [state, dispatch] = useReducer(appReducer, instance, (instance) => {
@@ -75,30 +73,9 @@ function Harness({
   });
 
   return (
-    <TestPaneProvider state={state} dispatch={dispatch} paneId="brokers:test" pluginId="broker" runtime={runtime}>
-      <BrokersPane focused width={92} height={paneHeight} />
-    </TestPaneProvider>
-  );
-}
-
-function FooterHarness({
-  height = 25,
-  ...props
-}: {
-  instance?: BrokerInstanceConfig;
-  calls: string[];
-  height?: number;
-}) {
-  return (
-    <PaneFooterProvider>
-      {(footer) => (
-        <Box width={92} height={height} flexDirection="column">
-          <Harness {...props} paneHeight={height - 1} />
-          <PaneFooterBar footer={footer} focused width={92} />
-          <PaneFooterKeys paneId="brokers:test" footer={footer} focused />
-        </Box>
-      )}
-    </PaneFooterProvider>
+    <TestPaneFrame state={state} dispatch={dispatch} paneId="brokers:test" pluginId="broker" runtime={runtime} width={92} height={height} footerKeys>
+      {(body) => <BrokersPane focused {...body} />}
+    </TestPaneFrame>
   );
 }
 
@@ -117,7 +94,7 @@ describe("BrokersPane", () => {
   test("renders IBKR row and invokes broker actions", async () => {
 
     const calls: string[] = [];
-    testSetup = await testRender(<FooterHarness calls={calls} instance={createGatewayInstance()} height={35} />, { width: 92, height: 35 });
+    testSetup = await testRender(<Harness calls={calls} instance={createGatewayInstance()} height={35} />, { width: 92, height: 35 });
     await act(async () => {
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
@@ -140,7 +117,7 @@ describe("BrokersPane", () => {
   test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
     const calls: string[] = [];
     const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "A1" } } };
-    testSetup = await testRender(<FooterHarness calls={calls} instance={instance} height={35} />, { width: 92, height: 35 });
+    testSetup = await testRender(<Harness calls={calls} instance={instance} height={35} />, { width: 92, height: 35 });
     await act(async () => {
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();

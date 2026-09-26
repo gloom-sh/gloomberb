@@ -2,13 +2,11 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudProxyStatementListPayload, type CloudProxyStatementPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, createTestTicker, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { Box } from "../../../ui";
 import { attachExecutivesPersistence, loadProxyStatement, loadProxyStatements, resetExecutivesPersistence } from "./data";
 import { ExecutivesPane } from "./pane";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
@@ -55,12 +53,9 @@ async function mount(initialSymbol = "ALPHA", width = 100, height = 24) {
     const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
     const listing = parsePublicTickerKey(symbol);
     state.tickers.set(symbol, createTestTicker(listing.symbol, listing.symbol, { exchange: listing.exchange ?? "NASDAQ" }));
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
-      <PaneFooterProvider>{footer => <Box width={width} height={height} flexDirection="column">
-        <Box height={height - 1}><ExecutivesPane focused width={width} height={height - 1} /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime} width={width} height={height}>
+      {(body) => <ExecutivesPane focused {...body} />}
+    </TestPaneFrame>;
   }
   setup = await testRender(<Harness />, { width, height });
   await settle();

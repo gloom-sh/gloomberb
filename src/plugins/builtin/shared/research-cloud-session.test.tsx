@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient, type AuthUser } from "../../../api-client";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { Box } from "../../../ui";
 import { DividendYieldPane } from "../dividend-yield/pane";
 import { fetchProviderDividendData } from "../dividend-yield/provider-client";
 import { AnalystResearchView } from "../research/analyst-pane";
@@ -87,12 +85,9 @@ async function render(pane: typeof panes[number], state: { cloudRequired: boolea
       ? <AnalystResearchView focused width={80} height={23} />
       : <CorporateActionsView focused width={80} height={23} variant={pane} footerPaneId={pane} />;
   await act(async () => {
-    setup = await testRender(<TestPaneProvider state={appState} paneId={id} pluginId="ticker-research" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={80} height={24} flexDirection="column">
-        <Box width={80} height={23}>{content}</Box>
-        <PaneFooterBar footer={footer} focused width={80} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>, { width: 80, height: 24 });
+    setup = await testRender(<TestPaneFrame state={appState} paneId={id} pluginId="ticker-research" runtime={runtime} width={80} height={24}>
+      {() => content}
+    </TestPaneFrame>, { width: 80, height: 24 });
   });
   for (let i = 0; i < 5; i++) await frame();
   return commands;

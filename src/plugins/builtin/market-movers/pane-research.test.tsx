@@ -5,17 +5,15 @@ import { resetMarketMoversPersistence } from "./screener";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { testRender, settleFrame, emitKeypress, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { createInitialState, appReducer } from "../../../state/app/context";
-import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { useAppTickerOpenRuntime } from "../../../app/pane-runtime/ticker-open-runtime";
 import { createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { Box } from "../../../ui";
 import { useRegularMarketSession } from "../../../test-support/market-session";
 import { createTestTicker } from "../../../test-support/ticker";
 
@@ -45,9 +43,9 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
     const runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: provider, tickerRepository: repo, dispatch, pluginRegistry: registry,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: `research:${++sequence}` }),
       persistLayout: layout => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={{ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } }}>
-      <PaneFooterProvider>{value => { footer = value; return <Box width={120} height={18} flexDirection="column"><Box height={17}><Pane paneId={id} paneType={id} width={120} height={17} focused /></Box><PaneFooterBar footer={value} width={120} focused /></Box>; }}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-movers" runtime={{ getMarketData: () => null, pinTicker: (symbol, options) => { pins.push({ symbol, options }); pending.push(runtime.openPinnedTicker(symbol, options)); } }} width={120} height={18}>
+      {(body, value) => { footer = value; return <Pane paneId={id} paneType={id} focused {...body} />; }}
+    </TestPaneFrame>;
   }
   await act(async () => { setup = await testRender(<Harness />, { width: 120, height: 18 }); });
   await settleFrame(setup!, 8);

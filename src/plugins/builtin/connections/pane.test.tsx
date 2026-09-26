@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
-import { Box } from "../../../ui";
 import { ConnectionsPane } from "./pane";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { TestPaneFrame } from "../../../test-support/pane";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -32,16 +30,9 @@ function harness() {
     state.paneState = paneState;
     const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
     return (
-      <TestPaneProvider state={state} dispatch={dispatch} paneId="connections:test" pluginId="application" runtime={runtime}>
-        <PaneFooterProvider>
-          {(footer) => (
-            <Box flexDirection="column" width={80} height={12}>
-              <ConnectionsPane paneId="connections:test" paneType="connections" focused width={80} height={11} />
-              <PaneFooterBar footer={footer} focused width={80} />
-            </Box>
-          )}
-        </PaneFooterProvider>
-      </TestPaneProvider>
+      <TestPaneFrame state={state} dispatch={dispatch} paneId="connections:test" pluginId="application" runtime={runtime} width={80} height={12}>
+        {(body) => <ConnectionsPane paneId="connections:test" paneType="connections" focused {...body} />}
+      </TestPaneFrame>
     );
   }
 

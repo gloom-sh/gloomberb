@@ -7,19 +7,18 @@ if (out)
     mkdirSync(out, { recursive: true });
 const { apiClient, setCloudApiFetchTransport } = await import(`${source}/src/api-client`);
 const { FilingEventsPane } = await import(`${source}/src/plugins/builtin/filing-events/pane`);
-const { TestPaneProvider, createTestPaneConfig, createTestTicker } = await import(`${source}/src/test-support/pane`);
+const { TestPaneFrame, createTestPaneConfig, createTestTicker } = await import(`${source}/src/test-support/pane`);
 const { createStatefulTestPluginRuntime } = await import(`${source}/src/test-support/plugin-runtime`);
 const { createInitialState } = await import(`${source}/src/state/app/context`);
-const { PaneFooterProvider, PaneFooterBar } = await import(`${source}/src/components/layout/pane/footer`);
 const { testRender, settleFrame, emitKeypress } = await import(`${source}/src/renderers/opentui/test-utils`);
-const { Box, UiHostProvider, useRendererHost, useUiHost, useNativeRenderer } = await import(`${source}/src/ui`);
+const { UiHostProvider, useRendererHost, useUiHost, useNativeRenderer } = await import(`${source}/src/ui`);
 let setup: any, footer: any, selectCompany: (symbol: string) => void;
 let requests: string[] = [];
 let opened: string[] = [];
 const observations: any[] = [];
 let frames = 0;
 function event(ticker: string, id = ticker) { return { id, ticker, company: { ticker, cik: ticker === "FIRST" ? "1" : "2", name: `${ticker} issuer`, shortName: ticker }, filingDate: "2026-09-10", filedAt: "2026-09-10T20:30:00Z", docUrl: `https://www.sec.gov/Archives/${ticker}/${id}.htm`, items: ["1.01"], labels: ["Material agreement"], kinds: ["agreement"], material: true, headline: `${ticker} acquisition terms`, summary: `${ticker} paid 20 million in cash.`, people: [], read: true }; }
-function Harness() { const [symbol, setSymbol] = useState("FIRST"); selectCompany = setSymbol; const config = createTestPaneConfig("/tmp/unused-filing-research", { instanceId: "filing-audit", paneId: "filing-events", binding: { kind: "fixed", symbol } }); const state = createInitialState(config); state.tickers = new Map([[symbol, createTestTicker(symbol)]]); state.focusedPaneId = "filing-audit"; const runtime = useMemo(() => createStatefulTestPluginRuntime(), []); const host = useRendererHost(); const ui = useUiHost(); const native = useNativeRenderer(); return <UiHostProvider ui={ui} nativeRenderer={native} renderer={{ ...host, openExternal: async (url: string) => { opened.push(url); } }}><TestPaneProvider state={state} paneId="filing-audit" pluginId="ticker-research" runtime={runtime}><PaneFooterProvider>{(value: any) => { footer = value; return <Box width={100} height={24} flexDirection="column"><Box height={23}><FilingEventsPane focused width={100} height={23}/></Box><PaneFooterBar footer={value} focused width={100}/></Box>; }}</PaneFooterProvider></TestPaneProvider></UiHostProvider>; }
+function Harness() { const [symbol, setSymbol] = useState("FIRST"); selectCompany = setSymbol; const config = createTestPaneConfig("/tmp/unused-filing-research", { instanceId: "filing-audit", paneId: "filing-events", binding: { kind: "fixed", symbol } }); const state = createInitialState(config); state.tickers = new Map([[symbol, createTestTicker(symbol)]]); state.focusedPaneId = "filing-audit"; const runtime = useMemo(() => createStatefulTestPluginRuntime(), []); const host = useRendererHost(); const ui = useUiHost(); const native = useNativeRenderer(); return <UiHostProvider ui={ui} nativeRenderer={native} renderer={{ ...host, openExternal: async (url: string) => { opened.push(url); } }}><TestPaneFrame state={state} paneId="filing-audit" pluginId="ticker-research" runtime={runtime} width={100} height={24}>{(body: any, value: any) => { footer = value; return <FilingEventsPane focused {...body}/>; }}</TestPaneFrame></UiHostProvider>; }
 function transport(fn: (ticker: string) => Response | Promise<Response>) { setCloudApiFetchTransport((async (input: any) => { const url = new URL(String(input)); if (!url.pathname.startsWith("/public/events/"))
     throw new Error(`Unexpected controlled route ${url.pathname}`); requests.push(url.pathname); return fn(decodeURIComponent(url.pathname.split("/").at(-1)!)); }) as typeof fetch); }
 async function mount() { await act(async () => { setup = await testRender(<Harness />, { width: 100, height: 24 }); }); await settleFrame(setup, 8); }

@@ -1,9 +1,8 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload } from "../../../api-client";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
@@ -37,12 +36,9 @@ function Harness({ width = 80, initialSymbol = "FIRST", initialPaneState = {} }:
   const dispatch = (action: AppAction) => setPaneState(
     (current) => appReducer({ ...state, paneState: current }, action).paneState,
   );
-  return <TestPaneProvider state={state} dispatch={dispatch} paneId="calls:test" pluginId="research" runtime={runtime}>
-    <PaneFooterProvider>{footer => <Box width={width} height={21} flexDirection="column">
-      <Box width={width} height={20}><EarningsCallsPane focused width={width} height={20} /></Box>
-      <PaneFooterBar footer={footer} focused width={width} />
-    </Box>}</PaneFooterProvider>
-  </TestPaneProvider>;
+  return <TestPaneFrame state={state} dispatch={dispatch} paneId="calls:test" pluginId="research" runtime={runtime} width={width} height={21}>
+    {(body) => <EarningsCallsPane focused {...body} />}
+  </TestPaneFrame>;
 }
 function signIn() {
   apiClient.setSessionToken("controlled-test-session");

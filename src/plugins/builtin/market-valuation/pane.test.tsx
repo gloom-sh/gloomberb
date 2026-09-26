@@ -1,20 +1,15 @@
-import { Box } from "../../../ui";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
 import {
   attachValuationPersistence,
   hydrateValuationSeries,
   resetValuationPersistence,
 } from "./cache";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import {
-  AppContext, appReducer,
-  createInitialState,
-  PaneInstanceProvider,
-} from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
+import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketValuationPane, shouldPersistSelection } from "./pane";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -101,28 +96,16 @@ async function settle() {
 const TEST_PANE_ID = "valuation:test";
 
 async function renderPane(settings: Record<string, unknown> = {}, width = 128, height = 40) {
-  const layout = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{ instanceId: TEST_PANE_ID, paneId: "market-valuation", settings }],
-    floating: [],
-    detached: [],
-  };
-  const state = createInitialState({
-    ...createDefaultConfig("/tmp/gloomberb-valuation-test"),
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  });
+  const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-valuation-test", {
+    instanceId: TEST_PANE_ID, paneId: "market-valuation", settings,
+  }));
   state.focusedPaneId = TEST_PANE_ID;
+  const runtime = createTestPluginRuntime();
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
-    return <AppContext value={{ state: current, dispatch }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PaneFooterProvider>{footer => <Box width={width} height={height + 1} flexDirection="column">
-          <Box height={height}><MarketValuationPane paneId={TEST_PANE_ID} paneType="market-valuation" focused width={width} height={height}/></Box>
-          <PaneFooterBar footer={footer} focused width={width}/>
-        </Box>}</PaneFooterProvider>
-      </PaneInstanceProvider>
-    </AppContext>;
+    return <TestPaneFrame state={current} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="macro" runtime={runtime} width={width} height={height + 1}>
+      {(body) => <MarketValuationPane paneId={TEST_PANE_ID} paneType="market-valuation" focused {...body}/>}
+    </TestPaneFrame>;
   }
   setup = await testRender(<Harness/>, { width, height: height + 1 });
   await settle();
