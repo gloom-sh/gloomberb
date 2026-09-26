@@ -48,6 +48,9 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
   test("preserves stale FX age, shares refreshes, notifies consumers, and unsubscribes on destroy", async () => {
+    // FX stays fresh over a weekend, so a cached rate only turns stale on a weekday clock.
+    const originalNow = Date.now;
+    Date.now = () => Date.parse("2026-09-14T18:00:00Z");
     const persistence = new AppPersistence(":memory:");
     const pending = deferred<number>();
     let calls = 0;
@@ -77,7 +80,7 @@ describe("shared cached market queries", () => {
       expect(notifications).toBeGreaterThan(0);
       expect((await second.loadFxRate("EUR")).data).toBe(1.12);
       expect(calls).toBe(1);
-    } finally { first.destroy(); second.destroy(); persistence.close(); }
+    } finally { first.destroy(); second.destroy(); persistence.close(); Date.now = originalNow; }
   });
 
   test("a short-lived router awaits stale FX refreshes and refresh mode refetches fresh rates", async () => {
