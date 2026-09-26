@@ -39,7 +39,6 @@ import { isInsiderForm } from "./insider-data";
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
-export { insiderHeadless } from "./headless";
 
 const FORM4_PAGE_SIZE = 20;
 // The first page grows to every filing inside the 90-day window, up to this

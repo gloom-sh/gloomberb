@@ -4,7 +4,7 @@ import {
   type KellySizerModeDrafts,
   type KellySizingMode,
   type ScenarioKellyAssumptions,
-} from "./model";
+} from "./types";
 import type { GridField } from "../../../components";
 
 export function buildModeFields({

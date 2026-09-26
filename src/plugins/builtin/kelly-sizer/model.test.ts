@@ -5,10 +5,12 @@ import {
   buildSensitivityGrid,
   calculateKellySizing,
   solveKellyFraction,
-  type BinaryKellyAssumptions,
-  type PredictionMarketKellyAssumptions,
-  type ScenarioKellyAssumptions,
 } from "./model";
+import type {
+  BinaryKellyAssumptions,
+  PredictionMarketKellyAssumptions,
+  ScenarioKellyAssumptions,
+} from "./types";
 
 function expectClose(actual: number, expected: number, precision = 4) {
   expect(actual).toBeGreaterThan(expected - precision);

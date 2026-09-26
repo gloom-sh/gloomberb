@@ -45,32 +45,6 @@ type FinancialTableColumn = DataTableColumn & (
   | { id: string; kind: "statement"; statement: FinancialTableStatement }
 );
 
-export function FinancialsTab({
-  width,
-  focused,
-  headerScrollId,
-  bodyScrollId,
-  allowArrowSubTabNavigation = true,
-}: {
-  width: number;
-  focused: boolean;
-  headerScrollId?: string;
-  bodyScrollId?: string;
-  allowArrowSubTabNavigation?: boolean;
-}) {
-  const { financials } = usePaneTicker();
-  return (
-    <ResolvedFinancialsTab
-      width={width}
-      focused={focused}
-      financials={financials}
-      headerScrollId={headerScrollId}
-      bodyScrollId={bodyScrollId}
-      allowArrowSubTabNavigation={allowArrowSubTabNavigation}
-    />
-  );
-}
-
 const financialRowKey = (row: FinancialTableRow) => row.id;
 const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined

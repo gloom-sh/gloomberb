@@ -10,14 +10,6 @@ export function getPaneSettings(instance: PaneInstanceConfig | null | undefined)
   return clonePaneSettings(instance?.settings) ?? {};
 }
 
-export function getPaneSettingValue<T>(
-  instance: PaneInstanceConfig | null | undefined,
-  key: string,
-  fallback: T,
-): T {
-  return (instance?.settings?.[key] as T | undefined) ?? fallback;
-}
-
 export function updatePaneInstance(
   layout: LayoutConfig,
   paneId: string,

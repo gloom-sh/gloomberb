@@ -1,16 +1,10 @@
 import { displayWidth, padTo } from "../../../utils/format";
 import { compositeAxisTicks, compositeGridRatios, type CompositeAxisValueFormatter } from "./format";
-import type { CompositeViewportRange } from "./interactions";
 import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue } from "./scene";
-import {
-  buildCompositeTimeAxisLayout,
-  buildCompositeViewportTimeAxisLayout,
-} from "./time-axis";
 import type {
   CompositeAxisDomain,
-  CompositeChartScene,
   CompositePanelScene,
   CompositeProjectedPoint,
   CompositeProjectedSeries,
@@ -311,15 +305,4 @@ export function renderCompositeAxisText(
     rows[row] = padTo(label, width, side === "left" ? "right" : "left");
   }
   return rows;
-}
-
-export function renderCompositeViewportTimeAxis(
-  viewport: CompositeViewportRange,
-  width: number,
-): string {
-  return buildCompositeViewportTimeAxisLayout(viewport, width).text;
-}
-
-export function renderCompositeTimeAxis(scene: CompositeChartScene, width: number): string {
-  return buildCompositeTimeAxisLayout(scene, width).text;
 }

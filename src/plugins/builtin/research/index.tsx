@@ -10,9 +10,6 @@ import { analystResearchHeadless } from "./analyst-headless";
 import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
 
-export { analystResearchHeadless } from "./analyst-headless";
-export { eventsHeadless } from "./events-headless";
-export { earningsEstimatesHeadless } from "./headless";
 
 function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
   return (

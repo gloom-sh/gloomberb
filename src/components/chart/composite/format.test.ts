@@ -11,11 +11,8 @@ import {
   formatCompositeTimeAxisDate,
 } from "./format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
-import {
-  renderCompositeAxisText,
-  renderCompositeTimeAxis,
-  renderCompositeViewportTimeAxis,
-} from "./text-renderer";
+import { renderCompositeAxisText } from "./text-renderer";
+import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
 
 function scene(start: string, end: string): CompositeChartScene {
   const startTime = Date.parse(start);
@@ -44,9 +41,9 @@ describe("composite chart timestamp formatting", () => {
       .toBe("2025-01-02 12:05 UTC");
     expect(formatCompositeTimeAxisDate(cursor, intraday.startTime, intraday.endTime))
       .toBe("12:05 UTC");
-    expect(renderCompositeTimeAxis(intraday, 60)).toContain("09:30 UTC");
-    expect(renderCompositeTimeAxis(intraday, 60)).toContain("12:00");
-    expect(renderCompositeTimeAxis(intraday, 60)).toContain("16:00 UTC");
+    expect(buildCompositeTimeAxisLayout(intraday, 60).text).toContain("09:30 UTC");
+    expect(buildCompositeTimeAxisLayout(intraday, 60).text).toContain("12:00");
+    expect(buildCompositeTimeAxisLayout(intraday, 60).text).toContain("16:00 UTC");
   });
 
   test("adds the date to UTC time ticks when an intraday span crosses days", () => {
@@ -57,7 +54,7 @@ describe("composite chart timestamp formatting", () => {
       overnight.startTime,
       overnight.endTime,
     )).toBe("01-02 00:15 UTC");
-    const axis = renderCompositeTimeAxis(overnight, 80);
+    const axis = buildCompositeTimeAxisLayout(overnight, 80).text;
     expect(axis).toContain("Jan 1 23:30 UTC");
     expect(axis).toContain("Jan 2 00:00");
     expect(axis).toContain("Jan 2 00:30 UTC");
@@ -69,15 +66,15 @@ describe("composite chart timestamp formatting", () => {
 
     expect(formatCompositeCursorDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
     expect(formatCompositeTimeAxisDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
-    expect(renderCompositeTimeAxis(weekly, 60)).toContain("Jan 1");
-    expect(renderCompositeTimeAxis(weekly, 60)).toContain("Jan 8");
+    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 1");
+    expect(buildCompositeTimeAxisLayout(weekly, 60).text).toContain("Jan 8");
   });
 
   test("renders recovery-shell dates directly from a viewport", () => {
-    const axis = renderCompositeViewportTimeAxis({
+    const axis = buildCompositeViewportTimeAxisLayout({
       start: new Date("2025-01-01T00:00:00.000Z"),
       end: new Date("2025-01-08T00:00:00.000Z"),
-    }, 60);
+    }, 60).text;
 
     expect(axis).toContain("Jan 1");
     expect(axis).toContain("Jan 8");

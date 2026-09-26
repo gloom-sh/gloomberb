@@ -8,7 +8,6 @@ import {
   convictionRows,
   reviewDue,
   sortForBoard,
-  symbolHealth,
   parseSymbolList,
   thesesInScope,
   thesisExposure,
@@ -153,8 +152,6 @@ describe("portfolio integration", () => {
       ["AMD", null, 0.05],
       ["AAPL", null, 0],
     ]);
-    expect(symbolHealth([thesis(), closedAmd], "AMD")).toBeNull();
-    expect(symbolHealth([thesis()], "nvda")).toBe("intact");
   });
 
   test("a scope keeps the theses holding something in it", () => {

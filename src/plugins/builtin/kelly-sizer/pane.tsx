@@ -43,8 +43,6 @@ import {
   getCollectionTickersFromConfig,
 } from "../portfolio-list/pane/data";
 import {
-  DEFAULT_KELLY_DRAFTS,
-  KELLY_MODES,
   applyKellyCommonAssumptions,
   buildKellyCurvePoints,
   buildSensitivityGrid,
@@ -52,11 +50,15 @@ import {
   calculateKellySizing,
   cloneKellyDrafts,
   getKellyCurveMaxFraction,
+} from "./model";
+import {
+  DEFAULT_KELLY_DRAFTS,
+  KELLY_MODES,
   type KellySizerDraft,
   type KellySizerModeDrafts,
   type KellySizingMode,
   type PredictionMarketKellyAssumptions,
-} from "./model";
+} from "./types";
 import { KELLY_PANE_ID } from "./constants";
 import {
   buildKellyCurveXAxisLabels,

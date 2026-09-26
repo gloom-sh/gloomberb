@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../types/ticker";
-import { getPortfolioPositionMetrics, resolvePortfolioPositionPnl, resolveBrokerFallbackMarketValue } from "./position-metrics";
+import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "./position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPositionRows } from "../ticker-detail/overview/model";
 import { getPortfolioPositionValue } from "../kelly-sizer/portfolio";
@@ -24,7 +24,7 @@ test("nominal bond cost and mark apply /100 once, independently of contract mult
     for (const supplied of [{}, { marketValue: 863.59 }, { unrealizedPnl: -13.83 }, { marketValue: 863.59, unrealizedPnl: -13.83 }]) {
       const r = record([position({ multiplier, ...supplied })]); const m = getPortfolioPositionMetrics(r,"main","USD");
       expect(m.totalCost).toBeCloseTo(877.42,8);
-      expect(resolveBrokerFallbackMarketValue(m)).toBeCloseTo(supplied.marketValue ?? 863.59375,8);
+      expect(resolvePortfolioMarketValue(m)?.gross ?? null).toBeCloseTo(supplied.marketValue ?? 863.59375,8);
       expect(resolvePortfolioPositionPnl(m).value).toBeCloseTo(supplied.unrealizedPnl ?? (supplied.marketValue ?? 863.59375)-877.42,8);
       expect(r.metadata.positions[0]!.multiplier).toBe(multiplier);
     }
@@ -114,7 +114,7 @@ test("nominal bond currency cannot be supplied by an independent quote",()=>{
   const r=record([position({currency:"",marketValue:863.59,unrealizedPnl:-13.83})]);r.metadata.currency="";
   const m=getPortfolioPositionMetrics(r,"main","USD",undefined,quote());
   expect(m.positionCurrency).toBe("");expect(m.totalCost).toBeNaN();
-  expect(resolveBrokerFallbackMarketValue(m)).toBeNull();
+  expect(resolvePortfolioMarketValue(m)?.gross ?? null).toBeNull();
   expect(totals(r,quote()).totalMktValue).toBeNaN();
   expect(r.metadata.positions[0]).toMatchObject({marketValue:863.59,unrealizedPnl:-13.83,currency:""});
 });

@@ -3,10 +3,10 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { statsCache } from "./cache";
 import { createStatSeriesLoader, getCachedStatsBundle, loadStatsBundle } from "./client";
 import { projectStatsHeadlessBundle } from "./headless";
-import { findStat } from "./stats";
+import { resolveStatArg } from "./stats";
 
-const cpi = findStat("cpi-yoy");
-const unemployment = findStat("unemployment");
+const cpi = resolveStatArg("cpi-yoy")!;
+const unemployment = resolveStatArg("unemployment")!;
 const now = Date.parse("2026-02-20T12:00:00Z");
 let clock: ReturnType<typeof spyOn> | undefined;
 afterEach(() => { clock?.mockRestore(); statsCache.reset(); });
@@ -113,10 +113,10 @@ test("2s10s never runs ahead of the 2Y and 10Y rows it is computed from", async 
   const series: Record<string, Array<{ date: string; value: number }>> = {
     DGS10: days("2026-09-21", 4.96), DGS2: days("2026-09-21", 4.76), T10Y2Y: days("2026-09-22", 0.25),
   };
-  const stats = [findStat("ten-year"), findStat("two-year"), findStat("curve-spread")];
+  const stats = [resolveStatArg("ten-year")!, resolveStatArg("two-year")!, resolveStatArg("curve-spread")!];
   const bundle = await loadStatsBundle({ loader: async (def) => series[def.seriesId]!, stats });
   expect(bundle.builds.map((build) => build.points.at(-1)?.date)).toEqual(["2026-09-21", "2026-09-21", "2026-09-21"]);
   // Alone, the spread keeps its newest print.
-  const alone = await loadStatsBundle({ loader: async (def) => series[def.seriesId]!, stats: [findStat("curve-spread")] });
+  const alone = await loadStatsBundle({ loader: async (def) => series[def.seriesId]!, stats: [resolveStatArg("curve-spread")!] });
   expect(alone.builds[0]!.points.at(-1)?.date).toBe("2026-09-22");
 });

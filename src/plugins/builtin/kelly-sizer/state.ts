@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePaneStateValue } from "../../../state/app/context";
 import { usePluginConfigState } from "../../runtime";
 import { COMMON_ASSUMPTIONS_STATE_KEY } from "./constants";
+import { normalizeKellyCommonAssumptions } from "./model";
 import {
   DEFAULT_KELLY_COMMON_ASSUMPTIONS,
-  normalizeKellyCommonAssumptions,
   type KellyCommonAssumptions,
   type KellySizerDraft,
-} from "./model";
+} from "./types";
 
 export function useKellyCommonAssumptions(rawActiveDraft: KellySizerDraft): {
   commonAssumptions: KellyCommonAssumptions;

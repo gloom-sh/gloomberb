@@ -215,14 +215,6 @@ export function resolvePortfolioMarketValue(metrics: PortfolioPositionMetrics, c
   return Number.isFinite(gross) && Number.isFinite(net) ? { gross, net } : null;
 }
 
-export function resolveBrokerFallbackMarketValue(metrics: PortfolioPositionMetrics): number | null {
-  return metrics.hasBrokerMktValue && Number.isFinite(metrics.brokerMktValue) ? metrics.brokerMktValue : null;
-}
-
-export function resolveBrokerFallbackPnl(metrics: PortfolioPositionMetrics, _brokerMarketValue?: number | null): number | null {
-  return metrics.hasBrokerPnl && Number.isFinite(metrics.brokerPnl) ? metrics.brokerPnl : null;
-}
-
 export interface PortfolioPositionPnl {
   value: number | null;
   basis: "quote-and-cost" | "broker-snapshot" | "mixed" | "unavailable";

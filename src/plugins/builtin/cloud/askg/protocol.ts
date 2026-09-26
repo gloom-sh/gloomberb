@@ -3,12 +3,10 @@ import type {
   HeadlessPaneArgumentDef,
   HeadlessPaneColumn,
   HeadlessPaneOptionDef,
-  HeadlessPaneOptionValue,
   HeadlessPaneShape,
 } from "../../../../types/headless";
 import type {
   RemoteJsonSchema,
-  RemoteJsonSchemaType,
   RemoteWriteTier,
 } from "../../../../remote/types";
 
@@ -51,26 +49,14 @@ export type ClientToolManifestSource = Exclude<ToolManifestSource, "server">;
 /** Headless result shapes supported by the tool timeline. */
 export type ToolManifestShape = HeadlessPaneShape;
 
-/** Headless argument kinds understood by the manifest compiler. */
-export type ToolManifestArgumentKind = HeadlessPaneArgumentDef["kind"];
-
 /** Serializable headless argument declaration. */
 export type ToolManifestArgument = HeadlessPaneArgumentDef;
-
-/** Values accepted by a headless enum option. */
-export type ToolManifestOptionValue = HeadlessPaneOptionValue;
-
-/** Headless option types understood by the manifest compiler. */
-export type ToolManifestOptionType = HeadlessPaneOptionDef["type"];
 
 /** Serializable headless option declaration. */
 export type ToolManifestOption = Omit<HeadlessPaneOptionDef, "settingKey" | "pluginState">;
 
 /** Serializable headless column declaration. */
 export type ToolManifestColumn = Omit<HeadlessPaneColumn, "format">;
-
-/** JSON Schema primitive types accepted for remote operation inputs. */
-export type ToolInputSchemaType = RemoteJsonSchemaType;
 
 /** JSON Schema accepted by a remote operation tool. */
 export type ToolInputSchema = RemoteJsonSchema;

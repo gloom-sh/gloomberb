@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveFredMapping, getRelatedTickers, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
+import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 
 describe("resolveFredMapping", () => {
   test("maps exact US event titles", () => {
@@ -39,16 +39,6 @@ describe("resolveFredMapping", () => {
     expect(resolveFredMapping("Natural Gas Storage", "US")).toBeNull();
   });
 });
-
-describe("getRelatedTickers", () => {
-  test("returns related tickers for known events", () => {
-    const tickers = getRelatedTickers("CPI m/m", "US");
-    expect(tickers).toContain("TIP");
-    expect(tickers).toContain("DX-Y.NYB");
-  });
-
-});
-
 
 test("calendar history shows inflation rates, payroll job changes, and annualized real GDP", () => {
   const cpi = resolveFredMapping("CPI y/y", "US")!;

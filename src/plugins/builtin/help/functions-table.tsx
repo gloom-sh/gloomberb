@@ -22,8 +22,7 @@ import { useShortcut } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import type { HelpShortcutEntry } from "./components";
-import { groupShortcutEntries } from "./shortcut-model";
+import { groupShortcutEntries, type HelpShortcutEntry } from "./shortcut-model";
 import { badgeCell, badgeColumnWidth } from "./table-cells";
 
 type FunctionsColumnId = "prefix" | "argument" | "description";

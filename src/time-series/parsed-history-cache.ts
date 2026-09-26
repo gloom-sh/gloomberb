@@ -42,10 +42,6 @@ export function rememberParsedPriceHistory(
   }
 }
 
-export function readParsedPriceHistory(key: string): PricePoint[] | undefined {
-  return readParsedHistoryResult(key)?.points;
-}
-
 export function readParsedHistoryResult(key: string): PriceHistoryResult | undefined {
   return parsedHistory.get(key);
 }

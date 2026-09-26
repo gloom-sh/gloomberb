@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   computeBeta,
   computeDatedBeta,
-  computeDatedReturns,
   resolveDatedReturns,
-  computeSectorAllocation,
   computeSharpeRatio,
   computeWeightedPortfolioReturns,
   type DatedReturn,
@@ -81,7 +79,7 @@ describe("computeBeta", () => {
   });
 
   test("computes dated returns from closing prices", () => {
-    const returns = computeDatedReturns([
+    const { returns } = resolveDatedReturns([
       { date: new Date("2024-01-01T00:00:00Z"), close: 100 },
       { date: new Date("2024-01-02T00:00:00Z"), close: 110 },
       { date: new Date("2024-01-03T00:00:00Z"), close: 99 },
@@ -99,40 +97,12 @@ describe("computeBeta", () => {
     const end = { date: new Date("2026-09-10"), close: 110 };
     const input = [start, bad, end];
     const rejected = resolveDatedReturns(input);
-    expect(computeDatedReturns(input)).toEqual([]);
+    expect(rejected.returns).toEqual([]);
     expect(rejected.integrity?.sourcePoints[0]).toMatchObject({ date: "2026-09-09T00:00:00.000Z", open: 105, high: 102 });
     const recovered = resolveDatedReturns([...input, { ...bad, high: 106 }]);
     expect(recovered.integrity).toBeNull();
     expect(recovered.returns.map((entry) => entry.value)).toEqual([0.01, 9 / 101]);
     expect(bad.high).toBe(102);
     expect(rejected.integrity?.sourcePoints[0]?.high).toBe(102);
-  });
-});
-
-describe("computeSectorAllocation", () => {
-  test("computes weights from positions", () => {
-    const alloc = computeSectorAllocation([
-      { sector: "Technology", marketValue: 60000 },
-      { sector: "Healthcare", marketValue: 40000 },
-    ]);
-    expect(alloc).toHaveLength(2);
-    expect(alloc[0]!.sector).toBe("Technology");
-    expect(alloc[0]!.weight).toBeCloseTo(0.6, 2);
-  });
-
-  test("groups same sectors", () => {
-    const alloc = computeSectorAllocation([
-      { sector: "Tech", marketValue: 30000 },
-      { sector: "Tech", marketValue: 20000 },
-      { sector: "Health", marketValue: 50000 },
-    ]);
-    expect(alloc).toHaveLength(2);
-    expect(alloc[0]!.sector).toBe("Health");
-    expect(alloc[0]!.weight).toBeCloseTo(0.5, 2);
-  });
-
-  test("uses Unknown for missing sector", () => {
-    const alloc = computeSectorAllocation([{ sector: "", marketValue: 100 }]);
-    expect(alloc[0]!.sector).toBe("Unknown");
   });
 });

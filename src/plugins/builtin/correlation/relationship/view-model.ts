@@ -93,23 +93,6 @@ export function buildRelationshipScatterPointsForDate(
   }));
 }
 
-export function findRelationshipAlignedPoint(
-  aligned: RelationshipAlignedPoint[],
-  cursorDate: Date | null,
-): RelationshipAlignedPoint | null {
-  if (aligned.length === 0) return null;
-  if (!cursorDate) return aligned.at(-1) ?? null;
-  return aligned.find((entry) => entry.date.getTime() === cursorDate.getTime()) ?? aligned.at(-1) ?? null;
-}
-
-export function findRelationshipCorrelationAtDate(
-  points: ProjectedChartPoint[],
-  cursorDate: Date | null,
-): number | null {
-  if (!cursorDate) return points.at(-1)?.close ?? null;
-  return points.find((point) => point.date.getTime() === cursorDate.getTime())?.close ?? null;
-}
-
 /**
  * The regression of the first ticker's daily returns on the second's, as the
  * pane's summary figures. R² rides with R; sample counts are left out.

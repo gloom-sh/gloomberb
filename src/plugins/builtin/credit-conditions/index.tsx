@@ -25,7 +25,6 @@ import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
 import { CREDIT_SERIES, type CreditConditionRow } from "./model";
 
-export { creditConditionsHeadless } from "./headless";
 
 const EMPTY_ROWS: CreditConditionRow[] = [];
 const PANELS = [{ id: "main" }];

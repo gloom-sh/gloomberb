@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseRssFeed, parseRssFeedDocument, type RssFeedConfig } from "./parser";
+import { parseRssFeedDocument, type RssFeedConfig } from "./parser";
 
 const DEFAULT_CONFIG: RssFeedConfig = {
   id: "test-feed",
@@ -45,10 +45,10 @@ const ATOM_FIXTURE = `<?xml version="1.0"?>
   </entry>
 </feed>`;
 
-describe("parseRssFeed", () => {
+describe("parseRssFeedDocument", () => {
   test("parses RSS items with normalized text, categories, source, dates, and stable ids", () => {
-    const items = parseRssFeed(RSS2_FIXTURE, DEFAULT_CONFIG);
-    const again = parseRssFeed(RSS2_FIXTURE, DEFAULT_CONFIG);
+    const items = parseRssFeedDocument(RSS2_FIXTURE, DEFAULT_CONFIG);
+    const again = parseRssFeedDocument(RSS2_FIXTURE, DEFAULT_CONFIG);
 
     expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({
@@ -71,7 +71,7 @@ describe("parseRssFeed", () => {
   });
 
   test("parses Atom entries", () => {
-    const items = parseRssFeed(ATOM_FIXTURE, DEFAULT_CONFIG);
+    const items = parseRssFeedDocument(ATOM_FIXTURE, DEFAULT_CONFIG);
 
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -83,10 +83,10 @@ describe("parseRssFeed", () => {
     expect(items[0]!.summary).toContain("trade agreement");
   });
 
-  test("ignores empty or invalid input", () => {
-    expect(parseRssFeed("", DEFAULT_CONFIG)).toHaveLength(0);
-    expect(parseRssFeed("not xml at all <<<", DEFAULT_CONFIG)).toHaveLength(0);
-    expect(parseRssFeed("   \n\t  ", DEFAULT_CONFIG)).toHaveLength(0);
+  test("rejects empty or invalid input", () => {
+    expect(() => parseRssFeedDocument("", DEFAULT_CONFIG)).toThrow("Invalid or unsupported news feed.");
+    expect(() => parseRssFeedDocument("not xml at all <<<", DEFAULT_CONFIG)).toThrow("Invalid or unsupported news feed.");
+    expect(() => parseRssFeedDocument("   \n\t  ", DEFAULT_CONFIG)).toThrow("Invalid or unsupported news feed.");
   });
 
   test("truncates long summaries and accepts title-only items", () => {
@@ -100,7 +100,7 @@ describe("parseRssFeed", () => {
       </item>
       <item><title>Titleonly item</title></item>
     </channel></rss>`;
-    const items = parseRssFeed(xml, DEFAULT_CONFIG);
+    const items = parseRssFeedDocument(xml, DEFAULT_CONFIG);
 
     expect(items).toHaveLength(2);
     expect(items[0]!.summary!.length).toBeLessThanOrEqual(301);
@@ -109,7 +109,7 @@ describe("parseRssFeed", () => {
   });
 
   test("uses config category when the item has none", () => {
-    const items = parseRssFeed(RSS2_FIXTURE, { ...DEFAULT_CONFIG, category: "markets" });
+    const items = parseRssFeedDocument(RSS2_FIXTURE, { ...DEFAULT_CONFIG, category: "markets" });
 
     expect(items[1]!.categories).toContain("markets");
   });
@@ -128,16 +128,16 @@ test("Atom chooses direct alternate links with namespaces, bases, quotes and XML
   expect(parseRssFeedDocument(xml, DEFAULT_CONFIG)).toMatchObject([{
     id: "atom:urn:Case:42", title: "Cash offer", url: "https://example.com/research/deals/42?a=1&b=2",
   }]);
-  expect(parseRssFeed(xml.replace("urn:Case:42", "urn:case:42"), DEFAULT_CONFIG)[0]!.id)
-    .not.toBe(parseRssFeed(xml, DEFAULT_CONFIG)[0]!.id);
+  expect(parseRssFeedDocument(xml.replace("urn:Case:42", "urn:case:42"), DEFAULT_CONFIG)[0]!.id)
+    .not.toBe(parseRssFeedDocument(xml, DEFAULT_CONFIG)[0]!.id);
 });
 
 test("Atom correction identity survives title and URL changes and uses publisher update time", () => {
   const xml = (title: string, url: string, time: string) => `<feed xmlns="http://www.w3.org/2005/Atom"><entry>
     <id>urn:issuer:42</id><title>${title}</title><link href="${url}"/>
     <published>2026-09-11T08:00:00Z</published><updated>${time}</updated></entry></feed>`;
-  const first = parseRssFeed(xml("Offer agreed", "https://example.com/deal", "2026-09-12T12:00:00Z"), DEFAULT_CONFIG)[0]!;
-  const next = parseRssFeed(xml("Offer withdrawn", "https://example.com/withdrawal", "2026-09-12T13:00:00Z"), DEFAULT_CONFIG)[0]!;
+  const first = parseRssFeedDocument(xml("Offer agreed", "https://example.com/deal", "2026-09-12T12:00:00Z"), DEFAULT_CONFIG)[0]!;
+  const next = parseRssFeedDocument(xml("Offer withdrawn", "https://example.com/withdrawal", "2026-09-12T13:00:00Z"), DEFAULT_CONFIG)[0]!;
   expect(next.id).toBe(first.id);
   expect(next.publishedAt.toISOString()).toBe("2026-09-12T13:00:00.000Z");
 });

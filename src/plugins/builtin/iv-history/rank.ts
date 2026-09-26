@@ -8,10 +8,3 @@ export function useIvRank(symbol: string | null | undefined): IvStats | null {
   const loader = useCallback(async () => (await loadIvHistory(normalized!, { days: 30 })).stats.iv30, [normalized]);
   return useAsyncResource(normalized ? loader : null).data ?? null;
 }
-
-/** "35 P18 09-22": rank, percentile and the session they rank. */
-export function formatIvRank(stats: IvStats | null): string {
-  if (!stats) return "--";
-  const whole = (value: number | null) => value == null ? "--" : String(Math.round(value));
-  return `${whole(stats.rank)} P${whole(stats.percentile)} ${stats.date.slice(5)}`;
-}

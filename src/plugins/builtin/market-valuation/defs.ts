@@ -232,15 +232,6 @@ export function zoneScaleValueAt(indicator: IndicatorDef, fraction: number): num
   return lo + (pos - bandIdx) * (hi - lo);
 }
 
-export function zoneScaleMarkerColumn(
-  indicator: IndicatorDef,
-  value: number,
-  width: number,
-): number {
-  if (width <= 1) return 0;
-  return Math.round(zoneScaleFraction(indicator, value) * (width - 1));
-}
-
 export function zoneScaleColumnValue(
   indicator: IndicatorDef,
   column: number,

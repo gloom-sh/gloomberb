@@ -193,31 +193,6 @@ function clampPositions(
   return { start, end: start + span };
 }
 
-/**
- * Fits an authored viewport to the loaded data, keeping its wall-clock span:
- * a one-day window that ends after the close still shows one session. One
- * that misses the data entirely is left alone so the time axis still says
- * where the chart is and navigation can bring it back.
- */
-export function clampCompositeViewport(
-  frame: CompositeNavigationFrame,
-  viewport: CompositeViewportRange,
-): CompositeViewportRange {
-  const data = compositeNavigationDataViewport(frame);
-  const startTime = finiteTime(viewport.start);
-  const endTime = finiteTime(viewport.end);
-  if (startTime === null || endTime === null || startTime > endTime) return data;
-  const overlapsData = endTime >= frame.dataStart && startTime <= frame.dataEnd;
-  if (!overlapsData) return viewport;
-  const dataStart = data.start.getTime();
-  const dataEnd = data.end.getTime();
-  const span = Math.min(endTime - startTime, dataEnd - dataStart);
-  const start = clamp(startTime, dataStart, dataEnd - span);
-  return start === startTime && start + span === endTime
-    ? viewport
-    : { start: new Date(start), end: new Date(start + span) };
-}
-
 export function sameCompositeViewport(
   left: CompositeViewportRange | null | undefined,
   right: CompositeViewportRange | null | undefined,

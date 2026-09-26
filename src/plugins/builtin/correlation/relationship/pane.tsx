@@ -47,7 +47,7 @@ import {
 } from "./view-model";
 
 export {
-  RELATIONSHIP_GRAPH_PANE_ID, buildRelationshipAnalysis,
+  RELATIONSHIP_GRAPH_PANE_ID,
   buildRelationshipGraphSettingsDef
 } from "./model";
 

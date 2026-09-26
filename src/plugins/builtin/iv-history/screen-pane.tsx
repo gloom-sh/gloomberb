@@ -8,7 +8,7 @@ import { Box } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, shortDate, verdictLabel } from "./format";
-import { projectRichCheap, type RichCheapRow, sharedReading, VCA_LIMIT, VCA_PRESETS, type VcaPreset } from "./model";
+import { projectRichCheap, type RichCheapRow, sharedReading, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
 type SortId = keyof RichCheapRow;
@@ -140,4 +140,3 @@ const VCA_UNIVERSE_OPTIONS = VCA_SCOPE_OPTIONS.map((option) => ({ ...option, sho
 const SYMBOLS_FIELD_WIDTH = 24;
 /** Symbols apply once typing pauses, so a half-typed ticker does not start a screen. */
 const SYMBOLS_DEBOUNCE_MS = 700;
-export { VCA_LIMIT, VCA_PRESETS };

@@ -49,22 +49,10 @@ export interface FredSeriesLoadResult extends FredSeriesCacheEntry {
 const cache = createPluginCache<FredSeriesData>({
   kind: CACHE_KIND, source: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, policy: CACHE_POLICY,
 });
-const hydratedSeries = new Map<string, FredSeriesCacheEntry>();
 export const attachFredSeriesPersistence = cache.attach;
-
-function seriesKey(seriesId: string): string {
-  return seriesId.trim().toUpperCase();
-}
-
-/** Hydrates server-fetched data for renderers that cannot call the cloud API directly. */
-export function hydrateFredSeries(entries: readonly (readonly [string, FredSeriesCacheEntry])[]): void {
-  hydratedSeries.clear();
-  for (const [seriesId, entry] of entries) hydratedSeries.set(seriesKey(seriesId), entry);
-}
 
 export function resetFredSeriesPersistence(): void {
   cache.reset();
-  hydratedSeries.clear();
 }
 
 function cacheKey(request: FredSeriesRequest): string {
@@ -134,8 +122,6 @@ export async function loadCachedFredSeries(
   const pending = !!stored && !stored.stale && isFredPublicationPending(stored.data.observations ?? [], stored.fetchedAt);
   const cached = stored ? withFredSourceFreshness(stored) : null;
   if (!options?.force && !pending && cached && !cached.stale) return { ...cached, source: "cache" };
-  const hydrated = hydratedSeries.get(seriesKey(request.seriesId));
-  if (!options?.force && hydrated) return { ...withFredSourceFreshness(hydrated), source: "cache" };
   const result = await cache.load(cacheKey(request), loader, pending ? { ...options, force: true } : options);
   // An early re-read is opportunistic: a failure keeps the still-fresh copy as it was.
   if (pending && result.refreshError && cached && !cached.stale && !options?.force) return { ...cached, source: "cache" };

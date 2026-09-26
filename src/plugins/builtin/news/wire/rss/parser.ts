@@ -171,7 +171,3 @@ export function parseRssFeedDocument(xml: string, config: RssFeedConfig): Market
   }
   throw new Error("Invalid or unsupported news feed.");
 }
-
-export function parseRssFeed(xml: string, config: RssFeedConfig): MarketNewsItem[] {
-  try { return parseRssFeedDocument(xml, config); } catch { return []; }
-}

@@ -2,13 +2,11 @@ import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
-  HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatNumber } from "../../../utils/format";
 import {
   createStatSeriesLoader,
   loadStatsBundle,
-  type StatSeriesLoader,
   type StatsBundle,
 } from "./client";
 import { STAT_CATEGORIES } from "./defs";
@@ -126,51 +124,34 @@ export function projectStatsHeadlessBundle(
   };
 }
 
-export interface EconStatisticsHeadlessDependencies {
-  loadBundle(args: HeadlessPaneLoadArgs, loader: StatSeriesLoader): Promise<StatsBundle>;
-}
-
-const defaultDependencies: EconStatisticsHeadlessDependencies = {
-  loadBundle: (args, loader) => {
+export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
+  shape: "bundle",
+  argument: {
+    kind: "free-text",
+    placeholder: "statistic",
+    description: "Optional statistic id, FRED series id, label, or prefix.",
+    optional: true,
+  },
+  options: [{
+    key: "range",
+    description: "History window used by the selected statistic view.",
+    type: "enum",
+    values: [{ value: "5Y" }, { value: "20Y" }, { value: "ALL", aliases: ["all"] }],
+    defaultValue: "20Y",
+  }],
+  describe: (args) => `Economic Statistics | ${String(args.options.range)}`,
+  async load(args, ctx) {
     const requested = typeof args.argument === "string" ? resolveStatArg(args.argument) : null;
-    return loadStatsBundle({
-      loader,
+    if (args.argument && !requested) {
+      throw new Error(
+        `Unknown economic statistic "${String(args.argument)}". Use one of: ${STATS.map(({ id }) => id).join(", ")}.`,
+      );
+    }
+    const range = args.options.range as StatRangeId;
+    const bundle = await loadStatsBundle({
+      loader: createStatSeriesLoader(ctx.apiClient),
       ...(requested ? { stats: [requested] } : {}),
     });
+    return projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);
   },
 };
-
-export function createEconStatisticsHeadless(
-  dependencies: EconStatisticsHeadlessDependencies = defaultDependencies,
-): HeadlessPaneDefinition<"bundle"> {
-  return {
-    shape: "bundle",
-    argument: {
-      kind: "free-text",
-      placeholder: "statistic",
-      description: "Optional statistic id, FRED series id, label, or prefix.",
-      optional: true,
-    },
-    options: [{
-      key: "range",
-      description: "History window used by the selected statistic view.",
-      type: "enum",
-      values: [{ value: "5Y" }, { value: "20Y" }, { value: "ALL", aliases: ["all"] }],
-      defaultValue: "20Y",
-    }],
-    describe: (args) => `Economic Statistics | ${String(args.options.range)}`,
-    async load(args, ctx) {
-      const requested = typeof args.argument === "string" ? resolveStatArg(args.argument) : null;
-      if (args.argument && !requested) {
-        throw new Error(
-          `Unknown economic statistic "${String(args.argument)}". Use one of: ${STATS.map(({ id }) => id).join(", ")}.`,
-        );
-      }
-      const range = args.options.range as StatRangeId;
-      const bundle = await dependencies.loadBundle(args, createStatSeriesLoader(ctx.apiClient));
-      return projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);
-    },
-  };
-}
-
-export const econStatisticsHeadless = createEconStatisticsHeadless();

@@ -20,7 +20,6 @@ import {
   yieldCurveErrors,
 } from "./treasury-data";
 
-export { yieldCurveHeadless } from "./headless";
 
 const EMPTY_POINTS: YieldPoint[] = [];
 function formatYieldAxis(value: number): string {

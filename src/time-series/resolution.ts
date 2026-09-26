@@ -103,6 +103,7 @@ function isManualChartResolution(value: unknown): value is ManualChartResolution
   return value !== "auto" && CHART_RESOLUTION_ORDER.includes(value as ChartResolution);
 }
 
+/** @deprecated Slated for removal. Check the value against `CHART_RESOLUTIONS` instead. */
 export function normalizeChartResolution(value: unknown, fallback: ChartResolution = "auto"): ChartResolution {
   return isChartResolution(value) ? value : fallback;
 }
@@ -147,6 +148,7 @@ export function getNextBufferRange(range: TimeRange): TimeRange {
   return RANGE_PRELOAD_BUFFER[range];
 }
 
+/** @deprecated Slated for removal. Combine `getNextBufferRange` with `clampTimeRangeToMaxRange` instead. */
 export function getExpandedBufferRange(
   bufferRange: TimeRange,
   resolution: ChartResolution,
@@ -272,6 +274,10 @@ export function isIntradayResolution(resolution: ManualChartResolution): boolean
     || resolution === "1h";
 }
 
+/**
+ * @deprecated Slated for removal. Compare the range with
+ * `getSupportMaxRange(support, getPresetResolution(range))` instead.
+ */
 export function isRangePresetSupported(
   range: TimeRange,
   support: readonly ChartResolutionSupport[] | readonly ManualChartResolution[],

@@ -178,11 +178,6 @@ export function portfolioOptionIds(portfolios: Portfolio[]): string[] {
   return [NO_PORTFOLIO_VALUE, ...portfolios.map((portfolio) => portfolio.id)];
 }
 
-export function selectedPortfolioLabel(portfolios: Portfolio[], value: string): string {
-  if (!value) return t("None");
-  return portfolios.find((portfolio) => portfolio.id === value)?.name ?? value;
-}
-
 function signedReturn(value: number): string {
   const percent = value * 100;
   return `${percent >= 0 ? "+" : ""}${formatNumber(percent, 2)}%`;
