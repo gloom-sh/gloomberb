@@ -4,6 +4,7 @@ import type { DataProvider, MarketDataRequestContext } from "../types/data-provi
 import type { PriceHistoryResult } from "../types/price-history";
 import { parseHistorySession } from "../market-data/history-session";
 import { canonicalHistoryInterval } from "./history-retention";
+import { isHistoryCoverageDate } from "./history-coverage";
 
 export type HistoryResultRequest =
   | { kind: "range"; range: TimeRange }
@@ -38,6 +39,7 @@ export function normalizeHistoryResult(
   return { points: result.points, resolution: result.resolution,
     ...(session ? { session } : {}),
     ...(typeof result.sourceKey === "string" && /^(provider|broker):[^\r\n\0]+$/.test(result.sourceKey) ? { sourceKey: result.sourceKey } : {}),
+    ...(isHistoryCoverageDate(result.coverageStart) ? { coverageStart: result.coverageStart } : {}),
   };
 }
 

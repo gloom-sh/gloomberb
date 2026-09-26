@@ -2,7 +2,7 @@ import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
-import { HistoryCoverageError, historyCoverageNotice, isShellLondonTarget } from "../sources/history-coverage";
+import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
 import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetentionError } from "../sources/history-retention";
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 import { publicListingTarget } from "../sources/listing-target";
@@ -815,10 +815,8 @@ async function loadPriceHistory(
     if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
     if (isHistoryRetentionError(error)) retentionError ??= error;
   };
-  const observeCoverage = (points: TickerFinancials["priceHistory"]) => {
-    if (isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)) {
-      coverageNotice ??= historyCoverageNotice(points, request.visibleBounds.start);
-    }
+  const observeCoverage = (result: PriceHistoryResult) => {
+    coverageNotice ??= historyCoverageNotice(result.coverageStart, request.visibleBounds.start);
   };
   const accepted = (points: TickerFinancials["priceHistory"]) => points.length > 0
     && (!request.explicitWindow || historyIntersectsBounds(points, request.visibleBounds));
@@ -829,7 +827,7 @@ async function loadPriceHistory(
       const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
         { kind: "detail", start: detailStart, end: detailEnd, interval: request.resolution }, context))!;
       const { points } = result;
-      observeCoverage(points);
+      observeCoverage(result);
       if (accepted(points)) return result;
     } catch (error) { observeFailure(error); }
   }
@@ -838,7 +836,7 @@ async function loadPriceHistory(
       const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
         { kind: "resolution", range: request.fallbackRange, resolution: request.resolution }, context))!;
       const { points } = result;
-      observeCoverage(points);
+      observeCoverage(result);
       if (accepted(points)) {
         rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, request.resolution), points, result);
         return result;
@@ -873,7 +871,7 @@ async function loadPriceHistory(
           const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
             { kind: "detail", start: new Date(start), end: new Date(end), interval: request.resolution }, { ...context, historyRecovery: candidate }))!;
           const { points } = result;
-          observeCoverage(points);
+          observeCoverage(result);
           if (accepted(points)) return { ...result, expiresAt: retryAt,
             recovery: { sourceKey: candidate.sourceKey, start, end, requiredWarmupPoints: request.requiredWarmupPoints,
               usableWarmupPoints: retainedWarmup(points, request.visibleBounds.start) } };
@@ -904,7 +902,7 @@ async function loadPriceHistory(
       const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
         { kind: "resolution", range: request.fallbackRange, resolution: coarser }, context))!;
       const { points } = result;
-      observeCoverage(points);
+      observeCoverage(result);
       if (accepted(points)) {
         rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, coarser), points, result);
         return { ...result, expiresAt: retryAt };
@@ -924,7 +922,7 @@ async function loadPriceHistory(
     return fail(coverageNotice ?? (error instanceof Error ? error.message : String(error)));
   }
   const { points } = result;
-  observeCoverage(points);
+  observeCoverage(result);
   if (points.length === 0 && coverageNotice) return fail(coverageNotice);
   if (request.explicitWindow && points.length > 0 && !historyIntersectsBounds(points, request.visibleBounds)) {
     return fail(coverageNotice ?? `Price history for the requested window is unavailable for ${instrumentLabel(source)}.`);
@@ -1485,8 +1483,7 @@ export async function resolveChartSpecData(
     }
     cache.priceHistoryRefreshAfter.delete(key);
     const history = loaded.points;
-    const coverageNotice = isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)
-      ? historyCoverageNotice(history, request.visibleBounds.start) : null;
+    const coverageNotice = historyCoverageNotice(loaded.coverageStart, request.visibleBounds.start);
     if (coverageNotice) priorityWarnings.push(coverageNotice);
     // Only proven equal cadences can share an accumulated observation window.
     // An opaque default result stays attached to its original acquisition.

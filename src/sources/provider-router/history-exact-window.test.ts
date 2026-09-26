@@ -2,7 +2,6 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
 import type { PricePoint } from "../../types/financials";
-import { ProviderMissError } from "../provider-errors";
 import { AssetDataRouter } from "./index";
 import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
 import { fallbackProvider } from "../../test-support/data-provider";
@@ -48,37 +47,13 @@ test("exact intraday endpoints survive persisted reopen and refresh without over
   } finally { store.close(); }
 });
 
-test("legacy date-only intraday rows cannot satisfy exact requests, including midnight and source misses", async () => {
-  for (const providerId of ["gloomberb-cloud", "independent"]) {
-    for (const hour of ["00", "09"]) {
-      for (const available of [true, false]) {
-        const store = new AppPersistence(createTempDbPath("exact-history-legacy"));
-        const from = new Date(`2026-09-21T${hour}:00:00Z`), to = new Date(+from + 3_600_000);
-        try {
-          // Both qualified and old exchange-less fallback records are ambiguous.
-          for (const prefix of ["exchange=CCC;", ""]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "BTC-USD",
-            variantKey: `${prefix}start=2026-09-21;end=2026-09-21;bar=15m;version=5`, sourceKey: `provider:${providerId}` },
-          [{ date: from, close: 999 }], { cachePolicy: policy });
-          let calls = 0;
-          const router = new AssetDataRouter({ ...fallbackProvider, id: providerId, async getDetailedPriceHistory() {
-            calls++;
-            if (!available) throw new ProviderMissError("Exact history unavailable");
-            return rows(from, to);
-          } }, [], store.resources);
-          sameRows(await read(router, from, to), available ? rows(from, to) : []);
-          expect(calls).toBe(1);
-        } finally { store.close(); }
-      }
-    }
-  }
-});
-
 test("calendar daily and weekly caches keep their established date-only normalization", async () => {
   const store = new AppPersistence(createTempDbPath("exact-history-calendar"));
   const cached = [{ date: new Date("2026-09-21"), close: 100 }];
   try {
     for (const bar of ["1d", "1day", "1wk", "1week"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "BTC-USD",
-      variantKey: `exchange=CCC;start=2026-09-21;end=2026-09-21;bar=${bar};version=5`, sourceKey: "provider:window-test" }, cached, { cachePolicy: policy });
+      variantKey: `exchange=CCC;start=2026-09-21;end=2026-09-21;bar=${bar};version=6`, sourceKey: "provider:window-test" },
+    { points: cached, resolution: bar.startsWith("1d") ? "1d" : "1wk" }, { cachePolicy: policy });
     const calls: string[] = [], router = new AssetDataRouter(source(calls), [], store.resources);
     for (const bar of ["1d", "1day", "1wk", "1week"]) {
       sameRows(await read(router, start, end, bar), cached);
@@ -168,22 +143,5 @@ test("broker instance and contract identities stay separate while their intraday
     sameRows(await read(router, start, end, "15m", context("ibkr-A", 12)), rows(start, end, 100));
     sameRows(await read(router, start, end, "15m", context("ibkr-A", 11)), rows(start, end, 100));
     expect(calls).toEqual(["ibkr-A|11", "ibkr-A|11", "ibkr-B|11", "ibkr-A|12"]);
-  } finally { store.close(); }
-});
-
-test("broker source failure cannot resurrect an ambiguous date-only contract cache", async () => {
-  const store = new AppPersistence(createTempDbPath("exact-history-broker-legacy"));
-  try {
-    store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "contract:11",
-      variantKey: "exchange=CCC;start=2026-09-21;end=2026-09-21;bar=15m;version=5", sourceKey: "broker:ibkr:ibkr-A" },
-    [{ date: start, close: 999 }], { cachePolicy: policy });
-    let calls = 0;
-    const router = new AssetDataRouter(null, [], store.resources);
-    attachTestRegistry(router, { brokers: [["ibkr", { id: "ibkr", name: "Controlled broker", configSchema: [], validate: async () => true, importPositions: async () => [],
-      async getDetailedPriceHistory() { calls++; throw new Error("Broker offline"); } }]] });
-    setBrokerInstances(router, [brokerInstance({ id: "ibkr-A" })]);
-    expect(await read(router, start, end, "15m", { brokerId: "ibkr", brokerInstanceId: "ibkr-A",
-      instrument: { brokerId: "ibkr", brokerInstanceId: "ibkr-A", symbol: "BTC", conId: 11 } })).toEqual([]);
-    expect(calls).toBe(1);
   } finally { store.close(); }
 });

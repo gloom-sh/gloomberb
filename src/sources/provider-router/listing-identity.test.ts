@@ -51,7 +51,7 @@ test("old wrong-venue and unqualified caches cannot reintroduce Tokyo prices or 
   let store = new AppPersistence(path);
   try {
     for (const variantKey of ["exchange=TSX", ""]) store.resources.set({ namespace: "market", kind: "financials", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, financials(999), { schemaVersion: 7, cachePolicy: policy });
-    for (const variantKey of ["exchange=TSX;start=2026-09-01;end=2026-09-11;bar=1h;version=5", "start=2026-09-01;end=2026-09-11;bar=1h;version=5"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, [{ date: new Date("2026-09-10T14:00:00Z"), close: 999 }], { cachePolicy: policy });
+    for (const variantKey of ["exchange=TSX;start=2026-09-01;end=2026-09-11;bar=1h;version=6", "start=2026-09-01;end=2026-09-11;bar=1h;version=6"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, { points: [{ date: new Date("2026-09-10T14:00:00Z"), close: 999 }], resolution: "1h" }, { cachePolicy: policy });
     // Unrelated records must survive any targeted repair.
     store.resources.set({ namespace: "market", kind: "financials", entityKey: "UNRELATED", variantKey: "exchange=NYSE", sourceKey: "provider:gloomberb-cloud" }, { ...financials(777), quote: { ...quote(777), symbol: "UNRELATED", currency: "USD", exchangeName: "NYSE", listingExchangeName: "NYSE" } }, { schemaVersion: 7, cachePolicy: policy });
     store.close(); store = new AppPersistence(path);

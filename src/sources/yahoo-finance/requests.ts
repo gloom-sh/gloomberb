@@ -19,7 +19,6 @@ import type {
   TimeseriesResponse,
 } from "./types";
 import type { YahooHttpClient } from "./http";
-import { applyYahooHistoryCoverage } from "../history-coverage";
 import { coverFxOpenClose, reconcileYahooCurrentPeriod, withoutLiveRowVolume } from "./chart-period";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "../../time-series/resolution";
 import { yahooFuturesAliasName, yahooSecurityName } from "./names";
@@ -95,9 +94,8 @@ export async function fetchYahooChart(
   }
   const dated = dateCalendarBars(reconciled, interval, result.meta?.exchangeTimezoneName);
   const hasClose = (point: PricePoint) => Number.isFinite(point.close) && point.close > 0;
-  const history = dated.filter(hasClose);
   return { meta: result.meta || {},
-    history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
+    history: dated.filter(hasClose),
     missingCloses: dated.filter((point) => !hasClose(point)).map((point) => point.date),
     events: result.events, observedAt, regularHoursOnly: !includePrePost };
 }

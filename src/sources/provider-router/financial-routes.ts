@@ -1,6 +1,4 @@
-import { sanitizeListingFinancialHistory } from "../listing-history";
 import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
-import { sanitizeShellFinancialHistory } from "../history-coverage";
 import type {
   CachedFinancialsTarget,
   MarketDataRequestContext,
@@ -311,15 +309,10 @@ export class ProviderRouterFinancialRoutes {
         variantKeys,
         providerSourceKeys,
         allowExpired,
-      ).map((record) => {
+      ).map((record) => requiresContractPrice && providerEntityKey !== entityKey
         // Public-symbol enrichment cannot establish the declared contract's price.
-        const independentFields = requiresContractPrice && providerEntityKey !== entityKey
-          ? { ...record.value, quote: undefined, quoteContributions: undefined, quoteMetadata: undefined, priceHistory: [] }
-          : record.value;
-        const verifiedHistory = sanitizeShellFinancialHistory(independentFields, { symbol: ticker, exchange }, record.sourceKey);
-        const value = sanitizeListingFinancialHistory(verifiedHistory, { symbol: ticker, exchange }, record.sourceKey);
-        return value === record.value ? record : { ...record, value, stale: value !== independentFields || record.stale };
-      })),
+        ? { ...record, value: { ...record.value, quote: undefined, quoteContributions: undefined, quoteMetadata: undefined, priceHistory: [] } }
+        : record)),
       variantKeys,
       providerSourceKeys,
     );

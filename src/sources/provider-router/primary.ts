@@ -1,4 +1,3 @@
-import { sanitizeListingFinancialHistory } from "../listing-history";
 import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import { selectCachedResource } from "./cache";
 import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
@@ -7,7 +6,6 @@ import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import { shouldLogProviderError } from "../provider-errors";
-import { sanitizeShellFinancialHistory } from "../history-coverage";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import {
   dropUnusableProviderQuote,
@@ -84,8 +82,6 @@ export class ProviderRouterPrimaryRoutes {
           const attempt = value.statementHistory;
           value = { ...mergeFinancials(value, previous?.value ?? null)!, statementHistory: attempt };
         }
-        value = sanitizeShellFinancialHistory(value, { symbol: ticker, exchange }, sourceKey);
-        value = sanitizeListingFinancialHistory(value, { symbol: ticker, exchange }, sourceKey);
         value = withdrawKnownProviderStatements(value, { symbol: ticker, exchange }, sourceKey);
         // Validate the raw identities before quote normalization can choose one
         // of conflicting quote/metadata contributions, including contract routes.

@@ -24,4 +24,6 @@ export interface PriceHistoryResult {
   session?: HistorySession;
   /** Router-selected provider or broker, never its preferred/default source. */
   sourceKey?: string;
+  /** First date (YYYY-MM-DD) the source vouches for; it excluded earlier prices. */
+  coverageStart?: string;
 }

@@ -8,15 +8,15 @@ import { AssetDataRouter } from "./index";
 const points = (dates: string[], value: number) => dates.map((date, index) => ({ date: new Date(date), close: value + index }));
 function record(symbol: string, range: string, value: PricePoint[], source = "cache-test", resolution = "") {
   return { namespace: "market", kind: "price-history", entityKey: symbol,
-    variantKey: `exchange=NYSE;range=${range};${resolution ? `resolution=${resolution};` : ""}version=5`,
-    sourceKey: `provider:${source}`, value, schemaVersion: 1, fetchedAt: Date.now(), stale: false, expired: false };
+    variantKey: `exchange=NYSE;range=${range};${resolution ? `resolution=${resolution};` : ""}version=6`,
+    sourceKey: `provider:${source}`, value: { points: value, resolution: resolution || null }, schemaVersion: 1, fetchedAt: Date.now(), stale: false, expired: false };
 }
 function memoryResources(initial: ReturnType<typeof record>[]) {
   let records = initial;
   return {
     list(query: any, options: any) { return records.filter((row) => row.kind === query.kind && row.entityKey === query.entityKey
       && options.variantKeys.includes(row.variantKey) && options.sourceKeys.includes(row.sourceKey)); },
-    set(key: any, value: PricePoint[]) {
+    set(key: any, value: unknown) {
       const row = { ...key, value, schemaVersion: 1, fetchedAt: Date.now(), stale: false, expired: false };
       records = records.filter((old) => old.variantKey !== row.variantKey || old.sourceKey !== row.sourceKey);
       records.push(row); return row;

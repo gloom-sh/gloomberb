@@ -528,17 +528,23 @@ export interface FinancialStatement {
   treasurySharesNumber?: number;
 }
 
-/** Verified provider identity retained with observations through cache/clipping. */
+/**
+ * Provider identity once attached to individual observations.
+ * @deprecated No longer populated. A source's coverage boundary is the
+ * `coverageStart` of the result `getPriceHistoryWithMetadata` and its
+ * siblings return.
+ */
 export interface PriceHistorySource {
-  provider: "yahoo" | "twelvedata";
-  symbol: "SHEL";
-  exchange: "LSE";
-  currency: "GBP";
+  provider: string;
+  symbol: string;
+  exchange: string;
+  currency: string;
   /** Source coverage restriction, not security inception or an adjustment ratio. */
-  verifiedLineageStart?: "2005-07-21";
+  verifiedLineageStart?: string;
 }
 
 export interface PricePoint {
+  /** @deprecated No longer populated; read the history result's `coverageStart` instead. */
   historySource?: PriceHistorySource;
   date: Date;
   open?: number;

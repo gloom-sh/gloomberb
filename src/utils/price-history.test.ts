@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../types/financials";
-import { calendarHistoryFetchState, calendarHistoryLastBarDate, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "./price-history";
+import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "./price-history";
 
 describe("history freshness follows bar cadence", () => {
   const now = Date.parse("2026-09-10T19:39:09Z");
@@ -226,5 +226,32 @@ describe("calendar history fetched copies", () => {
     expect(calendarHistoryLastBarDate(bars("2026-09-17T00:00:00Z", "2026-09-18T00:00:00Z"), "JPX")).toBe("2026-09-18");
     expect(calendarHistoryLastBarDate(bars("2026-09-21T04:00:00Z", "2026-09-22T04:00:00Z"), "")).toBe("2026-09-22");
     expect(calendarHistoryLastBarDate([], "JPX")).toBeNull();
+  });
+});
+
+describe("leading zero-volume single-price bars", () => {
+  // A listing whose source dates the offer price as a bar before the first trade.
+  const offer = (date: string): PricePoint => ({ date: new Date(date), open: 31, high: 31, low: 31, close: 31, volume: 0 });
+  const traded = (date: string, close: number, volume = 1_000_000): PricePoint =>
+    ({ date: new Date(date), open: close - 1, high: close + 1, low: close - 2, close, volume });
+
+  test("drops the offer bar before a listing's first daily and intraday trade", () => {
+    const daily = [offer("2025-06-04"), traded("2025-06-05", 83.23), traded("2025-06-06", 107.7)];
+    expect(dropLeadingPlaceholderBars(daily)).toEqual(daily.slice(1));
+    const intraday = [offer("2025-06-04T13:40:00Z"), traded("2025-06-04T16:35:00Z", 75.9), traded("2025-06-04T16:40:00Z", 88.88)];
+    expect(dropLeadingPlaceholderBars(intraday)).toEqual(intraday.slice(1));
+    // Repeated reads of one array keep one result, so merged views stay stable.
+    expect(dropLeadingPlaceholderBars(daily)).toBe(dropLeadingPlaceholderBars(daily));
+  });
+
+  test("keeps series without volume, quiet bars after the first trade and ordinary stocks", () => {
+    const index = [offer("2026-09-01"), offer("2026-09-02"), { ...offer("2026-09-03"), close: 32, high: 32 }];
+    expect(dropLeadingPlaceholderBars(index)).toBe(index);
+    const unreported = index.map(({ volume: _volume, ...point }) => point);
+    expect(dropLeadingPlaceholderBars(unreported)).toBe(unreported);
+    const stock = [traded("2026-09-01", 50), offer("2026-09-02"), traded("2026-09-03", 51)];
+    expect(dropLeadingPlaceholderBars(stock)).toBe(stock);
+    const quietOpen = [{ ...traded("2026-09-01", 50), volume: 0 }, traded("2026-09-02", 51)];
+    expect(dropLeadingPlaceholderBars(quietOpen)).toBe(quietOpen);
   });
 });

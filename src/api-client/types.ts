@@ -302,6 +302,7 @@ export interface CloudCorporateActionsPayload extends CorporateActionsData {
 }
 
 export interface CloudPricePointPayload {
+  /** @deprecated No longer read; a history's boundary is its response `coverage`. */
   historySource?: PriceHistorySource;
   date: string;
   open?: number;
@@ -1215,6 +1216,21 @@ type CloudMarketStatus =
   | "retryable_error"
   | "fatal_error";
 
+/** The dates a history source vouches for. Which fields appear depends on the reason. */
+export interface CloudHistoryCoverage {
+  source?: string;
+  reasonCode?: string;
+  /** First date (YYYY-MM-DD) whose share lineage the source verified. */
+  verifiedLineageStart?: string;
+  /** First bar date (YYYY-MM-DD) the source serves, such as a fund's inception. */
+  firstAllowedBarDate?: string;
+  inceptionDate?: string;
+  sourceUrl?: string;
+  firstBarDate?: string | null;
+  lastBarDate?: string | null;
+  barCount?: number;
+}
+
 export interface CloudMarketResponse<T> {
   status: CloudMarketStatus;
   data: T | null;
@@ -1227,23 +1243,8 @@ export interface CloudMarketResponse<T> {
   historyRetention?: unknown;
   /** Source-declared history semantics; validated separately from quote metadata. */
   historySession?: unknown;
-  coverage?: {
-    inceptionDate: string;
-    firstAllowedBarDate: string;
-    source: "issuer";
-    sourceUrl: string;
-    firstBarDate: string | null;
-    lastBarDate: string | null;
-    barCount: number;
-  } | {
-    source: "yahoo" | "twelvedata";
-    reasonCode: "UNVERIFIED_PREDECESSOR_LINEAGE";
-    verifiedLineageStart: "2005-07-21";
-    sourceUrl: string;
-    firstBarDate: string | null;
-    lastBarDate: string | null;
-    barCount: number;
-  };
+  /** Untrusted until the history adapter validates its boundary dates. */
+  coverage?: CloudHistoryCoverage;
   providerMeta?: {
     provider?: string;
     upstream?: string;

@@ -57,7 +57,7 @@ test("regular history survives range, exact cadence and current detailed routes 
     expect(JSON.stringify(await router.getPriceHistory("AAPL", "NASDAQ", "1M"))).toBe(JSON.stringify(acquired.points));
     expect(calls).toHaveLength(3);
     const records = store.resources.list({ namespace: "market", kind: "price-history", entityKey: "AAPL" });
-    expect(records.every(record => record.variantKey.includes("historyData=1") && !Array.isArray(record.value))).toBe(true);
+    expect(records.every(record => !Array.isArray(record.value))).toBe(true);
   } finally { store.close(); }
 });
 
@@ -87,7 +87,7 @@ test("session completion and next due bar expire fresh cache records without rel
   } finally { store.close(); }
 });
 
-test("legacy arrays, foreign assets and contradictory session records cannot borrow regular equity freshness", async () => {
+test("sessionless caches, foreign assets and contradictory session records cannot borrow regular equity freshness", async () => {
   setSystemTime(PREOPEN);
   for (const [symbol, exchange, metadata] of [
     ["AAPL", "NASDAQ", undefined], ["AAPL", "NASDAQ", session({ symbol: "MSFT" })],
@@ -96,8 +96,9 @@ test("legacy arrays, foreign assets and contradictory session records cannot bor
   ] as const) {
     const calls: string[] = [], store = new AppPersistence(createTempDbPath("regular-unknown"));
     try {
-      const variant = "exchange=" + exchange + ";range=1M;resolution=15m;version=5";
-      store.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol, variantKey: variant, sourceKey: "provider:gloomberb-cloud" }, points("2026-09-18T19:45:00Z"), { cachePolicy: policy });
+      const variant = "exchange=" + exchange + ";range=1M;resolution=15m;version=6";
+      store.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol, variantKey: variant, sourceKey: "provider:gloomberb-cloud" },
+        { points: points("2026-09-18T19:45:00Z"), resolution: "15m" }, { cachePolicy: policy });
       const router = new AssetDataRouter(provider(() => ({ points: points(), resolution: "15m", session: metadata }), calls), [], store.resources);
       await expect(router.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "15m")).rejects.toThrow();
       expect(calls).toEqual(["resolution"]);

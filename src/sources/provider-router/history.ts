@@ -1,4 +1,3 @@
-import { assertTradingPriceHistory, hasCircleOfferingPriceHistory } from "../listing-history";
 import { ApiRequestError } from "../../api-client/errors";
 import { canonicalHistoryInterval, HistoryRetentionError, isHistoryRetentionError, parseHistoryRecoveryCandidate,
   type HistoryRecoveryCandidate, type HistoryRetention, type HistorySourceOutcome } from "../history-retention";
@@ -21,9 +20,9 @@ import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-qu
 import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
 import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
-import { calendarHistoryFetchState, calendarHistoryLastBarDate, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
+import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
-import { hasUnverifiedShellHistory, HistoryCoverageError } from "../history-coverage";
+import { HistoryCoverageError } from "../history-coverage";
 import {
   buildVariantKey,
   compactDate,
@@ -39,8 +38,8 @@ type PriceHistoryCachePolicyKey = Extract<
   ProviderRouterCachePolicyKey,
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
-// Earlier cache records discarded dated unavailable closes.
-const PRICE_HISTORY_CACHE_VERSION = 5;
+// Bumped instead of adding markers: every older record is a miss and refetches.
+const PRICE_HISTORY_CACHE_VERSION = 6;
 interface HistoryRequestDescriptor {
   target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;
@@ -123,32 +122,9 @@ function recordHistoryError(attempts: HistoryAttempts | undefined, request: Hist
 function priceHistoryVariantParts(
   parts: Array<[string, string | number | undefined | null]>,
   exchange: string,
-  ticker: string,
 ): Array<[string, string | number | undefined | null]> {
   const unit = resolvePriceHistoryCurrencyUnit(null, exchange);
-  const target = parsePublicTickerKey(ticker);
-  const venue = target.exchange || canonicalExchange(exchange);
-  // Old cloud weekly/monthly JEPQ responses contained prices from 2013, before
-  // this fund existed. Refetch this exact US/bare identity after backend repair;
-  // neither broader cached windows nor saved detailed requests may reuse them.
-  const bar = parts.find(([key]) => key === "resolution" || key === "bar")?.[1];
-  const range = parts.find(([key]) => key === "range")?.[1];
-  const intraday = typeof bar === "string" ? /^\d+(m|min|h)$/.test(bar)
-    : typeof range === "string" && isIntradayRange(range as TimeRange);
-  const inceptionVersion = !intraday && target.symbol === "JEPQ" && (!venue || venue === "NASDAQ") ? 1 : undefined;
-  const monthly = bar === "1mo" || bar === "1month"
-    || (bar == null && parts.some(([key, value]) => key === "range" && value === "ALL"));
-  const versionedParts: Array<[string, string | number | undefined | null]> = [
-    ...parts,
-    ["version", PRICE_HISTORY_CACHE_VERSION],
-    ["historyData", 1],
-    ["inception", inceptionVersion],
-    ["calendar", monthly ? 1 : undefined],
-    // Old Yahoo/cloud ALL responses could serve weekly/quarterly bars under
-    // a different requested interval. Exact and broader cache lookups must
-    // refetch these windows instead of relabeling the cached bars.
-    ["granularity", range === "ALL" ? 1 : undefined],
-  ];
+  const versionedParts: Array<[string, string | number | undefined | null]> = [...parts, ["version", PRICE_HISTORY_CACHE_VERSION]];
   return unit.divisor === 1
     ? versionedParts
     : [...versionedParts, ["unit", unit.currency]];
@@ -169,19 +145,12 @@ function makeHistoryRequestIdentity(
     kind: input.kind,
     ticker: input.ticker,
     context: input.context,
-    variantParts: priceHistoryVariantParts(input.variantParts, input.exchange, input.ticker),
+    variantParts: priceHistoryVariantParts(input.variantParts, input.exchange),
   });
   const cacheVariantKeys = [
     identity.variantKey,
-    buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange, input.ticker)),
-  ].flatMap((key) => {
-    // Broker and independent-provider records did not use the affected Yahoo
-    // request. Keep their old keys readable, then filter by source below.
-    const legacy = key.replace(/;granularity=1(?=;|$)/, "");
-    const keys = legacy === key ? [key] : [key, legacy];
-    // New result envelopes never overwrite array payloads used by older clients.
-    return keys.flatMap(value => [value, value.replace(/;historyData=1(?=;|$)/, "")]);
-  });
+    buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange)),
+  ];
   return {
     target: { symbol: input.ticker, exchange: input.exchange },
     identity,
@@ -244,7 +213,7 @@ function normalizeRequestHistory(
   points: PricePoint[],
   request: Pick<HistoryRequestDescriptor, "cachePolicyKey">,
 ): PricePoint[] {
-  const normalized = normalizePriceHistory(points);
+  const normalized = dropLeadingPlaceholderBars(normalizePriceHistory(points));
   return request.cachePolicyKey === "priceHistoryIntraday"
     ? repairIsolatedIntradayOhlcOutliers(normalized)
     : normalized;
@@ -580,23 +549,12 @@ export class ProviderRouterHistoryRoutes {
       sourceKeys,
       false,
     ).flatMap((record) => {
-      const legacy = !/(?:^|;)historyData=1(?:;|$)/.test(record.variantKey);
-      const value = legacy && Array.isArray(record.value)
-        ? { points: record.value as PricePoint[], resolution: historyResolutionForInterval(request.interval) }
-        : !legacy ? normalizeHistoryResult(record.value, request.target, request.interval) : null;
+      const value = normalizeHistoryResult(record.value, request.target, request.interval);
       if (!value) return [];
       // Source identity belongs to the selected cache record, not its payload.
       return [{ ...record, value: normalizeRequestResult({ ...value, sourceKey: record.sourceKey }, request) }];
-    }).filter((record) => {
-      const unverifiedAllInterval = ["provider:yahoo", "provider:gloomberb-cloud"].includes(record.sourceKey)
-        && /(?:^|;)range=ALL(?:;|$)/.test(record.variantKey)
-        && !/(?:^|;)granularity=1(?:;|$)/.test(record.variantKey);
-      if (unverifiedAllInterval || hasCircleOfferingPriceHistory(record.value.points, request.target, record.sourceKey)) return false;
-      if (request.requestedRange && !request.interval && !request.exactCacheVariantKeys.includes(record.variantKey)
-        && !hasRangeBarSize(record.value.points, request.requestedRange)) return false;
-      return request.cachePolicyKey === "priceHistoryIntraday"
-        || !hasUnverifiedShellHistory(record.value.points, request.target, record.sourceKey, request.requestedStart);
-    });
+    }).filter((record) => !request.requestedRange || !!request.interval || request.exactCacheVariantKeys.includes(record.variantKey)
+      || hasRangeBarSize(record.value.points, request.requestedRange));
     // A background revalidation cannot correct bars from before a close in
     // time: a one-shot CLI exits first, and this caller keeps the old bars.
     // Broader variants answer the same way. A current copy under another key
@@ -779,9 +737,6 @@ export class ProviderRouterHistoryRoutes {
         const fetched = await request.fetchProvider(provider);
         if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
         if (!Array.isArray(fetched.points)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
-        assertTradingPriceHistory(fetched.points, request.target, this.deps.providerSourceKey(provider));
-        if (request.cachePolicyKey !== "priceHistoryIntraday"
-          && hasUnverifiedShellHistory(fetched.points, request.target, this.deps.providerSourceKey(provider))) { recordHistoryOutcome(attempts, sourceKey, "coverage"); return null; }
         const value = normalizeRequestResult({ ...fetched, sourceKey }, request);
         if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
         recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");

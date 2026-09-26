@@ -1,9 +1,8 @@
-import { assertTradingPriceHistory } from "../listing-history";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
-import { hasShellCoverageRestriction, HistoryCoverageError, isShellLondonTarget, SHELL_VERIFIED_LINEAGE_START } from "../history-coverage";
+import { HistoryCoverageError, parseHistoryCoverageStart } from "../history-coverage";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
@@ -139,9 +138,9 @@ function mapCloudPriceHistory(
   requestedStart: Date,
   requestedEnd?: Date,
 ): PriceHistoryResult {
-  if (response.status === "empty" && isShellLondonTarget(ticker, exchange)
-    && requestedStart.getTime() < Date.parse(SHELL_VERIFIED_LINEAGE_START)
-    && hasShellCoverageRestriction(response.coverage)) throw new HistoryCoverageError(response.coverage.source);
+  const coverageStart = parseHistoryCoverageStart(response.coverage);
+  if (response.status === "empty" && coverageStart
+    && requestedStart.getTime() < Date.parse(coverageStart)) throw new HistoryCoverageError(coverageStart);
   if (isStaleCloudResponse(response)) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
@@ -194,9 +193,10 @@ function mapCloudPriceHistory(
     throw createProviderMiss(`Cloud chart session metadata does not match the requested history for ${ticker}`);
   }
   return {
-    points: assertTradingPriceHistory(points, { symbol: ticker, exchange }, "provider:gloomberb-cloud"),
+    points,
     resolution,
     ...(session && matchingSource && matchingIdentity ? { session } : {}),
+    ...(coverageStart ? { coverageStart } : {}),
   };
 }
 

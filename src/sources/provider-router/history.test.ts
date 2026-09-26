@@ -18,45 +18,6 @@ afterEach(() => {
 });
 
 describe("AssetDataRouter chart history", () => {
-  test("retires persisted ALL bars with unverified cadence without losing finite windows or corrected cache reuse", async () => {
-    const path = createTempDbPath("all-cadence-cache");
-    let persistence = new AppPersistence(path);
-    const policy = { staleMs: 60_000, expireMs: 60_000 };
-    const wrong = [{ date: new Date("2026-08-10"), close: 0.000004 }];
-    const corrected = [{ date: new Date("2026-08-01"), close: 0.000006 }];
-    const sourceKey = "provider:gloomberb-cloud";
-    for (const symbol of ["SHIB-USD", "OFFLINE-USD"]) {
-      persistence.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol,
-        variantKey: "exchange=CCC;range=ALL;resolution=1mo;version=5;calendar=1", sourceKey }, wrong, { cachePolicy: policy });
-    }
-    persistence.resources.set({ namespace: "market", kind: "price-history", entityKey: "FINITE-USD",
-      variantKey: "exchange=CCC;range=5Y;resolution=1mo;version=5;calendar=1", sourceKey }, corrected, { cachePolicy: policy });
-    persistence.close();
-    persistence = new AppPersistence(path);
-    let calls = 0;
-    const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", name: "Cloud",
-      async getPriceHistoryForResolution(symbol) {
-        calls++;
-        if (symbol !== "SHIB-USD") throw new Error("Provider temporarily unavailable");
-        return corrected;
-      } };
-    try {
-      let router = new AssetDataRouter(provider, [], persistence.resources);
-      expect((await router.getPriceHistoryForResolution("SHIB-USD", "CCC", "ALL", "1mo")).map((p) => p.close)).toEqual([0.000006]);
-      expect(calls).toBe(1);
-      // A new app instance must read the corrected record, including as a
-      // wider source buffer for a shorter window, without refetching.
-      persistence.close(); persistence = new AppPersistence(path);
-      router = new AssetDataRouter(provider, [], persistence.resources);
-      expect((await router.getPriceHistoryForResolution("SHIB-USD", "CCC", "ALL", "1mo")).map((p) => p.close)).toEqual([0.000006]);
-      expect((await router.getPriceHistoryForResolution("SHIB-USD", "CCC", "5Y", "1mo")).map((p) => p.close)).toEqual([0.000006]);
-      expect((await router.getPriceHistoryForResolution("FINITE-USD", "CCC", "5Y", "1mo")).map((p) => p.close)).toEqual([0.000006]);
-      expect(calls).toBe(1);
-      await expect(router.getPriceHistoryForResolution("OFFLINE-USD", "CCC", "ALL", "1mo")).rejects.toThrow("No resolution-aware history provider");
-      expect(calls).toBe(2);
-    } finally { persistence.close(); }
-  });
-
   test("uses requested bar cadence for fetched and cached charts and infers generic daily data", async () => {
     const originalNow = Date.now;
     Date.now = () => Date.parse("2026-09-10T19:39:09Z");
@@ -285,7 +246,7 @@ describe("AssetDataRouter chart history", () => {
         namespace: "market",
         kind: "price-history",
         entityKey: "META",
-        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=4",
+        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=5;historyData=1",
         sourceKey: "provider:gloomberb-cloud",
       },
       [
@@ -320,8 +281,8 @@ describe("AssetDataRouter chart history", () => {
       .query("SELECT variant_key FROM resource_cache WHERE namespace = ? AND kind = ? AND entity_key = ? ORDER BY variant_key")
       .all("market", "price-history", "META") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
-      "exchange=NASDAQ;range=1M;resolution=5m;version=4",
       "exchange=NASDAQ;range=1M;resolution=5m;version=5;historyData=1",
+      "exchange=NASDAQ;range=1M;resolution=5m;version=6",
     ]);
 
     persistence.close();
@@ -372,7 +333,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;version=5;historyData=1;granularity=1;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=6;unit=GBP",
     ]);
 
     persistence.close();

@@ -295,8 +295,33 @@ export function calendarHistoryFetchState(
   return now - lastCheck >= pace ? "recheck" : "behind";
 }
 
+function isPlaceholderBar(point: PricePoint): boolean {
+  return point.volume === 0 && Number.isFinite(point.close)
+    && point.open === point.close && point.high === point.close && point.low === point.close;
+}
+
+const trimmedHistories = new WeakMap<PricePoint[], PricePoint[]>();
+
+/**
+ * Bars at the very start of a traded series with no volume and one price
+ * (open = high = low = close) are placeholders, not trades: an offer price or
+ * a carried-forward value before the first print. Series that never report
+ * volume, such as indices and FX, keep every bar. Expects date order.
+ */
+export function dropLeadingPlaceholderBars(points: PricePoint[]): PricePoint[] {
+  if (points.length === 0 || !isPlaceholderBar(points[0]!)) return points;
+  const cached = trimmedHistories.get(points);
+  if (cached) return cached;
+  let start = 1;
+  while (start < points.length && isPlaceholderBar(points[start]!)) start++;
+  const traded = points.slice(start);
+  const result = traded.some((point) => (point.volume ?? 0) > 0) ? traded : points;
+  trimmedHistories.set(points, result);
+  return result;
+}
+
 export function normalizeTickerFinancialsPriceHistory(financials: TickerFinancials): TickerFinancials {
-  const priceHistory = normalizePriceHistory(financials.priceHistory ?? []);
+  const priceHistory = dropLeadingPlaceholderBars(normalizePriceHistory(financials.priceHistory ?? []));
   return priceHistory === financials.priceHistory
     ? financials
     : { ...financials, priceHistory };

@@ -59,8 +59,8 @@ test("mixed source exhaustion freezes eligible ownership and replays only the se
     const candidate = failure.candidates[0]!;
     // Ordinary Cloud data at the same bounds does not attest the hidden source.
     store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "BTC-USD", sourceKey: "provider:cloud-test",
-      variantKey: `exchange=CCC;start=${new Date(candidate.retention.availableStart).toISOString()};end=${new Date(candidate.retention.requestedEnd).toISOString()};bar=15m;version=5` },
-    [{ date: points()[0]!.date, close: 999 }], { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
+      variantKey: `exchange=CCC;start=${new Date(candidate.retention.availableStart).toISOString()};end=${new Date(candidate.retention.requestedEnd).toISOString()};bar=15m;version=6` },
+    { points: [{ date: points()[0]!.date, close: 999 }], resolution: "15m" }, { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
     expect((await recover(router, candidate))[0]!.close).toBe(100);
     expect((await recover(router, candidate))[0]!.close).toBe(100);
     expect(calls.filter((call) => call.endsWith(":detailed"))).toEqual(["cloud-test:detailed"]);
@@ -104,12 +104,12 @@ test("an already returned broad success stays successful when a slower retention
 test("fresh broad cache fallback, reported gaps and coverage restrictions precede recovery", async () => {
   const store = new AppPersistence(createTempDbPath("retention-precedence")), calls: string[] = [];
   try {
-    store.resources.set({ namespace: "market", kind: "price-history", entityKey: "BTC-USD", variantKey: "exchange=CCC;range=3M;resolution=15m;version=5", sourceKey: "provider:cloud-test" },
-      points(), { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
+    store.resources.set({ namespace: "market", kind: "price-history", entityKey: "BTC-USD", variantKey: "exchange=CCC;range=3M;resolution=15m;version=6", sourceKey: "provider:cloud-test" },
+      { points: points(), resolution: "15m" }, { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
     expect((await history(new AssetDataRouter(limited(calls), [], store.resources), { cacheMode: "refresh" }))[0]!.close).toBe(100);
     const gaps = [{ date: points()[0]!.date, close: null }] as PricePoint[];
     expect(await history(new AssetDataRouter(limited(calls), [{ ...fallbackProvider, id: "gaps", async getPriceHistoryForResolution() { return gaps; } }]))).toEqual(gaps);
-    await expect(history(new AssetDataRouter(limited(calls), [{ ...fallbackProvider, id: "coverage", async getPriceHistoryForResolution() { throw new HistoryCoverageError(); } }]))).rejects.toBeInstanceOf(HistoryCoverageError);
+    await expect(history(new AssetDataRouter(limited(calls), [{ ...fallbackProvider, id: "coverage", async getPriceHistoryForResolution() { throw new HistoryCoverageError("2026-01-01"); } }]))).rejects.toBeInstanceOf(HistoryCoverageError);
     expect(calls.some((call) => call.endsWith(":detailed"))).toBe(false);
   } finally { store.close(); }
 });
@@ -194,7 +194,7 @@ test("broad broker success and coverage precede recovery without inventing broke
     attachTestRegistry(router, { brokers: [["ibkr", { id: "ibkr", name: "Controlled", configSchema: [], validate: async () => true, importPositions: async () => [],
       async getPriceHistoryForResolution() {
         calls.push("broker:broad");
-        if (outcome === "coverage") throw new HistoryCoverageError();
+        if (outcome === "coverage") throw new HistoryCoverageError("2026-01-01");
         if (outcome === "retention") throw new HistoryRetentionError(proof());
         return points();
       },

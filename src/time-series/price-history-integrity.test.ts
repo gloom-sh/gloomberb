@@ -62,7 +62,7 @@ test("the invariant detects contradictions without inventing missing OHLC or los
   const diagnostic = pricePointIntegrity(copy)!;
   copy.open = 1;
   expect(diagnostic.sourcePoints[0]!.open).toBe(reported.open);
-  const withSource: PricePoint = { ...reported, historySource: { provider: "yahoo", symbol: "SHEL", exchange: "LSE", currency: "GBP" } };
+  const withSource: PricePoint = { ...reported, historySource: { provider: "yahoo", symbol: "ACME", exchange: "LSE", currency: "GBP" } };
   const sourceDiagnostic = pricePointIntegrity(withSource)!;
   withSource.historySource!.provider = "twelvedata";
   expect(sourceDiagnostic.sourcePoints[0]!.historySource?.provider).toBe("yahoo");
