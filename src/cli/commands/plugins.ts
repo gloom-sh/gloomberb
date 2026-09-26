@@ -12,6 +12,7 @@ import {
 } from "../../plugins/loader";
 import { linkHostPackages } from "../../plugins/host-link";
 import { isReservedBuiltinPluginId } from "../../plugins/ownership";
+import { requiredGloomberb } from "../../plugins/builtin/plugin-marketplace/model";
 import { ALL_PLUGIN_TARGETS, type GloomPlugin, type PluginTarget } from "../../types/plugin";
 import {
   cliStyles,
@@ -20,6 +21,7 @@ import {
 } from "../../utils/cli-output";
 import type { CliCommandContext } from "../../types/plugin";
 import { fail } from "../errors";
+import { VERSION } from "../../version";
 
 const PLUGINS_DIR = getPluginsDir();
 
@@ -365,29 +367,42 @@ export async function updatePlugin(name: string, options: PluginCommandOptions =
   return { ...describe(targetDir, name, plugin), before, changed };
 }
 
+export interface RegistryListing {
+  /** The reviewed commit to land on; null when the registry follows the remote. */
+  pin: PluginPin | null;
+  /** Oldest Gloomberb the listed code runs on. */
+  minGloomberb?: string;
+}
+
 /**
  * Looks each installed plugin up in the registry so an update lands on the
- * reviewed commit. The registry is best effort: offline, everything falls
- * back to following the remote.
+ * reviewed commit, and is not taken at all on a Gloomberb too old to run it.
+ * The registry is best effort: offline, everything falls back to following
+ * the remote.
  */
-async function loadRegistryPins(): Promise<Map<string, PluginPin>> {
-  const pins = new Map<string, PluginPin>();
+async function loadRegistryListings(): Promise<Map<string, RegistryListing>> {
+  const listings = new Map<string, RegistryListing>();
   try {
     const { loadRegistry } = await import("../../plugins/builtin/plugin-marketplace/feed");
     const feed = await loadRegistry();
     for (const plugin of feed.plugins) {
-      if (!plugin.repo || (!plugin.ref && !plugin.commit)) continue;
-      pins.set(plugin.repo.toLowerCase(), { ...(plugin.ref ? { ref: plugin.ref } : {}), ...(plugin.commit ? { commit: plugin.commit } : {}) });
+      if (!plugin.repo) continue;
+      listings.set(plugin.repo.toLowerCase(), {
+        pin: plugin.ref || plugin.commit
+          ? { ...(plugin.ref ? { ref: plugin.ref } : {}), ...(plugin.commit ? { commit: plugin.commit } : {}) }
+          : null,
+        ...(plugin.minGloomberb ? { minGloomberb: plugin.minGloomberb } : {}),
+      });
     }
   } catch {
     // Offline or the feed is down: update from the remote instead.
   }
-  return pins;
+  return listings;
 }
 
-/** The registry's pin for a repository, so a CLI install lands where the catalog says. */
-export async function resolveRegistryPin(repo: string): Promise<PluginPin | null> {
-  return (await loadRegistryPins()).get(repo.toLowerCase()) ?? null;
+/** The registry's listing for a repository, so a CLI install lands where the catalog says. */
+export async function resolveRegistryListing(repo: string): Promise<RegistryListing | null> {
+  return (await loadRegistryListings()).get(repo.toLowerCase()) ?? null;
 }
 
 function installedPluginDirectories(): string[] {
@@ -405,7 +420,7 @@ export async function updatePlugins(name?: string) {
     return;
   }
 
-  const pins = await loadRegistryPins();
+  const listings = await loadRegistryListings();
   for (const dir of dirs) {
     const targetDir = join(PLUGINS_DIR, dir);
     if (lstatSync(targetDir, { throwIfNoEntry: false })?.isSymbolicLink()) {
@@ -417,9 +432,14 @@ export async function updatePlugins(name?: string) {
       continue;
     }
     const remote = readPluginRemote(targetDir);
-    const pin = remote ? pins.get(remote.toLowerCase()) : undefined;
+    const listing = remote ? listings.get(remote.toLowerCase()) : undefined;
+    const required = requiredGloomberb(listing?.minGloomberb);
+    if (required) {
+      console.log(cliStyles.warning(`Skipping ${dir} (needs Gloomberb ${required}, this is ${VERSION})`));
+      continue;
+    }
     try {
-      await updatePlugin(dir, { pin });
+      await updatePlugin(dir, { pin: listing?.pin ?? undefined });
     } catch (error) {
       console.error(cliStyles.danger(`Failed to update ${dir}: ${error instanceof Error ? error.message : String(error)}`));
     }
@@ -629,7 +649,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
 
   // Off by default: this is a local listing, and asking every remote turns it
   // into a network call that can hang behind a credential prompt.
-  const pins = options.check ? await loadRegistryPins() : new Map<string, PluginPin>();
+  const listings = options.check ? await loadRegistryListings() : new Map<string, RegistryListing>();
   const heads = options.check ? await readPluginRemoteHeads(entries) : {};
 
   return entries.map((name) => {
@@ -659,7 +679,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
     const remote = readPluginRemote(dir);
     // A registry-listed plugin moves between reviewed commits, so what its
     // branch holds today says nothing about whether an update is waiting.
-    const reviewed = remote ? pins.get(remote.toLowerCase())?.commit : undefined;
+    const reviewed = remote ? listings.get(remote.toLowerCase())?.pin?.commit : undefined;
     const target = reviewed ?? heads[name];
     const behind = !linked && !!target && !!commit && !commit.toLowerCase().startsWith(target.toLowerCase());
     return { ...row, update: linked ? "" : behind ? target!.slice(0, 7) : "up to date" };

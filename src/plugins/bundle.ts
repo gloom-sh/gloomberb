@@ -172,6 +172,10 @@ export async function bundleExternalPlugin(
     splitting: false,
     minify: options.minify === true,
     sourcemap: "none",
+    // Bun throws a bare "Bundle failed" by default, with the reason tucked in
+    // `errors`. Returning it lets the check below report what actually broke,
+    // such as an import this host version does not export.
+    throw: false,
     ...(options.define ? { define: options.define } : {}),
     plugins: [
       createSharedModuleResolver(

@@ -99,7 +99,22 @@ describe("bundleExternalPlugin", () => {
     const dir = scratchPlugin(`import { missing } from "./nope"; export default missing;`);
     try {
       await expect(bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports }))
-        .rejects.toThrow();
+        .rejects.toThrow("./nope");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("names the import an older host does not export", async () => {
+    // A plugin built for a newer Gloomberb, installed on an older one. Bun's
+    // own message for this was "Bundle failed", which told the user nothing.
+    const dir = scratchPlugin(`
+      import { Box, QueryBar } from "gloomberb/ui";
+      export default { id: "scratch", name: "Scratch", version: "1.0.0", Box, QueryBar };
+    `);
+    try {
+      await expect(bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports }))
+        .rejects.toThrow(`No matching export in "gloom-host:gloomberb/ui" for import "QueryBar"`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
