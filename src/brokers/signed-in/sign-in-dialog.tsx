@@ -75,7 +75,7 @@ function BrokerSignInDialog({
 
   const note = broker.capabilities.signupNote
     ?? (broker.capabilities.singleConnection
-      ? tf("This replaces {broker}'s link to other AI apps. Connect them to Gloom instead.", { broker: broker.name })
+      ? tf("Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.", { broker: broker.name })
       : null);
   // Title, spacing, note, and footer take about eleven rows around the panel.
   const panelHeight = Math.max(4, termHeight - (note ? 12 : 10));
