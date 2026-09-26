@@ -21,6 +21,8 @@
 
 <img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
 
+<sub>由 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="" width="12" height="12" /> Adjacent</a> 赞助支持</sub>
+
 </div>
 
 > 本文档为社区维护的简体中文翻译。若与 [英文原版 README](README.md) 有出入，以英文版为准。
@@ -102,3 +104,11 @@ gloomberb install gloom-sh/gloomberb-tv
 界面支持英语、西班牙语、简体中文、繁体中文、日语与韩语。在命令栏中输入 `LANG` 即可切换，详见[语言设置（英文）](docs/usage.md#localized-interface)。
 
 采用 [MIT 许可证](LICENSE)。基于 [OpenTUI](https://opentui.com/) 构建。
+
+## 赞助商
+
+<a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
+
+[Adjacent](https://adjacent.markets/?ref=gloomberb) 提供预测市场指数、参考利率与数据。感谢其对 Gloomberb 开源开发的支持。
+
+如需赞助 Gloomberb，请发送邮件至 [hello@gloom.sh](mailto:hello@gloom.sh)。
