@@ -69,7 +69,6 @@ export function usePersistSessionSnapshot(
         statusBarVisible: currentState.statusBarVisible,
         recentTickers: currentState.recentTickers,
         tickers: currentState.tickers,
-        exchangeRates: currentState.exchangeRates,
       }) satisfies AppSessionSnapshot;
     } catch {
       // Snapshot persistence is best-effort during teardown.

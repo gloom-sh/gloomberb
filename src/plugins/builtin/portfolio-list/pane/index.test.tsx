@@ -6,7 +6,7 @@ import { act, useReducer } from "react";
 import { Box } from "../../../../ui";
 import { PaneFooterProvider, PaneFooterBar } from "../../../../components/layout/pane/footer";
 import type { ReactElement } from "react";
-import { testRender } from "../../../../renderers/opentui/test-utils";
+import { createTestControls, testRender } from "../../../../renderers/opentui/test-utils";
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
 import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
@@ -221,11 +221,9 @@ function createPortfolioState(
   {
     ticker = makeTicker(),
     quote = makeQuote(),
-    exchangeRates,
   }: {
     ticker?: TickerRecord;
     quote?: Quote;
-    exchangeRates?: Map<string, number>;
   } = {},
 ) {
   const state = createInitialState(config);
@@ -237,9 +235,6 @@ function createPortfolioState(
   };
   state.tickers = new Map([["AAPL", ticker]]);
   state.financials = new Map([["AAPL", { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote }]]);
-  if (exchangeRates) {
-    state.exchangeRates = exchangeRates;
-  }
   return state;
 }
 
@@ -250,7 +245,6 @@ function PortfolioHarness({
   brokerAccounts = {},
   ticker,
   quote,
-  exchangeRates,
   stateMutator,
   runtime = createTestPluginRuntime(),
   paneHeight = 24,
@@ -263,7 +257,6 @@ function PortfolioHarness({
   brokerAccounts?: ReturnType<typeof createInitialState>["brokerAccounts"];
   ticker?: TickerRecord;
   quote?: Quote;
-  exchangeRates?: Map<string, number>;
   stateMutator?: (state: ReturnType<typeof createInitialState>) => void;
   runtime?: PluginRuntimeAccess;
   paneHeight?: number;
@@ -273,7 +266,6 @@ function PortfolioHarness({
   const initialState = createPortfolioState(config, collectionId, expanded, {
     ticker,
     quote,
-    exchangeRates,
   });
   initialState.brokerAccounts = brokerAccounts;
   stateMutator?.(initialState);
@@ -782,6 +774,11 @@ describe("PortfolioListPane cash and margin UI", () => {
       ["ticker", "price", "change_pct", "shares", "avg_cost", "cost_basis", "mkt_value", "pnl"],
       [createBrokerInstance("flex")],
     );
+    sharedCoordinator = new MarketDataCoordinator(createTestDataProvider({
+      getQuote: async () => null,
+      getExchangeRate: async (currency) => (currency === "EUR" ? 1.1 : 1),
+    }));
+    setSharedMarketDataCoordinator(sharedCoordinator);
 
     testSetup = await testRender(
       <PortfolioHarness
@@ -807,17 +804,16 @@ describe("PortfolioListPane cash and margin UI", () => {
           change: 5,
           changePercent: 4.17,
         })}
-        exchangeRates={new Map([["USD", 1], ["EUR", 1.1]])}
       />,
       { width: 100, height: 24 },
     );
 
     await flushFrame();
 
-    const frame = testSetup.captureCharFrame();
+    // The EUR rate arrives from the market data coordinator a frame later.
+    const frame = await createTestControls(() => testSetup!).waitForFrameToContain("1.4k");
     expect(frame).toMatch(/AAPL\s+125\.00\s+\+4\.17%/);
     expect(frame).toContain("100");
-    expect(frame).toContain("1.4k");
     expect(frame).toContain("+275");
     expect(frame).not.toContain("€100.00");
     expect(frame).not.toContain("$137.50");

@@ -14,7 +14,6 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { CompactRangeBar, FundamentalsGrid, PositionTable, QuoteBook } from "./overview/components";
@@ -38,7 +37,6 @@ export function OverviewTab(props: OverviewTabProps) {
 
 function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
-  const exchangeRatesState = useAppSelector((state) => state.exchangeRates);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome } = useUiCapabilities();
 
@@ -56,10 +54,9 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     capitalization?.currency,
     ...ticker.metadata.positions.map((position) => position.currency),
   ]);
-  const effectiveExchangeRates = selectEffectiveExchangeRates(exchangeRates, exchangeRatesState);
   const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
-    convertCurrency(value, fromCurrency, baseCurrency, effectiveExchangeRates);
+    convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
   const sector = ticker.metadata.sector ?? profile?.sector;
   const industry = ticker.metadata.industry ?? profile?.industry;
   const description = profile?.description?.trim();
@@ -136,7 +133,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     quoteCurrency,
     baseCurrency,
     toBase,
-    marketCapExchangeRates: effectiveExchangeRates,
+    marketCapExchangeRates: exchangeRates,
   });
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),

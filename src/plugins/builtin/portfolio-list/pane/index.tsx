@@ -23,7 +23,6 @@ import {
   type CollectionSortPreference,
   usePaneAppConfig,
 } from "../../../../state/app/context";
-import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
 import { summarizeFxRates, fxStatusLabel } from "../../../../utils/fx-status";
 import { convertCurrency } from "../../../../utils/format";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
@@ -87,7 +86,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
-  const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const refreshingSize = useAppSelector((state) => state.refreshing.size);
   const paneCollection = usePaneCollection();
@@ -162,10 +160,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => buildTrackedCurrencies(tickers, financialsMap, accountState, config.baseCurrency),
     [accountState, config.baseCurrency, financialsMap, tickers],
   );
-  const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
-  const effectiveExchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const exchangeRates = useFxRatesMap(trackedCurrencies);
   const conversionCurrencies = trackedCurrencies.some((currency) => currency !== config.baseCurrency) ? trackedCurrencies : [];
-  const fxStatus = summarizeFxRates(conversionCurrencies, effectiveExchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
+  const fxStatus = summarizeFxRates(conversionCurrencies, exchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
   const fxStatusText = fxStatusLabel(fxStatus);
   const activeSort = resolveCollectionSortPreference(activeCollectionId, isPortfolioTab, collectionSorts);
   // Only weights divide by the total: skip the walk when nothing shows one.
@@ -176,12 +173,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       tickers,
       financialsMap,
       config.baseCurrency,
-      effectiveExchangeRates,
+      exchangeRates,
       isPortfolioTab,
       activeCollectionId,
     ).totalMktValue : undefined,
     [financialsMap],
-    [activeCollectionId, config.baseCurrency, effectiveExchangeRates, isPortfolioTab, needsWeightTotal, tickers],
+    [activeCollectionId, config.baseCurrency, exchangeRates, isPortfolioTab, needsWeightTotal, tickers],
     WEIGHT_TOTAL_THROTTLE_MS,
   );
 
@@ -192,12 +189,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       tickers,
       financialsMap,
       config.baseCurrency,
-      effectiveExchangeRates,
+      exchangeRates,
       isPortfolioTab,
       activeCollectionId,
     ),
     [financialsMap],
-    [activeCollectionId, config.baseCurrency, effectiveExchangeRates, isPortfolioTab, tickers],
+    [activeCollectionId, config.baseCurrency, exchangeRates, isPortfolioTab, tickers],
     FOOTER_TOTALS_THROTTLE_MS,
   );
 
@@ -205,7 +202,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const baseColumnContext = useMemo(() => ({
     activeTab: isPortfolioTab ? activeCollectionId : undefined,
     baseCurrency: config.baseCurrency,
-    exchangeRates: effectiveExchangeRates,
+    exchangeRates,
     portfolioTotalMarketValue,
     supplementalVersion: supplementalData.version,
     analystResearch: supplementalData.analystResearch,
@@ -214,7 +211,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }), [
     activeCollectionId,
     config.baseCurrency,
-    effectiveExchangeRates,
+    exchangeRates,
     isPortfolioTab,
     portfolioTotalMarketValue,
     supplementalData,
@@ -275,8 +272,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   );
   const accountCurrency = accountState?.account.currency ?? "";
   const convertAccountValue = useCallback(
-    (value: number) => convertCurrency(value, accountCurrency, config.baseCurrency, effectiveExchangeRates),
-    [accountCurrency, config.baseCurrency, effectiveExchangeRates],
+    (value: number) => convertCurrency(value, accountCurrency, config.baseCurrency, exchangeRates),
+    [accountCurrency, config.baseCurrency, exchangeRates],
   );
   const summarySegments = useMemo(() => buildPortfolioSummarySegments({
     totals: portfolioSummaryTotals,

@@ -4,7 +4,6 @@ import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-f
 import { useAppSelector, usePaneAppConfig } from "../../../../state/app/context";
 import { useLiveTickerFinancialsMap } from "../../../../state/hooks/live-ticker-financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
 import { getPortfolioPositionValue } from "../../kelly-sizer/portfolio";
 import { calculatePortfolioSummaryTotals } from "../../portfolio-list/metrics";
 import { buildTrackedCurrencies, getCollectionTickersFromConfig, getCollectionTypeFromConfig } from "../../portfolio-list/pane/data";
@@ -47,7 +46,6 @@ export interface BookExposure {
 export function useBookExposure(collectionId: string | null): BookExposure {
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
-  const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   // Not the whole config: every pane-state change rewrites its layout mirror.
   const config = usePaneAppConfig();
   const baseCurrency = config.baseCurrency;
@@ -85,8 +83,7 @@ export function useBookExposure(collectionId: string | null): BookExposure {
     () => buildTrackedCurrencies(tickers, financials, null, baseCurrency),
     [baseCurrency, financials, tickers],
   );
-  const fetchedRates = useFxRatesMap(trackedCurrencies);
-  const exchangeRates = selectEffectiveExchangeRates(fetchedRates, cachedExchangeRates);
+  const exchangeRates = useFxRatesMap(trackedCurrencies);
   return useMemo(() => {
     const priced = scope.kind !== "watchlist";
     const totals = priced
