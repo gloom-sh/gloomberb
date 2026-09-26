@@ -4,7 +4,8 @@
     "opentui": {
       "source": "msmps/opentui-skill",
       "sourceType": "github",
-      "computedHash": "2255043508a64062e44f6de2243dbcb06de97ceefa30357da77affac355c3eee"
+      "skillPath": "skill/opentui/SKILL.md",
+      "computedHash": "7244056422f5d578beaffc95ae20a4b421923f70a8eb6a4decf49b3d79c0d2db"
     }
   }
 }

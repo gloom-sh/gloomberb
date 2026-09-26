@@ -17,6 +17,19 @@ This skill is for terminal TUI and OpenTUI test workflows. For Electrobun/deskto
 
 ## Critical Rules
 
+**Never touch the real `~/.gloomberb`.** Every tmux smoke, and any CLI command that writes (plugins, config, notes, alerts, portfolios), runs against a throwaway profile: point `GLOOMBERB_HOME` at a temp dir whose `config.json` sets `"onboardingComplete": true`.
+
+```bash
+SMOKE_HOME=/tmp/gloomberb-smoke-my-change   # a literal path, unique to this task
+mkdir -p "$SMOKE_HOME"
+printf '{ "dataDir": "%s", "onboardingComplete": true }\n' "$SMOKE_HOME" > "$SMOKE_HOME/config.json"
+grep '"dataDir"' "$SMOKE_HOME/config.json"   # must name $SMOKE_HOME, never ~/.gloomberb
+```
+
+An empty `GLOOMBERB_HOME` falls back to `~/.gloomberb`. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
+
+If you start from a copy of a real config instead, rewrite its `dataDir` into the temp dir and confirm with the same `grep` before launching: the app reads and writes wherever `dataDir` points, so a copied config that still names `~/.gloomberb` edits the real profile. The first launch on a new profile reinstalls the plugins that moved out of this repo into `$SMOKE_HOME/plugins`, which needs network and takes a few seconds.
+
 Cleanup is part of testing. If you start `tmux`, a dev server, a watcher, or any other background process while testing, stop it before you finish the task, even if the test fails.
 
 - Prefer named `tmux` sessions and end them with `tmux kill-session -t <name>`.
@@ -35,7 +48,7 @@ head -c 200000 /tmp/gloomberb-test.log | grep -aE "<pattern>" | head -20
 
 ```bash
 ps -Ao pid,%cpu,etime,command \
-  | grep -iE "mpv|yt-dlp|ffmpeg|ffplay|tail -c|strings|bun run dev" \
+  | grep -iE "mpv|yt-dlp|ffmpeg|ffplay|tail -c|strings|bun run dev|bun src/index.tsx" \
   | grep -v grep
 tmux ls 2>&1
 ```
@@ -59,44 +72,35 @@ What are you testing?
 
 ## 1. CLI Commands (fastest feedback loop)
 
-Gloomberb doubles as a CLI tool. CLI commands are the **fastest way to verify data flow, config state, and business logic** — no renderer, no harness setup, just run and check output.
+Gloomberb doubles as a CLI tool. CLI commands are the **fastest way to verify data flow, config state, and business logic**: no renderer, no harness setup, just run and check output.
 
-### Available commands
+### Running commands
+
+Use `bun start <command>` for one-shot checks. It runs `src/index.tsx` once; `bun run dev` adds `--watch` and is for working on the interactive app.
 
 ```bash
-bun run dev help                        # Show all commands
-bun run dev portfolio                   # List all portfolios/watchlists with ticker counts
-bun run dev portfolio "Main Portfolio"  # Show detailed positions, P&L, quotes
-bun run dev ticker AAPL                 # Show quote, fundamentals, positions
-bun run dev plugins                     # List installed plugins
+bun start help                          # Every command, grouped
+bun start help ticker                   # Usage, options, and examples for one command
+bun start portfolio                     # Portfolios and watchlists
+bun start ticker AAPL                   # Quote, fundamentals, positions
+bun start ticker AAPL --json            # The same report as JSON
+bun start plugins                       # Plugins installed from GitHub
 ```
+
+`bun start help` is the source of truth for what exists; do not rely on a list copied into docs.
 
 ### When to use CLI testing
 
-- **Verifying data layer changes** — After modifying config, ticker storage, or persistence, run `portfolio` or `ticker` to confirm data loads correctly.
-- **Checking new data fields** — If you add a new field (e.g. earnings date), first expose it via the `ticker` CLI command and verify the output, before wiring it into the TUI.
-- **Smoke-testing integrations** — `ticker AAPL` exercises the Yahoo Finance client, quote formatting, and fundamentals parsing in one command.
-- **Testing plugin management** — `install`, `remove`, `update`, and `plugins` commands verify the plugin lifecycle.
+- **Verifying data layer changes**: after modifying config, ticker storage, or persistence, run `portfolio` or `ticker` to confirm data loads correctly.
+- **Checking new data fields**: if you add a new field (e.g. earnings date), first expose it via the `ticker` CLI command and verify the output, before wiring it into the TUI.
+- **Smoke-testing integrations**: `ticker AAPL` exercises the market data providers, quote formatting, and fundamentals parsing in one command.
+- **Testing plugin management**: `install`, `remove`, `update`, and `plugins` commands verify the plugin lifecycle. Run them under a temp `GLOOMBERB_HOME` (see Critical Rules).
 
 ### Adding new CLI commands
 
 If you're building a feature and need to verify data that isn't exposed via CLI yet, consider adding a CLI command first when it makes sense (e.g. listing watchlists, showing config values, checking broker sync status). This gives you a fast feedback loop before building the TUI component.
 
-The CLI dispatcher is in `src/cli.ts` — add a new case to the `switch` in `runCli()`.
-
-### Example: verifying a data change via CLI
-
-```bash
-# After modifying how positions are calculated:
-$ bun run dev portfolio "Main Portfolio"
-Main Portfolio (USD)
-
-TICKER    PRICE         CHG%    SHARES  AVG COST      P&L
-------------------------------------------------------------
-AMD         $201.99    -0.87%    100     $150.00    +$5,199.00
-------------------------------------------------------------
-                                              Total: +$5,199.00
-```
+Commands are `CliCommandDef` objects. Core commands are listed in `createCoreCliCommands()` in `src/cli/index.ts`, most of them defined in `src/cli/commands/*`. A plugin contributes its own through `cliCommands` (see `src/plugins/builtin/portfolio-list/cli/portfolio-command.ts`). `src/cli/registry.ts` merges both into one lookup, rejects duplicate names and aliases, and drops commands from disabled plugins. Give it a `help` block (group, usage, examples) so `bun start help` files it under the right heading.
 
 ---
 
@@ -106,17 +110,17 @@ Headless, deterministic component and integration tests using Bun's test runner 
 
 ### Why use this
 
-- **Deterministic** — `renderOnce()` guarantees the frame is complete before capture. No timing guesswork.
-- **Fast** — Full suite runs in < 1 second.
-- **Isolated** — Each test gets its own headless renderer. No shared state, no cleanup burden.
-- **Composable** — Render individual components with controlled props/state.
-- **Snapshotable** — Built-in `toMatchSnapshot()` for visual regression testing.
+- **Deterministic**: `renderOnce()` guarantees the frame is complete before capture. No timing guesswork.
+- **Fast**: no real terminal, network, or app startup.
+- **Isolated**: each test gets its own headless renderer; destroy it in `afterEach`.
+- **Composable**: render individual components with controlled props/state.
+- **Snapshotable**: built-in `toMatchSnapshot()` for visual regression testing.
 
 ### Quick start
 
 ```typescript
 import { test, expect, afterEach } from "bun:test";
-import { testRender } from "@opentui/react/test-utils";
+import { testRender } from "../../renderers/opentui/test-utils"; // relative to your test file
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -140,6 +144,8 @@ test("renders my component", async () => {
   // or: expect(frame).toMatchSnapshot();
 });
 ```
+
+Import `testRender` from `src/renderers/opentui/test-utils`, not straight from `@opentui/react/test-utils`: the wrapper mounts the UI host, input, toast, and dialog providers that the shared kit needs. The same file has `emitKeypress`, `settleFrame`, and `createTestControls` for key events and frames that settle asynchronously.
 
 ### Interaction testing
 
@@ -167,21 +173,22 @@ test("arrow keys navigate the list", async () => {
 
 ### Testing components that need app context
 
-Many components require `AppContext`, `DialogProvider`, etc. Create a harness wrapper:
+`testRender` already provides the dialog host. Components that read app state also need `AppContext`:
 
 ```typescript
-function TestHarness({ children, overrides = {} }) {
-  const config = { ...createDefaultConfig("/tmp/test"), ...overrides };
-  const state = { ...createInitialState(config), ...overrides };
-  return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <DialogProvider>{children}</DialogProvider>
-    </AppContext>
-  );
-}
+import { AppContext, createInitialState } from "../../state/app/context";
+import { createDefaultConfig } from "../../types/config";
+
+const state = createInitialState(createDefaultConfig("/tmp/gloomberb-my-test"));
+testSetup = await testRender(
+  <AppContext value={{ state, dispatch: () => {} }}>
+    <MyComponent />
+  </AppContext>,
+  { width: 80, height: 24 },
+);
 ```
 
-See `src/components/command-bar/command-bar.test.tsx` for a full example of this pattern.
+`src/components/layout/header.test.tsx` is a short example that also records dispatched actions and clicks with `mockMouse`; `src/components/ui/ui.test.tsx` covers the shared kit (lists, tables, tabs, fields, dialogs).
 
 ### Test setup return object
 
@@ -191,14 +198,15 @@ See `src/components/command-bar/command-bar.test.tsx` for a full example of this
 | `renderOnce` | `() => Promise<void>` | Trigger a single render cycle |
 | `captureCharFrame` | `() => string` | Capture current output as text |
 | `resize` | `(w, h) => void` | Resize the virtual terminal |
-| `mockInput` | `MockInput` | Simulate keyboard input (e.g. `pressArrow("down")`) |
+| `mockInput` | `MockInput` | Simulate keyboard input (e.g. `pressArrow("down")`, `typeText("AAPL")`) |
+| `mockMouse` | `MockMouse` | Simulate mouse input (e.g. `click(x, y)`, `scroll(x, y, "down")`) |
 
 ### Running tests
 
 ```bash
 bun test                              # Run all tests
 bun test src/components/ui/ui.test.tsx # Run a specific file
-bun test --filter "CommandBar"        # Filter by name
+bun test -t "command bar"             # Only tests whose name matches
 bun test --update-snapshots           # Update snapshot files
 ```
 
@@ -213,7 +221,7 @@ bun test --update-snapshots           # Update snapshot files
 
 ## 3. tmux (full end-to-end TUI testing)
 
-Run the actual app in a tmux session, send keystrokes, and capture the rendered screen. **Use this as a last resort** — for verifying full-app behavior that can't be tested with the harness or CLI.
+Run the actual app in a tmux session, send keystrokes, and capture the rendered screen. **Use this as a last resort**, for verifying full-app behavior that can't be tested with the harness or CLI.
 
 When tmux is used for React/OpenTUI changes, always treat runtime health as part of the smoke. Do not stop at "it rendered"; scan for React hook/update-depth failures, listener leak warnings, and obvious memory runaway.
 
@@ -227,12 +235,14 @@ When tmux is used for React/OpenTUI changes, always treat runtime health as part
 
 ### Setup
 
+Create the throwaway `$SMOKE_HOME` profile from Critical Rules first.
+
 ```bash
 # Kill any existing test session first
 tmux kill-session -t test 2>/dev/null
 
-# Start the app — use a fixed terminal size for consistent captures
-tmux new-session -d -s test -x 120 -y 40 'bun run dev 2>&1'
+# Start the app with a fixed terminal size for consistent captures
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 
 # Wait for the app to render (2-3 seconds for initial load)
 sleep 3
@@ -247,7 +257,7 @@ tmux pipe-pane -o -t test 'cat > /tmp/gloomberb-test.log'
 If you need to run the app without `tmux`, keep the process handle so you can shut it down:
 
 ```bash
-bun run dev > /tmp/gloomberb-test.log 2>&1 &
+GLOOMBERB_HOME="${SMOKE_HOME:?}" bun start > /tmp/gloomberb-test.log 2>&1 &
 app_pid=$!
 
 # ... test whatever you need ...
@@ -268,13 +278,13 @@ Returns the full rendered text grid including box-drawing characters. Does NOT c
 
 ```bash
 # Special keys
-tmux send-keys -t test C-p          # Ctrl+P — open command bar
-tmux send-keys -t test Escape        # Escape — close dialogs
-tmux send-keys -t test Enter         # Enter — select/confirm
-tmux send-keys -t test Tab           # Tab — switch tabs
+tmux send-keys -t test C-p          # Ctrl+P: open command bar
+tmux send-keys -t test Escape        # Escape: close dialogs
+tmux send-keys -t test Enter         # Enter: select/confirm
+tmux send-keys -t test Tab           # Tab: focus the next pane
 tmux send-keys -t test Up            # Arrow keys
 tmux send-keys -t test Down
-tmux send-keys -t test j             # j/k — navigate lists
+tmux send-keys -t test j             # j/k: navigate lists
 tmux send-keys -t test k
 
 # Typing text (always use -l flag for literal strings)
@@ -288,9 +298,9 @@ tmux send-keys -t test -l 'AAPL'
 Always add `sleep 0.5` to `sleep 1` after sending input to let the UI re-render.
 
 ```bash
-# 1. Start the app
+# 1. Start the app on the throwaway profile
 tmux kill-session -t test 2>/dev/null
-tmux new-session -d -s test -x 120 -y 40 'bun run dev 2>&1'
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 sleep 3
 
 # 2. Capture initial state
@@ -361,26 +371,14 @@ When a bug mentions a specific saved layout, pane type, or focus path, launch di
 
 Recommended coverage for layout/pane regressions:
 
-- Launch the affected layout directly from an isolated temp config or copied app config.
+- Launch the affected layout directly from the throwaway profile, or from a copied app config whose `dataDir` you rewrote into it.
 - Exercise the affected pane's own interactions, such as chart period changes, refresh, tab changes, pane settings, or legend toggles.
 - Switch between the affected layout and another layout at least a few times when the bug involved layout activation or pane unmount/remount behavior.
 - Re-run the warning scan after interactions and after layout switches.
-
-### Common command bar actions (Ctrl+P)
-
-| Command              | Description                              |
-|----------------------|------------------------------------------|
-| (ticker symbol)      | Jump to or add a ticker                  |
-| Add Pane / Remove Pane | Manage panes in layout                 |
-| New Portfolio / New Watchlist | Create collections                |
-| Delete Portfolio / Delete Watchlist | Remove collections         |
-| Edit Columns         | Toggle visible table columns             |
-| Change Theme         | Switch color theme                       |
-| Manage Plugins       | Toggle plugins on/off                    |
 
 ### Tips
 
 - **Timing:** If captures look incomplete, increase sleep duration. Network-dependent views take longer.
 - **Terminal size:** `-x 120 -y 40` gives consistent layout. Smaller sizes may cause wrapping.
-- **Cleanup:** Always kill the `tmux` session or any other background process you started when done.
+- **Cleanup:** Always kill the `tmux` session or any other background process you started when done, then `rm -rf "${SMOKE_HOME:?}"`.
 - **Debugging crashes:** stderr is captured via `2>&1` so crash output is visible.

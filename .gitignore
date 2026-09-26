@@ -42,3 +42,6 @@ src-tauri/gen
 
 .codex/
 paseo.json
+
+# Third-party agent skills restored from skills-lock.json (bunx skills experimental_install)
+.agents/skills/opentui/
