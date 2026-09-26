@@ -94,7 +94,7 @@ gloomberb help
 插件可添加面板、数据源、券商连接与命令。从 GitHub 安装插件：
 
 ```bash
-gloomberb install gloom-sh/gloomberb-tv
+gloomberb install gloom-sh/gloom-tv
 ```
 
 详见[插件开发指南（英文）](PLUGINS.md)、[直播电视配置（英文）](docs/usage.md#live-tv)或[贡献指南（英文）](CONTRIBUTING.md)。
