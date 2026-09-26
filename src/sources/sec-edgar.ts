@@ -13,6 +13,7 @@ import {
   extractFilingContent,
   isPdfDocument,
 } from "./sec-edgar/content";
+import { parseSecAcceptanceTime } from "./sec-edgar/acceptance-time";
 
 export { extractFilingContent } from "./sec-edgar/content";
 
@@ -144,16 +145,6 @@ function zeroPadCik(value: unknown): string | null {
   const digits = String(value ?? "").replace(/\D/g, "");
   if (!digits) return null;
   return digits.padStart(10, "0");
-}
-
-function parseTimestamp(value: unknown): Date | undefined {
-  const digits = String(value ?? "").trim();
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(digits)) {
-    const timestamp = new Date(digits);
-    return Number.isFinite(timestamp.getTime()) ? timestamp : undefined;
-  }
-  // Compact SEC wall-clock values carry no timezone. Keep the source value separately.
-  return undefined;
 }
 
 function parseDate(value: unknown): Date | undefined {
@@ -317,7 +308,7 @@ function parseFilingColumns(
       accessionNumber,
       form,
       filingDate,
-      acceptedAt: parseTimestamp(acceptanceTimes[index]),
+      acceptedAt: parseSecAcceptanceTime(acceptanceTimes[index]),
       acceptedAtRaw: typeof acceptanceTimes[index] === "string" ? acceptanceTimes[index].trim() || undefined : undefined,
       primaryDocument,
       primaryDocDescription: String(primaryDescriptions[index] ?? "").trim() || undefined,
@@ -742,26 +733,8 @@ export class SecEdgarClient {
   }
 
   private async fetchJson<T>(url: string): Promise<T> {
-    const response = await fetch(url, {
-      headers: this.defaultHeaders(),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    const body = await response.text();
-
-    if (!response.ok) {
-      if (isSecBlockMessage(body)) {
-        throw new Error("SEC blocked the request. Try setting SEC_USER_AGENT to 'MyApp AdminContact@example.com'.");
-      }
-      throw new Error(`SEC request failed (${response.status}): ${truncateWithEllipsis(body.trim(), 160)}`);
-    }
-
-    if (isHtmlResponse(body)) {
-      if (isSecBlockMessage(body)) {
-        throw new Error("SEC blocked the request. Try setting SEC_USER_AGENT to 'MyApp AdminContact@example.com'.");
-      }
-      throw new Error("SEC returned HTML instead of JSON.");
-    }
-
+    const { body } = await this.fetchText(url);
+    if (isHtmlResponse(body)) throw new Error("SEC returned HTML instead of JSON.");
     return JSON.parse(body) as T;
   }
 
@@ -772,15 +745,11 @@ export class SecEdgarClient {
     });
     const body = await response.text();
 
-    if (!response.ok) {
-      if (isSecBlockMessage(body)) {
-        throw new Error("SEC blocked the request. Try setting SEC_USER_AGENT to 'MyApp AdminContact@example.com'.");
-      }
-      throw new Error(`SEC request failed (${response.status}): ${truncateWithEllipsis(body.trim(), 160)}`);
-    }
-
     if (isSecBlockMessage(body)) {
       throw new Error("SEC blocked the request. Try setting SEC_USER_AGENT to 'MyApp AdminContact@example.com'.");
+    }
+    if (!response.ok) {
+      throw new Error(`SEC request failed (${response.status}): ${truncateWithEllipsis(body.trim(), 160)}`);
     }
 
     return {

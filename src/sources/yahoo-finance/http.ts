@@ -33,37 +33,26 @@ export class YahooHttpClient {
   }
 
   async fetchJsonWithCrumb<T>(url: string): Promise<T> {
-    return this.withRetry(async () => {
-      await this.ensureCrumb();
-      const separator = url.includes("?") ? "&" : "?";
-      const fullUrl = `${url}${separator}crumb=${encodeURIComponent(this.crumb!)}`;
-      const resp = await httpFetch(fullUrl, {
-        headers: { ...this.defaultHeaders(), Cookie: this.cookie! },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (resp.status === 401) {
-        this.crumb = null;
-        this.cookie = null;
-        throw new Error("[401] Invalid Crumb");
-      }
-      if (!resp.ok) throw new Error(`[${resp.status}] ${(await resp.text()).slice(0, 200)}`);
-      return resp.json() as Promise<T>;
-    });
+    return this.crumbRequest<T>("GET", url);
   }
 
   async postJsonWithCrumb<T>(url: string, body: unknown): Promise<T> {
+    return this.crumbRequest<T>("POST", url, body);
+  }
+
+  private crumbRequest<T>(method: "GET" | "POST", url: string, body?: unknown): Promise<T> {
     return this.withRetry(async () => {
       await this.ensureCrumb();
       const separator = url.includes("?") ? "&" : "?";
       const fullUrl = `${url}${separator}crumb=${encodeURIComponent(this.crumb!)}`;
       const resp = await httpFetch(fullUrl, {
-        method: "POST",
+        method,
         headers: {
           ...this.defaultHeaders(),
-          "Content-Type": "application/json",
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
           Cookie: this.cookie!,
         },
-        body: JSON.stringify(body),
+        body: method === "POST" ? JSON.stringify(body) : undefined,
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (resp.status === 401) {
