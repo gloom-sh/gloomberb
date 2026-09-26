@@ -38,9 +38,10 @@ import {
   listPlugins,
   parseGitHubRef,
   removePlugin,
-  resolveRegistryPin,
+  resolveRegistryListing,
   updatePlugins,
 } from "./commands/plugins";
+import { requiredGloomberb } from "../plugins/builtin/plugin-marketplace/model";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 
 function createCoreCliCommands(
@@ -219,8 +220,10 @@ function createCoreCliCommands(
         }
         // A listed plugin lands on the commit the registry reviewed, the same
         // as an install from the marketplace pane. Unlisted ones follow HEAD.
-        const pin = await resolveRegistryPin(parseGitHubRef(ref).repo);
-        await installPlugin(ref, pin ? { pin } : {});
+        const listing = await resolveRegistryListing(parseGitHubRef(ref).repo);
+        const required = requiredGloomberb(listing?.minGloomberb);
+        if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
+        await installPlugin(ref, listing?.pin ? { pin: listing.pin } : {});
       },
     },
     {

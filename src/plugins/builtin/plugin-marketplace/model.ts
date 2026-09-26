@@ -1,5 +1,6 @@
 import type { PluginTarget } from "../../../types/plugin";
 import { compareSemver, formatVersion } from "../../../utils/semver";
+import { VERSION } from "../../../version";
 import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
@@ -292,6 +293,19 @@ export function hasUpdate(entry: MarketplaceEntry): boolean {
 }
 
 /**
+ * The Gloomberb a plugin's published code needs, when this build is older;
+ * null when it runs here or the registry does not say. The registry states it
+ * for the code an install or update would land on, not the checkout already
+ * on disk, so it blocks those two actions and nothing else. Without it the
+ * update goes through and the plugin then fails to compile against a host
+ * that lacks what it imports.
+ */
+export function requiredGloomberb(minGloomberb: string | null | undefined, current: string = VERSION): string | null {
+  const order = compareSemver(current, minGloomberb);
+  return order !== null && order < 0 ? formatVersion(minGloomberb) : null;
+}
+
+/**
  * Whether this row's update state can only be answered by asking its remote:
  * installed from git, managed by the host, and not pinned by the registry.
  */
@@ -322,6 +336,7 @@ export type MarketplaceStatusKind =
   | "unsupported"
   | "needs-setup"
   | "update"
+  | "needs-gloomberb"
   | "errors"
   | "enabled"
   | "disabled"
@@ -341,10 +356,12 @@ export function statusOf(entry: MarketplaceEntry): MarketplaceStatus {
   if (entry.needsRestart) return { kind: "needs-restart", text: "needs restart" };
   const unsupported = unsupportedLabel(entry);
   if (unsupported) return { kind: "unsupported", text: unsupported.toLowerCase() };
-  if (!entry.installed) return { kind: "none", text: "" };
+  const required = requiredGloomberb(entry.minGloomberb);
+  const needsGloomberb: MarketplaceStatus | null = required ? { kind: "needs-gloomberb", text: `needs ${required}` } : null;
+  if (!entry.installed) return needsGloomberb ?? { kind: "none", text: "" };
   if (!entry.enabled) return { kind: "disabled", text: "disabled" };
   if (entry.needsSetup) return { kind: "needs-setup", text: "needs setup" };
-  if (hasUpdate(entry)) return { kind: "update", text: "update" };
+  if (hasUpdate(entry)) return needsGloomberb ?? { kind: "update", text: "update" };
   if (entry.errorCount > 0) return { kind: "errors", text: `errors (${entry.errorCount})` };
   return { kind: "enabled", text: "enabled" };
 }

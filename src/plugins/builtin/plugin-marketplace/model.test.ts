@@ -369,6 +369,30 @@ describe("statusOf", () => {
     expect(statusOf(needsSetup!).kind).toBe("needs-setup");
     expect(statusOf(erroring!)).toEqual({ kind: "errors", text: "errors (3)" });
   });
+
+  test("says which Gloomberb an install or update needs when this build is older", () => {
+    const [outdated, notInstalled, current, untouched] = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "a", commit: "fffffff", minGloomberb: "999.0.0" }),
+        registryPlugin({ id: "b", minGloomberb: "v999.1.0" }),
+        registryPlugin({ id: "c", commit: "fffffff", minGloomberb: "0.1.0" }),
+        registryPlugin({ id: "d", commit: "abc1234", minGloomberb: "999.0.0" }),
+      ],
+      installed: [
+        installedPlugin({ id: "a", commit: "abc1234" }),
+        installedPlugin({ id: "c", commit: "abc1234" }),
+        installedPlugin({ id: "d", commit: "abc1234" }),
+      ],
+      target: "tui",
+    });
+
+    // The update would land code this build cannot compile.
+    expect(statusOf(outdated!)).toEqual({ kind: "needs-gloomberb", text: "needs 999.0.0" });
+    expect(statusOf(notInstalled!)).toEqual({ kind: "needs-gloomberb", text: "needs 999.1.0" });
+    expect(statusOf(current!).kind).toBe("update");
+    // Already on that commit: the requirement says nothing about what to do.
+    expect(statusOf(untouched!).kind).toBe("enabled");
+  });
 });
 
 describe("sortEntries and buildRows", () => {

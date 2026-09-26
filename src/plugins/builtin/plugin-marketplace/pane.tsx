@@ -21,6 +21,7 @@ import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../.
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
+import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -36,6 +37,7 @@ import {
   mergeCatalog,
   needsRemoteCheck,
   registryPin,
+  requiredGloomberb,
   SECTION_LABELS,
   sortEntries,
   statusOf,
@@ -78,6 +80,7 @@ const STATUS_COLORS: Record<MarketplaceStatusKind, string> = {
   unsupported: colors.warning,
   "needs-setup": colors.warning,
   update: colors.textBright,
+  "needs-gloomberb": colors.warning,
   errors: colors.warning,
   enabled: colors.positive,
   disabled: colors.textDim,
@@ -175,7 +178,7 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
           */}
         {entry.hosts.length > 0 ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Declares" value={entry.hosts.join(", ")} /> : null}
         {entry.repo ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Source" value={`github.com/${entry.repo}`} /> : null}
-        {entry.minGloomberb ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Requires" value={`Gloomberb ${entry.minGloomberb}`} /> : null}
+        {entry.minGloomberb ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Requires" value={requiredGloomberb(entry.minGloomberb) ? `Gloomberb ${entry.minGloomberb}, this is ${VERSION}` : `Gloomberb ${entry.minGloomberb}`} /> : null}
         {entry.linked ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Linked" value={entry.directory ?? "local checkout"} /> : null}
         {entry.installedCommit ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Commit" value={entry.installedCommit.slice(0, 7)} /> : null}
         {!entry.installed && entry.availableCommit ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Pinned" value={`${entry.availableVersion ?? ""} ${entry.availableCommit.slice(0, 7)}`.trim()} /> : null}
@@ -389,12 +392,25 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     });
   }, [createPaneFromTemplate, notify, showPane]);
 
+  /**
+   * The registry's code for this plugin needs a newer Gloomberb. Installing or
+   * updating would land it anyway and it would then fail to compile, so say
+   * what to do instead. Also leaves a working older checkout alone.
+   */
+  const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => {
+    const required = requiredGloomberb(entry.minGloomberb);
+    if (!required) return false;
+    notify({ body: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`, type: "error" });
+    return true;
+  }, [notify]);
+
   const installSelected = useCallback(async () => {
     if (!selected || !isInstallable(selected) || !manager || !host || busy) return;
     // Installs address the repository, not the plugin id: there is no central
     // name resolution, so owner/repo is the only unambiguous reference.
     const repo = selected.repo;
     if (!repo) return;
+    if (refuseTooNew(selected)) return;
     const pin = registryPin(selected);
     const body = [
       `${selected.name} runs with your full permissions. It is not sandboxed.`,
@@ -420,10 +436,11 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     bump();
     if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
     else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [activate, announceAdded, bump, busy, confirm, host, manager, notify, selected]);
+  }, [activate, announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
+    if (refuseTooNew(selected)) return;
     const directory = selected.directory!;
     const entry = selected;
     const reinstall = !!entry.loadError;
@@ -441,7 +458,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     bump();
     if (activated.ok) announceAdded(activated.pluginId, activated.name, reinstall ? "Reloaded" : "Updated", host);
     else notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
-  }, [activate, announceAdded, bump, busy, host, manager, notify, selected]);
+  }, [activate, announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
 
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
@@ -496,8 +513,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const canOpen = !!selected && !!host && selected.installed && selected.enabled && !selected.loadError
     && (host.contributions(selected.id).templates.length > 0 || host.contributions(selected.id).panes.length > 0);
-  const canInstall = !!selected && isInstallable(selected) && !!manager && !busy;
-  const canUpdate = !!selected && isManaged(selected) && !selected.linked && !!manager && !busy
+  const tooNew = !!selected && !!requiredGloomberb(selected.minGloomberb);
+  const canInstall = !!selected && isInstallable(selected) && !!manager && !busy && !tooNew;
+  const canUpdate = !!selected && isManaged(selected) && !selected.linked && !!manager && !busy && !tooNew
     && (hasUpdate(selected) || !!selected.loadError);
   const canRemove = !!selected && isManaged(selected) && !!manager && !busy;
   const canToggle = !!selected && selected.installed && selected.toggleable && !selected.loadError;
