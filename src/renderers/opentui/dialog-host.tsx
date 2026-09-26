@@ -1,14 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { RGBA, type Renderable } from "@opentui/core";
 import { flushSync, useKeyboard, useRenderer } from "@opentui/react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { colors } from "../../theme/colors";
 import {
   DialogHostProvider,
@@ -16,6 +9,7 @@ import {
   type DialogApi,
   type PromptContext,
 } from "../../ui/dialog";
+import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
 
 type DialogSize = "small" | "medium" | "large" | "full";
 
@@ -29,26 +23,12 @@ interface DialogStyle {
 interface DialogRecord {
   id: string;
   content: unknown;
-  kind: "alert" | "prompt";
+  kind: DialogKind;
   size?: DialogSize;
   style?: DialogStyle;
   closeOnEscape?: boolean;
   closeOnClickOutside?: boolean;
-  settle(value: unknown): void;
 }
-
-export interface OpenTuiDialogHostProviderProps {
-  children: ReactNode;
-  size?: DialogSize;
-  sizePresets?: Partial<Record<DialogSize, number>>;
-  closeOnEscape?: boolean;
-  closeOnClickOutside?: boolean;
-  dialogOptions?: { style?: DialogStyle };
-  backdropColor?: string;
-  backdropOpacity?: number;
-}
-
-let nextDialogId = 1;
 
 function renderDialogContent(content: unknown, context: AlertContext | PromptContext<unknown>): ReactNode {
   return typeof content === "function"
@@ -56,34 +36,26 @@ function renderDialogContent(content: unknown, context: AlertContext | PromptCon
     : content as ReactNode;
 }
 
-function dialogWidth(
-  size: DialogSize,
-  terminalWidth: number,
-  sizePresets: OpenTuiDialogHostProviderProps["sizePresets"],
-): number {
-  const customWidth = sizePresets?.[size];
-  const requestedWidth = customWidth && customWidth > 0
-    ? customWidth
-    : size === "small"
-      ? 40
-      : size === "large"
-        ? 80
-        : size === "full"
-          ? terminalWidth - 4
-          : 60;
+function dialogWidth(size: DialogSize, terminalWidth: number): number {
+  const requestedWidth = size === "small"
+    ? 40
+    : size === "large"
+      ? 80
+      : size === "full"
+        ? terminalWidth - 4
+        : 60;
   return Math.max(1, Math.min(requestedWidth, terminalWidth - 2));
 }
 
-function backdrop(color: string, opacity: number): RGBA {
-  const value = RGBA.fromHex(color);
-  value.a = Math.max(0, Math.min(opacity, 1));
+function backdrop(): RGBA {
+  const value = RGBA.fromHex(colors.bg);
+  value.a = 0.8;
   return value;
 }
 
 function DialogLayer({
   api,
   close,
-  containerOptions,
   dialog,
   dimensions,
   index,
@@ -91,30 +63,25 @@ function DialogLayer({
 }: {
   api: DialogApi;
   close(id: string, value?: unknown): void;
-  containerOptions: Omit<OpenTuiDialogHostProviderProps, "children">;
   dialog: DialogRecord;
   dimensions: { width: number; height: number };
   index: number;
   isTopmost: boolean;
 }) {
-  const effectiveSize = dialog.size ?? containerOptions.size ?? "medium";
-  const providerStyle = containerOptions.dialogOptions?.style ?? {};
-  const style = { ...providerStyle, ...dialog.style };
+  const style = dialog.style ?? {};
   const viewportWidth = Math.max(1, dimensions.width - 2);
   const viewportHeight = Math.max(1, dimensions.height - 2);
   const width = typeof style.width === "number"
     ? Math.max(1, Math.min(style.width, viewportWidth))
-    : dialogWidth(effectiveSize, dimensions.width, containerOptions.sizePresets);
+    : dialogWidth(dialog.size ?? "medium", dimensions.width);
   const maxWidth = typeof style.maxWidth === "number"
     ? Math.max(1, Math.min(style.maxWidth, viewportWidth))
     : viewportWidth;
   const maxHeight = typeof style.maxHeight === "number"
     ? Math.max(1, Math.min(style.maxHeight, viewportHeight))
     : viewportHeight;
-  const closeOnEscape = dialog.closeOnEscape ?? containerOptions.closeOnEscape ?? true;
-  const closeOnClickOutside = dialog.closeOnClickOutside
-    ?? containerOptions.closeOnClickOutside
-    ?? false;
+  const closeOnEscape = dialog.closeOnEscape ?? true;
+  const closeOnClickOutside = dialog.closeOnClickOutside ?? false;
   const zIndex = 9_998 + index * 2;
 
   useKeyboard((event) => {
@@ -144,10 +111,7 @@ function DialogLayer({
         width={dimensions.width}
         height={dimensions.height}
         zIndex={zIndex}
-        backgroundColor={backdrop(
-          containerOptions.backdropColor ?? colors.bg,
-          containerOptions.backdropOpacity ?? 0.8,
-        )}
+        backgroundColor={backdrop()}
       />
       <box
         position="absolute"
@@ -189,33 +153,34 @@ function DialogLayer({
   );
 }
 
-export function OpenTuiDialogHostProvider({
-  children,
-  ...containerOptions
-}: OpenTuiDialogHostProviderProps) {
+export function OpenTuiDialogHostProvider({ children }: { children: ReactNode }) {
   const renderer = useRenderer();
   const [dimensions, setDimensions] = useState(() => ({
     width: renderer.width,
     height: renderer.height,
   }));
-  const [dialogs, setDialogs] = useState<DialogRecord[]>([]);
-  const dialogsRef = useRef<DialogRecord[]>([]);
+  // Focus is saved once when the stack opens and restored when it empties.
   const savedFocusRef = useRef<Renderable | null>(null);
-  const mountedRef = useRef(true);
-
-  const publish = useCallback((next: DialogRecord[]) => {
-    dialogsRef.current = next;
-    if (mountedRef.current) flushSync(() => setDialogs(next));
-  }, []);
-
-  const close = useCallback((id: string, value?: unknown) => {
-    const current = dialogsRef.current;
-    const target = current.find((dialog) => dialog.id === id);
-    if (!target) return;
-    const next = current.filter((dialog) => dialog.id !== id);
-    publish(next);
-    target.settle(value);
-    if (next.length === 0) {
+  const { dialogs, close, api } = useDialogStack<DialogRecord>({
+    idPrefix: "gloom-dialog",
+    commit: (update) => flushSync(update),
+    createEntry: (id, kind, options, stackWasEmpty) => {
+      if (stackWasEmpty) {
+        savedFocusRef.current = renderer.currentFocusedRenderable;
+        savedFocusRef.current?.blur();
+      }
+      return {
+        id,
+        kind,
+        content: options.content,
+        size: options.size as DialogSize | undefined,
+        style: options.style as DialogStyle | undefined,
+        closeOnEscape: options.closeOnEscape as boolean | undefined,
+        closeOnClickOutside: options.closeOnClickOutside as boolean | undefined,
+      };
+    },
+    onClosed: (_dialog, remaining) => {
+      if (remaining.length > 0) return;
       const savedFocus = savedFocusRef.current;
       savedFocusRef.current = null;
       queueMicrotask(() => {
@@ -225,40 +190,8 @@ export function OpenTuiDialogHostProvider({
           // The previously focused renderable may have unmounted with the dialog.
         }
       });
-    }
-  }, [publish]);
-
-  const open = useCallback(<T,>(kind: DialogRecord["kind"], options: Record<string, unknown>) => (
-    new Promise<T | undefined>((resolve) => {
-      if (dialogsRef.current.length === 0) {
-        savedFocusRef.current = renderer.currentFocusedRenderable;
-        savedFocusRef.current?.blur();
-      }
-      let settled = false;
-      const record: DialogRecord = {
-        id: `gloom-dialog-${nextDialogId++}`,
-        kind,
-        content: options.content,
-        size: options.size as DialogSize | undefined,
-        style: options.style as DialogStyle | undefined,
-        closeOnEscape: options.closeOnEscape as boolean | undefined,
-        closeOnClickOutside: options.closeOnClickOutside as boolean | undefined,
-        settle(value) {
-          if (settled) return;
-          settled = true;
-          resolve(value as T | undefined);
-        },
-      };
-      publish([...dialogsRef.current, record]);
-    })
-  ), [publish, renderer]);
-
-  const api = useMemo<DialogApi>(() => ({
-    alert: async (options) => {
-      await open<void>("alert", options);
     },
-    prompt: <T,>(options: Record<string, unknown>) => open<T>("prompt", options),
-  }), [open]);
+  });
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -270,16 +203,6 @@ export function OpenTuiDialogHostProvider({
     };
   }, [renderer]);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      for (const dialog of dialogsRef.current) dialog.settle(undefined);
-      dialogsRef.current = [];
-      savedFocusRef.current = null;
-    };
-  }, []);
-
   return (
     <DialogHostProvider dialog={api} isOpen={dialogs.length > 0}>
       <box position="relative" width={dimensions.width} height={dimensions.height}>
@@ -289,7 +212,6 @@ export function OpenTuiDialogHostProvider({
             key={dialog.id}
             api={api}
             close={close}
-            containerOptions={containerOptions}
             dialog={dialog}
             dimensions={dimensions}
             index={index}

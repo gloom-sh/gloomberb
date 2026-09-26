@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DialogHostProvider, type DialogApi } from "../../../ui/dialog";
+import { useEffect, useRef, type ReactNode } from "react";
+import { DialogHostProvider } from "../../../ui/dialog";
+import { useDialogStack } from "../../../ui/dialog-stack";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { isEditableTarget, isInsideDialogSurface } from "./host/focus-scope";
@@ -10,10 +11,7 @@ interface DialogState {
   content: ReactNode | ((context: { dialogId: string; dismiss(): void; resolve(value: unknown): void }) => ReactNode);
   closeOnClickOutside: boolean;
   returnFocus: HTMLElement | null;
-  resolve(value: unknown): void;
 }
-
-let nextDialogId = 1;
 
 /**
  * Dialogs stack, as they do in the terminal: a dialog opened from another one
@@ -22,28 +20,12 @@ let nextDialogId = 1;
  */
 export function WebDialogHostProvider({ children }: { children: ReactNode }) {
   const colors = useThemeColors();
-  const [dialogs, setDialogs] = useState<DialogState[]>([]);
-  const dialogsRef = useRef<DialogState[]>([]);
   const dialogElementsRef = useRef(new Map<string, HTMLDivElement>());
   const dialogBorder = blendHex(colors.border, colors.borderFocused, 0.18);
   const dialogBg = blendHex(colors.panel, colors.bg, 0.12);
-
-  const close = useCallback((id: string, value?: unknown) => {
-    const current = dialogsRef.current.find((dialog) => dialog.id === id);
-    if (!current) return;
-    const next = dialogsRef.current.filter((dialog) => dialog.id !== id);
-    dialogsRef.current = next;
-    setDialogs(next);
-    current.resolve(value);
-    queueMicrotask(() => {
-      if (current.returnFocus?.isConnected) {
-        current.returnFocus.focus({ preventScroll: true });
-      }
-    });
-  }, []);
-
-  const open = useCallback(function openDialog<T>(options: Record<string, unknown>): Promise<T> {
-    return new Promise<T>((resolve) => {
+  const { dialogs, close, api } = useDialogStack<DialogState>({
+    idPrefix: "web-dialog",
+    createEntry: (id, _kind, options) => {
       const activeElement = document.activeElement;
       // Focus goes back to a field or to the dialog underneath. A button a
       // pointer pressed in a pane would take the next Enter for itself.
@@ -51,17 +33,21 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
         && (isEditableTarget(activeElement) || isInsideDialogSurface(activeElement))
         ? activeElement
         : null;
-      const next: DialogState = {
-        id: `web-dialog-${nextDialogId++}`,
+      return {
+        id,
         content: options.content as DialogState["content"],
         closeOnClickOutside: options.closeOnClickOutside === true,
         returnFocus,
-        resolve: (value) => resolve(value as T),
       };
-      dialogsRef.current = [...dialogsRef.current, next];
-      setDialogs(dialogsRef.current);
-    });
-  }, []);
+    },
+    onClosed: (dialog) => {
+      queueMicrotask(() => {
+        if (dialog.returnFocus?.isConnected) {
+          dialog.returnFocus.focus({ preventScroll: true });
+        }
+      });
+    },
+  });
 
   const topmost = dialogs[dialogs.length - 1] ?? null;
 
@@ -92,17 +78,6 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", dismissOnEscape, true);
     return () => window.removeEventListener("keydown", dismissOnEscape, true);
   }, [close, topmost?.id]);
-
-  // Settle anything still open if the host goes away.
-  useEffect(() => () => {
-    for (const dialog of dialogsRef.current) dialog.resolve(undefined);
-    dialogsRef.current = [];
-  }, []);
-
-  const api = useMemo<DialogApi>(() => ({
-    alert: open,
-    prompt: open,
-  }), [open]);
 
   return (
     <DialogHostProvider dialog={api} isOpen={dialogs.length > 0}>

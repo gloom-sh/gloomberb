@@ -17,7 +17,6 @@ import { openTuiUiHost } from "./ui-host";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { openTuiToastHost } from "./toast-host";
 import { ToastHostProvider } from "../../ui/toast";
-import { colors } from "../../theme/colors";
 import { measurePerfAsync } from "../../utils/perf-marks";
 import type { CliLaunchRequest } from "../../types/plugin";
 import type { RemoteControlAdapter } from "../../remote/app-host";
@@ -98,12 +97,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       <UiHostProvider ui={openTuiUiHost} renderer={host.rendererHost} nativeRenderer={host.nativeRenderer}>
         <OpenTuiInputHostProvider>
           <ToastHostProvider host={openTuiToastHost}>
-            <OpenTuiDialogHostProvider
-              size="medium"
-              dialogOptions={{ style: { backgroundColor: colors.bg, borderColor: colors.borderFocused, borderStyle: "single", paddingX: 2, paddingY: 1 } }}
-              backdropColor={colors.bg}
-              backdropOpacity={0.8}
-            >
+            <OpenTuiDialogHostProvider>
               <App
                 config={config}
                 servicesFactory={createAppServices}

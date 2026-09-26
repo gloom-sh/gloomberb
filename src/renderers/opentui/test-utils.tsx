@@ -1,7 +1,6 @@
 import { createRoot as openTuiCreateRoot, useRenderer } from "@opentui/react";
 import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
 import { act, useMemo, type ReactNode } from "react";
-import { colors } from "../../theme/colors";
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
 import { ToastHostProvider } from "../../ui/toast";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
@@ -61,15 +60,7 @@ export function takeSavedTextFile(): { name: string; text: string } | null {
 
 export function TestDialogProvider({ children }: { children: ReactNode }) {
   return (
-    <OpenTuiDialogHostProvider
-      dialogOptions={{
-        style: {
-          backgroundColor: colors.bg,
-          borderColor: colors.borderFocused,
-          borderStyle: "single",
-        },
-      }}
-    >
+    <OpenTuiDialogHostProvider>
       {children}
     </OpenTuiDialogHostProvider>
   );
@@ -107,15 +98,7 @@ function OpenTuiTestProviders({ children }: { children: ReactNode }) {
     <UiHostProvider ui={openTuiUiHost} renderer={rendererHost} nativeRenderer={nativeRenderer}>
       <OpenTuiInputHostProvider>
         <ToastHostProvider host={openTuiToastHost}>
-          <OpenTuiDialogHostProvider
-            dialogOptions={{
-              style: {
-                backgroundColor: colors.bg,
-                borderColor: colors.borderFocused,
-                borderStyle: "single",
-              },
-            }}
-          >
+          <OpenTuiDialogHostProvider>
             {children}
           </OpenTuiDialogHostProvider>
         </ToastHostProvider>
