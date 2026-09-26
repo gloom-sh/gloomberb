@@ -12,8 +12,8 @@ import {
   macroPlugin,
   marketOverviewPlugin,
   portfolioPlugin,
+  tickerResearchPlugin,
 } from "./builtin/composite-plugins";
-import { tickerResearchPlugin } from "./builtin/ticker-research-plugin";
 
 export const uiBuiltinPlugins: GloomPlugin[] = [
   gloomberbCloudPlugin,

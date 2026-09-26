@@ -1,7 +1,10 @@
 import type { GloomPlugin } from "../types/plugin";
-import { tickerResearchBackendPlugin } from "./builtin/ticker-research-backend-plugin";
+import { tickerResearchPluginMeta } from "./builtin/builtin-plugin-meta";
+import { composeBuiltinPlugin } from "./builtin/plugin-module";
 import { getLoadablePlugins } from "./catalog";
 import { loadExternalPlugins, type LoadedExternalPlugin } from "./loader";
+
+const tickerResearchBackendPlugin = composeBuiltinPlugin({ ...tickerResearchPluginMeta, modules: [] });
 
 export function getDesktopBackendPlugins(
   externalPlugins: LoadedExternalPlugin[] = [],

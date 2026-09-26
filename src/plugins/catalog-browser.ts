@@ -4,10 +4,6 @@ import { cryptoBoardModule } from "./builtin/crypto-board";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { timeSalesModule } from "./builtin/time-sales";
 import { estimateRevisionsModule } from "./builtin/estimate-revisions";
-import {
-  attachFredSeriesPersistence,
-  resetFredSeriesPersistence,
-} from "../data/fred-series";
 import type { GloomPlugin } from "../types/plugin";
 import type { LoadedExternalPlugin } from "./loader";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
@@ -28,10 +24,7 @@ import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditConditionsModule } from "./builtin/credit-conditions";
 import { marketValuationModule } from "./builtin/market-valuation";
-import {
-  attachValuationPersistence,
-  resetValuationPersistence,
-} from "./builtin/market-valuation/cache";
+import { macroSharedResourcesModule } from "./builtin/macro-resources";
 import { economicCalendarModule } from "./builtin/econ";
 import { econStatisticsModule } from "./builtin/econ-statistics";
 import { futuresModule } from "./builtin/futures";
@@ -53,7 +46,7 @@ import { volSurfaceModule } from "./builtin/vol-surface";
 import { realizedVolModule } from "./builtin/realized-vol";
 import { ivHistoryModule } from "./builtin/iv-history";
 import { backtestModule } from "./builtin/backtest";
-import { composeBuiltinPlugin, type PluginModule } from "./builtin/plugin-module";
+import { composeBuiltinPlugin } from "./builtin/plugin-module";
 import { portfolioListModule } from "./builtin/portfolio-list";
 import { researchModule } from "./builtin/research";
 import { scannerModule } from "./builtin/scanner";
@@ -68,30 +61,27 @@ import { yieldCurveModule } from "./builtin/yield-curve";
 import { centralBankRatesModule } from "./builtin/central-bank-rates";
 import { moneyMarketsModule } from "./builtin/money-markets";
 import { ratePathModule } from "./builtin/rate-path";
+import {
+  applicationPluginMeta,
+  macroPluginMeta,
+  marketOverviewPluginMeta,
+  newsPluginMeta,
+  portfolioPluginMeta,
+  tickerResearchPluginMeta,
+} from "./builtin/builtin-plugin-meta";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
-  id: "application",
-  name: "Application",
-  version: "1.0.0",
-  description: "Core layout, help, and release information.",
+  ...applicationPluginMeta,
   modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule],
 });
 
 const browserPortfolioPlugin = composeBuiltinPlugin({
-  id: "portfolio",
-  name: "Portfolio",
-  version: "1.0.0",
-  description: "Portfolio and watchlist management, analytics, and position sizing.",
-  toggleable: true,
+  ...portfolioPluginMeta,
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
 const browserTickerResearchPlugin = composeBuiltinPlugin({
-  id: "ticker-research",
-  name: "Ticker Research",
-  version: "1.0.0",
-  description: "Company overview, charts, financials, options, and research.",
-  toggleable: true,
+  ...tickerResearchPluginMeta,
   modules: [
     tickerDetailModule,
     chartComposerModule,
@@ -122,20 +112,13 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
 });
 
 const browserNewsPlugin = composeBuiltinPlugin({
-  id: "news",
-  name: "News",
-  version: "1.0.0",
-  description: "Market news wire and company news for each ticker.",
-  toggleable: true,
+  ...newsPluginMeta,
   modules: [tickerNewsModule, browserNewsWireModule],
 });
 
 const browserMarketOverviewPlugin = composeBuiltinPlugin({
-  id: "market-overview",
-  name: "Market Overview",
-  version: "1.0.0",
+  ...marketOverviewPluginMeta,
   description: "Global indices, scanners, sectors, FX, futures, and correlations.",
-  toggleable: true,
   modules: [
     correlationModule,
     relativeRotationModule,
@@ -152,25 +135,11 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
   ],
 });
 
-const browserFredResourcesModule: PluginModule = {
-  setup(ctx) {
-    attachFredSeriesPersistence(ctx.persistence);
-    attachValuationPersistence(ctx.persistence);
-  },
-  dispose() {
-    resetFredSeriesPersistence();
-    resetValuationPersistence();
-  },
-};
-
 const browserMacroPlugin = composeBuiltinPlugin({
-  id: "macro",
-  name: "Macro",
-  version: "1.0.0",
+  ...macroPluginMeta,
   description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, and Treasury auctions.",
-  toggleable: true,
   modules: [
-    browserFredResourcesModule,
+    macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
     yieldCurveModule,

@@ -1,5 +1,6 @@
 import { Box } from "../../../ui";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
+import { newsPluginMeta } from "../builtin-plugin-meta";
 import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
@@ -171,10 +172,6 @@ export const tickerNewsModule: PluginModule = {
 };
 
 export const newsPlugin = composeBuiltinPlugin({
-  id: "news",
-  name: "News",
-  version: "1.0.0",
-  description: "View latest news for each ticker",
-  toggleable: true,
+  ...newsPluginMeta,
   modules: [tickerNewsModule, newsWireModule],
 });

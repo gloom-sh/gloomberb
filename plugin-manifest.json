@@ -176,7 +176,7 @@
     {
       "id": "news",
       "name": "News",
-      "description": "View latest news for each ticker",
+      "description": "Market news wire and company news for each ticker.",
       "categories": [
         "news"
       ],

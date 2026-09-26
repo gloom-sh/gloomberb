@@ -1,8 +1,4 @@
 import { cryptoBoardModule } from "./crypto-board";
-import {
-  attachFredSeriesPersistence,
-  resetFredSeriesPersistence,
-} from "../../data/fred-series";
 import { portfolioAnalyticsModule } from "./analytics";
 import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
@@ -27,7 +23,7 @@ import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
 import { marketMoversModule } from "./market-movers";
 import { volatilityModule } from "./volatility";
-import { composeBuiltinPlugin, type PluginModule } from "./plugin-module";
+import { composeBuiltinPlugin } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
 import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
@@ -39,37 +35,81 @@ import { yieldCurveModule } from "./yield-curve";
 import { centralBankRatesModule } from "./central-bank-rates";
 import { moneyMarketsModule } from "./money-markets";
 import { ratePathModule } from "./rate-path";
+import { debtMaturitiesModule } from "./debt-maturities";
+import { revenueBreakdownModule } from "./revenue-breakdown";
+import { shortVolumeModule } from "./short-volume";
+import { timeSalesModule } from "./time-sales";
+import { estimateRevisionsModule } from "./estimate-revisions";
+import { chartComposerModule } from "./chart-composer";
+import { congressResearchModule } from "./congress-trades";
+import { dividendYieldModule } from "./dividend-yield";
+import { executivesModule } from "./executives";
+import { filingEventsModule } from "./filing-events";
+import { holdersModule } from "./holders";
+import { insiderModule } from "./insider";
+import { jobsModule } from "./jobs";
+import { optionsModule } from "./options";
+import { optionsScenarioModule } from "./options-scenario";
+import { optionsCalculatorModule } from "./options-calculator";
+import { volSurfaceModule } from "./vol-surface";
+import { realizedVolModule } from "./realized-vol";
+import { ivHistoryModule } from "./iv-history";
+import { backtestModule } from "./backtest";
+import { researchModule } from "./research";
+import { riskFactorsModule } from "./risk-factors";
+import { secModule } from "./sec";
+import { shortInterestModule } from "./short-interest";
+import { thirteenFModule } from "./thirteenf";
+import { tickerDetailModule } from "./ticker-detail";
+import { macroSharedResourcesModule } from "./macro-resources";
 import {
-  attachValuationPersistence,
-  resetValuationPersistence,
-} from "./market-valuation/cache";
-
-const macroSharedResourcesModule = {
-  setup(ctx) {
-    attachFredSeriesPersistence(ctx.persistence);
-    attachValuationPersistence(ctx.persistence);
-  },
-  dispose() {
-    resetFredSeriesPersistence();
-    resetValuationPersistence();
-  },
-} satisfies PluginModule;
+  applicationPluginMeta,
+  macroPluginMeta,
+  marketOverviewPluginMeta,
+  portfolioPluginMeta,
+  tickerResearchPluginMeta,
+} from "./builtin-plugin-meta";
 
 export const applicationPlugin = composeBuiltinPlugin({
-  id: "application",
-  name: "Application",
-  version: "1.0.0",
-  description: "Core layout, help, and release information.",
+  ...applicationPluginMeta,
   modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule],
 });
 
 export const portfolioPlugin = composeBuiltinPlugin({
-  id: "portfolio",
-  name: "Portfolio",
-  version: "1.0.0",
-  description: "Portfolio and watchlist management, analytics, and position sizing.",
-  toggleable: true,
+  ...portfolioPluginMeta,
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
+});
+
+export const tickerResearchPlugin = composeBuiltinPlugin({
+  ...tickerResearchPluginMeta,
+  modules: [
+    tickerDetailModule,
+    chartComposerModule,
+    congressResearchModule,
+    optionsModule,
+    optionsCalculatorModule,
+    optionsScenarioModule,
+    volSurfaceModule,
+    realizedVolModule,
+    ivHistoryModule,
+    backtestModule,
+    estimateRevisionsModule,
+    researchModule,
+    shortVolumeModule,
+    debtMaturitiesModule,
+    revenueBreakdownModule,
+    dividendYieldModule,
+    holdersModule,
+    shortInterestModule,
+    timeSalesModule,
+    thirteenFModule,
+    secModule,
+    insiderModule,
+    jobsModule,
+    executivesModule,
+    riskFactorsModule,
+    filingEventsModule,
+  ],
 });
 
 export const brokerPlugin = composeBuiltinPlugin({
@@ -82,11 +122,8 @@ export const brokerPlugin = composeBuiltinPlugin({
 });
 
 export const marketOverviewPlugin = composeBuiltinPlugin({
-  id: "market-overview",
-  name: "Market Overview",
-  version: "1.0.0",
+  ...marketOverviewPluginMeta,
   description: "Global indices, movers, scanners, sectors, FX, futures, and correlations.",
-  toggleable: true,
   modules: [
     correlationModule,
     relativeRotationModule,
@@ -105,11 +142,8 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
 });
 
 export const macroPlugin = composeBuiltinPlugin({
-  id: "macro",
-  name: "Macro",
-  version: "1.0.0",
+  ...macroPluginMeta,
   description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, and earnings.",
-  toggleable: true,
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
