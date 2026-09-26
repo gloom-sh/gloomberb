@@ -132,11 +132,19 @@ export const myPlugin: GloomPlugin = {
 export default myPlugin;
 ```
 
-### Built-in plugin composition
+External plugins export one `GloomPlugin`. The `PluginModule` objects some built-ins compose internally are not a second plugin API; see [Built-in plugins](CONTRIBUTING.md#built-in-plugins).
 
-Only independently owned, registered product areas implement `GloomPlugin`. Larger built-ins may compose internal `PluginModule` objects for panes, commands, capabilities, and lifecycle code, but those modules do not have their own identity, toggle, version, or persistence namespace. Small plugins such as Substack can declare their contributions directly without an extra module wrapper.
+An external plugin is a directory in `~/.gloomberb/plugins/`:
 
-`PluginModule` is an internal organization tool for first-party plugins, not a second external plugin API. External plugins should continue exporting one `GloomPlugin`.
+```
+~/.gloomberb/plugins/my-plugin/
+  index.ts          # export default myPlugin
+  index.browser.ts  # optional, see below
+  package.json      # optional, for dependencies
+  icon.svg          # optional, 64x64, shown in the plugin directory
+```
+
+### Plugin ids
 
 Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs remain reserved so saved configuration can be migrated safely to their current owning plugin.
 
@@ -154,16 +162,6 @@ export default {
 ```
 
 `stateId` moves nothing: it is the namespace the plugin's `configState`, `resume` state, persistence, and `usePluginPaneState` keys are read and written under, and it defaults to `id`. Everything else (the toggle, seeding, the marketplace) keys off `id`.
-
-For external plugins, create a directory in `~/.gloomberb/plugins/`:
-
-```
-~/.gloomberb/plugins/my-plugin/
-  index.ts          # export default myPlugin
-  index.browser.ts  # optional, see below
-  package.json      # optional, for dependencies
-  icon.svg          # optional, 64x64, shown in the plugin directory
-```
 
 ### Plugins with a native half
 
@@ -365,11 +363,11 @@ All shapes may include `errors`, `metadata`, and `unavailableSymbols`. Set `unav
 
 Chart templates (`G`, `GP`, `GIP`, `CMP`, `GF`, `GE`) use the same chart resolution engine as the interactive pane. Screenshots render a scoped immutable copy of that resolved model, including transformations, studies, errors, and viewport data. Exporting a chart does not install another plugin capability handler or reload FRED in the webview.
 
-All declared headless `fn` results use `kind: rows | bundle | series | snapshot` and `source: headless`. Financial statements, quotes, historical prices, peer valuation, correlations, and relationships now follow that contract too. Consumers of the former command-specific JSON should read domain details from `rows`, `series`, `stats`, and `metadata`, and use `capabilityId` to identify the command. Chart series retain full OHLCV and observation timestamps in `points`; they are no longer reduced to date/value pairs. Transformed points also retain `rawValue` and the original `rawUnit`, with raw endpoint/return summaries in `metadata.summaries`. Financial series retain per-observation growth. Screenshot evidence keeps its own domain-specific shapes.
+All declared headless `fn` results use `kind: rows | bundle | series | snapshot` and `source: headless`. Read domain details from `rows`, `series`, `stats`, and `metadata`, and use `capabilityId` to identify the command. Chart series retain full OHLCV and observation timestamps in `points`. Transformed points also retain `rawValue` and the original `rawUnit`, with raw endpoint/return summaries in `metadata.summaries`. Financial series retain per-observation growth. Screenshot evidence keeps its own domain-specific shapes.
 
-### Migration checklist
+### Adding a headless definition to a pane
 
-For a pane that currently fetches inside its component:
+For a pane that fetches inside its component:
 
 1. Move API calls and cache access into `client.ts`. Accept injected clients or providers where practical.
 2. Move filtering, grouping, derived values, and row construction into pure functions in `view.ts` or `model.ts`.
@@ -726,6 +724,35 @@ await ctx.configState.delete("apiKey");
 ctx.configState.keys(); // ["apiKey"]
 ```
 
+### Team state (shared)
+
+`ctx.teamState` is a key-value store shared with a Gloom Cloud team, scoped to
+your plugin. It needs a signed-in user who belongs to a team. Calls go to the
+active team (the one picked with `FOCUS`, or the user's only team) unless you
+pass a `teamId`. With no team available, `get`, `list`, `set` and `delete`
+reject and `subscribe` does nothing, so check `activeTeamId()` first and fall
+back to local state when it is `null`.
+
+```typescript
+if (!ctx.teamState.activeTeamId()) return; // signed out, or no team is active
+
+const entry = await ctx.teamState.get<{ tickers: string[] }>("shortlist");
+// entry: { value, revision, updatedBy, updatedAt } or null
+
+// Pass the revision you read; the write rejects if a teammate wrote first.
+await ctx.teamState.set("shortlist", { tickers: ["AAPL"] }, { expectRevision: entry?.revision });
+
+const all = await ctx.teamState.list(); // every key this plugin stored for the team
+const unsubscribe = ctx.teamState.subscribe("shortlist", (next) => {
+  // Called with the new entry when anyone on the team writes it, or null when it is deleted.
+});
+await ctx.teamState.delete("shortlist");
+```
+
+Values are JSON, and every member of the team can read them, so never store
+credentials there. A write without `expectRevision` overwrites whatever is
+there.
+
 ### Navigation
 
 ```typescript
@@ -756,6 +783,12 @@ await ctx.updateBrokerInstance(instance.id, { token: "new-token" });
 await ctx.syncBrokerInstance(instance.id);  // Trigger position import
 await ctx.removeBrokerInstance(instance.id);
 ```
+
+#### Bond position price conventions
+
+`BrokerPosition.priceBasis` and the persisted `TickerPosition.priceBasis` accept `per-unit` or `percent-of-par`. The latter is an explicit source contract: `shares` contains nominal face in `currency`; `avgCost` and `markPrice` contain percentage points per 100 face. The host applies exactly 0.01 to nominal-price products and preserves `multiplier` unchanged. Do not pre-scale the prices as well. Supply monetary `marketValue` and `unrealizedPnl` independently when available; omit missing values rather than inventing zero. No accrued-interest or yield inference is part of this contract.
+
+`Quote.priceBasis` belongs to that quote response, including its price-valued session fields. A stored position or a different provider's metadata cannot supply a missing quote basis. Source responses must clear a previous declaration if the new response does not establish it. Percent-of-par quotes require the same nominal currency as the holding. Untagged BOND position prices are unknown; other existing asset contracts retain their per-unit behavior. Persisting and resyncing the source declaration requires no database schema or release-version change.
 
 ### Pane settings
 
@@ -1362,11 +1395,11 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - `onRootKeyDown` and `onDetailKeyDown` return `true` for a key they handled; the table marks it handled.
 - **Dialogs**: `useDialogKeyboard` for keys, Enter submits, Esc closes. Dialogs stack on both hosts, so a field editor opened from a dialog returns to it. On the desktop, Tab and Shift+Tab walk a dialog's controls unless the dialog handles Tab itself (a settings list or form ring moves its own cursor), and a focused control shows a ring.
 - `useActionShortcut("pane-menu")` from `gloomberb/ui` returns the key the host advertises for an action (or `plugin:<id>`), for a tooltip or a `Button`/`IconButton` `shortcut`. Desktop `IconButton` tooltips show the shortcut.
-- Reserved keys: `j`/`k`/arrows move, `Enter` opens, `Esc`/`Backspace` back, `Tab`/`Shift+Tab` next pane or field, `h`/`l` tabs, `r` refresh, `Shift+R` refresh all, `!` warnings, `o` open source, `/` search, `.` pane menu, `?` help, `` ` `` ticker search, `q` quit (terminal), `u` install update, `$` Pro upgrade, `Ctrl+P` command bar. `q`, `u`, `r`, `Shift+R`, `?` and `` ` `` reach the app before any pane. Pane keys are other single unmodified letters.
+- Pane keys are single unmodified letters that the app has not reserved. The reserved keys are listed in [pane conventions](docs/pane-conventions.md#8-sidebars-loading-input).
 
 ## UI guidelines for plugins
 
-The full set of pane conventions (anatomy, where actions and status go, table + detail stacks, load-more lists, tabs, forms, density, and a checklist) is in [`.agents/skills/pane-conventions/SKILL.md`](.agents/skills/pane-conventions/SKILL.md). The short version:
+The full set of pane conventions (anatomy, where actions and status go, table + detail stacks, load-more lists, tabs, forms, density, and a checklist) is in [docs/pane-conventions.md](docs/pane-conventions.md). The short version:
 
 - Basic UI must use the shared components listed above. Extend the kit for a missing reusable pattern.
 - Support both mouse and keyboard for anything interactive. See [Keyboard](#keyboard) for what the kit already does for you.
@@ -1512,7 +1545,7 @@ slots: {
 },
 ```
 
-Other historical `GloomSlots` names have no render sites. Use the explicit registration methods for ticker tabs, columns, commands, events, and capabilities.
+The host renders no other `GloomSlots` name. Use the explicit registration methods for ticker tabs, columns, commands, events, and capabilities.
 
 ## Tips
 
@@ -1520,12 +1553,6 @@ Other historical `GloomSlots` names have no render sites. Use the explicit regis
 - Use `order` on Ticker Research tabs to control position (core tabs use 10, 20, 30)
 - Toggleable plugins can be enabled/disabled by users from settings (`Ctrl+,`)
 - The terminal renderer is backed by [OpenTUI](https://opentui.com/) packages such as `@opentui/core` and `@opentui/react`; plugin UI should stay on `gloomberb/ui` and `gloomberb/components`
-- Use `ctx.persistence` for cached resources, `ctx.resume` for local resume state, and `ctx.configState` for configuration
+- Use `ctx.persistence` for cached resources, `ctx.resume` for local resume state, `ctx.configState` for configuration, and `ctx.teamState` for data shared with a team
 - Use `ctx.on()` to react to app events without polling
 - Use `ctx.notify()` for non-intrusive user feedback and desktop notifications
-
-### Bond position price conventions
-
-`BrokerPosition.priceBasis` and the persisted `TickerPosition.priceBasis` accept `per-unit` or `percent-of-par`. The latter is an explicit source contract: `shares` contains nominal face in `currency`; `avgCost` and `markPrice` contain percentage points per 100 face. The host applies exactly 0.01 to nominal-price products and preserves `multiplier` unchanged. Do not pre-scale the prices as well. Supply monetary `marketValue` and `unrealizedPnl` independently when available; omit missing values rather than inventing zero. No accrued-interest or yield inference is part of this contract.
-
-`Quote.priceBasis` belongs to that quote response, including its price-valued session fields. A stored position or a different provider's metadata cannot supply a missing quote basis. Source responses must clear a previous declaration if the new response does not establish it. Percent-of-par quotes require the same nominal currency as the holding. Untagged BOND position prices are unknown; other existing asset contracts retain their per-unit behavior. Persisting and resyncing the source declaration requires no database schema or release-version change.
