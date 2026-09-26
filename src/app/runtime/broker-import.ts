@@ -133,7 +133,11 @@ export function useBrokerImportRuntime({
   }, [applyBrokerImportResult, pluginRegistry.brokers, pluginRegistry.persistence.resources, stateRef, tickerRepository]);
 
   const autoImportBrokerPositions = useCallback(async (tickerMap: Map<string, TickerRecord>) => {
-    const restoredConfig = restoreBrokerPortfoliosFromTickerPositions(stateRef.current.config, tickerMap.values());
+    const restoredConfig = restoreBrokerPortfoliosFromTickerPositions(
+      stateRef.current.config,
+      tickerMap.values(),
+      pluginRegistry.brokers,
+    );
     if (restoredConfig !== stateRef.current.config) {
       dispatch({ type: "SET_CONFIG", config: restoredConfig });
       await saveConfigImmediately(restoredConfig);

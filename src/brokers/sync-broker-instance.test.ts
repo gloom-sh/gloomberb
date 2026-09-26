@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../types/config";
 import type { BrokerAdapter } from "../types/broker";
 import type { TickerRecord } from "../types/ticker";
@@ -11,7 +14,12 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { DEFAULT_CLI_OPTIONS } from "../cli/options";
 import type { CliResult } from "../cli/result";
 import type { CliCommandContext } from "../types/plugin";
+import { bindPluginRegistryRuntimeAccess } from "../app/runtime/plugin-bindings";
+import { MemoryResourceStore } from "../data/memory-resource-store";
+import type { PluginRegistry } from "../plugins/registry";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../state/app/context";
 import { loadPersistedBrokerAccounts, persistBrokerAccounts } from "./account-cache";
+import { createSignedInBrokerAdapter } from "./signed-in/adapter";
 import {
   restoreBrokerPortfoliosFromTickerPositions,
   syncBrokerInstance,
@@ -595,5 +603,77 @@ describe("syncBrokerInstance", () => {
     expect(restoreBrokerPortfoliosFromTickerPositions(restored, [
       createBrokerTicker("demo-work", "WORK"),
     ])).toBe(restored);
+  });
+});
+
+describe("switching an account to sign-in", () => {
+  test("reuses and re-points the Flex portfolio, drops what Flex imported there, and survives removing Flex", async () => {
+    const flex: BrokerInstanceConfig = {
+      id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", connectionMode: "flex", config: { connectionMode: "flex" }, enabled: true,
+    };
+    const signedIn: BrokerInstanceConfig = {
+      id: "signed-in-ibkr", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, enabled: true,
+    };
+    const portfolioId = "broker:ibkr-flex:U123";
+    const flexTicker = (ticker: string, shares: number): TickerRecord => ({
+      metadata: {
+        ticker, exchange: "NASDAQ", currency: "USD", name: ticker, portfolios: [portfolioId], watchlists: [],
+        positions: [{ portfolio: portfolioId, shares, avgCost: 100, currency: "USD", broker: "ibkr", brokerInstanceId: "ibkr-flex", brokerAccountId: "U123" }],
+        broker_contracts: [], custom: {}, tags: [],
+      },
+    });
+    // Removing a profile saves the config, so it gets a directory of its own.
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-signed-in-reuse-"));
+    const config = {
+      ...createDefaultConfig(dataDir),
+      portfolios: [{ id: portfolioId, name: "U123", currency: "USD", brokerId: "ibkr", brokerInstanceId: "ibkr-flex", brokerAccountId: "U123" }],
+      brokerInstances: [flex, signedIn],
+    };
+    const signedInAdapter = createSignedInBrokerAdapter({
+      request: async <T,>() => ({
+        accounts: [{ accountId: "U123", name: "U123", currency: "USD", source: "cloud" }],
+        positions: [{ ticker: "AAPL", exchange: "NASDAQ", shares: 12, avgCost: 180, currency: "USD", accountId: "U123" }],
+      }) as T,
+      findBroker: () => null,
+    });
+    const brokers = new Map<string, BrokerAdapter>([["ibkr", createDemoBroker()], ["signed-in", signedInAdapter]]);
+    const tickerRepository = createTickerRepository([flexTicker("AAPL", 10), flexTicker("MSFT", 5)]);
+
+    const result = await syncBrokerInstance({ config, instanceId: "signed-in-ibkr", brokers, tickerRepository: tickerRepository as any });
+
+    expect(result.portfolioIds).toEqual([portfolioId]);
+    expect(result.config.portfolios).toEqual([expect.objectContaining({
+      id: portfolioId, brokerId: "ibkr", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "U123",
+    })]);
+    expect(result.tickers.get("AAPL")?.metadata.positions).toEqual([
+      expect.objectContaining({ portfolio: portfolioId, shares: 12, brokerInstanceId: "signed-in-ibkr" }),
+    ]);
+    // Flex reported MSFT; the signed-in account does not, so it no longer sits in the portfolio.
+    expect(result.tickers.get("MSFT")?.metadata).toMatchObject({ positions: [], portfolios: [] });
+
+    const stateRef: { current: AppState } = { current: { ...createInitialState(result.config), tickers: result.tickers } };
+    const pluginRegistry = {
+      brokers,
+      persistence: { resources: new MemoryResourceStore() },
+      events: { emit() {} },
+    } as unknown as PluginRegistry;
+    bindPluginRegistryRuntimeAccess({
+      dataProvider: createTestDataProvider(),
+      dispatch: (action: AppAction) => { stateRef.current = appReducer(stateRef.current, action); },
+      importBrokerPositions: async () => {},
+      marketData: {} as any,
+      pluginRegistry,
+      stateRef,
+      tickerRepository: tickerRepository as any,
+    });
+    try {
+      await pluginRegistry.removeBrokerInstanceFn("ibkr-flex");
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+
+    expect(stateRef.current.config.brokerInstances.map((instance) => instance.id)).toEqual(["signed-in-ibkr"]);
+    expect(stateRef.current.config.portfolios.map((portfolio) => portfolio.id)).toEqual([portfolioId]);
+    expect(stateRef.current.tickers.get("AAPL")?.metadata.positions).toHaveLength(1);
   });
 });

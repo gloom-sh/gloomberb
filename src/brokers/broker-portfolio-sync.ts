@@ -1,6 +1,16 @@
+import type { BrokerAdapter } from "../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { Portfolio, TickerPosition, TickerRecord } from "../types/ticker";
 import { buildBrokerPortfolioId, getBrokerInstance, isBrokerPortfolioId } from "../utils/broker-instances";
+import { isSignedInBrokerProfile } from "./signed-in/profile";
+
+/**
+ * The broker a profile's portfolios belong to. A signed-in IBKR profile answers
+ * "ibkr", so it finds the portfolio an IBKR Flex or Gateway profile made.
+ */
+export function resolvePortfolioBrokerId(instance: BrokerInstanceConfig, adapter?: BrokerAdapter | null): string {
+  return adapter?.portfolioBrokerId?.(instance) ?? instance.brokerType;
+}
 
 function getInstanceMode(instance: BrokerInstanceConfig): string {
   return typeof instance.connectionMode === "string"
@@ -15,17 +25,26 @@ function findBrokerInstanceMode(config: AppConfig, instanceId: string | undefine
   return instance ? getInstanceMode(instance) : "";
 }
 
+/**
+ * Whether `next` takes the portfolio over: a live Gateway beats anything else,
+ * signing in replaces a Flex statement, and a portfolio whose profile is gone
+ * goes to whoever syncs it. Otherwise the portfolio stays where it is, so
+ * removing the old profile later does not take the portfolio with it.
+ */
 function shouldPreferBrokerInstance(config: AppConfig, current: Portfolio, next: BrokerInstanceConfig): boolean {
   if (current.brokerInstanceId === next.id) return false;
+  if (!getBrokerInstance(config.brokerInstances, current.brokerInstanceId)) return true;
   const currentMode = findBrokerInstanceMode(config, current.brokerInstanceId);
   const nextMode = getInstanceMode(next);
-  return nextMode === "gateway" && currentMode !== "gateway";
+  if (nextMode === "gateway" && currentMode !== "gateway") return true;
+  return isSignedInBrokerProfile(next) && currentMode === "flex";
 }
 
 function updateBrokerPortfolioSource(
   config: AppConfig,
   portfolio: Portfolio,
   instance: BrokerInstanceConfig,
+  brokerId: string,
   brokerAccountId?: string,
   syncedAt?: number,
 ): Portfolio {
@@ -42,7 +61,7 @@ function updateBrokerPortfolioSource(
 
   return {
     ...portfolio,
-    brokerId: portfolio.brokerId ?? instance.brokerType,
+    brokerId: portfolio.brokerId ?? brokerId,
     brokerInstanceId: shouldPreferBrokerInstance(config, portfolio, instance)
       ? instance.id
       : portfolio.brokerInstanceId ?? instance.id,
@@ -59,10 +78,11 @@ export function ensureBrokerPortfolio(
   currency: string,
   brokerAccountId?: string,
   syncedAt?: number,
+  brokerId = instance.brokerType,
 ): AppConfig {
   const existing = config.portfolios.find((portfolio) => portfolio.id === portfolioId);
   if (existing) {
-    const updated = updateBrokerPortfolioSource(config, existing, instance, brokerAccountId, syncedAt);
+    const updated = updateBrokerPortfolioSource(config, existing, instance, brokerId, brokerAccountId, syncedAt);
     return updated === existing
       ? config
       : {
@@ -79,7 +99,7 @@ export function ensureBrokerPortfolio(
         id: portfolioId,
         name,
         currency,
-        brokerId: instance.brokerType,
+        brokerId,
         brokerInstanceId: instance.id,
         brokerAccountId,
         lastSyncedAt: syncedAt,
@@ -92,10 +112,11 @@ export function findReusableBrokerPortfolioId(
   config: AppConfig,
   instance: BrokerInstanceConfig,
   accountId: string | undefined,
+  brokerId = instance.brokerType,
 ): string {
   if (!accountId) return buildBrokerPortfolioId(instance.id, accountId);
   const existing = config.portfolios.find((portfolio) =>
-    portfolio.brokerId === instance.brokerType
+    portfolio.brokerId === brokerId
     && portfolio.brokerAccountId === accountId
   );
   return existing?.id ?? buildBrokerPortfolioId(instance.id, accountId);
@@ -118,8 +139,13 @@ export function clearBrokerInstanceTickerData(
   ticker: TickerRecord,
   instanceId: string,
   brokerPortfolioIds: Set<string>,
+  /** Portfolios this profile just took over: whatever another profile imported there goes too. */
+  takenOverPortfolioIds: ReadonlySet<string> = new Set(),
 ): TickerRecord | null {
-  const positions = ticker.metadata.positions.filter((position) => position.brokerInstanceId !== instanceId);
+  const positions = ticker.metadata.positions.filter((position) =>
+    position.brokerInstanceId !== instanceId
+    && !(takenOverPortfolioIds.has(position.portfolio) && position.brokerInstanceId)
+  );
   const remainingPositionPortfolios = new Set(positions.map((position) => position.portfolio));
   const portfolios = ticker.metadata.portfolios.filter((portfolioId) =>
     !brokerPortfolioIds.has(portfolioId) || remainingPositionPortfolios.has(portfolioId)
@@ -156,6 +182,7 @@ function inferBrokerAccountId(position: TickerPosition, portfolioId: string, ins
 export function restoreBrokerPortfoliosFromTickerPositions(
   config: AppConfig,
   tickers: Iterable<TickerRecord>,
+  brokers?: ReadonlyMap<string, BrokerAdapter>,
 ): AppConfig {
   let nextConfig = config;
   const knownPortfolioIds = new Set(config.portfolios.map((portfolio) => portfolio.id));
@@ -176,6 +203,8 @@ export function restoreBrokerPortfoliosFromTickerPositions(
         brokerAccountId || instance.label || instance.brokerType,
         position.currency || config.baseCurrency,
         brokerAccountId,
+        undefined,
+        resolvePortfolioBrokerId(instance, brokers?.get(instance.brokerType)),
       );
       knownPortfolioIds.add(position.portfolio);
     }
