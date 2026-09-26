@@ -6,8 +6,11 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
+  type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type RefObject,
 } from "react";
 import { editableTextContextMenuItems } from "../../../../ui/context-menu";
@@ -213,10 +216,19 @@ function textareaMetrics(
   };
 }
 
-export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(function WebInput(props, ref) {
+/**
+ * Everything the single-line and multi-line fields share: the value, the
+ * caret, focus that follows the `focused` flag both ways, DOM polling while
+ * focused, submit and the context menu. Returns the element's props and the
+ * base imperative handle; the textarea adds its line metrics on top.
+ */
+function useWebEditable<T extends HTMLInputElement | HTMLTextAreaElement>(
+  props: Record<string, unknown>,
+  multiline: boolean,
+) {
   const renderer = useRendererHost();
   const { nativeContextMenu } = useUiCapabilities();
-  const elementRef = useRef<HTMLInputElement | null>(null);
+  const elementRef = useRef<T | null>(null);
   const propsRef = useLatestRef(props);
   const { value, valueRef, setValue } = useEditableValue(props);
   const [cursorOffset, setCursorOffset] = useState(value.length);
@@ -235,19 +247,6 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
     }
   }, [props.focused]);
 
-  useImperativeHandle(ref, () => ({
-    editBuffer: {
-      getText: () => elementRef.current?.value ?? valueRef.current,
-      setText: (nextText: string) => setValue(nextText),
-    },
-    get cursorOffset() {
-      return cursorOffset;
-    },
-    setCursorOffset: applyCursorOffset,
-    focus: () => elementRef.current?.focus(),
-    blur: () => elementRef.current?.blur(),
-  }), [applyCursorOffset, cursorOffset, setValue, valueRef]);
-
   const handleValueChange = useCallback((nextValue: string) => {
     setValue(nextValue);
     setCursorOffset(elementRef.current?.selectionStart ?? nextValue.length);
@@ -262,176 +261,108 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
     active: props.focused === true || domFocused,
   });
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<T>) => {
     if (isImeComposing(event)) return;
     const keyEvent = toKeyEventLike(event.nativeEvent);
     if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
     if (keyEvent.defaultPrevented) return;
-    if ((event.key === "Escape" || event.key === "Esc") && typeof propsRef.current.onEscape === "function") {
+    if (!multiline && (event.key === "Escape" || event.key === "Esc") && typeof propsRef.current.onEscape === "function") {
       event.preventDefault();
       event.stopPropagation();
       (propsRef.current.onEscape as () => void)();
       return;
     }
-    if (event.key === "Enter" && typeof propsRef.current.onSubmit === "function") {
+    // Shift+Enter types a new line in a textarea.
+    if (event.key === "Enter" && !(multiline && event.shiftKey) && typeof propsRef.current.onSubmit === "function") {
       event.preventDefault();
       (propsRef.current.onSubmit as (value: string) => void)(syncElementValue());
     }
   };
 
-  return (
-    <input
-      {...cleanDomProps(props)}
-      ref={elementRef}
-      value={value}
-      autoCorrect="off"
-      autoCapitalize="off"
-      autoComplete={getStringProp(props, "autoComplete") ?? "off"}
-      spellCheck={false}
-      placeholder={getStringProp(props, "placeholder")}
-      onInput={(event) => handleValueChange(event.currentTarget.value)}
-      onChange={(event) => handleValueChange(event.currentTarget.value)}
-      onMouseDown={() => focusOnPress(elementRef.current)}
-      onFocus={() => {
-        setDomFocused(true);
-        callTextHandler(propsRef.current.onFocus, elementRef.current?.value ?? valueRef.current);
-      }}
-      onBlur={() => {
-        setDomFocused(false);
-        callTextHandler(propsRef.current.onBlur, syncElementValue());
-      }}
-      onKeyDown={handleKeyDown}
-      onContextMenu={(event) => {
-        if (!nativeContextMenu || !renderer.showContextMenu) return;
-        elementRef.current?.focus();
-        event.preventDefault();
-        event.stopPropagation();
-        void renderer.showContextMenu(editableTextContextMenuItems());
-      }}
-      onSelect={() => {
-        setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);
-        callTextHandler(propsRef.current.onCursorChange, valueRef.current);
-      }}
-      style={textInputStyle(props, false)}
-    />
-  );
-});
-
-export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown>>(function WebTextarea(props, ref) {
-  const renderer = useRendererHost();
-  const { nativeContextMenu } = useUiCapabilities();
-  const elementRef = useRef<HTMLTextAreaElement | null>(null);
-  const propsRef = useLatestRef(props);
-  const { value, valueRef, setValue } = useEditableValue(props);
-  const [cursorOffset, setCursorOffset] = useState(value.length);
-  const [domFocused, setDomFocused] = useState(false);
-  const applyCursorOffset = (offset: number) => {
-    setCursorOffset(offset);
-    queueMicrotask(() => applyDomCursorOffset(elementRef.current, offset));
-    globalThis.requestAnimationFrame?.(() => applyDomCursorOffset(elementRef.current, offset));
-  };
-
-  useEffect(() => {
-    if (props.focused === true) {
-      elementRef.current?.focus();
-    }
-  }, [props.focused]);
-
-  useImperativeHandle(ref, () => ({
+  const handle: InputRenderable = {
     editBuffer: {
       getText: () => elementRef.current?.value ?? valueRef.current,
       setText: (nextText: string) => setValue(nextText),
     },
-    get cursorOffset() {
-      return cursorOffset;
-    },
+    cursorOffset,
     setCursorOffset: applyCursorOffset,
-    get virtualLineCount() {
-      const metrics = textareaMetrics(
-        valueRef.current,
-        elementRef.current?.selectionStart ?? cursorOffset,
-        textareaColumnCount(props, elementRef.current),
-        props.wrapText === true || props.wrapMode === "word" || props.wrapMode === "char",
-      );
-      return metrics.virtualLineCount;
-    },
-    get visualCursor() {
-      return textareaMetrics(
-        valueRef.current,
-        elementRef.current?.selectionStart ?? cursorOffset,
-        textareaColumnCount(props, elementRef.current),
-        props.wrapText === true || props.wrapMode === "word" || props.wrapMode === "char",
-      ).visualCursor;
-    },
     focus: () => elementRef.current?.focus(),
-    setText: (nextText: string) => setValue(nextText),
-    hasSelection: () => {
-      const element = elementRef.current;
-      return !!element && element.selectionStart !== element.selectionEnd;
-    },
-    syntaxStyle: null,
-    addHighlight: () => {},
-    clearLineHighlights: () => {},
-  }), [applyCursorOffset, cursorOffset, props, setValue, valueRef]);
-
-  const handleValueChange = useCallback((nextValue: string) => {
-    setValue(nextValue);
-    setCursorOffset(elementRef.current?.selectionStart ?? nextValue.length);
-    callTextHandler(propsRef.current.onInput, nextValue);
-    callTextHandler(propsRef.current.onChange, nextValue);
-    callTextHandler(propsRef.current.onCursorChange, nextValue);
-  }, [propsRef, setValue]);
-  const syncElementValue = useSyncedEditableElement({
-    elementRef,
-    valueRef,
-    handleValueChange,
-    active: props.focused === true || domFocused,
-  });
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isImeComposing(event)) return;
-    const keyEvent = toKeyEventLike(event.nativeEvent);
-    if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
-    if (keyEvent.defaultPrevented) return;
-    if (event.key === "Enter" && !event.shiftKey && typeof propsRef.current.onSubmit === "function") {
-      event.preventDefault();
-      (propsRef.current.onSubmit as (value: string) => void)(syncElementValue());
-    }
+    blur: () => elementRef.current?.blur(),
   };
 
-  return (
-    <textarea
-      {...cleanDomProps(props)}
-      ref={elementRef}
-      value={value}
-      autoCorrect="off"
-      autoCapitalize="off"
-      autoComplete="off"
-      spellCheck={false}
-      placeholder={getStringProp(props, "placeholder")}
-      onInput={(event) => handleValueChange(event.currentTarget.value)}
-      onChange={(event) => handleValueChange(event.currentTarget.value)}
-      onFocus={() => {
-        setDomFocused(true);
-        callTextHandler(propsRef.current.onFocus, elementRef.current?.value ?? valueRef.current);
-      }}
-      onBlur={() => {
-        setDomFocused(false);
-        callTextHandler(propsRef.current.onBlur, syncElementValue());
-      }}
-      onKeyDown={handleKeyDown}
-      onContextMenu={(event) => {
-        if (!nativeContextMenu || !renderer.showContextMenu) return;
-        elementRef.current?.focus();
-        event.preventDefault();
-        event.stopPropagation();
-        void renderer.showContextMenu(editableTextContextMenuItems());
-      }}
-      onSelect={() => {
-        setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);
-        callTextHandler(propsRef.current.onCursorChange, valueRef.current);
-      }}
-      style={textInputStyle(props, true)}
-    />
-  );
+  const elementProps = {
+    ...cleanDomProps(props),
+    ref: elementRef,
+    value,
+    autoCorrect: "off",
+    autoCapitalize: "off",
+    autoComplete: getStringProp(props, "autoComplete") ?? "off",
+    spellCheck: false,
+    placeholder: getStringProp(props, "placeholder"),
+    onInput: (event: FormEvent<T>) => handleValueChange(event.currentTarget.value),
+    onChange: (event: ChangeEvent<T>) => handleValueChange(event.currentTarget.value),
+    onMouseDown: () => focusOnPress(elementRef.current),
+    onFocus: () => {
+      setDomFocused(true);
+      callTextHandler(propsRef.current.onFocus, elementRef.current?.value ?? valueRef.current);
+    },
+    onBlur: () => {
+      setDomFocused(false);
+      callTextHandler(propsRef.current.onBlur, syncElementValue());
+    },
+    onKeyDown: handleKeyDown,
+    onContextMenu: (event: MouseEvent<T>) => {
+      if (!nativeContextMenu || !renderer.showContextMenu) return;
+      elementRef.current?.focus();
+      event.preventDefault();
+      event.stopPropagation();
+      void renderer.showContextMenu(editableTextContextMenuItems());
+    },
+    onSelect: () => {
+      setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);
+      callTextHandler(propsRef.current.onCursorChange, valueRef.current);
+    },
+    style: textInputStyle(props, multiline),
+  };
+
+  return { elementRef, valueRef, setValue, cursorOffset, handle, elementProps };
+}
+
+export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(function WebInput(props, ref) {
+  const field = useWebEditable<HTMLInputElement>(props, false);
+  useImperativeHandle(ref, () => field.handle);
+  return <input {...field.elementProps} />;
+});
+
+export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown>>(function WebTextarea(props, ref) {
+  const field = useWebEditable<HTMLTextAreaElement>(props, true);
+  const { elementRef, valueRef, cursorOffset } = field;
+
+  useImperativeHandle(ref, () => {
+    const metrics = () => textareaMetrics(
+      valueRef.current,
+      elementRef.current?.selectionStart ?? cursorOffset,
+      textareaColumnCount(props, elementRef.current),
+      props.wrapText === true || props.wrapMode === "word" || props.wrapMode === "char",
+    );
+    return {
+      ...field.handle,
+      get virtualLineCount() {
+        return metrics().virtualLineCount;
+      },
+      get visualCursor() {
+        return metrics().visualCursor;
+      },
+      setText: field.setValue,
+      hasSelection: () => {
+        const element = elementRef.current;
+        return !!element && element.selectionStart !== element.selectionEnd;
+      },
+      syntaxStyle: null,
+      addHighlight: () => {},
+      clearLineHighlights: () => {},
+    };
+  });
+
+  return <textarea {...field.elementProps} />;
 });
