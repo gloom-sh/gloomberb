@@ -68,8 +68,9 @@ export function QuarterBars({
             style={{
               flex: "1 1 0",
               height: "100%",
-              display: "flex",
-              alignItems: "flex-end",
+              // A desktop Box is a column, so the bar sits on the floor with
+              // justifyContent, not alignItems.
+              justifyContent: "flex-end",
               paddingTop: "2px",
               paddingBottom: "2px",
               boxSizing: "border-box",
