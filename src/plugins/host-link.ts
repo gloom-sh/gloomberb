@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from "fs";
 import { dirname, join, resolve } from "path";
 
 import { installPluginHostResolver } from "./host-resolver";
@@ -25,7 +25,9 @@ import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
  * and this reports that as `provider: "process"` rather than as an error.
  */
 
-const LINKED_PACKAGES = ["gloomberb", "react", "react-dom"] as const;
+// No react-dom: plugins are renderer-neutral (see SHARED_SPECIFIERS in
+// host-contract.ts), so one that imports it should fail to resolve.
+const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 let cachedHostRoot: string | null | undefined;
 
@@ -37,7 +39,7 @@ export function findHostPackageRoot(startDir: string = import.meta.dir): string 
     const pkgPath = join(dir, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(require("fs").readFileSync(pkgPath, "utf-8")) as { name?: string };
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { name?: string };
         if (pkg.name === "gloomberb") {
           if (startDir === import.meta.dir) cachedHostRoot = dir;
           return dir;
@@ -70,6 +72,21 @@ function alreadyLinked(path: string, target: string): boolean {
 }
 
 /**
+ * Makes `linkPath` a directory symlink to `target`, replacing whatever is
+ * there. A real directory means `bun install` fetched a second copy; replacing
+ * it is the whole point, otherwise the plugin runs against a duplicate React.
+ * Throws when the link cannot be made.
+ */
+function ensureDirLink(linkPath: string, target: string): void {
+  if (alreadyLinked(linkPath, target)) return;
+  mkdirSync(dirname(linkPath), { recursive: true });
+  if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
+    rmSync(linkPath, { recursive: true, force: true });
+  }
+  symlinkSync(target, linkPath, "dir");
+}
+
+/**
  * Links sibling plugins a plugin declares as peer dependencies.
  *
  * A plugin can legitimately extend another — IBKR Gateway builds on the Flex
@@ -82,7 +99,7 @@ function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
   const linked: string[] = [];
   let peers: string[] = [];
   try {
-    const pkg = JSON.parse(require("fs").readFileSync(join(pluginDir, "package.json"), "utf-8"));
+    const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
     peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
   } catch {
     return linked;
@@ -95,17 +112,8 @@ function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
       .map((name) => join(pluginsDir, name))
       .find((candidate) => existsSync(candidate));
     if (!target) continue;
-    const linkPath = join(pluginDir, "node_modules", peer);
-    if (alreadyLinked(linkPath, target)) {
-      linked.push(peer);
-      continue;
-    }
     try {
-      mkdirSync(join(pluginDir, "node_modules"), { recursive: true });
-      if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
-        rmSync(linkPath, { recursive: true, force: true });
-      }
-      symlinkSync(target, linkPath, "dir");
+      ensureDirLink(join(pluginDir, "node_modules", peer), target);
       linked.push(peer);
     } catch {
       // Reported by the plugin's own load failure if it actually needed it.
@@ -135,8 +143,8 @@ export interface HostLinkOptions {
 }
 
 /**
- * Points `<pluginDir>/node_modules/{gloomberb,react,react-dom}` at the running
- * install. Safe to call repeatedly.
+ * Points `<pluginDir>/node_modules/{gloomberb,react}` at the running install.
+ * Safe to call repeatedly.
  */
 export function linkHostPackages(
   pluginDir: string,
@@ -163,27 +171,14 @@ export function linkHostPackages(
     };
   }
 
-  const modulesDir = join(pluginDir, "node_modules");
-
   for (const pkg of LINKED_PACKAGES) {
     const target = linkTarget(hostRoot, pkg);
     if (!target) {
       skipped.push(pkg);
       continue;
     }
-    const linkPath = join(modulesDir, pkg);
-    if (alreadyLinked(linkPath, target)) {
-      linked.push(pkg);
-      continue;
-    }
     try {
-      mkdirSync(modulesDir, { recursive: true });
-      // A real directory here means `bun install` fetched a second copy; replacing
-      // it is the whole point, otherwise the plugin runs against a duplicate React.
-      if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
-        rmSync(linkPath, { recursive: true, force: true });
-      }
-      symlinkSync(target, linkPath, "dir");
+      ensureDirLink(join(pluginDir, "node_modules", pkg), target);
       linked.push(pkg);
     } catch (err) {
       skipped.push(pkg);

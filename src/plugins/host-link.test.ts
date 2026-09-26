@@ -110,7 +110,7 @@ describe("linkHostPackages without a package root", () => {
     expect(installs).toBe(1);
     expect(result.provider).toBe("process");
     expect(result.error).toBeUndefined();
-    expect(result.skipped).toEqual(["gloomberb", "react", "react-dom"]);
+    expect(result.skipped).toEqual(["gloomberb", "react"]);
     expect(existsSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(false);
   });
 
