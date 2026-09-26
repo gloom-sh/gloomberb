@@ -20,12 +20,6 @@ afterEach(async () => {
   setSharedMarketDataCoordinator(null);
 });
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
-}
-
 const points = (close: number): PricePoint[] => [0, 1].map(index => ({
   date: new Date(Date.UTC(2025, 0, 2 + index)), close: close + index,
 }));
@@ -65,7 +59,7 @@ const sourcesFor = (dataProvider: ChartResolveSources["dataProvider"]): ChartRes
 test("pending contract and public switches never display another contract's parsed candles", async () => {
   const first = contract("SEED-SWITCH", 10), second = contract("SEED-SWITCH", 20);
   const publicTarget: InstrumentRef = { symbol: first.symbol, exchange: "CME", instrument: null };
-  const secondHistory = deferred<PricePoint[]>(), publicHistory = deferred<PricePoint[]>();
+  const secondHistory = Promise.withResolvers<PricePoint[]>(), publicHistory = Promise.withResolvers<PricePoint[]>();
   const requested: Array<number | null> = [];
   const sources = sourcesFor(createTestDataProvider({
     getTickerFinancials: async () => emptyFinancials,
@@ -103,7 +97,7 @@ test("parsed seeds retain broker account scope and still seed the exact previous
     getPriceHistoryForResolution: async () => points(401),
   }));
   await resolveChartSpecData(spec(first), firstSource);
-  const waiting = deferred<PricePoint[]>();
+  const waiting = Promise.withResolvers<PricePoint[]>();
   const requested: string[] = [];
   const sources = sourcesFor(createTestDataProvider({ getTickerFinancials: async () => emptyFinancials,
     getPriceHistoryForResolution: async (_symbol, _exchange, _range, _resolution, context) => {
@@ -127,7 +121,7 @@ test("parsed seeds retain broker account scope and still seed the exact previous
 test("public history does not reuse a legacy symbol-only seed of unknown contract ownership", async () => {
   const target: InstrumentRef = { symbol: "SEED-LEGACY", exchange: "CME", instrument: null };
   rememberParsedPriceHistory(`${target.symbol}|CME|ALL|1d`, points(901));
-  const waiting = deferred<PricePoint[]>();
+  const waiting = Promise.withResolvers<PricePoint[]>();
   let requested = false;
   await mount(target, sourcesFor(createTestDataProvider({ getTickerFinancials: async () => emptyFinancials,
     getPriceHistoryForResolution: async () => { requested = true; return waiting.promise; },

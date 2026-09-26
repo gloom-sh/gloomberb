@@ -70,16 +70,6 @@ const SPEC: ChartSpec = {
   studies: [],
 };
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
 function sourcesFor(dataProvider: DataProvider): ChartResolveSources {
   return {
     dataProvider,
@@ -253,7 +243,7 @@ describe("useChartResolution", () => {
   });
 
   test("keeps renderable data settled through empty adaptive and live refreshes", async () => {
-    const adaptiveHistory = deferred<PricePoint[]>();
+    const adaptiveHistory = Promise.withResolvers<PricePoint[]>();
     let detailedCalls = 0;
     let quoteHandler: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[1] | null = null;
     let quoteTarget: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[0][number] | null = null;
@@ -429,8 +419,8 @@ describe("useChartResolution", () => {
   });
 
   test("keeps initial and explicit reloads blocking", async () => {
-    const initialHistory = deferred<PricePoint[]>();
-    const reloadHistory = deferred<PricePoint[]>();
+    const initialHistory = Promise.withResolvers<PricePoint[]>();
+    const reloadHistory = Promise.withResolvers<PricePoint[]>();
     let historyCalls = 0;
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
@@ -481,7 +471,7 @@ describe("useChartResolution", () => {
   });
 
   test("paints coordinator-cached candles on the first frame", async () => {
-    const history = deferred<PricePoint[]>();
+    const history = Promise.withResolvers<PricePoint[]>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
       getPriceHistoryForResolution: async () => history.promise,
@@ -521,7 +511,7 @@ describe("useChartResolution", () => {
   });
 
   test("a settled history failure is not replaced by an indefinitely loading cached seed", async () => {
-    const history = deferred<PricePoint[]>();
+    const history = Promise.withResolvers<PricePoint[]>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
       getPriceHistoryForResolution: async () => history.promise,
@@ -544,7 +534,7 @@ describe("useChartResolution", () => {
   });
 
   test("identical hydrated specs preserve one pending resolution during quote-driven renders", async () => {
-    const history = deferred<PricePoint[]>();
+    const history = Promise.withResolvers<PricePoint[]>();
     let historyCalls = 0;
     let resolvedInputs = 0;
     const provider = createTestDataProvider({
@@ -567,7 +557,7 @@ describe("useChartResolution", () => {
   });
 
   test("changing a security cannot retain its predecessor's chart after a failed request", async () => {
-    const other = deferred<PricePoint[]>();
+    const other = Promise.withResolvers<PricePoint[]>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,
       getPriceHistoryForResolution: async (symbol) => symbol === "OTHER" ? other.promise : INITIAL_HISTORY,
@@ -590,7 +580,7 @@ describe("useChartResolution", () => {
   });
 
   test("reuses cached history when the spec object identity changes", async () => {
-    const initialHistory = deferred<PricePoint[]>();
+    const initialHistory = Promise.withResolvers<PricePoint[]>();
     let historyCalls = 0;
     const provider = createTestDataProvider({
       getTickerFinancials: async () => EMPTY_FINANCIALS,

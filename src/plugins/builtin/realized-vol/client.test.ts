@@ -14,12 +14,6 @@ function ready<T>(data: T): QueryEntry<T> {
   return { phase: "ready", data, lastGoodData: data, source: "test", fetchedAt: now - 1000,
     staleAt: now + 60000, error: null, attempts: [] };
 }
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 describe("daily realized-volatility history", () => {
   test("requests explicit daily 5Y warmup with scoped identity and retains cached partial data", async () => {
     const instrument = { symbol: "AAPL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "account" };
@@ -71,7 +65,7 @@ describe("daily realized-volatility history", () => {
   });
 
   test("consumer cancellation rejects promptly without poisoning a shared daily request", async () => {
-    const gate = deferred<PricePoint[]>();
+    const gate = Promise.withResolvers<PricePoint[]>();
     let calls = 0;
     const provider = { id: "test", getPriceHistoryForResolution: async () => { calls += 1; return gate.promise; } } as unknown as DataProvider;
     const coordinator = new MarketDataCoordinator(provider);
@@ -181,7 +175,7 @@ describe("independent current-IV loading", () => {
   });
 
   test("surface cancellation remains cancellation rather than a missing-IV result", async () => {
-    const gate = deferred<QueryEntry<OptionsChain>>();
+    const gate = Promise.withResolvers<QueryEntry<OptionsChain>>();
     const controller = new AbortController();
     const loading = loadCurrentAtmIv({ instrument: { symbol: "AAPL" }, spot: 100, signal: controller.signal }, {
       loadYieldCurve: async () => [], loadOptions: async () => gate.promise,

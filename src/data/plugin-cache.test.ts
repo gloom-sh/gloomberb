@@ -2,11 +2,6 @@ import { expect, test } from "bun:test";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 import { createPluginCache } from "./plugin-cache";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
 const makeCache = () => createPluginCache<number>({ kind: "test", source: "provider", policy: { staleMs: 60_000, expireMs: 120_000 } });
 
 test("reset prevents pending requests from writing into a newly attached plugin scope", async () => {
@@ -14,7 +9,7 @@ test("reset prevents pending requests from writing into a newly attached plugin 
   const nextStore = new MemoryPluginPersistence();
   const cache = makeCache();
   cache.attach(oldStore);
-  const old = deferred<number>();
+  const old = Promise.withResolvers<number>();
   const first = cache.load("key", () => old.promise);
   await Promise.resolve();
   cache.reset();
@@ -31,8 +26,8 @@ test("forced replacement cannot be overwritten or cleared by an older request", 
   const store = new MemoryPluginPersistence();
   const cache = makeCache();
   cache.attach(store);
-  const old = deferred<number>();
-  const replacement = deferred<number>();
+  const old = Promise.withResolvers<number>();
+  const replacement = Promise.withResolvers<number>();
   const first = cache.load("key", () => old.promise);
   const second = cache.load("key", () => replacement.promise, { force: true, replace: true });
   const third = cache.load("key", async () => { throw new Error("must join replacement"); });

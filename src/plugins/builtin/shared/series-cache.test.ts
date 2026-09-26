@@ -6,13 +6,6 @@ const observations = [{ date: "2026-01-01", value: 100 }];
 let clock: ReturnType<typeof spyOn> | undefined;
 afterEach(() => clock?.mockRestore());
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
-
 test("array hydration remains available without inventing retrieval metadata or requesting data", async () => {
   const cache = createSeriesCache("test", 60_000);
   cache.hydrate([["key", observations], ["empty", []]]);
@@ -28,7 +21,7 @@ test("metadata loads join existing requests and preserve array cache reads", asy
   const cache = createSeriesCache("test", 60_000);
   const store = new MemoryPluginPersistence();
   cache.attach(store);
-  const request = deferred<DatedObservation[]>();
+  const request = Promise.withResolvers<DatedObservation[]>();
   let calls = 0;
   const first = cache.load("key", () => { calls++; return request.promise; });
   const joined = cache.loadEntry("key", async () => { calls++; return []; }, { force: true });
@@ -57,7 +50,7 @@ test("old failed requests cannot carry metadata across reset and attachment", as
   const cache = createSeriesCache("test", 60_000);
   cache.attach(new MemoryPluginPersistence());
   await cache.load("key", async () => observations);
-  const delayed = deferred<DatedObservation[]>();
+  const delayed = Promise.withResolvers<DatedObservation[]>();
   const old = cache.loadEntry("key", () => delayed.promise, { force: true });
   cache.reset();
   cache.attach(new MemoryPluginPersistence());

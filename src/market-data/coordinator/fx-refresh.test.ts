@@ -7,12 +7,6 @@ import type { Quote } from "../../types/financials";
 import { MarketDataCoordinator } from "./index";
 import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler";
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
-}
-
 for (const cachedRouter of [false, true]) {
   test(`FX refresh bypasses fresh ${cachedRouter ? "router" : "direct"} cache, shares requests and preserves failed-source age`, async () => {
     const firstTime = Date.now() - 60_000;
@@ -21,7 +15,7 @@ for (const cachedRouter of [false, true]) {
       asOf: new Date(asOf).toISOString(), fetchedAt: new Date(asOf).toISOString(),
       staleAt: new Date(asOf + 3_600_000).toISOString(), stale: false,
     });
-    const pending = deferred<ExchangeRateSnapshot>();
+    const pending = Promise.withResolvers<ExchangeRateSnapshot>();
     let calls = 0;
     let fail = false;
     const provider = createTestDataProvider({

@@ -9,12 +9,6 @@ import { attachTestRegistry, brokerInstance, createBrokerConfig } from "./test-s
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 describe("shared cached market queries", () => {
   test("USD identity works offline without fetching or expiring from its undated static cache", async () => {
     let calls = 0;
@@ -52,7 +46,7 @@ describe("shared cached market queries", () => {
     // never see this two-hour-old rate as stale. Pin a Wednesday afternoon.
     setSystemTime(new Date("2026-09-23T15:00:00Z"));
     const persistence = new AppPersistence(":memory:");
-    const pending = deferred<number>();
+    const pending = Promise.withResolvers<number>();
     let calls = 0;
     const provider = createTestDataProvider({ id: "fx", getExchangeRate: () => { calls += 1; return pending.promise; } });
     const fetchedAt = Date.now() - 2 * 60 * 60_000;
@@ -105,7 +99,7 @@ describe("shared cached market queries", () => {
 
   test("shares cold loads with direct provider calls and keeps errors attached to stale fallback", async () => {
     let calls = 0;
-    const pending = deferred<number>();
+    const pending = Promise.withResolvers<number>();
     const provider = createTestDataProvider({ id: "fx", getExchangeRate: () => {
       calls += 1;
       return calls === 1 ? pending.promise : Promise.reject(new Error("offline"));

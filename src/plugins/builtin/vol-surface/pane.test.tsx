@@ -24,12 +24,6 @@ let previousCoordinator: ReturnType<typeof getSharedMarketDataCoordinator>;
 let treasury: ReturnType<typeof spyOn<typeof apiClient, "getCloudYieldCurve">> | undefined;
 let impliedVolatility: ReturnType<typeof spyOn<typeof apiClient, "impliedVolatility">> | undefined;
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
-}
-
 function quotedChain(expirations: number[], expiration: number, now: number, zeroBids = false): OptionsChain {
   const quote = (strike: number, side: "call" | "put"): OptionContract => {
     const price = valueOption({ ...DEFAULT_OPTION_CALC_DRAFT, spot: 100, strike, side,
@@ -76,7 +70,7 @@ async function mount({ missingSelection = false, holdSecond = false, pinnedSelec
   const sample = selectSurfaceExpiries(expirations, 18, now);
   const pins = expirations.filter((expiration) => !sample.includes(expiration));
   const paneSymbol = optionTicker ? `${SYMBOL} ${new Date(expirations[0]! * 1000).toISOString().slice(2, 10).replaceAll("-", "")}C00100000` : SYMBOL;
-  const held = deferred<OptionsChain>();
+  const held = Promise.withResolvers<OptionsChain>();
   const calls: (number | undefined)[] = [];
   const opened: { id: string; options: PaneTemplateCreateOptions | undefined }[] = [];
   let currentState!: AppState;

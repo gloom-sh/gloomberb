@@ -295,8 +295,7 @@ describe("PortfolioAnalyticsPane", () => {
     config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", config: {} }];
     const ticker = createSharedTicker();
     ticker.metadata.positions = [];
-    let rejectHistory!: (reason: Error) => void;
-    const history = new Promise<BrokerPortfolioPerformance>((_resolve, reject) => { rejectHistory = reject; });
+    const { promise: history, reject: rejectHistory } = Promise.withResolvers<BrokerPortfolioPerformance>();
     const adapter: BrokerAdapter = {
       id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
       getPortfolioPerformance: async () => history,
@@ -330,8 +329,7 @@ describe("PortfolioAnalyticsPane", () => {
   test("switching accounts hides prior performance while the next account is pending", async () => {
     const firstId = BROKER_PORTFOLIO_ID;
     const secondId = "broker:ibkr-flex:DU54321";
-    let completeSecond!: (value: BrokerPortfolioPerformance) => void;
-    const second = new Promise<BrokerPortfolioPerformance>((resolve) => { completeSecond = resolve; });
+    const { promise: second, resolve: completeSecond } = Promise.withResolvers<BrokerPortfolioPerformance>();
     const adapter: BrokerAdapter = {
       id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
       getPortfolioPerformance: async (_instance, accountId) => accountId === "DU54321" ? second : {

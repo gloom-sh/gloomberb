@@ -7,7 +7,6 @@ import { list, report } from "./test-fixtures";
 afterEach(resetRiskFactorsPersistence);
 const options={sourceKey:"risk-factors",schemaVersion:1};
 function client(){return {getRiskReports:async()=>list([2026]),getRiskReport:async(_ticker:string,year:number)=>report(year)};}
-function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};}
 
 test("failed forced discovery retains its original timestamp and retries on reopen before normal cache TTL",async()=>{
  const store=new MemoryPluginPersistence();attachRiskFactorsPersistence(store);store.seedResource("reports","CONTROL",list([2025]),options);
@@ -39,7 +38,7 @@ test("transient historical refresh retains immutable source dates and expired co
 });
 
 test("late discovery cannot rewind forced refresh persistence",async()=>{
- const store=new MemoryPluginPersistence();attachRiskFactorsPersistence(store);const old=deferred<ReturnType<typeof list>>();const api=client();let calls=0;
+ const store=new MemoryPluginPersistence();attachRiskFactorsPersistence(store);const old=Promise.withResolvers<ReturnType<typeof list>>();const api=client();let calls=0;
  api.getRiskReports=()=>++calls===1?old.promise:Promise.resolve(list([2026,2025]));
  const first=loadRiskReportsWithClient(api,"CONTROL");expect(loadRiskReportsWithClient(api,"CONTROL")).toBe(first);
  await loadRiskReportsWithClient(api,"CONTROL",{force:true});old.resolve(list([2025]));await first;
@@ -47,7 +46,7 @@ test("late discovery cannot rewind forced refresh persistence",async()=>{
 });
 
 test("a request from the previous persistence lifetime cannot write into its replacement",async()=>{
- const firstStore=new MemoryPluginPersistence();const nextStore=new MemoryPluginPersistence();attachRiskFactorsPersistence(firstStore);const pending=deferred<ReturnType<typeof list>>();const api=client();api.getRiskReports=()=>pending.promise;
+ const firstStore=new MemoryPluginPersistence();const nextStore=new MemoryPluginPersistence();attachRiskFactorsPersistence(firstStore);const pending=Promise.withResolvers<ReturnType<typeof list>>();const api=client();api.getRiskReports=()=>pending.promise;
  const first=loadRiskReportsWithClient(api,"CONTROL");await Promise.resolve();resetRiskFactorsPersistence();attachRiskFactorsPersistence(nextStore);pending.resolve(list([2025]));await first;
  expect(firstStore.getResource("reports","CONTROL",options)).toBeNull();expect(nextStore.getResource("reports","CONTROL",options)).toBeNull();
 });

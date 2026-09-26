@@ -18,13 +18,6 @@ afterEach(async () => {
   setup = undefined;
 });
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: Error) => void;
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-  return { promise, resolve, reject };
-}
-
 const history: PricePoint[] = [
   { date: new Date("2025-01-02"), open: 100, high: 100, low: 100, close: 100, volume: 100 },
   { date: new Date("2025-01-03"), open: 110, high: 110, low: 110, close: 110, volume: 100 },
@@ -53,8 +46,8 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
     // Reproduce the live range switch: a cached first leg seeds an unusable
     // shared window while the required histories are still in flight.
     rememberParsedPriceHistory(parsedPriceHistoryKey({ symbol: firstSymbol, exchange: "NASDAQ" }, "1Y", "1d"), history);
-    let first = deferred<PricePoint[]>();
-    let second = deferred<PricePoint[]>();
+    let first = Promise.withResolvers<PricePoint[]>();
+    let second = Promise.withResolvers<PricePoint[]>();
     const requested = new Set<string>();
     const provider = createTestDataProvider({
       getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
@@ -116,8 +109,8 @@ for (const outcome of ["success", "disjoint", "empty", "failed"] as const) {
     if (outcome === "disjoint") {
       // Refreshing a settled empty result must not reveal the old per-leg
       // empty warnings when its composite failure notice is deferred.
-      first = deferred<PricePoint[]>();
-      second = deferred<PricePoint[]>();
+      first = Promise.withResolvers<PricePoint[]>();
+      second = Promise.withResolvers<PricePoint[]>();
       requested.clear();
       await act(async () => latest!.reload());
       await waitFor(() => requested.size === 2);
