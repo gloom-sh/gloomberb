@@ -25,6 +25,7 @@ import { coerceFieldString } from "../helpers";
 import { slugifyName } from "../../../utils/slugify";
 import { resolveTickerInputOrThrow } from "./ops";
 import { resolveCollectionTicker } from "./collection-ticker";
+import { disconnectSignedInProfile } from "../../../brokers/signed-in/connect";
 
 export type CommandBarNotifyFn = (
   body: string,
@@ -297,6 +298,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (!instance) {
         throw new Error("Broker profile not found.");
       }
+      await disconnectSignedInProfile(instance);
       await pluginRegistry.removeBrokerInstanceFn(instanceId);
       const freshConfig = pluginRegistry.getConfigFn();
       dispatch({ type: "SET_CONFIG", config: freshConfig });

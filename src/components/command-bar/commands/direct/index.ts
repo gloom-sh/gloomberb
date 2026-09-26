@@ -16,6 +16,7 @@ import type { AppAction, AppState } from "../../../../state/app/context";
 import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
+import type { BrokerInstanceConfig } from "../../../../types/config";
 import { requestFeedbackDialog } from "../../../feedback-dialog";
 import type { OpenInlineConfirm } from "../../routing/confirm";
 import {
@@ -129,10 +130,17 @@ export function runDirectCommandAction(options: {
         return;
       }
       if (command.id === "disconnect-broker-account") {
+        // "Interactive Brokers · Sign in" when the broker describes its profiles, else type and mode.
+        const describeBrokerProfile = (registry: PluginRegistry, instance: BrokerInstanceConfig) => {
+          const described = registry.getBrokerAdapter(instance.brokerType)?.describeInstance?.(instance);
+          return described
+            ? `${described.brokerName} · ${described.method}`
+            : `${instance.brokerType.toUpperCase()} · ${instance.connectionMode || String(instance.config.connectionMode || "configured")}`;
+        };
         const instances = state.config.brokerInstances.map((instance) => ({
           id: instance.id,
           label: instance.label,
-          description: `${instance.brokerType.toUpperCase()} · ${instance.connectionMode || String(instance.config.connectionMode || "configured")}`,
+          description: describeBrokerProfile(pluginRegistry, instance),
         }));
         if (instances.length === 0) return;
         pushRoute({
