@@ -20,11 +20,13 @@ This skill is for terminal TUI and OpenTUI test workflows. For Electrobun/deskto
 **Never touch the real `~/.gloomberb`.** Every tmux smoke, and any CLI command that writes (plugins, config, notes, alerts, portfolios), runs against a throwaway profile: point `GLOOMBERB_HOME` at a temp dir whose `config.json` sets `"onboardingComplete": true`.
 
 ```bash
-SMOKE_HOME=/tmp/gloomberb-smoke-$$
+SMOKE_HOME=/tmp/gloomberb-smoke-my-change   # a literal path, unique to this task
 mkdir -p "$SMOKE_HOME"
 printf '{ "dataDir": "%s", "onboardingComplete": true }\n' "$SMOKE_HOME" > "$SMOKE_HOME/config.json"
 grep '"dataDir"' "$SMOKE_HOME/config.json"   # must name $SMOKE_HOME, never ~/.gloomberb
 ```
+
+An empty `GLOOMBERB_HOME` falls back to `~/.gloomberb`. Shell variables do not carry over between separate shells, so set `SMOKE_HOME` again in every shell that launches the app, and write it as `${SMOKE_HOME:?}` in launch commands so an unset value aborts instead of opening the real profile.
 
 If you start from a copy of a real config instead, rewrite its `dataDir` into the temp dir and confirm with the same `grep` before launching: the app reads and writes wherever `dataDir` points, so a copied config that still names `~/.gloomberb` edits the real profile. The first launch on a new profile reinstalls the plugins that moved out of this repo into `$SMOKE_HOME/plugins`, which needs network and takes a few seconds.
 
@@ -240,7 +242,7 @@ Create the throwaway `$SMOKE_HOME` profile from Critical Rules first.
 tmux kill-session -t test 2>/dev/null
 
 # Start the app with a fixed terminal size for consistent captures
-tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=$SMOKE_HOME bun start 2>&1"
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 
 # Wait for the app to render (2-3 seconds for initial load)
 sleep 3
@@ -255,7 +257,7 @@ tmux pipe-pane -o -t test 'cat > /tmp/gloomberb-test.log'
 If you need to run the app without `tmux`, keep the process handle so you can shut it down:
 
 ```bash
-GLOOMBERB_HOME="$SMOKE_HOME" bun start > /tmp/gloomberb-test.log 2>&1 &
+GLOOMBERB_HOME="${SMOKE_HOME:?}" bun start > /tmp/gloomberb-test.log 2>&1 &
 app_pid=$!
 
 # ... test whatever you need ...
@@ -298,7 +300,7 @@ Always add `sleep 0.5` to `sleep 1` after sending input to let the UI re-render.
 ```bash
 # 1. Start the app on the throwaway profile
 tmux kill-session -t test 2>/dev/null
-tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=$SMOKE_HOME bun start 2>&1"
+tmux new-session -d -s test -x 120 -y 40 "GLOOMBERB_HOME=${SMOKE_HOME:?} bun start 2>&1"
 sleep 3
 
 # 2. Capture initial state
@@ -378,5 +380,5 @@ Recommended coverage for layout/pane regressions:
 
 - **Timing:** If captures look incomplete, increase sleep duration. Network-dependent views take longer.
 - **Terminal size:** `-x 120 -y 40` gives consistent layout. Smaller sizes may cause wrapping.
-- **Cleanup:** Always kill the `tmux` session or any other background process you started when done, then `rm -rf "$SMOKE_HOME"`.
+- **Cleanup:** Always kill the `tmux` session or any other background process you started when done, then `rm -rf "${SMOKE_HOME:?}"`.
 - **Debugging crashes:** stderr is captured via `2>&1` so crash output is visible.
