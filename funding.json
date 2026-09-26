@@ -1,0 +1,60 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
+  "entity": {
+    "type": "organisation",
+    "role": "owner",
+    "name": "Cold Start Ventures Limited",
+    "email": "vince@gloom.sh",
+    "description": "Cold Start Ventures Limited is a small software company registered in Hong Kong. It is run by Vince Loewert, who started Gloomberb in March 2026 and is its lead maintainer. The company owns the Gloomberb project and would receive and account for any grant.",
+    "webpageUrl": {
+      "url": "https://github.com/gloom-sh"
+    }
+  },
+  "projects": [
+    {
+      "guid": "gloomberb",
+      "name": "Gloomberb",
+      "description": "Gloomberb is an open-source finance terminal. It borrows the command-driven workflow of the Bloomberg Terminal and runs in a terminal (macOS, Linux, Windows), as a desktop app (macOS, Windows), and in the browser. You type a command like DES AAPL or GP NVDA and get company details, charts, filings, options and volatility surfaces, rates, futures curves, news, portfolios and watchlists. Brokers and data providers connect through a plugin system, so people can plug in their own accounts and data sources instead of paying for a closed terminal.\n\nThe first public release was in March 2026. Since then the repository has reached about 2,200 GitHub stars, 139 forks and 13 contributors, with roughly 88,000 release downloads and 12,000 npm installs.\n\nThe terminal and desktop apps are MIT licensed and work fully without an account. There is an optional hosted Gloom Cloud account for the browser version, which adds realtime market data. The grant would go to the open-source project itself: maintainer time, new data and broker integrations, and the build, signing and release work for the free apps on every platform.",
+      "webpageUrl": {
+        "url": "https://github.com/gloom-sh/gloomberb"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/gloom-sh/gloomberb"
+      },
+      "licenses": ["spdx:MIT"],
+      "tags": ["finance", "trading", "terminal", "tui", "desktop", "data-visualization", "developer-tools", "productivity"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "bank",
+        "type": "bank",
+        "description": "Bank transfer to Cold Start Ventures Limited (Hong Kong). Email vince@gloom.sh for details."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "maintainer-yearly",
+        "status": "active",
+        "name": "Full-time maintenance",
+        "description": "One year of full-time maintainer work on Gloomberb, plus build, code signing and release costs for the free terminal and desktop apps.",
+        "amount": 100000,
+        "currency": "USD",
+        "frequency": "yearly",
+        "channels": ["bank"]
+      },
+      {
+        "guid": "any-amount",
+        "status": "active",
+        "name": "Support the project",
+        "description": "Any amount towards maintenance of Gloomberb.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["bank"]
+      }
+    ]
+  }
+}
