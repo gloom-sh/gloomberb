@@ -9,6 +9,7 @@ export interface ChartResolutionSupport {
   maxRange: TimeRange;
 }
 
+/** @deprecated Use `TIME_RANGES` from `gloomberb/time-series`; this is the same array. */
 export const TIME_RANGE_ORDER = TIME_RANGES;
 const CHART_RESOLUTION_ORDER = CHART_RESOLUTIONS;
 
@@ -84,7 +85,7 @@ const TIME_RANGE_APPROXIMATE_DAYS: Record<TimeRange, number> = {
 
 const MINIMUM_USEFUL_CHART_POINTS = 2;
 
-const TIME_RANGE_INDEX = new Map(TIME_RANGE_ORDER.map((range, index) => [range, index]));
+const TIME_RANGE_INDEX = new Map(TIME_RANGES.map((range, index) => [range, index]));
 
 function getTimeRangeIndex(range: TimeRange): number {
   return TIME_RANGE_INDEX.get(range) ?? 0;

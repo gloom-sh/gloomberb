@@ -8,7 +8,7 @@ import type { TickerMetadata, TickerRecord } from "../../types/ticker";
 import type { AppAction, AppState, PaneRuntimeState } from "./context";
 import type { AppSessionSnapshot } from "../../core/state/session-persistence";
 import { instrumentFromTicker, type InstrumentRef } from "../../market-data/request-types";
-import { buildInstrumentKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import { resolveCollectionForPane } from "../../core/state/app/layout";
 import { hasAmbiguousTickerContracts, resolveInstrumentForPane } from "../../core/state/app/instrument";
 import { getDockedPaneIds } from "../../plugins/pane-manager";
@@ -116,7 +116,7 @@ function buildRefreshPlan(
     const ticker = tickerMap.get(instrument.symbol.trim().toUpperCase());
     if (!ticker) return;
 
-    const key = buildInstrumentKey(instrument);
+    const key = instrumentIdentityKey(instrument);
     const existing = planByInstrument.get(key);
     if (existing) {
       existing.priority = Math.min(existing.priority, priority);
@@ -197,12 +197,12 @@ async function resolveCachedFinancialPrimeEntries(
     const symbol = target.symbol.trim().toUpperCase();
     const ticker = tickerMap.get(symbol);
     if (ticker) {
-      targetEntriesByInstrument.set(buildInstrumentKey(target), { ticker, target: { ...target, symbol } });
+      targetEntriesByInstrument.set(instrumentIdentityKey(target), { ticker, target: { ...target, symbol } });
     }
   }
 
   for (const entry of refreshPlan.filter((entry) => entry.mode === "financials")) {
-    const key = buildInstrumentKey(entry.instrument);
+    const key = instrumentIdentityKey(entry.instrument);
     if (!targetEntriesByInstrument.has(key)) targetEntriesByInstrument.set(key, { ticker: entry.ticker, target: entry.instrument });
   }
 
@@ -215,7 +215,7 @@ async function resolveCachedFinancialPrimeEntries(
       return financials ? { ticker, instrument: target, financials } : null;
     } catch (error) {
       startupLog.warn("cached financials read failed", {
-        instrumentKey: buildInstrumentKey(target),
+        instrumentKey: instrumentIdentityKey(target),
         message: error instanceof Error ? error.message : String(error),
       });
       return null;

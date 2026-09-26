@@ -13,7 +13,9 @@
     "src/renderers/electrobun/view/app-services.ts",
     "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",
     "src/renderers/electrobun/view/notes-files.ts",
-    "src/renderers/electrobun/view/native-stubs/**/*.ts",
+    "src/renderers/electrobun/view/native-stubs/backend-rpc.ts",
+    "src/renderers/electrobun/view/native-stubs/chart/kitty-support.ts",
+    "src/renderers/electrobun/view/native-stubs/chart/surface-manager.ts",
     "src/renderers/browser/main.tsx",
     "src/renderers/share/main.tsx",
     "src/renderers/cloudflare/worker.ts"

@@ -174,7 +174,6 @@ export interface DesktopBackendRequestMap {
     response: DesktopHttpStreamOpenResponse;
   };
   "http.stream.cancel": { request: { streamId: string }; response: null };
-  "remote.forward": { request: { request: RemoteControlRequest }; response: RemoteControlResponse };
   "capability.invoke": { request: DesktopCapabilityInvokeRequest; response: unknown };
   "capability.cancel": { request: { invocationId: string }; response: null };
   "capability.subscribe": { request: DesktopCapabilitySubscribeRequest; response: null };
@@ -192,7 +191,6 @@ export interface DesktopBackendRequestMap {
   };
   "desktop.closeDetachedPane": { request: { paneId: string }; response: null };
   "desktop.focusDetachedPane": { request: { paneId: string }; response: null };
-  "pluginState.set": { request: DesktopPluginStateSetEntry; response: null };
   "pluginState.setMany": { request: { entries: DesktopPluginStateSetEntry[] }; response: null };
   "pluginState.delete": { request: { pluginId: string; key: string }; response: null };
   "plugins.listExternal": { request: null; response: DesktopExternalPluginBundle[] };
@@ -209,7 +207,6 @@ export interface DesktopBackendRequestMap {
    */
   "plugins.activate": { request: { directory: string }; response: DesktopPluginActivationResult };
   "plugins.deactivate": { request: { pluginId: string }; response: { capabilityManifests: CapabilityManifest[] } };
-  "host.restart": { request: DesktopRestartMessage; response: null };
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
   "host.windowFullscreen": { request: null; response: boolean };

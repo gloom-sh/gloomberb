@@ -203,10 +203,6 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   researchSearchPlugin,
 ];
 
-export function getBrowserBuiltinPlugins(): readonly GloomPlugin[] {
-  return browserBuiltinPlugins;
-}
-
 /**
  * The plugin list the hosted web app runs: the reviewed built-ins above plus the
  * plugins compiled into the build from their own repositories, which arrive as

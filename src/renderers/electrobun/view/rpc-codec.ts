@@ -24,28 +24,26 @@ export async function encodeRpcResponse(load: () => unknown | Promise<unknown>):
   }
 }
 
+/** The backend wraps every response in encodeRpcResponse; anything else is malformed. */
 export function decodeRpcResponse<T = unknown>(value: unknown): T {
-  if (value && typeof value === "object" && RESPONSE_MARKER in value) {
-    const response = value as Record<string, unknown>;
-    if (response[RESPONSE_MARKER] !== 1) throw new Error("Unsupported desktop response");
-    if (response.ok === true) return decodeRpcValue<T>(response.value);
-    const error = response.error as Record<string, unknown> | null;
-    if (response.ok === false && error && typeof error === "object" && error.kind === "history-retention") {
-      const retention = parseHistoryRetentionError(error);
-      if (!retention) throw new Error("Invalid desktop response");
-      throw retention;
-    }
-    if (response.ok !== false || !error || typeof error !== "object"
-      || (error.kind !== undefined && error.kind !== "api")
-      || typeof error.message !== "string"
-      || (error.status !== undefined && (!Number.isInteger(error.status) || Number(error.status) < 100 || Number(error.status) > 599))
-      || (error.retryAfterMs !== undefined && (typeof error.retryAfterMs !== "number" || !Number.isFinite(error.retryAfterMs) || error.retryAfterMs < 0))) {
-      throw new Error("Invalid desktop response");
-    }
-    throw new ApiRequestError(error.message, error.status as number | undefined, error.retryAfterMs as number | undefined);
+  if (!value || typeof value !== "object" || !(RESPONSE_MARKER in value)) throw new Error("Invalid desktop response");
+  const response = value as Record<string, unknown>;
+  if (response[RESPONSE_MARKER] !== 1) throw new Error("Unsupported desktop response");
+  if (response.ok === true) return decodeRpcValue<T>(response.value);
+  const error = response.error as Record<string, unknown> | null;
+  if (response.ok === false && error && typeof error === "object" && error.kind === "history-retention") {
+    const retention = parseHistoryRetentionError(error);
+    if (!retention) throw new Error("Invalid desktop response");
+    throw retention;
   }
-  // Accept successful responses from the previous bridge format as well.
-  return decodeRpcValue<T>(value);
+  if (response.ok !== false || !error || typeof error !== "object"
+    || (error.kind !== undefined && error.kind !== "api")
+    || typeof error.message !== "string"
+    || (error.status !== undefined && (!Number.isInteger(error.status) || Number(error.status) < 100 || Number(error.status) > 599))
+    || (error.retryAfterMs !== undefined && (typeof error.retryAfterMs !== "number" || !Number.isFinite(error.retryAfterMs) || error.retryAfterMs < 0))) {
+    throw new Error("Invalid desktop response");
+  }
+  throw new ApiRequestError(error.message, error.status as number | undefined, error.retryAfterMs as number | undefined);
 }
 
 export function encodeRpcValue(value: unknown): unknown {

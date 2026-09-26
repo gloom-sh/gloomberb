@@ -4,7 +4,6 @@ import { buildSoundCommand } from "../../../../notifications/app-notifier";
 import type {
   DesktopBackendRequestResponse,
   DesktopHostRequest,
-  DesktopRestartMessage,
   DesktopWindowControlAction,
 } from "../../shared/protocol";
 import { safeExternalUrl } from "../../../../utils/external-url";
@@ -21,7 +20,6 @@ interface DesktopHostRequestOptions<TRpc> {
   getRpcWindowKey: (rpc: TRpc) => string | undefined;
   isWindowFullscreenForRpcKey: (windowKey: string | undefined) => boolean;
   request: DesktopHostRequest;
-  restartDesktopApp: (message?: DesktopRestartMessage) => void;
   rpc: TRpc;
   teardownServices: () => void;
   trackContextMenuRequest: (requestId: string, rpc: TRpc) => void;
@@ -62,18 +60,11 @@ export async function handleDesktopHostRequest<TRpc>({
   getRpcWindowKey,
   isWindowFullscreenForRpcKey,
   request,
-  restartDesktopApp,
   rpc,
   teardownServices,
   trackContextMenuRequest,
 }: DesktopHostRequestOptions<TRpc>): Promise<DesktopBackendRequestResponse<DesktopHostRequest["method"]>> {
   switch (request.method) {
-    case "host.restart":
-      restartDesktopApp({
-        reason: typeof request.payload.reason === "string" ? request.payload.reason : undefined,
-        source: typeof request.payload.source === "string" ? request.payload.source : "backend-request",
-      });
-      return null;
     case "host.exit": {
       closeAllDetachedWindows();
       teardownServices();

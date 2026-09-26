@@ -19,7 +19,8 @@ import {
 } from "../../../plugins/builtin/portfolio-list/mutations";
 import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
-import { coerceFieldString, slugifyName } from "../helpers";
+import { coerceFieldString } from "../helpers";
+import { slugifyName } from "../../../utils/slugify";
 import { resolveTickerInputOrThrow } from "./ops";
 import { resolveCollectionTicker } from "./collection-ticker";
 

@@ -30,10 +30,6 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   researchSearchPlugin,
 ];
 
-export function getRendererBuiltinPlugins(): GloomPlugin[] {
-  return uiBuiltinPlugins;
-}
-
 /**
  * The plugin list for a UI renderer: the built-ins it ships with, plus any
  * external plugins that loaded and support this renderer.

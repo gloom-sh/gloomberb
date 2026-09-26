@@ -255,14 +255,6 @@ export function sanitizeLayout(
     return cloneLayout(fallback);
   }
 
-  if (!Array.isArray((value as LayoutConfig & { instances?: unknown }).instances)) {
-    const layout = cloneLayout(fallback);
-    return normalizePaneLayout(layout, {
-      defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout),
-      resolveOrphanSymbol: () => null,
-    });
-  }
-
   const instances = sanitizePaneInstances(
     (value as LayoutConfig & { instances?: unknown }).instances,
     fallback,

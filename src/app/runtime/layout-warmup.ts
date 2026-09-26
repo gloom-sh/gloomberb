@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { resolveInstrumentForPane } from "../../core/state/app/instrument";
 import type { InstrumentRef } from "../../market-data/request-types";
-import { buildInstrumentKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
 import type { AppConfig } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
@@ -35,7 +35,7 @@ export function collectSavedLayoutInstruments(
       if (instruments.length >= limit) return;
       const instrument = resolveInstrumentForPane(state, paneId);
       if (!instrument) continue;
-      const key = buildInstrumentKey(instrument);
+      const key = instrumentIdentityKey(instrument);
       if (seen.has(key)) continue;
       seen.add(key);
       instruments.push(instrument);

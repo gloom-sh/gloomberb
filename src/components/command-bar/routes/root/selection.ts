@@ -9,12 +9,11 @@ import {
   getCollectionCommandAction,
   getCollectionCommandVerb,
   isCollectionCommand,
+  type CollectionCommandId,
 } from "../../helpers";
 import type { ResultItem } from "../../list/model";
 import { getPaneTemplateArgKind } from "../../pane-templates/items";
 import { parseRootShortcutIntent } from "./shortcuts";
-
-type CollectionCommandId = "add-watchlist" | "add-portfolio" | "remove-watchlist" | "remove-portfolio";
 
 interface PaneTemplateItemOptions {
   category?: string;

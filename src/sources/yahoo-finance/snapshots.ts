@@ -14,9 +14,9 @@ import {
 } from "./financials";
 import {
   deriveMarketState,
-  normalizeSubUnitCurrency,
   type ExtendedHoursData,
 } from "./mappers";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import type { ChartResult } from "./types";
 import type { YahooQuoteSupplement } from "./requests";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -88,7 +88,7 @@ function normalizeChartCurrency(
 ): { normalizedCurrency: string; currencyDivisor: number } {
   const rawCurrency = chart.meta.currency || "USD";
   const { currency: normalizedCurrency, divisor: currencyDivisor } =
-    normalizeSubUnitCurrency(rawCurrency);
+    resolveCurrencyUnit(rawCurrency);
 
   if (currencyDivisor !== 1) {
     normalizePriceHistory(chart.history, currencyDivisor);

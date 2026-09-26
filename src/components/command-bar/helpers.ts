@@ -2,7 +2,6 @@ import type { CommandDef } from "../../types/plugin";
 import type { CommandBarRoute } from "./workflow/types";
 import type { CollectionKind, CollectionMembershipAction } from "./workflow/ops";
 
-export { slugifyName } from "../../utils/slugify";
 export {
   buildGeneratedTemplateField,
   coerceFieldBoolean,

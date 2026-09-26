@@ -12,7 +12,6 @@ import {
   markDetailCapableArticle,
   mergeNewsArticle,
   newsArticleRevision,
-  normalizeNewsCategory,
   normalizeNewsFeed,
   normalizeNewsQuery,
 } from "./news-model";
@@ -572,39 +571,5 @@ export class NewsService {
     if (!changed) return;
     this.rebuildArticlePool();
     this.notify();
-  }
-
-  getTopStories(count = 20): NewsArticle[] {
-    return [...this.articles]
-      .sort((a, b) => b.importance - a.importance)
-      .slice(0, count);
-  }
-
-  getFirehose(since?: Date, count = 100): NewsArticle[] {
-    let items = this.articles;
-    if (since) {
-      const sinceMs = since.getTime();
-      items = items.filter((item) => item.publishedAt.getTime() > sinceMs);
-    }
-    // articles is already sorted by publishedAt descending
-    return items.slice(0, count);
-  }
-
-  getBySector(sector: string, count = 50): NewsArticle[] {
-    const normalizedSector = normalizeNewsCategory(sector);
-    return this.articles
-      .filter((item) => [...item.sectors, ...item.categories].some((category) => normalizeNewsCategory(category) === normalizedSector))
-      .slice(0, count);
-  }
-
-  getBreaking(count = 20): NewsArticle[] {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    return this.articles
-      .filter(
-        (item) =>
-          item.isBreaking ||
-          (item.publishedAt.getTime() >= oneHourAgo && item.importance >= 70),
-      )
-      .slice(0, count);
   }
 }

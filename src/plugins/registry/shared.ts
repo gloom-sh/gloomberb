@@ -18,15 +18,11 @@ export function setSharedRegistryForTests(registry: PluginRegistry | undefined):
 export function bindSharedRegistry(registry: PluginRegistry, marketData: DataProvider): void {
   sharedMarketData = marketData;
   sharedRegistry = registry;
-  (globalThis as any).__gloomRegistry = registry;
 }
 
 export function releaseSharedRegistry(registry: PluginRegistry, marketData: DataProvider): void {
   if (sharedRegistry === registry) {
     sharedRegistry = undefined;
     if (sharedMarketData === marketData) sharedMarketData = undefined;
-  }
-  if ((globalThis as any).__gloomRegistry === registry) {
-    delete (globalThis as any).__gloomRegistry;
   }
 }

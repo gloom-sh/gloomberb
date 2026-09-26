@@ -7,6 +7,7 @@ import {
   formatCurrency,
   formatNumber,
   formatPercent,
+  formatPercentRaw,
 } from "../../utils/format";
 import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
 import {
@@ -34,11 +35,9 @@ import type { MarketContext } from "../types";
 import {
   formatBidAsk,
   formatFractionPercentCell,
-  formatNullableCompact,
   formatPriceRange,
   formatPortfolioNames,
   formatSignedCurrency,
-  formatSignedPercentRaw,
   formatTimestamp,
   formatWatchlistNames,
 } from "../helpers";
@@ -87,7 +86,7 @@ function buildStatementMetrics(statement: FinancialStatement, currency?: string)
     ["Total Debt", money(statement.totalDebt)],
     ["Equity", money(statement.totalEquity)],
     ["Diluted EPS", money(statement.eps, true)],
-    ["Diluted Shares", formatNullableCompact(statement.dilutedShares)],
+    ["Diluted Shares", formatCompact(statement.dilutedShares)],
   ];
 }
 
@@ -279,7 +278,7 @@ function fundamentalsMetrics(
     ["Last Quarter Growth", fundamentals?.lastQuarterGrowth != null ? colorBySign(formatPercent(fundamentals.lastQuarterGrowth), fundamentals.lastQuarterGrowth) : "—"],
     ["1Y Return", priceReturns.return1Y != null ? colorBySign(formatPercent(priceReturns.return1Y), priceReturns.return1Y) : "—"],
     ["3Y Return", priceReturns.return3Y != null ? colorBySign(formatPercent(priceReturns.return3Y), priceReturns.return3Y) : "—"],
-    ["Shares Outstanding", formatNullableCompact(fundamentals?.sharesOutstanding)],
+    ["Shares Outstanding", formatCompact(fundamentals?.sharesOutstanding)],
   ];
 }
 
@@ -406,7 +405,7 @@ export async function buildTickerReport({
   if (quote) {
     appendMetricSection(lines, "Quote", [
       ["Last", colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, quoteOptions), quote.change)],
-      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions, quote.price)} (${formatSignedPercentRaw(quote.changePercent)})`, quote.change)],
+      ["Change", colorBySign(`${formatMarketChangeWithCurrency(quote.change, quote.currency, quoteOptions, quote.price)} (${formatPercentRaw(quote.changePercent)})`, quote.change)],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       ["Day Range", quote.low != null || quote.high != null
         ? formatPriceRange(quote.low, quote.high, quote.currency, quoteOptions)
@@ -422,13 +421,13 @@ export async function buildTickerReport({
     appendMetricSection(lines, "Extended Hours", [
       ["Pre-Market", quote.preMarketPrice != null
         ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, quoteOptions)} (${quote.preMarketChangePercent != null ? formatSignedPercentRaw(quote.preMarketChangePercent) : "—"})`,
+          `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.preMarketChangePercent)})`,
           quote.preMarketChange ?? 0,
         )
         : "—"],
       ["After Hours", quote.postMarketPrice != null
         ? colorBySign(
-          `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, quoteOptions)} (${quote.postMarketChangePercent != null ? formatSignedPercentRaw(quote.postMarketChangePercent) : "—"})`,
+          `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, quoteOptions)} (${formatPercentRaw(quote.postMarketChangePercent)})`,
           quote.postMarketChange ?? 0,
         )
         : "—"],

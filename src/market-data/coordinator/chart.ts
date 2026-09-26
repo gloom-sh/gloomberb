@@ -1,14 +1,15 @@
-import { isIntradayResolution, TIME_RANGE_ORDER } from "../../time-series/resolution";
+import { isIntradayResolution } from "../../time-series/resolution";
+import { TIME_RANGES } from "../../time-series/range";
 import type { PricePoint } from "../../types/financials";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
 import { parseHistorySession } from "../history-session";
 import { publicListingTarget } from "../../sources/listing-target";
 import type { ChartRequest, InstrumentRef } from "../request-types";
 import type { QueryEntry } from "../result-types";
-import { buildInstrumentKey } from "../selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import { loadingEntry } from "./entries";
 
-const TIME_RANGE_INDEX = new Map(TIME_RANGE_ORDER.map((range, index) => [range, index]));
+const TIME_RANGE_INDEX = new Map(TIME_RANGES.map((range, index) => [range, index]));
 
 export function createBaselineChartRequest(instrument: InstrumentRef): ChartRequest {
   return {
@@ -80,7 +81,7 @@ function isSeedableChartRequest(
   if (targetGranularity !== candidateGranularity) return false;
   if (targetGranularity === "detail") return false;
   if (targetGranularity === "resolution" && target.resolution !== candidate.resolution) return false;
-  if (buildInstrumentKey(target.instrument) !== buildInstrumentKey(candidate.instrument)) return false;
+  if (instrumentIdentityKey(target.instrument) !== instrumentIdentityKey(candidate.instrument)) return false;
   return getTimeRangeIndex(candidate.bufferRange) <= getTimeRangeIndex(target.bufferRange);
 }
 

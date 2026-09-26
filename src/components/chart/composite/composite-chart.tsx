@@ -43,7 +43,6 @@ import {
   StaticXAxisLabels,
   StaticXMarkerLabels,
   StaticXMarkerOverlay,
-  type StaticChartXMarker,
 } from "./axis-overlays";
 import { PriceAxisLabels } from "./price-axis-labels";
 import {
@@ -132,6 +131,7 @@ import type {
   CompositeChartColors,
   CompositeChartProps,
   CompositeChartScene,
+  CompositeChartXMarker,
   CompositePanelScene,
 } from "./types";
 
@@ -1756,7 +1756,7 @@ function CompositeLegend({
 }
 
 const NO_DRAWINGS: readonly ChartDrawing[] = [];
-const NO_X_MARKERS: readonly StaticChartXMarker[] = [];
+const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
 /** Coalesces a drag into one write instead of one per pointer move. */
 const DRAWING_PERSIST_DELAY_MS = 400;
 
