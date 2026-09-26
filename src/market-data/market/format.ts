@@ -594,6 +594,7 @@ export function formatMarketCostWithCurrency(
   return `${sign}${symbol}${body}`;
 }
 
+/** @deprecated Slated for removal. Use `formatMarketPriceWithCurrency` with `maxWidth` to fit a column. */
 export function formatCompactMarketPriceWithCurrency(
   value: number | undefined,
   currency = "USD",

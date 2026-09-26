@@ -486,6 +486,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     return this.contributions.tickerResearchTabsMap.owners.get(tabId);
   }
 
+  /** @deprecated Check the layout's `floating` entries instead. */
   isPaneFloating(paneId: string): boolean {
     try {
       const target = this.resolvePaneTarget(paneId);

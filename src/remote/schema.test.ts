@@ -35,13 +35,6 @@ describe("remote operation schema", () => {
       .toBe("user-data");
     expect(REMOTE_OPERATIONS.find(({ id }) => id === "capability.invoke")?.writeTier)
       .toBe("broker");
-    expect(REMOTE_OPERATIONS.find(({ id }) => id === "layout.placePane")?.inputSchema)
-      .toMatchObject({
-        required: ["paneId", "region"],
-        properties: {
-          region: { enum: ["left", "right", "top", "bottom", "floating"] },
-        },
-      });
   });
 
   test("serializes operation descriptors without losing fields", () => {

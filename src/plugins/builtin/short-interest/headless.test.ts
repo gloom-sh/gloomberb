@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { CloudDataApi } from "../../../api-client/data";
 import type { CloudMarketResponse, CloudShortInterestPayload } from "../../../api-client/types";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { fetchShortInterest } from "./client";
+import { loadShortInterest } from "./client";
 import { createShortInterestHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -55,7 +55,7 @@ describe("short interest client", () => {
       } as CloudMarketResponse<CloudShortInterestPayload> as T;
     });
 
-    const result = await fetchShortInterest("aapl", dataApi);
+    const { records: result } = await loadShortInterest("aapl", dataApi);
 
     expect(paths).toEqual(["/market/short-interest?symbol=AAPL"]);
     expect(result[0]).toMatchObject({ sharesShort: 15_000_000, shortRatio: 3 });

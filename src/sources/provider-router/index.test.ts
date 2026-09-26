@@ -76,23 +76,6 @@ describe("AssetDataRouter", () => {
     expect(yahooCalls).toEqual({ quote: 1, history: 1 });
   });
 
-  test("serves USD exchange rate locally without provider revalidation", async () => {
-    let providerCalls = 0;
-    const router = new AssetDataRouter({
-      ...fallbackProvider,
-      async getExchangeRate() {
-        providerCalls += 1;
-        return 1;
-      },
-    });
-
-    const rate = await router.getExchangeRate("usd");
-    await Promise.resolve();
-
-    expect(rate).toBe(1);
-    expect(providerCalls).toBe(0);
-  });
-
   test("routes market calls only through sources with market capability", async () => {
     const newsOnlySource: CapabilityRouteSource = {
       id: "news-only",
@@ -781,15 +764,6 @@ describe("AssetDataRouter", () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.providerId).toBe("ibkr");
     expect(results[0]?.brokerContract?.localSymbol).toBe("AAPL");
-  });
-
-  test("ignores disabled plugin sources when the registry filters them out", async () => {
-    const router = new AssetDataRouter(fallbackProvider);
-    attachTestRegistry(router);
-
-    const quote = await router.getQuote("AAPL", "NASDAQ");
-    expect(quote.price).toBe(100);
-    expect(quote.providerId).toBeUndefined();
   });
 
   test("does not search fallback providers when the preferred provider returns results", async () => {

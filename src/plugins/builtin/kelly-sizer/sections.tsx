@@ -12,7 +12,7 @@ import type { StaticChartXMarker } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box } from "../../../ui";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
-import type { KellySizingResult, SensitivityGrid } from "./model";
+import type { KellySizingResult, SensitivityGrid } from "./types";
 import { formatPct, formatSignedPct } from "./view";
 
 /** The longest result label ("Full growth"), which sets the band's label column. */

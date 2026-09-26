@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   getPublicMarketplaceLayout,
   marketplaceLayoutIdFromSearch,
-  openLiveMarketplaceLayoutUrl,
   parseMarketplaceLayoutId,
-  publicMarketplaceLayoutUrl,
 } from "./api";
 
 const id = "0123456789abcdef0123456789abcdef";
@@ -44,9 +42,7 @@ describe("public marketplace layout links", () => {
     expect(calls[0]![1]?.credentials).toBe("include");
   });
 
-  test("builds durable public and live-install URLs", () => {
-    expect(publicMarketplaceLayoutUrl(id, "https://term.gloom.sh")).toBe(`https://term.gloom.sh/l/${id}`);
-    expect(openLiveMarketplaceLayoutUrl(id, "https://term.gloom.sh")).toBe(`https://term.gloom.sh/?layout=${id}`);
+  test("reads layout ids from links and rejects malformed ones", () => {
     expect(marketplaceLayoutIdFromSearch(`?layout=${id}`)).toBe(id);
     expect(parseMarketplaceLayoutId(`/l/${id}`)).toBe(id);
     expect(parseMarketplaceLayoutId("/l/not-an-id")).toBeNull();

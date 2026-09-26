@@ -124,30 +124,6 @@ function focusEditor() {
 const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
 
 describe("useAppGlobalShortcuts", () => {
-  test("toggles the command bar with Ctrl-P", async () => {
-    const actions: AppAction[] = [];
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts"));
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "p", ctrl: true });
-
-    expect(actions).toEqual([{ type: "TOGGLE_COMMAND_BAR" }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("toggles the command bar with Ctrl-K", async () => {
-    const actions: AppAction[] = [];
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts"));
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "k", ctrl: true });
-
-    expect(actions).toEqual([{ type: "TOGGLE_COMMAND_BAR" }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
   // The open bar moves its selection on Ctrl+P, so that chord must reach it.
   test("leaves Ctrl-P to the open command bar and still closes it with Ctrl-K", async () => {
     const actions: AppAction[] = [];
@@ -175,23 +151,6 @@ describe("useAppGlobalShortcuts", () => {
     const retry = await emitKeypress({ name: "u" });
     expect(started).toEqual(["9.9.9"]);
     expect(retry.defaultPrevented).toBe(true);
-  });
-
-  test("opens ticker search with backtick", async () => {
-    const actions: AppAction[] = [];
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts"));
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "`" });
-
-    expect(actions).toEqual([{
-      type: "SET_COMMAND_BAR",
-      open: true,
-      query: "",
-      launch: { kind: "ticker-search", query: "" },
-    }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
   });
 
   test("a rebound action answers to its new key and not the old one", async () => {
@@ -270,8 +229,12 @@ describe("useAppGlobalShortcuts", () => {
     expect(executed).toBe(1);
   });
 
-  function layoutState(suffix: string, options: { commandBarOpen?: boolean } = {}) {
-    const config = createDefaultConfig(`/tmp/gloomberb-global-shortcuts-${suffix}`);
+  function baseState(options: Partial<AppState> = {}): AppState {
+    return { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts")), ...options };
+  }
+
+  function layoutState(options: Partial<AppState> = {}): AppState {
+    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-layouts");
     config.layouts = [
       { name: "One", layout: cloneLayout(config.layout) },
       { name: "Two", layout: cloneLayout(config.layout) },
@@ -281,188 +244,141 @@ describe("useAppGlobalShortcuts", () => {
     return { ...createInitialState(config), ...options };
   }
 
-  test("switches saved layouts with Ctrl-number and consumes the shortcut", async () => {
-    const actions: AppAction[] = [];
-    await renderHarness(layoutState("layouts"), createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "2", ctrl: true });
-
-    expect(actions).toEqual([{ type: "SWITCH_LAYOUT", index: 1 }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  // Browsers and the desktop webview report Cmd as meta; the OpenTUI host maps
-  // the kitty `super` modifier onto the same field.
-  test("switches saved layouts with the Cmd-number reported by web and kitty hosts", async () => {
-    const actions: AppAction[] = [];
-    await renderHarness(layoutState("layouts-meta"), createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "3", super: true });
-
-    expect(actions).toEqual([{ type: "SWITCH_LAYOUT", index: 2 }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  // Alt-digit keeps its terminal meaning; only the primary modifier switches.
-  test("ignores Alt-number", async () => {
-    const actions: AppAction[] = [];
-    await renderHarness(layoutState("layouts-alt"), createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "2", alt: true });
-
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-  });
-
-  // Leaving the digit unclaimed lets the desktop webview treat Cmd-digit as its
-  // own browser tab shortcut, which navigates the app away.
-  test("consumes layout numbers while the command bar is open without switching", async () => {
-    const actions: AppAction[] = [];
-    await renderHarness(
-      layoutState("layouts-command-bar", { commandBarOpen: true }),
-      createRegistry(),
-      (action) => actions.push(action),
-    );
-
-    const event = await emitKeypress({ name: "2", ctrl: true });
-
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("consumes primary-modifier numbers with only one layout", async () => {
-    const actions: AppAction[] = [];
-    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-one-layout");
-    const state = { ...createInitialState(config), commandBarOpen: true };
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "1", super: true });
-
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("consumes layout numbers while an editable field owns the keyboard", async () => {
-    const actions: AppAction[] = [];
-    await renderHarness(layoutState("layouts-editable"), createRegistry(), (action) => actions.push(action));
-    focusEditor();
-
-    const event = await emitKeypress({ name: "2", super: true });
-
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("does not run plain plugin shortcuts while input is captured", async () => {
-    let executed = 0;
-    const actions: AppAction[] = [];
-    const state = {
-      ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-captured")),
-      inputCaptured: true,
-    };
-    await renderHarness(state, createRegistry(() => {
-      executed += 1;
-    }), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "x" });
-
-    expect(executed).toBe(0);
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-    expect(event.propagationStopped).toBe(false);
-  });
-
-  test("opens Help with question mark after the command bar is closed", async () => {
-    const openedPanes: string[] = [];
-    const actions: AppAction[] = [];
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-help"));
-    await renderHarness(state, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "?", shift: true });
-
-    expect(openedPanes).toEqual(["help"]);
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("does not open Help with question mark while using the command bar", async () => {
-    const openedPanes: string[] = [];
-    const actions: AppAction[] = [];
-    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-help-guard");
-    const commandBarState = {
-      ...createInitialState(config),
-      commandBarOpen: true,
-    };
-    await renderHarness(commandBarState, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
-
-    let event = await emitKeypress({ name: "?", shift: true });
-    expect(openedPanes).toEqual([]);
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-    expect(event.propagationStopped).toBe(false);
-  });
-
-  test("does not open Help with question mark while typing", async () => {
-    const openedPanes: string[] = [];
-    const actions: AppAction[] = [];
-    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-help-input");
-    const inputCapturedState = {
-      ...createInitialState(config),
-      inputCaptured: true,
-    };
-    await renderHarness(inputCapturedState, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "?", shift: true });
-    expect(openedPanes).toEqual([]);
-    expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-    expect(event.propagationStopped).toBe(false);
-  });
-
-  test("cycles panes with Tab while input is captured", async () => {
-    const actions: AppAction[] = [];
-    const state = {
-      ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-tab-captured")),
-      inputCaptured: true,
-    };
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
-
-    const event = await emitKeypress({ name: "tab" });
-
-    expect(actions).toEqual([{
-      type: "FOCUS_NEXT",
-      paneOrder: [
-        "portfolio-list:main",
-        "chat:main",
-        "ticker-detail:main",
-      ],
-    }]);
-    expect(event.defaultPrevented).toBe(true);
-    expect(event.propagationStopped).toBe(true);
-  });
-
-  test("does not treat modified Shift-R as force refresh", async () => {
-    const refreshes: Array<{ symbol: string; priority?: number }> = [];
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-resize"));
+  function stateWithTicker(): AppState {
+    const state = baseState();
     state.tickers.set("AAPL", {
       metadata: { ticker: "AAPL", exchange: "NASDAQ" },
     } as any);
-    await renderHarness(state, createRegistry(), () => {}, {
-      refreshTicker: (symbol, _exchange, _ticker, priority) => {
-        refreshes.push({ symbol, priority });
-      },
-    });
+    return state;
+  }
 
-    const event = await emitKeypress({ name: "r", ctrl: true, shift: true });
+  interface SingleKeyCase {
+    name: string;
+    state?: () => AppState;
+    editorFocused?: boolean;
+    key: TestKeyEvent;
+    actions?: AppAction[];
+    openedPanes?: string[];
+    /** Whether the shortcut layer claims the key (default prevented and propagation stopped). */
+    consumed: boolean;
+  }
 
-    expect(refreshes).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
-    expect(event.propagationStopped).toBe(false);
+  const singleKeyCases: SingleKeyCase[] = [
+    {
+      name: "toggles the command bar with Ctrl-P",
+      key: { name: "p", ctrl: true },
+      actions: [{ type: "TOGGLE_COMMAND_BAR" }],
+      consumed: true,
+    },
+    {
+      name: "toggles the command bar with Ctrl-K",
+      key: { name: "k", ctrl: true },
+      actions: [{ type: "TOGGLE_COMMAND_BAR" }],
+      consumed: true,
+    },
+    {
+      name: "opens ticker search with backtick",
+      key: { name: "`" },
+      actions: [{ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "ticker-search", query: "" } }],
+      consumed: true,
+    },
+    {
+      name: "switches saved layouts with Ctrl-number",
+      state: () => layoutState(),
+      key: { name: "2", ctrl: true },
+      actions: [{ type: "SWITCH_LAYOUT", index: 1 }],
+      consumed: true,
+    },
+    // Browsers and the desktop webview report Cmd as meta; the OpenTUI host maps
+    // the kitty `super` modifier onto the same field.
+    {
+      name: "switches saved layouts with the Cmd-number reported by web and kitty hosts",
+      state: () => layoutState(),
+      key: { name: "3", super: true },
+      actions: [{ type: "SWITCH_LAYOUT", index: 2 }],
+      consumed: true,
+    },
+    // Alt-digit keeps its terminal meaning; only the primary modifier switches.
+    { name: "ignores Alt-number", state: () => layoutState(), key: { name: "2", alt: true }, consumed: false },
+    // Leaving the digit unclaimed lets the desktop webview treat Cmd-digit as its
+    // own browser tab shortcut, which navigates the app away.
+    {
+      name: "consumes layout numbers while the command bar is open without switching",
+      state: () => layoutState({ commandBarOpen: true }),
+      key: { name: "2", ctrl: true },
+      consumed: true,
+    },
+    {
+      name: "consumes primary-modifier numbers with only one layout",
+      state: () => baseState({ commandBarOpen: true }),
+      key: { name: "1", super: true },
+      consumed: true,
+    },
+    {
+      name: "consumes layout numbers while an editable field owns the keyboard",
+      state: () => layoutState(),
+      editorFocused: true,
+      key: { name: "2", super: true },
+      consumed: true,
+    },
+    {
+      name: "does not run plain plugin shortcuts while input is captured",
+      state: () => baseState({ inputCaptured: true }),
+      key: { name: "x" },
+      consumed: false,
+    },
+    {
+      name: "opens Help with question mark after the command bar is closed",
+      key: { name: "?", shift: true },
+      openedPanes: ["help"],
+      consumed: true,
+    },
+    {
+      name: "does not open Help with question mark while using the command bar",
+      state: () => baseState({ commandBarOpen: true }),
+      key: { name: "?", shift: true },
+      consumed: false,
+    },
+    {
+      name: "does not open Help with question mark while typing",
+      state: () => baseState({ inputCaptured: true }),
+      key: { name: "?", shift: true },
+      consumed: false,
+    },
+    {
+      name: "cycles panes with Tab while input is captured",
+      state: () => baseState({ inputCaptured: true }),
+      key: { name: "tab" },
+      actions: [{ type: "FOCUS_NEXT", paneOrder: ["portfolio-list:main", "chat:main", "ticker-detail:main"] }],
+      consumed: true,
+    },
+    {
+      name: "does not treat modified Shift-R as force refresh",
+      state: stateWithTicker,
+      key: { name: "r", ctrl: true, shift: true },
+      consumed: false,
+    },
+  ];
+
+  test.each(singleKeyCases)("$name", async (testCase) => {
+    const actions: AppAction[] = [];
+    const openedPanes: string[] = [];
+    // Plugin shortcut runs and ticker refreshes; no single-key case expects either.
+    const sideEffects: string[] = [];
+    await renderHarness(
+      testCase.state?.() ?? baseState(),
+      createRegistry(() => sideEffects.push("plugin-shortcut"), (paneId) => openedPanes.push(paneId)),
+      (action) => actions.push(action),
+      { refreshTicker: (symbol) => sideEffects.push(`refresh:${symbol}`) },
+    );
+    if (testCase.editorFocused) focusEditor();
+
+    const event = await emitKeypress(testCase.key);
+
+    expect(actions).toEqual(testCase.actions ?? []);
+    expect(openedPanes).toEqual(testCase.openedPanes ?? []);
+    expect(sideEffects).toEqual([]);
+    expect(event.defaultPrevented).toBe(testCase.consumed);
+    expect(event.propagationStopped).toBe(testCase.consumed);
   });
 });

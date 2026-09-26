@@ -4,7 +4,6 @@ import { CDS_PANE_ID } from "./model";
 import { CdsPane } from "./pane";
 import { cdsHeadless } from "./headless";
 
-export { cdsHeadless } from "./headless";
 
 /** Only an explicit argument binds a ticker; bare `CDS` stays market-wide. */
 function explicitSymbol(options?: PaneTemplateCreateOptions): string | null {

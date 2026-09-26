@@ -191,11 +191,6 @@ function getSortedHistory(history: readonly PricePoint[]): Array<{ point: PriceP
     .sort((left, right) => left.timestamp - right.timestamp);
 }
 
-export function latestHistoryClose(history: readonly PricePoint[]): number | null {
-  const point = getSortedHistory(history).at(-1)?.point;
-  return point && !pricePointIntegrity(point) && Number.isFinite(point.close) && point.close > 0 ? point.close : null;
-}
-
 export function latestHistoryDate(history: readonly PricePoint[]): string | null {
   const latest = getSortedHistory(history).at(-1);
   return latest ? new Date(latest.timestamp).toISOString().slice(0, 10) : null;

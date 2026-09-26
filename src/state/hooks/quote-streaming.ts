@@ -8,7 +8,8 @@ import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../.
 import { useQuoteEntries } from "../../market-data/hooks";
 import type { InstrumentRef } from "../../market-data/request-types";
 import type { QueryEntry } from "../../market-data/result-types";
-import { buildInstrumentKey, buildQuoteKey } from "../../market-data/selectors";
+import { buildQuoteKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 
 const quoteStreamLog = debugLog.createLogger("quote-stream");
 export const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
@@ -50,7 +51,7 @@ function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSu
 }
 
 export function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
-  return `${buildInstrumentKey({
+  return `${instrumentIdentityKey({
     symbol: target.symbol, exchange: target.exchange,
     brokerId: target.context?.brokerId, brokerInstanceId: target.context?.brokerInstanceId,
     instrument: target.context?.instrument,

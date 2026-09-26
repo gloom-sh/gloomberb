@@ -1,8 +1,6 @@
 import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
 
-export type StaticChartXMarker = CompositeChartXMarker;
-
 export interface StaticChartXAxisLabel {
   label: string;
   ratio: number;
@@ -255,7 +253,7 @@ export function StaticXMarkerOverlay({
   height,
   fallbackColor,
 }: {
-  markers: readonly StaticChartXMarker[];
+  markers: readonly CompositeChartXMarker[];
   width: number;
   height: number;
   fallbackColor?: string;
@@ -321,7 +319,7 @@ export function StaticXMarkerLabels({
   width,
   fallbackColor,
 }: {
-  markers: readonly StaticChartXMarker[];
+  markers: readonly CompositeChartXMarker[];
   width: number;
   fallbackColor?: string;
 }) {

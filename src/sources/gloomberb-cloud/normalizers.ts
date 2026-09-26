@@ -1,5 +1,4 @@
 import type { TimeRange } from "../../time-series/range";
-import { subtractTimeRange } from "../../time-series/date-window";
 import { verifiedPriceHistorySource } from "../history-coverage";
 import type {
   Fundamentals,
@@ -357,13 +356,6 @@ export function formatCloudDateTime(
   const month = padTimePart(date.getUTCMonth() + 1);
   const day = padTimePart(date.getUTCDate());
   return `${year}-${month}-${day}`;
-}
-
-export function getRangeStartDate(
-  range: TimeRange,
-  endDate = new Date(),
-): Date {
-  return subtractTimeRange(endDate, range);
 }
 
 export function toHistoryRequest(range: TimeRange): {

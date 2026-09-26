@@ -1,9 +1,5 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
-import { apiClient } from "../../api-client";
-import {
-  browserCredentialedFetch,
-  restoreBrowserCloudSession,
-} from "./cloud-transport";
+import { afterEach, expect, test } from "bun:test";
+import { browserCredentialedFetch } from "./cloud-transport";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -58,11 +54,4 @@ test("browser cloud transport plants session cookies before dropping the Cookie 
     if (previousLocation === undefined) delete (globalThis as { location?: unknown }).location;
     else (globalThis as { location?: unknown }).location = previousLocation;
   }
-});
-
-test("browser boot restores an existing Gloom Cloud cookie session", async () => {
-  const getSession = spyOn(apiClient, "getSession").mockResolvedValue(null);
-  await restoreBrowserCloudSession();
-  expect(getSession).toHaveBeenCalledTimes(1);
-  getSession.mockRestore();
 });

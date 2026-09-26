@@ -51,8 +51,6 @@ import { getMarketplaceHost, getPluginManager, type MarketplaceHost, type Plugin
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
 
-export { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
-
 type Column = DataTableColumn & { id: "name" | "tagline" | "version" | "status" };
 
 const ALL_CATEGORIES = "all";

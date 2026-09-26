@@ -25,10 +25,10 @@ function browserReady(config: AppConfig): AppConfig {
 
 export const BROWSER_RESEARCH_PANE_ID = "ticker-detail:main";
 export const BROWSER_RESEARCH_CHART_ID = "chart-composer:research";
-export const BROWSER_RESEARCH_NEWS_ID = "ticker-news:research";
-export const BROWSER_WORLD_INDICES_ID = "world-indices:main";
-export const BROWSER_SECTORS_ID = "sectors:main";
-export const BROWSER_ECON_CALENDAR_ID = "econ-calendar:main";
+const BROWSER_RESEARCH_NEWS_ID = "ticker-news:research";
+const BROWSER_WORLD_INDICES_ID = "world-indices:main";
+const BROWSER_SECTORS_ID = "sectors:main";
+const BROWSER_ECON_CALENDAR_ID = "econ-calendar:main";
 
 function column(first: string, second: string, ratio = 0.5): DockLayoutNode {
   return {

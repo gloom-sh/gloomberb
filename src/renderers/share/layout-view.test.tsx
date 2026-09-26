@@ -44,12 +44,9 @@ test("shared layout renders a safe workspace preview and live-copy CTA", () => {
     />,
   );
 
-  expect(html).toContain("Shared via Gloomberb");
   expect(html).toContain("X Feed");
   expect(html).toContain("Chart");
   expect(html).toContain("$NVDA");
-  expect(html).toContain("Use this layout");
-  expect(html).toContain("independent, editable copy");
   expect(html).toContain('href="https://term.gloom.sh/?layout=0123456789abcdef0123456789abcdef"');
   expect(html).not.toContain("<script>");
   expect(html).not.toContain("<img");

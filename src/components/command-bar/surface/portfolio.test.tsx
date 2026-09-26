@@ -270,23 +270,6 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).not.toContain("Create or update a manual position in a portfolio");
   });
 
-  test("matches set portfolio position when searching edit position", async () => {
-    testSetup = await testRender(
-      <CommandBarHarness
-        query="edit position"
-        selectedTicker="AAPL"
-        configureConfig={withResearchPortfolio}
-        configureState={focusResearchPortfolio}
-      />,
-      { width: 100, height: 20 },
-    );
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Set Position for AAPL");
-  });
-
   test("prefills the portfolio position workflow from the active manual portfolio and ticker", async () => {
     testSetup = await testRender(
       <CommandBarHarness

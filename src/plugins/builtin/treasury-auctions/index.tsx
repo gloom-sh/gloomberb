@@ -10,7 +10,6 @@ import { TREASURY_AUCTIONS_PANE_ID } from "./types";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { treasuryAuctionsHeadless } from "./headless";
 
-export { treasuryAuctionsHeadless } from "./headless";
 
 let disposeConnection: (() => void) | null = null;
 

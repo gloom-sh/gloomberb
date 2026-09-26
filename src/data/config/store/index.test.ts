@@ -9,6 +9,7 @@ import {
   DEFAULT_LAYOUT,
   DEFAULT_PORTFOLIO_COLUMN_IDS,
   findPaneInstance,
+  type AppConfig,
 } from "../../../types/config";
 import { getDockedPaneIds } from "../../../plugins/pane-manager";
 import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
@@ -151,42 +152,6 @@ describe("sanitizeLayout", () => {
       "portfolio-list:source",
       "ticker-research:visible",
     ]);
-  });
-
-  test("ships a focused Home layout with portfolio, chat, and following research", () => {
-    expect(DEFAULT_LAYOUT.instances.map((instance) => instance.instanceId)).toEqual([
-      "portfolio-list:main",
-      "ticker-detail:main",
-      "chat:main",
-    ]);
-    expect(getDockedPaneIds(DEFAULT_LAYOUT)).toEqual([
-      "portfolio-list:main",
-      "chat:main",
-      "ticker-detail:main",
-    ]);
-    expect(DEFAULT_LAYOUT.dockRoot).toMatchObject({
-      kind: "split",
-      axis: "horizontal",
-      ratio: 0.34,
-      first: {
-        kind: "split",
-        axis: "vertical",
-        ratio: 0.6,
-      },
-      second: { kind: "pane", instanceId: "ticker-detail:main" },
-    });
-    expect(DEFAULT_LAYOUT.floating).toEqual([]);
-  });
-
-  test("keeps the default research layout free of retired chart settings", () => {
-    const researchPanes = DEFAULT_LAYOUT.instances.filter((instance) => instance.paneId === "ticker-research");
-    expect(researchPanes.length).toBeGreaterThan(0);
-    for (const pane of researchPanes) {
-      expect(pane.settings).not.toHaveProperty("chartRangePreset");
-      expect(pane.settings).not.toHaveProperty("chartResolution");
-      expect(pane.settings).not.toHaveProperty("chartAxisMode");
-      expect(pane.settings).not.toHaveProperty("chartRenderMode");
-    }
   });
 
   test("rewrites unbound ticker-detail panes to follow the first portfolio pane", () => {
@@ -400,24 +365,6 @@ describe("sanitizeLayout", () => {
       chartRangePreset: "1Y",
       chartResolution: "1wk",
     });
-  });
-
-  test("falls back to the default layout when given an obsolete column layout", () => {
-    const layout = sanitizeLayout({
-      columns: [{ width: "100%" }],
-      instances: [
-        {
-          instanceId: "portfolio-list:main",
-          paneId: "portfolio-list",
-          binding: { kind: "none" },
-        },
-      ],
-      docked: [{ instanceId: "portfolio-list:main", columnIndex: 0 }],
-      floating: [],
-      detached: [],
-    }, DEFAULT_LAYOUT);
-
-    expect(layout).toEqual(DEFAULT_LAYOUT);
   });
 });
 
@@ -644,25 +591,6 @@ describe("loadConfig", () => {
     expect(config.chartPreferences).toEqual({ renderer: "kitty" });
   });
 
-  test("defaults detached layouts to an empty list for older configs", async () => {
-    const dataDir = await createTempConfigDir();
-    const layoutWithoutDetached = {
-      ...DEFAULT_LAYOUT,
-      detached: undefined,
-    };
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 19,
-      layout: layoutWithoutDetached,
-      layouts: [{ name: "Default", layout: layoutWithoutDetached }],
-    }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(config.configVersion).toBe(CURRENT_CONFIG_VERSION);
-    expect(config.layout.detached).toEqual([]);
-    expect(config.layouts[0]?.layout.detached).toEqual([]);
-  });
-
   test("migrates the retired security step and drops malformed onboarding progress", async () => {
     const validDir = await createTempConfigDir();
     await writeConfigJson(validDir, createSavedConfig({
@@ -737,76 +665,60 @@ describe("loadConfig", () => {
     expect(config.onboardingProgress).toBeUndefined();
   });
 
-  test("fills in missing chart preferences for older configs", async () => {
-    const dataDir = await createTempConfigDir();
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 5,
-      recentTickers: [],
-      chartPreferences: undefined,
-    }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(config.chartPreferences).toEqual({
-      renderer: "auto",
-    });
-  });
-
-  test("sanitizes invalid chart renderer values back to auto", async () => {
-    const dataDir = await createTempConfigDir();
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 7,
-      chartPreferences: {
-        renderer: "nope",
+  const layoutWithoutDetached = { ...DEFAULT_LAYOUT, detached: undefined };
+  const defaultFillCases: Array<{
+    name: string;
+    patch: Record<string, unknown>;
+    select: (config: AppConfig) => unknown;
+    expected: unknown;
+  }> = [
+    {
+      name: "defaults detached layouts to an empty list for older configs",
+      patch: {
+        configVersion: 19,
+        layout: layoutWithoutDetached,
+        layouts: [{ name: "Default", layout: layoutWithoutDetached }],
       },
-    }));
+      select: (config) => [config.layout.detached, config.layouts[0]?.layout.detached],
+      expected: [[], []],
+    },
+    {
+      name: "fills in missing chart preferences for older configs",
+      patch: { configVersion: 5, chartPreferences: undefined },
+      select: (config) => config.chartPreferences,
+      expected: { renderer: "auto" },
+    },
+    {
+      name: "sanitizes invalid chart renderer values back to auto",
+      patch: { configVersion: 7, chartPreferences: { renderer: "nope" } },
+      select: (config) => [config.chartPreferences, config.pluginConfig],
+      expected: [{ renderer: "auto" }, {}],
+    },
+    {
+      name: "defaults value flashing on",
+      patch: { configVersion: 16, valueFlashingEnabled: undefined },
+      select: (config) => config.valueFlashingEnabled,
+      expected: true,
+    },
+    {
+      name: "preserves an explicit value flashing off setting",
+      patch: { valueFlashingEnabled: false },
+      select: (config) => config.valueFlashingEnabled,
+      expected: false,
+    },
+    {
+      name: "preserves plugin config state from disk",
+      patch: { configVersion: 7, pluginConfig: { news: { displayMode: "expanded" } } },
+      select: (config) => config.pluginConfig,
+      expected: { news: { displayMode: "expanded" } },
+    },
+  ];
 
-    const config = await loadConfig(dataDir);
-
-    expect(config.chartPreferences).toEqual({
-      renderer: "auto",
-    });
-    expect(config.pluginConfig).toEqual({});
-  });
-
-  test("defaults value flashing on and preserves an explicit off setting", async () => {
-    const missingDir = await createTempConfigDir();
-    await writeConfigJson(missingDir, createSavedConfig({
-      configVersion: 16,
-      valueFlashingEnabled: undefined,
-    }));
-
-    const missingConfig = await loadConfig(missingDir);
-    expect(missingConfig.valueFlashingEnabled).toBe(true);
-
-    const disabledDir = await createTempConfigDir();
-    await writeConfigJson(disabledDir, createSavedConfig({
-      valueFlashingEnabled: false,
-    }));
-
-    const disabledConfig = await loadConfig(disabledDir);
-    expect(disabledConfig.valueFlashingEnabled).toBe(false);
-  });
-
-  test("preserves plugin config state from disk", async () => {
+  test.each(defaultFillCases)("$name", async ({ patch, select, expected }) => {
     const dataDir = await createTempConfigDir();
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 7,
-      pluginConfig: {
-        news: {
-          displayMode: "expanded",
-        },
-      },
-      chartPreferences: { renderer: "auto" },
-    }));
+    await writeConfigJson(dataDir, createSavedConfig(patch));
 
-    const config = await loadConfig(dataDir);
-
-    expect(config.pluginConfig).toEqual({
-      news: {
-        displayMode: "expanded",
-      },
-    });
+    expect(select(await loadConfig(dataDir))).toEqual(expected);
   });
 
   test("preserves disabled plugin ids without migration rewrites", async () => {

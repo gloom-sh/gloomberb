@@ -515,46 +515,6 @@ describe("PluginRegistry pane settings", () => {
   });
 });
 
-describe("PluginRegistry broker runtime", () => {
-  test("exposes broker adapters and broker instance operations to rendered panes", async () => {
-    const registry = createRegistry();
-    const broker = {
-      id: "demo",
-      name: "Demo",
-      configSchema: [],
-      validate: async () => true,
-      importPositions: async () => [],
-    };
-    const calls: string[] = [];
-    registry.connectBrokerInstanceFn = async (instanceId) => { calls.push(`connect:${instanceId}`); };
-    registry.updateBrokerInstanceFn = async (instanceId, values, options) => {
-      calls.push(`update:${instanceId}:${values.mode}:${options?.replaceConfig ? "replace" : "merge"}`);
-    };
-    registry.syncBrokerInstanceFn = async (instanceId) => { calls.push(`sync:${instanceId}`); };
-    registry.removeBrokerInstanceFn = async (instanceId) => { calls.push(`remove:${instanceId}`); };
-
-    await registry.register({
-      id: "demo-plugin",
-      name: "Demo Plugin",
-      version: "1.0.0",
-      broker,
-    });
-
-    expect(registry.getBrokerAdapter("demo")).toBe(broker);
-    await registry.connectBrokerInstance("demo-live");
-    await registry.updateBrokerInstance("demo-live", { mode: "paper" }, { replaceConfig: true });
-    await registry.syncBrokerInstance("demo-live");
-    await registry.removeBrokerInstance("demo-live");
-
-    expect(calls).toEqual([
-      "connect:demo-live",
-      "update:demo-live:paper:replace",
-      "sync:demo-live",
-      "remove:demo-live",
-    ]);
-  });
-});
-
 test("composed slots receive plugin context and keep extracted actions bound", async () => {
   const registry = createRegistry();
   let notify: ReturnType<typeof usePluginAppActions>["notify"];

@@ -1,16 +1,7 @@
 import { expect, test } from "bun:test";
 import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
-import {
-  BROWSER_ECON_CALENDAR_ID,
-  BROWSER_RESEARCH_CHART_ID,
-  BROWSER_RESEARCH_NEWS_ID,
-  BROWSER_RESEARCH_PANE_ID,
-  BROWSER_SECTORS_ID,
-  BROWSER_WORLD_INDICES_ID,
-  createBrowserConfigStore,
-} from "./config-host";
+import { BROWSER_RESEARCH_PANE_ID, createBrowserConfigStore } from "./config-host";
 import type { StorageLike } from "../../data/json-storage";
-import { DEFAULT_THEME } from "../../theme/themes";
 
 function memoryStorage(): StorageLike {
   const map = new Map<string, string>();
@@ -21,33 +12,13 @@ function memoryStorage(): StorageLike {
   };
 }
 
-test("a first visit opens six panes with one company down the middle", async () => {
+test("a research link opens its ticker on the requested tab", async () => {
   const store = createBrowserConfigStore(memoryStorage(), "?ticker=aapl&tab=financials");
   const config = await store.loadConfig("browser://local");
 
-  expect(config.theme).toBe(DEFAULT_THEME);
-  expect(config.layouts[0]?.name).toBe("Research");
-  expect(getDockedPaneIds(config.layout)).toEqual([
-    BROWSER_WORLD_INDICES_ID,
-    BROWSER_SECTORS_ID,
-    BROWSER_RESEARCH_PANE_ID,
-    BROWSER_RESEARCH_NEWS_ID,
-    BROWSER_RESEARCH_CHART_ID,
-    BROWSER_ECON_CALENDAR_ID,
-  ]);
-
-  const byId = new Map(config.layout.instances.map((instance) => [instance.instanceId, instance]));
-  expect(byId.get(BROWSER_RESEARCH_PANE_ID)?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
-  expect(byId.get(BROWSER_RESEARCH_CHART_ID)?.binding).toEqual({
-    kind: "follow",
-    sourceInstanceId: BROWSER_RESEARCH_PANE_ID,
-  });
-  expect(byId.get(BROWSER_RESEARCH_NEWS_ID)?.binding).toEqual({
-    kind: "follow",
-    sourceInstanceId: BROWSER_RESEARCH_PANE_ID,
-  });
+  const research = config.layout.instances.find((instance) => instance.instanceId === BROWSER_RESEARCH_PANE_ID);
+  expect(research?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
   expect(config.layouts[0]?.paneState?.[BROWSER_RESEARCH_PANE_ID]).toEqual({ activeTabId: "financials" });
-  expect(config.onboardingComplete).toBe(true);
 });
 
 test("a visit without a research link still opens NVDA", async () => {

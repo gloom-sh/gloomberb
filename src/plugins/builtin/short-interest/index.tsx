@@ -10,7 +10,6 @@ import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
 import { shortVolumeSettings } from "../short-volume";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
-export { shortInterestHeadless } from "./headless";
 
 let disposeConnection: (() => void) | null = null;
 

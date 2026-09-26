@@ -5,10 +5,9 @@ import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 import { flowHeadless, hiloHeadless } from "./headless";
 
-export { flowHeadless, hiloHeadless } from "./headless";
 
-export const HILO_PANE_ID = "scanner-hilo";
-export const FLOW_PANE_ID = "scanner-flow";
+const HILO_PANE_ID = "scanner-hilo";
+const FLOW_PANE_ID = "scanner-flow";
 
 function hiloSettings(): PaneSettingsDef {
   return {

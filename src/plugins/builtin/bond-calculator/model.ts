@@ -46,7 +46,6 @@ export function calculateBond(draft: BondDraft, curve: readonly TreasuryBenchmar
   });
   return { terms, analytics, spread, sensitivity };
 }
-export type BondCalculation = ReturnType<typeof calculateBond>;
 
 export function bondDraftFromOptions(options: Record<string, unknown>, now = new Date()): BondDraft {
   const draft = defaultBondDraft(now);

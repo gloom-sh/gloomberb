@@ -3,7 +3,7 @@ import { createDefaultConfig, createPaneInstance } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import { buildAppSessionSnapshot, reconcileAppSessionSnapshot } from "../core/state/session-persistence";
-import { buildInstrumentKey } from "../market-data/selectors";
+import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { createTestTicker } from "../test-support/ticker";
 
 function createTicker(symbol: string, exchange = "NASDAQ"): TickerRecord {
@@ -29,7 +29,7 @@ describe("session persistence", () => {
       focusedPaneId: "b", activePanel: "left" as const, statusBarVisible: true, recentTickers: [], tickers: new Map([["DUAL", ticker]]) };
     const snapshot = buildAppSessionSnapshot(state);
     expect(snapshot.hydrationTargets.map(({ instrument }) => instrument?.conId ?? null)).toEqual([101, 202, null]);
-    expect(snapshot.hydrationTargets.map(buildInstrumentKey)).toHaveLength(3);
+    expect(snapshot.hydrationTargets.map(instrumentIdentityKey)).toHaveLength(3);
     expect(ticker.metadata.broker_contracts).toEqual(contracts);
     // A stale cursor does not change which collection supplies other rows.
     state.paneState.b.cursorSymbol = "MISSING";
@@ -50,7 +50,7 @@ describe("session persistence", () => {
     const snapshot = buildAppSessionSnapshot({ config, paneState: {}, focusedPaneId: "follow", activePanel: "right", statusBarVisible: true,
       recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]) });
     expect(snapshot.hydrationTargets.map(({ instrument }) => instrument?.lastTradeDateOrContractMonth)).toEqual(["202610", "202611"]);
-    expect(new Set(snapshot.hydrationTargets.map(buildInstrumentKey)).size).toBe(2);
+    expect(new Set(snapshot.hydrationTargets.map(instrumentIdentityKey)).size).toBe(2);
     config.layout.instances = [];
     expect(buildAppSessionSnapshot({ config, paneState: {}, focusedPaneId: null, activePanel: "right", statusBarVisible: true,
       recentTickers: ["DUAL"], tickers: new Map([["DUAL", ticker]]) }).hydrationTargets).toEqual([]);

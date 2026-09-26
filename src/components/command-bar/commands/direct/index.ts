@@ -21,9 +21,9 @@ import type { OpenInlineConfirm } from "../../routing/confirm";
 import {
   isRouteCommandId,
   routeCommandIdToScreen,
+  type CollectionCommandId,
 } from "../../helpers";
 import { parseWindowModeCommandArg } from "../../layout-items";
-import type { CollectionCommandId } from "../collection";
 import type { CommandBarRoute } from "../../workflow/types";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;

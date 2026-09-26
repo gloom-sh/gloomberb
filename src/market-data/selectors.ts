@@ -7,10 +7,6 @@ import { normalizePriceHistory } from "../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "./quotes/resolution";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 
-export function buildInstrumentKey(instrument: InstrumentRef): string {
-  return instrumentIdentityKey(instrument);
-}
-
 export function toMarketDataContext(instrument: InstrumentRef): MarketDataRequestContext {
   return {
     brokerId: instrument.brokerId,
@@ -20,17 +16,17 @@ export function toMarketDataContext(instrument: InstrumentRef): MarketDataReques
 }
 
 export function buildQuoteKey(instrument: InstrumentRef): string {
-  return `quote:${buildInstrumentKey(instrument)}`;
+  return `quote:${instrumentIdentityKey(instrument)}`;
 }
 
 export function buildSnapshotKey(instrument: InstrumentRef): string {
-  return `snapshot:${buildInstrumentKey(instrument)}`;
+  return `snapshot:${instrumentIdentityKey(instrument)}`;
 }
 
 export function buildChartKey(request: ChartRequest): string {
   return [
     "chart",
-    buildInstrumentKey(request.instrument),
+    instrumentIdentityKey(request.instrument),
     request.bufferRange,
     request.granularity ?? "range",
     request.resolution ?? "",
@@ -41,11 +37,11 @@ export function buildChartKey(request: ChartRequest): string {
 }
 
 export function buildOptionsKey(request: OptionsRequest): string {
-  return `options:${buildInstrumentKey(request.instrument)}:${request.expirationDate ?? "default"}`;
+  return `options:${instrumentIdentityKey(request.instrument)}:${request.expirationDate ?? "default"}`;
 }
 
 export function buildSecFilingsKey(request: SecFilingsRequest): string {
-  return `sec:${buildInstrumentKey(request.instrument)}:${request.count ?? 50}`;
+  return `sec:${instrumentIdentityKey(request.instrument)}:${request.count ?? 50}`;
 }
 
 export function buildSecContentKey(accessionNumber: string): string {

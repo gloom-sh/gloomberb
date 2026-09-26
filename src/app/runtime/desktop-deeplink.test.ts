@@ -31,28 +31,13 @@ describe("desktop deeplinks", () => {
     expect(notices.at(-1)?.body).toBe("Ticker research is unavailable.");
   });
 
-  test("routes cloud roundup links to account management", () => {
-    expect(resolveDesktopDeepLinkAction("gloomberb://cloud/roundup?week=2026-07-03")).toEqual({
-      type: "open-account-management",
-      route: { kind: "cloud-roundup", week: "2026-07-03" },
-      message: "Opened weekly roundup settings for 2026-07-03.",
-    });
-  });
-
-  test("routes cloud alert links to account management", () => {
-    expect(resolveDesktopDeepLinkAction("gloomberb://cloud/alerts")).toEqual({
-      type: "open-account-management",
-      route: { kind: "cloud-alerts", week: null },
-      message: "Opened portfolio alert settings.",
-    });
-  });
-
-  test("routes the post-checkout success link to account management", () => {
-    expect(resolveDesktopDeepLinkAction("gloomberb://cloud/success")).toEqual({
-      type: "open-account-management",
-      route: { kind: "cloud-success", week: null },
-      message: "Pro is active.",
-    });
+  test.each([
+    ["gloomberb://cloud/roundup?week=2026-07-03", { kind: "cloud-roundup", week: "2026-07-03" }],
+    ["gloomberb://cloud/alerts", { kind: "cloud-alerts", week: null }],
+    ["gloomberb://cloud/success", { kind: "cloud-success", week: null }],
+    ["gloomberb://cloud/emails", { kind: "cloud-emails", week: null }],
+  ])("routes %s to account management", (url, route) => {
+    expect(resolveDesktopDeepLinkAction(url)).toMatchObject({ type: "open-account-management", route });
   });
 
   test("ignores the website's analytics handoff parameters", () => {
@@ -118,14 +103,6 @@ describe("desktop deeplinks", () => {
       type: "open-chat-dm",
       participants: "@ada,@alex",
       message: "Opened DM.",
-    });
-  });
-
-  test("routes email preference links to account management", () => {
-    expect(resolveDesktopDeepLinkAction("gloomberb://cloud/emails")).toEqual({
-      type: "open-account-management",
-      route: { kind: "cloud-emails", week: null },
-      message: "Opened email settings.",
     });
   });
 

@@ -127,15 +127,6 @@ export function resolveCompositeObservationWidth(
   return clamp(typicalGap === null ? maximum : typicalGap * 0.58, minimum, maximum);
 }
 
-function columnObservationWidth(
-  ratios: readonly number[],
-  pixelWidth: number,
-  maximum: number,
-): number {
-  const typicalGap = median(ratioGaps(ratios, pixelWidth));
-  return clamp(typicalGap === null ? maximum : typicalGap * 0.58, 2, maximum);
-}
-
 function columnCenterGaps(
   centers: readonly CompositeColumnGroupCenter[],
   pixelWidth: number,
@@ -168,14 +159,6 @@ function columnWidthFromCenters(
 function maximumColumnClusterWidth(pixelWidth: number, seriesCount: number): number {
   const maximumSlotWidth = clamp(pixelWidth * 0.04, 18, 72);
   return maximumSlotWidth * Math.max(1, seriesCount);
-}
-
-export function resolveCompositeColumnWidth(
-  points: CompositeProjectedPoint[],
-  pixelWidth: number,
-): number {
-  const maximum = clamp(pixelWidth * 0.04, 18, 72);
-  return columnObservationWidth(points.map((point) => point.xRatio), pixelWidth, maximum);
 }
 
 export function resolveCompositeOhlcWidth(

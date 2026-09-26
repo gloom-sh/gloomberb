@@ -4,8 +4,6 @@ import type { PluginPersistence } from "../../../types/plugin";
 
 const cache = createSeriesCache("market-valuation-series", 6 * 60 * 60 * 1000);
 
-export type { SeriesCacheEntry } from "../shared/series-cache";
-
 export function attachValuationPersistence(next: PluginPersistence): void {
   cache.attach(next);
 }
@@ -22,13 +20,6 @@ export function hydrateValuationSeries(
 
 export function getCachedSeries(key: string, options?: { allowExpired?: boolean }) {
   return cache.get(key, options);
-}
-
-export function loadCachedSeries(
-  key: string,
-  loader: () => Promise<DatedObservation[]>,
-): Promise<DatedObservation[]> {
-  return cache.load(key, loader);
 }
 
 export function loadCachedSeriesEntry(

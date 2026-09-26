@@ -49,7 +49,6 @@ import {
   resolveScreenerQuoteFeedStatus,
 } from "../../../market-data/quotes/screener-live-quotes";
 
-export { marketMoversHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would reload the board every render. */
 const NO_SAVED_SELECTION: string[] = [];

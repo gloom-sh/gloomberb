@@ -12,7 +12,6 @@ import {
 import type { QueryEntry } from "./result-types";
 import {
   buildArticleSummaryKey,
-  buildInstrumentKey,
   buildChartKey,
   buildFxKey,
   buildOptionsKey,
@@ -22,6 +21,7 @@ import {
   buildSecFilingsKey,
   buildSnapshotKey,
 } from "./selectors";
+import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { createBaselineChartRequest } from "./coordinator/chart";
 
 const TICKER_FINANCIALS_LOAD_DELAY_MS = 250;
@@ -93,7 +93,7 @@ function useTickerInstrument(symbol: string | null | undefined, ticker: TickerRe
 
 export function useTickerFinancials(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): TickerFinancials | null {
   const instrument = useTickerInstrument(symbol, ticker);
-  const instrumentKey = instrument ? buildInstrumentKey(instrument) : null;
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
   const keys = useMemo(() => (
     instrument
       ? [
@@ -162,7 +162,7 @@ export function useTickerFinancialsMap(
 
 export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): QueryEntry<Quote> | null {
   const instrument = useTickerInstrument(symbol, ticker);
-  const instrumentKey = instrument ? buildInstrumentKey(instrument) : null;
+  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
   const keys = useMemo(
     () => (instrument ? [buildQuoteKey(instrument)] : []),
     [instrumentKey],

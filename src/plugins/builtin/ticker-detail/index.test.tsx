@@ -29,7 +29,7 @@ import { setSharedRegistryForTests } from "../../registry";
 import { PluginRenderProvider } from "../../runtime";
 import { tickerDetailModule } from ".";
 import { chartComposerModule } from "../chart-composer";
-import { FinancialsTab } from "./financials/tab";
+import { ResolvedFinancialsTab } from "./financials/tab";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -89,9 +89,10 @@ function FinancialsTabHarness({ width }: { width: number }) {
   return (
     <AppContext value={{ state: appState, dispatch }}>
       <PaneInstanceProvider paneId="ticker-detail:main">
-        <FinancialsTab
+        <ResolvedFinancialsTab
           width={width}
           focused
+          financials={financials}
           headerScrollId="financials-header-scroll"
           bodyScrollId="financials-body-scroll"
         />
@@ -308,7 +309,7 @@ afterEach(() => {
   setOptionsProvider(undefined);
 });
 
-describe("FinancialsTab", () => {
+describe("ResolvedFinancialsTab", () => {
   test("uses p to toggle the financial statement period", async () => {
     testSetup = await testRender(createFinancialsTabFooterHarness(100, 20), {
       width: 100,

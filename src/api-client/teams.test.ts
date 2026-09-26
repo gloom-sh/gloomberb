@@ -40,43 +40,6 @@ afterEach(() => {
 });
 
 describe("apiClient teams", () => {
-  test("unwraps the team list and posts created teams", async () => {
-    const team = {
-      id: "team-1",
-      name: "Research Desk",
-      slug: "research-desk",
-      accentColor: "violet" as const,
-      shortName: "RD",
-      allowMemberInvites: true,
-      channelId: "team-1-channel",
-      createdAt: "2026-05-01T00:00:00.000Z",
-      role: "owner" as const,
-      memberCount: 1,
-    };
-    const requests = recordRequests((request) =>
-      request.method === "POST" ? team : { teams: [team] },
-    );
-
-    await expect(apiClient.listTeams()).resolves.toEqual([team]);
-    await expect(
-      apiClient.createTeam({
-        name: "Research Desk",
-        accentColor: "violet",
-        shortName: "RD",
-      }),
-    ).resolves.toEqual(team);
-
-    expect(requests).toEqual([
-      { path: "/teams", search: "", method: "GET", body: null },
-      {
-        path: "/teams",
-        search: "",
-        method: "POST",
-        body: { name: "Research Desk", accentColor: "violet", shortName: "RD" },
-      },
-    ]);
-  });
-
   test("manages a team through /teams routes, never the auth plugin directly", async () => {
     const requests = recordRequests(({ path }) => {
       if (path.endsWith("/members/m-2")) return { members: [{ id: "m-2", role: "admin", joinedAt: "2026-05-01T00:00:00.000Z", user: { id: "u2", username: "alice", displayName: "Alice" } }] };

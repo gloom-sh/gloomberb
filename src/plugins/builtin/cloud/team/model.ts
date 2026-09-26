@@ -42,10 +42,6 @@ export function sortTeamChannels<T extends { id: string; name: string }>(channel
   });
 }
 
-export function isTeamChannelId(channelId: string): boolean {
-  return channelId.startsWith(TEAM_CHANNEL_PREFIX);
-}
-
 /** What a person types for a channel name, as the server will keep it. */
 export function normalizeTeamChannelName(value: string): string {
   return value

@@ -5,13 +5,6 @@ export interface CellRect {
   height: number;
 }
 
-export interface PixelRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export interface NativeChartBitmap {
   width: number;
   height: number;

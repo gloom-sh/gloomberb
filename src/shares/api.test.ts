@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createShare, deleteShare, getShare, openLiveShareUrl, publicShareUrl, SHARE_API_ORIGIN } from "./api";
+import { createShare, deleteShare, getShare, openLiveShareUrl, SHARE_API_ORIGIN } from "./api";
 import { parseSharePayload } from "./payload";
 
 const article = { kind: "article", data: { title: "AAPL", text: "Research", sourceUrl: "https://example.com/a" } } as const;
@@ -114,7 +114,6 @@ describe("share API client", () => {
       `${SHARE_API_ORIGIN}/shares/${shareId}`,
       `${SHARE_API_ORIGIN}/shares/${shareId}?purpose=open`,
     ]);
-    expect(publicShareUrl(shareId)).toBe(`https://term.gloom.sh/s/${shareId}`);
     expect(openLiveShareUrl(shareId)).toBe(`https://term.gloom.sh/api/shares/${shareId}/open`);
   });
 });

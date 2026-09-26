@@ -432,7 +432,3 @@ export const chartComposerModule: PluginModule = {
     });
   },
 };
-
-export * from "./chart-spec";
-export * from "./presets";
-export * from "./settings";

@@ -17,30 +17,8 @@ export function resetDoubleEscapeClose(state: DoubleEscapeCloseState) {
   state.targetId = null;
 }
 
-export function recordDoubleEscapeClose(
-  state: DoubleEscapeCloseState,
-  targetId: string | null | undefined,
-  now: number,
-  thresholdMs = DOUBLE_ESCAPE_CLOSE_MS,
-): boolean {
-  if (!targetId) {
-    resetDoubleEscapeClose(state);
-    return false;
-  }
-
-  const matched = state.targetId === targetId && now - state.lastAt <= thresholdMs;
-  if (matched) {
-    resetDoubleEscapeClose(state);
-    return true;
-  }
-
-  state.targetId = targetId;
-  state.lastAt = now;
-  return false;
-}
-
 /**
- * Split form for key handling: `take` runs before the pane and closes on the
+ * Key handling for a double-Esc close: `take` runs before the pane and closes on the
  * second Esc of a pair, `arm` runs after it and only when nothing used the Esc.
  * So an Esc that backs out of a detail or closes a menu never counts as the
  * first half of a close.

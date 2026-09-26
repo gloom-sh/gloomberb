@@ -22,10 +22,6 @@ export type ExtendedHoursData = {
   postMarketChangePercent?: number;
 };
 
-export function normalizeSubUnitCurrency(currency: string): { currency: string; divisor: number } {
-  return resolveCurrencyUnit(currency);
-}
-
 export function financeRawNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value === "object") {
@@ -33,10 +29,6 @@ export function financeRawNumber(value: unknown): number | undefined {
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   }
   return undefined;
-}
-
-function financeRawNumberOrNull(value: unknown): number | null {
-  return financeRawNumber(value) ?? null;
 }
 
 export function hasAnalystResearchValue(data: AnalystResearchData): boolean {

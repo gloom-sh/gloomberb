@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bu
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   attachFredSeriesPersistence,
-  hydrateFredSeries,
   isFredPublicationPending,
   loadCachedFredSeries,
   resetFredSeriesPersistence,
@@ -68,25 +67,6 @@ describe("FRED series cache", () => {
     expect(offline.stale).toBe(true);
     expect(offline.data.info?.observationEnd).toBe("2026-09-10");
     expect(offline.fetchedAt).toBe(Date.parse(fetchedAt));
-  });
-
-  test("uses server-hydrated series without calling the network loader", async () => {
-    hydrateFredSeries([["cpiaucsl", {
-      data: makeSeries(321),
-      fetchedAt: 123,
-      stale: false,
-    }]]);
-    let calls = 0;
-
-    const result = await loadCachedFredSeries(REQUEST, async () => {
-      calls += 1;
-      return makeSeries(1);
-    });
-
-    expect(calls).toBe(0);
-    expect(result.source).toBe("cache");
-    expect(result.fetchedAt).toBe(123);
-    expect(result.data.observations[0]!.value).toBe(321);
   });
 
   test("rehydrates persisted series without refetching", async () => {

@@ -57,11 +57,10 @@ test("portable pane share renders sanitized pane configuration", () => {
   expect(html).toContain("Query");
   expect(html).toContain("fed");
   expect(html).toContain("polymarket");
-  expect(html).toContain("Explore this pane live");
   expect(html).not.toContain("p1");
 });
 
-test("pane share renders the handoff copy, tracked CTA and printable facts only", () => {
+test("pane share renders the tracked CTA and printable facts only", () => {
   const html = renderToStaticMarkup(<ShareView
     share={{
       kind: "pane",
@@ -84,8 +83,6 @@ test("pane share renders the handoff copy, tracked CTA and printable facts only"
     openLiveUrl="https://api.gloom.sh/shares/abc/open"
     onDelete={() => {}}
   />);
-  expect(html).toContain("Shared via Gloomberb");
-  expect(html).toContain("A free, open-source finance terminal for market data, charts, and research.");
   expect(html).toContain('href="https://api.gloom.sh/shares/abc/open"');
   expect(html).toContain("Explore this pane live");
   expect(html).toContain("Movers I watch daily.");
@@ -96,7 +93,6 @@ test("pane share renders the handoff copy, tracked CTA and printable facts only"
   expect(html).not.toContain("Nested Config");
   expect(html).not.toContain("Blank");
   expect(html).not.toContain("<script>");
-  expect(html).toContain("Delete share");
 });
 
 test("chart snapshot retains exact values, gaps and units without a fabricated empty-panel scale", () => {

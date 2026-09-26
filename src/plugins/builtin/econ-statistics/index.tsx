@@ -5,7 +5,6 @@ import { econStatisticsHeadless } from "./headless";
 import { EconStatisticsPane } from "./pane";
 import { resolveStatArg, STATS, DEFAULT_STAT_ID } from "./stats";
 
-export { econStatisticsHeadless } from "./headless";
 
 const ECON_STATISTICS_PANE_ID = "econ-statistics";
 

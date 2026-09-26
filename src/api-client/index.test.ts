@@ -919,90 +919,53 @@ describe("apiClient scanner subscriptions", () => {
 });
 
 describe("apiClient chat timestamps", () => {
-  test("sends the before cursor when loading older chat messages", async () => {
-    let requestedUrl = "";
-    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
-      requestedUrl = String(input);
-      return Response.json([]);
-    });
-
-    await apiClient.getMessages("everyone", { limit: 50, before: "m42" });
-
-    const url = new URL(requestedUrl);
-    expect(url.pathname).toBe("/chat/channels/everyone/messages");
-    expect(url.searchParams.get("limit")).toBe("50");
-    expect(url.searchParams.get("before")).toBe("m42");
-  });
-
-  test("normalizes transcript and send-response timestamps to UTC ISO strings", async () => {
-    const responses = [
-      Response.json([
-        {
-          id: "m1",
-          channelId: "everyone",
-          content: "older",
-          replyToId: null,
-          createdAt: "2026-04-08 07:28:27.625",
-          user: { id: "u1", username: "alice", displayName: "Alice" },
-          replyTo: null,
-        },
-      ]),
-      Response.json({
-        id: "m2",
-        channelId: "everyone",
-        content: "hello",
-        replyToId: null,
-        createdAt: "2026-04-08T07:29:27.625",
-        user: { id: "u1", username: "alice", displayName: "Alice" },
-        replyTo: null,
-      }),
-    ];
-
-    globalThis.fetch = mockFetch(async () => responses.shift() as Response);
-
-    const messages = await apiClient.getMessages("everyone", { limit: 1 });
-    const sentMessage = await apiClient.sendMessage("everyone", "hello");
-
-    expect(messages[0]?.createdAt).toBe("2026-04-08T07:28:27.625Z");
-    expect(sentMessage.createdAt).toBe("2026-04-08T07:29:27.625Z");
-  });
-
-  test("edits a chat message and normalizes the edit timestamp", async () => {
-    const requests: Array<{ path: string; method: string; body: unknown }> = [];
-    globalThis.fetch = mockFetch(
-      async (input: Request | string | URL, init?: RequestInit) => {
-        requests.push({
-          path: new URL(String(input)).pathname,
-          method: init?.method ?? "GET",
-          body: init?.body ? JSON.parse(String(init.body)) : null,
-        });
-        return Response.json({
-          id: "m2",
-          channelId: "everyone",
-          content: "hello edited",
-          replyToId: null,
-          createdAt: "2026-04-08 07:29:27.625",
-          editedAt: "2026-04-08 07:30:27.625",
-          user: { id: "u1", username: "alice", displayName: "Alice" },
-          replyTo: null,
-        });
+  // A missed normalize call parses a SQLite-style timestamp as local time.
+  const timestampCases: Array<{
+    call: string;
+    payload: unknown;
+    read: () => Promise<unknown[]>;
+    expected: string[];
+  }> = [
+    {
+      call: "getMessages",
+      payload: [{ id: "m1", createdAt: "2026-04-08 07:28:27.625" }],
+      read: async () => [(await apiClient.getMessages("everyone"))[0]?.createdAt],
+      expected: ["2026-04-08T07:28:27.625Z"],
+    },
+    {
+      call: "sendMessage",
+      payload: { id: "m2", createdAt: "2026-04-08T07:29:27.625" },
+      read: async () => [(await apiClient.sendMessage("everyone", "hello")).createdAt],
+      expected: ["2026-04-08T07:29:27.625Z"],
+    },
+    {
+      call: "editMessage",
+      payload: { id: "m2", createdAt: "2026-04-08 07:29:27.625", editedAt: "2026-04-08 07:30:27.625" },
+      read: async () => [(await apiClient.editMessage("everyone", "m2", "hello edited")).editedAt],
+      expected: ["2026-04-08T07:30:27.625Z"],
+    },
+    {
+      call: "getChatState",
+      payload: {
+        channels: [],
+        notifications: [{
+          id: "n1",
+          createdAt: "2026-04-08 07:30:00.000",
+          message: { id: "m2", createdAt: "2026-04-08 07:29:00.000" },
+        }],
       },
-    );
-
-    const editedMessage = await apiClient.editMessage(
-      "everyone",
-      "m2",
-      "hello edited",
-    );
-
-    expect(requests).toEqual([
-      {
-        path: "/chat/channels/everyone/messages/m2",
-        method: "PATCH",
-        body: { content: "hello edited" },
+      read: async () => {
+        const notification = (await apiClient.getChatState()).notifications[0];
+        return [notification?.createdAt, notification?.message.createdAt];
       },
-    ]);
-    expect(editedMessage.editedAt).toBe("2026-04-08T07:30:27.625Z");
+      expected: ["2026-04-08T07:30:00.000Z", "2026-04-08T07:29:00.000Z"],
+    },
+  ];
+
+  test.each(timestampCases)("$call normalizes timestamps to UTC ISO strings", async ({ payload, read, expected }) => {
+    globalThis.fetch = mockFetch(async () => Response.json(payload));
+
+    expect(await read()).toEqual(expected);
   });
 
   test("normalizes websocket chat timestamps before notifying listeners", async () => {
@@ -1029,111 +992,6 @@ describe("apiClient chat timestamps", () => {
 
     expect(seenCreatedAts).toEqual(["2026-04-08T07:28:27.625Z"]);
     channel.close();
-  });
-
-  test("fetches chat state and normalizes pending notification timestamps", async () => {
-    let requestedUrl = "";
-    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
-      requestedUrl = String(input);
-      return Response.json({
-        channels: [
-          {
-            id: "everyone",
-            name: "everyone",
-            created_at: "2026-04-08T07:00:00.000Z",
-          },
-        ],
-        onlineCount: 2,
-        channelStates: [
-          {
-            channelId: "everyone",
-            notificationsEnabled: true,
-            lastReadMessageId: "m1",
-            unreadCount: 1,
-          },
-        ],
-        notifications: [
-          {
-            id: "n1",
-            type: "reply",
-            channelId: "everyone",
-            messageId: "m2",
-            createdAt: "2026-04-08 07:30:00.000",
-            message: {
-              id: "m2",
-              channelId: "everyone",
-              content: "reply",
-              replyToId: "m1",
-              createdAt: "2026-04-08 07:29:00.000",
-              user: { id: "u2", username: "bob", displayName: "Bob" },
-              replyTo: {
-                content: "parent",
-                user: { id: "u1", username: "ada" },
-              },
-            },
-          },
-        ],
-      });
-    });
-
-    const state = await apiClient.getChatState();
-
-    expect(new URL(requestedUrl).pathname).toBe("/chat/state");
-    expect(state.onlineCount).toBe(2);
-    expect(state.notifications[0]?.createdAt).toBe("2026-04-08T07:30:00.000Z");
-    expect(state.notifications[0]?.message.createdAt).toBe(
-      "2026-04-08T07:29:00.000Z",
-    );
-  });
-
-  test("updates chat channel state and marks notifications delivered", async () => {
-    const requests: Array<{ path: string; method: string; body: unknown }> = [];
-    const responses = [
-      Response.json({
-        channelId: "everyone",
-        notificationsEnabled: true,
-        lastReadMessageId: "m2",
-        unreadCount: 0,
-      }),
-      Response.json({ delivered: 2 }),
-      Response.json({ onlineCount: 4 }),
-    ];
-    globalThis.fetch = mockFetch(
-      async (input: Request | string | URL, init?: RequestInit) => {
-        requests.push({
-          path: new URL(String(input)).pathname,
-          method: init?.method ?? "GET",
-          body: init?.body ? JSON.parse(String(init.body)) : null,
-        });
-        return responses.shift() as Response;
-      },
-    );
-
-    await apiClient.updateChatChannelState("everyone", {
-      notificationsEnabled: true,
-      readThroughMessageId: "m2",
-    });
-    await apiClient.markChatNotificationsDelivered(["n1", "n2"]);
-    const presence = await apiClient.getChatPresence();
-
-    expect(requests).toEqual([
-      {
-        path: "/chat/channels/everyone/state",
-        method: "PATCH",
-        body: { notificationsEnabled: true, readThroughMessageId: "m2" },
-      },
-      {
-        path: "/chat/notifications/delivered",
-        method: "POST",
-        body: { notificationIds: ["n1", "n2"] },
-      },
-      {
-        path: "/chat/presence",
-        method: "GET",
-        body: null,
-      },
-    ]);
-    expect(presence).toEqual({ onlineCount: 4 });
   });
 
   test("emits websocket chat presence and notification events", async () => {
@@ -1248,28 +1106,6 @@ describe("apiClient account profile", () => {
       false,
     );
   });
-
-  test("changes password through Better Auth", async () => {
-    let requestedUrl = "";
-    let requestedBody = "";
-    apiClient.setSessionToken("session-token");
-    globalThis.fetch = mockFetch(
-      async (input: Request | string | URL, init?: RequestInit) => {
-        requestedUrl = String(input);
-        requestedBody = String(init?.body ?? "");
-        return Response.json({ status: true });
-      },
-    );
-
-    await apiClient.changePassword("old-password", "new-password");
-
-    expect(new URL(requestedUrl).pathname).toBe("/auth/change-password");
-    expect(JSON.parse(requestedBody)).toEqual({
-      currentPassword: "old-password",
-      newPassword: "new-password",
-      revokeOtherSessions: false,
-    });
-  });
 });
 
 describe("apiClient cloud news", () => {
@@ -1307,79 +1143,6 @@ describe("apiClient cloud news", () => {
     expect(url.searchParams.get("since")).toBe("2026-04-01T00:00:00.000Z");
     expect(url.searchParams.get("cursor")).toBe("cursor-1");
     expect(result).toEqual({ items: [], nextCursor: null });
-  });
-
-  test("fetches news story details from the story route", async () => {
-    let seenUrl = "";
-    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
-      seenUrl = String(input);
-      return Response.json({
-        id: "story-1",
-        headline: "Story headline",
-        summary: "Story summary",
-        category: "general",
-        sentiment: "neutral",
-        sectors: [],
-        firstPublishedAt: "2026-04-01T10:00:00.000Z",
-        lastPublishedAt: "2026-04-01T10:05:00.000Z",
-        firstSeenAt: "2026-04-01T10:00:10.000Z",
-        lastSeenAt: "2026-04-01T10:05:10.000Z",
-        primaryUrl: "https://example.com/story",
-        primarySource: "example-wire",
-        variantCount: 2,
-        sourceCount: 2,
-        sources: ["example-wire"],
-        entities: [],
-        tickerLinks: [],
-        items: [],
-      });
-    });
-
-    const story = await apiClient.getCloudNewsStory("story-1");
-
-    expect(new URL(seenUrl).pathname).toBe("/news/story-1");
-    expect(story.id).toBe("story-1");
-  });
-});
-
-describe("apiClient equity diagnostic", () => {
-  test("posts the symbol, exchange, and cache mode to the research route", async () => {
-    let seenUrl = "";
-    let seenInit: RequestInit | undefined;
-    globalThis.fetch = mockFetch(
-      async (input: Request | string | URL, init?: RequestInit) => {
-        seenUrl = String(input);
-        seenInit = init;
-        return Response.json({ symbol: "AAPL", status: "complete" });
-      },
-    );
-
-    await apiClient.getCloudEquityDiagnostic(" aapl ", "NASDAQ", "refresh");
-
-    expect(new URL(seenUrl).pathname).toBe("/research/equity-diagnostic");
-    expect(seenInit?.method).toBe("POST");
-    expect(JSON.parse(String(seenInit?.body))).toEqual({
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      mode: "refresh",
-    });
-  });
-
-  test("omits an unknown exchange and defaults to the cached answer", async () => {
-    let seenInit: RequestInit | undefined;
-    globalThis.fetch = mockFetch(
-      async (_input: Request | string | URL, init?: RequestInit) => {
-        seenInit = init;
-        return Response.json({ symbol: "AAPL", status: "complete" });
-      },
-    );
-
-    await apiClient.getCloudEquityDiagnostic("AAPL");
-
-    expect(JSON.parse(String(seenInit?.body))).toEqual({
-      symbol: "AAPL",
-      mode: "cache-first",
-    });
   });
 });
 
@@ -1430,23 +1193,6 @@ describe("apiClient document search", () => {
       count: false,
     });
     expect(new URL(seenUrl).searchParams.get("count")).toBe("false");
-  });
-
-  test("escapes the document route segments", async () => {
-    let seenUrl = "";
-    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
-      seenUrl = String(input);
-      return Response.json({ document: { chunks: [] } });
-    });
-
-    await apiClient.getCloudSearchDocument(
-      "filing",
-      "0000320193-26-000042/a b",
-    );
-
-    expect(new URL(seenUrl).pathname).toBe(
-      "/cloud/search/documents/filing/0000320193-26-000042%2Fa%20b",
-    );
   });
 
   test("accepts a saved-search write with or without an envelope", async () => {

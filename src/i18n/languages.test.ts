@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   isLanguagePreference,
-  LANGUAGE_PREFERENCES,
   parseLanguagePreference,
   resolveLanguageCommandPreference,
 } from "./languages";
 
 describe("language preferences", () => {
-  test("recognizes every persisted preference", () => {
-    for (const preference of LANGUAGE_PREFERENCES) {
-      expect(isLanguagePreference(preference)).toBe(true);
-    }
+  test("rejects a language without a translation", () => {
     expect(isLanguagePreference("fr")).toBe(false);
   });
 

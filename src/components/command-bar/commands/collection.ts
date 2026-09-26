@@ -16,15 +16,10 @@ import {
   getCollectionCommandAction,
   getCollectionCommandKind,
   getCollectionCommandVerb,
+  type CollectionCommandId,
 } from "../helpers";
 import type { CommandBarRoute } from "../workflow/types";
 import { AmbiguousCollectionTickerError, resolveCollectionTicker } from "../workflow/collection-ticker";
-
-export type CollectionCommandId =
-  | "add-watchlist"
-  | "add-portfolio"
-  | "remove-watchlist"
-  | "remove-portfolio";
 
 type WorkflowDeps = Parameters<typeof resolveTickerInput>[3];
 

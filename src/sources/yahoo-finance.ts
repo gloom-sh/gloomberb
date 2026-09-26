@@ -17,9 +17,7 @@ import { mergeFinancialStatementRows } from "../utils/financial-statements";
 import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../utils/operating-result";
 import { withdrawKnownProviderStatements } from "../utils/statement-observations";
 import { YahooHttpClient } from "./yahoo-finance/http";
-import {
-  normalizeSubUnitCurrency,
-} from "./yahoo-finance/mappers";
+import { resolveCurrencyUnit } from "../utils/currency-units";
 import { getYahooSymbol, getYahooSymbolsToTry } from "./yahoo-finance/symbols";
 import type { ChartResult } from "./yahoo-finance/types";
 import {
@@ -235,7 +233,7 @@ export class YahooFinanceClient implements DataProvider {
   }
 
   async getExchangeRateSnapshot(fromCurrency: string): Promise<ExchangeRateSnapshot> {
-    const { currency } = normalizeSubUnitCurrency(fromCurrency);
+    const { currency } = resolveCurrencyUnit(fromCurrency);
     const normalized = currency.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(normalized)) throw new Error("Exchange rates require a three-letter currency code");
     const fetchedAt = new Date().toISOString();
