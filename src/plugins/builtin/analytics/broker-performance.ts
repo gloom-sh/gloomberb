@@ -17,13 +17,15 @@ function findBrokerInstance(config: AppConfig, portfolio: Portfolio | null): Bro
   return config.brokerInstances.find((instance) => instance.id === portfolio.brokerInstanceId) ?? null;
 }
 
-function isConfiguredIbkrFlexProfile(instance: BrokerInstanceConfig): boolean {
+/** An IBKR profile that can supply account history: Flex statements or the Cloud connection. */
+function isIbkrHistoryProfile(instance: BrokerInstanceConfig): boolean {
   if (instance.brokerType !== "ibkr" || instance.enabled === false) return false;
   const config = instance.config ?? {};
   const flex = typeof config.flex === "object" && config.flex
     ? config.flex as Record<string, unknown>
     : {};
   const mode = instance.connectionMode ?? config.connectionMode;
+  if (mode === "cloud") return true;
   return mode === "flex"
     && typeof flex.token === "string"
     && flex.token.length > 0
@@ -42,7 +44,7 @@ function findBrokerPerformanceCandidates(
   const candidates = [primary];
   for (const instance of config.brokerInstances) {
     if (instance.id === primary.id) continue;
-    if (!isConfiguredIbkrFlexProfile(instance)) continue;
+    if (!isIbkrHistoryProfile(instance)) continue;
     candidates.push(instance);
   }
   return candidates;

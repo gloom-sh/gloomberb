@@ -1,3 +1,4 @@
+import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import {
   validatePosition,
   type ScenarioPosition,
@@ -452,4 +453,36 @@ export function calculateBrinson(evidence: AttributionEvidence) {
     reconciliationError: sum("total") - (portfolioReturn - benchmarkReturn),
     rows,
   };
+}
+
+/**
+ * Performance evidence from the broker's own history, for a portfolio with no
+ * imported evidence. Only a series whose external flows are known (reported by
+ * the broker, or implied from its time-weighted return) qualifies, and it runs
+ * through the same validation as imported JSON.
+ */
+export function brokerPerformanceEvidence(
+  portfolio: { id: string; currency: string },
+  performance: BrokerPortfolioPerformance | null,
+  now = new Date(),
+): PortfolioRiskEvidence | null {
+  if (!performance?.flowBasis || performance.measure === "MWR") return null;
+  if (performance.currency && performance.currency !== portfolio.currency) return null;
+  const points = [...performance.points].sort((left, right) => left.date.localeCompare(right.date));
+  const observations: PerformanceObservation[] = [];
+  for (const [index, point] of points.entries()) {
+    if (!finite(point.value) || (index > 0 && !finite(point.externalFlow))) return null;
+    observations.push({ date: point.date, value: point.value, externalFlow: index === 0 ? 0 : point.externalFlow! });
+  }
+  try {
+    return parsePortfolioRiskEvidence(JSON.stringify({
+      version: 1,
+      portfolioId: portfolio.id,
+      currency: portfolio.currency,
+      source: performance.flowBasis === "derived" ? "Account history, implied flows" : "Account history",
+      performance: { flowTiming: "end-of-day", externalFlowsComplete: true, observations },
+    }), now);
+  } catch {
+    return null;
+  }
 }

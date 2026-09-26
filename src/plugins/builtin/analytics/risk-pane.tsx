@@ -43,7 +43,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { ApiRequestError } from "../../../api-client/errors";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPortfolioRiskMarket } from "./risk-client";
-import { parsePortfolioRiskEvidence } from "./risk-evidence";
+import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
+import { useBrokerPortfolioPerformance } from "./broker-performance";
 import {
   buildPortfolioRisk,
   HOLDINGS_SUMMARY_ROW_IDS,
@@ -208,6 +209,18 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     "riskEvidence",
     "",
   );
+  // Imported evidence wins; otherwise the broker's own history supplies it when it can.
+  const config = useAppSelector((state) => state.config);
+  const brokerPerformance = useBrokerPortfolioPerformance(
+    evidenceText.trim() ? null : portfolio ?? null,
+    config,
+  );
+  const brokerEvidence = useMemo(
+    () => portfolio && !evidenceText.trim()
+      ? brokerPerformanceEvidence(portfolio, brokerPerformance.performance)
+      : null,
+    [brokerPerformance.performance, evidenceText, portfolio],
+  );
   const [equity] = usePaneSettingValue("equityShift", -10),
     [rates] = usePaneSettingValue("rateShift", 100),
     [volatility] = usePaneSettingValue("volShift", 10);
@@ -253,7 +266,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   const derived = useMemo(() => {
     if (frozen) return { model: frozen, error: null };
-    if (!portfolio || (!resource.data && !evidenceText.trim()))
+    if (!portfolio || (!resource.data && !evidenceText.trim() && !brokerEvidence))
       return { model: null, error: null };
     const market = resource.data ?? {
       histories: [],
@@ -268,7 +281,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           portfolio,
           localTickers,
           market,
-          parsePortfolioRiskEvidence(evidenceText),
+          evidenceText.trim() ? parsePortfolioRiskEvidence(evidenceText) : brokerEvidence,
           {
             equity: Number(equity),
             rates: Number(rates),
@@ -289,6 +302,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     localTickers,
     resource.data,
     evidenceText,
+    brokerEvidence,
     equity,
     rates,
     volatility,
