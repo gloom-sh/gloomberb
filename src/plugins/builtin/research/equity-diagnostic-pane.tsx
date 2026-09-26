@@ -20,7 +20,7 @@ import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
 
 const FOOTER_ID = "equity-diagnostic";

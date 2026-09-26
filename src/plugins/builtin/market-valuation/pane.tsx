@@ -16,8 +16,8 @@ import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../.
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { getCachedValuationBundle, loadValuationBundle } from "./client";
 import { indicatorSeries, indicatorUnavailableReason, shortZoneLabel, type IndicatorDef, type ValuationRangeId } from "./defs";
 import { IndicatorDetail } from "./detail";

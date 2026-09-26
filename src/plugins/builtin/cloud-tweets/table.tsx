@@ -46,8 +46,8 @@ import {
   type TweetSortColumnId,
   type TweetSortDirection,
 } from "./model";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { usePaneStatusLinkFooter } from "../shared/pane-footer";
+import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);

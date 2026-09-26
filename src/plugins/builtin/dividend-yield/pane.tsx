@@ -20,7 +20,7 @@ import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRender
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
-import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";

@@ -23,7 +23,7 @@ import { stopSearchFocusNavigation } from "../../../../utils/search-focus-naviga
 import { usePluginAppActions } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
-import { usePlanAccess } from "../../shared/plan-access";
+import { usePlanAccess } from "../../../../api-client/plan-access";
 import { teamStore } from "../team/store";
 import { ThesisDetail } from "./detail";
 import { useBookExposure } from "./exposure";

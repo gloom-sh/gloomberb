@@ -7,7 +7,7 @@ import type { PaneProps } from "../../../types/plugin";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
 import { ApiRequestError } from "../../../api-client/errors";
 import { Box, type InputRenderable } from "../../../ui";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
 import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";

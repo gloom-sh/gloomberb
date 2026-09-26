@@ -58,7 +58,7 @@ import {
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
 import { AnalyticsAsOfDialog, analyticsAsOfRows } from "./analytics-as-of";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { signedPositionDirection } from "../portfolio-list/position-metrics";
 import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";

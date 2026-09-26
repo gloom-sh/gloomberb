@@ -29,7 +29,7 @@ import { chatController } from "../../chat/controller";
 import { SignInWall } from "../auth-actions";
 import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
-import { usePlanAccess } from "../../shared/plan-access";
+import { usePlanAccess } from "../../../../api-client/plan-access";
 import {
   canInviteToTeam,
   canManageTeam,

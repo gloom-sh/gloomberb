@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useCallback, useState } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { PaneInViewProvider, setAppVisible } from "../../../state/app/activity";
-import { AppContext, createInitialState } from "../../../state/app/context";
-import { createDefaultConfig } from "../../../types/config";
-import { Text } from "../../../ui";
+import { testRender } from "../renderers/opentui/test-utils";
+import { PaneInViewProvider, setAppVisible } from "../state/app/activity";
+import { AppContext, createInitialState } from "../state/app/context";
+import { createDefaultConfig } from "../types/config";
+import { Text } from "../ui";
 import { useAutoRefresh } from "./auto-refresh";
 
 const state = createInitialState({ ...createDefaultConfig("/tmp/auto-refresh-unused"), refreshIntervalMinutes: 30 });

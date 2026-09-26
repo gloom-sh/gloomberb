@@ -8,8 +8,8 @@ import type {
 import type { PaneFooterSegment } from "../../../components";
 import { tf } from "../../../i18n";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
-import { usePaneStatusFooter } from "../shared/pane-footer";
-import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import { useAppVisible } from "../../../state/app/activity";
 
 export interface ScannerFeedState<T extends ScannerPayload> {

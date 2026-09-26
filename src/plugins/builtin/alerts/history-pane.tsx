@@ -12,7 +12,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { alertKindLabel, fetchAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
 import { relativeTime } from "./format";

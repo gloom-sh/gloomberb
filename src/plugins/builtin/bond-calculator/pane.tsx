@@ -5,8 +5,8 @@ import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../pu
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { usePaneStatusFooter } from "../shared/pane-footer";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBondBenchmark } from "./client";
 import { bondDraftFromOptions, calculateBond, type BondDraft } from "./model";
 

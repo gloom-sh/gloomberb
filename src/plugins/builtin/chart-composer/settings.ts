@@ -15,7 +15,7 @@ import type {
   SeriesStyle,
 } from "../../../time-series/types";
 import { isOhlcSeriesStyle } from "../../../time-series/spec";
-import { REALIZED_VOLATILITY_ESTIMATORS, isRealizedVolatilityEstimator } from "../shared/volatility/realized";
+import { REALIZED_VOLATILITY_ESTIMATORS, isRealizedVolatilityEstimator } from "../../../market-data/realized-volatility";
 import {
   applySeriesStyle,
   buildCustomChartPreset,

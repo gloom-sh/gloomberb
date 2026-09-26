@@ -18,7 +18,7 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import {
   quoteBoardFooterInfo,
   quoteBoardStatus,

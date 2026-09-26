@@ -9,7 +9,7 @@ import { useRendererHost } from "../../../ui";
 import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
-import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "./plan-access";
+import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "../../../api-client/plan-access";
 
 export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 

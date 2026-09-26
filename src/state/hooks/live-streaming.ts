@@ -1,10 +1,10 @@
-import { useAppSelector, usePaneInstanceId } from "../../../state/app/context";
-import { findPaneInstance, type LayoutConfig } from "../../../types/config";
+import { useAppSelector, usePaneInstanceId } from "../app/context";
+import { findPaneInstance, type LayoutConfig } from "../../types/config";
 import type {
   PaneQuickSettingDef,
   PaneSettingField,
   PaneSettingsDef,
-} from "../../../types/plugin";
+} from "../../types/plugin";
 
 export const LIVE_STREAMING_SETTING_KEY = "liveStreaming";
 

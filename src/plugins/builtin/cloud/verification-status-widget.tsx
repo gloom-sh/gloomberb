@@ -7,7 +7,7 @@ import { useAppActive } from "../../../state/app/activity";
 import { useAppSelector } from "../../../state/app/context";
 import { useCommandBarShortcut } from "../../../ui";
 import { useToastHost } from "../../../ui/toast";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 
 /** How often the widget re-reads the session while a verification is pending. */
 const VERIFICATION_POLL_MS = 30_000;

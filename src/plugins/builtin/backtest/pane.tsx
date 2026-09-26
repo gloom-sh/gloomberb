@@ -23,7 +23,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
 import { formatStat, SUMMARY_ROWS, type SummaryRow } from "./format";

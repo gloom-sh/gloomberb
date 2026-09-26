@@ -42,7 +42,7 @@ import type { PluginModule } from "../plugin-module";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
-} from "../shared/live-streaming";
+} from "../../../state/hooks/live-streaming";
 
 function normalizedSymbol(value: string | null | undefined): string | null {
   const symbol = value?.trim().toUpperCase() ?? "";

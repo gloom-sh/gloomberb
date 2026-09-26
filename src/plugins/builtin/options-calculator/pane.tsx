@@ -14,7 +14,7 @@ import { liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { optionMid } from "../shared/volatility";
 import { useThrottledValue } from "../shared/volatility/live-session";
 import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialSteps } from "./binomial";

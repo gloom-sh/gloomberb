@@ -19,7 +19,7 @@ import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginAppActions, usePluginPaneActions } from "../../runtime";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import { buildQuoteKey } from "../../../market-data/selectors";

@@ -16,8 +16,8 @@ import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../.
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { getCachedStatsBundle, loadStatsBundle } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { fredSeriesUrl, StatDetail } from "./detail";

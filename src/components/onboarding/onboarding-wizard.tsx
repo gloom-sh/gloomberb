@@ -54,7 +54,7 @@ import {
   monthsFreeYearly,
 } from "../../plugins/builtin/account-management/model";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
-import { usePlanAccess } from "../../plugins/builtin/shared/plan-access";
+import { usePlanAccess } from "../../api-client/plan-access";
 import { Button, SegmentedControl, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
 import { BROKER_GUIDE_KEY, brokerSetupGuideUrl } from "./portfolio-step/broker-setup-panel";

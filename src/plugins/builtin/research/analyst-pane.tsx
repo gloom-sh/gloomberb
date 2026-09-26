@@ -17,7 +17,7 @@ import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financ
 import { blendHex, colors } from "../../../theme/colors";
 import { formatPercent } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
-import { handleRefreshKey, useClampSelectedIndex } from "../shared/table-pane";
+import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";

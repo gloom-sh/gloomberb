@@ -30,7 +30,7 @@ import {
   buildInlineFilingContentTargets,
   useSecFilingContentCache,
 } from "./filing-content";
-import { usePaneStatusLinkFooter } from "../shared/pane-footer";
+import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
 import { secHeadless } from "./headless";

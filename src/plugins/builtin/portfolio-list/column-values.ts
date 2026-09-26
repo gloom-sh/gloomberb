@@ -1,3 +1,5 @@
+// Public API: gloomberb/components re-exports getColumnValue, getSortValue and
+// ColumnContext from here, so external plugins depend on their names and shapes.
 import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import type { ColumnConfig } from "../../../types/config";

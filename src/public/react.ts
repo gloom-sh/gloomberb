@@ -41,8 +41,8 @@ export {
   markPersistedReadId,
   normalizePersistedReadIdState,
   usePersistedReadIds,
-} from "../plugins/builtin/shared/read-state";
-export type { PersistedReadIdAdapter } from "../plugins/builtin/shared/read-state";
+} from "../react/read-state";
+export type { PersistedReadIdAdapter } from "../react/read-state";
 export type { InlineTickerCatalogEntry, UseInlineTickersOptions } from "../state/hooks/inline-tickers";
 
 export {
@@ -85,7 +85,7 @@ export type { AppAction } from "../state/app/context";
 
 // Turning a row in a plugin's own table into the app's ticker selection, with
 // the host's rules for opening a new pane or reusing the current one.
-export { useTickerSourceActivate } from "../plugins/builtin/shared/ticker-source";
+export { useTickerSourceActivate } from "../react/ticker-source";
 
 // Financials and FX for a list of tickers, from the same query store the
 // built-in tables read, so a plugin table shows the values the rest of the app
@@ -111,8 +111,8 @@ export { useAsyncResource } from "../react/async-resource";
 // that goes with it, so plugin panes refresh on the same cadence as built-ins
 // and stop while they cannot be seen. `AGE_TICK_MS` is that cadence, for
 // a pane that re-renders its own age column on the same clock.
-export { AGE_TICK_MS, useAutoRefresh, useUpdatedAgo } from "../plugins/builtin/shared/auto-refresh";
-export type { AutoRefreshOptions } from "../plugins/builtin/shared/auto-refresh";
+export { AGE_TICK_MS, useAutoRefresh, useUpdatedAgo } from "../react/auto-refresh";
+export type { AutoRefreshOptions } from "../react/auto-refresh";
 
 // Whether market data should flow: `usePaneVisible()` is true while the app
 // can be seen and the pane is not covered by other windows; `useAppVisible()`

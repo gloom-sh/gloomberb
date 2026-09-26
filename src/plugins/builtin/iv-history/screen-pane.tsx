@@ -5,7 +5,7 @@ import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, shortDate, verdictLabel } from "./format";
 import { projectRichCheap, type RichCheapRow, sharedReading, VCA_LIMIT, VCA_PRESETS, type VcaPreset } from "./model";

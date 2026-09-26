@@ -26,7 +26,7 @@ import {
   usePluginPaneState,
 } from "../../../runtime";
 import { usePaneTicker } from "../../../../state/app/context";
-import { loadingErrorFooterInfo, useClampSelectedIndex } from "../../shared/table-pane";
+import { loadingErrorFooterInfo, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { formatDateTime, useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";

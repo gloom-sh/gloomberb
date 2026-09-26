@@ -19,7 +19,7 @@ import { formatTickerListInput } from "../../../tickers/list";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
-} from "../shared/live-streaming";
+} from "../../../state/hooks/live-streaming";
 
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {

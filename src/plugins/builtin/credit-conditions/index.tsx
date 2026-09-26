@@ -20,7 +20,7 @@ import { Box } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
 import { CREDIT_SERIES, type CreditConditionRow } from "./model";

@@ -26,7 +26,7 @@ import { formatCompact, formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { fetchJobs, fetchJobsMovers, fetchJobsPostings, type JobsCompanyState } from "./client";
 import {

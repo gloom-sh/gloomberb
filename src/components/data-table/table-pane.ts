@@ -1,9 +1,7 @@
 import { useEffect } from "react";
-// Deep imports on purpose: the components barrel re-exports this module for
-// plugins, and importing the barrel back would make a cycle.
-import type { DataTableKeyEvent } from "../../../components/data-table/view";
-import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
-import { isPlainKey } from "../../../utils/keyboard";
+import type { DataTableKeyEvent } from "./view";
+import type { PaneFooterSegment } from "../layout/pane/footer";
+import { isPlainKey } from "../../utils/keyboard";
 
 export function loadingErrorFooterInfo(loading: boolean, error: string | null | undefined): PaneFooterSegment[] {
   return [

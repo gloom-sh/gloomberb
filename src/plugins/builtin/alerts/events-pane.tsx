@@ -26,7 +26,7 @@ import { relativeTime } from "./format";
 import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
 import { isResearchAlertKind } from "./research-rules";
 import { useAsyncResource } from "../../../public/react";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [

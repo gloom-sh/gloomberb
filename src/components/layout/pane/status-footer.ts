@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-// Deep imports on purpose: the components barrel re-exports this module for
-// plugins, and importing the barrel back would make a cycle.
-import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "../../../components/layout/pane/footer";
-import { useExternalLinkFooter } from "../../../components/use-external-link-footer";
+import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "./footer";
+import { useExternalLinkFooter } from "../../use-external-link-footer";
 
 const EMPTY_STATUS_INFO: PaneFooterSegment[] = [];
 

@@ -1,7 +1,7 @@
 import { alignTimeSeries, effectiveTimeSeriesPointTime, scalarPointValue } from "./alignment";
 import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { resolveCurrencyUnit } from "../utils/currency-units";
-import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../plugins/builtin/shared/volatility/realized";
+import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../market-data/realized-volatility";
 import type { ManualChartResolution } from "./resolution";
 import type {
   ChartStudyKind,

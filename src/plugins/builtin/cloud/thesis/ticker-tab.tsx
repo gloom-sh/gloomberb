@@ -10,7 +10,7 @@ import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
-import { usePlanAccess } from "../../shared/plan-access";
+import { usePlanAccess } from "../../../../api-client/plan-access";
 import { teamStore } from "../team/store";
 import { ThesisDetail } from "./detail";
 import * as flows from "./flows";

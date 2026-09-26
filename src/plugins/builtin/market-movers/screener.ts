@@ -9,7 +9,7 @@ import type {
   CloudMarketScreenerItem,
   CloudMarketScreenerPayload,
 } from "../../../api-client/types";
-import { hasProAccess } from "../shared/plan-access";
+import { hasProAccess } from "../../../api-client/plan-access";
 
 const YAHOO_FINANCE_HOSTS = [
   "query2.finance.yahoo.com",

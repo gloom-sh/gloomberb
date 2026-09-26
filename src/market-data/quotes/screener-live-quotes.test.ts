@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { Quote } from "../../../types/financials";
-import { buildQuoteKey } from "../../../market-data/selectors";
-import type { QueryEntry } from "../../../market-data/result-types";
+import type { Quote } from "../../types/financials";
+import { buildQuoteKey } from "../selectors";
+import type { QueryEntry } from "../result-types";
 import {
   buildScreenerQuoteTargets,
   overlayScreenerQuoteEntries,

@@ -80,9 +80,9 @@ export { NestedPaneTabs, usePaneHeaderTabs } from "./layout/pane/header-tabs";
 export type { PaneHeaderTabsRegistration } from "./layout/pane/header-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that
 // changes with loading/error state, and one that also carries a link.
-export { usePaneStatusFooter, usePaneStatusLinkFooter } from "../plugins/builtin/shared/pane-footer";
+export { usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/status-footer";
 export { usePaneNoticeFooter, type UsePaneNoticeFooterOptions } from "./use-pane-notice-footer";
-export { loadingErrorFooterInfo } from "../plugins/builtin/shared/table-pane";
+export { loadingErrorFooterInfo } from "./data-table/table-pane";
 export type { PaneFooterPressEvent, PaneFooterSegment, PaneHint } from "./layout/pane/footer";
 export {
   getPaneSidebarWidth,

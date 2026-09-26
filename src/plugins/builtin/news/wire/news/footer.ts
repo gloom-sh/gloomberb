@@ -6,8 +6,8 @@ import { useShortcut } from "../../../../../react/input";
 import { useUiCapabilities } from "../../../../../ui";
 import { isPlainKey } from "../../../../../utils/keyboard";
 import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
-import { CLOUD_NEWS_DELAY_HOURS } from "../../../shared/plan-access";
-import { usePaneStatusLinkFooter } from "../../../shared/pane-footer";
+import { CLOUD_NEWS_DELAY_HOURS } from "../../../../../api-client/plan-access";
+import { usePaneStatusLinkFooter } from "../../../../../components/layout/pane/status-footer";
 import { usePluginAppActions } from "../../../../runtime";
 import { useOptionalPaneInstanceId } from "../../../../../state/app/context";
 

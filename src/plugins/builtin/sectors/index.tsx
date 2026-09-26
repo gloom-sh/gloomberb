@@ -12,8 +12,8 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
-import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { isStreamCarryingQuote, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { SectorMoveBar } from "./move-bar";
 import {

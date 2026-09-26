@@ -20,7 +20,7 @@ function OptionsResearchTab({ width, height, focused }: TickerResearchTabProps) 
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
-} from "../shared/live-streaming";
+} from "../../../state/hooks/live-streaming";
 import { OPTION_FIELD_DEFS, resolveOptionFieldIds } from "./table";
 
 function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {

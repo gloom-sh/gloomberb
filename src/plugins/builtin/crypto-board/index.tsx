@@ -1,5 +1,5 @@
 import type { PluginModule } from "../plugin-module";
-import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../shared/live-streaming";
+import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { cryptoMarketsCache } from "./client";
 import { cryptoBoardHeadless } from "./headless";
 import { CryptoBoardPane } from "./pane";

@@ -26,7 +26,7 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {

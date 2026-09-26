@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { apiClient } from "../../../api-client";
+import { apiClient } from "./index";
 
 /**
  * Minimum shape the plan helpers need. Both `AuthUser` (from `/auth/get-session`)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { PricePoint } from "../../../../types/financials";
+import type { PricePoint } from "../types/financials";
 import {
   realizedVolatility,
   realizedVolatilityCadenceIssue,
@@ -7,7 +7,7 @@ import {
   rollingRealizedVolatility,
   volatilityCone,
   type RealizedVolatilityEstimator,
-} from "./realized";
+} from "./realized-volatility";
 
 function history(returns: readonly number[]): PricePoint[] {
   const points: PricePoint[] = [{ date: new Date(Date.UTC(2025, 0, 1)), close: 100 }];

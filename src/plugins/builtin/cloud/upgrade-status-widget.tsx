@@ -7,7 +7,7 @@ import { Button } from "../../../components/ui/button";
 import { useCommandBarShortcut } from "../../../ui";
 import { chatController, type ChatController } from "../chat/controller";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { resolvePlanAccess } from "../shared/plan-access";
+import { resolvePlanAccess } from "../../../api-client/plan-access";
 
 interface CloudUpgradeStatusWidgetProps {
   controller?: Pick<ChatController, "getSnapshot" | "subscribe">;

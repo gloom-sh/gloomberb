@@ -37,7 +37,7 @@ import type {
 } from "../../../api-client";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction } from "../shared/cloud-upgrade";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import {
   createSavedSearch,
   deleteSavedSearch,

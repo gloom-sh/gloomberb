@@ -45,7 +45,7 @@ import {
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
 import {
@@ -69,8 +69,8 @@ import {
 import { useScreenResults } from "./results";
 import { overlayLiveScreenRows } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
-import { buildScreenerQuoteTargets } from "../shared/screener-live-quotes";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { getTableWidth } from "../../../components/ui/table-layout";
 
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */

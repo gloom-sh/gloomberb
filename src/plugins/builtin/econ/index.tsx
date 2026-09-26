@@ -11,7 +11,7 @@ import {
 } from "../../../components";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -39,7 +39,7 @@ import {
   type EconCalendarColumn,
   type ImpactFilter,
 } from "./calendar-model";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",

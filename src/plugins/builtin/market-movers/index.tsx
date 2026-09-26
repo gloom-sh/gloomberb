@@ -11,7 +11,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import {
   attachMarketMoversPersistence,
@@ -43,11 +43,11 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   useLiveStreamingSetting,
   withLiveStreamingSetting,
-} from "../shared/live-streaming";
+} from "../../../state/hooks/live-streaming";
 import {
   buildScreenerQuoteTargets,
   resolveScreenerQuoteFeedStatus,
-} from "../shared/screener-live-quotes";
+} from "../../../market-data/quotes/screener-live-quotes";
 
 export { marketMoversHeadless } from "./headless";
 

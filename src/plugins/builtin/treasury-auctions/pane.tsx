@@ -23,7 +23,7 @@ import { formatRelativeAge } from "../../../utils/relative-time";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,

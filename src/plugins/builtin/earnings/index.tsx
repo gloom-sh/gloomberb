@@ -9,7 +9,7 @@ import { useAssetData, usePluginAppActions, usePluginPaneState, usePluginTickerA
 import { useUiCapabilities } from "../../../ui";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { EarningsDetailView } from "./detail-view";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import type {
   PaneSettingsContext,
   PaneSettingsDef,

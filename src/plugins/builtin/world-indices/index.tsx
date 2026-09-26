@@ -5,7 +5,7 @@ import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useQuoteBoard, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";

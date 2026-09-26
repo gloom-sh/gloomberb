@@ -27,9 +27,9 @@ import {
   resolveLockedTabId,
 } from "./settings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
-import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
 import { tickerQuoteFooterInfo } from "./quote-footer";

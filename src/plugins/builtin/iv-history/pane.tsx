@@ -9,7 +9,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { IvHistoryChart } from "./charts";
 import { loadIvHistory } from "./client";

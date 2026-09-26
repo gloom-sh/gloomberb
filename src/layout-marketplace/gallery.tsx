@@ -10,7 +10,7 @@ import { useRendererHost, useUiHost } from "../ui";
 import { apiClient, type TeamSummary } from "../api-client";
 import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
 import { teamStore } from "../plugins/builtin/cloud/team/store";
-import { usePlanAccess } from "../plugins/builtin/shared/plan-access";
+import { usePlanAccess } from "../api-client/plan-access";
 import { getMarketplaceHost } from "../plugins/builtin/plugin-marketplace/store";
 import { rememberLayoutRequirements } from "../components/layout/missing-pane";
 import type { PluginRegistry } from "../plugins/registry";

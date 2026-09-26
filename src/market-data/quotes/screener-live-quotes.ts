@@ -1,9 +1,9 @@
-import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { publicTickerKey } from "../../../utils/exchanges";
-import type { Quote } from "../../../types/financials";
-import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
-import type { QueryEntry } from "../../../market-data/result-types";
-import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import type { QuoteSubscriptionTarget } from "../../types/data-provider";
+import { publicTickerKey } from "../../utils/exchanges";
+import type { Quote } from "../../types/financials";
+import { buildQuoteKey, resolveEntryData } from "../selectors";
+import type { QueryEntry } from "../result-types";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
 const STREAM_CONNECTING_GRACE_MS = 15_000;

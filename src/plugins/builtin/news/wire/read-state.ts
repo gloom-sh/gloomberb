@@ -4,7 +4,7 @@ import {
   normalizePersistedReadIdState,
   usePersistedReadIds,
   type PersistedReadIdAdapter,
-} from "../../shared/read-state";
+} from "../../../../react/read-state";
 
 export interface NewsReadState {
   articleIds: string[];

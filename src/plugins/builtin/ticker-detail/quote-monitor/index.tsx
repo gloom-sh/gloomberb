@@ -18,7 +18,7 @@ import { getQuoteMonitorPaneSettings } from "../settings";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { QuoteMonitorCard } from "./card";
-import { useLiveStreamingSetting } from "../../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 
 interface BoardEntry {
   symbol: string;

@@ -11,7 +11,7 @@ import { watchlistCliCommand } from "./cli/watchlist-command";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
-} from "../shared/live-streaming";
+} from "../../../state/hooks/live-streaming";
 
 function resolveCollectionIdForKind(context: PaneTemplateContext, kind: "portfolio" | "watchlist"): string | null {
   if (context.activeCollectionId) {

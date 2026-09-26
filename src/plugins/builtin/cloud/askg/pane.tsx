@@ -51,7 +51,7 @@ import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
-import { usePlanAccess } from "../../shared/plan-access";
+import { usePlanAccess } from "../../../../api-client/plan-access";
 import { SignInWall } from "../auth-actions";
 import { afterLayout, revealInScrollBox } from "../reveal-in-scroll-box";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";

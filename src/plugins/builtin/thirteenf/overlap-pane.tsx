@@ -7,7 +7,7 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { normalizeCik, searchThirteenFFunds } from "./api";
 import { loadFundDetail } from "./data";
 import { formatWeightMaybe } from "./format";

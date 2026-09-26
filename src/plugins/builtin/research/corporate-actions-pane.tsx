@@ -24,7 +24,7 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { useAssetData, usePluginPaneState } from "../../runtime";
-import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";

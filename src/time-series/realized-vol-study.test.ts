@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { buildPriceChartPreset, setBuiltinStudies } from "../plugins/builtin/chart-composer/presets";
-import { realizedVolatility, REALIZED_VOLATILITY_ESTIMATORS } from "../plugins/builtin/shared/volatility/realized";
+import { realizedVolatility, REALIZED_VOLATILITY_ESTIMATORS } from "../market-data/realized-volatility";
 import type { PricePoint, Quote, TickerFinancials } from "../types/financials";
 import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
 import { extractPriceSeries } from "./market";

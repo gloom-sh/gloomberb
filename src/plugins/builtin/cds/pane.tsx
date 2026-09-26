@@ -16,8 +16,8 @@ import { TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { useAutoRefresh } from "../../../react/auto-refresh";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { loadCdsActivity, type CdsActivityLoader } from "./client";
 import {
   DEFAULT_ISSUER_SORT,

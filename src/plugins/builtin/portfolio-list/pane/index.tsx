@@ -10,7 +10,7 @@ import {
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../../components";
-import { useTickerSourceActivate } from "../../shared/ticker-source";
+import { useTickerSourceActivate } from "../../../../react/ticker-source";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
 import { useAppVisible } from "../../../../state/app/activity";
@@ -66,7 +66,7 @@ import {
 } from "./data";
 import { usePortfolioPaneStreaming } from "./streaming";
 import { usePortfolioSupplementalData } from "./supplemental";
-import { useLiveStreamingSetting } from "../../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
 import { useColumnClock } from "../use-column-clock";

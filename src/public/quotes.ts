@@ -31,12 +31,12 @@ export {
   buildScreenerQuoteTargets,
   overlayScreenerQuoteEntries,
   resolveScreenerQuoteFeedStatus,
-} from "../plugins/builtin/shared/screener-live-quotes";
+} from "../market-data/quotes/screener-live-quotes";
 export type {
   ScreenerQuoteFeedStatus,
   ScreenerQuoteFreshness,
   ScreenerQuoteRow,
-} from "../plugins/builtin/shared/screener-live-quotes";
+} from "../market-data/quotes/screener-live-quotes";
 
 // The persisted "Live streaming" pane setting and its quick toggle, so a
 // plugin pane offers the same control, on the same key, as the built-ins.
@@ -47,4 +47,4 @@ export {
   resolveLiveStreamingSetting,
   useLiveStreamingSetting,
   withLiveStreamingSetting,
-} from "../plugins/builtin/shared/live-streaming";
+} from "../state/hooks/live-streaming";

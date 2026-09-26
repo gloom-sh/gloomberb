@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { hasProAccess } from "../../plugins/builtin/shared/plan-access";
+import { hasProAccess } from "../../api-client/plan-access";
 import { hasRealtimeCloudEntitlement } from "./realtime-access";
 
 test("routes on the same entitlement the panes show", () => {

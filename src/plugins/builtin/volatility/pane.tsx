@@ -12,8 +12,8 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useAutoRefresh } from "../../../react/auto-refresh";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import { boardOrder, buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_CURVE_INDICES, VOLATILITY_INDICES, withLiveVolatilityLevels, type VolatilityBoardRow, type VolatilityIndexId, type VolatilityLiveLevel } from "./model";

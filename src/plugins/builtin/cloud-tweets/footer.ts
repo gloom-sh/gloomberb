@@ -5,7 +5,7 @@ import {
   TWITTER_FEED_PANE_ID,
   type TwitterFeed,
 } from "./model";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 
 export function useTwitterFeedFooter({
   activeFeed,

@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { usePlanAccess } from "./plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 
 export const CLOUD_SESSION_REQUIRED = "Gloom Cloud requires signup and email verification";
 

@@ -1,5 +1,5 @@
 import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
-import { isRealizedVolatilityEstimator } from "../plugins/builtin/shared/volatility/realized";
+import { isRealizedVolatilityEstimator } from "../market-data/realized-volatility";
 import { getChartResolutionLabel } from "./resolution";
 import {
   canonicalTimeSeriesFieldId,

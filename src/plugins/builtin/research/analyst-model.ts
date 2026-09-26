@@ -4,7 +4,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { formatRelativeTime } from "../../../utils/datetime-format";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { loadingErrorFooterInfo } from "../shared/table-pane";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 
 function compactPeriod(period: string): string {
   return period

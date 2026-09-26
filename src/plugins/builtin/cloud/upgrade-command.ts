@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import type { GloomPluginContext } from "../../../types/plugin";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { openCloudUpgradeUrl } from "../shared/cloud-upgrade";
-import { resolvePlanAccess } from "../shared/plan-access";
+import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { requestAuthDialog } from "./auth-dialog";
 
 export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {

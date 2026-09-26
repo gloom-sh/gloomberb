@@ -23,7 +23,7 @@ import { compareSortValues, type SortDirection } from "../../../utils/sort-value
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { usePluginTickerActions } from "../../runtime";
-import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../shared/table-pane";
+import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { comparableMarketCap, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";

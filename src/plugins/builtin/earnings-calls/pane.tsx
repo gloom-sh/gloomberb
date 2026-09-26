@@ -31,7 +31,7 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { usePlanAccess } from "../shared/plan-access";
+import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import {
   callStatusLabel,

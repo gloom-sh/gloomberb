@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { usePluginState } from "../../runtime";
+import { usePluginState } from "../plugins/runtime";
 
 export const DEFAULT_MAX_READ_IDS = 2_000;
 

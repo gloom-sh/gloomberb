@@ -85,7 +85,7 @@ import {
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { ChartSeriesQuickAdd } from "./quick-add";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { usePluginAppActions } from "../../runtime";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";

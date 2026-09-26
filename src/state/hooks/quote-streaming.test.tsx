@@ -5,7 +5,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../mar
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { AppProvider, PaneInstanceProvider } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
-import { useLiveStreamingSetting } from "../../plugins/builtin/shared/live-streaming";
+import { useLiveStreamingSetting } from "./live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
 import { PaneInViewProvider, setAppActive, setAppVisible } from "../app/activity";
 

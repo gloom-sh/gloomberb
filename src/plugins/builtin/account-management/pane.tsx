@@ -84,7 +84,7 @@ import {
   type AccountManagementTab,
 } from "./navigation";
 import { openCloudUpgrade } from "../shared/cloud-upgrade";
-import { resolvePlanAccess } from "../shared/plan-access";
+import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
 
 type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;

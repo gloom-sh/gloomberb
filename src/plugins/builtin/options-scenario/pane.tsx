@@ -14,7 +14,7 @@ import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors"
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { optionMid } from "../shared/volatility";
-import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { isPlainKey } from "../../../utils/keyboard";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";

@@ -1,5 +1,5 @@
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { overlayScreenerQuoteEntries } from "../shared/screener-live-quotes";
+import { overlayScreenerQuoteEntries } from "../../../market-data/quotes/screener-live-quotes";
 import type { Quote } from "../../../types/financials";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { formatNumber } from "../../../utils/format";

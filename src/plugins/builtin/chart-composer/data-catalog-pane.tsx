@@ -18,7 +18,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
-import { usePaneStatusLinkFooter } from "../shared/pane-footer";
+import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { PaneTemplateInputStep } from "../../../components/pane-template-wizard";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import {

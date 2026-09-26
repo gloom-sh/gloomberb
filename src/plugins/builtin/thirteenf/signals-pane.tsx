@@ -7,7 +7,7 @@ import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHoldings, type TickerHolderRow } from "./signals";

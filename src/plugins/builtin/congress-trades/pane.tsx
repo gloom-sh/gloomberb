@@ -20,7 +20,7 @@ const CONGRESS_TABS = [
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useShortcut } from "../../../react/input";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
-import { useAutoRefresh } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
   type CloudCongressHousePayload,
