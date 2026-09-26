@@ -4,7 +4,6 @@ import { Box } from "../../../ui";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { correlationModule } from ".";

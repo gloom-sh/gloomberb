@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { TickerRecord } from "../types/ticker";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "./request-types";
 import { createTestTicker } from "../test-support/ticker";
 

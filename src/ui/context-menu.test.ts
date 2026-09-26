@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PluginRegistry } from "../plugins/registry";
 import type { ContextMenuItem } from "../types/context-menu";
-import type { TickerRecord } from "../types/ticker";
 import {
   editableTextContextMenuItems,
   linkContextMenuItems,

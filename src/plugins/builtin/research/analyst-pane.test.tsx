@@ -6,7 +6,6 @@ import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRecord } from "../../../types/ticker";
 import { Box } from "../../../ui";
 import { AnalystResearchView } from "./analyst-pane";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";

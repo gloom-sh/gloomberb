@@ -4,7 +4,7 @@ import { createManualFrameDriver, DataFrameScheduler } from "../frame-scheduler"
 import { MarketDataCoordinator } from "./index";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
-import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import type { PricePoint, Quote } from "../../types/financials";
 import type { NewsArticle } from "../../news/types";
 import { createTestDataProvider, createTestFinancials } from "../../test-support/data-provider";
 
