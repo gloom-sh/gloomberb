@@ -17,7 +17,7 @@ function riskHistory(): PricePoint[] {
   return Array.from({ length: 21 }, (_, index) => ({ date: new Date(Date.UTC(2026, 7, 21 + index)), close: 740 + index + index % 2 }));
 }
 
-// Original reported SPY contradiction captured during the research audit.
+// A reported SPY bar whose open lies above its high.
 const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 758.15, volume: 3461376 };
 
 test("a rejected benchmark suppresses beta while the independent basket Sharpe remains available", () => {
