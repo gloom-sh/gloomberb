@@ -378,7 +378,7 @@ describe("core sync contributors", () => {
     expect(serialized).not.toContain("hidden");
     expect(serialized).not.toContain("brokerContractId");
     expect((payload as any).baseCurrency).toBe("USD");
-    expect(payload).not.toHaveProperty("exchangeRates");
+    expect((payload as any).exchangeRates).toEqual({ USD: 1 });
     expect((payload as any).tickers[0].quote.price).toBe(150);
     expect((payload as any).tickers[0].quote.weekReferencePrice).toBe(125);
     expect((payload as any).tickers[0].quote.weekChangePercent).toBe(20);
