@@ -1,4 +1,5 @@
-import { GITHUB_LATEST_RELEASE_API_URL } from "./updater/github-releases";
+import { compareSemver } from "../utils/semver";
+import { GITHUB_LATEST_RELEASE_API_URL } from "./github-releases";
 
 function getRuntimeProcess(): Pick<NodeJS.Process, "platform" | "arch" | "argv" | "execPath"> | null {
   return (globalThis as { process?: NodeJS.Process }).process ?? null;
@@ -49,16 +50,6 @@ let updateHost: UpdateHost | null = null;
 
 export function setUpdateHost(host: UpdateHost | null): void {
   updateHost = host;
-}
-
-function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 export function getAssetBaseNameForRuntime(
@@ -297,7 +288,8 @@ export async function checkForUpdateDetailed(
     };
 
     const version = data.tag_name.replace(/^v/, "");
-    if (compareSemver(version, currentVersion) <= 0) {
+    // A tag that does not parse as a version is not an update.
+    if ((compareSemver(version, currentVersion) ?? 0) <= 0) {
       return { kind: "current" };
     }
 

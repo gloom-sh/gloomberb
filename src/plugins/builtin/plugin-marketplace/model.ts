@@ -1,6 +1,5 @@
 import type { PluginTarget } from "../../../types/plugin";
-import { compareSemver, formatVersion } from "../../../utils/semver";
-import { VERSION } from "../../../version";
+import { compareSemver, formatVersion, requiredGloomberb } from "../../../utils/semver";
 import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
@@ -290,19 +289,6 @@ export function hasUpdate(entry: MarketplaceEntry): boolean {
     return !entry.installedCommit.toLowerCase().startsWith(target.toLowerCase());
   }
   return false;
-}
-
-/**
- * The Gloomberb a plugin's published code needs, when this build is older;
- * null when it runs here or the registry does not say. The registry states it
- * for the code an install or update would land on, not the checkout already
- * on disk, so it blocks those two actions and nothing else. Without it the
- * update goes through and the plugin then fails to compile against a host
- * that lacks what it imports.
- */
-export function requiredGloomberb(minGloomberb: string | null | undefined, current: string = VERSION): string | null {
-  const order = compareSemver(current, minGloomberb);
-  return order !== null && order < 0 ? formatVersion(minGloomberb) : null;
 }
 
 /**

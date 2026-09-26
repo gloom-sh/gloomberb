@@ -41,7 +41,7 @@ import {
   resolveRegistryListing,
   updatePlugins,
 } from "./commands/plugins";
-import { requiredGloomberb } from "../plugins/builtin/plugin-marketplace/model";
+import { requiredGloomberb } from "../utils/semver";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 
 function createCoreCliCommands(

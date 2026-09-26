@@ -12,7 +12,7 @@ import {
 } from "../../plugins/loader";
 import { linkHostPackages } from "../../plugins/host-link";
 import { isReservedBuiltinPluginId } from "../../plugins/ownership";
-import { requiredGloomberb } from "../../plugins/builtin/plugin-marketplace/model";
+import { requiredGloomberb } from "../../utils/semver";
 import { ALL_PLUGIN_TARGETS, type GloomPlugin, type PluginTarget } from "../../types/plugin";
 import {
   cliStyles,
