@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { MarketDataCoordinator } from "../../market-data/coordinator";
 import { buildArticleSummaryKey } from "../../market-data/selectors";
@@ -48,6 +48,9 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
   test("preserves stale FX age, shares refreshes, notifies consumers, and unsubscribes on destroy", async () => {
+    // A weekday afternoon: from Friday's FX close to Sunday's open a two-hour-old
+    // rate is still current, and this test is about one that went stale.
+    setSystemTime(new Date("2026-09-23T14:00:00Z"));
     const persistence = new AppPersistence(":memory:");
     const pending = deferred<number>();
     let calls = 0;
@@ -77,7 +80,7 @@ describe("shared cached market queries", () => {
       expect(notifications).toBeGreaterThan(0);
       expect((await second.loadFxRate("EUR")).data).toBe(1.12);
       expect(calls).toBe(1);
-    } finally { first.destroy(); second.destroy(); persistence.close(); }
+    } finally { first.destroy(); second.destroy(); persistence.close(); setSystemTime(); }
   });
 
   test("a short-lived router awaits stale FX refreshes and refresh mode refetches fresh rates", async () => {
