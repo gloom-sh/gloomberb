@@ -5,7 +5,6 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useShortcut } from "../react/input";
 import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
-import { selectActiveLayoutIndex, selectSavedLayouts } from "../state/selectors-ui";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
 import { useRendererHost, useUiHost } from "../ui";
 import { apiClient, type TeamSummary } from "../api-client";
@@ -97,8 +96,8 @@ export function LayoutMarketplaceGallery({
   const dialog = useDialog();
   const renderer = useRendererHost();
   const dialogOpen = useDialogState((state) => state.isOpen);
-  const layouts = useAppSelector(selectSavedLayouts);
-  const activeIndex = useAppSelector(selectActiveLayoutIndex);
+  const layouts = useAppSelector((state) => state.config.layouts);
+  const activeIndex = useAppSelector((state) => state.config.activeLayoutIndex);
   const currentLayout = useAppSelector((state) => state.config.layout);
   const currentPaneState = useAppSelector((state) => state.paneState);
   const { signedIn } = usePlanAccess();

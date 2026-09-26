@@ -25,13 +25,6 @@ import {
   type CommandBarPromptBinding,
 } from "../command-bar/panel/prompt-binding";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
-import {
-  selectCommandBarOpen,
-  selectUpdateAvailable,
-  selectUpdateCheckInProgress,
-  selectUpdateNotice,
-  selectUpdateProgress,
-} from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
 import { canRetryUpdate } from "../../app/global-shortcuts";
 import { t, tf } from "../../i18n";
@@ -249,10 +242,10 @@ function HeaderCommandPrompt({
 function UpdateStatus() {
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
-  const updateAvailable = useAppSelector(selectUpdateAvailable);
-  const updateProgress = useAppSelector(selectUpdateProgress);
-  const updateCheckInProgress = useAppSelector(selectUpdateCheckInProgress);
-  const updateNotice = useAppSelector(selectUpdateNotice);
+  const updateAvailable = useAppSelector((state) => state.updateAvailable);
+  const updateProgress = useAppSelector((state) => state.updateProgress);
+  const updateCheckInProgress = useAppSelector((state) => state.updateCheckInProgress);
+  const updateNotice = useAppSelector((state) => state.updateNotice);
   const retryKey = useActionShortcut("install-update");
 
   useEffect(() => {
@@ -391,7 +384,7 @@ export function Header({
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const dispatch = useAppDispatch();
-  const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const { width: termWidth } = useViewport();
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";

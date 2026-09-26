@@ -6,7 +6,6 @@ import { getPluginManager } from "../../plugins/builtin/plugin-marketplace/store
 import type { PaneDef, PaneProps } from "../../types/plugin";
 import { Box } from "../../ui";
 import { useAppSelector } from "../../state/app/context";
-import { selectActiveLayoutIndex, selectSavedLayouts } from "../../state/selectors-ui";
 import type { LayoutRequirement } from "../../layout-marketplace/cloud";
 
 /**
@@ -34,8 +33,8 @@ function requirementFor(paneId: string, layoutIds: readonly string[]): LayoutReq
 }
 
 function MissingPanePlaceholder({ paneType, width }: PaneProps) {
-  const layouts = useAppSelector(selectSavedLayouts);
-  const activeIndex = useAppSelector(selectActiveLayoutIndex);
+  const layouts = useAppSelector((state) => state.config.layouts);
+  const activeIndex = useAppSelector((state) => state.config.activeLayoutIndex);
   const linkedIds = [layouts[activeIndex]?.origin?.layoutId, ...layouts.map((layout) => layout.origin?.layoutId)]
     .filter((id): id is string => !!id);
   const requirement = requirementFor(paneType, linkedIds);

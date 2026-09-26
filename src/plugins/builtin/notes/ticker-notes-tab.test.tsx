@@ -166,17 +166,11 @@ describe("createNotesTab", () => {
     const blurCol = frame.split("\n")[blurRow]?.indexOf("blur-tab") ?? -1;
     expect(blurRow).toBeGreaterThanOrEqual(0);
 
-    const originalError = console.error;
-    console.error = () => {};
-    try {
-      await act(async () => {
-        await testSetup!.mockMouse.click(blurCol + 1, blurRow);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        await testSetup!.renderOnce();
-      });
-    } finally {
-      console.error = originalError;
-    }
+    await act(async () => {
+      await testSetup!.mockMouse.click(blurCol + 1, blurRow);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await testSetup!.renderOnce();
+    });
 
     expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "ab" }]);
     expect(notifications).toEqual(["disk full"]);

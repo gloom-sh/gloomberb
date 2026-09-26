@@ -4,7 +4,6 @@ import { rememberLayoutRequirements } from "../components/layout/missing-pane";
 import type { PluginRegistry } from "../plugins/registry";
 import { teamStore } from "../plugins/builtin/cloud/team/store";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
-import { selectSavedLayouts } from "../state/selectors-ui";
 import { decideLinkedAction, linkedLayoutStatus, linkedLayoutUpdates, originFromEntry } from "./linked";
 import { materializeMarketplaceLayout } from "./payload";
 
@@ -16,7 +15,7 @@ import { materializeMarketplaceLayout } from "./payload";
  */
 export function useLinkedLayoutSync(pluginRegistry: PluginRegistry): void {
   const dispatch = useAppDispatch();
-  const layouts = useAppSelector(selectSavedLayouts);
+  const layouts = useAppSelector((state) => state.config.layouts);
   const layoutsRef = useRef(layouts);
   layoutsRef.current = layouts;
   const checkedRef = useRef(new Map<string, number>());

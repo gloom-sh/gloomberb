@@ -22,7 +22,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       - name: Test
-        run: bun test src/updater.test.ts src/app/global-shortcuts.test.tsx
+        run: bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx
 
       - name: Build standalone CLI
         run: bun run scripts/build.ts

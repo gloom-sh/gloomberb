@@ -32,7 +32,6 @@ import {
   usePaneStateValue,
   usePaneAppConfig,
 } from "../../../state/app/context";
-import { selectCommandBarOpen } from "../../../state/selectors-ui";
 import { usePortfolioAccountState } from "../portfolio-list/summary/live-accounts";
 import { getSharedRegistry } from "../../registry";
 import { resolveTickerOpenTarget } from "../../../tickers/open-target";
@@ -93,7 +92,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const cachedPortfolioFinancials = useAppSelector((state) => state.financials);
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
-  const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const { nativePaneChrome } = useUiCapabilities();
 
   const [mode, setMode] = usePaneStateValue<KellySizingMode>("mode", "binary");

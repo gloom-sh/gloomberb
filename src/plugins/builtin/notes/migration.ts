@@ -1,9 +1,11 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import type { PluginPersistence } from "../../../types/plugin";
+import { debugLog } from "../../../utils/debug-log";
 import type { NotesFiles } from "./files";
 import type { CloudNotesStore } from "./store";
 
 const MIGRATED_AT_KEY = "notes:migratedAt";
+const notesLog = debugLog.createLogger("notes");
 
 export interface NotesMigrationResult {
   uploaded: number;
@@ -73,7 +75,7 @@ export async function migrateLocalNotes(
     await save(key, "", entry.title);
   }
   if (rejected.length > 0) {
-    console.warn(`[notes] ${rejected.length} local note(s) were not accepted by Gloom Cloud and stay local: ${rejected.join(", ")}`);
+    notesLog.warn(`${rejected.length} local note(s) were not accepted by Gloom Cloud and stay local`, { rejected });
   }
   persistence?.setState(MIGRATED_AT_KEY, new Date().toISOString());
   return { uploaded, skipped, rejected };

@@ -3,7 +3,6 @@ import { priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppVisible } from "../../state/app/activity";
 import { useAppSelector } from "../../state/app/context";
-import { selectBaseCurrency } from "../../state/selectors-ui";
 import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
 import { t } from "../../i18n";
 import { useQuoteEntry, useResolvedEntryValue } from "../../market-data/hooks";
@@ -80,7 +79,7 @@ export function resolveMarketSummaryFit(options: {
 export function useMarketSummary(): MarketSummary {
   const colors = useThemeColors();
   const appActive = useAppVisible();
-  const baseCurrency = useAppSelector(selectBaseCurrency);
+  const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const spyQuoteEntry = useQuoteEntry("SPY", null);
   const spyQuote = useResolvedEntryValue(spyQuoteEntry);
   const mktState = spyQuote?.marketState;

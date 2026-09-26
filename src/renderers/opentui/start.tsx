@@ -20,7 +20,6 @@ import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { openTuiToastHost } from "./toast-host";
 import { ToastHostProvider } from "../../ui/toast";
 import { colors } from "../../theme/colors";
-import { startMainThreadMonitor } from "../../utils/main-thread-monitor";
 import { measurePerfAsync } from "../../utils/perf-marks";
 import type { CliLaunchRequest } from "../../types/plugin";
 import type { RemoteControlAdapter } from "../../remote/app-host";
@@ -95,12 +94,10 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
       cliLaunchRequest = dispatchResult.request;
     }
   }
-  const stopMainThreadMonitor = startMainThreadMonitor("opentui");
 
   let host: Awaited<ReturnType<typeof createOpenTuiHost>> | null = null;
   let exitTimer: ReturnType<typeof setTimeout> | null = null;
   const finishProcessExit = () => {
-    stopMainThreadMonitor();
     if (exitTimer) return;
     exitTimer = setTimeout(() => {
       void flushPendingPersistence().finally(() => process.exit(process.exitCode ?? 0));
@@ -144,7 +141,6 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
     );
   } catch (error) {
     if (exitTimer) clearTimeout(exitTimer);
-    stopMainThreadMonitor();
     host?.renderer.off("destroy", finishProcessExit);
     host?.destroy();
     throw error;

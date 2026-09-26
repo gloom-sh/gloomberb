@@ -21,6 +21,7 @@ import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../.
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
+import { requiredGloomberb } from "../../../utils/semver";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
@@ -37,7 +38,6 @@ import {
   mergeCatalog,
   needsRemoteCheck,
   registryPin,
-  requiredGloomberb,
   SECTION_LABELS,
   sortEntries,
   statusOf,

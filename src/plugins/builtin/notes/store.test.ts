@@ -3,6 +3,7 @@ import type { CloudNote, CloudNoteScope, CloudNoteSummary } from "../../../api-c
 import { NoteConflictError } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { debugLog, type LogEntry } from "../../../utils/debug-log";
 import { NotesFiles } from "./files";
 import { migrateLocalNotes } from "./migration";
 import { CloudNotesStore, joinNoteKey, NotesStoreRegistry, splitNoteKey } from "./store";
@@ -229,15 +230,14 @@ describe("migrateLocalNotes", () => {
     };
     const persistence = new MemoryPluginPersistence();
     const cloud = new CloudNotesStore({ kind: "user" }, persistence, client);
-    const warnings: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message: unknown) => { warnings.push(String(message)); };
+    const warnings: LogEntry[] = [];
+    const unsubscribe = debugLog.subscribe((entry) => { if (entry.level === "warn") warnings.push(entry); });
     try {
       expect(await migrateLocalNotes(files, cloud, persistence)).toEqual({ uploaded: 1, skipped: 0, rejected: ["BAD"] });
     } finally {
-      console.warn = originalWarn;
+      unsubscribe();
     }
-    expect(warnings[0]).toContain("BAD");
+    expect(warnings[0]?.data).toEqual({ rejected: ["BAD"] });
     // Stamped: the next launch does not try again.
     expect(await migrateLocalNotes(files, cloud, persistence)).toBeNull();
     await fs.rm(dir, { recursive: true, force: true });

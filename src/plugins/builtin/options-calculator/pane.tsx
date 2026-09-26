@@ -3,7 +3,6 @@ import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, t
 import { useAsyncResource, useInputCapture } from "../../../public/react";
 import { useShortcut } from "../../../react/input";
 import { useAppSelector, usePaneInstance, usePaneStateValue } from "../../../state/app/context";
-import { selectCommandBarOpen } from "../../../state/selectors-ui";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox } from "../../../ui";
@@ -63,7 +62,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const draft = useMemo(() => reconcileOptionCalcDraft(storedDraft, seed), [storedDraft, seed]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
-  const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const american = draft.pricingModel === "american";
   const surfaceSource = draft.volSource === "surface";
   const [dividendText, setDividendText] = usePaneStateValue("dividendText", seedResult.dividendText);

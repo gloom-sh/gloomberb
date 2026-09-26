@@ -8,6 +8,7 @@ import { MarkdownEditor } from "../../../components/markdown-editor";
 import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter, usePaneHeaderTabs } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { debugLog } from "../../../utils/debug-log";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
   formatDeleteNoteTitle,
@@ -18,6 +19,8 @@ import {
 import { chooseNoteOwner, ownerColor, ownerLabel, resolveNoteConflict, useNoteTeams } from "./owner";
 import { NoteConflictError, type NoteOwner, noteOwnerKey, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
+
+const notesLog = debugLog.createLogger("notes");
 
 /** A tab in the pane: a quick note plus who owns it. */
 interface OwnedQuickNote extends QuickNoteEntry {
@@ -71,7 +74,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
         const store = storeFor(owner);
         if (store.readOnly) continue;
         store.saveQuickNotesIndex(bucket?.entries ?? []).catch((error) => {
-          console.error("[notes] Failed to save notes index:", error);
+          notesLog.error("Failed to save notes index", { error: error instanceof Error ? error.message : String(error) });
           notify({ body: error instanceof Error ? error.message : "Failed to save notes index.", type: "error" });
         });
       }
@@ -123,7 +126,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
           }
           return;
         }
-        console.error("[notes] Failed to save note:", error);
+        notesLog.error("Failed to save note", { error: error instanceof Error ? error.message : String(error) });
         notify({ body: error instanceof Error ? error.message : "Failed to save note.", type: "error" });
       });
 
@@ -261,7 +264,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       });
       const store = storeFor(owner);
       store.delete(store.quickNoteKey(id)).catch((error) => {
-        console.error("[notes] Failed to delete note:", error);
+        notesLog.error("Failed to delete note", { error: error instanceof Error ? error.message : String(error) });
         notify({ body: error instanceof Error ? error.message : "Failed to delete note.", type: "error" });
       });
       setEditing(false);

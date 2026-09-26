@@ -15,7 +15,7 @@ import {
   setUpdateHost,
   type ReleaseInfo,
   type UpdateProgress,
-} from "./updater";
+} from "./index";
 
 const originalFetch = globalThis.fetch;
 
@@ -358,6 +358,34 @@ describe("checkForUpdateDetailed", () => {
         kind: "error",
         error: expect.stringContaining("valid SHA-256 digest"),
       });
+    } finally {
+      Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
+      Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });
+    }
+  });
+  // Splitting on "." read "1-beta" as NaN, and NaN <= 0 is false, so these
+  // were offered as updates.
+  test.each([
+    ["a prerelease of the running version", "v0.3.1-beta.1"],
+    ["a tag that is not a version", "nightly"],
+  ])("does not offer %s as an update", async (_label, tagName) => {
+    const originalExecPath = process.execPath;
+    const originalArgv = process.argv;
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      tag_name: tagName,
+      published_at: "2026-04-03T00:00:00Z",
+      assets: [{
+        name: expectedAssetName(),
+        browser_download_url: "https://example.com/gloomberb",
+        digest: `sha256:${"ab".repeat(32)}`,
+      }],
+    }), { status: 200 })) as typeof fetch;
+
+    try {
+      Object.defineProperty(process, "execPath", { value: "/Applications/gloomberb", configurable: true });
+      Object.defineProperty(process, "argv", { value: ["/Applications/gloomberb"], configurable: true });
+
+      await expect(checkForUpdateDetailed("0.3.1")).resolves.toEqual({ kind: "current" });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
       Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });
