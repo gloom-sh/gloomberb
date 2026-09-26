@@ -3,7 +3,6 @@ import type { HeadlessPaneContext } from "../../../types/plugin";
 import { createTestHeadlessArgs } from "../../../test-support/headless";
 import { createCreditConditionsHeadless } from "./headless";
 
-
 describe("credit conditions headless model", () => {
   test("returns normalized spread rows and partial errors", async () => {
     const headless = createCreditConditionsHeadless({
