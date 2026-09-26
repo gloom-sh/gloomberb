@@ -136,6 +136,8 @@ export interface AccountProfile {
 export interface PublicPortfolioAnalytics {
   oneYearReturn?: number | null;
   spyBeta?: number | null;
+  /** "account": the broker's own returns. "holdings": estimated from today's holdings. */
+  basis?: "account" | "holdings" | null;
 }
 
 export interface BuildoutAccountResponse {

@@ -562,13 +562,13 @@ describe("core sync contributors", () => {
     state.financials.get("SPY")!.priceHistory = [...cleanBenchmark.slice(0, -1), { ...benchmarkEnd, high: benchmarkEnd.close - 1 }];
     setSyncedProfileAnalytics("main", { oneYearReturn: 0.25, spyBeta: 1.4 });
     const invalidBenchmark = await coreCollectionsSyncContributor.collect({ state }) as any;
-    expect(invalidBenchmark.analyticsByPortfolio.main).toEqual({ oneYearReturn: 0.25, spyBeta: null });
+    expect(invalidBenchmark.analyticsByPortfolio.main).toEqual({ oneYearReturn: 0.25, spyBeta: null, basis: "holdings" });
     state.financials.get("SPY")!.priceHistory = cleanBenchmark;
     const cleanHolding = state.financials.get("7203.T")!.priceHistory!;
     const holdingEnd = cleanHolding.at(-1)!;
     state.financials.get("7203.T")!.priceHistory = [...cleanHolding.slice(0, -1), { ...holdingEnd, low: holdingEnd.close + 1 }];
     const invalidHolding = await coreCollectionsSyncContributor.collect({ state }) as any;
-    expect(invalidHolding.analyticsByPortfolio.main).toEqual({ oneYearReturn: null, spyBeta: null });
+    expect(invalidHolding.analyticsByPortfolio.main).toEqual({ oneYearReturn: null, spyBeta: null, basis: null });
     state.financials.get("7203.T")!.priceHistory = cleanHolding;
     setSyncedProfileAnalytics("main", null);
     const corrected = await coreCollectionsSyncContributor.collect({ state }) as any;
@@ -602,6 +602,7 @@ describe("core sync contributors", () => {
     expect(payload.analyticsByPortfolio.preview).toEqual({
       oneYearReturn: 0.25,
       spyBeta: 1.4,
+      basis: "holdings",
     });
     expect(payload.analyticsByPortfolio.preview).not.toHaveProperty("marketValue");
   });
@@ -638,6 +639,7 @@ describe("core sync contributors", () => {
     expect(payload.analyticsByPortfolio.main).toEqual({
       oneYearReturn: 0.27,
       spyBeta: 1.1,
+      basis: "holdings",
     });
   });
 });
