@@ -6,14 +6,9 @@ import { App } from "../../app";
 import { loadConfig } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
 import { getBrowserPlugins } from "../../plugins/catalog-browser";
-import { UiHostProvider } from "../../ui/host";
-import { WebDialogHostProvider } from "../electrobun/view/dialog-host";
-import { BrowserErrorBoundary } from "./error-boundary";
+import { DomErrorBoundary, DomHostProviders } from "../electrobun/view/dom-host-providers";
 import { installFocusScopeRelease } from "../electrobun/view/host/focus-scope";
 import { installDomMarketDataFrames } from "../electrobun/view/data-frames";
-import { WebInputHostProvider } from "../electrobun/view/input-host";
-import { webNativeRenderer } from "../electrobun/view/native-renderer";
-import { WebToastHostProvider } from "../electrobun/view/toast-host";
 import { createBrowserAppServices } from "./app-services";
 import {
   installBrowserFetchTransports,
@@ -62,24 +57,24 @@ async function boot(): Promise<void> {
   const externalPlugins = await bundledPlugins;
   const deepLinkBridge = createBrowserDeepLinkBridge();
   root.render(
-    <BrowserErrorBoundary>
-      <UiHostProvider ui={browserUiHost} renderer={browserRendererHost} nativeRenderer={webNativeRenderer}>
-        <WebInputHostProvider>
-          <WebToastHostProvider>
-            <WebDialogHostProvider>
-              <App
-                config={config}
-                servicesFactory={createBrowserAppServices}
-                externalPlugins={externalPlugins}
-                plugins={getBrowserPlugins(externalPlugins)}
-                desktopDeepLinkBridge={deepLinkBridge}
-                updatesEnabled={false}
-              />
-            </WebDialogHostProvider>
-          </WebToastHostProvider>
-        </WebInputHostProvider>
-      </UiHostProvider>
-    </BrowserErrorBoundary>,
+    <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
+      <div className="gloom-fatal">
+        <h1>Gloomberb crashed</h1>
+        <pre>{error instanceof Error ? error.message : String(error)}</pre>
+        <button onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    )}>
+      <DomHostProviders ui={browserUiHost} renderer={browserRendererHost}>
+        <App
+          config={config}
+          servicesFactory={createBrowserAppServices}
+          externalPlugins={externalPlugins}
+          plugins={getBrowserPlugins(externalPlugins)}
+          desktopDeepLinkBridge={deepLinkBridge}
+          updatesEnabled={false}
+        />
+      </DomHostProviders>
+    </DomErrorBoundary>,
   );
   appRootElement.focus({ preventScroll: true });
 }

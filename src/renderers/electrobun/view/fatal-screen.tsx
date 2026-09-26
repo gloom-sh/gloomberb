@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { Component, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { backendRequest, requestElectrobunRestart } from "./backend-rpc";
 
 declare global {
@@ -13,12 +13,6 @@ interface DesktopFatalScreenProps {
   error: unknown;
   details?: string;
   source: string;
-}
-
-interface ElectrobunErrorBoundaryState {
-  hasError: boolean;
-  error: unknown;
-  details?: string;
 }
 
 function formatFatalError(error: unknown, details?: string): string {
@@ -79,39 +73,4 @@ export function DesktopFatalScreen({
       <pre>{errorText}</pre>
     </div>
   );
-}
-
-export class ElectrobunErrorBoundary extends Component<
-  { children: ReactNode },
-  ElectrobunErrorBoundaryState
-> {
-  override state: ElectrobunErrorBoundaryState = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error: unknown): ElectrobunErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  override componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
-    console.error("[desktop-recovery] renderer error boundary", error, errorInfo.componentStack);
-    this.setState({
-      hasError: true,
-      error,
-      details: errorInfo.componentStack ?? undefined,
-    });
-  }
-
-  override render(): ReactNode {
-    if (this.state.hasError) {
-      return (
-        <DesktopFatalScreen
-          title="Gloomberb crashed"
-          error={this.state.error}
-          details={this.state.details}
-          source="react-error-boundary"
-        />
-      );
-    }
-
-    return this.props.children;
-  }
 }

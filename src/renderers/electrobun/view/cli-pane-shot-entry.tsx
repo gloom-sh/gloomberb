@@ -14,11 +14,8 @@ import { JsonPersistence } from "../../../data/json-persistence";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { UiHostProvider, type RendererHost } from "../../../ui/host";
-import { WebInputHostProvider } from "./input-host";
-import { WebDialogHostProvider } from "./dialog-host";
-import { webNativeRenderer } from "./native-renderer";
-import { WebToastHostProvider } from "./toast-host";
+import type { RendererHost } from "../../../ui/host";
+import { DomHostProviders } from "./dom-host-providers";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
 import { setCurrentPluginTarget } from "../../../plugins/current-target";
@@ -535,27 +532,21 @@ async function render() {
     <TapeClientContext.Provider value={tapeClient}>
       <RemoteUiRegistryProvider>
         <CaptureShotSemanticUi />
-        <UiHostProvider ui={webUiHost} renderer={rendererHost} nativeRenderer={webNativeRenderer}>
-          <WebInputHostProvider>
-            <WebToastHostProvider>
-              <WebDialogHostProvider>
-                <AppProvider config={payload.config} desktopSnapshot={{
-                  config: payload.config,
-                  paneState: payload.paneState,
-                  focusedPaneId: payload.paneId,
-                  activePanel: "right",
-                  statusBarVisible: false,
-                }}>
-                  <HydratePayload payload={payload}>
-                    <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
-                      <ShotPane payload={payload} registry={services.pluginRegistry} />
-                    </ChartSnapshotContext.Provider>
-                  </HydratePayload>
-                </AppProvider>
-              </WebDialogHostProvider>
-            </WebToastHostProvider>
-          </WebInputHostProvider>
-        </UiHostProvider>
+        <DomHostProviders ui={webUiHost} renderer={rendererHost}>
+          <AppProvider config={payload.config} desktopSnapshot={{
+            config: payload.config,
+            paneState: payload.paneState,
+            focusedPaneId: payload.paneId,
+            activePanel: "right",
+            statusBarVisible: false,
+          }}>
+            <HydratePayload payload={payload}>
+              <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
+                <ShotPane payload={payload} registry={services.pluginRegistry} />
+              </ChartSnapshotContext.Provider>
+            </HydratePayload>
+          </AppProvider>
+        </DomHostProviders>
       </RemoteUiRegistryProvider>
     </TapeClientContext.Provider>,
   );

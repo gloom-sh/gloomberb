@@ -3,7 +3,6 @@ import { setCurrentPluginTarget } from "../../../plugins/current-target";
 import { createRoot } from "react-dom/client";
 import { App } from "../../../app";
 import { applyLanguageFromConfig } from "../../../i18n";
-import { UiHostProvider } from "../../../ui/host";
 import { debugLog } from "../../../utils/debug-log";
 import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
@@ -16,7 +15,6 @@ import { installElectrobunCapabilityStreamClient } from "./capability-stream-cli
 import { installFocusScopeRelease } from "./host/focus-scope";
 import { installElectrobunBrokerRemoteClient } from "./broker-remote-client";
 import { installElectrobunConfigStoreHost } from "./config-host";
-import { WebDialogHostProvider } from "./dialog-host";
 import {
   installElectrobunCloudApiFetchTransport,
   installElectrobunHttpFetchTransport,
@@ -25,10 +23,8 @@ import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
 import { installDomMarketDataFrames } from "./data-frames";
-import { DesktopFatalScreen, ElectrobunErrorBoundary } from "./fatal-screen";
-import { WebInputHostProvider } from "./input-host";
-import { webNativeRenderer } from "./native-renderer";
-import { WebToastHostProvider } from "./toast-host";
+import { DomErrorBoundary, DomHostProviders } from "./dom-host-providers";
+import { DesktopFatalScreen } from "./fatal-screen";
 import { createWebUiHost, webRendererHost } from "./ui-host";
 import { createApplicationMenuBridge } from "./application-menu-bridge";
 import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
@@ -171,28 +167,27 @@ async function boot() {
     : undefined;
   measurePerfAsync("startup.electrobun.root-render", async () => {
     root.render(
-      <ElectrobunErrorBoundary>
-        <UiHostProvider ui={webUiHost} renderer={webRendererHost} nativeRenderer={webNativeRenderer}>
-          <WebInputHostProvider>
-            <WebToastHostProvider>
-              <WebDialogHostProvider>
-                <App
-                  config={config}
-                  servicesFactory={createElectrobunAppServices}
-                  externalPlugins={externalPlugins}
-                  plugins={getRendererPlugins(externalPlugins)}
-                  desktopWindowBridge={desktopWindowBridge}
-                  desktopApplicationMenuBridge={desktopApplicationMenuBridge}
-                  desktopDeepLinkBridge={desktopDeepLinkBridge}
-                  desktopSnapshot={desktopSnapshot}
-                  desktopThemePreview={init.desktopThemePreview}
-                  remoteControlAdapter={remoteControlAdapter}
-                />
-              </WebDialogHostProvider>
-            </WebToastHostProvider>
-          </WebInputHostProvider>
-        </UiHostProvider>
-      </ElectrobunErrorBoundary>,
+      <DomErrorBoundary
+        label="[desktop-recovery] renderer error boundary"
+        fallback={(error, details) => (
+          <DesktopFatalScreen error={error} details={details} source="react-error-boundary" />
+        )}
+      >
+        <DomHostProviders ui={webUiHost} renderer={webRendererHost}>
+          <App
+            config={config}
+            servicesFactory={createElectrobunAppServices}
+            externalPlugins={externalPlugins}
+            plugins={getRendererPlugins(externalPlugins)}
+            desktopWindowBridge={desktopWindowBridge}
+            desktopApplicationMenuBridge={desktopApplicationMenuBridge}
+            desktopDeepLinkBridge={desktopDeepLinkBridge}
+            desktopSnapshot={desktopSnapshot}
+            desktopThemePreview={init.desktopThemePreview}
+            remoteControlAdapter={remoteControlAdapter}
+          />
+        </DomHostProviders>
+      </DomErrorBoundary>,
     );
     appMounted = true;
   });
