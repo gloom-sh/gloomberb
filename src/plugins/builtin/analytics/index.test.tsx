@@ -549,7 +549,8 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("P&L           +400.00  (+40.00%)");
     expect(frame).toContain("Technology               100.0%       1.4k    +400.00  +40.00%");
     expect(frame).not.toContain("1.3k");
-    expect(frame).not.toContain("2.5k");
+    // Both portfolios' AAPL together would be 2.8k at this quote.
+    expect(frame).not.toContain("2.8k");
   });
 });
 
