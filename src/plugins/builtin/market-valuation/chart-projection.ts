@@ -2,6 +2,7 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { blendHex, colors } from "../../../theme/colors";
 import { isUsableRatio, type RatioPoint } from "./align";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { SeriesAxis } from "../shared/series-detail-chart";
 import {
   classifyZone,
   shortZoneLabel,
@@ -138,6 +139,15 @@ export function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabel
   return picked;
 }
 
+/** The axis every valuation line shares, the flat mean and reference lines included. */
+export function valuationAxis(indicator: IndicatorDef): SeriesAxis {
+  return {
+    unit: indicator.axisUnit,
+    unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation",
+    nativeFrequency: "daily",
+  };
+}
+
 /**
  * CompositeChart draws one colour per series, so the zone gradient is carried by
  * one series per zone that holds nulls everywhere the ratio sits in another band.
@@ -172,9 +182,7 @@ export function zoneSeriesFor(
       id: `zone:${zoneId}`,
       label: shortZoneLabel(zoneId),
       color: zoneColor(zoneId),
-      unit: indicator.axisUnit,
-      unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation",
-      nativeFrequency: "daily",
+      ...valuationAxis(indicator),
       dataShape: "scalar",
       style: "line",
       transform: "raw",
@@ -185,35 +193,4 @@ export function zoneSeriesFor(
     });
   }
   return built;
-}
-
-/** Flat line at a fixed level, for parity, replacement cost, or the sample mean. */
-export function markerSeries(
-  indicator: IndicatorDef,
-  id: string,
-  label: string,
-  value: number,
-  color: string,
-  points: readonly RatioPoint[],
-): ResolvedSeries | null {
-  if (points.length === 0 || !Number.isFinite(value)) return null;
-  const ends = [points[0]!, points[points.length - 1]!].map((point) => {
-    const date = new Date(point.date);
-    return { date, observedAt: date, value };
-  });
-  return {
-    id,
-    label,
-    color,
-    unit: indicator.axisUnit,
-    unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation",
-    nativeFrequency: "daily",
-    dataShape: "scalar",
-    style: "line",
-    transform: "raw",
-    axis: "left",
-    panelId: "main",
-    interpolation: "none",
-    points: ends,
-  };
 }

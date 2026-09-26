@@ -55,7 +55,7 @@ import {
 } from "../../../utils/http-proxy-response";
 import type { AppState } from "../../../core/state/app/state";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
-import { hydrateValuationSeries } from "../../../plugins/builtin/market-valuation/cache";
+import { valuationCache } from "../../../plugins/builtin/market-valuation/cache";
 import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
@@ -474,7 +474,7 @@ async function render() {
   installShotFetchTracker();
   installShotCloudApiTransport();
   installShotHttpFetchTransport();
-  hydrateValuationSeries(payload.valuationSeries ?? []);
+  valuationCache.hydrate(payload.valuationSeries ?? []);
   statsCache.hydrate(payload.statSeries ?? []);
   // This page is the desktop view's renderer, so installed plugins run here
   // the way they do in the app: compiled by the Bun process, evaluated from

@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { valuationCache } from "./cache";
 import { createValuationChartSeriesCapability } from "./chart-series";
 import { INDICATORS, resolveIndicatorArg } from "./indicators";
 import { marketValuationHeadless } from "./headless";
@@ -69,4 +70,10 @@ export const marketValuationModule: PluginModule = {
       };
     },
   }],
+  setup(ctx) {
+    valuationCache.attach(ctx.persistence);
+  },
+  dispose() {
+    valuationCache.reset();
+  },
 };

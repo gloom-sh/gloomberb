@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyTransform, periodsPerYear } from "./transform";
+import { applyTransform, periodsPerYear } from "./stat-transform";
 
 function monthly(values: number[], startYear = 2020): Array<{ date: string; value: number }> {
   return values.map((value, index) => {

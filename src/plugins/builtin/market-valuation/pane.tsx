@@ -1,23 +1,17 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import {
-  DataTableView,
-  PaneStatusBody, QueryBar, type DataTableCell,
+  PaneStatusBody, type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
-  type DataTableSelectionChangeReason,
   type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { SeriesListDetail, useSeriesList } from "../shared/series-list-detail";
 import { getCachedValuationBundle, loadValuationBundle } from "./client";
 import { indicatorSeries, indicatorUnavailableReason, shortZoneLabel, type IndicatorDef, type ValuationRangeId } from "./defs";
 import { IndicatorDetail } from "./detail";
@@ -31,10 +25,8 @@ import {
 
 const loadBundle = (force: boolean) => loadValuationBundle({ force });
 
-/** Below this the detail sits under the table instead of beside it. */
-const SPLIT_MIN_WIDTH = 108;
 const LIST_WIDTH = 46;
-/** The range strip names the key that picks each range. */
+/** The range strip names the key that picks each range: 1, 2 and 3, as the chart's range keys do. */
 const RANGE_VIEW_OPTIONS = RANGE_OPTIONS.map((option, index) => ({ ...option, hint: String(index + 1) }));
 
 type ColumnId = "name" | "value" | "zone" | "percentile" | "sigma";
@@ -97,27 +89,6 @@ function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
   };
 }
 
-/**
- * The table commits keyboard moves by index after a short delay. When a filter
- * changes the rows in between, that index lands on a different indicator, and
- * honouring it would silently rewrite the persisted setting as the user types.
- * Pointer and activation commits are explicit, so they are always honoured.
- */
-export function shouldPersistSelection({
-  id,
-  reason,
-  selectionOnScreen,
-  knownIds,
-}: {
-  id: string;
-  reason: DataTableSelectionChangeReason;
-  selectionOnScreen: boolean;
-  knownIds: readonly string[];
-}): boolean {
-  if (!knownIds.includes(id)) return false;
-  return reason !== "keyboard" || selectionOnScreen;
-}
-
 export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [indicatorId, setIndicatorId] = usePaneSettingValue<string>(
     "indicator",
@@ -126,48 +97,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [range, setRange] = usePaneSettingValue<ValuationRangeId>("range", VALUATION_DEFAULTS.range);
   const resource = useAsyncResource(loadBundle, { initialData: () => getCachedValuationBundle() });
   const { data: bundle, load, reload: refresh, updatedAt: lastUpdated } = resource;
-  const { nativePaneChrome } = useUiCapabilities();
-  const [query, setQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
   useAutoRefresh(lastUpdated, load);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
-
-  const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    if (isPlainKey(event, "r")) {
-      stopSearchFocusNavigation(event);
-      refresh();
-      return true;
-    }
-    return false;
-  }, [focusSearch, refresh]);
-
-  useShortcut((event) => {
-    if (!focused || searchFocused || event.targetEditable || event.defaultPrevented) return;
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return;
-    }
-    // 1, 2 and 3 pick the history range, as the chart's range keys do.
-    const picked = RANGE_VIEW_OPTIONS.find((option) => isPlainKey(event, option.hint));
-    if (!picked) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    setRange(picked.value);
-  });
 
   const views = useMemo(
     () => (bundle ? selectValuationViews(bundle, range) : []),
@@ -180,29 +110,18 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
         .some((prefix) => entry.startsWith(`${prefix}:`))) ?? null;
     return view || error ? [{ indicator, view, error }] : [];
   }) : [], [bundle, views]);
-  const normalizedQuery = query.trim().toLowerCase();
-  const visible = useMemo(
-    () => rows.filter((row) => matchesQuery(row, normalizedQuery)),
-    [normalizedQuery, rows],
-  );
-  // Filtering narrows the list, but the detail keeps showing the chosen indicator
-  // until the user picks another, so typing never blanks the chart.
-  const selected = rows.find((row) => row.indicator.id === indicatorId) ?? rows[0] ?? null;
+  const list = useSeriesList({
+    focused,
+    items: rows,
+    getId: indicatorKey,
+    matchesQuery,
+    selectedId: indicatorId,
+    onSelect: setIndicatorId,
+    reload: refresh,
+    range: { value: range, options: RANGE_VIEW_OPTIONS, onChange: setRange },
+  });
+  const { selected } = list;
   const selectedView = selected?.view;
-  const selectionOnScreen = visible.some((view) => view.indicator.id === selected?.indicator.id);
-
-  const chooseIndicator = useCallback((
-    id: string,
-    reason: DataTableSelectionChangeReason,
-  ) => {
-    if (!shouldPersistSelection({
-      id,
-      reason,
-      selectionOnScreen,
-      knownIds: rows.map((row) => row.indicator.id),
-    })) return;
-    setIndicatorId(id);
-  }, [selectionOnScreen, setIndicatorId, rows]);
 
   const basisErrors = new Set(INDICATORS.flatMap((indicator) => {
     const reason = indicatorUnavailableReason(indicator);
@@ -249,86 +168,25 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  const split = width >= SPLIT_MIN_WIDTH;
-  const listWidth = split ? Math.min(LIST_WIDTH, Math.floor(width * 0.4)) : width;
-  const detailWidth = split ? width - listWidth : width;
-  // The terminal scroller draws its bar in the last column; the detail stays clear of it.
-  const detailContentWidth = Math.max(1, detailWidth - (nativePaneChrome ? 0 : 1));
-  const columns = buildColumns(listWidth, !split);
-  // Everything under the query bar. The split table fills it to the footer.
-  const bodyHeight = Math.max(1, height - 1);
-  // Stacked: header plus every row, and one more line for the horizontal scrollbar.
-  const tableHeight = split
-    ? Math.max(3, bodyHeight)
-    : Math.min(visible.length + 2, Math.max(3, height - 12));
-  // The stacked table consumes rows outside the detail scroll viewport.
-  const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight);
-
-  const list = (
-    <Box flexDirection="column" width={listWidth} flexShrink={0}>
-      <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">
-        <DataTableView<IndicatorRow, Column>
-          focused={focused && !searchFocused}
-          rootWidth={listWidth}
-          rootHeight={tableHeight}
-          columns={columns}
-          items={visible}
-          sortColumnId={null}
-          sortDirection="asc"
-          selection={{
-            kind: "id",
-            selectedId: selected.indicator.id,
-            getId: (view) => view.indicator.id,
-            onChange: (id, _item, _index, reason) => chooseIndicator(String(id), reason),
-          }}
-          onRootKeyDown={handlePaneKey}
-          getItemKey={indicatorKey}
-          renderCell={renderIndicatorCell}
-          emptyStateTitle={normalizedQuery ? "No indicator matches." : error ?? "No indicators."}
-        />
-      </Box>
-    </Box>
-  );
-
-  const detail = (
-    <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
-      <ScrollBox height={detailHeight} scrollY focusable={false}>
-        {selectedView ? <IndicatorDetail
-          view={selectedView}
-          width={detailContentWidth}
-          height={detailHeight}
-          focused={focused && !searchFocused}
-        /> : (
-          <PaneStatusBody
-            error={selected.error ?? "No data."}
-            errorTitle={`${selected.indicator.label} unavailable`}
-          />
-        )}
-      </ScrollBox>
-    </Box>
-  );
-
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      <QueryBar
-        width={width}
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "filter indicators",
-          focused,
-          active: searchFocused,
-          onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-          focusToken: searchFocusToken,
-          inputRef: searchInputRef,
-          debounceMs: 80,
-        }}
-        view={{ value: range, options: RANGE_VIEW_OPTIONS, onChange: (value: string) => setRange(value as ValuationRangeId) }}
-      />
-      <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
-        {list}
-        {detail}
-      </Box>
-    </Box>
+    <SeriesListDetail
+      list={list}
+      width={width}
+      height={height}
+      focused={focused}
+      listWidth={LIST_WIDTH}
+      searchPlaceholder="filter indicators"
+      columns={buildColumns}
+      rows={list.visible}
+      getRowId={indicatorKey}
+      renderCell={renderIndicatorCell}
+      emptyStateTitle={list.normalizedQuery ? "No indicator matches." : error ?? "No indicators."}
+      renderDetail={(size) => selectedView ? <IndicatorDetail view={selectedView} {...size} /> : (
+        <PaneStatusBody
+          error={selected.error ?? "No data."}
+          errorTitle={`${selected.indicator.label} unavailable`}
+        />
+      )}
+    />
   );
 }

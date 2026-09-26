@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { resetValuationPersistence } from "./cache";
+import { valuationCache } from "./cache";
 import { marketValuationHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
-beforeEach(resetValuationPersistence);
-afterEach(resetValuationPersistence);
+beforeEach(() => valuationCache.reset());
+afterEach(() => valuationCache.reset());
 
 function loadArgs(): HeadlessPaneLoadArgs {
   return {

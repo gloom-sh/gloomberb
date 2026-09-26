@@ -1,4 +1,4 @@
-import { applyTransform, type StatTransform } from "../econ-statistics/transform";
+import { applyTransform, type StatTransform } from "../shared/stat-transform";
 import type { DatedObservation } from "../shared/series-cache";
 
 

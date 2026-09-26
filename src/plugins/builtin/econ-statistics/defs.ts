@@ -1,5 +1,5 @@
 import { blendHex, colors } from "../../../theme/colors";
-import type { StatTransform } from "./transform";
+import type { StatTransform } from "../shared/stat-transform";
 
 export type StatCategoryId =
   | "inflation"

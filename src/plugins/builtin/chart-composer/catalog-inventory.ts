@@ -1,3 +1,4 @@
+import { fredSeriesUrl } from "../../../data/fred-series";
 import { resolveAssetDisplayKind } from "../../../market-data/market/format";
 import {
   getTimeSeriesField,
@@ -323,7 +324,7 @@ const buildStaticCatalogInventory = (): readonly CatalogSeriesRow[] => [
     sourceId: "fred",
     kind: "Economic",
     expression: `FRED:${entry.seriesId}`,
-    url: `https://fred.stlouisfed.org/series/${entry.seriesId}`,
+    url: fredSeriesUrl(entry.seriesId),
   })),
   ...TREASURY_MATURITIES.map((entry) => row({
     id: `ust:${entry.maturity}`,
@@ -332,7 +333,7 @@ const buildStaticCatalogInventory = (): readonly CatalogSeriesRow[] => [
     sourceId: "treasury",
     kind: "Treasury",
     expression: `UST:${entry.maturity}`,
-    url: `https://fred.stlouisfed.org/series/${entry.seriesId}`,
+    url: fredSeriesUrl(entry.seriesId),
   })),
   ...VALUATION_INDICATORS.map((entry) => row({
     id: `valuation:${entry.id}`,

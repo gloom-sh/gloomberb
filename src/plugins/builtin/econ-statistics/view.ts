@@ -1,7 +1,7 @@
+import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
+import { sigmaVsTrend } from "../shared/trend";
 import type { StatBuild } from "./client";
 import type { StatDef } from "./defs";
-import { periodsPerYear, type StatPoint } from "./transform";
-import { sigmaVsTrend, trendAt } from "./trend";
 
 export type StatRangeId = "5Y" | "20Y" | "ALL";
 
@@ -122,5 +122,3 @@ export function selectStatViews(
 ): StatViewModel[] {
   return builds.map((build) => projectStat(build, range));
 }
-
-export { trendAt };

@@ -1,5 +1,5 @@
 import { buildValuationSeries } from "./align";
-import { getCachedSeries, loadCachedSeriesEntry } from "./cache";
+import { valuationCache } from "./cache";
 import { indicatorUnavailableReason, indicatorSeries, type IndicatorDef, type SeriesDef } from "./defs";
 import { INDICATORS } from "./indicators";
 import { validateObservationDates, type DatedSeries, type ValuationSourceMetadata } from "./series";
@@ -9,8 +9,7 @@ import {
   provenanceFor,
   type ValuationSourceDeps,
 } from "./sources";
-import { fitIndicatorTrend } from "./trend";
-import type { IndicatorBuild, ValuationBundle } from "./view";
+import { fitIndicatorTrend, type IndicatorBuild, type ValuationBundle } from "./view";
 
 export type ValuationSeriesLoader = (def: SeriesDef, options?: { force?: boolean }) => Promise<DatedSeries>;
 
@@ -35,7 +34,7 @@ export function createValuationSeriesLoader(deps: ValuationSourceDeps): Valuatio
     if (def.unavailableReason) throw new Error(def.unavailableReason);
     return {
       seriesId: def.key,
-      ...await loadCachedSeriesEntry(def.key, async () => {
+      ...await valuationCache.loadEntry(def.key, async () => {
         const { observations, provider } = await cloudLoader(def);
         validateObservationDates(observations);
         return { observations, ...(provider ? { provider } : {}) };
@@ -53,7 +52,7 @@ export function getCachedValuationBundle(
 ): ValuationBundle | null {
   const legs = new Map<string, DatedSeries>();
   for (const def of requiredSeries(indicators)) {
-    const cached = getCachedSeries(def.key, { allowExpired: true });
+    const cached = valuationCache.get(def.key, { allowExpired: true });
     if (!cached) continue;
     legs.set(def.key, {
       seriesId: def.key,

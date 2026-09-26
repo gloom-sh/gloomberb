@@ -1,4 +1,4 @@
-import type { DatedObservation } from "../shared/series-cache";
+import type { DatedObservation } from "./series-cache";
 
 /**
  * How a raw FRED series becomes the number people quote. An index level like CPI

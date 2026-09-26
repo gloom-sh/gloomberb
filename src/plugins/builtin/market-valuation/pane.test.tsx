@@ -1,16 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import {
-  attachValuationPersistence,
-  hydrateValuationSeries,
-  resetValuationPersistence,
-} from "./cache";
+import { valuationCache } from "./cache";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { MarketValuationPane, shouldPersistSelection } from "./pane";
+import { MarketValuationPane } from "./pane";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -113,9 +109,9 @@ async function renderPane(settings: Record<string, unknown> = {}, width = 128, h
 }
 
 beforeEach(() => {
-  resetValuationPersistence();
-  attachValuationPersistence(new MemoryPluginPersistence());
-  hydrateValuationSeries(LEGS);
+  valuationCache.reset();
+  valuationCache.attach(new MemoryPluginPersistence());
+  valuationCache.hydrate(LEGS);
 });
 
 afterEach(async () => {
@@ -123,7 +119,7 @@ afterEach(async () => {
     await act(async () => setup?.renderer.destroy());
     setup = undefined;
   }
-  resetValuationPersistence();
+  valuationCache.reset();
 });
 
 
@@ -166,48 +162,6 @@ describe("MarketValuationPane", () => {
     expect(frame).toContain("mean");
   });
 });
-
-describe("shouldPersistSelection", () => {
-  const knownIds = ["buffett", "shiller-cape", "tobins-q"];
-
-  test("keeps the setting when a filter moved the rows under a pending commit", () => {
-    // The row the keyboard commit resolves to is real, but the user never chose it.
-    expect(shouldPersistSelection({
-      id: "tobins-q",
-      reason: "keyboard",
-      selectionOnScreen: false,
-      knownIds,
-    })).toBe(false);
-  });
-
-  test("honours an explicit click even while the selection is filtered away", () => {
-    expect(shouldPersistSelection({
-      id: "shiller-cape",
-      reason: "pointer",
-      selectionOnScreen: false,
-      knownIds,
-    })).toBe(true);
-  });
-
-  test("accepts ordinary keyboard movement", () => {
-    expect(shouldPersistSelection({
-      id: "shiller-cape",
-      reason: "keyboard",
-      selectionOnScreen: true,
-      knownIds,
-    })).toBe(true);
-  });
-
-  test("never persists an indicator that is not in the registry", () => {
-    expect(shouldPersistSelection({
-      id: "nonsense",
-      reason: "pointer",
-      selectionOnScreen: true,
-      knownIds,
-    })).toBe(false);
-  });
-});
-
 
 test("a short stacked pane leads its detail with monetary basis and extrema dates", async () => {
   const frame = await renderPane({ indicator: "tobins-q" }, 48, 25);

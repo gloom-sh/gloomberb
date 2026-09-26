@@ -55,6 +55,11 @@ export function resetFredSeriesPersistence(): void {
   cache.reset();
 }
 
+/** The series' page on the FRED site, where its notes and release schedule live. */
+export function fredSeriesUrl(seriesId: string): string {
+  return `https://fred.stlouisfed.org/series/${seriesId}`;
+}
+
 function cacheKey(request: FredSeriesRequest): string {
   const range = [
     request.startDate ? `start=${request.startDate}` : "",

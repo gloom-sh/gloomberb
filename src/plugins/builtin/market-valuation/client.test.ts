@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, spyOn } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { attachValuationPersistence, loadCachedSeriesEntry, resetValuationPersistence } from "./cache";
+import { valuationCache } from "./cache";
 import { createValuationSeriesLoader, getCachedValuationBundle, loadValuationBundle, requiredSeries, type ValuationSeriesLoader } from "./client";
 import { BUFFETT_INDICATOR, INDICATORS, EXCESS_CAPE_YIELD, SHILLER_CAPE, TOBINS_Q } from "./indicators";
 import type { DatedObservation, DatedSeries } from "./series";
@@ -34,10 +34,10 @@ const everyLeg: ValuationSeriesLoader = async (def) => {
 };
 
 beforeEach(() => {
-  resetValuationPersistence();
-  attachValuationPersistence(new MemoryPluginPersistence());
+  valuationCache.reset();
+  valuationCache.attach(new MemoryPluginPersistence());
 });
-afterEach(resetValuationPersistence);
+afterEach(() => valuationCache.reset());
 
 describe("requiredSeries", () => {
   test("fetches a leg shared by two indicators only once", () => {
@@ -168,8 +168,8 @@ describe("shillerObservations", () => {
 
 describe("market-capitalization source basis", () => {
   test("a legacy persisted index-points cache cannot feed the monetary ratios; the Z.1 sum does", async () => {
-    await loadCachedSeriesEntry("W5000", async () => obs([["2024-01-02", 40_000], ["2025-01-02", 45_000]]));
-    await Promise.all(Object.entries(LEGS).map(([key, observations]) => loadCachedSeriesEntry(key, async () => observations)));
+    await valuationCache.loadEntry("W5000", async () => obs([["2024-01-02", 40_000], ["2025-01-02", 45_000]]));
+    await Promise.all(Object.entries(LEGS).map(([key, observations]) => valuationCache.loadEntry(key, async () => observations)));
     const cached = getCachedValuationBundle()!;
     expect(cached.builds).toHaveLength(INDICATORS.length);
     expect(cached.errors).toHaveLength(0);
@@ -258,7 +258,7 @@ test("refresh bypasses fresh caches, shares pending Shiller work and retains fai
 
 test("cloud-declared stale legs remain usable and stale after a cache restart", async () => {
   const persistence = new MemoryPluginPersistence();
-  attachValuationPersistence(persistence);
+  valuationCache.attach(persistence);
   let calls = 0;
   const loader = createValuationSeriesLoader(createCloudSourceDeps({
     getCloudFredSeries: async (id) => {
@@ -273,8 +273,8 @@ test("cloud-declared stale legs remain usable and stale after a cache restart", 
   expect(bundle.builds[0]!.sourceStale).toBe(true);
   expect(bundle.builds[0]!.series.points.at(-1)!.ratio).toBe(2);
   expect(bundle.sources!.TNWMVBSNNCB!.provider).toEqual({ fetchedAt: "2026-09-10T12:00:00Z", stale: true });
-  resetValuationPersistence();
-  attachValuationPersistence(persistence);
+  valuationCache.reset();
+  valuationCache.attach(persistence);
   const cached = await loadValuationBundle({ loader, indicators: [TOBINS_Q] });
   expect(calls).toBe(2);
   expect(cached.builds[0]!.sourceStale).toBe(true);

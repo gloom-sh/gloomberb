@@ -1,10 +1,10 @@
 import { apiClient } from "../../../api-client";
 import type { DatedObservation, SeriesCacheLoadResult, SeriesCacheMetadata } from "../shared/series-cache";
+import { applyTransform, type StatPoint } from "../shared/stat-transform";
+import { fitTrend, type TrendFit } from "../shared/trend";
 import { statsCache } from "./cache";
 import type { StatDef } from "./defs";
 import { STATS } from "./stats";
-import { applyTransform, type StatPoint } from "./transform";
-import { fitTrend, type TrendFit } from "./trend";
 
 export type StatSeriesLoader = (def: StatDef, options?: { force?: boolean }) => Promise<DatedObservation[] | SeriesCacheLoadResult>;
 
@@ -55,7 +55,8 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     source: result.source,
     ...(result.refreshError ? { refreshError: result.refreshError } : {}),
   };
-  return { stat: def, points, trend: fitTrend(points), ...(cache ? { cache } : {}) };
+  // These go negative routinely, so the fit stays linear.
+  return { stat: def, points, trend: fitTrend(points, "linear"), ...(cache ? { cache } : {}) };
 }
 
 /**
@@ -71,7 +72,7 @@ function alignDerivedBuilds(builds: StatBuild[]): StatBuild[] {
     const cap = (legs as string[]).reduce((oldest, date) => date < oldest ? date : oldest);
     if ((entry.points.at(-1)?.date ?? "") <= cap) return entry;
     const points = entry.points.filter((point) => point.date <= cap);
-    return points.length > 0 ? { ...entry, points, trend: fitTrend(points) } : entry;
+    return points.length > 0 ? { ...entry, points, trend: fitTrend(points, "linear") } : entry;
   });
 }
 

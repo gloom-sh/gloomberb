@@ -8,7 +8,7 @@ import {
   type ValuationRangeId,
   type ZoneHit,
 } from "./defs";
-import { sigmaVsTrend, trendAt, type TrendFit } from "./trend";
+import { fitTrend, sigmaVsTrend, trendAt, type TrendFit } from "../shared/trend";
 import { formatNumber } from "../../../utils/format";
 
 const MS_PER_DAY = 86_400_000;
@@ -23,6 +23,11 @@ export interface IndicatorBuild {
   series: ValuationSeries;
   trend: TrendFit;
   sourceStale?: boolean;
+}
+
+/** The trend through an indicator's ratios, in the model its measure calls for. */
+export function fitIndicatorTrend(indicator: IndicatorDef, points: readonly RatioPoint[]): TrendFit {
+  return fitTrend(points.map((point) => ({ date: point.date, value: point.ratio })), indicator.trendModel);
 }
 
 export interface ValuationBundle {
