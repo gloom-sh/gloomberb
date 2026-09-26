@@ -9,7 +9,7 @@ import type { DialogApi } from "./dialog";
 
 export type DialogKind = "alert" | "prompt";
 
-export interface DialogStackOptions<E extends { id: string }> {
+interface DialogStackOptions<E extends { id: string }> {
   idPrefix: string;
   /** Builds the host's record. `stackWasEmpty` is true for the first dialog of a stack. */
   createEntry(id: string, kind: DialogKind, options: Record<string, unknown>, stackWasEmpty: boolean): E;

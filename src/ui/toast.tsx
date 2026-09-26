@@ -28,7 +28,7 @@ export interface ToastHost {
 
 export type ToastTone = "success" | "error" | "info";
 
-export interface ToastRecord {
+interface ToastRecord {
   id: number;
   body: string;
   tone: ToastTone;
