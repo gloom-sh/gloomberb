@@ -87,3 +87,26 @@ test("a company without a breakdown is empty, not failed", async () => {
   expect(frame).toContain("No revenue breakdown.");
   expect(frame).not.toContain("[$]upgrade");
 });
+
+test("hovering a quarter reads out its value, and an unreported one says so", async () => {
+  const gapped = {
+    ...preview,
+    rows: preview.rows.map((row, index) => (index === 0 ? { ...row, values: [44.6e9, null, 85.3e9, 57.0e9, 54.3e9] } : row)),
+  };
+  setCloudApiFetchTransport(async () => Response.json(gapped));
+  const frame = await mount();
+  const lines = frame.split("\n");
+  const y = lines.findIndex((line) => line.includes("iPhone"));
+  const x = lines[y]!.indexOf("·");
+  expect(x).toBeGreaterThan(0);
+  const hoverAt = async (column: number) => {
+    await act(async () => setup!.mockMouse.moveTo(column, y));
+    for (let i = 0; i < 3; i++) await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await setup!.renderOnce();
+    });
+    return setup!.captureCharFrame();
+  };
+  expect(await hoverAt(x)).toContain("iPhone  Q4 2025  not reported");
+  expect(await hoverAt(x + 2)).toContain("iPhone  Q1 2026  85.3B");
+});
