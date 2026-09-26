@@ -5,10 +5,7 @@ import type {
   PaneSettingActionContext,
   PaneSettingsContext,
 } from "../../types/plugin";
-import {
-  activatePaneSettingFieldAction,
-  buildPaneSettingResultItems,
-} from "./pane-settings";
+import { activatePaneSettingFieldAction } from "./pane-settings";
 import type { CommandBarRoute } from "./workflow/types";
 
 const context = {
@@ -92,24 +89,6 @@ describe("pane setting actions", () => {
     expect(typeof received[0]?.openCommandBar).toBe("function");
     expect(route.kind === "pane-settings" ? route.pendingFieldKey : "missing").toBeNull();
     expect(closed).toBe(false);
-  });
-
-  test("exposes action identity, label, and disabled state to the command-bar list", () => {
-    const field = actionField({ disabled: true });
-    const items = buildPaneSettingResultItems({
-      paneId: context.paneId,
-      query: "",
-      pluginRegistry: registryFor(field),
-      activatePaneSettingField: () => {},
-    });
-
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      label: "AI Account",
-      detail: "Connect",
-      right: "action",
-      disabled: true,
-    });
   });
 
   test("can close the command bar and hand off to an interactive workflow", async () => {

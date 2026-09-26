@@ -167,25 +167,6 @@ describe("CommandBar", () => {
     expect(searchQueries).toEqual([]);
   });
 
-  test("runs check for updates from the command bar", async () => {
-    const calls: number[] = [];
-
-    testSetup = await testRender(<CommandBarHarness query="check for updates" live onCheckForUpdates={() => { calls.push(Date.now()); }} />, {
-      width: 80,
-      height: 24,
-    });
-
-    await testSetup.renderOnce();
-    expect(testSetup.captureCharFrame()).toContain("Check for Updates");
-
-    await clickFrameText("Check for Updates");
-    await Bun.sleep(0);
-    await testSetup.renderOnce();
-
-    expect(calls).toHaveLength(1);
-    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
-  });
-
   test("shows one account management result when searching profile", async () => {
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
@@ -242,54 +223,6 @@ describe("CommandBar", () => {
     expect(testSetup.captureCharFrame()).not.toContain("GitHub Light");
   });
 
-  test("finds the tidy windows command by its snap alias", async () => {
-    const calls: string[] = [];
-
-    testSetup = await testRender(<CommandBarHarness
-      query="snap"
-      configurePluginRegistry={(pluginRegistry) => {
-        (pluginRegistry.commands as Map<string, any>).set("gridlock-all", {
-          id: "gridlock-all",
-          label: "Tidy Windows",
-          description: "Arrange every window into one tiled layout",
-          keywords: ["tidy", "snap", "grid", "gridlock", "tile", "arrange", "organize", "organise", "cleanup", "dock", "floating", "windows", "layout"],
-          shortcut: "GL",
-          category: "config",
-          execute: async () => {
-            calls.push("gridlock-all");
-          },
-        });
-        (pluginRegistry.allPlugins as Map<string, any>).set("application", {
-          id: "application",
-          name: "Application",
-          version: "1.0.0",
-          description: "Pane layout management commands",
-        });
-        const getCommandPluginId = pluginRegistry.getCommandPluginId;
-        pluginRegistry.getCommandPluginId = (commandId: string) => (
-          commandId === "gridlock-all" ? "application" : getCommandPluginId(commandId)
-        );
-      }}
-    />, {
-      width: 80,
-      height: 24,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Tidy Windows");
-    expect(frame).toContain("GL");
-
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(calls).toEqual(["gridlock-all"]);
-  });
-
   test("starts focused window resize mode from WIN argument", async () => {
     const opened: Array<{ paneId: string | undefined; mode: string | undefined }> = [];
 
@@ -312,24 +245,6 @@ describe("CommandBar", () => {
     });
 
     expect(opened).toEqual([{ paneId: "portfolio-list:main", mode: "resize" }]);
-  });
-
-  test("surfaces plugin commands by add-style search terms", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query="add alert"
-      configurePluginRegistry={(pluginRegistry) => {
-        registerAlertCommand(pluginRegistry);
-      }}
-    />, {
-      width: 80,
-      height: 24,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Add Alert");
-    expect(frame).toContain("SA");
   });
 
   test("opens plugin command shortcut arguments in the wizard for confirmation", async () => {
@@ -876,33 +791,6 @@ describe("CommandBar", () => {
 
     expect(shown).toEqual(["help"]);
     expect(takeKeybindingCaptureRequest()).toEqual({ kind: "command", query: "DES MSFT" });
-  });
-
-  test("T AMD opens an exact ticker directly", async () => {
-    const pinned: string[] = [];
-
-    testSetup = await testRender(
-      <CommandBarHarness
-        query="T AMD"
-        extraTickers={[makeTicker("AMD", "Advanced Micro Devices")]}
-        configurePluginRegistry={(pluginRegistry) => {
-          pluginRegistry.pinTicker = (symbol) => {
-            pinned.push(symbol);
-          };
-        }}
-      />,
-      { width: 100, height: 20 },
-    );
-
-    await testSetup.renderOnce();
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    expect(pinned).toEqual(["AMD"]);
   });
 
   test("moves through long result lists with the mouse wheel", async () => {

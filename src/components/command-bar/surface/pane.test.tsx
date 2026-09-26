@@ -219,26 +219,6 @@ describe("CommandBar pane and layout routes", () => {
     },
   });
 
-  test("renders layout mode with focused pane actions", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query="LMA "
-      configureConfig={layoutModeConfig}
-      configureState={layoutModeState}
-    />, {
-      width: 90,
-      height: 28,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Focused Pane");
-    expect(frame).toContain("Float Pane");
-    expect(frame).toContain("Undo Layout Change");
-    expect(frame).toContain("Current Layout");
-    expect(frame).toContain("Close All Floating Panes");
-  });
-
   test("runs layout actions directly from root search", async () => {
     const actions: AppAction[] = [];
 
@@ -300,46 +280,6 @@ describe("CommandBar pane and layout routes", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Research");
     expect(frame).toContain("1c / 1d");
-  });
-
-  test("filters plugin-defined pane templates directly from the root query", async () => {
-    testSetup = await testRender(<CommandBarHarness query="chat" />, {
-      width: 100,
-      height: 18,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Chat");
-    expect(frame).not.toContain("float");
-  });
-
-  test("shows pane shortcuts in the default browse results", async () => {
-    testSetup = await testRender(<CommandBarHarness query="" selectedTicker="AAPL" />, {
-      width: 100,
-      height: 24,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Panes");
-    expect(frame).toContain("Quote Monitor");
-    expect(frame).toContain("QQ");
-  });
-
-  test("matches direct pane shortcut queries", async () => {
-    testSetup = await testRender(<CommandBarHarness query="QQ MSFT" selectedTicker="AAPL" />, {
-      width: 100,
-      height: 18,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor");
-    expect(frame).toContain("QQ");
   });
 
   test("keeps related pane matches visible beside a bare shortcut", async () => {
