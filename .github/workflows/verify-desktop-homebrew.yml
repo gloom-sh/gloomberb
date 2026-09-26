@@ -15,6 +15,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       - name: Configure Apple signing
+        uses: ./.github/actions/apple-signing
         env:
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -23,41 +24,6 @@ jobs:
           ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
           ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-        run: |
-          set -euo pipefail
-
-          : "${APPLE_CERTIFICATE_BASE64:?missing APPLE_CERTIFICATE_BASE64 secret}"
-          : "${APPLE_CERTIFICATE_PASSWORD:?missing APPLE_CERTIFICATE_PASSWORD secret}"
-          : "${APPLE_KEYCHAIN_PASSWORD:?missing APPLE_KEYCHAIN_PASSWORD secret}"
-          : "${ELECTROBUN_APPLEAPIKEY:?missing ELECTROBUN_APPLEAPIKEY secret}"
-          : "${ELECTROBUN_APPLEAPIKEY_BASE64:?missing ELECTROBUN_APPLEAPIKEY_BASE64 secret}"
-          : "${ELECTROBUN_APPLEAPIISSUER:?missing ELECTROBUN_APPLEAPIISSUER secret}"
-          : "${ELECTROBUN_DEVELOPER_ID:?missing ELECTROBUN_DEVELOPER_ID secret}"
-
-          decode_base64() {
-            if base64 --help 2>&1 | grep -q -- "--decode"; then
-              base64 --decode
-            else
-              base64 -D
-            fi
-          }
-
-          CERTIFICATE_PATH="$RUNNER_TEMP/apple-signing-certificate.p12"
-          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${ELECTROBUN_APPLEAPIKEY}.p8"
-
-          printf "%s" "$APPLE_CERTIFICATE_BASE64" | decode_base64 > "$CERTIFICATE_PATH"
-          printf "%s" "$ELECTROBUN_APPLEAPIKEY_BASE64" | decode_base64 > "$NOTARY_KEY_PATH"
-
-          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-
-          echo "ELECTROBUN_APPLEAPIKEYPATH=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Build signed desktop artifacts
         env:

@@ -315,19 +315,28 @@ function Assert-CustomWindowControls {
   }
 }
 
-function Capture-DesktopScreenshot {
-  param([string]$Path)
+# Bounds is anything with Left, Top, Width and Height in screen pixels.
+function Save-ScreenRegion {
+  param(
+    [object]$Bounds,
+    [string]$Path
+  )
 
-  $Bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
   $Bitmap = New-Object System.Drawing.Bitmap $Bounds.Width, $Bounds.Height
   $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
   try {
-    $Graphics.CopyFromScreen($Bounds.Location, [System.Drawing.Point]::Empty, $Bounds.Size)
+    $Graphics.CopyFromScreen($Bounds.Left, $Bounds.Top, 0, 0, [System.Drawing.Size]::new($Bounds.Width, $Bounds.Height))
     $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
   } finally {
     $Graphics.Dispose()
     $Bitmap.Dispose()
   }
+}
+
+function Capture-DesktopScreenshot {
+  param([string]$Path)
+
+  Save-ScreenRegion ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds) $Path
 }
 
 function Get-WindowBounds {
@@ -628,16 +637,7 @@ function Capture-WindowScreenshot {
     [string]$Path
   )
 
-  $Bounds = Get-WindowBounds $Window
-  $Bitmap = New-Object System.Drawing.Bitmap $Bounds.Width, $Bounds.Height
-  $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
-  try {
-    $Graphics.CopyFromScreen($Bounds.Left, $Bounds.Top, 0, 0, [System.Drawing.Size]::new($Bounds.Width, $Bounds.Height))
-    $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
-  } finally {
-    $Graphics.Dispose()
-    $Bitmap.Dispose()
-  }
+  Save-ScreenRegion (Get-WindowBounds $Window) $Path
 }
 
 function Capture-WindowClientScreenshot {
@@ -646,16 +646,7 @@ function Capture-WindowClientScreenshot {
     [string]$Path
   )
 
-  $Bounds = Get-WindowClientBounds $Window
-  $Bitmap = New-Object System.Drawing.Bitmap $Bounds.Width, $Bounds.Height
-  $Graphics = [System.Drawing.Graphics]::FromImage($Bitmap)
-  try {
-    $Graphics.CopyFromScreen($Bounds.Left, $Bounds.Top, 0, 0, [System.Drawing.Size]::new($Bounds.Width, $Bounds.Height))
-    $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
-  } finally {
-    $Graphics.Dispose()
-    $Bitmap.Dispose()
-  }
+  Save-ScreenRegion (Get-WindowClientBounds $Window) $Path
 }
 
 function Get-VisibleWindowByTitle {
