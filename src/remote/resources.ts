@@ -23,6 +23,42 @@ interface RemoteResourceContext {
   uiRegistry: RemoteUiRegistry | null;
 }
 
+function finite(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Broker accounts as last imported, with the figures an agent needs to answer
+ * questions about cash, margin and the day, and where each figure came from.
+ */
+function brokerAccountsResource(state: AppState) {
+  return state.config.brokerInstances.map((instance) => ({
+    brokerInstanceId: instance.id,
+    brokerType: instance.brokerType,
+    label: instance.label,
+    connectionMode: instance.connectionMode ?? null,
+    enabled: instance.enabled !== false,
+    portfolioIds: state.config.portfolios
+      .filter((portfolio) => portfolio.brokerInstanceId === instance.id)
+      .map((portfolio) => portfolio.id),
+    accounts: (state.brokerAccounts[instance.id] ?? []).map((account) => {
+      const netLiquidation = finite(account.netLiquidation);
+      const grossPositionValue = finite(account.grossPositionValue);
+      const totalCashValue = finite(account.totalCashValue);
+      return {
+        ...account,
+        updatedAt: account.updatedAt ? new Date(account.updatedAt).toISOString() : null,
+        dailyPnlAsOf: account.dailyPnlAsOf ? new Date(account.dailyPnlAsOf).toISOString() : null,
+        /** Borrowed cash, in the account currency, when net cash is negative. */
+        marginLoan: totalCashValue != null && totalCashValue < 0 ? -totalCashValue : 0,
+        leverage: netLiquidation && grossPositionValue != null ? grossPositionValue / netLiquidation : null,
+        /** "broker": the broker's own day P&L. "quotes": none reported; the app estimates it from quotes. */
+        dailyPnlBasis: finite(account.dailyPnl) != null ? "broker" : "quotes",
+      };
+    }),
+  }));
+}
+
 export function createRemoteResources({
   dispatch,
   getState,
@@ -101,6 +137,7 @@ export function createRemoteResources({
     if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiNodes);
     if (resource === "app://capabilities") return pluginRegistry.capabilities.manifests();
     if (resource === "app://auth") return apiClient.describeAuthState();
+    if (resource === "app://accounts") return brokerAccountsResource(state);
     if (resource === "app://remote/help") return REMOTE_AGENT_HELP;
     if (resource === "ui://tree") return uiNodes;
     throw new Error(`Unknown remote resource "${resource}".`);
