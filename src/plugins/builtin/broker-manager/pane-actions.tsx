@@ -6,6 +6,9 @@ import {
   validateBrokerProfileValues,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { disconnectSignedInProfile, signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
+import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
+import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
 import type { BrokerProfileAction } from "../../../types/broker";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { t, tf } from "../../../i18n";
@@ -90,6 +93,25 @@ export function useBrokerManagerActions({
 
   const connectSelected = useCallback(async () => {
     if (!selectedRow) return;
+    if (isSignedInBrokerProfile(selectedRow.instance)) {
+      // Connecting happens in the browser, then the profile syncs what it can now see.
+      const broker = signedInBrokerForProfile(selectedRow.instance, selectedRow.brokerName);
+      try {
+        setBusy(t("Connecting…"));
+        if (!await requestBrokerSignIn(broker)) {
+          setMessage(tf("{broker} was not connected.", { broker: broker.name }));
+          return;
+        }
+        await syncBrokerInstance(selectedRow.id);
+        refreshStatuses();
+        setMessage(tf("Connected {broker}.", { broker: broker.name }));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : tf("Failed to sync {label}.", { label: selectedRow.label }));
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     try {
       setBusy(t("Testing…"));
       await connectBrokerInstance(selectedRow.id);
@@ -100,7 +122,7 @@ export function useBrokerManagerActions({
     } finally {
       setBusy(null);
     }
-  }, [connectBrokerInstance, refreshStatuses, selectedRow]);
+  }, [connectBrokerInstance, refreshStatuses, selectedRow, syncBrokerInstance]);
 
   const syncSelected = useCallback(async () => {
     if (!selectedRow) return;
@@ -133,6 +155,10 @@ export function useBrokerManagerActions({
 
   const removeSelected = useCallback(async () => {
     if (!selectedRow) return;
+    // The connection belongs to the Gloom account, so removing it reaches every device.
+    const signedIn = isSignedInBrokerProfile(selectedRow.instance)
+      ? signedInBrokerForProfile(selectedRow.instance, selectedRow.brokerName)
+      : null;
     const confirmed = await dialog.prompt<boolean>({
       closeOnClickOutside: true,
       content: (ctx: PromptContext<boolean>) => (
@@ -142,6 +168,9 @@ export function useBrokerManagerActions({
           body={[
             tf('Remove "{label}" and imported broker data?', { label: selectedRow.label }),
             t("Broker-managed portfolios, positions, and contracts will be removed."),
+            ...(signedIn
+              ? [tf("This also disconnects {broker} from your other devices and agents.", { broker: signedIn.name })]
+              : []),
           ]}
           confirmLabel={t("Disconnect")}
           cancelLabel={t("Back")}
@@ -154,10 +183,13 @@ export function useBrokerManagerActions({
 
     try {
       setBusy(t("Disconnecting…"));
+      const { stillConnected } = await disconnectSignedInProfile(selectedRow.instance);
       await removeBrokerInstance(selectedRow.id);
       setEditDraft(null);
       setDetailOpen(false);
-      setMessage(tf("Removed {label}.", { label: selectedRow.label }));
+      setMessage(stillConnected && signedIn
+        ? tf("Removed {label}. Sign in to Gloom to disconnect {broker} from your account.", { label: selectedRow.label, broker: signedIn.name })
+        : tf("Removed {label}.", { label: selectedRow.label }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : tf("Failed to remove {label}.", { label: selectedRow.label }));
     } finally {

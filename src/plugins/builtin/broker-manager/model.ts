@@ -116,7 +116,9 @@ export function buildBrokerProfileRows(
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
     const status = adapter?.getStatus?.(instance) ?? null;
-    const mode = resolveMode(adapter, instance, status);
+    // An adapter that fronts several brokers names the broker and how it connects.
+    const described = adapter?.describeInstance?.(instance) ?? null;
+    const mode = described?.method ?? resolveMode(adapter, instance, status);
     const state = resolveState(instance, adapter, mode, status);
     const accounts = brokerAccounts[instance.id] ?? [];
     const portfolioLastSyncedAt = Math.max(
@@ -132,7 +134,7 @@ export function buildBrokerProfileRows(
       id: instance.id,
       label: instance.label,
       brokerType: instance.brokerType,
-      brokerName: adapter?.name ?? instance.brokerType.toUpperCase(),
+      brokerName: described?.brokerName ?? adapter?.name ?? instance.brokerType.toUpperCase(),
       mode,
       state: state.state,
       stateLabel: state.label,
