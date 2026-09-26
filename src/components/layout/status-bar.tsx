@@ -13,12 +13,6 @@ import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
-import {
-  selectActiveLayoutIndex,
-  selectLayout,
-  selectSavedLayouts,
-  selectStatusBarVisible,
-} from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
 import {
   advertisedChord,
@@ -134,10 +128,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   const registry = getSharedRegistry();
   const dispatch = useAppDispatch();
   const { width: termWidth } = useViewport();
-  const layouts = useAppSelector(selectSavedLayouts);
-  const activeLayoutIdx = useAppSelector(selectActiveLayoutIndex);
-  const statusBarVisible = useAppSelector(selectStatusBarVisible);
-  const layout = useAppSelector(selectLayout);
+  const layouts = useAppSelector((state) => state.config.layouts);
+  const activeLayoutIdx = useAppSelector((state) => state.config.activeLayoutIndex);
+  const statusBarVisible = useAppSelector((state) => state.statusBarVisible);
+  const layout = useAppSelector((state) => state.config.layout);
   const { transientLayout } = useTransientLayout();
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
   const keybindings = useKeybindings();

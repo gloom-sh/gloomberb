@@ -23,12 +23,6 @@ import {
   useAppSelector,
   useAppStateRef,
 } from "../../../state/app/context";
-import {
-  selectCommandBarOpen,
-  selectFocusedPaneId,
-  selectLayout,
-  selectStatusBarVisible,
-} from "../../../state/selectors-ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { tf } from "../../../i18n";
 import { getPaneDisplayTitle } from "../pane/title";
@@ -107,13 +101,13 @@ export function Shell({
   const dispatch = useAppDispatch();
   const config = useAppSelector((state) => state.config);
   const paneState = useAppSelector((state) => state.paneState);
-  const focusedPaneId = useAppSelector(selectFocusedPaneId);
+  const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const previousFocusedPaneId = useAppSelector((state) => state.previousFocusedPaneId);
   const activePanel = useAppSelector((state) => state.activePanel);
-  const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
-  const statusBarVisible = useAppSelector(selectStatusBarVisible);
+  const statusBarVisible = useAppSelector((state) => state.statusBarVisible);
   const rendererHost = useRendererHost();
   const { setTransientLayout } = useTransientLayout();
   const uiKind = useUiHost().kind;
@@ -129,7 +123,7 @@ export function Shell({
   const contentHeight = Math.max(1, height - appHeaderHeight - (statusBarVisible ? 1 : 0));
   pluginRegistry.getTermSizeFn = () => ({ width, height: contentHeight });
 
-  const layout = useAppSelector(selectLayout);
+  const layout = useAppSelector((state) => state.config.layout);
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const [hoveredPaneId, setHoveredPaneId] = useState<string | null>(null);
   const setHoveredPaneIfChanged = useCallback((paneId: string | null) => {
