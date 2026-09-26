@@ -19,11 +19,8 @@ import { parsePublicTickerKey } from "../../utils/exchanges";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
-import { SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
+import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 
-const SECTOR_ETFS = [
-  "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLK", "XLB", "XLRE", "XLU",
-];
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
   ...WORLD_INDICES.map((entry) => [entry.symbol, entry.name] as const),
@@ -248,7 +245,7 @@ export const overviewCliCommands: CliCommandDef[] = [
     name: "sectors",
     description: "Show the SPDR sector ETFs",
     help: { group: CLI_COMMAND_GROUPS.markets, usage: ["sectors"] },
-    execute: (_args, ctx) => runQuoteBasket(SECTOR_ETFS, ctx, { group: "sectors" }),
+    execute: (_args, ctx) => runQuoteBasket(getSectorCollection("sectors").items.map((item) => item.etf), ctx, { group: "sectors" }),
   },
   {
     name: "econ",

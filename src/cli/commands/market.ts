@@ -818,6 +818,10 @@ export const marketDataCliCommands: CliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.companyData,
       usage: ["13f <symbol>"],
       options: [EXCHANGE_OPTION],
+      sections: [{
+        title: "13F filings",
+        lines: ["For each fund's reported position and its change over the quarter, run gloomberb fn 13F <symbol>."],
+      }],
       examples: ["13f AAPL"],
     },
     execute: (args, ctx) => runHolders(args, ctx, "13f", new Set(["institution", "fund"])),

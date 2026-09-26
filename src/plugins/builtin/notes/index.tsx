@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { GloomPlugin } from "../../../types/plugin";
 import { teamStore } from "../cloud/team/store";
+import { notesCliCommand } from "./cli";
 import { exportNotesToDirectory, exportSourceLabel } from "./export";
 import { NotesFiles } from "./files";
 import { migrateLocalNotes, notesMigratedAt } from "./migration";
@@ -16,6 +17,7 @@ export const notesPlugin: GloomPlugin = {
   version: "2.0.0",
   description: "Markdown notes on tickers and on their own, personal or shared with a team.",
   toggleable: true,
+  cliCommands: [notesCliCommand],
 
   setup(ctx) {
     const dataDir = ctx.getConfig().dataDir;

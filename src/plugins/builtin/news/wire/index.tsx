@@ -24,6 +24,7 @@ import { NewsPresetPane } from "./news/preset-pane";
 import { NEWS_QUERY_PRESETS } from "./news/query-presets";
 import type { NewsColumnId, NewsSortPreference } from "./news/table";
 import { createRssNewsCapability } from "./rss/source";
+import { rssCliCommand } from "./rss/cli";
 import { newsFeedHeadless } from "../headless";
 
 interface NewsPresetPaneConfig {
@@ -136,6 +137,7 @@ export const browserNewsWireModule: PluginModule = {
 export const newsWireModule: PluginModule = {
   panes: newsWirePanes,
   paneTemplates: newsWirePaneTemplates,
+  cliCommands: [rssCliCommand],
   setup(ctx) {
     const initialSettings = loadNewsFeedSettings(ctx.configState);
     if (initialSettings.needsMigration) {

@@ -28,11 +28,7 @@ import { marketDataCliCommands } from "./commands/market";
 import { overviewCliCommands } from "./commands/overview";
 import { remoteCliCommand } from "./commands/remote";
 import { createSystemCliCommands } from "./commands/system";
-import {
-  brokerCliCommand,
-  ibkrCliCommand,
-  rssCliCommand,
-} from "./commands/automation";
+import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installPlugin, parseGitHubRef, removePlugin, resolveRegistryListing } from "../plugins/installer";
 import { requiredGloomberb } from "../utils/semver";
@@ -49,6 +45,7 @@ function createCoreCliCommands(
   return [
     {
       name: "help",
+      aliases: ["command", "commands"],
       description: "Show every command, or the usage, options, and examples for one",
       help: {
         group: CLI_COMMAND_GROUPS.app,
@@ -253,10 +250,9 @@ function createCoreCliCommands(
     ...marketDataCliCommands,
     ...overviewCliCommands,
     remoteCliCommand,
-    ...createSystemCliCommands(allCommands),
+    ...createSystemCliCommands(),
     brokerCliCommand,
     ibkrCliCommand,
-    rssCliCommand,
   ];
 }
 
@@ -302,13 +298,20 @@ export interface DispatchCliOptions {
   externalPlugins?: LoadedExternalPlugin[];
 }
 
+/** Old names kept so existing scripts still run; help and suggestions leave them out. */
+const UNLISTED_COMMANDS: ReadonlySet<CliCommandDef> = new Set([ibkrCliCommand]);
+
+function listedCommands(registry: CliCommandRegistry) {
+  return registry.commands.filter(({ command }) => !UNLISTED_COMMANDS.has(command));
+}
+
 async function createRegistry(options: DispatchCliOptions = {}): Promise<CliCommandRegistry> {
   const config = await loadCliConfigIfAvailable();
   let registry: CliCommandRegistry | null = null;
   const coreCommands = createCoreCliCommands(
-    () => registry!.commands.map(({ command, source }) => ({ command, source })),
+    () => listedCommands(registry!).map(({ command, source }) => ({ command, source })),
     (token) => registry!.lookup.get(normalizeCliCommandToken(token))?.command ?? null,
-    () => registry!.commands.map((entry) => entry.command),
+    () => listedCommands(registry!).map((entry) => entry.command),
   );
   registry = buildCliCommandRegistry({
     coreCommands,
@@ -369,7 +372,7 @@ export async function failUnknownCliCommand(args: string[], options: DispatchCli
     // dispatchCli already reported flags that do not parse.
   }
   const registry = await createRegistry(options);
-  return failUnknownCommand(token, registry.commands.map((entry) => entry.command));
+  return failUnknownCommand(token, listedCommands(registry).map((entry) => entry.command));
 }
 
 export async function runCli(args: string[], options: DispatchCliOptions = {}): Promise<boolean> {

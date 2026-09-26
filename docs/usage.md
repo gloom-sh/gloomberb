@@ -350,18 +350,18 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols |
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
-| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
+| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings) |
 | `gloomberb movers\|indices\|sectors\|fx\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Manage manual portfolios |
 | `gloomberb watchlist [action]` | Manage watchlists |
 | `gloomberb notes\|alerts [action]` | Manage local notes and alerts |
-| `gloomberb broker\|ibkr [action]` | Inspect broker profiles |
+| `gloomberb broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
 | `gloomberb ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `gloomberb rss fetch <url>` | Fetch an RSS feed |
 | `gloomberb provider status` | Inspect enabled data providers |
-| `gloomberb config\|cache\|plugin\|layout\|pane\|debug\|doctor\|version\|changelog` | Inspect and manage local app state |
+| `gloomberb config\|cache\|plugin\|layout\|pane\|doctor\|version` | Inspect and manage local app state |
 | `gloomberb fn [...]` | Run a pane-backed report command |
 | `gloomberb shot [...]` | Capture a pane-backed screenshot |
 | `gloomberb predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
@@ -372,6 +372,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb plugin enable\|disable <id>` | Turn a plugin on or off without removing it |
 | `gloomberb plugin link <path>` | Load a plugin from a local checkout while developing it |
 | `gloomberb plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
+
+`portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloomberb plugin disable` also removes its commands.
 
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 

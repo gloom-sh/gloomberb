@@ -61,6 +61,10 @@ export function formatStatusCell(value: unknown): string {
   return status;
 }
 
+/** Appended to a change message when `--dry-run` kept it from being saved. */
+export function dryRunNote(dryRun: boolean): string {
+  return dryRun ? cliStyles.muted(" (dry run, nothing saved)") : "";
+}
 
 function fractionDigits(text: string): number {
   return /\.(\d+)/.exec(text)?.[1]?.length ?? 0;

@@ -1,52 +1,20 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { VERSION } from "../../version";
 import { saveConfig } from "../../data/config/store";
-import { apiClient } from "../../api-client";
-import { readChatSessionState } from "../../plugins/builtin/chat/controller/persistence";
-import { exportNotesToDirectory, type NotesExportSource } from "../../plugins/builtin/notes/export";
-import { NotesFiles } from "../../plugins/builtin/notes/files";
-import { CloudNotesStore } from "../../plugins/builtin/notes/store";
-import { createPluginPersistence } from "../../plugins/plugin-persistence";
-import { createAlert, deserializeAlerts, serializeAlerts } from "../../plugins/builtin/alerts/alert-engine";
-import type { AlertCondition } from "../../plugins/builtin/alerts/types";
 import type { CliCommandDef } from "../../types/plugin";
-import { debugLog, type LogLevel } from "../../utils/debug-log";
 import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
-import { formatBytes, formatStatusCell } from "../helpers";
+import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
-import { parsePositiveInt, requireArg, takeOption } from "./command-utils";
+import { requireArg } from "./command-utils";
 import {
   applyKeybindingCliSet,
   describeKeybindingsForCli,
   KEYBINDINGS_CONFIG_KEY,
 } from "./keybindings";
 
-const ALERTS_PLUGIN_ID = "alerts";
-const ALERTS_KEY = "alerts";
-const LOG_LEVELS = new Set<LogLevel>(["debug", "info", "warn", "error"]);
-
 const DOCTOR_COUNT_UNITS: Record<string, string> = { plugins: "loaded", capabilities: "registered" };
 const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled"];
-const LOG_LEVEL_STYLES: Partial<Record<LogLevel, (text: string) => string>> = {
-  debug: cliStyles.muted,
-  warn: cliStyles.warning,
-  error: cliStyles.danger,
-};
-
-function commandRows(commands: CliCommandDef[]) {
-  return commands.map((command) => ({
-    name: command.name,
-    aliases: command.aliases?.join(",") ?? "",
-    description: command.description,
-    group: command.help?.group ?? "",
-  }));
-}
-
-function dryRunNote(dryRun: boolean): string {
-  return dryRun ? cliStyles.muted(" (dry run, nothing saved)") : "";
-}
 
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
@@ -97,17 +65,6 @@ function renderKeybindings(value: unknown): string {
   return lines.join("\n");
 }
 
-function formatLogTime(value: unknown): string {
-  const date = new Date(Number(value));
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (part: number, size = 2) => String(part).padStart(size, "0");
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
-}
-
-function parseLogLevel(value: string | undefined): LogLevel | undefined {
-  return value && LOG_LEVELS.has(value as LogLevel) ? value as LogLevel : undefined;
-}
-
 function resourceCacheStats(
   services: Awaited<ReturnType<Parameters<CliCommandDef["execute"]>[1]["initServices"]>>,
   namespace?: string,
@@ -130,7 +87,7 @@ function resourceCacheStats(
   };
 }
 
-export function createSystemCliCommands(allCommands: () => CliCommandDef[]): CliCommandDef[] {
+export function createSystemCliCommands(): CliCommandDef[] {
   const versionCommand: CliCommandDef = {
     name: "version",
     aliases: ["--version", "-v"],
@@ -517,305 +474,6 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     },
   };
 
-  const notesCommand: CliCommandDef = {
-    name: "notes",
-    description: "Read, write, or export ticker notes",
-    help: {
-      group: CLI_COMMAND_GROUPS.portfolios,
-      usage: ["notes show <symbol>", "notes set <symbol> <text...>", "notes delete <symbol>", "notes quick list", "notes export [dir]"],
-      examples: ["notes show AAPL", "notes set AAPL \"Services margin above 70%\"", "notes export ~/notes"],
-    },
-    execute: async (args, ctx) => {
-      await withConfigData(ctx, async (config) => {
-        const notes = new NotesFiles(config.dataDir);
-        const action = args[0] ?? "list";
-        if (action === "export") {
-          // Local files plus, when a saved session exists, the cloud copies
-          // (personal and every team), one folder each.
-          const dir = args[1] ?? join(config.dataDir, `notes-export-${new Date().toISOString().slice(0, 10)}`);
-          const sources: NotesExportSource[] = [{ label: "local", store: notes }];
-          await withCliServices(ctx, async (services) => {
-            const cloudPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:gloomberb-cloud", "gloomberb-cloud");
-            const session = readChatSessionState(cloudPersistence, null);
-            if (!session?.sessionToken) return;
-            apiClient.setSessionToken(session.sessionToken);
-            const user = await apiClient.ensureVerifiedSession().catch(() => null);
-            if (!user) return;
-            const notesPersistence = createPluginPersistence(services.persistence.pluginState, services.persistence.resources, "plugin:notes", "notes");
-            sources.push({ label: "mine", store: new CloudNotesStore({ kind: "user" }, notesPersistence) });
-            const teams = await apiClient.listTeams().catch(() => []);
-            for (const team of teams) {
-              sources.push({ label: team.name, store: new CloudNotesStore({ kind: "team", teamId: team.id }, notesPersistence) });
-            }
-          });
-          if (ctx.cliOptions.dryRun) {
-            ctx.printResult({ data: { dryRun: true, dir, sources: sources.map((source) => source.label) } }, {
-              text: (data) => `Would export ${data.sources.join(", ")} notes to ${data.dir}.${dryRunNote(true)}`,
-            });
-            return;
-          }
-          const result = await exportNotesToDirectory(dir, sources);
-          ctx.printResult({ data: { dir: result.dir, files: result.files, sources: sources.map((source) => source.label) } }, {
-            text: (data) => `Exported ${data.files} notes from ${data.sources.join(", ")} to ${data.dir}.`,
-          });
-          return;
-        }
-        if (action === "quick") {
-          const subaction = args[1] ?? "list";
-          if (subaction !== "list") ctx.fail("Usage: gloomberb notes quick list");
-          const entries = await notes.loadQuickNotesIndex();
-          ctx.printResult({ data: entries }, { empty: "No quick notes." });
-          return;
-        }
-        if (action === "show") {
-          const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb notes show <symbol>", ctx);
-          ctx.printResult({ data: { symbol, text: await notes.load(symbol) } }, {
-            text: (data) => data.text?.trim() ? data.text.trimEnd() : cliStyles.muted(`No note for ${symbol}.`),
-          });
-          return;
-        }
-        if (action === "set") {
-          const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb notes set <symbol> <text...>", ctx);
-          const text = args.slice(2).join(" ");
-          if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
-          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length } }, {
-            text: (data) => `Saved the note for ${symbol}.${dryRunNote(data.dryRun)}`,
-          });
-          return;
-        }
-        if (action === "delete" || action === "rm") {
-          const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb notes delete <symbol>", ctx);
-          // Only picks the message; an unreadable note is still deleted.
-          const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => true);
-          if (!ctx.cliOptions.dryRun) await notes.delete(symbol);
-          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol } }, {
-            text: (data) => existed
-              ? `Deleted the note for ${symbol}.${dryRunNote(data.dryRun)}`
-              : cliStyles.muted(`No note for ${symbol}.`),
-          });
-          return;
-        }
-        ctx.fail("Usage: gloomberb notes show|set|delete|quick|export");
-      });
-    },
-  };
-
-  const alertsCommand: CliCommandDef = {
-    name: "alerts",
-    aliases: ["alert"],
-    description: "List, add, and remove price alerts",
-    help: {
-      group: CLI_COMMAND_GROUPS.portfolios,
-      usage: ["alerts list", "alerts add <symbol> <above|below|crosses> <price>", "alerts delete <id>", "alerts rearm <id>"],
-      examples: ["alerts", "alerts add AAPL above 250", "alerts add BTC-USD below 60000"],
-    },
-    execute: async (args, ctx) => {
-      const action = args[0] ?? "list";
-      await withConfigData(ctx, async (config) => {
-        const raw = config.config.pluginConfig[ALERTS_PLUGIN_ID]?.[ALERTS_KEY];
-        const alerts = deserializeAlerts(typeof raw === "string" ? raw : "[]");
-        const saveAlerts = async (nextAlerts: typeof alerts) => {
-          const nextConfig = {
-            ...config.config,
-            pluginConfig: {
-              ...config.config.pluginConfig,
-              [ALERTS_PLUGIN_ID]: {
-                ...(config.config.pluginConfig[ALERTS_PLUGIN_ID] ?? {}),
-                [ALERTS_KEY]: serializeAlerts(nextAlerts),
-              },
-            },
-          };
-          if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
-        };
-
-        if (action === "list") {
-          ctx.printResult({ data: alerts }, {
-            textColumns: [
-              { key: "id", header: "ID", shrink: false },
-              { key: "symbol", header: "Symbol" },
-              { key: "condition", header: "Condition" },
-              { key: "targetPrice", header: "Target", align: "right" },
-              { key: "status", header: "Status" },
-              { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
-              { key: "createdAt", header: "Created", optional: true },
-              { key: "triggeredAt", header: "Triggered" },
-            ],
-            empty: "No alerts. Add one with gloomberb alerts add <symbol> <above|below|crosses> <price>.",
-          });
-          return;
-        }
-        if (action === "add") {
-          const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>", ctx);
-          const condition = requireArg(args[2], "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>", ctx) as AlertCondition;
-          if (!["above", "below", "crosses"].includes(condition)) ctx.fail("Condition must be above, below, or crosses.");
-          const price = Number(requireArg(args[3], "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>", ctx));
-          if (!Number.isFinite(price)) ctx.fail("Alert price must be a finite number.");
-          const alert = createAlert(symbol, condition, price);
-          await saveAlerts([...alerts, alert]);
-          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert } }, {
-            text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price}.${dryRunNote(data.dryRun)}`,
-          });
-          return;
-        }
-        if (action === "delete" || action === "rm") {
-          const id = requireArg(args[1], "Usage: gloomberb alerts delete <id>", ctx);
-          const next = alerts.filter((alert) => alert.id !== id);
-          await saveAlerts(next);
-          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun && next.length !== alerts.length, dryRun: ctx.cliOptions.dryRun, id } }, {
-            text: (data) => next.length === alerts.length
-              ? cliStyles.muted(`No alert with ID ${id}.`)
-              : `Deleted alert ${id}.${dryRunNote(data.dryRun)}`,
-          });
-          return;
-        }
-        if (action === "rearm") {
-          const id = requireArg(args[1], "Usage: gloomberb alerts rearm <id>", ctx);
-          const next = alerts.map((alert) => alert.id === id ? { ...alert, status: "active" as const, triggeredAt: undefined } : alert);
-          await saveAlerts(next);
-          ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, id } }, {
-            text: (data) => alerts.some((alert) => alert.id === id)
-              ? `Re-armed alert ${id}.${dryRunNote(data.dryRun)}`
-              : cliStyles.muted(`No alert with ID ${id}.`),
-          });
-          return;
-        }
-        ctx.fail("Usage: gloomberb alerts list|add|delete|rearm");
-      });
-    },
-  };
-
-  const debugCommand: CliCommandDef = {
-    name: "debug",
-    description: "Show, export, or clear the debug log of this command run",
-    help: {
-      group: CLI_COMMAND_GROUPS.app,
-      usage: ["debug logs [--source <name>] [--level <level>]", "debug export [--output <path>]", "debug clear"],
-      options: [
-        { flags: "--source <name>", description: "Only entries from one logger" },
-        { flags: "--level <level>", description: "debug, info, warn, or error" },
-        { flags: "--output <path>", description: "With export, write to a file instead of printing" },
-      ],
-    },
-    execute: async (rawArgs, ctx) => {
-      const args = [...rawArgs];
-      const action = args[0] ?? "logs";
-      const source = takeOption(args, "--source");
-      const level = parseLogLevel(takeOption(args, "--level"));
-      if (action === "clear") {
-        debugLog.clear();
-        ctx.printResult({ data: { changed: true } }, { text: () => "Cleared the debug log." });
-        return;
-      }
-      if (action === "export") {
-        const output = takeOption(args, "--output");
-        const text = debugLog.exportAsText({ source, level });
-        if (output) writeFileSync(output, text);
-        ctx.printResult({ data: { output: output ?? null, bytes: text.length, text: output ? undefined : text } }, {
-          text: (data) => data.output ? `Wrote ${formatBytes(data.bytes)} to ${data.output}.` : text.trimEnd(),
-        });
-        return;
-      }
-      const entries = debugLog.getEntries({ source, level }).slice(-(ctx.cliOptions.limit ?? 50));
-      ctx.printResult({ data: entries }, {
-        columns: [
-          { key: "id", header: "ID", align: "right" },
-          { key: "timestamp", header: "Time", value: (row) => new Date(Number(row.timestamp)).toISOString(), format: (_value, row) => formatLogTime(row.timestamp) },
-          { key: "level", header: "Level", format: (value) => (LOG_LEVEL_STYLES[value as LogLevel] ?? String)(String(value)) },
-          { key: "source", header: "Source" },
-          { key: "message", header: "Message" },
-        ],
-        empty: "The debug log is empty.",
-      });
-    },
-  };
-
-  const changelogCommand: CliCommandDef = {
-    name: "changelog",
-    description: "Print the changelog or release notes in this folder",
-    help: { group: CLI_COMMAND_GROUPS.app, usage: ["changelog [lines]"] },
-    execute: async (args, ctx) => {
-      const limit = parsePositiveInt(args[0], ctx.cliOptions.limit ?? 80, "Line count", ctx);
-      const candidates = ["CHANGELOG.md", "CHANGELOG", "RELEASE_NOTES.md", "README.md"];
-      const found = candidates.find((candidate) => existsSync(candidate));
-      const text = found ? readFileSync(found, "utf8").split("\n").slice(0, limit).join("\n") : "";
-      ctx.printResult({ data: { path: found ?? null, text, version: VERSION } }, {
-        text: (data) => data.path ? data.text.trimEnd() : cliStyles.muted("No changelog or release notes in this folder."),
-      });
-    },
-  };
-
-  const commandCatalogCommand: CliCommandDef = {
-    name: "command",
-    aliases: ["commands"],
-    description: "List every command with its group and aliases",
-    help: { group: CLI_COMMAND_GROUPS.app, usage: ["command"] },
-    execute: (_args, ctx) => {
-      ctx.printResult({ data: commandRows(allCommands()) }, {
-        columns: [
-          { key: "name", header: "Command", shrink: false },
-          { key: "aliases", header: "Aliases", format: (value) => String(value).split(",").join(", ") },
-          { key: "description", header: "Description" },
-          { key: "group", header: "Group" },
-        ],
-      });
-    },
-  };
-
-  const coverageCommand: CliCommandDef = {
-    name: "coverage",
-    description: "Show which panes and capabilities the CLI reaches",
-    help: { group: CLI_COMMAND_GROUPS.app, usage: ["coverage"] },
-    execute: async (_args, ctx) => {
-      const commandNames = new Set(allCommands().map((command) => command.name));
-      await withCliServices(ctx, async (services) => {
-        const rows = [
-          ...[...services.services.pluginRegistry.panes.entries()].map(([id, pane]) => ({
-            surface: "pane",
-            id,
-            label: pane.name,
-            coverage: commandNames.has(id) ? "first-class" : "visual-only",
-            command: commandNames.has(id) ? id : "fn/shot",
-          })),
-          ...[...services.services.pluginRegistry.paneTemplates.entries()].map(([id, template]) => {
-            const direct = [id, template.paneId, template.shortcut?.prefix?.toLowerCase(), ...(template.shortcut?.aliases ?? []).map((alias) => alias.toLowerCase())]
-              .filter((value): value is string => !!value)
-              .find((value) => commandNames.has(value));
-            return {
-              surface: "template",
-              id,
-              label: template.label,
-              coverage: direct ? "first-class" : "visual-only",
-              command: direct ?? "fn/shot",
-            };
-          }),
-          ...services.services.pluginRegistry.capabilities.manifests().map((manifest) => ({
-            surface: "capability",
-            id: manifest.id,
-            label: manifest.name,
-            coverage: "api",
-            command: "api list|get|invoke|subscribe",
-          })),
-          ...["auth", "account-management", "chat"].map((id) => ({
-            surface: "deferred",
-            id,
-            label: id,
-            coverage: "deferred",
-            command: "",
-          })),
-        ];
-        ctx.printResult({ data: rows }, {
-          columns: [
-            { key: "surface", header: "Surface" },
-            { key: "id", header: "ID", shrink: false },
-            { key: "coverage", header: "Coverage" },
-            { key: "command", header: "Command" },
-            { key: "label", header: "Label" },
-          ],
-        });
-      });
-    },
-  };
-
   return [
     versionCommand,
     doctorCommand,
@@ -825,11 +483,5 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     pluginCommand,
     layoutCommand,
     paneCommand,
-    notesCommand,
-    alertsCommand,
-    debugCommand,
-    changelogCommand,
-    commandCatalogCommand,
-    coverageCommand,
   ];
 }

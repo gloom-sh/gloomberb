@@ -15,6 +15,7 @@ import {
 } from "./command";
 import { POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
 import { AlertsPane } from "./pane";
+import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
   quoteAlertFields,
@@ -45,6 +46,7 @@ export const alertsPlugin: GloomPlugin = {
   version: "1.0.0",
   description: "Price, market and filing event alerts",
   toggleable: true,
+  cliCommands: [alertsCliCommand],
 
   setup(ctx) {
     const generation = ++pollGeneration;
