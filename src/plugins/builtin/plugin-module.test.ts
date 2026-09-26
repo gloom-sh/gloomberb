@@ -2,6 +2,7 @@ import { Children, isValidElement, type ReactElement } from "react";
 import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../../types/broker";
 import type { GloomPluginContext } from "../../types/plugin";
+import { debugLog, type LogEntry } from "../../utils/debug-log";
 import {
   composeBuiltinPlugin,
   type PluginModule,
@@ -55,8 +56,7 @@ describe("composeBuiltinPlugin", () => {
 
   test("isolates setup failures and disposes every started module in reverse order", async () => {
     const lifecycle: string[] = [];
-    const errors: unknown[][] = [];
-    const originalError = console.error;
+    const errors: LogEntry[] = [];
     const plugin = composeBuiltinPlugin({
       id: "parent",
       name: "Parent",
@@ -80,15 +80,15 @@ describe("composeBuiltinPlugin", () => {
       ],
     });
 
-    console.error = (...args: unknown[]) => { errors.push(args); };
+    const unsubscribe = debugLog.subscribe((entry) => { if (entry.level === "error") errors.push(entry); });
     try {
       await plugin.setup?.(context());
     } finally {
-      console.error = originalError;
+      unsubscribe();
     }
     plugin.dispose?.();
 
-    expect(errors[0]?.[0]).toBe('[plugins] Module setup failed in plugin "parent":');
+    expect(errors[0]?.data).toEqual({ pluginId: "parent", error: "setup failed" });
     expect(lifecycle).toEqual([
       "setup:first",
       "setup:second",

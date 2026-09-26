@@ -9,6 +9,7 @@ import type { AppTickerRepositoryPort } from "../../../../core/app-service-ports
 import type { AppAction, AppState } from "../../../../core/state/app/types";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../../../state/app/context";
 import type { TickerRecord } from "../../../../types/ticker";
+import { debugLog } from "../../../../utils/debug-log";
 import {
   applyMembership,
   blankTickerRecord,
@@ -30,6 +31,7 @@ export interface TeamCollectionsHost {
 type KnownItems = Map<string, Map<string, TeamCollectionItem>>;
 
 const OUTBOUND_DEBOUNCE_MS = 400;
+const teamsLog = debugLog.createLogger("teams");
 
 /**
  * Keeps team watchlists and paper portfolios in step with the server at the
@@ -176,7 +178,7 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
           });
           items.set(item.symbol, item);
         } catch (error) {
-          console.error("[teams] Could not add to a team collection:", error);
+          teamsLog.error("Could not add to a team collection", { symbol: entry.symbol, error: error instanceof Error ? error.message : String(error) });
         }
       }
       for (const symbol of diff.remove) {
@@ -185,7 +187,7 @@ export function useTeamCollectionsSync(host: Omit<TeamCollectionsHost, "dispatch
           await apiClient.removeTeamCollectionItem(collection.teamId, collection.id, symbol, item?.exchange ?? "");
           items.delete(symbol);
         } catch (error) {
-          console.error("[teams] Could not remove from a team collection:", error);
+          teamsLog.error("Could not remove from a team collection", { symbol, error: error instanceof Error ? error.message : String(error) });
         }
       }
     }

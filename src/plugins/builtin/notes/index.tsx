@@ -45,7 +45,7 @@ export const notesPlugin: GloomPlugin = {
           });
         }
       } catch (error) {
-        console.error("[notes] Local note import failed:", error);
+        ctx.log.error("Local note import failed", { error: error instanceof Error ? error.message : String(error) });
       } finally {
         migrating = false;
       }
@@ -63,7 +63,7 @@ export const notesPlugin: GloomPlugin = {
 
     ctx.on("ticker:removed", ({ symbol }) => {
       registry.personal().delete(symbol).catch((error) => {
-        console.error("[notes] Failed to delete ticker note:", error);
+        ctx.log.error("Failed to delete ticker note", { symbol, error: error instanceof Error ? error.message : String(error) });
         ctx.notify({ body: "Failed to delete note.", type: "error" });
       });
     });

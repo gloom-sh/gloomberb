@@ -88,7 +88,7 @@ export function useAppStartupRuntime({
             pluginRegistry.brokers,
           );
         } catch (error) {
-          console.error("[startup] Failed to load persisted broker accounts:", error);
+          appLog.error("Failed to load persisted broker accounts", { error: error instanceof Error ? error.message : String(error) });
           pluginRegistry.notify({
             body: "Failed to load saved broker account data. Check local storage permissions.",
             type: "error",

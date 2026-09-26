@@ -3,6 +3,9 @@ import type {
   GloomPlugin,
   GloomPluginContext,
 } from "../../types/plugin";
+import { debugLog } from "../../utils/debug-log";
+
+const pluginsLog = debugLog.createLogger("plugins");
 
 type PluginMetadataKey =
   | "id"
@@ -103,7 +106,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
         try {
           await module.setup?.(ctx);
         } catch (error) {
-          console.error(`[plugins] Module setup failed in plugin "${metadata.id}":`, error);
+          pluginsLog.error("Module setup failed", { pluginId: metadata.id, error: error instanceof Error ? error.message : String(error) });
         }
       }
     },

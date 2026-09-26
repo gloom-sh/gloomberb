@@ -7,6 +7,7 @@ import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { EmptyState, usePaneFooter } from "../../../components";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
+import { debugLog } from "../../../utils/debug-log";
 import { useDialog } from "../../../ui/dialog";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
@@ -19,6 +20,8 @@ import {
 import { NoteConflictError, type NoteOwner, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+
+const notesLog = debugLog.createLogger("notes");
 
 export function createNotesTab(registry: NotesStoreRegistry) {
   return function NotesTab({ focused, width, onCapture }: TickerResearchTabProps) {
@@ -101,7 +104,7 @@ export function createNotesTab(registry: NotesStoreRegistry) {
           }
           return;
         }
-        console.error("[notes] Failed to save ticker note:", error);
+        notesLog.error("Failed to save ticker note", { symbol, error: error instanceof Error ? error.message : String(error) });
         notify({ body: error instanceof Error ? error.message : "Failed to save note.", type: "error" });
       });
     }, [applyNoteText, dialog, effectiveOwner, notesFiles, notify]);
