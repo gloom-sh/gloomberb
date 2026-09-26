@@ -48,8 +48,15 @@ export function getMarketplaceHost(): MarketplaceHost | null {
   return host;
 }
 
+/**
+ * What the registry reviewed. An install or update lands on exactly this, so
+ * what the catalog describes is what runs, rather than whatever the default
+ * branch holds at the moment the clone happens.
+ */
 export interface PluginPin {
+  /** A tag or branch name. */
   ref?: string;
+  /** Full or abbreviated commit hash. Verified after checkout when `ref` is also given. */
   commit?: string;
 }
 

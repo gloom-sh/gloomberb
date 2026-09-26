@@ -33,14 +33,8 @@ import {
   ibkrCliCommand,
   rssCliCommand,
 } from "./commands/automation";
-import {
-  installPlugin,
-  listPlugins,
-  parseGitHubRef,
-  removePlugin,
-  resolveRegistryListing,
-  updatePlugins,
-} from "./commands/plugins";
+import { listPlugins, updatePlugins } from "./commands/plugins";
+import { installPlugin, parseGitHubRef, removePlugin, resolveRegistryListing } from "../plugins/installer";
 import { requiredGloomberb } from "../utils/semver";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 

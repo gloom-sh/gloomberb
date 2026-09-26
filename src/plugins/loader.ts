@@ -5,6 +5,7 @@ import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { linkHostPackages } from "./host-link";
+import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
 const loaderLog = debugLog.createLogger("plugin-loader");
 
@@ -99,11 +100,6 @@ export async function resolvePluginBrowserEntry(pluginDir: string): Promise<stri
     ?? await resolvePluginEntry(pluginDir);
 }
 
-export function pluginSupportsTarget(plugin: GloomPlugin, target: PluginTarget): boolean {
-  // No declaration means "everywhere"; the registry fills this in for listed plugins.
-  return !plugin.targets || plugin.targets.length === 0 || plugin.targets.includes(target);
-}
-
 /**
  * The commit a plugin checkout is at, read from `.git` directly so startup does
  * not spawn one git process per plugin. Returns null for anything that is not
@@ -163,9 +159,8 @@ export async function loadExternalPlugin(
 
   try {
     const specifier = options.fresh ? `${entryFile}?reload=${Date.now()}` : entryFile;
-    const mod = await import(specifier);
-    const plugin: GloomPlugin = mod.default ?? mod.plugin;
-    if (!plugin || !plugin.id || !plugin.name) {
+    const plugin = pluginFromModule(await import(specifier));
+    if (!plugin) {
       return {
         ...base,
         plugin: { id: directory, name: directory, version: "" } as GloomPlugin,

@@ -1,5 +1,6 @@
 import { installPluginHostModules } from "../../plugins/host-modules";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
+import { pluginFromModule } from "../../plugins/plugin-export";
 import type { WebBundledPluginDescriptor } from "../../plugins/web-bundled";
 import type { GloomPlugin } from "../../types/plugin";
 import { debugLog } from "../../utils/debug-log";
@@ -39,12 +40,8 @@ export async function loadWebBundledPlugins(
       path: descriptor.url,
     };
     try {
-      const mod = await import(/* @vite-ignore */ descriptor.url) as {
-        default?: GloomPlugin;
-        plugin?: GloomPlugin;
-      };
-      const plugin = mod.default ?? mod.plugin;
-      if (!plugin?.id || !plugin?.name) {
+      const plugin = pluginFromModule(await import(/* @vite-ignore */ descriptor.url));
+      if (!plugin) {
         return { ...fallback, error: "Bundle did not export a valid GloomPlugin." };
       }
       log.info(`Loaded bundled plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);

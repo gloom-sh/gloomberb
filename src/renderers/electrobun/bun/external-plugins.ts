@@ -1,26 +1,21 @@
 import { readdir, rm, stat } from "fs/promises";
-import { existsSync, lstatSync } from "fs";
+import { existsSync } from "fs";
 import { basename, join } from "path";
 
 import type {
   DesktopExternalPluginBundle,
   DesktopPluginActivationResult,
-  DesktopPluginOperationResult,
-  DesktopPluginPin,
 } from "../shared/protocol";
 import { bundleExternalPlugin, pluginBundleCacheDir } from "../../../plugins/bundle";
-import { linkHostPackages } from "../../../plugins/host-link";
 import {
   getPluginCacheDir,
   getPluginsDir,
   listPluginDirectories,
   loadExternalPlugin,
-  readPluginCommit,
-  resolvePluginEntry,
 } from "../../../plugins/loader";
+import { createNodePluginManager } from "../../../plugins/manager-node";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { desktopRendererCapabilityManifests } from "./desktop/initialization";
-import type { GloomPlugin } from "../../../types/plugin";
 import { debugLog } from "../../../utils/debug-log";
 
 const log = debugLog.createLogger("desktop-plugins");
@@ -63,61 +58,34 @@ async function newestMtime(dir: string): Promise<number> {
   return newest;
 }
 
-async function readPluginMetadata(entryFile: string, fresh = false): Promise<GloomPlugin | null> {
-  try {
-    // Fresh after an update, otherwise Bun hands back the module it cached
-    // for the previous version and the metadata lags the code.
-    const mod = await import(fresh ? `${entryFile}?reload=${Date.now()}` : entryFile);
-    const plugin: GloomPlugin = mod.default ?? mod.plugin;
-    return plugin?.id && plugin?.name ? plugin : null;
-  } catch (error) {
-    log.error(`Metadata read failed for ${entryFile}: ${error}`);
-    return null;
-  }
-}
-
-function isSymlink(path: string): boolean {
-  try {
-    return lstatSync(path).isSymbolicLink();
-  } catch {
-    return false;
-  }
-}
-
 async function bundlePluginDirectory(
-  pluginsDir: string,
-  directory: string,
+  pluginDir: string,
   options: { fresh?: boolean } = {},
 ): Promise<DesktopExternalPluginBundle | null> {
-  const pluginDir = join(pluginsDir, directory);
-  const entryFile = await resolvePluginEntry(pluginDir);
-  if (!entryFile) return null;
+  // The same load the terminal does, so the metadata, the commit and whether
+  // the plugin runs on the desktop at all are decided in one place.
+  const loaded = await loadExternalPlugin(pluginDir, "desktop", options);
+  if (!loaded) return null;
 
-  linkHostPackages(pluginDir);
-
-  const plugin = await readPluginMetadata(entryFile, options.fresh);
-  const commit = readPluginCommit(pluginDir);
+  const { plugin } = loaded;
+  const directory = basename(pluginDir);
   const base = {
-    id: plugin?.id ?? directory,
-    name: plugin?.name ?? directory,
+    id: plugin.id,
+    name: plugin.name,
     // Empty rather than a made-up number when the plugin could not be read.
-    version: plugin?.version ?? "",
+    version: plugin.version ?? "",
     path: pluginDir,
     directory,
-    ...(commit ? { commit } : {}),
-    ...(isSymlink(pluginDir) ? { linked: true } : {}),
-    ...(plugin?.targets ? { targets: plugin.targets } : {}),
+    ...(loaded.commit ? { commit: loaded.commit } : {}),
+    ...(loaded.linked ? { linked: true } : {}),
+    ...(plugin.targets ? { targets: plugin.targets } : {}),
   };
 
-  if (!plugin) {
-    return { ...base, error: "Plugin did not export a valid GloomPlugin." };
-  }
+  if (loaded.error) return { ...base, error: loaded.error };
 
   // Skip compiling something the desktop cannot run anyway; the marketplace
   // still lists it, explaining why it is inert.
-  if (plugin.targets && !plugin.targets.includes("desktop")) {
-    return { ...base, unsupportedTarget: "desktop" };
-  }
+  if (loaded.unsupportedTarget) return { ...base, unsupportedTarget: "desktop" };
 
   try {
     const mtimeMs = await newestMtime(pluginDir);
@@ -170,7 +138,7 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
   // Links every folder before reading any: a plugin that imports a sibling
   // needs the sibling linked too, whichever of them is read first.
   for (const pluginDir of await listPluginDirectories(pluginsDir)) {
-    const bundle = await bundlePluginDirectory(pluginsDir, basename(pluginDir));
+    const bundle = await bundlePluginDirectory(pluginDir);
     if (bundle) bundles.push(bundle);
   }
 
@@ -178,56 +146,18 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
 }
 
 /** One plugin, compiled fresh, so the view can activate what was just installed or updated. */
-export async function bundleExternalPluginDirectory(directory: string): Promise<DesktopExternalPluginBundle | null> {
-  const pluginsDir = getPluginsDir();
-  if (!existsSync(join(pluginsDir, directory))) return null;
-  return bundlePluginDirectory(pluginsDir, directory, { fresh: true });
+export function bundleExternalPluginDirectory(directory: string): Promise<DesktopExternalPluginBundle | null> {
+  return bundlePluginDirectory(join(getPluginsDir(), directory), { fresh: true });
 }
 
 /**
- * Runs git and bun on behalf of the desktop view, which cannot do so itself.
- * Errors are returned rather than thrown so the marketplace can show them
- * next to the plugin instead of surfacing an RPC failure.
+ * Runs git and bun on behalf of the desktop view, which cannot do so itself,
+ * and drops the cached bundle of whatever changed so the next compile reads
+ * the new files.
  */
-async function attempt(run: () => Promise<{ directory: string }>): Promise<DesktopPluginOperationResult> {
-  try {
-    const { directory } = await run();
-    return { ok: true, directory };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-export function installExternalPlugin(ref: string, pin?: DesktopPluginPin): Promise<DesktopPluginOperationResult> {
-  return attempt(async () => {
-    const { installPlugin } = await import("../../../cli/commands/plugins");
-    return installPlugin(ref, { quiet: true, pin });
-  });
-}
-
-export function updateExternalPlugin(directory: string, pin?: DesktopPluginPin): Promise<DesktopPluginOperationResult> {
-  return attempt(async () => {
-    const { updatePlugin } = await import("../../../cli/commands/plugins");
-    const result = await updatePlugin(directory, { quiet: true, pin });
-    bundleCache.delete(result.path);
-    return result;
-  });
-}
-
-/** The view cannot run git, so the update check for unlisted plugins happens here. */
-export async function readExternalPluginRemoteHeads(directories: readonly string[]): Promise<Record<string, string>> {
-  const { readPluginRemoteHeads } = await import("../../../cli/commands/plugins");
-  return readPluginRemoteHeads(directories);
-}
-
-export function removeExternalPlugin(directory: string): Promise<DesktopPluginOperationResult> {
-  return attempt(async () => {
-    const { removePlugin } = await import("../../../cli/commands/plugins");
-    bundleCache.delete(join(getPluginsDir(), directory));
-    await removePlugin(directory, { quiet: true });
-    return { directory };
-  });
-}
+export const desktopPluginManager = createNodePluginManager("desktop", {
+  onChanged: (pluginDir) => bundleCache.delete(pluginDir),
+});
 
 /**
  * Registers a plugin in this process after startup.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseRemoteHead } from "./plugins";
+import { parseRemoteHead } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does

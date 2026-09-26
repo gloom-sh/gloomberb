@@ -1,6 +1,7 @@
 import type { DesktopExternalPluginBundle } from "../shared/protocol";
 import { installPluginHostModules } from "../../../plugins/host-modules";
 import type { LoadedExternalPlugin } from "../../../plugins/loader";
+import { pluginFromModule } from "../../../plugins/plugin-export";
 import type { GloomPlugin } from "../../../types/plugin";
 import { debugLog } from "../../../utils/debug-log";
 
@@ -46,9 +47,8 @@ export async function loadDesktopExternalPlugin(bundle: DesktopExternalPluginBun
   let objectUrl: string | null = null;
   try {
     objectUrl = URL.createObjectURL(new Blob([bundle.code], { type: "text/javascript" }));
-    const mod = await import(/* @vite-ignore */ objectUrl);
-    const plugin: GloomPlugin = mod.default ?? mod.plugin;
-    if (!plugin?.id || !plugin?.name) {
+    const plugin = pluginFromModule(await import(/* @vite-ignore */ objectUrl));
+    if (!plugin) {
       return { ...fallback, error: "Bundle did not export a valid GloomPlugin." };
     }
     log.info(`Loaded external plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);

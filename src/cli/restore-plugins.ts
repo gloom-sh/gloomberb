@@ -23,7 +23,7 @@ export async function restoreExtractedPlugins(): Promise<string[] | null> {
     const config = await loadCliConfigIfAvailable();
     // No data directory yet means a first run: there is nothing to restore.
     if (!config) return null;
-    const { installPlugin } = await import("./commands/plugins");
+    const { installPlugin } = await import("../plugins/installer");
     const result = await seedExtractedPlugins(config, installPlugin);
 
     const seeded = [...new Set(result.seeded)].sort();

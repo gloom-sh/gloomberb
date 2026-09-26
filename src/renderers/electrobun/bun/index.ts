@@ -43,10 +43,7 @@ import {
   bundleExternalPluginDirectory,
   collectExternalPluginBundles,
   deactivateExternalPlugin,
-  installExternalPlugin,
-  removeExternalPlugin,
-  readExternalPluginRemoteHeads,
-  updateExternalPlugin,
+  desktopPluginManager,
 } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
@@ -512,13 +509,13 @@ async function handleBackendRequest(
     case "plugins.listExternal":
       return collectExternalPluginBundles();
     case "plugins.install":
-      return installExternalPlugin(request.payload.ref, request.payload.pin);
+      return desktopPluginManager.install(request.payload.ref, request.payload.pin);
     case "plugins.update":
-      return updateExternalPlugin(request.payload.directory, request.payload.pin);
+      return desktopPluginManager.update(request.payload.directory, request.payload.pin);
     case "plugins.remove":
-      return removeExternalPlugin(request.payload.directory);
+      return desktopPluginManager.remove(request.payload.directory);
     case "plugins.remoteHeads":
-      return readExternalPluginRemoteHeads(request.payload.directories);
+      return desktopPluginManager.remoteHeads(request.payload.directories);
     case "plugins.bundle":
       return bundleExternalPluginDirectory(request.payload.directory);
     case "plugins.activate":

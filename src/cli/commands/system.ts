@@ -412,7 +412,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
       }
       if (action === "link") {
         const path = requireArg(args[1], "Usage: gloomberb plugin link <path>", ctx);
-        const { linkPlugin } = await import("./plugins");
+        const { linkPlugin } = await import("../../plugins/installer");
         const info = await linkPlugin(path, { quiet: ctx.cliOptions.format !== "text" });
         if (ctx.cliOptions.format !== "text") ctx.printResult({ data: info });
         return;

@@ -3,6 +3,7 @@ import { join, relative } from "path";
 
 import { bundleExternalPlugin } from "../src/plugins/bundle";
 import { installPluginHostModules } from "../src/plugins/host-modules";
+import { pluginFromModule, pluginSupportsTarget } from "../src/plugins/plugin-export";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
 import type { GloomPlugin } from "../src/types/plugin";
 
@@ -39,7 +40,7 @@ function pluginPackageDir(packageName: string): string {
 }
 
 async function readCompiledPlugin(outputPath: string, packageName: string): Promise<GloomPlugin> {
-  let mod: { default?: GloomPlugin; plugin?: GloomPlugin };
+  let mod: unknown;
   try {
     mod = await import(outputPath);
   } catch (error) {
@@ -48,11 +49,11 @@ async function readCompiledPlugin(outputPath: string, packageName: string): Prom
     // this build after), so a plugin has to be inert until it renders.
     throw new Error(`${packageName} could not be evaluated to read its metadata: ${error}`);
   }
-  const plugin = mod.default ?? mod.plugin;
-  if (!plugin?.id || !plugin?.name) {
+  const plugin = pluginFromModule(mod);
+  if (!plugin) {
     throw new Error(`${packageName} does not export a valid GloomPlugin.`);
   }
-  if (plugin.targets && !plugin.targets.includes("web")) {
+  if (!pluginSupportsTarget(plugin, "web")) {
     throw new Error(
       `${packageName} does not declare the "web" target, so it cannot ship in the web build. `
         + "Remove it from WEB_BUNDLED_PLUGIN_PACKAGES.",

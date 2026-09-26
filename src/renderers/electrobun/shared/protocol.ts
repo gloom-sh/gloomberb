@@ -6,6 +6,7 @@ import type { AppConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
+import type { PluginOperationResult, PluginPin } from "../../../plugins/builtin/plugin-marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
@@ -145,15 +146,6 @@ export interface DesktopExternalPluginBundle {
   unsupportedTarget?: "desktop";
 }
 
-export interface DesktopPluginPin {
-  ref?: string;
-  commit?: string;
-}
-
-export type DesktopPluginOperationResult =
-  | { ok: true; directory: string }
-  | { ok: false; error: string };
-
 /**
  * Outcome of registering a plugin in the Bun process after startup. The
  * manifests are the full renderer-visible set afterwards, so the view can
@@ -194,9 +186,9 @@ export interface DesktopBackendRequestMap {
   "pluginState.setMany": { request: { entries: DesktopPluginStateSetEntry[] }; response: null };
   "pluginState.delete": { request: { pluginId: string; key: string }; response: null };
   "plugins.listExternal": { request: null; response: DesktopExternalPluginBundle[] };
-  "plugins.install": { request: { ref: string; pin?: DesktopPluginPin }; response: DesktopPluginOperationResult };
-  "plugins.update": { request: { directory: string; pin?: DesktopPluginPin }; response: DesktopPluginOperationResult };
-  "plugins.remove": { request: { directory: string }; response: DesktopPluginOperationResult };
+  "plugins.install": { request: { ref: string; pin?: PluginPin }; response: PluginOperationResult };
+  "plugins.update": { request: { directory: string; pin?: PluginPin }; response: PluginOperationResult };
+  "plugins.remove": { request: { directory: string }; response: PluginOperationResult };
   /** Remote default-branch heads by folder, for plugins the registry does not pin. */
   "plugins.remoteHeads": { request: { directories: string[] }; response: Record<string, string> };
   /** Compiles one plugin directory, fresh, for activation in the view. */

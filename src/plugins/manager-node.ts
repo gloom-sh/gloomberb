@@ -1,45 +1,45 @@
 import { join } from "path";
 import type { PluginManager, PluginOperationResult } from "./builtin/plugin-marketplace/store";
-import { getPluginsDir, loadExternalPlugin, type LoadedExternalPlugin } from "./loader";
+import { getPluginsDir, loadExternalPlugin } from "./loader";
 import type { PluginTarget } from "../types/plugin";
 
 /**
  * The plugin manager for a process that can run git and bun: the terminal,
- * and the desktop's Bun side on behalf of its view. Wraps the CLI commands so
+ * and the desktop's Bun side on behalf of its view. Wraps the installer so
  * the marketplace and `gloomberb install` do exactly the same thing, and
- * turns their failures into results the pane can show next to the row.
+ * turns its failures into results the pane can show next to the row.
  */
 
-async function attempt(run: () => Promise<{ directory: string }>): Promise<PluginOperationResult> {
-  try {
-    const { directory } = await run();
-    return { ok: true, directory };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** A manager that can run git, so it always answers `remoteHeads`. */
+export type NodePluginManager = PluginManager & Required<Pick<PluginManager, "remoteHeads">>;
+
+export interface NodePluginManagerHooks {
+  /** A plugin folder was installed, updated or removed. Receives its path. */
+  onChanged?(pluginDir: string): void;
 }
 
-export function createNodePluginManager(target: PluginTarget): PluginManager {
+// Loaded on first use: nothing on the startup path installs anything.
+const installer = () => import("./installer");
+
+export function createNodePluginManager(target: PluginTarget, hooks: NodePluginManagerHooks = {}): NodePluginManager {
+  async function attempt(run: () => Promise<{ directory: string }>): Promise<PluginOperationResult> {
+    try {
+      const { directory } = await run();
+      hooks.onChanged?.(join(getPluginsDir(), directory));
+      return { ok: true, directory };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   return {
-    install: (repo, pin) => attempt(async () => {
-      const { installPlugin } = await import("../cli/commands/plugins");
-      return installPlugin(repo, { quiet: true, pin });
-    }),
-    update: (directory, pin) => attempt(async () => {
-      const { updatePlugin } = await import("../cli/commands/plugins");
-      return updatePlugin(directory, { quiet: true, pin });
-    }),
+    install: (repo, pin) => attempt(async () => (await installer()).installPlugin(repo, { quiet: true, pin })),
+    update: (directory, pin) => attempt(async () => (await installer()).updatePlugin(directory, { quiet: true, pin })),
     remove: (directory) => attempt(async () => {
-      const { removePlugin } = await import("../cli/commands/plugins");
-      await removePlugin(directory, { quiet: true });
+      await (await installer()).removePlugin(directory, { quiet: true });
       return { directory };
     }),
-    load: (directory): Promise<LoadedExternalPlugin | null> => (
-      loadExternalPlugin(join(getPluginsDir(), directory), target, { fresh: true })
-    ),
-    remoteHeads: async (directories) => {
-      const { readPluginRemoteHeads } = await import("../cli/commands/plugins");
-      return readPluginRemoteHeads(directories);
-    },
+    load: (directory) => loadExternalPlugin(join(getPluginsDir(), directory), target, { fresh: true }),
+    remoteHeads: async (directories) => (await installer()).readPluginRemoteHeads(directories),
   };
 }
