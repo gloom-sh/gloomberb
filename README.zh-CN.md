@@ -21,6 +21,8 @@
 
 <img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
 
+<sub>由 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="" width="12" height="12" /> Adjacent</a> 赞助支持</sub>
+
 </div>
 
 > 本文档为社区维护的简体中文翻译。若与 [英文原版 README](README.md) 有出入，以英文版为准。

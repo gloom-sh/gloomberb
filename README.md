@@ -21,6 +21,8 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 
 <img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb terminal showing portfolio, watchlists, market data, and chart panels." width="720" />
 
+<sub>Backed by <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="" width="12" height="12" /> Adjacent</a></sub>
+
 </div>
 
 - **Research companies:** quotes, charts, financials, filings, options, and analyst ratings.
