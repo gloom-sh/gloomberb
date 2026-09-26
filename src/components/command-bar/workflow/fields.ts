@@ -19,14 +19,23 @@ export function normalizeFieldOptions(
   }));
 }
 
+function dependenciesMet(
+  dependsOn: CommandBarWorkflowField["dependsOn"],
+  values: Record<string, CommandBarFieldValue>,
+): boolean {
+  if (!dependsOn || dependsOn.length === 0) return true;
+  return dependsOn.every((dependency) => String(values[dependency.key] ?? "") === dependency.value);
+}
+
 export function getVisibleWorkflowFields(
   fields: CommandBarWorkflowField[],
   values: Record<string, CommandBarFieldValue>,
 ): CommandBarWorkflowField[] {
-  return fields.filter((field) => {
-    if (!field.dependsOn || field.dependsOn.length === 0) return true;
-    return field.dependsOn.every((dependency) => String(values[dependency.key] ?? "") === dependency.value);
-  });
+  return fields.filter((field) => dependenciesMet(field.dependsOn, values));
+}
+
+export function getWorkflowSubmitLabel(route: CommandBarWorkflowRoute): string {
+  return route.submitLabels?.find((entry) => dependenciesMet(entry.dependsOn, route.values))?.label ?? route.submitLabel;
 }
 
 function normalizeWorkflowCopy(value?: string): string {

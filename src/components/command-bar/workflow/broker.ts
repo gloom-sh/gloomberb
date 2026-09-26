@@ -1,4 +1,8 @@
-import type { BrokerAdapter } from "../../../types/broker";
+import {
+  brokerMethodLabel,
+  type BrokerDirectoryEntry,
+  type BrokerMethod,
+} from "../../../brokers/directory";
 import {
   coerceFieldString,
   normalizeFieldOptions,
@@ -13,35 +17,23 @@ import { buildCommandBarWorkflowRoute } from "./route-builder";
 
 export type WorkflowStringValues = Record<string, string>;
 
-export interface CommandBarBrokerChoice {
-  id: string;
-  label: string;
-  description: string;
-  adapter: BrokerAdapter;
-}
+type BrokerSelectorKey = "brokerType" | "source";
 
-export function buildBrokerChoices(brokers: ReadonlyMap<string, BrokerAdapter>): CommandBarBrokerChoice[] {
-  return [...brokers.values()]
-    .filter((adapter) => adapter.configSchema.length > 0)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((adapter) => ({
-      id: adapter.id,
-      label: adapter.name,
-      description: `Create a new ${adapter.name} profile`,
-      adapter,
-    }));
+/** Asked only for a broker offered more than one way. */
+function brokerMethodFieldId(entryKey: string): string {
+  return `method:${entryKey}`;
 }
 
 export function buildBrokerWorkflowRoute({
-  brokerChoices,
+  directory,
   includeManualOption,
   selectorKey,
   submitLabel,
   subtitle,
   title,
 }: {
-  brokerChoices: CommandBarBrokerChoice[];
-  selectorKey: "brokerType" | "source";
+  directory: BrokerDirectoryEntry[];
+  selectorKey: BrokerSelectorKey;
   title: string;
   subtitle: string | undefined;
   submitLabel: string;
@@ -55,10 +47,10 @@ export function buildBrokerWorkflowRoute({
       description: "Add tickers and positions by hand",
     });
   }
-  options.push(...brokerChoices.map((choice) => ({
-    label: `Connect ${choice.label}`,
-    value: choice.id,
-    description: includeManualOption ? `Auto-import positions via ${choice.label}` : choice.description,
+  options.push(...directory.map((entry) => ({
+    label: `Connect ${entry.name}`,
+    value: entry.key,
+    description: includeManualOption ? `Auto-import positions via ${entry.name}` : `Create a new ${entry.name} profile`,
   })));
 
   if (options.length === 0) return null;
@@ -73,6 +65,7 @@ export function buildBrokerWorkflowRoute({
   const values: Record<string, CommandBarFieldValue> = {
     [selectorKey]: options[0]!.value,
   };
+  const submitLabels: NonNullable<CommandBarWorkflowRoute["submitLabels"]> = [];
 
   if (includeManualOption) {
     fields.push({
@@ -86,67 +79,111 @@ export function buildBrokerWorkflowRoute({
     values.name = "Main Portfolio";
   }
 
-  for (const choice of brokerChoices) {
-    for (const field of choice.adapter.configSchema) {
-      const fieldId = `${choice.id}:${field.key}`;
-      const dependsOn = [
-        { key: selectorKey, value: choice.id },
-        ...(field.dependsOn
-          ? [{ key: `${choice.id}:${field.dependsOn.key}`, value: field.dependsOn.value }]
-          : []),
-      ];
-      if (field.type === "select") {
-        fields.push({
-          id: fieldId,
-          label: field.label,
-          type: "select",
-          placeholder: field.placeholder,
-          description: field.placeholder,
-          required: field.required,
-          options: normalizeFieldOptions(field.options),
-          dependsOn,
-        });
-      } else {
-        fields.push({
-          id: fieldId,
-          label: field.label,
-          type: field.type === "number"
-            ? "number"
-            : field.type === "password"
-              ? "password"
-              : "text",
-          placeholder: field.placeholder,
-          description: field.placeholder,
-          required: field.required,
-          dependsOn,
-        });
+  for (const entry of directory) {
+    const entryDependency = { key: selectorKey, value: entry.key };
+    const methodFieldId = brokerMethodFieldId(entry.key);
+    const choosesMethod = entry.methods.length > 1;
+    if (choosesMethod) {
+      fields.push({
+        id: methodFieldId,
+        label: "Method",
+        type: "select",
+        options: entry.methods.map((method) => ({ label: brokerMethodLabel(entry, method), value: method.kind })),
+        required: true,
+        dependsOn: [entryDependency],
+      });
+      values[methodFieldId] = entry.methods[0]!.kind;
+    }
+    const whenMethod = (kind: BrokerMethod["kind"]) => [
+      entryDependency,
+      ...(choosesMethod ? [{ key: methodFieldId, value: kind }] : []),
+    ];
+
+    for (const method of entry.methods) {
+      if (method.kind === "signed-in") {
+        // Nothing to fill in: the dialog does the rest.
+        submitLabels.push({ dependsOn: whenMethod("signed-in"), label: "Connect" });
+        continue;
       }
-      if (field.defaultValue) {
-        values[fieldId] = field.defaultValue;
-      } else if (field.type === "select" && field.options?.[0]?.value) {
-        values[fieldId] = field.options[0].value;
+      for (const field of method.adapter.configSchema) {
+        const fieldId = `${entry.key}:${field.key}`;
+        const dependsOn = [
+          ...whenMethod("device"),
+          ...(field.dependsOn
+            ? [{ key: `${entry.key}:${field.dependsOn.key}`, value: field.dependsOn.value }]
+            : []),
+        ];
+        if (field.type === "select") {
+          fields.push({
+            id: fieldId,
+            label: field.label,
+            type: "select",
+            placeholder: field.placeholder,
+            description: field.placeholder,
+            required: field.required,
+            options: normalizeFieldOptions(field.options),
+            dependsOn,
+          });
+        } else {
+          fields.push({
+            id: fieldId,
+            label: field.label,
+            type: field.type === "number"
+              ? "number"
+              : field.type === "password"
+                ? "password"
+                : "text",
+            placeholder: field.placeholder,
+            description: field.placeholder,
+            required: field.required,
+            dependsOn,
+          });
+        }
+        if (field.defaultValue) {
+          values[fieldId] = field.defaultValue;
+        } else if (field.type === "select" && field.options?.[0]?.value) {
+          values[fieldId] = field.options[0].value;
+        }
       }
     }
   }
 
-  return buildCommandBarWorkflowRoute({
-    workflowId: `builtin:${title.toLowerCase().replace(/\s+/g, "-")}`,
-    title,
-    subtitle,
-    fields,
-    values,
-    submitLabel,
-    pendingLabel: "Connecting broker…",
-    payload: {
-      kind: "builtin",
-      actionId: includeManualOption ? "new-portfolio" : "add-broker-account",
-    },
-  });
+  return {
+    ...buildCommandBarWorkflowRoute({
+      workflowId: `builtin:${title.toLowerCase().replace(/\s+/g, "-")}`,
+      title,
+      subtitle,
+      fields,
+      values,
+      submitLabel,
+      pendingLabel: "Connecting broker…",
+      payload: {
+        kind: "builtin",
+        actionId: includeManualOption ? "new-portfolio" : "add-broker-account",
+      },
+      // Submit resolves the choice against the list the user saw, not a newer one.
+      payloadMeta: { brokerDirectory: directory },
+    }),
+    ...(submitLabels.length > 0 ? { submitLabels } : {}),
+  };
+}
+
+/** The broker and method a submitted workflow chose, or null when none was. */
+export function resolveBrokerWorkflowSelection(
+  route: CommandBarWorkflowRoute,
+  selectorKey: BrokerSelectorKey,
+): { entry: BrokerDirectoryEntry; method: BrokerMethod } | null {
+  const directory = (route.payloadMeta?.brokerDirectory ?? []) as BrokerDirectoryEntry[];
+  const entry = directory.find((candidate) => candidate.key === coerceFieldString(route.values[selectorKey]));
+  if (!entry) return null;
+  const kind = entry.methods.length > 1 ? coerceFieldString(route.values[brokerMethodFieldId(entry.key)]) : "";
+  const method = entry.methods.find((candidate) => candidate.kind === kind) ?? entry.methods[0];
+  return method ? { entry, method } : null;
 }
 
 export function extractBrokerWorkflowValues(
   values: Record<string, CommandBarFieldValue>,
-  selectorKey: "brokerType" | "source",
+  selectorKey: BrokerSelectorKey,
   brokerId: string,
 ): WorkflowStringValues {
   const next: WorkflowStringValues = {};

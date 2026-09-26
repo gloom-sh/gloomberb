@@ -19,6 +19,7 @@ import {
 import { useCommandBarPalette } from "../panel/palette";
 import { truncateText } from "../view-model";
 import { CommandBarWorkflowFieldRow } from "./field-row";
+import { getWorkflowSubmitLabel } from "./fields";
 import type {
   CommandBarFieldValue,
   CommandBarWorkflowField,
@@ -127,7 +128,7 @@ export function CommandBarWorkflowBody({
       {!nativePaneChrome && <Box flexGrow={1} />}
       <Box flexDirection="row" gap={1} justifyContent={visibleFields.some((field) => field.type === "textarea") ? "flex-end" : "flex-start"}>
         <Button
-          label={t(route.submitLabel)}
+          label={t(getWorkflowSubmitLabel(route))}
           variant="primary"
           shortcut={submitShortcut}
           onPress={() => { void onSubmit(route); }}
