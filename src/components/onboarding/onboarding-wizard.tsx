@@ -4,10 +4,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import { apiClient, type CloudPricing } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
+import { buildBrokerDirectory } from "../../brokers/directory";
+import {
+  getSignedInBrokers,
+  refreshSignedInBrokers,
+  subscribeSignedInBrokers,
+} from "../../brokers/signed-in/catalog";
+import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import {
@@ -169,23 +177,31 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
 
+  useEffect(() => {
+    if (pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
+  }, [pluginRegistry.brokers]);
+  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   // Enter inside every form is handled once, by the shortcut below: the
   // fields deliberately get no onSubmit, because the host input fires it in
   // the same keystroke and the two paths used to submit twice.
   const brokerOptions = useMemo(
-    (): BrokerOption[] => getConnectableBrokerOptions(pluginRegistry.brokers),
-    [pluginRegistry.brokers],
+    (): BrokerOption[] => getConnectableBrokerOptions(buildBrokerDirectory({
+      signedIn: signedInBrokers,
+      adapters: pluginRegistry.brokers.values(),
+    })),
+    [pluginRegistry.brokers, signedInBrokers],
   );
   const brokerChoices = useMemo<ListViewItem[]>(() => brokerOptions.map((broker) => ({
     id: broker.id,
     label: tf("Connect {broker}", { broker: broker.name }),
-    description: tf("Import positions from {broker}", { broker: broker.name }),
+    // A broker offered two ways shows which way each choice connects.
+    description: broker.methodLabel ?? tf("Import positions from {broker}", { broker: broker.name }),
   })), [brokerOptions, language]);
   const activeBrokerFields = useMemo((): BrokerConfigField[] => {
     if (!selectedBrokerId) return [];
-    const broker = brokerOptions.find((option) => option.id === selectedBrokerId);
-    return broker
-      ? resolveBrokerConfigFields(broker.adapter, brokerValues[selectedBrokerId] ?? {}).filter((field) => field.required)
+    const adapter = brokerOptions.find((option) => option.id === selectedBrokerId)?.adapter;
+    return adapter
+      ? resolveBrokerConfigFields(adapter, brokerValues[selectedBrokerId] ?? {}).filter((field) => field.required)
       : [];
   }, [brokerOptions, brokerValues, selectedBrokerId]);
 
@@ -370,12 +386,15 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     brokerSyncError,
     resetBrokerSync,
     syncSelectedBroker,
+    connectSignedInBroker,
   } = useOnboardingBrokerSync({
     config,
     brokerOptions,
     brokerValues,
     selectedBrokerId,
     importBrokerPositions,
+    getConfig: () => stateRef.current.config,
+    createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
     onSynced: handleBrokerSynced,
     setEditingField,
     setPortfolioSub,
@@ -469,13 +488,19 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     resetBrokerSync();
     setSelectedBrokerId(brokerId);
     setBrokerFieldIdx(0);
-    setPortfolioSub("broker-fields");
     const broker = brokerOptions.find((option) => option.id === brokerId);
-    const firstField = broker
+    if (broker?.signedIn) {
+      // Nothing to fill in: the connect dialog opens over this step.
+      setEditingField(false);
+      void connectSignedInBroker(broker.signedIn);
+      return;
+    }
+    setPortfolioSub("broker-fields");
+    const firstField = broker?.adapter
       ? resolveBrokerConfigFields(broker.adapter, brokerValues[brokerId] ?? {}).filter((field) => field.required)[0]
       : null;
     setEditingField(firstField?.type !== "select");
-  }, [brokerOptions, brokerValues, resetBrokerSync]);
+  }, [brokerOptions, brokerValues, connectSignedInBroker, resetBrokerSync]);
 
   const chooseBroker = useCallback((choiceIndex = portfolioOptionIdx) => {
     const choice = brokerChoices[choiceIndex];
@@ -508,9 +533,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       if (!option) return;
       const nextValues = { ...currentValues, [field.key]: option.value };
       setBrokerFieldValue(selectedBrokerId, field.key, option.value);
-      const broker = brokerOptions.find((entry) => entry.id === selectedBrokerId);
-      const nextFields = broker
-        ? resolveBrokerConfigFields(broker.adapter, nextValues).filter((entry) => entry.required)
+      const adapter = brokerOptions.find((entry) => entry.id === selectedBrokerId)?.adapter;
+      const nextFields = adapter
+        ? resolveBrokerConfigFields(adapter, nextValues).filter((entry) => entry.required)
         : activeBrokerFields;
       if (brokerFieldIdx < nextFields.length - 1) {
         const nextIndex = brokerFieldIdx + 1;
@@ -908,9 +933,10 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   }
 
   if (stage === "portfolio") {
-    const selectedBrokerName = selectedBrokerId
-      ? brokerOptions.find((option) => option.id === selectedBrokerId)?.name
+    const selectedBroker = selectedBrokerId
+      ? brokerOptions.find((option) => option.id === selectedBrokerId)
       : null;
+    const selectedBrokerName = selectedBroker?.name;
     const portfolioModalHeight = portfolioSub === "positions"
       ? 22
       : portfolioSub === "choose"
@@ -927,11 +953,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         : selectedBrokerName
           ? tf("Connect {broker}", { broker: selectedBrokerName })
           : t("Set up a portfolio");
+    // A signed-in broker keeps its credentials with the broker, so the line is left out.
     const description = portfolioSub === "positions"
       ? undefined
       : portfolioSub === "choose"
-        ? t("Credentials stay on this device.")
-        : t("Enter the connection details for this broker. Credentials stay on this device.");
+        ? brokerOptions.some((option) => option.signedIn) ? undefined : t("Credentials stay on this device.")
+        : selectedBroker?.signedIn
+          ? undefined
+          : t("Enter the connection details for this broker. Credentials stay on this device.");
     return (
       <OnboardingModal width={76} height={portfolioModalHeight} desktopWidth="min(620px, 100%)">
         <OnboardingHeader

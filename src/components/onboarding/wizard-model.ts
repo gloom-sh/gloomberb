@@ -1,3 +1,5 @@
+import { brokerMethodLabel, type BrokerDirectoryEntry } from "../../brokers/directory";
+import type { SignedInBroker } from "../../brokers/signed-in/client";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import type { AppConfig, OnboardingProgress, OnboardingStage } from "../../types/config";
 import type { Quote } from "../../types/financials";
@@ -35,17 +37,28 @@ export function withOnboardingProgress(
   };
 }
 
-export interface BrokerOption {
+/**
+ * One way to connect one broker. A device option is keyed by its adapter id,
+ * which is also its broker type; signing in needs no fields, only the dialog.
+ */
+export type BrokerOption = {
   id: string;
   name: string;
-  adapter: BrokerAdapter;
-}
+  /** How this choice connects, when the same broker is also offered another way. */
+  methodLabel?: string;
+} & (
+  | { adapter: BrokerAdapter; signedIn?: undefined }
+  | { signedIn: SignedInBroker; adapter?: undefined }
+);
 
-export function getConnectableBrokerOptions(brokers: Iterable<[string, BrokerAdapter]>): BrokerOption[] {
+export function getConnectableBrokerOptions(directory: readonly BrokerDirectoryEntry[]): BrokerOption[] {
   const options: BrokerOption[] = [];
-  for (const [id, adapter] of brokers) {
-    if (adapter.configSchema.length > 0) {
-      options.push({ id, name: adapter.name, adapter });
+  for (const entry of directory) {
+    for (const method of entry.methods) {
+      const methodLabel = entry.methods.length > 1 ? brokerMethodLabel(entry, method) : undefined;
+      options.push(method.kind === "signed-in"
+        ? { id: `signed-in:${method.broker.id}`, name: entry.name, methodLabel, signedIn: method.broker }
+        : { id: method.adapter.id, name: method.adapter.name, methodLabel, adapter: method.adapter });
     }
   }
   return options;
