@@ -12,7 +12,9 @@ const root = process.cwd();
 const outdir = join(root, "dist", "web");
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
-await writeFile(join(outdir, "favicon.svg"), await readFile(join(root, "src/assets/gloomberb-logo.svg")));
+// Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
+await writeFile(join(outdir, "favicon.svg"), await readFile(join(root, "src/assets/gloomberb-mark.svg")));
+await writeFile(join(outdir, "favicon.ico"), await readFile(join(root, "src/assets/gloomberb-mark.ico")));
 
 async function buildPage(
   name: string,
@@ -52,6 +54,7 @@ async function buildPage(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${title}</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="${href(stylesheet.path)}">
 </head>
