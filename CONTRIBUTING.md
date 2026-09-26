@@ -11,6 +11,16 @@ bun install
 bun dev
 ```
 
+## Agent skills
+
+The project's own skills for coding agents live in `.agents/skills`. The third-party OpenTUI skill is not checked in; `skills-lock.json` records where it comes from. To install it into `.agents/skills/opentui` (ignored by git), run:
+
+```bash
+bunx skills experimental_install
+```
+
+This fetches the latest upstream version.
+
 ## Building plugins
 
 See [PLUGINS.md](PLUGINS.md) for a guide on building your own plugins.
