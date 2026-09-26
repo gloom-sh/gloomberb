@@ -4,23 +4,17 @@
  * hands the request to `DeviceSignInDialogHost`, which the shell mounts for the
  * life of the app and which owns the actual dialog.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AuthUser } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import { useShortcut, useViewport } from "../../../react/input";
+import { useViewport } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes, useUiHost, useRendererHost } from "../../../ui";
-import { Button } from "../../../components/ui/button";
-import { renderAsciiText } from "../../../ui/ascii-font";
+import { Box, Text, TextAttributes } from "../../../ui";
+import { SignInCodePanel } from "../../../components/sign-in-code-panel";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
-import { renderQrLines, renderQrSvgDataUri } from "../../../ui/qr";
 import { isPlainKey } from "../../../utils/keyboard";
 import { DeviceSignInController, type DeviceSignInSnapshot } from "./device-signin";
-
-// Phone cameras need dark-on-light no matter what the terminal theme is.
-const QR_FG = "#000000";
-const QR_BG = "#ffffff";
 
 export function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: string; color: string } {
   switch (snapshot.phase) {
@@ -41,12 +35,7 @@ export function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: stri
   }
 }
 
-/**
- * QR code, human-readable code, verification URL, and live status. Shared by
- * the sign-in dialog and the onboarding account step. Degrades by height: the
- * QR needs its full module grid, so short terminals drop decoration first and
- * finally fall back to the code plus URL, which the mobile app also accepts.
- */
+/** The device sign-in's code and link in the shared browser hand-off panel. */
 export function DeviceSignInPanel({
   snapshot,
   height,
@@ -55,108 +44,17 @@ export function DeviceSignInPanel({
   snapshot: DeviceSignInSnapshot;
   /** Rows available to this panel; drives the degradation tiers. */
   height: number;
-  /**
-   * Scope for the browser key. A host that holds every key it does not use
-   * (the sign-in gate) passes its own, so the key runs ahead of the hold.
-   */
+  /** Scope for the browser key; see `SignInCodePanel`. */
   shortcutScope?: string;
 }) {
-  useAppLanguage();
-  const renderer = useRendererHost();
-  const desktop = useUiHost().kind === "desktop-web";
-  // Cell lines still drive layout on desktop: they give the code its row/column
-  // footprint, but the pixels come from the SVG below.
-  const qrLines = useMemo(
-    () => (snapshot.verificationUri ? renderQrLines(snapshot.verificationUri) : []),
-    [snapshot.verificationUri],
-  );
-  const qrImage = useMemo(
-    () => (desktop && snapshot.verificationUri ? renderQrSvgDataUri(snapshot.verificationUri) : undefined),
-    [desktop, snapshot.verificationUri],
-  );
-  const status = deviceSignInStatus(snapshot);
-  useShortcut((event) => {
-    if (!isPlainKey(event, "b") || !snapshot.verificationUri) return;
-    event.preventDefault(); event.stopPropagation();
-    void renderer.openExternal(snapshot.verificationUri).catch(() => {});
-  }, { scope: shortcutScope, phase: "before" });
-
-  // Reserve the browser button before fitting the QR, code, and status.
-  const contentHeight = height - (snapshot.verificationUri ? 2 : 0);
-  const showQr = qrLines.length > 0 && contentHeight >= qrLines.length + 2;
-  const spacious = showQr && contentHeight >= qrLines.length + 8;
-  const showUrl = !!snapshot.verificationUri && (!showQr || contentHeight >= qrLines.length + 4);
-
   return (
-    <Box flexDirection="column" alignItems="center">
-      {snapshot.verificationUri && <Box height={2}>
-        <Button label="Continue in browser" shortcut="b" variant="primary" onPress={() => {
-          void renderer.openExternal(snapshot.verificationUri!).catch(() => {});
-        }} />
-      </Box>}
-      {showQr && (qrImage
-        ? (
-          <Box
-            width={qrLines[0]?.length ?? 0}
-            height={qrLines.length}
-            style={{
-              backgroundImage: qrImage,
-              backgroundColor: QR_BG,
-              backgroundSize: "contain",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
-            }}
-          />
-        )
-        : (
-          <Box flexDirection="column" height={qrLines.length}>
-            {qrLines.map((line, index) => (
-              <Box key={index} height={1}>
-                <Text fg={QR_FG} bg={QR_BG}>{line}</Text>
-              </Box>
-            ))}
-          </Box>
-        ))}
-      {!showQr && snapshot.verificationUri && (
-        <Box height={1}>
-          <Text fg={colors.textDim}>{t("Terminal is too short to draw the QR code.")}</Text>
-        </Box>
-      )}
-      {snapshot.userCode && (
-        <>
-          {spacious && <Box height={1} />}
-          {spacious
-            ? (
-              <Box flexDirection="column" height={2}>
-                {renderAsciiText(snapshot.userCode, "tiny").map((line, index) => (
-                  <Box key={index} height={1}>
-                    <Text fg={colors.textBright}>{line}</Text>
-                  </Box>
-                ))}
-              </Box>
-            )
-            : (
-              <Box height={1}>
-                <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{snapshot.userCode}</Text>
-              </Box>
-            )}
-        </>
-      )}
-      {showUrl && (
-        <>
-          {spacious && <Box height={1} />}
-          <Box height={1}>
-            <Text fg={colors.textMuted}>
-              {snapshot.verificationUri ?? ""}
-            </Text>
-          </Box>
-        </>
-      )}
-      {spacious && <Box height={1} />}
-      <Box height={1}>
-        <Text fg={status.color}>{status.text}</Text>
-      </Box>
-    </Box>
+    <SignInCodePanel
+      url={snapshot.verificationUri}
+      code={snapshot.userCode}
+      status={deviceSignInStatus(snapshot)}
+      height={height}
+      shortcutScope={shortcutScope}
+    />
   );
 }
 
