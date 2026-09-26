@@ -40,11 +40,6 @@ build_release_notes() {
     | awk '
         /^v[0-9]+\.[0-9]+\.[0-9]+$/ { next }
         /^Merge pull request #[0-9]+/ { next }
-        /^release script$/ { next }
-        /^Update release automation runner$/ { next }
-        /^Make release script self-contained$/ { next }
-        /^Create clean release notes drafts$/ { next }
-        /^Fix clean release notes draft generation$/ { next }
         !seen[$0]++ { print "- " $0 }
       ' > "$changes_file"
 
@@ -95,11 +90,6 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "error: version must be in X.Y.Z format" >&2
-  exit 1
-fi
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -110,17 +100,9 @@ for cmd in bun gh git; do
   fi
 done
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "error: working tree must be clean before releasing" >&2
-  exit 1
-fi
-
+# bump-version.sh checks the version format, the working tree and the local
+# tag before it changes anything.
 TAG="v$VERSION"
-
-if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  echo "error: local tag $TAG already exists" >&2
-  exit 1
-fi
 
 if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
   echo "error: remote tag $TAG already exists" >&2
