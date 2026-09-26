@@ -1,4 +1,5 @@
 import { debtMaturitiesModule } from "./debt-maturities";
+import { revenueBreakdownModule } from "./revenue-breakdown";
 import { shortVolumeModule } from "./short-volume";
 import { timeSalesModule } from "./time-sales";
 import { estimateRevisionsModule } from "./estimate-revisions";
@@ -46,6 +47,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     researchModule,
     shortVolumeModule,
     debtMaturitiesModule,
+    revenueBreakdownModule,
     dividendYieldModule,
     holdersModule,
     shortInterestModule,
