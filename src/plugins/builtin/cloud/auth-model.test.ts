@@ -8,7 +8,7 @@ import {
 
 describe("deriveUsernameFromEmail", () => {
   test("builds a server-legal username from the email local part", () => {
-    expect(deriveUsernameFromEmail("Vincent.Loewert@gmail.com")).toBe("vincent_loewert");
+    expect(deriveUsernameFromEmail("First.Last@example.com")).toBe("first_last");
     expect(deriveUsernameFromEmail("9lives@example.com")).toBe("u9lives");
     expect(deriveUsernameFromEmail("a@example.com")).toBe("a00");
     expect(deriveUsernameFromEmail("--weird--name--@example.com")).toBe("weird_name");

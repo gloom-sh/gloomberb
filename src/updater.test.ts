@@ -59,8 +59,8 @@ describe("getAssetBaseNameForRuntime", () => {
 describe("detectUpdateAction", () => {
   test("uses self-update for standalone binaries", () => {
     expect(detectUpdateAction(
-      "/Users/vince/.local/bin/gloomberb",
-      ["/Users/vince/.local/bin/gloomberb"],
+      "/Users/ada/.local/bin/gloomberb",
+      ["/Users/ada/.local/bin/gloomberb"],
     )).toEqual({ kind: "self" });
   });
 
@@ -89,7 +89,7 @@ describe("detectUpdateAction", () => {
   test("uses manual bun updates for bun-managed installs", () => {
     expect(detectUpdateAction(
       "/opt/homebrew/bin/bun",
-      ["/opt/homebrew/bin/bun", "/Users/vince/.bun/install/global/node_modules/gloomberb/bin/gloomberb"],
+      ["/opt/homebrew/bin/bun", "/Users/ada/.bun/install/global/node_modules/gloomberb/bin/gloomberb"],
     )).toEqual({
       kind: "manual",
       command: "bun install -g gloomberb@latest",
@@ -99,7 +99,7 @@ describe("detectUpdateAction", () => {
   test("uses manual bun updates for Windows bun-managed installs", () => {
     expect(detectUpdateAction(
       "C:\\Program Files\\Bun\\bun.exe",
-      ["C:\\Program Files\\Bun\\bun.exe", "C:\\Users\\vince\\.bun\\install\\global\\node_modules\\gloomberb\\bin\\gloomberb"],
+      ["C:\\Program Files\\Bun\\bun.exe", "C:\\Users\\ada\\.bun\\install\\global\\node_modules\\gloomberb\\bin\\gloomberb"],
     )).toEqual({
       kind: "manual",
       command: "bun install -g gloomberb@latest",
@@ -118,8 +118,8 @@ describe("detectUpdateAction", () => {
 
   test("does not offer self-update for standalone Windows executables", () => {
     expect(detectUpdateAction(
-      "C:\\Users\\vince\\Downloads\\gloomberb.exe",
-      ["C:\\Users\\vince\\Downloads\\gloomberb.exe"],
+      "C:\\Users\\ada\\Downloads\\gloomberb.exe",
+      ["C:\\Users\\ada\\Downloads\\gloomberb.exe"],
     )).toBeNull();
   });
 
@@ -146,10 +146,10 @@ describe("detectUpdateAction", () => {
 
   test("does not suggest Bun-managed updates for the bundled Windows app TUI runtime", () => {
     expect(detectUpdateAction(
-      "C:\\Users\\vince\\AppData\\Local\\Programs\\Gloomberb\\bin\\bun.exe",
+      "C:\\Users\\ada\\AppData\\Local\\Programs\\Gloomberb\\bin\\bun.exe",
       [
-        "C:\\Users\\vince\\AppData\\Local\\Programs\\Gloomberb\\bin\\bun.exe",
-        "C:\\Users\\vince\\AppData\\Local\\Programs\\Gloomberb\\Resources\\gloomberb-tui\\tui-entry.js",
+        "C:\\Users\\ada\\AppData\\Local\\Programs\\Gloomberb\\bin\\bun.exe",
+        "C:\\Users\\ada\\AppData\\Local\\Programs\\Gloomberb\\Resources\\gloomberb-tui\\tui-entry.js",
       ],
     )).toBeNull();
   });
@@ -158,8 +158,8 @@ describe("detectUpdateAction", () => {
 describe("resolveSelfUpdateTargetPath", () => {
   it("rejects Bun runtime paths", () => {
     expect(resolveSelfUpdateTargetPath(
-      "/Users/vince/.bun/bin/bun",
-      ["/Users/vince/.bun/bin/bun", "src/index.tsx"],
+      "/Users/ada/.bun/bin/bun",
+      ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
     )).toBeNull();
   });
 
@@ -259,9 +259,9 @@ describe("checkForUpdate", () => {
     const originalArgv = process.argv;
 
     try {
-      Object.defineProperty(process, "execPath", { value: "/Users/vince/.bun/bin/bun", configurable: true });
+      Object.defineProperty(process, "execPath", { value: "/Users/ada/.bun/bin/bun", configurable: true });
       Object.defineProperty(process, "argv", {
-        value: ["/Users/vince/.bun/bin/bun", "src/index.tsx"],
+        value: ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
         configurable: true,
       });
 
@@ -424,9 +424,9 @@ describe("performUpdate", () => {
     };
 
     try {
-      Object.defineProperty(process, "execPath", { value: "/Users/vince/.bun/bin/bun", configurable: true });
+      Object.defineProperty(process, "execPath", { value: "/Users/ada/.bun/bin/bun", configurable: true });
       Object.defineProperty(process, "argv", {
-        value: ["/Users/vince/.bun/bin/bun", "src/index.tsx"],
+        value: ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
         configurable: true,
       });
 

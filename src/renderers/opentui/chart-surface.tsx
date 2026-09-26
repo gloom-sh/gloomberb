@@ -66,7 +66,7 @@ function sameTarget(left: SurfaceTarget | null, right: SurfaceTarget | null): bo
     && sameRect(left.visibleRect, right.visibleRect);
 }
 
-// ponytail: identity token instead of hashing every pixel — renderers always
+// Identity token instead of hashing every pixel: renderers always
 // build a new bitmap object per raster, and hashing megabytes per crosshair
 // move was the dominant cost. Mutating a bitmap in place would need a hash.
 const bitmapTokens = new WeakMap<NativeChartBitmap, string>();

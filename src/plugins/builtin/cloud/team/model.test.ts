@@ -96,12 +96,12 @@ describe("notifications", () => {
         team: teamCard,
         invitationId: "inv-1",
         expiresAt: "2026-09-21T12:00:00.000Z",
-        inviter: { id: "u1", username: "vince", displayName: "Vince" },
+        inviter: { id: "u1", username: "ada", displayName: "Ada" },
       },
     };
     expect(describeTeamNotification(invite)).toEqual({
       title: "MD· Macro Desk",
-      body: "@vince invited you to Macro Desk. Run TEAM to accept.",
+      body: "@ada invited you to Macro Desk. Run TEAM to accept.",
     });
 
     const joined: TeamNotification = {
@@ -122,10 +122,10 @@ describe("notifications", () => {
         layoutId: "l1",
         layoutName: "Morning",
         revision: 4,
-        author: { id: "u1", username: "vince", displayName: "Vince" },
+        author: { id: "u1", username: "ada", displayName: "Ada" },
       },
     };
-    expect(describeTeamNotification(layout).body).toBe("@vince published Morning r4.");
+    expect(describeTeamNotification(layout).body).toBe("@ada published Morning r4.");
     expect(countTeamUpdates([invite, joined, layout])).toEqual(new Map([["org-1", 3]]));
   });
 });

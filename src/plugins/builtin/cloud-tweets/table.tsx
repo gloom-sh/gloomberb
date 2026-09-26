@@ -56,7 +56,7 @@ function isAuthError(error: string | null): boolean {
 // Result rows only lived in table state, so switching feed tabs refetched an
 // identical search. Cached per request key for the life of the process; `r`
 // still forces a fresh search.
-// ponytail: in-memory only, move to plugin state if results must survive restarts
+// In-memory only. Move to plugin state if results must survive restarts.
 const TWEET_RESULT_CACHE = new Map<string, { data: CloudTweetSearchResponse; fetchedAt: number; hasMore: boolean }>();
 const TWEET_CACHE_TTL_MS = 5 * 60 * 1000;
 /** Matches the server's search cache, so a visible pane never asks for a result it cannot get. */

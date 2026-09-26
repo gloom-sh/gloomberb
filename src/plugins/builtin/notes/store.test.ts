@@ -45,7 +45,7 @@ function fakeServer(initial: ServerNote[] = []) {
         title: input.title === undefined ? (existing?.title ?? null) : input.title,
         revision: existing ? existing.revision + 1 : 1,
         content: input.content,
-        updatedBy: { id: "me", username: "vince", displayName: "Vince" },
+        updatedBy: { id: "me", username: "ada", displayName: "Ada" },
         createdAt: existing?.createdAt ?? "2026-09-14T12:00:00.000Z",
         updatedAt: new Date(Date.parse("2026-09-14T12:00:00.000Z") + (existing ? existing.revision : 0) * 1000).toISOString(),
       };
@@ -190,7 +190,7 @@ describe("migrateLocalNotes", () => {
       title: null,
       content: "cloud microsoft, newer",
       revision: 4,
-      updatedBy: { id: "me", username: "vince", displayName: "Vince" },
+      updatedBy: { id: "me", username: "ada", displayName: "Ada" },
       createdAt: "2026-09-14T12:00:00.000Z",
       updatedAt: new Date(Date.now() + 60_000).toISOString(),
     }]);

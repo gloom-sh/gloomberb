@@ -142,9 +142,9 @@ describe("apiClient teams", () => {
 
   test("manages a team through /teams routes, never the auth plugin directly", async () => {
     const requests = recordRequests(({ path }) => {
-      if (path.endsWith("/members/m-2")) return { members: [{ id: "m-2", role: "admin", joinedAt: "2026-05-01T00:00:00.000Z", user: { id: "u2", username: "lucas", displayName: "Lucas" } }] };
+      if (path.endsWith("/members/m-2")) return { members: [{ id: "m-2", role: "admin", joinedAt: "2026-05-01T00:00:00.000Z", user: { id: "u2", username: "alice", displayName: "Alice" } }] };
       if (path.endsWith("/invitations") && path.startsWith("/teams/team-1")) {
-        return { invitations: [{ id: "inv-1", status: "pending", role: "member", expiresAt: "2026-05-08T00:00:00.000Z", createdAt: "2026-05-01T00:00:00.000Z", inviter: { id: "u1", username: "vince", displayName: "Vince" }, invitee: { id: "u3", username: "bob", displayName: "Bob" } }] };
+        return { invitations: [{ id: "inv-1", status: "pending", role: "member", expiresAt: "2026-05-08T00:00:00.000Z", createdAt: "2026-05-01T00:00:00.000Z", inviter: { id: "u1", username: "ada", displayName: "Ada" }, invitee: { id: "u3", username: "bob", displayName: "Bob" } }] };
       }
       if (path === "/teams/invitations") {
         return { invitations: [{ id: "inv-2", role: "member", expiresAt: "2026-05-08T00:00:00.000Z", createdAt: "2026-05-01T00:00:00.000Z", team: { id: "team-2", name: "Rates", slug: "rates", accentColor: "blue", shortName: "RT", memberCount: 4 }, inviter: { id: "u9", username: "ann", displayName: "Ann" } }] };
@@ -206,7 +206,7 @@ describe("apiClient teams", () => {
             },
             invitationId: "invitation-1",
             expiresAt: "2026-05-08T00:00:00.000Z",
-            inviter: { id: "user-1", username: "vince", displayName: "Vince" },
+            inviter: { id: "user-1", username: "ada", displayName: "Ada" },
           },
         },
       ],

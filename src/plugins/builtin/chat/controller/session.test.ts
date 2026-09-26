@@ -8,7 +8,7 @@ describe("chat session market entitlement", () => {
       normalizeSessionUser({
         id: "user-1",
         emailVerified: true,
-        username: "vince",
+        username: "ada",
         plan: "pro",
       }),
     ).toMatchObject({ id: "user-1", plan: "pro" });
@@ -17,7 +17,7 @@ describe("chat session market entitlement", () => {
       sessionUserFromApiSession({
         id: "user-1",
         emailVerified: true,
-        username: "vince",
+        username: "ada",
         plan: "free",
       }),
     ).toMatchObject({ id: "user-1", plan: "free" });

@@ -10,7 +10,7 @@ const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
   hourCycle: "h23",
 });
 const REGULAR_OPEN_SECONDS = (9 * 60 + 30) * 60;
-// ponytail: Standard SPY close; use provider session bounds if early-close countdowns matter.
+// Standard SPY close. Use provider session bounds if early-close countdowns matter.
 const REGULAR_CLOSE_SECONDS = 16 * 60 * 60;
 const CLOSING_COUNTDOWN_WINDOW_SECONDS = 60 * 60;
 
