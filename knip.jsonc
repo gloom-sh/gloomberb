@@ -4,8 +4,6 @@
     "bin/gloomberb",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
-    "scripts/build-web.ts",
-    "scripts/audit-web-bundle.ts",
     "src/cli/entry.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
@@ -15,15 +13,24 @@
     "src/renderers/electrobun/view/notes-files.ts",
     "src/renderers/electrobun/view/native-stubs/**/*.ts",
     "src/renderers/browser/main.tsx",
-    "src/renderers/share/main.tsx",
-    "src/renderers/cloudflare/worker.ts"
+    "src/renderers/share/main.tsx"
   ],
   "project": [
     "scripts/**/*.ts",
     "src/**/*.{ts,tsx}"
   ],
   "ignoreDependencies": [
+    // Run by path from node_modules to build and embed the Windows app icon.
     "png-to-ico",
-    "rcedit"
+    "rcedit",
+    // electrobun ships TypeScript source that imports three, which has no types of its own.
+    "@types/three",
+    // Loaded by package name through WEB_BUNDLED_PLUGIN_PACKAGES in src/plugins/web-bundled.ts.
+    "gloom-fear-greed",
+    "gloom-ipo-calendar",
+    "gloom-market-halts",
+    "gloom-market-heatmap",
+    "gloom-polls",
+    "gloom-prediction-markets"
   ]
 }
