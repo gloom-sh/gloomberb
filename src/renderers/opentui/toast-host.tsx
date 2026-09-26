@@ -2,90 +2,10 @@
 import { useTerminalDimensions } from "@opentui/react";
 import { useSyncExternalStore } from "react";
 import { colors } from "../../theme/colors";
-import type { ToastHost, ToastOptions } from "../../ui/toast";
+import { createToastStore, type ToastHost, type ToastTone } from "../../ui/toast";
 import { useActionShortcut } from "../../ui";
 
-type ToastTone = "success" | "error" | "info";
-
-interface ToastRecord {
-  id: number;
-  body: string;
-  tone: ToastTone;
-  options?: ToastOptions;
-}
-
-const MAX_VISIBLE_TOASTS = 4;
-/** Small buffer above the visible cap so a dismissal can reveal a recent toast. */
-const MAX_RETAINED_TOASTS = 8;
-
-let nextToastId = 1;
-let toasts: ToastRecord[] = [];
-const listeners = new Set<() => void>();
-const timers = new Map<number, ReturnType<typeof setTimeout>>();
-
-function publish(): void {
-  for (const listener of listeners) listener();
-}
-
-function dismissToast(id: string | number): void {
-  const numericId = typeof id === "number" ? id : Number(id);
-  if (!Number.isFinite(numericId)) return;
-  const timer = timers.get(numericId);
-  if (timer) clearTimeout(timer);
-  timers.delete(numericId);
-  const next = toasts.filter((toast) => toast.id !== numericId);
-  if (next.length === toasts.length) return;
-  toasts = next;
-  publish();
-}
-
-function addToast(tone: ToastTone, body: string, options?: ToastOptions): number {
-  const id = nextToastId++;
-  // Only the newest MAX_VISIBLE_TOASTS render, so anything past the cap is
-  // unreachable. Keeping it would let a dismissal resurface a stale toast.
-  const kept = [...toasts, { id, body, tone, options }].slice(-MAX_RETAINED_TOASTS);
-  for (const dropped of toasts) {
-    if (kept.some((toast) => toast.id === dropped.id)) continue;
-    const timer = timers.get(dropped.id);
-    if (timer) clearTimeout(timer);
-    timers.delete(dropped.id);
-  }
-  toasts = kept;
-  publish();
-  const duration = options?.duration ?? 4_000;
-  if (Number.isFinite(duration) && duration > 0) {
-    timers.set(id, setTimeout(() => dismissToast(id), duration));
-  }
-  return id;
-}
-
-function visibleToasts(): ToastRecord[] {
-  return toasts.slice(-MAX_VISIBLE_TOASTS);
-}
-
-function activateNewestToast(): boolean {
-  const toast = visibleToasts().reverse().find((entry) => entry.options?.action);
-  if (!toast?.options?.action) return false;
-  toast.options.action.onClick();
-  dismissToast(toast.id);
-  return true;
-}
-
-function dismissNewestToast(): boolean {
-  const toast = visibleToasts().at(-1);
-  if (!toast) return false;
-  dismissToast(toast.id);
-  return true;
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot(): ToastRecord[] {
-  return toasts;
-}
+const toastStore = createToastStore();
 
 function toneColor(tone: ToastTone): string {
   if (tone === "success") return colors.positive;
@@ -101,7 +21,7 @@ function toneIcon(tone: ToastTone): string {
 
 function ToastViewport({ position = "bottom-right" }: { position?: string }) {
   const dimensions = useTerminalDimensions();
-  const shownToasts = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const shownToasts = useSyncExternalStore(toastStore.subscribe, toastStore.getSnapshot, toastStore.getSnapshot);
   const actionShortcut = useActionShortcut("notification-action");
   const maxWidth = Math.max(1, Math.min(60, dimensions.width - 4));
   const placement = position.startsWith("top") ? { top: 1 } : { bottom: 1 };
@@ -112,7 +32,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
       : { right: 2 };
 
   if (shownToasts.length === 0) return null;
-  const newestActionId = shownToasts.slice(-MAX_VISIBLE_TOASTS).reverse().find((toast) => toast.options?.action)?.id;
+  const newestActionId = shownToasts.findLast((toast) => toast.options?.action)?.id;
 
   return (
     <box
@@ -124,7 +44,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
       flexDirection="column"
       gap={1}
     >
-      {shownToasts.slice(-MAX_VISIBLE_TOASTS).map((toast) => (
+      {shownToasts.map((toast) => (
         <box
           key={toast.id}
           width="100%"
@@ -167,7 +87,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
             fg={colors.textMuted}
             onMouseDown={(event) => {
               event.stopPropagation();
-              dismissToast(toast.id);
+              toastStore.dismiss(toast.id);
             }}
           >
             ×
@@ -178,12 +98,4 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
   );
 }
 
-export const openTuiToastHost: ToastHost = {
-  Viewport: ToastViewport,
-  success: (body, options) => addToast("success", body, options),
-  error: (body, options) => addToast("error", body, options),
-  info: (body, options) => addToast("info", body, options),
-  dismiss: dismissToast,
-  activateNewest: activateNewestToast,
-  dismissNewest: dismissNewestToast,
-};
+export const openTuiToastHost: ToastHost = { ...toastStore, Viewport: ToastViewport };
