@@ -514,10 +514,12 @@ function collectCoreCollectionsPayload(
     .map((ticker) => sanitizeTickerMetadata(ticker.metadata, financials.get(ticker.metadata.ticker)))
     .filter(isSyncableTicker);
 
-  // Rates stay out of the payload: readers of the snapshot use any rate found
-  // here instead of fetching a current one, and this rate ages with the push.
+  // Only the USD anchor goes on the wire, as before: readers of the snapshot
+  // use any rate found here instead of fetching a current one, and a rate
+  // loaded for this push would age with it.
   return {
     baseCurrency: config.baseCurrency,
+    exchangeRates: { USD: 1 },
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
     analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates, brokerAccounts),
