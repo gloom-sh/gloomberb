@@ -206,7 +206,7 @@ const cameraEquals = (a: Surface3DCamera, b: Surface3DCamera) =>
 const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
 /** How long a refreshed surface takes to settle into its new shape. */
-export const SURFACE_MORPH_MS = 650;
+const SURFACE_MORPH_MS = 650;
 
 /** The vertex data drawn on screen, kept so a refreshed scene can morph from it. */
 export interface SurfaceGeometry {
@@ -219,7 +219,7 @@ export interface SurfaceGeometry {
   indices: Uint32Array;
 }
 
-export function surfaceGeometry(scene: Surface3DScene, drop: ArrayLike<number>): SurfaceGeometry {
+function surfaceGeometry(scene: Surface3DScene, drop: ArrayLike<number>): SurfaceGeometry {
   // Missing cells are NaN in the scene and are never indexed; draw them at 0.
   const positions = new Float32Array(scene.positions.length);
   for (let index = 0; index < positions.length; index += 1) {

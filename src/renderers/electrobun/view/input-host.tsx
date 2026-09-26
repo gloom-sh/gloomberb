@@ -21,18 +21,17 @@ import {
 } from "./key-event";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 
-// Re-exported as live bindings so every consumer follows the configured font
-// size (see theme/font-scale) without threading metrics through the tree.
-export { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
-
-export function toKeyEventLike(event: KeyboardEvent): KeyEventLike {
-  const key = normalizeWebKeyName(event.key);
+/** A shortcut event for a DOM event: `name`, `sequence` and `ctrl` say which key; the rest comes from the event. */
+function domKeyEventLike(
+  event: KeyboardEvent | MouseEvent,
+  { name, sequence, ctrl }: { name: string; sequence: string; ctrl: boolean },
+): KeyEventLike {
   let propagationStopped = false;
   return {
-    key,
-    name: key,
-    sequence: webKeySequence(event),
-    ctrl: hasWebCtrlModifier(event),
+    key: name,
+    name,
+    sequence,
+    ctrl,
     shift: event.shiftKey,
     alt: event.altKey,
     meta: event.metaKey,
@@ -52,30 +51,12 @@ export function toKeyEventLike(event: KeyboardEvent): KeyEventLike {
   };
 }
 
-function toMouseBackKeyEventLike(event: MouseEvent): KeyEventLike {
-  let propagationStopped = false;
-  return {
-    key: MOUSE_BACK_NAVIGATION_EVENT_NAME,
-    name: MOUSE_BACK_NAVIGATION_EVENT_NAME,
-    sequence: "",
-    ctrl: event.ctrlKey,
-    shift: event.shiftKey,
-    alt: event.altKey,
-    meta: event.metaKey,
-    super: event.metaKey,
-    targetEditable: isEditableKeyboardTarget(event.target),
-    get defaultPrevented() {
-      return event.defaultPrevented;
-    },
-    get propagationStopped() {
-      return propagationStopped;
-    },
-    preventDefault: () => event.preventDefault(),
-    stopPropagation: () => {
-      propagationStopped = true;
-      event.stopPropagation();
-    },
-  };
+export function toKeyEventLike(event: KeyboardEvent): KeyEventLike {
+  return domKeyEventLike(event, {
+    name: normalizeWebKeyName(event.key),
+    sequence: webKeySequence(event),
+    ctrl: hasWebCtrlModifier(event),
+  });
 }
 
 function subscribeViewport(listener: () => void): () => void {
@@ -142,7 +123,11 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
       if (!isMouseBackNavigationButton(event.button)) return;
       event.preventDefault();
       event.stopPropagation();
-      shortcutRegistry.dispatch(toMouseBackKeyEventLike(event));
+      shortcutRegistry.dispatch(domKeyEventLike(event, {
+        name: MOUSE_BACK_NAVIGATION_EVENT_NAME,
+        sequence: "",
+        ctrl: event.ctrlKey,
+      }));
     };
 
     window.addEventListener("mousedown", preventBrowserBack, true);

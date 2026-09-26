@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createDomTestHarness } from "../test-utils";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { WebScrollBox } from "./scroll-box";
 
 const { render } = createDomTestHarness();

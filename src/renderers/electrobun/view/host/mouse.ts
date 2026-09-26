@@ -1,6 +1,6 @@
 import type { MouseEvent, WheelEvent as ReactWheelEvent } from "react";
 import type { BoxRenderable } from "../../../../ui/host";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 
 export type MouseLikeEvent = MouseEvent | ReactWheelEvent | globalThis.MouseEvent | globalThis.WheelEvent;
 export type CellMouseEvent = ReturnType<typeof cellMouseEvent>;

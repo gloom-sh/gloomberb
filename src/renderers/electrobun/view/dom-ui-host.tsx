@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { UiHost } from "../../../ui/host";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "./input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { WebDataTable } from "./data-table";
 import {
   WebButton,

@@ -9,8 +9,7 @@ import {
 } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../ui/host";
 import type { DataTableColumn } from "../../../../components/ui/data-table";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
-import { chromeRowPx } from "../../../../theme/font-scale";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH, chromeRowPx } from "../../../../theme/font-scale";
 
 export const TABLE_INLINE_PADDING_PX = 8;
 

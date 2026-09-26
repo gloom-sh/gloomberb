@@ -8,7 +8,7 @@ import { createDefaultConfig } from "../../../../types/config";
 import type { DataTableVisibleRange } from "../../../../components/ui/data-table";
 import { useTableBodyScrollActivity } from "../../../../components/table-view-shared";
 import { createDomTestHarness } from "../test-utils";
-import { WEB_CELL_HEIGHT } from "../input-host";
+import { WEB_CELL_HEIGHT } from "../../../../theme/font-scale";
 import { WebDataTable } from ".";
 
 const { window: testWindow, render } = createDomTestHarness();

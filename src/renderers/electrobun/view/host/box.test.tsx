@@ -79,7 +79,7 @@ test("chart surfaces consume browser pan and zoom gestures", async () => {
 
 test("a tab bar occupies exactly the one row panes reserve for it", async () => {
   const { WebTabs } = await import("./tabs");
-  const { WEB_CELL_HEIGHT } = await import("../input-host");
+  const { WEB_CELL_HEIGHT } = await import("../../../../theme/font-scale");
   const container = await renderDom(
     <WebTabs
       tabs={[{ label: "Overview", value: "overview" }, { label: "Chart", value: "chart" }]}

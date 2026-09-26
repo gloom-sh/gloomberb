@@ -28,7 +28,7 @@ const PANE_NAMES: Record<string, string> = {
   "world-indices": "World Indices",
 };
 
-export function marketplacePaneName(paneId: string): string {
+function marketplacePaneName(paneId: string): string {
   return PANE_NAMES[paneId] ?? paneId
     .split("-")
     .filter(Boolean)

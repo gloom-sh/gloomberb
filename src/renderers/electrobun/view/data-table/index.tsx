@@ -24,7 +24,7 @@ import {
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
 } from "../../../../components/ui/table-layout";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { useScrollbarActivity } from "../scrollbar-activity";
 import { useHorizontalScrollEdges } from "../host/overflow-fade";
 import {

@@ -8,7 +8,7 @@ import { instrumentIdentityKey } from "../../../utils/instrument-identity";
 export const QUOTE_EVENT_BATCH_KIND = "quote-batch";
 export const QUOTE_EVENT_BATCH_INTERVAL_MS = 40;
 
-export interface QuoteEventBatch {
+interface QuoteEventBatch {
   kind: typeof QUOTE_EVENT_BATCH_KIND;
   events: unknown[];
   /** The backend's measured server clock offset, which the window's freshness checks need too. */
@@ -20,7 +20,7 @@ export function isBatchableQuoteOperation(operationId: string): boolean {
   return operationId === "subscribeQuotes" || operationId === "quotes";
 }
 
-export function quoteEventInstrumentKey(event: unknown): string | null {
+function quoteEventInstrumentKey(event: unknown): string | null {
   if (!event || typeof event !== "object") return null;
   const { kind, target, quote } = event as {
     kind?: unknown;
@@ -38,7 +38,7 @@ export function quoteEventInstrumentKey(event: unknown): string | null {
   });
 }
 
-export function isQuoteEventBatch(event: unknown): event is QuoteEventBatch {
+function isQuoteEventBatch(event: unknown): event is QuoteEventBatch {
   return !!event && typeof event === "object"
     && (event as { kind?: unknown }).kind === QUOTE_EVENT_BATCH_KIND
     && Array.isArray((event as { events?: unknown }).events);

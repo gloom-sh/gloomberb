@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { TextAttributes, type TextProps } from "../../../../ui/host";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 
 export function cellWidth(value: unknown): CSSProperties["width"] {
   if (typeof value === "number") return `${value * WEB_CELL_WIDTH}px`;

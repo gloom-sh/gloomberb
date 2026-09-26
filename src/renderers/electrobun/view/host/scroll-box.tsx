@@ -12,7 +12,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { callMouseHandler } from "./mouse";
 import { cleanDomProps, commonStyle } from "./style";
 import { useScrollbarActivity } from "../scrollbar-activity";

@@ -6,7 +6,7 @@ import {
   type StyledTextChunk,
   type TextProps,
 } from "../../../../ui/host";
-import { WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { renderAsciiText } from "../../../../ui/ascii-font";
 import { webAsciiTextLines, webAsciiTextWordmarkVariant } from "./ascii-text";
 import { BlockGlyphCanvas } from "./block-glyph-canvas";

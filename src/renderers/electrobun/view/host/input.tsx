@@ -12,7 +12,8 @@ import {
 } from "react";
 import { editableTextContextMenuItems } from "../../../../ui/context-menu";
 import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../../ui/host";
-import { toKeyEventLike, WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { toKeyEventLike } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
 
 function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSSProperties {

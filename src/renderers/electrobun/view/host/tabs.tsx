@@ -7,7 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import type { HostTabsProps } from "../../../../ui/host";
-import { WEB_CELL_HEIGHT } from "../input-host";
+import { WEB_CELL_HEIGHT } from "../../../../theme/font-scale";
 import { WebIcon, WebIconButton } from "../desktop/icons";
 import { WebMenu } from "../desktop/menu";
 import { WebPopover } from "../desktop/popover";

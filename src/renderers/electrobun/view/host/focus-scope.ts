@@ -85,7 +85,7 @@ export function installFocusScopeRelease(): () => void {
 export function releasePointerFocus(element: unknown, pointerDetail: number): void {
   if (pointerDetail <= 0) return;
   const node = asFocusable(element);
-  if (!node || node.closest?.(`${DIALOG_CLASS_SELECTOR}, .gloom-popover`)) return;
+  if (!node || isInsideDialogSurface(node)) return;
   node.blur?.();
 }
 

@@ -1,7 +1,7 @@
 import type { ChartShareData } from "../../shares/payload";
 
 export interface SharedChartMark { x: number; y: number; label: string }
-export interface SharedChartPanel {
+interface SharedChartPanel {
   unit: string;
   hasValues: boolean;
   min: number;

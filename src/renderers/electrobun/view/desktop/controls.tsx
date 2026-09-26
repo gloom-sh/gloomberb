@@ -135,7 +135,7 @@ function checkboxCheckImage(): string {
  * The one checkbox square on the desktop: the kit Checkbox, query-bar toggles
  * and multi-select menu items all draw it through this style.
  */
-export function checkboxBoxStyle(
+function checkboxBoxStyle(
   colors: ThemeColors,
   { checked, active = false, size = 14 }: { checked: boolean; active?: boolean; size?: number },
 ): CSSProperties {

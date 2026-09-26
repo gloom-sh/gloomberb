@@ -115,7 +115,7 @@ export function normalizeWebKeyName(key: string): string {
     case "Tab":
       return "tab";
     default:
-      return key.length === 1 ? key.toLowerCase() : key.toLowerCase();
+      return key.toLowerCase();
   }
 }
 

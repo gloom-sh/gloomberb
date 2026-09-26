@@ -6,7 +6,8 @@ import { AppContext, createInitialState } from "../../../../state/app/context";
 import { createDefaultConfig } from "../../../../types/config";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
-import { WEB_CELL_WIDTH, WebInputHostProvider } from "../input-host";
+import { WebInputHostProvider } from "../input-host";
+import { WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { createDomTestHarness } from "../test-utils";
 import { WebDataTable } from ".";
 

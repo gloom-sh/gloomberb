@@ -1,5 +1,5 @@
 import type { NativeRendererHost } from "../../../ui";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "./input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { hasWebCtrlModifier, normalizeWebKeyName, shouldConsumeWebAppKeyDown, webKeySequence } from "./key-event";
 
 type Listener = (...args: unknown[]) => void;

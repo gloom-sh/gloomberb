@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { commonStyle } from "./style";
 
 test("maps axis gaps in cells and never emits an unset longhand that would clear gap", () => {

@@ -27,7 +27,7 @@ const QUADRANTS: Record<string, readonly [boolean, boolean, boolean, boolean]> =
   "█": [true, true, true, true],
 };
 
-export function blockGlyphPath(
+function blockGlyphPath(
   lines: readonly string[],
   cellWidth: number,
   cellHeight: number,

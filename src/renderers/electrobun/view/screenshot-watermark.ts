@@ -8,7 +8,7 @@ import { setScreenshotWatermarkVisible } from "../../../utils/screenshot-waterma
  * so time is the only cue left. A mistaken chord costs a few seconds of faint
  * wordmark, nothing more.
  */
-export const SCREENSHOT_WATERMARK_LINGER_MS = 10_000;
+const SCREENSHOT_WATERMARK_LINGER_MS = 10_000;
 
 /**
  * Grace after the window regains focus. Cmd+Shift+5 and Win+Shift+S hand
