@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
-import { testBroker } from "./test-broker";
+import { testBroker } from "../test-support/broker";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,

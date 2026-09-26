@@ -3,6 +3,7 @@ import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { AmbiguousTickerError } from "./search";
 import { resolveTickerOpenTarget } from "./open-target";
+import { createTestTicker } from "../test-support/ticker";
 
 function repository() {
   const values = new Map<string, string>();
@@ -17,10 +18,12 @@ test("opening validated venue links hydrates their exact key without changing an
   for (const query of ["VOD:XLON", "VOD.L"]) {
     for (const savedExchange of [null, "NASDAQ", "LSE"]) {
       const tickerRepository = repository();
-      const saved = savedExchange ? await tickerRepository.createTicker({
-        ticker: "VOD", exchange: savedExchange, currency: savedExchange === "LSE" ? "GBP" : "USD", name: "Vodafone",
-        portfolios: ["retirement"], watchlists: [], positions: [{ portfolio: "retirement", shares: 10, avgCost: 20, broker: "manual", currency: "USD" }], custom: {}, tags: [],
-      }) : null;
+      const saved = savedExchange ? await tickerRepository.createTicker(createTestTicker("VOD", "Vodafone", {
+        exchange: savedExchange,
+        currency: savedExchange === "LSE" ? "GBP" : "USD",
+        portfolios: ["retirement"],
+        positions: [{ portfolio: "retirement", shares: 10, avgCost: 20, broker: "manual", currency: "USD" }],
+      }).metadata) : null;
       const before = await tickerRepository.loadTicker("VOD");
       const target = await resolveTickerOpenTarget({
         query, tickerRepository, tickers: new Map(saved ? [["VOD", saved]] : []),

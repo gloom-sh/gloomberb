@@ -7,23 +7,7 @@ import {
   linkContextMenuItems,
   tickerContextMenuItems,
 } from "./context-menu";
-
-function ticker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+import { createTestTicker } from "../test-support/ticker";
 
 function menuLabels(items: ContextMenuItem[]): string[] {
   return items.flatMap((item) => item.type === "divider" ? [] : [item.label ?? ""]);
@@ -69,7 +53,7 @@ describe("context menu item builders", () => {
     } as unknown as PluginRegistry;
 
     const labels = menuLabels(tickerContextMenuItems({
-      ticker: ticker(),
+      ticker: createTestTicker("AAPL", "Apple"),
       financials: null,
       registry,
       copyText: async () => {},
@@ -83,7 +67,7 @@ describe("context menu item builders", () => {
 
   test("ticker menu includes remove actions when memberships exist", () => {
     const labels = menuLabels(tickerContextMenuItems({
-      ticker: ticker({ watchlists: ["watchlist:tech"], portfolios: ["portfolio:main"] }),
+      ticker: createTestTicker("AAPL", "Apple", { watchlists: ["watchlist:tech"], portfolios: ["portfolio:main"] }),
       financials: null,
       registry: null,
       copyText: async () => {},

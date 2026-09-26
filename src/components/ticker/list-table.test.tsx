@@ -9,6 +9,7 @@ import type { TickerRecord } from "../../types/ticker";
 import type { ScrollBoxRenderable } from "../../ui";
 import { PaneFooterProvider, type CombinedPaneFooter } from "../layout/pane/footer";
 import { TickerListTableView, type TickerTableCell } from "./list-table-view";
+import { createTestTicker } from "../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setHarnessTickers: ((tickers: TickerRecord[]) => void) | null = null;
@@ -19,19 +20,7 @@ const columns: ColumnConfig[] = [
   { id: "ticker", label: "Ticker", width: 6, align: "left" },
 ];
 const financialsMap = new Map<string, TickerFinancials>();
-const manyTickers: TickerRecord[] = Array.from({ length: 1000 }, (_, index) => ({
-  metadata: {
-    ticker: `T${index}`,
-    exchange: "NASDAQ",
-    currency: "USD",
-    name: `Ticker ${index}`,
-    portfolios: [],
-    watchlists: [],
-    positions: [],
-    custom: {},
-    tags: [],
-  },
-}));
+const manyTickers: TickerRecord[] = Array.from({ length: 1000 }, (_, index) => (createTestTicker(`T${index}`, `Ticker ${index}`)));
 
 function resolveCell(_column: ColumnConfig, ticker: TickerRecord, _financials: TickerFinancials | undefined): TickerTableCell {
   resolveCellCallCount += 1;

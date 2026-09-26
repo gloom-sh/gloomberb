@@ -5,17 +5,18 @@ import type { TickerRecord } from "../../../types/ticker";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
 import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings, resolveVisibleColumns } from "./settings";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const NOW = Date.UTC(2026, 8, 23, 15);
 const DAY_MS = 86_400_000;
 
-const ticker: TickerRecord = {
-  metadata: {
-    ticker: "SAP", exchange: "XETRA", currency: "EUR", name: "SAP SE", assetCategory: "STK",
-    portfolios: ["main"], watchlists: [], custom: {}, tags: [],
-    positions: [{ portfolio: "main", shares: 10, avgCost: 100, currency: "EUR", broker: "manual", dateAcquired: "2026-09-01" }],
-  },
-};
+const ticker: TickerRecord = createTestTicker("SAP", "SAP SE", {
+  exchange: "XETRA",
+  currency: "EUR",
+  assetCategory: "STK",
+  portfolios: ["main"],
+  positions: [{ portfolio: "main", shares: 10, avgCost: 100, currency: "EUR", broker: "manual", dateAcquired: "2026-09-01" }],
+});
 
 const financials: TickerFinancials = {
   annualStatements: [], quarterlyStatements: [],

@@ -5,6 +5,7 @@ import { instrumentFromTicker } from "../../market-data/request-types";
 import { buildInstrumentKey, buildQuoteKey } from "../../market-data/selectors";
 import type { TickerRecord } from "../../types/ticker";
 import { buildLiveQuoteTarget, useSampledValue } from "./live-ticker-financials";
+import { createTestTicker } from "../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -18,34 +19,25 @@ afterEach(async () => {
 });
 
 function brokerHeldTicker(): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
+  return createTestTicker("AAPL", "Apple", {
+    portfolios: ["ibkr-main"],
+    positions: [{
+      portfolio: "ibkr-main",
+      shares: 10,
+      broker: "ibkr",
+      brokerInstanceId: "ibkr-work",
+      brokerContractId: 265598,
+    }],
+    broker_contracts: [{
+      brokerId: "ibkr",
+      brokerInstanceId: "ibkr-work",
+      conId: 265598,
+      symbol: "AAPL",
+      secType: "STK",
+      exchange: "SMART",
       currency: "USD",
-      name: "Apple",
-      portfolios: ["ibkr-main"],
-      watchlists: [],
-      positions: [{
-        portfolio: "ibkr-main",
-        shares: 10,
-        broker: "ibkr",
-        brokerInstanceId: "ibkr-work",
-        brokerContractId: 265598,
-      }],
-      broker_contracts: [{
-        brokerId: "ibkr",
-        brokerInstanceId: "ibkr-work",
-        conId: 265598,
-        symbol: "AAPL",
-        secType: "STK",
-        exchange: "SMART",
-        currency: "USD",
-      }],
-      custom: {},
-      tags: [],
-    },
-  };
+    }],
+  });
 }
 
 describe("buildLiveQuoteTarget", () => {

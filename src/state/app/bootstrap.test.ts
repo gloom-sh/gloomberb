@@ -9,6 +9,7 @@ import type { AppAction } from "./context";
 import { initializeAppState } from "./bootstrap";
 import type { InstrumentRef } from "../../market-data/request-types";
 import type { AppSessionSnapshot } from "../../core/state/session-persistence";
+import { createTestTicker } from "../../test-support/ticker";
 
 const tempPaths: string[] = [];
 
@@ -33,8 +34,7 @@ describe("initializeAppState", () => {
     config.recentTickers = [];
     config.layout = { instances: [], dockRoot: null, floating: [], detached: [] };
     const contracts = [101, 202].map((conId) => ({ brokerId: "ibkr", brokerInstanceId: "same", conId, symbol: "DUAL" }));
-    await repository.createTicker({ ticker: "DUAL", exchange: "NASDAQ", name: "Dual", currency: "USD", portfolios: [], watchlists: [],
-      positions: [], broker_contracts: contracts, custom: {}, tags: [] });
+    await repository.createTicker(createTestTicker("DUAL", "Dual", { broker_contracts: contracts }).metadata);
     const targets: InstrumentRef[] = contracts.map((instrument) => ({ symbol: "DUAL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "same", instrument }));
     const primed: Array<[number | undefined, number | undefined]> = [];
     const warmups: InstrumentRef[] = [];
@@ -66,8 +66,7 @@ describe("initializeAppState", () => {
     config.layout = { instances: [], dockRoot: null, floating: [], detached: [] };
     const contracts = ["202610", "202611"].map((lastTradeDateOrContractMonth) => ({ brokerId: "ibkr", brokerInstanceId: "same",
       symbol: "DUAL", localSymbol: "DUAL", secType: "FUT", currency: "USD", lastTradeDateOrContractMonth }));
-    for (const ticker of ["DUAL", "PLAIN"]) await repository.createTicker({ ticker, exchange: "NASDAQ", name: ticker, currency: "USD", portfolios: [], watchlists: [],
-      positions: [], broker_contracts: ticker === "DUAL" ? contracts : [], custom: {}, tags: [] });
+    for (const ticker of ["DUAL", "PLAIN"]) await repository.createTicker(createTestTicker(ticker, ticker, { broker_contracts: ticker === "DUAL" ? contracts : [] }).metadata);
     const target: InstrumentRef = { symbol: "DUAL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "same", instrument: contracts[1] };
     try {
       for (const hydrationTargets of [[], [target]]) {
@@ -91,8 +90,7 @@ describe("initializeAppState", () => {
     config.recentTickers = [];
     config.layout = { instances: [], dockRoot: null, floating: [], detached: [] };
     const contracts = [101, 202].map((conId) => ({ brokerId: "ibkr", brokerInstanceId: "same", conId, symbol: "DUAL" }));
-    await repository.createTicker({ ticker: "DUAL", exchange: "NASDAQ", name: "Dual", currency: "USD", portfolios: [], watchlists: [],
-      positions: [], broker_contracts: contracts, custom: {}, tags: [] });
+    await repository.createTicker(createTestTicker("DUAL", "Dual", { broker_contracts: contracts }).metadata);
     const targets: InstrumentRef[] = contracts.map((instrument) => ({ symbol: "DUAL", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "same", instrument }));
     targets.push({ symbol: "DUAL", exchange: "NASDAQ", instrument: null });
     persistence.sessions.set("app", { paneState: {}, focusedPaneId: null, activePanel: "left", statusBarVisible: true, openPaneIds: [],
@@ -132,9 +130,11 @@ describe("initializeAppState", () => {
       instances: [{ instanceId: "pf", paneId: "portfolio-list", params: { collectionId: "a" }, settings: { columnIds: ["ticker", "price"] } }] };
     config.layouts = [{ name: "Saved B", layout: config.layout, paneState: { pf: { collectionId: "b" } } }];
     const contracts = [101, 202].map((conId) => ({ brokerId: "ibkr", brokerInstanceId: "same", conId, symbol: "DUAL" }));
-    await repository.createTicker({ ticker: "DUAL", exchange: "NASDAQ", name: "Dual", currency: "USD", portfolios: ["a", "b"], watchlists: [],
+    await repository.createTicker(createTestTicker("DUAL", "Dual", {
+      portfolios: ["a", "b"],
       positions: contracts.map((c, i) => ({ portfolio: i ? "b" : "a", broker: "ibkr", brokerInstanceId: "same", brokerContractId: c.conId, shares: 1 })),
-      broker_contracts: contracts, custom: {}, tags: [] });
+      broker_contracts: contracts,
+    }).metadata);
     const sessionSnapshot: AppSessionSnapshot = { paneState: { pf: { collectionId: "a" } }, focusedPaneId: "pf", activePanel: "left",
       statusBarVisible: true, openPaneIds: ["pf"], hydrationTargets: [], exchangeCurrencies: [], savedAt: Date.now() };
     for (const [paneState, expected] of [[undefined, 202], [{ pf: { collectionId: "a" } }, 101]] as const) {
@@ -157,11 +157,7 @@ describe("initializeAppState", () => {
     const config = createDefaultConfig(dbPath);
     config.recentTickers = [];
     for (const ticker of ["AAPL", "NVDA"]) {
-      await repository.createTicker({
-        ticker, exchange: "NASDAQ", currency: "USD", name: ticker,
-        portfolios: [], watchlists: [config.watchlists[0]?.id ?? "watchlist"],
-        positions: [], broker_contracts: [], custom: {}, tags: [],
-      });
+      await repository.createTicker(createTestTicker(ticker, ticker, { watchlists: [config.watchlists[0]?.id ?? "watchlist"], broker_contracts: [] }).metadata);
     }
     const seeded: Array<[string, unknown]> = [];
     // The user clicked NVDA while startup was still reading the ticker store.
@@ -290,18 +286,7 @@ describe("initializeAppState", () => {
       })),
     };
 
-    await tickerRepository.createTicker({
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
+    await tickerRepository.createTicker(createTestTicker("AAPL", "Apple Inc.", { watchlists: ["main"], broker_contracts: [] }).metadata);
 
     const quoteRefreshes: string[] = [];
     const financialRefreshes: string[] = [];
@@ -378,18 +363,7 @@ describe("initializeAppState", () => {
       })),
     };
 
-    await tickerRepository.createTicker({
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
+    await tickerRepository.createTicker(createTestTicker("AAPL", "Apple Inc.", { watchlists: ["main"], broker_contracts: [] }).metadata);
 
     const quoteRefreshes: string[] = [];
     const financialRefreshes: string[] = [];
@@ -449,30 +423,8 @@ describe("initializeAppState", () => {
       })),
     };
 
-    await tickerRepository.createTicker({
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
-    await tickerRepository.createTicker({
-      ticker: "NVDA",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "NVIDIA Corporation",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
+    await tickerRepository.createTicker(createTestTicker("AAPL", "Apple Inc.", { watchlists: ["main"], broker_contracts: [] }).metadata);
+    await tickerRepository.createTicker(createTestTicker("NVDA", "NVIDIA Corporation", { watchlists: ["main"], broker_contracts: [] }).metadata);
 
     const quoteRefreshes: string[] = [];
     const financialRefreshes: string[] = [];
@@ -550,47 +502,14 @@ describe("initializeAppState", () => {
       })),
     };
 
-    await tickerRepository.createTicker({
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
-    await tickerRepository.createTicker({
-      ticker: "NVDA",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "NVIDIA Corporation",
-      portfolios: [],
-      watchlists: ["main"],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    });
+    await tickerRepository.createTicker(createTestTicker("AAPL", "Apple Inc.", { watchlists: ["main"], broker_contracts: [] }).metadata);
+    await tickerRepository.createTicker(createTestTicker("NVDA", "NVIDIA Corporation", { watchlists: ["main"], broker_contracts: [] }).metadata);
     const hydrationSymbols = [
       "AAPL",
       ...Array.from({ length: 13 }, (_, index) => `T${String(index + 1).padStart(2, "0")}`),
     ];
     for (const symbol of hydrationSymbols.slice(1)) {
-      await tickerRepository.createTicker({
-        ticker: symbol,
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: symbol,
-        portfolios: [],
-        watchlists: ["main"],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      });
+      await tickerRepository.createTicker(createTestTicker(symbol, symbol, { watchlists: ["main"], broker_contracts: [] }).metadata);
     }
 
     const events: string[] = [];

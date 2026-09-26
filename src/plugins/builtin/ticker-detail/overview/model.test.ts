@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Fundamentals, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewStats, buildPositionRows } from "./model";
+import { createTestTicker } from "../../../../test-support/ticker";
 
 function overview(fundamentals: Fundamentals) {
   return Object.fromEntries(buildOverviewStats({
@@ -42,11 +43,11 @@ function row(position: Partial<TickerPosition>, options: {
   quoteCurrency?: string;
   toBase?: (value: number, currency: string) => number;
 } = {}) {
-  const ticker: TickerRecord = { metadata: {
-    ticker: "TEST", exchange: "NASDAQ", currency: "USD", name: "Controlled position",
-    portfolios: ["test"], watchlists: [], custom: {}, tags: [], assetCategory: "STK",
+  const ticker: TickerRecord = createTestTicker("TEST", "Controlled position", {
+    portfolios: ["test"],
+    assetCategory: "STK",
     positions: [{ portfolio: "test", broker: "manual", shares: 10, avgCost: 100, ...position }],
-  } };
+  });
   const quotePrice = options.quotePrice === undefined ? 120 : options.quotePrice;
   return buildPositionRows({ ticker, quote: quotePrice == null ? undefined : { price: quotePrice } as Quote,
     quoteCurrency: options.quoteCurrency ?? "USD", baseCurrency: "USD",

@@ -11,6 +11,7 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { setSyncedProfileAnalytics } from "./profile-analytics";
+import { createTestTicker } from "../test-support/ticker";
 
 describe("core sync contributors", () => {
   function priceHistoryFromReturns(returns: number[]): PricePoint[] {
@@ -321,28 +322,22 @@ describe("core sync contributors", () => {
       brokerInstanceId: "broker-id",
     }];
     config.watchlists = [{ id: "ai", name: "AI" }];
-    const ticker: TickerRecord = {
-      metadata: {
-        ticker: "NVDA",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "NVIDIA",
-        portfolios: ["main"],
-        watchlists: ["ai"],
-        positions: [{
-          portfolio: "main",
-          shares: 10,
-          avgCost: 100,
-          broker: "manual",
-          marketValue: 1500,
-          brokerAccountId: "account-id",
-          brokerInstanceId: "broker-id",
-          brokerContractId: 42,
-        }],
-        custom: { secretToken: "hidden", note: "keep" },
-        tags: ["semis"],
-      },
-    };
+    const ticker: TickerRecord = createTestTicker("NVDA", "NVIDIA", {
+      portfolios: ["main"],
+      watchlists: ["ai"],
+      positions: [{
+        portfolio: "main",
+        shares: 10,
+        avgCost: 100,
+        broker: "manual",
+        marketValue: 1500,
+        brokerAccountId: "account-id",
+        brokerInstanceId: "broker-id",
+        brokerContractId: 42,
+      }],
+      custom: { secretToken: "hidden", note: "keep" },
+      tags: ["semis"],
+    });
     const state = createInitialState(config);
     state.tickers = new Map([["NVDA", ticker]]);
     state.financials = new Map([[
@@ -406,19 +401,7 @@ describe("core sync contributors", () => {
   test("keeps a position written while the app was closed", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-position-test");
     config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
-    const withoutPosition: TickerRecord = {
-      metadata: {
-        ticker: "NVDA",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "NVIDIA",
-        portfolios: ["main"],
-        watchlists: [],
-        positions: [],
-        custom: {},
-        tags: [],
-      },
-    };
+    const withoutPosition: TickerRecord = createTestTicker("NVDA", "NVIDIA", { portfolios: ["main"] });
     const syncedState = createInitialState(config);
     syncedState.tickers = new Map([["NVDA", withoutPosition]]);
     const syncedPayload = await coreCollectionsSyncContributor.collect({ state: syncedState });
@@ -468,25 +451,18 @@ describe("core sync contributors", () => {
       config: {},
       enabled: true,
     }];
-    const ticker = (symbol: string, portfolio: string): TickerRecord => ({
-      metadata: {
-        ticker: symbol,
-        exchange: "TSE",
+    const ticker = (symbol: string, portfolio: string): TickerRecord => (createTestTicker(symbol, symbol, {
+      exchange: "TSE",
+      currency: "JPY",
+      portfolios: [portfolio],
+      positions: [{
+        portfolio,
+        shares: 10,
+        avgCost: 900,
+        broker: "manual",
         currency: "JPY",
-        name: symbol,
-        portfolios: [portfolio],
-        watchlists: [],
-        positions: [{
-          portfolio,
-          shares: 10,
-          avgCost: 900,
-          broker: "manual",
-          currency: "JPY",
-        }],
-        custom: {},
-        tags: [],
-      },
-    });
+      }],
+    }));
     const state = createInitialState(config);
     state.tickers = new Map([
       ["7203.T", ticker("7203.T", "main")],

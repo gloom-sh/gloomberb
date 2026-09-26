@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
 import type { TickerRecord } from "../../../types/ticker";
 import { buildSectorRowsFromPortfolioColumns, sortSectorRows } from "./sector-model";
+import { createTestTicker } from "../../../test-support/ticker";
 
-const holding = (symbol: string, currency = "USD", assetCategory = "STK"): TickerRecord => ({ metadata: {
-  ticker: symbol, name: symbol, currency, assetCategory, exchange: "NASDAQ", sector: "Technology",
-  portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+const holding = (symbol: string, currency = "USD", assetCategory = "STK"): TickerRecord => (createTestTicker(symbol, symbol, {
+  currency,
+  assetCategory,
+  sector: "Technology",
+  portfolios: ["main"],
   positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 120, currency, broker: "manual" }],
-} });
+}));
 const context = () => ({ activeTab: "main", baseCurrency: "USD", exchangeRates: new Map<string, number>(), now: 0 });
 
 test("missing FX does not disappear from concentration or renormalize the remaining portfolio", () => {

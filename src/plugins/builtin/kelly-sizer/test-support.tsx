@@ -12,6 +12,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
 import { PluginRenderProvider } from "../../runtime";
 import { positionSizerModule } from "./index";
+import { createTestTicker } from "../../../test-support/ticker";
 
 export const TEST_PANE_ID = "kelly-sizer:test";
 
@@ -67,30 +68,22 @@ export function createTicker({
   currency?: string;
   positions?: TickerRecord["metadata"]["positions"];
 } = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
+  return createTestTicker(symbol, symbol === "AAPL" ? "Apple" : symbol, {
+    currency,
+    sector: "Technology",
+    portfolios: ["main"],
+    positions: positions ?? [{
+      portfolio: "main",
+      shares: 20,
+      avgCost: 180,
       currency,
-      name: symbol === "AAPL" ? "Apple" : symbol,
-      sector: "Technology",
-      portfolios: ["main"],
-      watchlists: [],
-      positions: positions ?? [{
-        portfolio: "main",
-        shares: 20,
-        avgCost: 180,
-        currency,
-        broker: "ibkr",
-        brokerInstanceId: "ibkr-flex",
-        brokerAccountId: "DU12345",
-        marketValue: 4_000,
-        unrealizedPnl: 400,
-      }],
-      custom: {},
-      tags: [],
-    },
-  };
+      broker: "ibkr",
+      brokerInstanceId: "ibkr-flex",
+      brokerAccountId: "DU12345",
+      marketValue: 4_000,
+      unrealizedPnl: 400,
+    }],
+  });
 }
 
 export function createFinancials({

@@ -14,12 +14,6 @@ const TEST_PANE_ID = "correlation:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
-function makeTicker(symbol: string): TickerRecord {
-  return createTestTicker(symbol, symbol, {
-    broker_contracts: []
-  });
-}
-
 function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
   const config = createTestPaneConfig("/tmp/gloomberb-correlation-test", {
     instanceId: TEST_PANE_ID,
@@ -34,8 +28,8 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
     const initial = createInitialState(config);
     initial.focusedPaneId = TEST_PANE_ID;
     initial.tickers = new Map([
-      ["AAPL", makeTicker("AAPL")],
-      ["MSFT", makeTicker("MSFT")],
+      ["AAPL", createTestTicker("AAPL", "AAPL", { broker_contracts: [] })],
+      ["MSFT", createTestTicker("MSFT", "MSFT", { broker_contracts: [] })],
     ]);
     return initial;
   });

@@ -17,6 +17,7 @@ import {
   syncBrokerInstance,
   syncBrokerInstances,
 } from "./sync-broker-instance";
+import { createTestTicker } from "../test-support/ticker";
 
 function createTickerRepository(initial: TickerRecord[] = []) {
   const tickers = new Map(initial.map((ticker) => [ticker.metadata.ticker, ticker] as const));
@@ -64,28 +65,19 @@ function createBrokerInstanceWithId(id: string): BrokerInstanceConfig {
 
 function createBrokerTicker(instanceId: string, accountId: string): TickerRecord {
   const portfolioId = `broker:${instanceId}:${accountId}`;
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
+  return createTestTicker("AAPL", "Apple Inc.", {
+    portfolios: [portfolioId],
+    positions: [{
+      portfolio: portfolioId,
+      shares: 12,
+      avgCost: 180,
       currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [portfolioId],
-      watchlists: [],
-      positions: [{
-        portfolio: portfolioId,
-        shares: 12,
-        avgCost: 180,
-        currency: "USD",
-        broker: "demo",
-        brokerInstanceId: instanceId,
-        brokerAccountId: accountId,
-      }],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    },
-  };
+      broker: "demo",
+      brokerInstanceId: instanceId,
+      brokerAccountId: accountId,
+    }],
+    broker_contracts: [],
+  });
 }
 
 function createDemoBroker(): BrokerAdapter {
@@ -445,28 +437,19 @@ describe("syncBrokerInstance", () => {
       ],
       brokerInstances: [createBrokerInstance()],
     };
-    const tickerRepository = createTickerRepository([{
-      metadata: {
-        ticker: "AAPL",
-        exchange: "NASDAQ",
+    const tickerRepository = createTickerRepository([createTestTicker("AAPL", "Apple Inc.", {
+      portfolios: [stalePortfolioId],
+      positions: [{
+        portfolio: stalePortfolioId,
+        shares: 10,
+        avgCost: 170,
         currency: "USD",
-        name: "Apple Inc.",
-        portfolios: [stalePortfolioId],
-        watchlists: [],
-        positions: [{
-          portfolio: stalePortfolioId,
-          shares: 10,
-          avgCost: 170,
-          currency: "USD",
-          broker: "demo",
-          brokerInstanceId: "demo-broker",
-          brokerAccountId: "OLD-ALIAS",
-        }],
-        broker_contracts: [{ brokerId: "demo", brokerInstanceId: "demo-broker", conId: 123, symbol: "AAPL" }],
-        custom: {},
-        tags: [],
-      },
-    }]);
+        broker: "demo",
+        brokerInstanceId: "demo-broker",
+        brokerAccountId: "OLD-ALIAS",
+      }],
+      broker_contracts: [{ brokerId: "demo", brokerInstanceId: "demo-broker", conId: 123, symbol: "AAPL" }],
+    })]);
 
     const result = await syncBrokerInstance({
       config,
@@ -509,39 +492,30 @@ describe("syncBrokerInstance", () => {
       ],
       brokerInstances: [flexInstance, gatewayInstance],
     };
-    const tickerRepository = createTickerRepository([{
-      metadata: {
-        ticker: "AAPL",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Apple Inc.",
-        portfolios: [flexPortfolioId, staleGatewayPortfolioId],
-        watchlists: [],
-        positions: [
-          {
-            portfolio: flexPortfolioId,
-            shares: 10,
-            avgCost: 170,
-            currency: "USD",
-            broker: "demo",
-            brokerInstanceId: "demo-flex",
-            brokerAccountId: "ACC-1",
-          },
-          {
-            portfolio: staleGatewayPortfolioId,
-            shares: 11,
-            avgCost: 171,
-            currency: "USD",
-            broker: "demo",
-            brokerInstanceId: "demo-gateway",
-            brokerAccountId: "ACC-1",
-          },
-        ],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    }]);
+    const tickerRepository = createTickerRepository([createTestTicker("AAPL", "Apple Inc.", {
+      portfolios: [flexPortfolioId, staleGatewayPortfolioId],
+      positions: [
+        {
+          portfolio: flexPortfolioId,
+          shares: 10,
+          avgCost: 170,
+          currency: "USD",
+          broker: "demo",
+          brokerInstanceId: "demo-flex",
+          brokerAccountId: "ACC-1",
+        },
+        {
+          portfolio: staleGatewayPortfolioId,
+          shares: 11,
+          avgCost: 171,
+          currency: "USD",
+          broker: "demo",
+          brokerInstanceId: "demo-gateway",
+          brokerAccountId: "ACC-1",
+        },
+      ],
+      broker_contracts: [],
+    })]);
 
     const result = await syncBrokerInstance({
       config,

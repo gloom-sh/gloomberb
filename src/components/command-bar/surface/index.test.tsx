@@ -10,8 +10,8 @@ import {
   emitKeypress,
   expectSingleBackControl,
   makeDataProvider,
-  makeTicker,
 } from "./test-harness";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -503,7 +503,7 @@ describe("CommandBar", () => {
     testSetup = await testRender(<CommandBarHarness
       query=""
       selectedTicker="AMD"
-      extraTickers={[makeTicker("AMD", "Advanced Micro Devices")]}
+      extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
       configureState={(state) => ({
         ...state,
         commandBarLaunchRequest: {
@@ -540,7 +540,7 @@ describe("CommandBar", () => {
   test("opens ticker search from a launch request with saved ticker metadata", async () => {
     testSetup = await testRender(<CommandBarHarness
       query=""
-      extraTickers={[makeTicker("BRK.B", "Berkshire Hathaway Inc.", {
+      extraTickers={[createTestTicker("BRK.B", "Berkshire Hathaway Inc.", {
         exchange: "NYSE",
         assetCategory: "STK",
       })]}
@@ -884,7 +884,7 @@ describe("CommandBar", () => {
     testSetup = await testRender(
       <CommandBarHarness
         query="T AMD"
-        extraTickers={[makeTicker("AMD", "Advanced Micro Devices")]}
+        extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
         configurePluginRegistry={(pluginRegistry) => {
           pluginRegistry.pinTicker = (symbol) => {
             pinned.push(symbol);
@@ -1004,7 +1004,7 @@ describe("CommandBar", () => {
     testSetup = await testRender(
       <CommandBarHarness
         query=""
-        extraTickers={[makeTicker("APC", "Apple Inc.", {
+        extraTickers={[createTestTicker("APC", "Apple Inc.", {
           exchange: "XETRA",
           currency: "EUR",
           assetCategory: "STK",

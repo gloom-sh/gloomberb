@@ -13,23 +13,9 @@ import {
   resolvePortfolioPriceValue,
   type ColumnContext,
 } from "./metrics";
+import { createTestTicker } from "../../../test-support/ticker";
 
-function createTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      positions: [],
-      portfolios: [],
-      watchlists: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+const createTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 
 function createFinancials(
   overrides: Omit<Partial<TickerFinancials>, "quote"> & { quote?: Partial<Quote> } = {},

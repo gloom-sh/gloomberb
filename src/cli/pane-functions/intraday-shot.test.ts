@@ -22,6 +22,7 @@ import {
   resolveIntradaySessionWindow,
   resolveIntradayRequest,
 } from "../../time-series/session-history";
+import { createTestTicker } from "../../test-support/ticker";
 
 function sessionBars(date: string, base: number): PricePoint[] {
   return [
@@ -69,19 +70,7 @@ function contextWithProvider(provider: DataProvider): MarketContext {
       pluginState: { get: () => null },
     },
     store: {
-      loadTicker: async () => ({
-        metadata: {
-          ticker: "AAPL",
-          exchange: "NASDAQ",
-          currency: "USD",
-          name: "Apple",
-          portfolios: [],
-          watchlists: [],
-          positions: [],
-          custom: {},
-          tags: [],
-        },
-      }),
+      loadTicker: async () => (createTestTicker("AAPL", "Apple")),
     },
     dataProvider: provider,
   } as unknown as MarketContext;

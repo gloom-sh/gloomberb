@@ -4,9 +4,9 @@ import type { TickerFinancials } from "../types/financials";
 import { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
 import { buildTrackedCurrencies } from "../plugins/builtin/portfolio-list/pane/data";
 import { buildOverviewStats } from "../plugins/builtin/ticker-detail/overview/model";
+import { createTestTicker } from "../test-support/ticker";
 
-const ticker: TickerRecord = { metadata: { ticker: "F:XNYS", name: "Ford", exchange: "NYSE", currency: "USD",
-  portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
+const ticker: TickerRecord = createTestTicker("F:XNYS", "Ford", { exchange: "NYSE" });
 const column = { id: "market_cap", label: "MCAP", width: 12, align: "right" as const };
 const fundamentals = { marketCap: 100, marketCapCurrency: "EUR", financialCurrency: "USD", freeCashFlow: -20,
   source: "yahoo" as const, fetchedAt: "2026-09-11T15:23:57Z" };

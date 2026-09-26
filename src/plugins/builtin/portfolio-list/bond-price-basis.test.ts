@@ -5,13 +5,11 @@ import { getPortfolioPositionMetrics, resolvePortfolioPositionPnl, resolveBroker
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPositionRows } from "../ticker-detail/overview/model";
 import { getPortfolioPositionValue } from "../kelly-sizer/portfolio";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const position = (overrides: Partial<TickerPosition> = {}): TickerPosition => ({ portfolio: "main", broker: "controlled", shares: 1000,
   currency: "USD", avgCost: 87.742, markPrice: 86.359375, multiplier: 1, priceBasis: "percent-of-par", ...overrides });
-const record = (positions = [position()], assetCategory = "BOND"): TickerRecord => ({ metadata: {
-  ticker: "CONTROLLED", name: "Controlled", exchange: "", currency: "USD", assetCategory,
-  positions, portfolios: ["main"], watchlists: [], tags: [], custom: {},
-} });
+const record = (positions = [position()], assetCategory = "BOND"): TickerRecord => (createTestTicker("CONTROLLED", "Controlled", { exchange: "", assetCategory, positions, portfolios: ["main"] }));
 const quote = (overrides: Partial<Quote> = {}): Quote => ({ symbol: "CONTROLLED", price: 87, change: 1, changePercent: 100/86,
   currency: "USD", instrumentType: "BOND", priceBasis: "percent-of-par", lastUpdated: 1700000000000, ...overrides });
 const financials = (q?: Quote): TickerFinancials => ({ quote: q, annualStatements: [], quarterlyStatements: [], priceHistory: [] });

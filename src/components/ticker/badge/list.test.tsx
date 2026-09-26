@@ -7,25 +7,13 @@ import { resetInlineTickerFailures } from "../../../state/hooks/inline-ticker-fa
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import { TickerBadgeList } from "./list";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
 function createState() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-badge-list-test"));
-  state.tickers.set("NFLX", {
-    metadata: {
-      ticker: "NFLX",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Netflix",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    },
-  });
+  state.tickers.set("NFLX", createTestTicker("NFLX", "Netflix", { broker_contracts: [] }));
   state.financials.set("NFLX", {
     annualStatements: [],
     quarterlyStatements: [],

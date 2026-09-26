@@ -9,6 +9,7 @@ import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from
 import type { TickerRecord } from "../../types/ticker";
 import { useAppTickerOpenRuntime } from "./ticker-open-runtime";
 import { researchEntryFromSearch } from "../../renderers/browser/research-entry";
+import { createTestTicker } from "../../test-support/ticker";
 
 test("a slow linked ticker applies its tab to the reused or new pane after hydration", async () => {
   for (const { savedListing, savedExchange, reusePane } of [
@@ -20,11 +21,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     config.layout = createBrowserResearchLayout(savedListing);
     const stateRef = { current: createInitialState(config) };
     // A saved same-spelling issuer on another venue must not satisfy the link.
-    stateRef.current.tickers.set("VOD", { metadata: {
-      ticker: "VOD", exchange: savedExchange,
-      currency: savedExchange === "LSE" ? "GBP" : "ZAR", name: savedExchange === "LSE" ? "Vodafone" : "Vodacom",
-      portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
-    } });
+    stateRef.current.tickers.set("VOD", createTestTicker("VOD", savedExchange === "LSE" ? "Vodafone" : "Vodacom", { exchange: savedExchange, currency: savedExchange === "LSE" ? "GBP" : "ZAR" }));
     const actions: AppAction[] = [];
     const focused: string[] = [];
     let layouts = 0;
@@ -141,8 +138,7 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
     floating: mode === "docked" ? [] : [{ instanceId: source.instanceId, x: 2, y: 2, width: 80, height: 20, zIndex: 1 }], detached: [] };
   const stateRef = { current: createInitialState(config) };
   stateRef.current.focusedPaneId = source.instanceId;
-  const ticker: TickerRecord = { metadata: { ticker: "RIVN:XNAS", exchange: "NASDAQ", currency: "USD", name: "Rivian",
-    portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
+  const ticker: TickerRecord = createTestTicker("RIVN:XNAS", "Rivian");
   let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
   const activated: string[] = [];
   function Harness() {

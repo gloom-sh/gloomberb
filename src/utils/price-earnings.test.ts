@@ -4,11 +4,9 @@ import type { TickerRecord } from "../types/ticker";
 import { getColumnValue, getSortValue } from "../plugins/builtin/portfolio-list/column-values";
 import { buildOverviewStats } from "../plugins/builtin/ticker-detail/overview/model";
 import { relativeValuationValues } from "../plugins/builtin/research/relative-valuation-model";
+import { createTestTicker } from "../test-support/ticker";
 
-const ticker: TickerRecord = { metadata: {
-  ticker: "TEST", name: "Test", exchange: "NASDAQ", currency: "USD",
-  portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
-} };
+const ticker: TickerRecord = createTestTicker("TEST", "Test");
 const context = { baseCurrency: "USD", exchangeRates: new Map<string, number>(), now: 1 };
 
 test.each([

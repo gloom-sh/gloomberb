@@ -33,6 +33,7 @@ import { chartComposerModule } from "../chart-composer";
 import { FinancialsTab } from "./financials/tab";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const TEST_PANE_ID = "ticker-research:test";
 
@@ -53,27 +54,6 @@ const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
   height: number;
 }) => ReactElement;
 
-function makeTicker(
-  symbol: string,
-  name = symbol,
-  overrides: Partial<TickerRecord["metadata"]> = {},
-): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
-
 function makeFinancials(overrides: Partial<TickerFinancials> = {}): TickerFinancials {
   return {
     annualStatements: [],
@@ -92,7 +72,7 @@ function FinancialsTabHarness({ width }: { width: number }) {
   ));
 
   const state = createInitialState(config);
-  const ticker = makeTicker("2337", "Mock Co");
+  const ticker = createTestTicker("2337", "Mock Co");
   const financials: TickerFinancials = {
     annualStatements: [
       { date: "2021-12-31" },
@@ -473,7 +453,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -498,7 +478,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={makeFinancials({
           annualStatements: [{ date: "2024-12-31", totalRevenue: 1_000 }],
         })}
@@ -518,7 +498,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={makeFinancials({
           annualStatements: [{ date: "2024-12-31", totalRevenue: 1_000 }],
         })}
@@ -556,7 +536,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL", [createGatewayInstance()])}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -574,7 +554,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -594,7 +574,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -619,7 +599,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={config}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -643,7 +623,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
       />,
       { width: 90, height: 24 },
@@ -683,7 +663,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
         activeTabId="sec"
         height={18}
@@ -704,7 +684,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("0700")}
-        ticker={makeTicker("0700", "Tencent", {
+        ticker={createTestTicker("0700", "Tencent", {
           exchange: "HKEX",
           currency: "HKD",
           assetCategory: "STK",
@@ -726,7 +706,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("SAP")}
-        ticker={makeTicker("SAP", "SAP SE", {
+        ticker={createTestTicker("SAP", "SAP SE", {
           exchange: "XETRA",
           currency: "EUR",
           positions: [{
@@ -789,7 +769,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={gatewayConfig}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={null}
         activeTabId="ibkr-trade"
       />,
@@ -819,7 +799,7 @@ describe("TickerResearchPane", () => {
     testSetup = await testRender(
       <DetailHarness
         config={createDetailConfig("AAPL")}
-        ticker={makeTicker("AAPL")}
+        ticker={createTestTicker("AAPL")}
         financials={makeFinancials({ priceHistory })}
       />,
       { width: 90, height: 24 },

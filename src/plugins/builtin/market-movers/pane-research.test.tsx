@@ -17,6 +17,7 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { Box } from "../../../ui";
 import { useRegularMarketSession } from "../../../test-support/market-session";
+import { createTestTicker } from "../../../test-support/ticker";
 
 useRegularMarketSession();
 
@@ -33,7 +34,7 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
   initial.focusedPaneId = id;
   const memory = new Map<string, string>();
   const repo = new JsonTickerRepository({ getItem: key => memory.get(key) ?? null, setItem: (key, value) => { memory.set(key, value); }, removeItem: key => { memory.delete(key); } });
-  const saved = await repo.createTicker({ ticker: "ACME", name: "Remembered US share", exchange: "NASDAQ", currency: "USD", assetCategory: "STK", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] });
+  const saved = await repo.createTicker(createTestTicker("ACME", "Remembered US share", { assetCategory: "STK" }).metadata);
   initial.tickers.set("ACME", saved);
   const stateRef = { current: initial };
   const pins: any[] = [], pending: Promise<void>[] = [];

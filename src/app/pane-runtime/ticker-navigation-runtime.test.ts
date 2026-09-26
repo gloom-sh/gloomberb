@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createInitialState } from "../../state/app/context";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { createTestTicker } from "../../test-support/pane";
+import { createTestTicker } from "../../test-support/ticker";
 import { createDefaultConfig, type LayoutConfig, type PaneBinding } from "../../types/config";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { TickerOpenTarget } from "../../tickers/open-target";

@@ -6,7 +6,7 @@ import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils"
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
-import { testBroker } from "../../../brokers/test-broker";
+import { testBroker } from "../../../test-support/broker";
 import { BrokersPane } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
 

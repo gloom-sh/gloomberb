@@ -4,22 +4,10 @@ import type { TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import { buildAppSessionSnapshot, reconcileAppSessionSnapshot } from "../core/state/session-persistence";
 import { buildInstrumentKey } from "../market-data/selectors";
+import { createTestTicker } from "../test-support/ticker";
 
 function createTicker(symbol: string, exchange = "NASDAQ"): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange,
-      currency: "USD",
-      name: symbol,
-      portfolios: ["main"],
-      watchlists: [],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, { exchange, portfolios: ["main"], broker_contracts: [] });
 }
 
 describe("session persistence", () => {

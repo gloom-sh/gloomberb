@@ -7,6 +7,7 @@ import type { TickerRecord } from "../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "./coordinator";
 import { useQuoteEntry, useTickerFinancials, useTickerFinancialsMap } from "./hooks";
 import { quoteSubscriptionTargetFromTicker } from "./request-types";
+import { createTestTicker } from "../test-support/ticker";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let coordinator: MarketDataCoordinator | undefined;
@@ -17,11 +18,11 @@ afterEach(async () => {
 });
 
 test.each([false, true])("hooks reload and resubscribe when a supplied definition changes; localSymbol=%s", async (hasLocalSymbol) => {
-  const ticker = (strike: number): TickerRecord => ({ metadata: {
-    ticker: "ACME", exchange: "NASDAQ", name: "ACME", currency: "USD", portfolios: ["p"], watchlists: [], tags: [], custom: {},
+  const ticker = (strike: number): TickerRecord => (createTestTicker("ACME", "ACME", {
+    portfolios: ["p"],
     positions: [{ portfolio: "p", shares: 1, broker: "fixture", brokerInstanceId: "feed" }],
     broker_contracts: [{ brokerId: "fixture", brokerInstanceId: "feed", symbol: "ACME", localSymbol: hasLocalSymbol ? "LEGACY" : undefined, secType: "OPT", currency: "USD", lastTradeDateOrContractMonth: "20261016", right: "C", strike, multiplier: "100" }],
-  } });
+  }));
   const quote = (strike: number) => ({ symbol: "ACME", currency: "USD", price: strike / 10, change: 0, changePercent: 0, lastUpdated: Date.now() });
   const snapshots: number[] = []; const subscriptions: number[][] = [];
   coordinator = new MarketDataCoordinator(createTestDataProvider({

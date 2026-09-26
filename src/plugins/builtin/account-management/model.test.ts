@@ -9,27 +9,20 @@ import {
   getPortfolioPositionTickers,
   NO_PORTFOLIO_VALUE,
 } from "./model";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function makeTicker(symbol: string, portfolios: string[], positionedPortfolios: string[] = []): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "XNAS",
+  return createTestTicker(symbol, symbol, {
+    exchange: "XNAS",
+    portfolios,
+    positions: positionedPortfolios.map((portfolio) => ({
+      portfolio,
+      shares: 10,
+      avgCost: 90,
       currency: "USD",
-      name: symbol,
-      portfolios,
-      watchlists: [],
-      positions: positionedPortfolios.map((portfolio) => ({
-        portfolio,
-        shares: 10,
-        avgCost: 90,
-        currency: "USD",
-        broker: "manual",
-      })),
-      custom: {},
-      tags: [],
-    },
-  };
+      broker: "manual",
+    })),
+  });
 }
 
 describe("account management model", () => {

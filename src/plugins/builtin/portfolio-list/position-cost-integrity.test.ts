@@ -9,6 +9,7 @@ import { setManualPortfolioPosition } from "./mutations";
 import { getPortfolioPositionMetrics, resolvePortfolioPositionPnl, resolveBrokerFallbackMarketValue } from "./position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPortfolioSummarySegments } from "./summary";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const now = Date.now();
 const financials: TickerFinancials = {
@@ -17,10 +18,7 @@ const financials: TickerFinancials = {
 };
 const context = { activeTab: "main", baseCurrency: "USD", exchangeRates: new Map([["USD", 1]]), now };
 const lot = (overrides: Partial<TickerPosition> = {}): TickerPosition => ({ portfolio: "main", broker: "manual", shares: 10, currency: "USD", ...overrides });
-const ticker = (...positions: TickerPosition[]): TickerRecord => ({ metadata: {
-  ticker: "AAPL", name: "Apple", exchange: "NASDAQ", currency: "USD", assetCategory: "STK",
-  positions, portfolios: ["main"], watchlists: [], custom: {}, tags: [],
-} });
+const ticker = (...positions: TickerPosition[]): TickerRecord => (createTestTicker("AAPL", "Apple", { assetCategory: "STK", positions, portfolios: ["main"] }));
 const totals = (record: TickerRecord, source = financials) => calculatePortfolioSummaryTotals(
   [record], new Map([["AAPL", source]]), "USD", context.exchangeRates, true, "main",
 );

@@ -24,6 +24,7 @@ import { PortfolioListPane } from "../portfolio-list/pane";
 import { KellySizerPane } from "../kelly-sizer/pane";
 import { buildSectorRowsFromPortfolioColumns } from "./sector-model";
 import { portfolioAnalyticsModule } from "./index";
+import { createTestTicker } from "../../../test-support/ticker";
 
 const paneId = "analytics:identity";
 const AnalyticsPane = portfolioAnalyticsModule.panes![0]!.component as (props: PaneProps) => ReactElement;
@@ -49,10 +50,14 @@ function fixture(reverse = false, missingQuote?: string) {
   }
   if (reverse) tickers.get("ACME")!.metadata.broker_contracts!.reverse();
   for (const [symbol, sector, assetCategory] of [["ENERGY", "Energy", "STK"], ["MIXETF", "Technology", "ETF"]]) {
-    tickers.set(symbol!, { metadata: { ticker: symbol!, name: symbol!, exchange: "NASDAQ", currency: "USD", sector, assetCategory,
-      portfolios: ["a", "b"], watchlists: [], custom: {}, tags: [], positions: ["a", "b"].map(portfolio => ({
+    tickers.set(symbol!, createTestTicker(symbol!, symbol!, {
+      sector,
+      assetCategory,
+      portfolios: ["a", "b"],
+      positions: ["a", "b"].map(portfolio => ({
         portfolio, shares: 10, avgCost: 80, markPrice: 100, currency: "USD", broker: "manual",
-      })) } });
+      })),
+    }));
   }
   const coordinator = new MarketDataCoordinator(createTestDataProvider());
   for (const id of ["a", "b"]) {

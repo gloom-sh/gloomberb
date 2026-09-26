@@ -38,7 +38,8 @@ export type { PaneRuntimeState } from "../core/state/app/state";
 // The providers the app wraps a pane in, and a ticker record shaped like a
 // saved one, so a pane test renders through the same context stack as the app
 // instead of a hand-built approximation of it.
-export { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../test-support/pane";
+export { TestPaneProvider, createTestPaneConfig } from "../test-support/pane";
+export { createTestTicker } from "../test-support/ticker";
 
 // A data provider that answers from fixtures, for a pane whose rows come from
 // quotes, financials, or instrument search.

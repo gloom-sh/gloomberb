@@ -8,8 +8,8 @@ import {
   CommandBarHarness,
   createCommandBarTestControls,
   expectSingleBackControl,
-  makeTicker,
 } from "./test-harness";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -144,7 +144,7 @@ describe("CommandBar portfolio commands", () => {
         selectedTicker="AAPL"
         configureConfig={withResearchPortfolio}
         configureState={focusResearchPortfolio}
-        extraTickers={[makeTicker("AAPL", "Apple Inc.", {
+        extraTickers={[createTestTicker("AAPL", "Apple Inc.", {
           portfolios: ["research"],
         })]}
       />,
@@ -179,7 +179,7 @@ describe("CommandBar portfolio commands", () => {
             },
           }]]),
         })}
-        extraTickers={[makeTicker("AAPL", "Apple Inc.", {
+        extraTickers={[createTestTicker("AAPL", "Apple Inc.", {
           portfolios: ["research"],
         })]}
       />,
@@ -294,7 +294,7 @@ describe("CommandBar portfolio commands", () => {
         selectedTicker="AAPL"
         configureConfig={withResearchPortfolio}
         configureState={focusResearchPortfolio}
-        extraTickers={[makeTicker("AAPL", "Apple Inc.", {
+        extraTickers={[createTestTicker("AAPL", "Apple Inc.", {
           portfolios: ["research"],
           positions: [researchPosition(10, 180)],
         })]}
@@ -394,7 +394,7 @@ describe("CommandBar portfolio commands", () => {
         }}
         configureConfig={withResearchPortfolio}
         configureState={focusResearchPortfolio}
-        extraTickers={[makeTicker("AAPL", "Apple Inc.", {
+        extraTickers={[createTestTicker("AAPL", "Apple Inc.", {
           portfolios: ["research"],
           positions: [researchPosition(4, 175)],
         })]}
@@ -424,7 +424,7 @@ describe("CommandBar portfolio commands", () => {
         }}
         configureConfig={withResearchPortfolio}
         configureState={focusResearchPortfolio}
-        extraTickers={[makeTicker("AAPL", "Apple Inc.", {
+        extraTickers={[createTestTicker("AAPL", "Apple Inc.", {
           portfolios: ["research"],
           positions: [researchPosition(2, 160)],
         })]}

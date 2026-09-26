@@ -13,21 +13,10 @@ import {
 import { needsVisibleQuoteWatchdogRefresh, selectQuoteWarmupTickers, selectStreamTickers } from "./pane/data";
 import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings } from "./settings";
 import { getLanguage, setLanguage } from "../../../i18n";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function ticker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol);
 }
 
 describe("buildPortfolioSummarySegments", () => {

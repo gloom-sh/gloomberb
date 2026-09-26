@@ -2,7 +2,8 @@ import type { Dispatch, ReactNode } from "react";
 import { AppContext, PaneInstanceProvider, type AppAction, type AppState } from "../state/app/context";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../plugins/runtime";
 import { cloneLayout, createDefaultConfig, type AppConfig, type PaneInstanceConfig } from "../types/config";
-import type { TickerRecord } from "../types/ticker";
+
+export { createTestTicker } from "./ticker";
 
 /** Provider wiring only: the suite retains ownership of its state and update timing. */
 export function TestPaneProvider({
@@ -34,19 +35,5 @@ export function createTestPaneConfig(dataDir: string, instance: PaneInstanceConf
   return {
     ...createDefaultConfig(dataDir), layout,
     layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  };
-}
-
-export function createTestTicker(
-  symbol: string,
-  name = symbol,
-  overrides: Partial<TickerRecord["metadata"]> = {},
-): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol, exchange: "NASDAQ", currency: "USD", name,
-      portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
-      ...overrides,
-    },
   };
 }

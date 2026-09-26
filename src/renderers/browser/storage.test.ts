@@ -4,6 +4,7 @@ import { createBrowserConfigStore, BROWSER_DATA_DIR } from "./config-host";
 import { JsonPersistence } from "../../data/json-persistence";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
+import { createTestTicker } from "../../test-support/ticker";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -42,17 +43,7 @@ describe("browser local persistence", () => {
     expect((await configStore.loadConfig(BROWSER_DATA_DIR)).baseCurrency).toBe("EUR");
 
     const tickers = new JsonTickerRepository(storage);
-    await tickers.createTicker({
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple Inc.",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    });
+    await tickers.createTicker(createTestTicker("AAPL", "Apple Inc.").metadata);
     expect((await new JsonTickerRepository(storage).loadTicker("aapl"))?.metadata.ticker).toBe("AAPL");
 
     const persistence = new JsonPersistence(storage);

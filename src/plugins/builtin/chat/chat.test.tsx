@@ -23,6 +23,7 @@ import {
   makeMessage,
   type ChatTestSetup,
 } from "./test-harness";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let testSetup: ChatTestSetup | undefined;
 function setup(): ChatTestSetup {
@@ -1040,19 +1041,7 @@ describe("ChatContent", () => {
         width: 60,
         height: 12,
         configureState(state) {
-          state.tickers = new Map([["TSLA", {
-            metadata: {
-              ticker: "TSLA",
-              exchange: "NASDAQ",
-              currency: "USD",
-              name: "Tesla, Inc.",
-              portfolios: [],
-              watchlists: [],
-              positions: [],
-              custom: {},
-              tags: [],
-            },
-          }]]);
+          state.tickers = new Map([["TSLA", createTestTicker("TSLA", "Tesla, Inc.")]]);
           state.financials = new Map([["TSLA", {
             annualStatements: [],
             quarterlyStatements: [],
@@ -1108,19 +1097,7 @@ describe("ChatContent", () => {
         width: 60,
         height: 12,
         configureState(state) {
-          state.tickers = new Map([["META", {
-            metadata: {
-              ticker: "META",
-              exchange: "NASDAQ",
-              currency: "USD",
-              name: "Meta Platforms, Inc.",
-              portfolios: [],
-              watchlists: [],
-              positions: [],
-              custom: {},
-              tags: [],
-            },
-          }]]);
+          state.tickers = new Map([["META", createTestTicker("META", "Meta Platforms, Inc.")]]);
           state.financials = new Map([["META", {
             annualStatements: [],
             quarterlyStatements: [],

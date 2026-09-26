@@ -7,18 +7,13 @@ import {
   pickLargestBrokerPosition,
   pickLargestPosition,
 } from "./wizard-model";
+import { createTestTicker } from "../../test-support/ticker";
 
 function ticker(symbol: string, shares: number | null, avgCost = 100): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      name: `${symbol} Inc.`,
-      currency: "USD",
-      portfolios: ["main"],
-      watchlists: [],
-      positions: shares === null ? [] : [{ portfolio: "main", shares, avgCost, currency: "USD", broker: "manual" }],
-    },
-  } as unknown as TickerRecord;
+  return createTestTicker(symbol, `${symbol} Inc.`, {
+    portfolios: ["main"],
+    positions: shares === null ? [] : [{ portfolio: "main", shares, avgCost, currency: "USD", broker: "manual" }],
+  });
 }
 
 describe("onboarding positions", () => {

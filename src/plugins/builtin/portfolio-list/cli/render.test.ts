@@ -10,11 +10,12 @@ import { buildPositionRows } from "../../ticker-detail/overview/model";
 import { calculatePortfolioSummaryTotals, getSortValue } from "../metrics";
 import { showCollection } from "./render";
 import { portfolioCliCommand } from "./portfolio-command";
+import { createTestTicker } from "../../../../test-support/ticker";
 
-const ticker: TickerRecord = { metadata: {
-  ticker: "AAPL", name: "Apple", exchange: "NASDAQ", currency: "USD", portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+const ticker: TickerRecord = createTestTicker("AAPL", "Apple", {
+  portfolios: ["main"],
   positions: [{ portfolio: "main", shares: -10, avgCost: 100, currency: "USD", broker: "manual" }],
-} };
+});
 const quote = { symbol: "AAPL", price: 90, currency: "USD", change: -5, changePercent: -5.26, previousClose: 95, lastUpdated: Date.now() };
 
 test("CLI rejects blank acquisition cost before resolving or writing a ticker, and accepts explicit zero", async () => {

@@ -15,6 +15,7 @@ import {
   untrackedRows,
 } from "./model";
 import type { TickerRecord } from "../../../../types/ticker";
+import { createTestTicker } from "../../../../test-support/ticker";
 
 const NOW = Date.parse("2026-09-16T12:00:00Z");
 
@@ -56,19 +57,10 @@ function thesis(overrides: Partial<CloudThesis> = {}): CloudThesis {
 }
 
 function ticker(symbol: string, shares: number, multiplier?: number): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: ["main"],
-      watchlists: [],
-      positions: shares ? [{ portfolio: "main", shares, broker: "manual", ...(multiplier ? { multiplier } : {}) }] : [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, {
+    portfolios: ["main"],
+    positions: shares ? [{ portfolio: "main", shares, broker: "manual", ...(multiplier ? { multiplier } : {}) }] : [],
+  });
 }
 
 describe("attention and board order", () => {

@@ -6,6 +6,7 @@ import type { BrokerAccount } from "../../../types/trading";
 import { convertCurrency } from "../../../utils/format";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./metrics";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue, resolvePortfolioNetLiquidation } from "./account-metrics";
+import { createTestTicker } from "../../../test-support/ticker";
 
 useRegularMarketSession();
 
@@ -140,15 +141,13 @@ describe("resolvePortfolioMarketValue", () => {
 });
 
 describe("broker-linked header totals", () => {
-  const position = (ticker: string, shares: number, avgCost: number, markPrice: number, side: "long" | "short" = "long"): TickerRecord => ({
-    metadata: {
-      ticker, exchange: "NASDAQ", currency: "USD", name: ticker, portfolios: ["ibkr:U1"], watchlists: [], custom: {}, tags: [],
-      positions: [{
-        portfolio: "ibkr:U1", shares, avgCost, currency: "USD", broker: "ibkr", brokerInstanceId: "ibkr-work", side,
-        markPrice, marketValue: shares * markPrice, unrealizedPnl: (side === "short" ? -1 : 1) * shares * (markPrice - avgCost),
-      }],
-    },
-  });
+  const position = (ticker: string, shares: number, avgCost: number, markPrice: number, side: "long" | "short" = "long"): TickerRecord => (createTestTicker(ticker, ticker, {
+    portfolios: ["ibkr:U1"],
+    positions: [{
+      portfolio: "ibkr:U1", shares, avgCost, currency: "USD", broker: "ibkr", brokerInstanceId: "ibkr-work", side,
+      markPrice, marketValue: shares * markPrice, unrealizedPnl: (side === "short" ? -1 : 1) * shares * (markPrice - avgCost),
+    }],
+  }));
   const quote = (symbol: string, price: number, change: number, overrides: Partial<Quote> = {}): TickerFinancials => ({
     annualStatements: [], quarterlyStatements: [], priceHistory: [],
     quote: {

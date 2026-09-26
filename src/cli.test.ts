@@ -13,6 +13,7 @@ import { createDefaultConfig } from "./types/config";
 import { TickerRepository } from "./data/ticker-repository";
 import type { TickerRecord } from "./types/ticker";
 import { createTestDataProvider } from "./test-support/data-provider";
+import { createTestTicker } from "./test-support/ticker";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
@@ -138,22 +139,7 @@ async function captureConsoleFailure(fn: () => Promise<unknown> | unknown): Prom
   }
 }
 
-function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "NVDA",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "NVIDIA Corporation",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
-}
+const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("NVDA", "NVIDIA Corporation", overrides);
 
 describe("CLI watchlist commands", () => {
   test("a help flag prints the command's help instead of running it", async () => {

@@ -7,6 +7,7 @@ import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInp
 import type { TickerRecord } from "../../../types/ticker";
 import { bringToFront } from "../../../plugins/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
+import { createTestTicker } from "../../../test-support/ticker";
 
 function makeDataProvider() {
   return createTestDataProvider({ id: "test" });
@@ -32,12 +33,12 @@ test("qualified command inputs persist each selected venue without copying exist
     });
     const state = createInitialState(createDefaultConfig(":memory:"));
     if (savedVenue) {
-      const saved = await tickerRepository.createTicker({
-        ticker: "ASML", name: "ASML Holding", exchange: savedVenue,
-        currency: savedVenue === "NASDAQ" ? "USD" : "EUR", portfolios: ["retirement"], watchlists: [],
+      const saved = await tickerRepository.createTicker(createTestTicker("ASML", "ASML Holding", {
+        exchange: savedVenue,
+        currency: savedVenue === "NASDAQ" ? "USD" : "EUR",
+        portfolios: ["retirement"],
         positions: [{ portfolio: "retirement", shares: 10, avgCost: 500, broker: "manual", currency: savedVenue === "NASDAQ" ? "USD" : "EUR" }],
-        custom: {}, tags: [],
-      });
+      }).metadata);
       state.tickers.set("ASML", saved);
     }
     const before = await tickerRepository.loadTicker("ASML");
@@ -64,10 +65,7 @@ test("qualified command inputs persist each selected venue without copying exist
 
 test("command ticker resolution persists the verified future without switching to a saved equity", async () => {
   const state = createInitialState(createDefaultConfig(":memory:"));
-  const equity: TickerRecord = { metadata: {
-    ticker: "ESF", name: "Eurotech", exchange: "MTA", currency: "EUR",
-    portfolios: ["long-term"], watchlists: [], positions: [], custom: {}, tags: [],
-  } };
+  const equity: TickerRecord = createTestTicker("ESF", "Eurotech", { exchange: "MTA", currency: "EUR", portfolios: ["long-term"] });
   state.tickers.set("ESF", equity);
   const original = structuredClone(equity);
   const created: TickerRecord[] = [];
@@ -149,20 +147,7 @@ describe("createPaneTemplateOrThrow", () => {
   test("uses an explicit shared symbol instead of the recipient's active ticker", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
     const state = createInitialState(config);
-    const msft: TickerRecord = {
-      metadata: {
-        ticker: "MSFT",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Microsoft",
-        portfolios: [],
-        watchlists: [],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    };
+    const msft: TickerRecord = createTestTicker("MSFT", "Microsoft", { broker_contracts: [] });
     state.tickers.set("MSFT", msft);
     let createdSymbol: string | null | undefined;
 
@@ -211,20 +196,7 @@ describe("createPaneTemplateOrThrow", () => {
     }] as never;
     const state = createInitialState({ ...config, layout });
     state.focusedPaneId = "quote-monitor:1";
-    const tsla: TickerRecord = {
-      metadata: {
-        ticker: "TSLA",
-        exchange: "NASDAQ",
-        currency: "USD",
-        name: "Tesla",
-        portfolios: [],
-        watchlists: [],
-        positions: [],
-        broker_contracts: [],
-        custom: {},
-        tags: [],
-      },
-    };
+    const tsla: TickerRecord = createTestTicker("TSLA", "Tesla", { broker_contracts: [] });
     state.tickers.set("TSLA", tsla);
     let createdOptions: { symbol?: string } | undefined | null = null;
     let createdBinding: unknown = "unset";

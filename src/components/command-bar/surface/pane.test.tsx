@@ -9,8 +9,8 @@ import {
   createCommandBarTestControls,
   emitKeypress,
   makeQuoteMonitorPaneSettingsDescriptor,
-  makeTicker,
 } from "./test-harness";
+import { createTestTicker } from "../../../test-support/ticker";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -607,7 +607,7 @@ describe("CommandBar pane and layout routes", () => {
 
     testSetup = await testRender(<CommandBarHarness
       query="CMP AMD"
-      extraTickers={[makeTicker("AMD", "Advanced Micro Devices")]}
+      extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
       configurePluginRegistry={(pluginRegistry) => {
         registerComparisonChartPane(pluginRegistry, {
           wizard: [{ key: "tickers", label: "Tickers", type: "text" }],
