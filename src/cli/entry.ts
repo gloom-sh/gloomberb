@@ -3,6 +3,7 @@ import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
+import { measurePerfAsync } from "../utils/perf-marks";
 import type { CliLaunchRequest } from "../types/plugin";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -13,19 +14,13 @@ import {
   smokePluginHost,
 } from "./native-smoke";
 
-async function launchOpenTuiApp(options: {
-  cliLaunchRequest?: CliLaunchRequest | null;
-  cliArgs?: string[];
-}): Promise<void> {
+async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
   const { startOpenTuiApp } = await import("../renderers/opentui/start");
-  await restoreExtractedPlugins();
-  const externalPlugins = await loadExternalPlugins("tui");
-  await startOpenTuiApp({
-    externalPlugins,
-    cliArgs: options.cliArgs ?? [],
-    skipCliDispatch: true,
-    cliLaunchRequest: options.cliLaunchRequest ?? null,
-  });
+  // Before the catalog is read, so a plugin that moved out of this repository is
+  // available in the same session rather than only after a restart.
+  await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
+  const externalPlugins = await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
+  await startOpenTuiApp({ externalPlugins, cliLaunchRequest });
 }
 
 export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise<void> {
@@ -46,13 +41,8 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     process.exit(0);
   }
 
-  if (!command) {
-    await launchOpenTuiApp({});
-    return;
-  }
-
-  if ((command === "launch-ui" || command === "ui") && !rawArgs.some(isCliHelpFlag)) {
-    await launchOpenTuiApp({ cliArgs: rawArgs.slice(1) });
+  if (!command || ((command === "launch-ui" || command === "ui") && !rawArgs.some(isCliHelpFlag))) {
+    await launchOpenTuiApp();
     return;
   }
 
@@ -60,10 +50,7 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;
   if (dispatchResult.kind === "launch-ui") {
-    await launchOpenTuiApp({
-      cliLaunchRequest: dispatchResult.request,
-      cliArgs: [],
-    });
+    await launchOpenTuiApp(dispatchResult.request);
     return;
   }
 

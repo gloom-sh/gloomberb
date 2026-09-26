@@ -48,7 +48,7 @@ head -c 200000 /tmp/gloomberb-test.log | grep -aE "<pattern>" | head -20
 
 ```bash
 ps -Ao pid,%cpu,etime,command \
-  | grep -iE "mpv|yt-dlp|ffmpeg|ffplay|tail -c|strings|bun run dev|bun src/index.tsx" \
+  | grep -iE "mpv|yt-dlp|ffmpeg|ffplay|tail -c|strings|bun run dev|bun src/cli/entry.ts" \
   | grep -v grep
 tmux ls 2>&1
 ```
@@ -76,7 +76,7 @@ Gloomberb doubles as a CLI tool. CLI commands are the **fastest way to verify da
 
 ### Running commands
 
-Use `bun start <command>` for one-shot checks. It runs `src/index.tsx` once; `bun run dev` adds `--watch` and is for working on the interactive app.
+Use `bun start <command>` for one-shot checks. It runs `src/cli/entry.ts` once, like the installed `gloomberb`; `bun run dev` adds `--watch` and is for working on the interactive app.
 
 ```bash
 bun start help                          # Every command, grouped

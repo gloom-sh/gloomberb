@@ -1,12 +1,10 @@
 import { getGloomberbHome } from "../../data/config/home";
 import { existsSync, mkdirSync } from "fs";
 import { App } from "../../app";
-import { dispatchCli } from "../../cli/index";
 import { getDataDir, initDataDir, setConfigStoreHost } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
-import { loadExternalPlugins } from "../../plugins/loader";
-import { restoreExtractedPlugins } from "../../cli/restore-plugins";
+import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { setPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
 import { createNodePluginManager } from "../../plugins/manager-node";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
@@ -31,14 +29,13 @@ import { flushPendingPersistence } from "../../state/persist-scheduler";
 // app are both browser contexts but differ in what plugins may do.
 setCurrentPluginTarget("tui");
 
+/** The CLI entry restores and loads external plugins and dispatches commands before it starts the app. */
 export interface StartOpenTuiAppOptions {
-  externalPlugins?: Awaited<ReturnType<typeof loadExternalPlugins>>;
-  cliArgs?: string[];
-  skipCliDispatch?: boolean;
-  cliLaunchRequest?: CliLaunchRequest | null;
+  externalPlugins: LoadedExternalPlugin[];
+  cliLaunchRequest: CliLaunchRequest | null;
 }
 
-export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Promise<void> {
+export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: StartOpenTuiAppOptions): Promise<void> {
   setConfigStoreHost(nodeConfigStoreHost);
   debugLog.interceptConsole();
 
@@ -74,26 +71,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
     },
   };
 
-  const cliArgs = options.cliArgs ?? process.argv.slice(2);
-  // Before the catalog is read, so a plugin that moved out of this repository is
-  // available in the same session rather than only after a restart. Placed here
-  // rather than in the CLI entry because `src/index.tsx` starts the app directly
-  // and would otherwise skip it.
-  if (!options.externalPlugins) {
-    await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
-  }
-
   setPluginManager(createNodePluginManager("tui"));
-
-  const externalPlugins = options.externalPlugins ?? await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
-  let cliLaunchRequest = options.cliLaunchRequest ?? null;
-  if (!options.skipCliDispatch && cliArgs.length > 0) {
-    const dispatchResult = await dispatchCli(cliArgs, { externalPlugins });
-    if (dispatchResult.kind === "handled") return;
-    if (dispatchResult.kind === "launch-ui") {
-      cliLaunchRequest = dispatchResult.request;
-    }
-  }
 
   let host: Awaited<ReturnType<typeof createOpenTuiHost>> | null = null;
   let exitTimer: ReturnType<typeof setTimeout> | null = null;

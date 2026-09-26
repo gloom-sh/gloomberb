@@ -29,7 +29,7 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
         failUnknownCliCommand: async () => {},
       }));
       mock.module(${modulePath("renderers/opentui/start.tsx")}, () => ({ startOpenTuiApp: async (options) => {
-        calls.push({ launch: options.externalPlugins.map((entry) => entry.plugin.id), args: options.cliArgs, request: options.cliLaunchRequest });
+        calls.push({ launch: options.externalPlugins.map((entry) => entry.plugin.id), request: options.cliLaunchRequest });
       }}));
       process.on("beforeExit", () => console.log(JSON.stringify(calls)));
     `);
@@ -48,7 +48,7 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
         expect(calls).toEqual([
           ...(args[0] === "handoff" ? ["catalog:cli", "dispatch:handoff"] : []),
           "restore", "catalog:tui",
-          { launch: ["tv"], args: args[0] === "launch-ui" ? ["TV"] : [], request: args[0] === "handoff" ? { source: "handoff" } : null },
+          { launch: ["tv"], request: args[0] === "handoff" ? { source: "handoff" } : null },
         ]);
       }
     }

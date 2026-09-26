@@ -3,10 +3,10 @@
   "version": "0.15.2",
   "packageManager": "bun@1.3.11",
   "description": "Market research and portfolio tracker for the terminal",
-  "module": "src/index.tsx",
+  "module": "src/public/index.ts",
   "type": "module",
   "exports": {
-    ".": "./src/index.tsx",
+    ".": "./src/public/index.ts",
     "./types/plugin": "./src/types/plugin.ts",
     "./types/persistence": "./src/types/persistence.ts",
     "./ui": "./src/ui/index.tsx",
@@ -50,8 +50,8 @@
     "patches"
   ],
   "scripts": {
-    "dev": "bun run --watch src/index.tsx",
-    "start": "bun src/index.tsx",
+    "dev": "bun run --watch src/cli/entry.ts",
+    "start": "bun src/cli/entry.ts",
     "build": "bun run scripts/build.ts",
     "build:all": "bun run scripts/build.ts --all",
     "desktop:view:build": "bun run scripts/build-electrobun-view.ts",

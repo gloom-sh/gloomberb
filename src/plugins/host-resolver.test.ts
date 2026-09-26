@@ -20,7 +20,7 @@ describe("plugin host resolver", () => {
   test("covers every runtime export of the package that a plugin can import", async () => {
     // A new entry in package.json `exports` that the resolver does not know
     // about resolves from a source install and fails from a packaged one.
-    // Only the app entry and the test harness are deliberately left out.
+    // Only the empty package root and the test harness are deliberately left out.
     const pkg = await Bun.file(join(import.meta.dir, "../../package.json")).json() as { exports: Record<string, string> };
     const exported = Object.keys(pkg.exports)
       .filter((key) => key !== "." && key !== "./package.json" && key !== "./test-support")

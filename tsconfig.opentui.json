@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "files": [
-    "src/index.tsx"
+    "src/cli/entry.ts"
   ]
 }

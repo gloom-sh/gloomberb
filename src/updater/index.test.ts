@@ -126,7 +126,7 @@ describe("detectUpdateAction", () => {
   test("skips updates when launched from source under bun", () => {
     expect(detectUpdateAction(
       "/opt/homebrew/bin/bun",
-      ["/opt/homebrew/bin/bun", "src/index.tsx"],
+      ["/opt/homebrew/bin/bun", "src/cli/entry.ts"],
     )).toBeNull();
   });
 
@@ -159,7 +159,7 @@ describe("resolveSelfUpdateTargetPath", () => {
   it("rejects Bun runtime paths", () => {
     expect(resolveSelfUpdateTargetPath(
       "/Users/ada/.bun/bin/bun",
-      ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
+      ["/Users/ada/.bun/bin/bun", "src/cli/entry.ts"],
     )).toBeNull();
   });
 
@@ -261,7 +261,7 @@ describe("checkForUpdate", () => {
     try {
       Object.defineProperty(process, "execPath", { value: "/Users/ada/.bun/bin/bun", configurable: true });
       Object.defineProperty(process, "argv", {
-        value: ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
+        value: ["/Users/ada/.bun/bin/bun", "src/cli/entry.ts"],
         configurable: true,
       });
 
@@ -454,7 +454,7 @@ describe("performUpdate", () => {
     try {
       Object.defineProperty(process, "execPath", { value: "/Users/ada/.bun/bin/bun", configurable: true });
       Object.defineProperty(process, "argv", {
-        value: ["/Users/ada/.bun/bin/bun", "src/index.tsx"],
+        value: ["/Users/ada/.bun/bin/bun", "src/cli/entry.ts"],
         configurable: true,
       });
 

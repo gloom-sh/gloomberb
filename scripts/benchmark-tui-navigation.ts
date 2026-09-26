@@ -61,7 +61,7 @@ try {
     String(options.height),
     "-c",
     root,
-    `env HOME=${shellQuote(sandboxHome)} GLOOMBERB_INTERACTION_PERF=${shellQuote(options.output)} bun src/index.tsx`,
+    `env HOME=${shellQuote(sandboxHome)} GLOOMBERB_INTERACTION_PERF=${shellQuote(options.output)} bun src/cli/entry.ts`,
   ]);
   await runTmux(["pipe-pane", "-o", "-t", session, `cat > ${shellQuote(appLog)}`]);
 
