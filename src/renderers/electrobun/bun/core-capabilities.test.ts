@@ -47,6 +47,9 @@ test("desktop notes reach the terminal's files through the Bun process", async (
     await expect(files.load("BLOCKED")).rejects.toBeDefined();
     await files.save("MSFT", "desktop edit");
     expect(readFileSync(join(dataDir, "MSFT.md"), "utf-8")).toBe("desktop edit");
+    // A symbol with a "/" saves into a subfolder, as the desktop always has.
+    await files.save("BRK/B", "slash");
+    expect(readFileSync(join(dataDir, "BRK", "B.md"), "utf-8")).toBe("slash");
     await expect(invoke("read", { dataDir, file: "config.json" })).rejects.toThrow("not a notes file");
   } finally {
     rmSync(dataDir, { recursive: true, force: true });

@@ -12,7 +12,6 @@
     "src/renderers/electrobun/view/main.tsx",
     "src/renderers/electrobun/view/app-services.ts",
     "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",
-    "src/renderers/electrobun/view/notes-files.ts",
     "src/renderers/electrobun/view/native-stubs/**/*.ts",
     "src/renderers/browser/main.tsx",
     "src/renderers/share/main.tsx",

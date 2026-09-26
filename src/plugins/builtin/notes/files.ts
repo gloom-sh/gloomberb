@@ -61,8 +61,10 @@ export function diskNotesFilesIO(dataDir: string): NotesFilesIO {
     },
     async write(file, text) {
       const { mkdir, writeFile } = await nodeFs();
-      await mkdir(dataDir, { recursive: true });
-      await writeFile(pathOf(file), text, "utf-8");
+      const path = pathOf(file);
+      // The folder the file sits in, which is below dataDir when a symbol has a "/".
+      await mkdir(path.slice(0, path.lastIndexOf("/")) || dataDir, { recursive: true });
+      await writeFile(path, text, "utf-8");
     },
     async delete(file) {
       const { unlink } = await nodeFs();
