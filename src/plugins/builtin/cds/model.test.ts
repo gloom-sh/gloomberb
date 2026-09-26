@@ -286,5 +286,13 @@ describe("5Y spread chart", () => {
     // No level 30 to 45 days back: a gap is not a month's move.
     expect(spreadFigures([level("2026-06-01", 72.5), level("2026-09-25", 60)]).map((item) => item.id))
       .toEqual(["spread", "range"]);
+    // Nor is the Sep 20 roll to a contract that trades wider.
+    expect(spreadFigures([
+      { ...level("2026-08-24", 222), maturity: "2031-06-20" },
+      level("2026-09-25", 235),
+    ]).map((item) => item.id)).toEqual(["spread", "range"]);
+    // Below 100bp the range keeps the level's precision, so the level never falls outside it.
+    expect(spreadFigures([level("2026-09-01", 52.1), level("2026-09-10", 44), level("2026-09-25", 38.6)])
+      .find((item) => item.id === "range")?.value).toBe("38.6 to 52.1bp");
   });
 });

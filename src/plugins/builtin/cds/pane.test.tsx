@@ -183,8 +183,8 @@ describe("CdsPane", () => {
     expect(requested).toEqual(["Oracle Corporation"]);
     expect(frame).toContain("235bp");
     expect(frame).toContain("2026-09-25");
-    // A month earlier the level was 222bp.
-    expect(frame).toContain("+13bp");
+    // A month back is the Jun 2031 contract; the roll to Dec is not a move.
+    expect(frame).not.toContain("1M");
     expect(frame).toContain("181 to 235bp");
     // Axis labels in basis points, and the chart sits between figures and table.
     expect(lines.slice(0, tableHeader).some((line) => /\d+bp\s*$/.test(line.trimEnd()))).toBe(true);

@@ -5,12 +5,14 @@ import {
   DataTableView,
   EmptyState, PaneStatusBody, StatGrid,
   usePaneMenuItems,
+  usePaneNoticeFooter,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment,
   type StatItem
 } from "../../../components";
 import type { CloudCdsHistoryPointPayload } from "../../../api-client";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { staticSeries } from "../../../components/chart/static/series";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -181,7 +183,15 @@ function CdsTradeTable({
 const NO_TRADES: CdsTrade[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
 const PANELS = [{ id: "main" }];
-const formatAxisBp = (value: number) => `${Math.round(value)}bp`;
+const DAY_MS = 86_400_000;
+/** A daily series: a few levels still span two weeks, so the axis reads days, not hours. */
+const MIN_CHART_SPAN_MS = 14 * DAY_MS;
+
+/** Whole bp unless the plotted range is narrow enough for rounding to repeat a label. */
+function formatAxisBp(value: number, domain: CompositeAxisDomain): string {
+  const span = domain.max - domain.min;
+  return `${value.toFixed(span >= 10 ? 0 : span >= 1 ? 1 : 2)}bp`;
+}
 
 function SpreadChart({ points, width, height, focused }: {
   points: readonly CloudCdsHistoryPointPayload[];
@@ -192,10 +202,17 @@ function SpreadChart({ points, width, height, focused }: {
   const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
     id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
   })], [points]);
+  const viewport = useMemo(() => {
+    const first = Date.parse(`${points[0]?.date}T00:00:00Z`);
+    const last = Date.parse(`${points.at(-1)?.date}T00:00:00Z`);
+    return last - first < MIN_CHART_SPAN_MS
+      ? { start: new Date(last - MIN_CHART_SPAN_MS), end: new Date(last + DAY_MS) }
+      : undefined;
+  }, [points]);
   return (
     <Box paddingX={1} flexShrink={0}>
       <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={height}
-        focused={focused} showLegend={false} navigable={false} showTimeAxis
+        focused={focused} showLegend={false} navigable={false} showTimeAxis viewport={viewport}
         formatAxisValue={formatAxisBp} remoteKind="cds-spread-history" />
     </Box>
   );
@@ -278,6 +295,12 @@ export function CdsPane({
   const history = useAsyncResource(historyIssuer ? historyRequest : null);
   useAutoRefresh(history.updatedAt, history.load);
   const spreadPoints = history.data?.points ?? NO_POINTS;
+  // Without it a failed request reads as a name with no 5Y line.
+  usePaneNoticeFooter({
+    registrationId: `${paneId}:cds-history`,
+    focused,
+    notices: historyIssuer && history.error && !history.data ? ["5Y spread history unavailable."] : [],
+  });
 
   useEffect(() => {
     if (issuerQuery) return;
@@ -341,7 +364,7 @@ export function CdsPane({
   ], [activity, asOfLabel]);
   usePaneStatusFooter({
     registrationId: paneId,
-    loading: status === "loading",
+    loading: status === "loading" || (!!historyIssuer && history.loading && !history.data),
     error,
     info: footerInfo,
   });
