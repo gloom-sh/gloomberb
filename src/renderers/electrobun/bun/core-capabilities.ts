@@ -1,5 +1,3 @@
-import { mkdir, readFile, unlink, writeFile } from "fs/promises";
-import { dirname, join } from "path";
 import {
   BROKER_CAPABILITY_ID,
   NOTES_FILES_CAPABILITY_ID,
@@ -7,11 +5,11 @@ import {
   type PluginCapability,
 } from "../../../capabilities";
 import type { AppServices } from "../../../core/app-services";
+import { diskNotesFilesIO, isNotesFile } from "../../../plugins/builtin/notes/files";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 
 const DESKTOP_CORE_PLUGIN_ID = "desktop-core";
-const NOTES_INDEX_FILE = "__quick-notes-index__.json";
 
 const BROKER_INVOKE_OPERATIONS = new Set([
   "validate",
@@ -186,78 +184,32 @@ function createBrokerCapability(options: CoreCapabilityOptions): PluginCapabilit
   };
 }
 
-function notePath(dataDir: string, symbol: string): string {
-  return join(dataDir, `${symbol}.md`);
-}
-
-function notesIndexPath(dataDir: string): string {
-  return join(dataDir, NOTES_INDEX_FILE);
-}
-
-async function readTextOrEmpty(path: string): Promise<string> {
-  try {
-    return await readFile(path, "utf-8");
-  } catch {
-    return "";
-  }
-}
-
-async function writeTextEnsuringParent(path: string, value: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, value, "utf-8");
-}
-
-async function deleteFileIfPresent(path: string): Promise<void> {
-  try {
-    await unlink(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-}
-
+/**
+ * The desktop view's notes: it runs `NotesFiles` over these operations, so
+ * the files and their layout are the ones the terminal reads.
+ */
 function createNotesFilesCapability(): PluginCapability {
+  const io = (input: any) => diskNotesFilesIO(requireString(input.dataDir, "Notes dataDir"));
+  const file = (input: any) => {
+    const name = requireString(input.file, "Notes file");
+    if (!isNotesFile(name)) throw new Error(`"${name}" is not a notes file.`);
+    return name;
+  };
   return {
     id: NOTES_FILES_CAPABILITY_ID,
     kind: "notes-files",
     name: "Notes Files",
     operations: {
-      load: op((input: any) => readTextOrEmpty(notePath(
-        requireString(input.dataDir, "Notes dataDir"),
-        requireString(input.symbol, "Notes symbol"),
-      ))),
-      save: op(async (input: any) => {
-        await writeTextEnsuringParent(
-          notePath(
-            requireString(input.dataDir, "Notes dataDir"),
-            requireString(input.symbol, "Notes symbol"),
-          ),
-          optionalString(input.notes) ?? "",
-        );
+      read: op((input: any) => io(input).read(file(input))),
+      write: op(async (input: any) => {
+        await io(input).write(file(input), optionalString(input.text) ?? "");
         return null;
       }, "action"),
       delete: op(async (input: any) => {
-        await deleteFileIfPresent(notePath(
-          requireString(input.dataDir, "Notes dataDir"),
-          requireString(input.symbol, "Notes symbol"),
-        ));
+        await io(input).delete(file(input));
         return null;
       }, "action"),
-      loadQuickNotesIndex: op(async (input: any) => {
-        const raw = await readTextOrEmpty(notesIndexPath(requireString(input.dataDir, "Notes dataDir")));
-        if (!raw.trim()) return [];
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return [];
-        }
-      }),
-      saveQuickNotesIndex: op(async (input: any) => {
-        await writeTextEnsuringParent(
-          notesIndexPath(requireString(input.dataDir, "Notes dataDir")),
-          JSON.stringify(input.entries ?? []),
-        );
-        return null;
-      }, "action"),
+      listKeys: op((input: any) => io(input).listKeys()),
     },
   };
 }

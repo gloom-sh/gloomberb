@@ -42,6 +42,8 @@ import { createElectrobunAppServices } from "./app-services";
 import { getRendererPlugins } from "../../../plugins/catalog-ui";
 import { loadDesktopExternalPlugin, loadDesktopExternalPlugins } from "./external-plugins";
 import { setPluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
+import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
+import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -103,6 +105,11 @@ async function boot() {
   installElectrobunHttpFetchTransport();
   installElectrobunCloudApiFetchTransport();
   installElectrobunUpdateHost();
+  // Notes are files only the Bun process can reach, so the notes plugin's
+  // file operations run there.
+  setNotesFilesIO((dataDir) => remoteNotesFilesIO(dataDir, (operationId, payload) => (
+    backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
+  )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
