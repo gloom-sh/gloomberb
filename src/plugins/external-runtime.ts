@@ -10,32 +10,18 @@ import type { LoadedExternalPlugin } from "./loader";
  * the app launched. This is that list, with the startup array as its seed.
  */
 
-type Listener = () => void;
-
 let entries: LoadedExternalPlugin[] = [];
 let seeded: readonly LoadedExternalPlugin[] | null = null;
-const listeners = new Set<Listener>();
-
-function notify(): void {
-  for (const listener of listeners) {
-    try { listener(); } catch { /* one bad listener must not stop the rest */ }
-  }
-}
 
 /** Adopts the startup list once; later calls with the same array are no-ops. */
 export function seedExternalPlugins(initial: readonly LoadedExternalPlugin[] | undefined): void {
   if (!initial || seeded === initial) return;
   seeded = initial;
   entries = [...initial];
-  notify();
 }
 
 export function listExternalPlugins(): readonly LoadedExternalPlugin[] {
   return entries;
-}
-
-export function findExternalPlugin(pluginId: string): LoadedExternalPlugin | undefined {
-  return entries.find((entry) => entry.plugin.id === pluginId);
 }
 
 /** Replaces the entry for the same plugin id or directory, or appends. */
@@ -47,7 +33,6 @@ export function upsertExternalPlugin(entry: LoadedExternalPlugin): void {
   ));
   if (index >= 0) entries = [...entries.slice(0, index), entry, ...entries.slice(index + 1)];
   else entries = [...entries, entry];
-  notify();
 }
 
 /**
@@ -61,10 +46,4 @@ export function removeExternalPlugin(pluginId: string, directory?: string): void
   ));
   if (next.length === entries.length) return;
   entries = next;
-  notify();
-}
-
-export function subscribeExternalPlugins(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
 }

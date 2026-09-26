@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { NewsService } from "./aggregator";
+import { DEFAULT_GLOBAL_QUERY } from "./news-model";
 import { newsProvider, type NewsCapability } from "../capabilities";
 import type { MarketNewsItem } from "../types/news-source";
 
@@ -120,98 +121,9 @@ describe("NewsService", () => {
     agg.register(makeSource("b", [high]));
     await agg.poll();
 
-    const stories = agg.getTopStories(10);
+    const stories = agg.getQueryState(DEFAULT_GLOBAL_QUERY).articles;
     expect(stories).toHaveLength(1);
     expect(stories[0]!.importance).toBe(80);
-  });
-
-  it("getTopStories returns items sorted by importance descending", async () => {
-    const items = [
-      makeItem({ url: "https://a.com/1", importance: 30 }),
-      makeItem({ url: "https://a.com/2", importance: 90 }),
-      makeItem({ url: "https://a.com/3", importance: 60 }),
-    ];
-    agg.register(makeSource("a", items));
-    await agg.poll();
-
-    const stories = agg.getTopStories(10);
-    expect(stories[0]!.importance).toBe(90);
-    expect(stories[1]!.importance).toBe(60);
-    expect(stories[2]!.importance).toBe(30);
-  });
-
-  it("getFirehose returns items sorted by publishedAt descending", async () => {
-    const now = Date.now();
-    const items = [
-      makeItem({ url: "https://b.com/1", publishedAt: new Date(now - 3000) }),
-      makeItem({ url: "https://b.com/2", publishedAt: new Date(now - 1000) }),
-      makeItem({ url: "https://b.com/3", publishedAt: new Date(now - 2000) }),
-    ];
-    agg.register(makeSource("b", items));
-    await agg.poll();
-
-    const firehose = agg.getFirehose(undefined, 10);
-    expect(firehose[0]!.url).toBe("https://b.com/2");
-    expect(firehose[1]!.url).toBe("https://b.com/3");
-    expect(firehose[2]!.url).toBe("https://b.com/1");
-  });
-
-  it("getFirehose filters to items after `since`", async () => {
-    const now = Date.now();
-    const cutoff = new Date(now - 2000);
-    const items = [
-      makeItem({ url: "https://c.com/old", publishedAt: new Date(now - 5000) }),
-      makeItem({ url: "https://c.com/new", publishedAt: new Date(now - 1000) }),
-    ];
-    agg.register(makeSource("c", items));
-    await agg.poll();
-
-    const firehose = agg.getFirehose(cutoff, 10);
-    expect(firehose).toHaveLength(1);
-    expect(firehose[0]!.url).toBe("https://c.com/new");
-  });
-
-  it("getBySector filters to items containing the sector in categories", async () => {
-    const items = [
-      makeItem({ url: "https://d.com/1", categories: ["tech", "earnings"] }),
-      makeItem({ url: "https://d.com/2", categories: ["energy"] }),
-      makeItem({ url: "https://d.com/3", categories: ["tech"] }),
-    ];
-    agg.register(makeSource("d", items));
-    await agg.poll();
-
-    const tech = agg.getBySector("tech", 10);
-    expect(tech).toHaveLength(2);
-    expect(tech.every((i) => i.categories.includes("tech"))).toBe(true);
-  });
-
-  it("getBreaking returns items that are isBreaking=true", async () => {
-    const items = [
-      makeItem({ url: "https://e.com/1", isBreaking: true }),
-      makeItem({ url: "https://e.com/2", isBreaking: false }),
-    ];
-    agg.register(makeSource("e", items));
-    await agg.poll();
-
-    const breaking = agg.getBreaking(10);
-    expect(breaking.some((i) => i.url === "https://e.com/1")).toBe(true);
-    expect(breaking.every((i) => i.url !== "https://e.com/2")).toBe(true);
-  });
-
-  it("getBreaking returns recent items with importance >= 70", async () => {
-    const now = Date.now();
-    const items = [
-      makeItem({ url: "https://f.com/recent-high", publishedAt: new Date(now - 30 * 60 * 1000), importance: 75, isBreaking: false }),
-      makeItem({ url: "https://f.com/recent-low", publishedAt: new Date(now - 30 * 60 * 1000), importance: 50, isBreaking: false }),
-      makeItem({ url: "https://f.com/old-high", publishedAt: new Date(now - 2 * 60 * 60 * 1000), importance: 90, isBreaking: false }),
-    ];
-    agg.register(makeSource("f", items));
-    await agg.poll();
-
-    const breaking = agg.getBreaking(10);
-    expect(breaking.some((i) => i.url === "https://f.com/recent-high")).toBe(true);
-    expect(breaking.every((i) => i.url !== "https://f.com/recent-low")).toBe(true);
-    expect(breaking.every((i) => i.url !== "https://f.com/old-high")).toBe(true);
   });
 
   it("retains at most 10000 articles", async () => {
@@ -224,7 +136,7 @@ describe("NewsService", () => {
     agg.register(makeSource("g", items));
     await agg.poll();
 
-    expect(agg.getFirehose(undefined, 20_000)).toHaveLength(10_000);
+    expect(agg.getQueryState(DEFAULT_GLOBAL_QUERY).articles).toHaveLength(10_000);
   });
 
   it("subscribe callback fires on poll and getVersion increments", async () => {
@@ -366,8 +278,8 @@ describe("NewsService", () => {
 
     const dispose = agg.register(makeCachedSource("cached", [cached]));
 
-    expect(agg.getFirehose(undefined, 10)).toHaveLength(1);
-    expect(agg.getFirehose(undefined, 10)[0]!.url).toBe(cached.url);
+    expect(agg.getQueryState(DEFAULT_GLOBAL_QUERY).articles).toHaveLength(1);
+    expect(agg.getQueryState(DEFAULT_GLOBAL_QUERY).articles[0]!.url).toBe(cached.url);
     expect(callCount).toBe(1);
 
     dispose();
@@ -380,7 +292,7 @@ describe("NewsService", () => {
 
     await agg.poll();
 
-    expect(agg.getFirehose(undefined, 10)).toHaveLength(0);
+    expect(agg.getQueryState(DEFAULT_GLOBAL_QUERY).articles).toHaveLength(0);
   });
 
   it("ticker queries continue past empty high-priority sources", async () => {

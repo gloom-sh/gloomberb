@@ -7,6 +7,7 @@ import {
   normalizeWizardFields,
   summarizeWorkflowFieldValue,
 } from "./helpers";
+import { slugifyName } from "../../utils/slugify";
 
 const workflowFields: CommandBarWorkflowField[] = [
   {

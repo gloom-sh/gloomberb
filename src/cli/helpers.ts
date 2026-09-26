@@ -6,17 +6,11 @@ import {
 } from "../utils/format";
 import { formatMarketPriceWithCurrency, type MarketFormatOptions } from "../market-data/market/format";
 import { cliStyles, colorBySign } from "../utils/cli-output";
-
-export { slugifyName } from "../utils/slugify";
 import type { AppConfig } from "../types/config";
 import type { Watchlist, TickerRecord } from "../types/ticker";
 
 export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
-}
-
-export function formatSignedPercentRaw(value: number | undefined): string {
-  return formatPercentRaw(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -101,15 +95,6 @@ export function formatTimestamp(timestamp: number | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-export function formatNullableCompact(value: number | undefined): string {
-  return value == null ? "—" : formatCompact(value);
-}
-
-export function formatStatementValue(value: number | undefined, kind: "compact" | "eps" = "compact"): string {
-  if (value == null) return "—";
-  return kind === "eps" ? formatNumber(value, 2) : formatCompact(value);
 }
 
 export function formatBidAsk(

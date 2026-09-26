@@ -5,7 +5,8 @@ import { AssetDataRouter } from "../sources/provider-router";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { MarketDataCoordinator } from "./coordinator";
 import type { InstrumentRef } from "./request-types";
-import { buildChartKey, buildInstrumentKey, buildOptionsKey, toMarketDataContext } from "./selectors";
+import { buildChartKey, buildOptionsKey, toMarketDataContext } from "./selectors";
+import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 
 useRegularMarketSession();
@@ -21,7 +22,7 @@ test("coordinator quote batching and independent resource keys retain two same-s
     const entries = await c.loadQuotesBatch([a, b]);
     expect(calls.sort()).toEqual([100, 110]); expect(entries.map(e => e.data?.price)).toEqual([10, 11]);
     expect(c.getQuoteEntry(a).data?.price).toBe(10); expect(c.getQuoteEntry(b).data?.price).toBe(11);
-    expect(buildInstrumentKey(a)).not.toBe(buildInstrumentKey(b));
+    expect(instrumentIdentityKey(a)).not.toBe(instrumentIdentityKey(b));
     expect(buildChartKey({ instrument: a, bufferRange: "1Y" })).not.toBe(buildChartKey({ instrument: b, bufferRange: "1Y" }));
     expect(buildOptionsKey({ instrument: a })).not.toBe(buildOptionsKey({ instrument: b }));
   } finally { c.destroy(); }

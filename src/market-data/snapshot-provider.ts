@@ -2,7 +2,8 @@ import type { MarketDataRequestContext, DataProvider, CachedFinancialsTarget, Ti
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { clipPriceHistoryToRange } from "../time-series/history-window";
-import { getPresetResolution, normalizeChartResolutionSupport, TIME_RANGE_ORDER, type ManualChartResolution } from "../time-series/resolution";
+import { getPresetResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../time-series/resolution";
+import { TIME_RANGES } from "../time-series/range";
 import type { InstrumentRef } from "./request-types";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { quoteMetadataFromQuote } from "./quotes/metadata";
@@ -54,7 +55,7 @@ export class SnapshotHistoryUnavailableError extends Error {
 }
 
 const SNAPSHOT_RESOLUTIONS = normalizeChartResolutionSupport(
-  TIME_RANGE_ORDER.map((maxRange) => ({ resolution: getPresetResolution(maxRange), maxRange })),
+  TIME_RANGES.map((maxRange) => ({ resolution: getPresetResolution(maxRange), maxRange })),
 );
 
 function lookup<T>(entries: ReadonlyArray<readonly [string, T]>) {

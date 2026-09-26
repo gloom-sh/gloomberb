@@ -1,5 +1,4 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
-import type { MultiLineChartSeries } from "../../../../components/chart/static";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
 import { formatNumber } from "../../../../utils/format";
@@ -9,6 +8,13 @@ import type {
   RelationshipRegressionStats,
   RelationshipReturnPoint,
 } from "./model";
+
+export interface MultiLineChartSeries {
+  id: string;
+  label: string;
+  color: string;
+  points: Array<{ date: Date; value: number | null }>;
+}
 
 export function formatNullableNumber(value: number | null | undefined, decimals: number): string {
   return typeof value === "number" && Number.isFinite(value) ? formatNumber(value, decimals) : "-";

@@ -1,6 +1,7 @@
 import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
-import { countCollectionTickers, findWatchlist, slugifyName } from "../../../../cli/helpers";
+import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
+import { slugifyName } from "../../../../utils/slugify";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import {
   cliStyles,

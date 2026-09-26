@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { instrumentFromTicker } from "../../market-data/request-types";
-import { buildInstrumentKey, buildQuoteKey } from "../../market-data/selectors";
+import { buildQuoteKey } from "../../market-data/selectors";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
 import type { TickerRecord } from "../../types/ticker";
 import { buildLiveQuoteTarget, useSampledValue } from "./live-ticker-financials";
 
@@ -72,8 +73,8 @@ describe("buildLiveQuoteTarget", () => {
     // Outside the portfolio the same ticker is a plain listing.
     const listing = buildLiveQuoteTarget("AAPL", { ...ticker, metadata: { ...ticker.metadata, broker_contracts: [] } })!;
     expect(listing.route).toBe("auto");
-    expect(buildInstrumentKey({ symbol: listing.symbol, exchange: listing.exchange, instrument: null }))
-      .not.toBe(buildInstrumentKey(read));
+    expect(instrumentIdentityKey({ symbol: listing.symbol, exchange: listing.exchange, instrument: null }))
+      .not.toBe(instrumentIdentityKey(read));
   });
 });
 

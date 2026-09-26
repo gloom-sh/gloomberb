@@ -2,8 +2,6 @@ import type {
   HeadlessPaneArgumentDef,
   HeadlessPaneDefinition,
   HeadlessPaneOptionDef,
-  HeadlessPaneOptionType,
-  HeadlessPaneOptionValue,
   PaneDef,
   PaneTemplateDef,
 } from "../../types/plugin";
@@ -11,8 +9,6 @@ import type {
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
 export type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
 export type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
-export type PaneFunctionOptionType = HeadlessPaneOptionType;
-export type PaneFunctionOptionValue = HeadlessPaneOptionValue;
 export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
 

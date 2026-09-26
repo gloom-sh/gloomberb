@@ -8,11 +8,10 @@ import type { DataProvider, MarketDataRequestContext } from "../../types/data-pr
 import type { PriceHistoryResult } from "../../types/price-history";
 import { fetchHistoryResult, historyResolutionForInterval, InvalidHistoryResultError, normalizeHistoryResult } from "../history-result";
 import type { PricePoint } from "../../types/financials";
-import type { TimeRange } from "../../time-series/range";
+import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import {
   isIntradayResolution,
   normalizeChartResolutionSupport,
-  TIME_RANGE_ORDER,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
@@ -201,8 +200,8 @@ function expandedHistoryCacheVariantKeys(
     resolution?: ManualChartResolution;
   },
 ): string[] {
-  const start = TIME_RANGE_ORDER.indexOf(input.range);
-  const ranges = start >= 0 ? TIME_RANGE_ORDER.slice(start) : [input.range];
+  const start = TIME_RANGES.indexOf(input.range);
+  const ranges = start >= 0 ? TIME_RANGES.slice(start) : [input.range];
   const keys: string[] = [];
   for (const range of ranges) {
     const { cacheVariantKeys } = makeHistoryRequestIdentity(deps, {

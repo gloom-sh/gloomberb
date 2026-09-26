@@ -482,8 +482,6 @@ async function handleBackendRequest(
     case "http.stream.open":
     case "http.stream.cancel":
       return httpStreamBridge.handle(rpc, request);
-    case "remote.forward":
-      return forwardRemoteControlRequest(request.payload.request);
     case "capability.invoke":
     case "capability.cancel":
     case "capability.subscribe":
@@ -508,7 +506,6 @@ async function handleBackendRequest(
         resolveDetachedFrame: (paneId) => detachedWindowManager.resolveFrame(paneId),
         focusDetachedPane: (paneId) => detachedWindowManager.focusDetachedPane(paneId),
       });
-    case "pluginState.set":
     case "pluginState.setMany":
     case "pluginState.delete":
       return handleDesktopPluginStateRequest(requireServices().persistence.pluginState, request);
@@ -528,7 +525,6 @@ async function handleBackendRequest(
       return activateExternalPlugin(requireServices().pluginRegistry, request.payload.directory);
     case "plugins.deactivate":
       return deactivateExternalPlugin(requireServices().pluginRegistry, request.payload.pluginId);
-    case "host.restart":
     case "host.exit":
     case "host.windowControl":
     case "host.windowFullscreen":
@@ -550,7 +546,6 @@ async function handleBackendRequest(
         getRpcWindowKey,
         isWindowFullscreenForRpcKey,
         request,
-        restartDesktopApp,
         rpc,
         teardownServices,
         controlWindowForRpcKey,
