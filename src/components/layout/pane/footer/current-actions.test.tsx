@@ -75,6 +75,10 @@ test.each(["registration-id", "active-scope"])("obsolete handlers cannot resume 
 test("unchanged footer labels invoke the current selection for both hint and segment mouse actions", async () => {
   await act(async () => { setup = await testRender(<Harness />, { width: 60, height: 1 }); });
   await settle();
+  const filterColumn = setup!.captureCharFrame().split("\n")[0]!.indexOf("[f]ilter");
+  await act(async () => { await setup!.mockMouse.release(filterColumn + 1, 0); });
+  await settle();
+  expect(actions).toEqual([]);
   await click("[f]ilter");
   await change({ selected: "B" });
   await click("[f]ilter");
