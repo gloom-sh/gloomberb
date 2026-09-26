@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
-  },
-  "files": [
-    "src/renderers/electrobun/bun/index.ts"
-  ]
-}

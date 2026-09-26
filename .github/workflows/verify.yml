@@ -52,8 +52,9 @@ jobs:
       - name: Build and audit browser app
         run: bun run web:audit
 
+      # Reuses the bundle the audit step just built.
       - name: Dry-run Cloudflare Worker
-        run: bun run cloudflare:dry-run
+        run: bunx wrangler deploy --dry-run --env production
 
       - name: Build core binary
         run: bun run build
@@ -81,7 +82,7 @@ jobs:
         run: bun run web:build
 
       - name: Deploy terminal Worker
-        run: bunx wrangler deploy --config wrangler.production.jsonc --message "$GITHUB_SHA"
+        run: bunx wrangler deploy --env production --message "$GITHUB_SHA"
 
       - name: Verify production
         shell: bash
