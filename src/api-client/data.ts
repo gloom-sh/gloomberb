@@ -17,6 +17,7 @@ import {
   normalizeTweetSearchResponse,
 } from "./normalizers";
 import {
+  cloudCdsHistoryPath,
   cloudCdsPath,
   cloudCongressHousePath,
   cloudEarningsCallsPath,
@@ -48,6 +49,7 @@ import {
   cloudSearchPath,
   cloudTickerTweetsPath,
   cloudTweetSearchPath,
+  type CloudCdsHistoryParams,
   type CloudCdsParams,
   type CloudCongressHouseParams,
   type CloudEarningsCallsParams,
@@ -63,6 +65,7 @@ import {
 import type {
   CloudAnalystResearchPayload,
   CloudShortInterestPayload,
+  CloudCdsHistoryResponse,
   CloudCdsResponse,
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
@@ -379,6 +382,10 @@ export class CloudDataApi {
 
   async getCloudCds(params: CloudCdsParams = {}): Promise<CloudCdsResponse> {
     return this.request<CloudCdsResponse>(cloudCdsPath(params));
+  }
+
+  async getCloudCdsHistory(params: CloudCdsHistoryParams): Promise<CloudCdsHistoryResponse> {
+    return this.request<CloudCdsHistoryResponse>(cloudCdsHistoryPath(params), { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudCongressHouse(

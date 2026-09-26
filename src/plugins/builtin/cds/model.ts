@@ -1,5 +1,6 @@
-import type { CloudCdsTradePayload } from "../../../api-client";
-import type { DataTableColumn } from "../../../components";
+import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
+import type { DataTableColumn, StatItem } from "../../../components";
+import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -408,4 +409,63 @@ export function nextSort<Id extends string>(
   if (current.columnId !== columnId) return { columnId, direction: "asc" };
   if (current.direction === "asc") return { columnId, direction: "desc" };
   return fallback;
+}
+
+const DAY_MS = 86_400_000;
+
+/** Rows for the 5Y chart above the trade table; 0 leaves the table alone. */
+export function spreadChartHeight(width: number, height: number): number {
+  if (width < 40 || height < 16) return 0;
+  return Math.max(5, Math.min(12, Math.floor(height * 0.38)));
+}
+
+/** Three weeks without a level breaks the line instead of drawing one nobody traded. */
+const CHART_GAP_MS = 21 * DAY_MS;
+
+export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]): TimeSeriesPoint[] {
+  const out: TimeSeriesPoint[] = [];
+  let previous: number | null = null;
+  for (const point of points) {
+    const time = Date.parse(`${point.date}T00:00:00Z`);
+    if (!Number.isFinite(time)) continue;
+    if (previous !== null && time - previous > CHART_GAP_MS) {
+      const gap = new Date(previous + DAY_MS);
+      out.push({ date: gap, observedAt: gap, value: null });
+    }
+    const date = new Date(time);
+    out.push({ date, observedAt: date, value: point.spreadBp });
+    previous = time;
+  }
+  return out;
+}
+
+function formatSpreadChange(value: number): string {
+  const rounded = Math.round(value);
+  return `${rounded > 0 ? "+" : ""}${rounded}bp`;
+}
+
+/**
+ * The latest level, its move over a month, and the range of what the chart
+ * shows. The month compares against the last level at least 30 days older,
+ * and only when one exists within 45 days, so a gap never passes for a move.
+ */
+export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
+  const latest = points.at(-1);
+  if (!latest) return [];
+  const latestTime = Date.parse(`${latest.date}T00:00:00Z`);
+  const monthAgo = points.findLast((point) => {
+    const age = latestTime - Date.parse(`${point.date}T00:00:00Z`);
+    return age >= 30 * DAY_MS && age <= 45 * DAY_MS;
+  });
+  const levels = points.map((point) => point.spreadBp);
+  return [
+    { id: "spread", label: "5Y spread", value: formatBp(latest.spreadBp), detail: latest.date },
+    ...(monthAgo ? [{ id: "change", label: "1M", value: formatSpreadChange(latest.spreadBp - monthAgo.spreadBp) }] : []),
+    ...(points.length >= 2 ? [{
+      id: "range",
+      label: "Range",
+      value: `${Math.round(Math.min(...levels))} to ${formatBp(Math.max(...levels))}`,
+      detail: `since ${points[0]!.date}`,
+    }] : []),
+  ];
 }

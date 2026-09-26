@@ -1,24 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CompositeChart,
   DataTableStackView,
   DataTableView,
   EmptyState, PaneStatusBody, StatGrid,
   usePaneMenuItems,
   type DataTableCell,
   type DataTableKeyEvent,
-  type PaneFooterSegment
+  type PaneFooterSegment,
+  type StatItem
 } from "../../../components";
+import type { CloudCdsHistoryPointPayload } from "../../../api-client";
+import { staticSeries } from "../../../components/chart/static/series";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { TextAttributes } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
-import { loadCdsActivity, type CdsActivityLoader } from "./client";
+import {
+  loadCdsActivity,
+  loadCdsSpreadHistory,
+  type CdsActivityLoader,
+  type CdsSpreadHistoryLoader,
+} from "./client";
 import {
   DEFAULT_ISSUER_SORT,
   DEFAULT_TRADE_SORT,
@@ -36,6 +45,9 @@ import {
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
+  spreadChartHeight,
+  spreadChartPoints,
+  spreadFigures,
   summarizeIssuers,
   tradesForIssuer,
   type CdsIssuerSummary,
@@ -167,10 +179,55 @@ function CdsTradeTable({
 }
 
 const NO_TRADES: CdsTrade[] = [];
+const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
+const PANELS = [{ id: "main" }];
+const formatAxisBp = (value: number) => `${Math.round(value)}bp`;
+
+function SpreadChart({ points, width, height, focused }: {
+  points: readonly CloudCdsHistoryPointPayload[];
+  width: number;
+  height: number;
+  focused: boolean;
+}) {
+  const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
+    id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
+  })], [points]);
+  return (
+    <Box paddingX={1} flexShrink={0}>
+      <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={height}
+        focused={focused} showLegend={false} navigable={false} showTimeAxis
+        formatAxisValue={formatAxisBp} remoteKind="cds-spread-history" />
+    </Box>
+  );
+}
+
+/** The issuer's figures, then its 5Y line when the pane has rows to spare for it. */
+function IssuerHeader({ issuer, points, width, height, focused }: {
+  /** Left out in the stack detail, whose title already names the issuer. */
+  issuer?: string;
+  points: readonly CloudCdsHistoryPointPayload[];
+  width: number;
+  height: number;
+  focused: boolean;
+}) {
+  const items: StatItem[] = [
+    ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
+    ...spreadFigures(points),
+  ];
+  const chartHeight = points.length >= 2 ? spreadChartHeight(width, height) : 0;
+  if (!items.length) return null;
+  return (
+    <Box flexDirection="column" flexShrink={0}>
+      <StatGrid items={items} width={width} />
+      {chartHeight ? <SpreadChart points={points} width={width} height={chartHeight} focused={focused} /> : null}
+    </Box>
+  );
+}
 
 interface CdsPaneProps extends PaneProps {
   /** Injected by tests so the pane renders without the cloud backend. */
   loadActivity?: CdsActivityLoader;
+  loadHistory?: CdsSpreadHistoryLoader;
 }
 
 export function CdsPane({
@@ -179,6 +236,7 @@ export function CdsPane({
   width,
   height,
   loadActivity = loadCdsActivity,
+  loadHistory = loadCdsSpreadHistory,
 }: CdsPaneProps) {
   const { symbol, ticker } = usePaneTickerIdentity();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
@@ -209,6 +267,18 @@ export function CdsPane({
   ), [issuerQuery, selectedIssuerKey, tradeSort, trades]);
   const selectedSummary = issuers.find((row) => row.key === selectedIssuerKey) ?? null;
 
+  // The 5Y line follows the name the tape was queried for: the resolved company
+  // for a bound ticker, the open row in the market-wide list.
+  const historyIssuer = issuerQuery
+    ? activity?.issuer ?? null
+    : detailOpen && selectedSummary ? selectedSummary.issuer : null;
+  const loadHistoryRef = useRef(loadHistory);
+  loadHistoryRef.current = loadHistory;
+  const historyRequest = useCallback(() => loadHistoryRef.current(historyIssuer!), [historyIssuer]);
+  const history = useAsyncResource(historyIssuer ? historyRequest : null);
+  useAutoRefresh(history.updatedAt, history.load);
+  const spreadPoints = history.data?.points ?? NO_POINTS;
+
   useEffect(() => {
     if (issuerQuery) return;
     if (selectedIssuerKey && issuers.some((row) => row.key === selectedIssuerKey)) return;
@@ -234,6 +304,7 @@ export function CdsPane({
     if (!isPlainKey(event, "r")) return;
     event.preventDefault();
     load();
+    if (historyIssuer) history.load();
   }, { enabled: focused });
 
   const handleKey = useCallback((event: DataTableKeyEvent, cycle: (step: 1 | -1) => void): boolean => {
@@ -289,8 +360,9 @@ export function CdsPane({
     // The pane title already carries the ticker, so the body leads with the
     // issuer name the backend was actually queried for, which is the expanded
     // company name once instrument search has resolved a bare symbol.
-    const resolved = (
-      <StatGrid items={[{ id: "issuer", label: "Issuer", value: activity.issuer ?? issuerQuery }]} width={width} />
+    const header = (
+      <IssuerHeader issuer={activity.issuer ?? issuerQuery} points={spreadPoints}
+        width={width} height={height} focused={focused} />
     );
     return (
       <CdsTradeTable
@@ -303,7 +375,7 @@ export function CdsPane({
         selectedId={selectedTradeId}
         onSelect={setSelectedTradeId}
         onKeyDown={handleTradeKey}
-        before={resolved}
+        before={header}
       />
     );
   }
@@ -320,6 +392,10 @@ export function CdsPane({
           trades={visibleTrades}
           focused={focused && detailOpen}
           width={width}
+          before={spreadPoints.length ? (
+            <IssuerHeader points={spreadPoints} width={width} height={Math.max(0, height - 2)}
+              focused={focused && detailOpen} />
+          ) : undefined}
           sort={tradeSort}
           onSort={(columnId) => setTradeSort((current) => nextSort(current, columnId, DEFAULT_TRADE_SORT))}
           selectedId={selectedTradeId}

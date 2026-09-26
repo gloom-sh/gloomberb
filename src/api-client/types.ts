@@ -404,6 +404,28 @@ export interface CloudCdsResponse {
   trades: CloudCdsTradePayload[];
 }
 
+/** One New York trade date of an issuer's on-the-run 5Y spread. */
+export interface CloudCdsHistoryPointPayload {
+  date: string;
+  /** Median of the day's prints in basis points. */
+  spreadBp: number;
+  prints: number;
+  /** Prints that reported the spread; the rest were converted from their upfront. */
+  reported: number;
+  /** The contract on the run that day, e.g. "2031-12-20". */
+  maturity: string;
+}
+
+export interface CloudCdsHistoryResponse {
+  source: string;
+  /** The matched reference entity, or null when nothing on the tape matched. */
+  issuer: string | null;
+  tenor: string;
+  currency: string | null;
+  asOf: string | null;
+  points: CloudCdsHistoryPointPayload[];
+}
+
 export interface CloudShortInterestPointPayload {
   settlementDate: string;
   sharesShort: number;
