@@ -3,6 +3,12 @@ import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { signedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
+import {
+  attachSignedInBrokerPersistence,
+  refreshSignedInBrokers,
+  resetSignedInBrokerCatalog,
+} from "../../../brokers/signed-in/catalog";
 import { Button, DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
@@ -15,6 +21,7 @@ import {
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { BrokerDetailContent, type BrokerEditKey } from "./detail";
@@ -279,6 +286,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 }
 
 export const brokerManagerModule: PluginModule = {
+  broker: signedInBrokerAdapter,
   panes: [
     {
       id: "brokers",
@@ -306,6 +314,10 @@ export const brokerManagerModule: PluginModule = {
   ],
 
   setup(ctx) {
+    attachSignedInBrokerPersistence(ctx.persistence);
+    // The app fetches the connector list; a CLI run and the desktop's Bun half read the saved one.
+    if (getCurrentPluginTarget() !== "cli") void refreshSignedInBrokers();
+
     ctx.registerCommand({
       id: "open-brokers",
       label: "Open Brokers",
@@ -316,5 +328,9 @@ export const brokerManagerModule: PluginModule = {
         ctx.showPane("brokers");
       },
     });
+  },
+
+  dispose() {
+    resetSignedInBrokerCatalog();
   },
 };
