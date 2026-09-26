@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { computeDatedReturns } from "./metrics";
+import { resolveDatedReturns } from "./metrics";
 import { qualifySharpeCadence, qualifyReturnTimestamps } from "./sharpe-cadence";
 import { buildBenchmarkReturnSeries, buildPortfolioBetaResult, buildPortfolioChartTargets, buildPortfolioReturnSeries, PORTFOLIO_BENCHMARK } from "./pane-model";
 import { buildChartKey } from "../../../market-data/selectors";
 import type { TickerRecord } from "../../../types/ticker";
 
+const datedReturns = (history: PricePoint[]) => resolveDatedReturns(history).returns;
+
 function qualify(dates: string[], exchange = "NYSE") {
   const history = dates.map((date, index): PricePoint => ({ date: new Date(date), close: 100 + index }));
-  const returns = computeDatedReturns(history);
+  const returns = datedReturns(history);
   const snapshot = JSON.stringify({ history, returns });
   const result = qualifySharpeCadence(returns, [{ symbol: "CONTROL", exchange, history }]);
   expect(JSON.stringify({ history, returns })).toBe(snapshot);
@@ -49,9 +51,9 @@ test("intraday endpoint observations do not establish daily closes; exact timest
     { date: new Date("2026-06-01T20:00:00Z"), close: 100 },
     { date: new Date("2026-06-02T20:00:00Z"), close: 101 },
   ];
-  expect(qualifySharpeCadence(computeDatedReturns(history), [{ symbol: "CONTROL", exchange: "NYSE", history }]).issue?.kind).toBe("non-daily-observations");
+  expect(qualifySharpeCadence(datedReturns(history), [{ symbol: "CONTROL", exchange: "NYSE", history }]).issue?.kind).toBe("non-daily-observations");
   const corrected = [...history.slice(1), { ...history[1]!, close: 100.5 }];
-  const result = qualifySharpeCadence(computeDatedReturns(corrected), [{ symbol: "CONTROL", exchange: "NYSE", history: corrected }]);
+  const result = qualifySharpeCadence(datedReturns(corrected), [{ symbol: "CONTROL", exchange: "NYSE", history: corrected }]);
   expect(result.supported).toBe(true);
   expect(result.basis.checkedAt).toBe("2026-09-12");
   expect(result.basis.nasdaq.years).not.toContain(2029);
@@ -76,12 +78,12 @@ test("verified actual session closes retain early-close returns", () => {
 test("beta timestamp eligibility does not borrow a calendar or a missing benchmark venue", () => {
   const history = ["2029-01-02", "2029-01-04"].map((date, index) => ({ date: new Date(date), close: 100 + index }));
   const source = { symbol: "SPY", exchange: "", history };
-  const returns = computeDatedReturns(history);
+  const returns = datedReturns(history);
   expect(qualifyReturnTimestamps(returns, [source]).supported).toBe(true);
   expect(qualifySharpeCadence(returns, [source]).supported).toBe(false);
   const nonmidnight = history.map((point) => ({ ...point, date: new Date(point.date.getTime() + 14.5 * 3_600_000) }));
-  expect(qualifyReturnTimestamps(computeDatedReturns(nonmidnight), [{ ...source, history: nonmidnight }]).supported).toBe(false);
-  expect(qualifyReturnTimestamps(computeDatedReturns(nonmidnight), [{ ...source, exchange: "NYSE", history: nonmidnight }]).supported).toBe(true);
+  expect(qualifyReturnTimestamps(datedReturns(nonmidnight), [{ ...source, history: nonmidnight }]).supported).toBe(false);
+  expect(qualifyReturnTimestamps(datedReturns(nonmidnight), [{ ...source, exchange: "NYSE", history: nonmidnight }]).supported).toBe(true);
 });
 
 test("beta validates both sources on its actual overlap, preserving valid comparison beyond unrelated old observations", () => {

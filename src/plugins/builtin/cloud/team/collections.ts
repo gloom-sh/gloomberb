@@ -23,10 +23,6 @@ export function parseCollectionRef(localId: string): ScopedCollectionRef {
   return { scope: "team", teamId: rest.slice(0, separator), id: rest.slice(separator + 1) };
 }
 
-export function isTeamCollectionId(localId: string): boolean {
-  return parseCollectionRef(localId).scope === "team";
-}
-
 /** The config entries a team's server collections map onto. */
 export function collectionsToConfigEntries(
   collections: readonly TeamCollection[],

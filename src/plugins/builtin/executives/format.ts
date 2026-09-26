@@ -49,10 +49,3 @@ export function equityShare(row: CloudExecutiveRowPayload): string {
   if (equity <= 0) return "";
   return `${Math.round((equity / row.total) * 100)}%`;
 }
-
-/** "President and CEO" trimmed to fit a column. */
-export function shortTitle(title: string, max: number): string {
-  const cleaned = title.replace(/\s+/g, " ").trim();
-  if (cleaned.length <= max) return cleaned;
-  return `${cleaned.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
-}

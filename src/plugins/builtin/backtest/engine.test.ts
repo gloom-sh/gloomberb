@@ -1,11 +1,18 @@
 import { expect, test } from "bun:test";
 import { runBacktest } from "./engine";
-import { evaluateOperand, evaluateRule, parseRule, ruleText, ruleWarmup, type BacktestBar } from "./rules";
+import { evaluateOperand, evaluateRule, parseRule, ruleWarmup, type BacktestBar, type Operand, type Rule } from "./rules";
 import { BACKTEST_PRESETS } from "./presets";
 
 const day = (index: number) => new Date(Date.UTC(2020, 0, 1) + index * 86_400_000).toISOString().slice(0, 10);
 const bars = (closes: number[], open = (close: number) => close): BacktestBar[] =>
   closes.map((close, index) => ({ date: day(index), open: open(close), high: close, low: close, close }));
+
+const operandText = (operand: Operand): string =>
+  operand.kind === "number" ? String(operand.value)
+    : operand.kind === "field" ? operand.field
+      : `${operand.name}(${operand.args.join(",")})`;
+const ruleText = (rule: Rule) =>
+  rule.map((condition) => `${operandText(condition.left)} ${condition.comparator} ${operandText(condition.right)}`).join(" and ");
 
 test("rules parse with defaults, bounds and AND, and every preset parses", () => {
   expect(ruleText(parseRule("SMA(50) crosses above sma(200) and rsi < 70"))).toBe("sma(50) crosses above sma(200) and rsi(14) < 70");

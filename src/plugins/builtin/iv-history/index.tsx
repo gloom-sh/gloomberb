@@ -4,7 +4,6 @@ import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 import { IvHistoryPane } from "./pane";
 import { IvScreenPane, VCA_SCOPE_OPTIONS } from "./screen-pane";
 
-export { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 
 export const ivHistoryModule: PluginModule = {
   panes: [{

@@ -2,8 +2,6 @@ import type { PluginModule } from "../plugin-module";
 import { volatilityHeadless } from "./headless";
 import { VolatilityPane } from "./pane";
 
-export { volatilityHeadless } from "./headless";
-export { VolatilityPane } from "./pane";
 
 export const volatilityModule: PluginModule = {
   panes: [{

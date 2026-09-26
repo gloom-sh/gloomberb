@@ -3,7 +3,6 @@ import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types
 import type { CompositePanelScene } from "./types";
 import {
   renderCompositePanelBitmap,
-  resolveCompositeColumnWidth,
   resolveCompositeOhlcWidth,
 } from "./rasterizer";
 import { buildCompositeColumnLayout } from "./column-layout";
@@ -624,10 +623,6 @@ describe("composite chart renderers", () => {
       },
     )!;
 
-    expect(resolveCompositeColumnWidth(
-      scene.panels[0]!.series[0]!.points,
-      2_000,
-    )).toBe(72);
     expect(resolveCompositeOhlcWidth(
       scene.panels[0]!.series[0]!.points,
       2_000,

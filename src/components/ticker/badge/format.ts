@@ -70,7 +70,3 @@ export function getTickerBadgeText(options: TickerBadgeTextOptions): string {
   return candidates.find((text) => displayWidth(text) <= maxTextWidth)
     ?? candidates[candidates.length - 1]!;
 }
-
-export function getTickerBadgeCellWidth(options: TickerBadgeTextOptions): number {
-  return displayWidth(getTickerBadgeText(options)) + TICKER_BADGE_CHROME_WIDTH;
-}

@@ -138,10 +138,3 @@ export async function loadShortInterest(
   }
   return { records: await fetchYahooShortInterest(symbol), source: "yahoo", cloudSessionRequired };
 }
-
-export async function fetchShortInterest(
-  symbol: string,
-  cloudClient: Pick<typeof apiClient, "getCloudShortInterest"> = apiClient,
-): Promise<ShortInterestRecord[]> {
-  return (await loadShortInterest(symbol, cloudClient)).records;
-}

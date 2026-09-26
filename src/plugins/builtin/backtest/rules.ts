@@ -80,14 +80,6 @@ export function parseRule(text: string): Rule {
   });
 }
 
-export function operandText(operand: Operand): string {
-  if (operand.kind === "number") return String(operand.value);
-  if (operand.kind === "field") return operand.field;
-  return `${operand.name}(${operand.args.join(",")})`;
-}
-export const ruleText = (rule: Rule) =>
-  rule.map((condition) => `${operandText(condition.left)} ${condition.comparator} ${operandText(condition.right)}`).join(" and ");
-
 /** Sessions of history an operand needs before its first value. */
 export function operandWarmup(operand: Operand): number {
   if (operand.kind !== "indicator") return 0;
