@@ -7,6 +7,9 @@
  * from the view, since the renderer cannot open sockets itself.
  */
 export { getBrokerRemoteClient, setBrokerRemoteClient } from "../brokers/remote-broker-adapter";
+/** A broker connection held by the user's Gloom Cloud account, confined to `/brokers/{broker}`. */
+export { cloudBrokerLink } from "../brokers/cloud-broker-link";
+export type { CloudBrokerLink } from "../brokers/cloud-broker-link";
 /**
  * Placeholder a broker shows instead of a stored secret, so an edited profile
  * can tell "unchanged" from "cleared". Broker plugins that persist a derived
