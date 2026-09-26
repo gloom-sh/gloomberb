@@ -8,18 +8,10 @@ import { assetDataProvider } from "../../capabilities";
 import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
-import {
-  attachTestRegistry,
-  brokerInstance,
-  cleanupProviderRouterTestFiles,
-  createBrokerConfig,
-  createTempDbPath,
-  fallbackProvider,
-  makeArticle,
-  makeFinancials,
-  makeQuote,
-  setBrokerInstances,
-} from "./test-support";
+import { attachTestRegistry, brokerInstance, createBrokerConfig, setBrokerInstances } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTestArticle } from "../../test-support/news";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 useRegularMarketSession();
 
@@ -27,7 +19,7 @@ const originalConsoleError = console.error;
 
 afterEach(() => {
   console.error = originalConsoleError;
-  cleanupProviderRouterTestFiles();
+  removeTempDbFiles();
 });
 
 describe("AssetDataRouter", () => {
@@ -61,7 +53,7 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getQuote() {
         yahooCalls.quote += 1;
-        return makeQuote({ providerId: "yahoo", price: 212.5 });
+        return createTestQuote({ providerId: "yahoo", price: 212.5 });
       },
       async getPriceHistory() {
         yahooCalls.history += 1;
@@ -143,7 +135,7 @@ describe("AssetDataRouter", () => {
   });
 
   test("routes news calls only through sources with news capability", async () => {
-    const article = makeArticle("source-news");
+    const article = createTestArticle("source-news");
     const marketOnlySource: CapabilityRouteSource = {
       id: "market-only",
       name: "Market Only",
@@ -492,7 +484,7 @@ describe("AssetDataRouter", () => {
       variantKey: "",
       sourceKey: providerSourceKey,
     };
-    const regularReference = makeQuote({
+    const regularReference = createTestQuote({
       symbol: optionSymbol,
       providerId: "yahoo",
       price: 15.775,
@@ -1135,10 +1127,10 @@ describe("AssetDataRouter", () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials();
+        return createTestFinancials();
       },
       async getQuote(ticker) {
-        return makeQuote({
+        return createTestQuote({
           symbol: ticker,
           price: 252.375,
           change: 1.5,
@@ -1168,7 +1160,7 @@ describe("AssetDataRouter", () => {
       ...fallbackProvider,
       async getTickerFinancials() {
         providerCalls.fallback += 1;
-        return makeFinancials({
+        return createTestFinancials({
           annualStatements: [{ date: "2025-12-31", totalRevenue: 1000 }],
           quarterlyStatements: [{ date: "2025-12-31", totalRevenue: 250 }],
           fundamentals: { revenue: 1000, netIncome: 200 },
@@ -1187,8 +1179,8 @@ describe("AssetDataRouter", () => {
       },
       async getTickerFinancials() {
         providerCalls.broker += 1;
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             price: 125,
             change: 2,
             changePercent: 1.6,
@@ -1225,9 +1217,9 @@ describe("AssetDataRouter", () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 0.245 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             symbol: "IQE.L",
             listingExchangeName: "LSE",
             providerId: "yahoo",
@@ -1252,9 +1244,9 @@ describe("AssetDataRouter", () => {
         return [];
       },
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 24.5 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             symbol: "IQE",
             providerId: "ibkr",
             price: 24.5,
@@ -1286,7 +1278,7 @@ describe("AssetDataRouter", () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           profile: {
             description: "Builds hardware and software.",
             sector: "Technology",
@@ -1306,7 +1298,7 @@ describe("AssetDataRouter", () => {
         return [];
       },
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           fundamentals: { revenue: 1000, netIncome: 200 },
         });
       },
@@ -1331,8 +1323,8 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             price: 125,
             change: 2,
             changePercent: 1.6,
@@ -1351,11 +1343,11 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getTickerFinancials() {
         yahooCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           annualStatements: [{ date: "2025-12-31", totalRevenue: 391035000000 }],
           quarterlyStatements: [{ date: "2026-03-31", totalRevenue: 95359000000 }],
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 124 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             price: 124,
             change: 1,
             changePercent: 0.8,
@@ -1388,9 +1380,9 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           profile: { sector: "Technology" },
-          quote: makeQuote({ symbol: "LINK", price: 25 }),
+          quote: createTestQuote({ symbol: "LINK", price: 25 }),
           quarterlyStatements: [
             { date: "2025-03-31", operatingCashFlow: -271_000 },
             { date: "2025-06-30", operatingCashFlow: -138_000 },
@@ -1409,7 +1401,7 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getTickerFinancials() {
         yahooCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", operatingCashFlow: -601_000 },
             { date: "2024-06-30", operatingCashFlow: -488_000 },
@@ -1456,9 +1448,9 @@ describe("AssetDataRouter", () => {
       priority: 100,
       async getTickerFinancials() {
         cloudSingleCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           profile: { sector: "Technology" },
-          quote: makeQuote({ symbol: "AMD", price: 125 }),
+          quote: createTestQuote({ symbol: "AMD", price: 125 }),
           quarterlyStatements: shallowCloudRows,
         });
       },
@@ -1466,9 +1458,9 @@ describe("AssetDataRouter", () => {
         cloudBatchCalls += 1;
         return targets.map((target) => ({
           target,
-          financials: makeFinancials({
+          financials: createTestFinancials({
             profile: { sector: "Technology" },
-            quote: makeQuote({ symbol: target.symbol, price: 125 }),
+            quote: createTestQuote({ symbol: target.symbol, price: 125 }),
             quarterlyStatements: shallowCloudRows,
           }),
         }));
@@ -1482,7 +1474,7 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getTickerFinancials() {
         yahooCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", eps: 0.07 },
             { date: "2024-06-30", eps: 0.16 },
@@ -1524,9 +1516,9 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           profile: { sector: "Technology" },
-          quote: makeQuote({ symbol: "LINK", price: 25 }),
+          quote: createTestQuote({ symbol: "LINK", price: 25 }),
           quarterlyStatements: [
             { date: "2025-03-31", operatingCashFlow: -271_000 },
             { date: "2025-06-30", operatingCashFlow: -138_000 },
@@ -1545,7 +1537,7 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getTickerFinancials() {
         yahooCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           quarterlyStatements: [
             { date: "2024-03-31", operatingCashFlow: -601_000 },
             { date: "2024-06-30", operatingCashFlow: -488_000 },
@@ -1577,9 +1569,9 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           annualStatements: [{ date: "2025-12-31", totalRevenue: 1000 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             symbol: "AMD",
             price: 125,
             change: 2,
@@ -1596,7 +1588,7 @@ describe("AssetDataRouter", () => {
       priority: 1000,
       async getTickerFinancials() {
         yahooCalls += 1;
-        return makeFinancials({
+        return createTestFinancials({
           annualStatements: [{
             date: "2025-12-31",
             totalRevenue: 900,
@@ -1627,9 +1619,9 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           profile: { sector: "Industrials" },
-          quote: makeQuote({
+          quote: createTestQuote({
             symbol: "HY9H",
             price: 1295,
             change: -95,
@@ -1647,8 +1639,8 @@ describe("AssetDataRouter", () => {
       name: "Yahoo",
       priority: 1000,
       async getTickerFinancials() {
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             symbol: "HY9H.F",
             price: 1305,
             change: -85,
@@ -1680,8 +1672,8 @@ describe("AssetDataRouter", () => {
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             price: 125,
             change: 2,
             changePercent: 1.6,
@@ -1701,9 +1693,9 @@ describe("AssetDataRouter", () => {
       name: "Yahoo",
       priority: 1000,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 124 }],
-          quote: makeQuote({
+          quote: createTestQuote({
             price: 124,
             change: 1,
             changePercent: 0.8,
@@ -1766,7 +1758,7 @@ describe("AssetDataRouter", () => {
         return [];
       },
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           fundamentals: { revenue: 1000, netIncome: 200 },
         });
       },
@@ -1777,7 +1769,7 @@ describe("AssetDataRouter", () => {
     const seedRouter = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials();
+        return createTestFinancials();
       },
     }, [], persistence.resources);
     attachTestRegistry(seedRouter, { brokers: [["ibkr", broker]] });
@@ -1792,7 +1784,7 @@ describe("AssetDataRouter", () => {
     const refreshedRouter = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials({
+        return createTestFinancials({
           profile: {
             description: "Provides enterprise data storage platforms.",
             sector: "Technology",
@@ -1820,8 +1812,8 @@ describe("AssetDataRouter", () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
       async getTickerFinancials() {
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             symbol: "IQE.L",
             listingExchangeName: "LSE",
             providerId: "yahoo",
@@ -1846,8 +1838,8 @@ describe("AssetDataRouter", () => {
         if (instance.id === "ibkr-flex") {
           throw new Error("Gateway mode is required for broker market data");
         }
-        return makeFinancials({
-          quote: makeQuote({
+        return createTestFinancials({
+          quote: createTestQuote({
             symbol: "IQE",
             providerId: "ibkr",
             price: 24.5,
@@ -1900,8 +1892,8 @@ describe("AssetDataRouter", () => {
         variantKey: "exchange=LSE",
         sourceKey: "provider:gloomberb-cloud",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "IQE",
           price: 23.1,
           currency: "GBp",
@@ -1928,8 +1920,8 @@ describe("AssetDataRouter", () => {
         variantKey: "exchange=LSE",
         sourceKey: "provider:yahoo",
       },
-      makeFinancials({
-        quote: makeQuote({
+      createTestFinancials({
+        quote: createTestQuote({
           symbol: "IQE.L",
           providerId: "yahoo",
           price: 0.231,

@@ -10,9 +10,8 @@ import {
   type AppAction,
 } from "../../../state/app/context";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials } from "../../../test-support/data-provider";
 import {
-  cloneLayout,
   createDefaultConfig,
   TICKER_RESEARCH_PANE_ID,
   type AppConfig,
@@ -34,6 +33,7 @@ import { FinancialsTab } from "./financials/tab";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestTicker } from "../../../test-support/ticker";
+import { createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "ticker-research:test";
 
@@ -53,15 +53,6 @@ const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
   width: number;
   height: number;
 }) => ReactElement;
-
-function makeFinancials(overrides: Partial<TickerFinancials> = {}): TickerFinancials {
-  return {
-    annualStatements: [],
-    quarterlyStatements: [],
-    priceHistory: [],
-    ...overrides,
-  };
-}
 
 function FinancialsTabHarness({ width }: { width: number }) {
   const config = createDefaultConfig("/tmp/gloomberb-test");
@@ -185,24 +176,12 @@ function createGatewayInstance(id = "ibkr-paper"): BrokerInstanceConfig {
 }
 
 function createDetailConfig(symbol: string, brokerInstances: BrokerInstanceConfig[] = []): AppConfig {
-  const config = createDefaultConfig("/tmp/gloomberb-test");
-  const layout = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: TICKER_RESEARCH_PANE_ID,
-      binding: { kind: "fixed" as const, symbol },
-    }],
-    floating: [],
-    detached: [],
-  };
-
-  return {
-    ...config,
-    brokerInstances,
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  };
+  const config = createTestPaneConfig("/tmp/gloomberb-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: TICKER_RESEARCH_PANE_ID,
+    binding: { kind: "fixed", symbol },
+  });
+  return { ...config, brokerInstances };
 }
 
 function createDetailState(
@@ -479,7 +458,7 @@ describe("TickerResearchPane", () => {
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
-        financials={makeFinancials({
+        financials={createTestFinancials({
           annualStatements: [{ date: "2024-12-31", totalRevenue: 1_000 }],
         })}
       />,
@@ -499,7 +478,7 @@ describe("TickerResearchPane", () => {
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
-        financials={makeFinancials({
+        financials={createTestFinancials({
           annualStatements: [{ date: "2024-12-31", totalRevenue: 1_000 }],
         })}
         activeTabId="financials"
@@ -720,7 +699,7 @@ describe("TickerResearchPane", () => {
             unrealizedPnl: 250,
           }],
         })}
-        financials={makeFinancials({
+        financials={createTestFinancials({
           quote: {
             symbol: "SAP",
             price: 125,
@@ -800,7 +779,7 @@ describe("TickerResearchPane", () => {
       <DetailHarness
         config={createDetailConfig("AAPL")}
         ticker={createTestTicker("AAPL")}
-        financials={makeFinancials({ priceHistory })}
+        financials={createTestFinancials({ priceHistory })}
       />,
       { width: 90, height: 24 },
     );

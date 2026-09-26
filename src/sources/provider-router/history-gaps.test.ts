@@ -8,9 +8,10 @@ import type { HeadlessPaneContext } from "../../types/headless";
 import { CHART_SPEC_VERSION, type ChartSpec } from "../../time-series/types";
 import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
 test("reported gaps survive router persistence, coordinator reuse and the actual chart consumer", async () => {
   const path = createTempDbPath("reported-history-gaps");

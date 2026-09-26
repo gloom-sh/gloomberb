@@ -3,7 +3,8 @@ import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider } from "../../types/data-provider";
 import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider } from "./test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 const daily = (last: string, close: number): PricePoint[] => ["2026-09-17", "2026-09-18", "2026-09-21", last]
   .map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), close: index === 3 ? close : 200 + index }));
@@ -11,7 +12,7 @@ const daily = (last: string, close: number): PricePoint[] => ["2026-09-17", "202
 function source(load: () => PricePoint[], calls: string[]): DataProvider {
   return { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistory() { calls.push(new Date().toISOString()); return load(); } };
 }
-afterEach(() => { setSystemTime(); cleanupProviderRouterTestFiles(); });
+afterEach(() => { setSystemTime(); removeTempDbFiles(); });
 
 test("daily history fetched before a close is refetched, and kept when the refetch fails", async () => {
   const calls: string[] = [];

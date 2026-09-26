@@ -18,30 +18,7 @@ import {
   syncBrokerInstances,
 } from "./sync-broker-instance";
 import { createTestTicker } from "../test-support/ticker";
-
-function createTickerRepository(initial: TickerRecord[] = []) {
-  const tickers = new Map(initial.map((ticker) => [ticker.metadata.ticker, ticker] as const));
-
-  return {
-    async loadAllTickers() {
-      return [...tickers.values()];
-    },
-    async loadTicker(symbol: string) {
-      return tickers.get(symbol) ?? null;
-    },
-    async saveTicker(ticker: TickerRecord) {
-      tickers.set(ticker.metadata.ticker, ticker);
-    },
-    async createTicker(metadata: TickerRecord["metadata"]) {
-      const ticker = { metadata };
-      tickers.set(metadata.ticker, ticker);
-      return ticker;
-    },
-    async deleteTicker(symbol: string) {
-      tickers.delete(symbol);
-    },
-  };
-}
+import { JsonTickerRepository } from "../data/json-ticker-repository";
 
 function createBrokerInstance(): BrokerInstanceConfig {
   return {
@@ -126,7 +103,7 @@ function createMultiAccountDemoBroker(): BrokerAdapter {
 
 describe("syncBrokerInstance", () => {
   test("preserves unavailable imported cost across serialization and replaces it only on source recovery", async () => {
-    const repository = createTickerRepository();
+    const repository = new JsonTickerRepository();
     let sourceCost: number | undefined;
     const adapter = createDemoBroker();
     adapter.importPositions = async () => [{ ticker: "AAPL", exchange: "NASDAQ", shares: 10,
@@ -134,7 +111,7 @@ describe("syncBrokerInstance", () => {
     let config = { ...createDefaultConfig("/unused-import-cost"), portfolios: [], brokerInstances: [createBrokerInstance()] };
     for (const cost of [undefined, Number.NaN, Infinity, 0, 100, undefined]) {
       sourceCost = cost;
-      const result = await syncBrokerInstance({ config, instanceId: "demo-broker", brokers: new Map([["demo", adapter]]), tickerRepository: repository as any });
+      const result = await syncBrokerInstance({ config, instanceId: "demo-broker", brokers: new Map([["demo", adapter]]), tickerRepository: repository });
       config = result.config as typeof config;
       const imported = result.tickers.get("AAPL")!;
       const reloaded = hydrateTickerMetadata(JSON.parse(JSON.stringify(imported.metadata)));
@@ -193,13 +170,13 @@ describe("syncBrokerInstance", () => {
       portfolios: [],
       brokerInstances: [createBrokerInstance()],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
 
     const result = await syncBrokerInstance({
       config,
       instanceId: "demo-broker",
       brokers: new Map([["demo", createDemoBroker()]]),
-      tickerRepository: tickerRepository as any,
+      tickerRepository,
     });
 
     expect(result.portfolioIds).toEqual(["broker:demo-broker:ACC-1"]);
@@ -234,13 +211,13 @@ describe("syncBrokerInstance", () => {
       portfolios: [],
       brokerInstances: [createBrokerInstance()],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
 
     await expect(syncBrokerInstance({
       config,
       instanceId: "demo-broker",
       brokers: new Map([["demo", createDemoBroker()]]),
-      tickerRepository: tickerRepository as any,
+      tickerRepository,
       resources: {
         get: () => null,
         list: () => [],
@@ -259,7 +236,7 @@ describe("syncBrokerInstance", () => {
       portfolios: [],
       brokerInstances: [instance],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const persistence = new AppPersistence(":memory:");
     let listAccountsCalled = false;
     let importPositionsCalled = false;
@@ -300,7 +277,7 @@ describe("syncBrokerInstance", () => {
         config,
         instanceId: "demo-broker",
         brokers: new Map([["demo", broker]]),
-        tickerRepository: tickerRepository as any,
+        tickerRepository,
         resources: persistence.resources,
       });
 
@@ -321,7 +298,7 @@ describe("syncBrokerInstance", () => {
       portfolios: [],
       brokerInstances: [instance],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const persistence = new AppPersistence(":memory:");
     const abortController = new AbortController();
 
@@ -330,7 +307,7 @@ describe("syncBrokerInstance", () => {
         config,
         instanceId: instance.id,
         brokers: new Map([["demo", createDemoBroker()]]),
-        tickerRepository: tickerRepository as any,
+        tickerRepository,
         resources: persistence.resources,
         signal: abortController.signal,
         deferPersistence: true,
@@ -356,7 +333,7 @@ describe("syncBrokerInstance", () => {
       portfolios: [],
       brokerInstances: [instance],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const persistence = new AppPersistence(":memory:");
     const broker: BrokerAdapter = {
       ...createDemoBroker(),
@@ -377,7 +354,7 @@ describe("syncBrokerInstance", () => {
         config,
         instanceId: "demo-broker",
         brokers: new Map([["demo", broker]]),
-        tickerRepository: tickerRepository as any,
+        tickerRepository,
         resources: persistence.resources,
       })).rejects.toThrow("account snapshot unavailable");
 
@@ -401,12 +378,12 @@ describe("syncBrokerInstance", () => {
         createBrokerInstanceWithId("demo-personal"),
       ],
     };
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
 
     const result = await syncBrokerInstances({
       config,
       brokers: new Map([["demo", createMultiAccountDemoBroker()]]),
-      tickerRepository: tickerRepository as any,
+      tickerRepository,
       existingTickers: new Map(),
     });
 
@@ -437,7 +414,7 @@ describe("syncBrokerInstance", () => {
       ],
       brokerInstances: [createBrokerInstance()],
     };
-    const tickerRepository = createTickerRepository([createTestTicker("AAPL", "Apple Inc.", {
+    const tickerRepository = new JsonTickerRepository(undefined, [createTestTicker("AAPL", "Apple Inc.", {
       portfolios: [stalePortfolioId],
       positions: [{
         portfolio: stalePortfolioId,
@@ -455,7 +432,7 @@ describe("syncBrokerInstance", () => {
       config,
       instanceId: "demo-broker",
       brokers: new Map([["demo", createDemoBroker()]]),
-      tickerRepository: tickerRepository as any,
+      tickerRepository,
     });
 
     expect(result.config.portfolios.map((portfolio) => portfolio.id)).toEqual([currentPortfolioId]);
@@ -492,7 +469,7 @@ describe("syncBrokerInstance", () => {
       ],
       brokerInstances: [flexInstance, gatewayInstance],
     };
-    const tickerRepository = createTickerRepository([createTestTicker("AAPL", "Apple Inc.", {
+    const tickerRepository = new JsonTickerRepository(undefined, [createTestTicker("AAPL", "Apple Inc.", {
       portfolios: [flexPortfolioId, staleGatewayPortfolioId],
       positions: [
         {
@@ -521,7 +498,7 @@ describe("syncBrokerInstance", () => {
       config,
       instanceId: "demo-gateway",
       brokers: new Map([["demo", createDemoBroker()]]),
-      tickerRepository: tickerRepository as any,
+      tickerRepository,
     });
 
     expect(result.portfolioIds).toEqual([flexPortfolioId]);

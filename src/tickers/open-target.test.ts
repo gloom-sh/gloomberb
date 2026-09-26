@@ -5,19 +5,10 @@ import { AmbiguousTickerError } from "./search";
 import { resolveTickerOpenTarget } from "./open-target";
 import { createTestTicker } from "../test-support/ticker";
 
-function repository() {
-  const values = new Map<string, string>();
-  return new JsonTickerRepository({
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => { values.set(key, value); },
-    removeItem: (key) => { values.delete(key); },
-  });
-}
-
 test("opening validated venue links hydrates their exact key without changing another listing's holdings", async () => {
   for (const query of ["VOD:XLON", "VOD.L"]) {
     for (const savedExchange of [null, "NASDAQ", "LSE"]) {
-      const tickerRepository = repository();
+      const tickerRepository = new JsonTickerRepository();
       const saved = savedExchange ? await tickerRepository.createTicker(createTestTicker("VOD", "Vodafone", {
         exchange: savedExchange,
         currency: savedExchange === "LSE" ? "GBP" : "USD",
@@ -38,7 +29,7 @@ test("opening validated venue links hydrates their exact key without changing an
 });
 
 test("opening an ordinary query keeps the provider ticker instead of persisting search text", async () => {
-  const tickerRepository = repository();
+  const tickerRepository = new JsonTickerRepository();
   const target = await resolveTickerOpenTarget({
     query: "brkb", tickerRepository, tickers: new Map(),
     dataProvider: createTestDataProvider({ search: async () => [{ providerId: "cloud", symbol: "BRK.B", exchange: "NYSE", currency: "USD", name: "Berkshire Hathaway", type: "EQUITY" }] }),
@@ -57,7 +48,7 @@ test("quote-only hydration verifies the returned symbol and listing before prese
       ["VOD", "LSE", true],
       ["VOD.L", "LSE", true],
     ] as const) {
-      const tickerRepository = repository();
+      const tickerRepository = new JsonTickerRepository();
       const target = await resolveTickerOpenTarget({
         query, tickerRepository, tickers: new Map(),
         dataProvider: createTestDataProvider({ getQuote: async () => ({
@@ -76,7 +67,7 @@ test("quote-only hydration verifies the returned symbol and listing before prese
 
 
 test("ambiguous search cannot fall through to an unqualified quote and create a ticker", async () => {
-  const tickerRepository = repository();
+  const tickerRepository = new JsonTickerRepository();
   let quoteCalls = 0;
   await expect(resolveTickerOpenTarget({ query: "GLD", tickerRepository, tickers: new Map(),
     dataProvider: createTestDataProvider({

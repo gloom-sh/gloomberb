@@ -1,20 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { ConnectionHealthRegistry } from "../../core/connection-health";
-import type { DataProvider } from "../../types/data-provider";
 import { withProviderConnectionHealth } from "./connection-health";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 
 describe("withProviderConnectionHealth", () => {
   test("attributes network calls without reporting cached or static checks", async () => {
     const health = new ConnectionHealthRegistry();
     health.registerSource({ id: "asset-data.yahoo", name: "Yahoo", kind: "asset-data" });
-    const provider = withProviderConnectionHealth({
+    const provider = withProviderConnectionHealth(createTestDataProvider({
       id: "yahoo",
       name: "Yahoo",
       canProvide: () => true,
       getCachedFinancialsForTargets: () => new Map(),
       getChartResolutionSupport: () => [],
-      getQuote: async () => ({ price: 1 }),
-    } as unknown as DataProvider, health);
+      getQuote: async () => createTestQuote({ price: 1 }),
+    }), health);
 
     await provider.canProvide?.("AAPL");
     provider.getCachedFinancialsForTargets?.([]);

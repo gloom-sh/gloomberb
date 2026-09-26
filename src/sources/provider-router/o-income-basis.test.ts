@@ -5,7 +5,7 @@ import { mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import { AssetDataRouter } from "./index";
 import { cacheRouterResource } from "./cache";
-import { fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 
 // O's Q4 2025 release p9 (USD thousands): consolidated301,636 minus
 // NCI5,551 = parent/common296,085. The recorded TD adapter used consolidated
@@ -14,7 +14,7 @@ const target = { symbol: "O", exchange: "NYSE" };
 const marker = "o-2025q4-parent-income";
 const row: FinancialStatement = { date: "2025-12-31", currency: "USD", netIncome: 301_636_000,
   netIncomeCommonStockholders: 296_085_000, netIncomeIncludingNoncontrollingInterests: 301_636_000, eps: 0.32 };
-const financials = () => makeFinancials({ quote: makeQuote({ symbol: "O", listingExchangeName: "NYSE", currency: "USD" }),
+const financials = () => createTestFinancials({ quote: createTestQuote({ symbol: "O", listingExchangeName: "NYSE", currency: "USD" }),
   profile: { description: "Realty Income" }, annualStatements: [], quarterlyStatements: [{ ...row }] });
 
 test("O parent-income withdrawal survives wire metadata and sparse merges while preserving explicit income bases and EPS", () => {

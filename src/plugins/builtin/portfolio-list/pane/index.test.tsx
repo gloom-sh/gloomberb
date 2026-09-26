@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import { act, useReducer } from "react";
 import { Box } from "../../../../ui";
 import { PaneFooterProvider, PaneFooterBar } from "../../../../components/layout/pane/footer";
@@ -12,25 +9,24 @@ import { TickerRepository } from "../../../../data/ticker-repository";
 import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
 import { AssetDataRouter } from "../../../../sources/provider-router";
 import {
-  cloneLayout,
   createDefaultConfig,
   TICKER_RESEARCH_PANE_ID,
   type AppConfig,
   type BrokerInstanceConfig,
-  type LayoutConfig,
 } from "../../../../types/config";
 import type { DataProvider } from "../../../../types/data-provider";
-import type { Quote } from "../../../../types/financials";
+import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
-import { createTestDataProvider } from "../../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../../test-support/data-provider";
 import type { PluginRuntimeAccess } from "../../../runtime";
 import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
 import { portfolioListModule } from "..";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
 import { AGE_CLOCK_MS } from "../use-column-clock";
+import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/temp-db";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
@@ -39,7 +35,6 @@ let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let sharedCoordinator: MarketDataCoordinator | null = null;
 let harnessState: ReturnType<typeof createInitialState> | null = null;
 let quoteClock: ReturnType<typeof spyOn> | undefined;
-const tempPaths: string[] = [];
 const tempPersistences: AppPersistence[] = [];
 
 const PortfolioPane = portfolioListModule.panes![0]!.component as (props: {
@@ -61,12 +56,6 @@ function createBrokerInstance(connectionMode: "gateway" | "flex", id = `ibkr-${c
       : { connectionMode, flex: { token: "token", queryId: "query" } },
     enabled: true,
   };
-}
-
-function createTempDbPath(name: string): string {
-  const path = join(tmpdir(), `gloomberb-portfolio-list-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  tempPaths.push(path);
-  return path;
 }
 
 function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
@@ -97,22 +86,10 @@ function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRe
 }
 
 function makeQuote(overrides: Partial<Quote> = {}): Quote {
-  return {
-    symbol: "AAPL",
-    price: 125,
-    bid: 124.95,
-    ask: 125.05,
-    bidSize: 100,
-    askSize: 200,
-    currency: "USD",
-    change: 5,
-    changePercent: 4.17,
-    previousClose: 120,
-    name: "Apple",
-    lastUpdated: Date.now(),
-    marketState: "REGULAR",
-    ...overrides,
-  };
+  return createTestQuote({
+    price: 125, bid: 124.95, ask: 125.05, bidSize: 100, askSize: 200, change: 5, changePercent: 4.17,
+    previousClose: 120, name: "Apple", marketState: "REGULAR", ...overrides,
+  });
 }
 
 function createPortfolioConfig(portfolioId: string, brokerInstances: BrokerInstanceConfig[] = []): AppConfig {
@@ -174,25 +151,19 @@ function installQuickAddRegistry(provider: DataProvider): PluginRegistry {
 }
 
 function createQuickAddProvider(match = true): DataProvider {
-  return {
+  return createTestDataProvider({
     id: "quick-add-test",
     name: "Quick Add Test",
     async getTickerFinancials() {
-      return {
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
+      return createTestFinancials({
         quote: makeQuote({ symbol: "MSFT", price: 420, change: 5.2, changePercent: 1.25, name: "Microsoft" }),
-      };
+      });
     },
     async getQuote(symbol) {
       if (match && symbol === "MSFT") {
         return makeQuote({ symbol: "MSFT", price: 420, change: 5.2, changePercent: 1.25, name: "Microsoft" });
       }
       throw new Error(`No quote for ${symbol}`);
-    },
-    async getExchangeRate() {
-      return 1;
     },
     async search(query) {
       if (!match || query !== "MSFT") return [];
@@ -205,13 +176,7 @@ function createQuickAddProvider(match = true): DataProvider {
         type: "STK",
       }];
     },
-    async getArticleSummary() {
-      return null;
-    },
-    async getPriceHistory() {
-      return [];
-    },
-  };
+  });
 }
 
 function createPortfolioState(
@@ -234,7 +199,7 @@ function createPortfolioState(
     cashDrawerExpanded: expanded,
   };
   state.tickers = new Map([["AAPL", ticker]]);
-  state.financials = new Map([["AAPL", { annualStatements: [], quarterlyStatements: [], priceHistory: [], quote }]]);
+  state.financials = new Map([["AAPL", createTestFinancials({ quote })]]);
   return state;
 }
 
@@ -359,47 +324,27 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
     [createBrokerInstance("gateway", "ibkr-live")],
   );
   const requestedSnapshots: string[] = [];
-  const provider: DataProvider = {
-    id: "test-provider",
-    name: "Test Provider",
+  const provider: DataProvider = createTestDataProvider({
     async getTickerFinancials(symbol) {
       requestedSnapshots.push(symbol);
-      return {
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
-        quote: makeSortWarmupQuote(symbol),
-      };
+      return createTestFinancials({ quote: makeSortWarmupQuote(symbol) });
     },
     async getQuote(symbol) {
       return makeSortWarmupQuote(symbol);
     },
-    async getExchangeRate() {
-      return 1;
-    },
-    async search() {
-      return [];
-    },
-    async getArticleSummary() {
-      return null;
-    },
-    async getPriceHistory() {
-      return [];
-    },
     subscribeQuotes() {
       return () => {};
     },
-  };
+  });
   sharedCoordinator = new MarketDataCoordinator(provider);
   setSharedMarketDataCoordinator(sharedCoordinator);
 
   const tickers = Array.from({ length: 29 }, (_, index) => makeSortWarmupBrokerTicker(portfolioId, `T${String(index).padStart(2, "0")}`, index));
   sharedCoordinator.primeCachedFinancials(tickers.map((ticker, index) => ({
     instrument: instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId })!,
-    financials: {
-      annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    financials: createTestFinancials({
       quote: makeQuote({ symbol: ticker.metadata.ticker, price: 100 + index, change: index, changePercent: index, listingExchangeName: "NASDAQ" }),
-    },
+    }),
   })));
   const sive = makeSortWarmupBrokerTicker(portfolioId, "SIVE", 29);
   if (options.staleCachedSiveSnapshot) {
@@ -407,10 +352,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
     if (!siveInstrument) throw new Error("expected SIVE instrument");
     sharedCoordinator.primeCachedFinancials([{
       instrument: siveInstrument,
-      financials: {
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
+      financials: createTestFinancials({
         quote: makeQuote({
           symbol: "SIVE",
           price: 56.3,
@@ -421,7 +363,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
           lastUpdated: Date.now() - 24 * 60 * 60_000,
           stale: true,
         }),
-      },
+      }),
     }]);
   }
 
@@ -433,10 +375,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
         state.tickers = new Map([...tickers, sive].map((entry) => [entry.metadata.ticker, entry]));
         state.financials = new Map(tickers.map((entry, index) => [
           entry.metadata.ticker,
-          {
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
+          createTestFinancials({
             quote: makeQuote({
               symbol: entry.metadata.ticker,
               price: 100 + index,
@@ -444,7 +383,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
               changePercent: index,
               listingExchangeName: "NASDAQ",
             }),
-          },
+          }),
         ]));
         state.paneState[TEST_PANE_ID] = {
           collectionId: portfolioId,
@@ -484,9 +423,7 @@ afterEach(async () => {
   for (const persistence of tempPersistences.splice(0)) {
     persistence.close();
   }
-  for (const path of tempPaths.splice(0)) {
-    if (existsSync(path)) rmSync(path, { force: true });
-  }
+  removeTempDbFiles();
   quoteClock?.mockRestore();
   quoteClock = undefined;
 });
@@ -705,19 +642,12 @@ describe("PortfolioListPane cash and margin UI", () => {
   });
 
   test("keeps non-broker portfolios unchanged", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-portfolio-list");
-    const layout: LayoutConfig = {
-      dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-      instances: [{
-        instanceId: TEST_PANE_ID,
-        paneId: "portfolio-list",
-        binding: { kind: "none" as const },
-        params: { collectionId: "main" },
-      }],
-      floating: [],
-      detached: [],
-    };
-    const nextConfig = { ...config, layout, layouts: [{ name: "Default", layout: cloneLayout(layout) }] };
+    const nextConfig = createTestPaneConfig("/tmp/gloomberb-portfolio-list", {
+      instanceId: TEST_PANE_ID,
+      paneId: "portfolio-list",
+      binding: { kind: "none" },
+      params: { collectionId: "main" },
+    });
 
     testSetup = await testRender(
       <PortfolioHarness config={nextConfig} collectionId="main" />,
@@ -744,15 +674,13 @@ describe("PortfolioListPane cash and margin UI", () => {
         stateMutator={(state) => {
           state.financials = new Map([[
             "AAPL",
-            {
-              annualStatements: [],
-              quarterlyStatements: [],
+            createTestFinancials({
               quote: makeQuote(),
               priceHistory: [118, 121, 119, 124, 127, 126, 130].map((close, index) => ({
                 date: `2026-03-${20 + index}T00:00:00Z` as unknown as Date,
                 close,
               })),
-            },
+            }),
           ]]);
         }}
       />,
@@ -1021,10 +949,7 @@ describe("PortfolioListPane cash and margin UI", () => {
           ]]);
           state.financials = new Map([[
             optionTicker,
-            {
-              annualStatements: [],
-              quarterlyStatements: [],
-              priceHistory: [],
+            createTestFinancials({
               quote: makeQuote({
                 symbol: optionTicker,
                 price: 5,
@@ -1033,7 +958,7 @@ describe("PortfolioListPane cash and margin UI", () => {
                 previousClose: 4.5,
                 name: "SPY Jun19'26 500 Call",
               }),
-            },
+            }),
           ]]);
           state.paneState[TEST_PANE_ID] = {
             collectionId: portfolioId,
@@ -1158,25 +1083,8 @@ describe("PortfolioListPane cash and margin UI", () => {
     const seededTicker = makeTicker();
     const seededQuote = makeQuote();
     let calls = 0;
-    let resolveFinancials!: (value: {
-      annualStatements: [];
-      quarterlyStatements: [];
-      priceHistory: Array<{ date: Date; close: number }>;
-      quote: Quote;
-      fundamentals: { trailingPE: number; forwardPE: number };
-    }) => void;
-    const financialsPromise = new Promise<{
-      annualStatements: [];
-      quarterlyStatements: [];
-      priceHistory: Array<{ date: Date; close: number }>;
-      quote: Quote;
-      fundamentals: { trailingPE: number; forwardPE: number };
-    }>((resolve) => {
-      resolveFinancials = resolve;
-    });
-    const provider: DataProvider = {
-      id: "test-provider",
-      name: "Test Provider",
+    const { promise: financialsPromise, resolve: resolveFinancials } = Promise.withResolvers<TickerFinancials>();
+    const provider: DataProvider = createTestDataProvider({
       async getTickerFinancials(symbol) {
         calls += 1;
         return financialsPromise;
@@ -1184,33 +1092,16 @@ describe("PortfolioListPane cash and margin UI", () => {
       async getQuote() {
         return makeQuote();
       },
-      async getExchangeRate() {
-        return 1;
-      },
-      async search() {
-        return [];
-      },
-      async getArticleSummary() {
-        return null;
-      },
-      async getPriceHistory() {
-        return [];
-      },
       subscribeQuotes() {
         return () => {};
       },
-    };
+    });
     sharedCoordinator = new MarketDataCoordinator(provider);
     const instrument = instrumentFromTicker(seededTicker, seededTicker.metadata.ticker);
     if (!instrument) throw new Error("expected ticker instrument");
     sharedCoordinator.primeCachedFinancials([{
       instrument,
-      financials: {
-        annualStatements: [],
-        quarterlyStatements: [],
-        priceHistory: [],
-        quote: seededQuote,
-      },
+      financials: createTestFinancials({ quote: seededQuote }),
     }]);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
@@ -1229,9 +1120,7 @@ describe("PortfolioListPane cash and margin UI", () => {
       await new Promise((resolve) => setTimeout(resolve, 380));
     });
     await act(async () => {
-      resolveFinancials({
-        annualStatements: [],
-        quarterlyStatements: [],
+      resolveFinancials(createTestFinancials({
         priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 124 }],
         quote: makeQuote({
           symbol: "AAPL",
@@ -1241,7 +1130,7 @@ describe("PortfolioListPane cash and margin UI", () => {
           trailingPE: 25,
           forwardPE: 22,
         },
-      });
+      }));
       await Promise.resolve();
     });
     await flushFrame();
@@ -1269,16 +1158,9 @@ describe("PortfolioListPane cash and margin UI", () => {
       lastUpdated: Date.now() - 5 * 60 * 1000,
     });
     const batchOptions: Array<{ forceRefresh?: boolean } | undefined> = [];
-    const provider: DataProvider = {
-      id: "test-provider",
-      name: "Test Provider",
+    const provider: DataProvider = createTestDataProvider({
       async getTickerFinancials() {
-        return {
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-          quote: oldQuote,
-        };
+        return createTestFinancials({ quote: oldQuote });
       },
       async getQuotesBatch(targets, options) {
         batchOptions.push(options);
@@ -1298,22 +1180,10 @@ describe("PortfolioListPane cash and margin UI", () => {
       async getQuote(symbol) {
         return makeQuote({ symbol, price: 126 });
       },
-      async getExchangeRate() {
-        return 1;
-      },
-      async search() {
-        return [];
-      },
-      async getArticleSummary() {
-        return null;
-      },
-      async getPriceHistory() {
-        return [];
-      },
       subscribeQuotes() {
         return () => {};
       },
-    };
+    });
     sharedCoordinator = new MarketDataCoordinator(provider);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
@@ -1360,15 +1230,12 @@ describe("PortfolioListPane cash and margin UI", () => {
       primaryExchange: "NASDAQ",
       conId: 265598,
     };
-    const cloudProvider: DataProvider = {
+    const cloudProvider: DataProvider = createTestDataProvider({
       id: "cloud",
       name: "Cloud",
       priority: 100,
       async getTickerFinancials() {
-        return {
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
+        return createTestFinancials({
           quote: makeQuote({
             symbol: "AAPL",
             price: 125,
@@ -1381,7 +1248,7 @@ describe("PortfolioListPane cash and margin UI", () => {
           profile: {
             sector: "Technology",
           },
-        };
+        });
       },
       async getQuote() {
         return makeQuote({
@@ -1389,28 +1256,14 @@ describe("PortfolioListPane cash and margin UI", () => {
           price: 125,
         });
       },
-      async getExchangeRate() {
-        return 1;
-      },
-      async search() {
-        return [];
-      },
-      async getArticleSummary() {
-        return null;
-      },
-      async getPriceHistory() {
-        return [];
-      },
-    };
+    });
     const yahooProvider: DataProvider = {
       ...cloudProvider,
       id: "yahoo",
       name: "Yahoo",
       priority: 1000,
       async getTickerFinancials() {
-        return {
-          annualStatements: [],
-          quarterlyStatements: [],
+        return createTestFinancials({
           priceHistory: [{ date: new Date("2026-03-28T00:00:00Z"), close: 124 }],
           quote: makeQuote({
             symbol: "AAPL",
@@ -1423,7 +1276,7 @@ describe("PortfolioListPane cash and margin UI", () => {
           profile: {
             sector: "Technology",
           },
-        };
+        });
       },
     };
 
@@ -1523,15 +1376,10 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("gateway", "ibkr-live")],
     );
     let streamed: ((target: { symbol: string; exchange?: string; context?: unknown }, quote: Quote) => void) | null = null;
-    const provider: DataProvider = {
-      id: "test-provider",
-      name: "Test Provider",
+    const provider: DataProvider = createTestDataProvider({
       async getTickerFinancials(symbol) {
         if (symbol === "AAPL") {
-          return {
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
+          return createTestFinancials({
             quote: makeQuote({
               symbol: "AAPL",
               price: 125,
@@ -1542,12 +1390,9 @@ describe("PortfolioListPane cash and margin UI", () => {
               preMarketChange: 5,
               preMarketChangePercent: 4.17,
             }),
-          };
+          });
         }
-        return {
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
+        return createTestFinancials({
           quote: makeQuote({
             symbol: "MSFT",
             price: 315,
@@ -1558,7 +1403,7 @@ describe("PortfolioListPane cash and margin UI", () => {
             preMarketPrice: 315,
             name: "Microsoft",
           }),
-        };
+        });
       },
       async getQuote(symbol) {
         return symbol === "AAPL"
@@ -1583,23 +1428,11 @@ describe("PortfolioListPane cash and margin UI", () => {
             name: "Microsoft",
           });
       },
-      async getExchangeRate() {
-        return 1;
-      },
-      async search() {
-        return [];
-      },
-      async getArticleSummary() {
-        return null;
-      },
-      async getPriceHistory() {
-        return [];
-      },
       subscribeQuotes(_targets, onQuote) {
         streamed = onQuote as typeof streamed;
         return () => {};
       },
-    };
+    });
     sharedCoordinator = new MarketDataCoordinator(provider);
     setSharedMarketDataCoordinator(sharedCoordinator);
 
@@ -1702,37 +1535,18 @@ describe("PortfolioListPane cash and margin UI", () => {
       [createBrokerInstance("gateway", "ibkr-flex"), createBrokerInstance("gateway", "ibkr-live")],
     );
     let subscribedTargets: Array<{ symbol: string; context?: { brokerInstanceId?: string; instrument?: unknown } }> = [];
-    const provider: DataProvider = {
-      id: "test-provider",
-      name: "Test Provider",
+    const provider: DataProvider = createTestDataProvider({
       async getTickerFinancials(symbol) {
-        return {
-          annualStatements: [],
-          quarterlyStatements: [],
-          priceHistory: [],
-          quote: makeQuote({ symbol }),
-        };
+        return createTestFinancials({ quote: makeQuote({ symbol }) });
       },
       async getQuote(symbol) {
         return makeQuote({ symbol });
-      },
-      async getExchangeRate() {
-        return 1;
-      },
-      async search() {
-        return [];
-      },
-      async getArticleSummary() {
-        return null;
-      },
-      async getPriceHistory() {
-        return [];
       },
       subscribeQuotes(targets) {
         subscribedTargets = targets;
         return () => {};
       },
-    };
+    });
     sharedCoordinator = new MarketDataCoordinator(provider);
     setSharedMarketDataCoordinator(sharedCoordinator);
 

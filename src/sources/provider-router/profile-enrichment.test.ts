@@ -6,18 +6,19 @@ import type { DataProvider, MarketDataRequestContext } from "../../types/data-pr
 import type { TickerFinancials } from "../../types/financials";
 import { cacheRouterResource } from "./cache";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 useRegularMarketSession();
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
 const profile = { description: "JPMorgan Chase & Co.", sector: "Financial Services", industry: "Banks - Diversified" };
 const cachePolicy = { staleMs: 60_000, expireMs: 300_000 };
 const instrument = { brokerId: "ibkr", conId: 1520593, symbol: "JPM", primaryExchange: "NYSE" };
 
 function company(overrides: Partial<TickerFinancials> = {}): TickerFinancials {
-  return makeFinancials({
-    quote: makeQuote({ symbol: "JPM", listingExchangeName: "NYSE", instrumentType: "EQUITY", providerId: "gloomberb-cloud", price: 310 }),
+  return createTestFinancials({
+    quote: createTestQuote({ symbol: "JPM", listingExchangeName: "NYSE", instrumentType: "EQUITY", providerId: "gloomberb-cloud", price: 310 }),
     financialCurrency: "USD",
     annualStatements: Array.from({ length: 5 }, (_, i) => ({ date: `${2021 + i}-12-31`, currency: "USD", totalRevenue: 100 + i, inventory: 1 })),
     statementHistory: { mode: "extended", source: "sec", status: "available", fetchedAt: new Date(Date.now()).toISOString() },
@@ -26,8 +27,8 @@ function company(overrides: Partial<TickerFinancials> = {}): TickerFinancials {
 }
 
 function secondary(overrides: Partial<TickerFinancials> = {}): TickerFinancials {
-  return makeFinancials({ profile,
-    quoteMetadata: quoteMetadataFromQuote(makeQuote({ symbol: "JPM", listingExchangeName: "NYQ", instrumentType: "EQUITY", providerId: "yahoo" })),
+  return createTestFinancials({ profile,
+    quoteMetadata: quoteMetadataFromQuote(createTestQuote({ symbol: "JPM", listingExchangeName: "NYQ", instrumentType: "EQUITY", providerId: "yahoo" })),
     ...overrides,
   });
 }
@@ -77,7 +78,7 @@ for (const warm of [false, true]) test(`${warm ? "cached" : "fresh"} extended st
 for (const contract of [false, true]) for (const mismatch of ["exchange", "symbol", "missing-identity"] as const) {
   test(`${mismatch} cannot classify a ${contract ? "contract" : "public"} listing on fetch or cache reopen`, async () => {
     const persistence = new AppPersistence(createTempDbPath(`profile-reject-${contract}-${mismatch}`));
-    const quoteMetadata = mismatch === "missing-identity" ? undefined : quoteMetadataFromQuote(makeQuote({
+    const quoteMetadata = mismatch === "missing-identity" ? undefined : quoteMetadataFromQuote(createTestQuote({
       symbol: mismatch === "symbol" ? "BAC" : "JPM", listingExchangeName: mismatch === "exchange" ? "LSE" : "NYSE",
     }));
     const { cloud, yahoo, calls } = providers(company(), secondary({ quoteMetadata }));
@@ -118,7 +119,7 @@ test("a complete bank profile uses no additional fallback request", async () => 
 for (const mismatch of ["both-symbol", "both-venue", "secondary-metadata", "primary-metadata", "secondary-contribution"] as const) {
   test(`contract profile enrichment validates the requested listing before normalization: ${mismatch}`, async () => {
     const persistence = new AppPersistence(createTempDbPath(`profile-contract-${mismatch}`));
-    const wrong = makeQuote({ symbol: mismatch === "both-venue" ? "JPM" : "BAC", listingExchangeName: mismatch === "both-venue" ? "LSE" : "NYSE" });
+    const wrong = createTestQuote({ symbol: mismatch === "both-venue" ? "JPM" : "BAC", listingExchangeName: mismatch === "both-venue" ? "LSE" : "NYSE" });
     const both = mismatch.startsWith("both-");
     const cloudValue = company({ ...(both ? { quote: wrong } : {}), ...(mismatch === "primary-metadata" ? { quoteMetadata: quoteMetadataFromQuote(wrong) } : {}) });
     const yahooValue = secondary({

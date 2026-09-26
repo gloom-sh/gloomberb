@@ -6,6 +6,7 @@ import {
   upsertQuoteContributionMap,
 } from "./resolution";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributions";
+import { createTestFinancials } from "../../test-support/data-provider";
 
 describe("quote-resolution", () => {
   test("keeps actual trade price and timestamp paired with the selected price provider", () => {
@@ -382,10 +383,7 @@ describe("quote-resolution", () => {
   });
 
   test("does not fabricate delayed derived premarket prices from the regular last trade", () => {
-    const quote = resolveTickerFinancialsQuoteState({
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
+    const quote = resolveTickerFinancialsQuoteState(createTestFinancials({
       quote: {
         symbol: "AMD",
         providerId: "gloomberb-cloud",
@@ -398,7 +396,7 @@ describe("quote-resolution", () => {
         marketState: "PRE",
         sessionConfidence: "derived",
       },
-    })?.quote;
+    }))?.quote;
 
     expect(quote?.marketState).toBe("PRE");
     expect(quote?.preMarketPrice).toBeUndefined();
@@ -523,10 +521,7 @@ describe("quote-resolution", () => {
   });
 
   test("keeps broker-only SMART quotes as unknown session while preserving the route", () => {
-    const financials = resolveTickerFinancialsQuoteState({
-      annualStatements: [],
-      quarterlyStatements: [],
-      priceHistory: [],
+    const financials = resolveTickerFinancialsQuoteState(createTestFinancials({
       quote: {
         symbol: "MU",
         providerId: "ibkr",
@@ -540,7 +535,7 @@ describe("quote-resolution", () => {
         routingExchangeName: "SMART",
         sessionConfidence: "unknown",
       },
-    });
+    }));
 
     expect(financials?.quote?.listingExchangeName).toBe("NASDAQ");
     expect(financials?.quote?.routingExchangeName).toBe("SMART");

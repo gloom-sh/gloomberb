@@ -5,11 +5,11 @@ import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import { AssetDataRouter } from "./index";
 import { isProviderQuoteUsableForCurrentSession } from "./financials";
-import { makeQuote } from "./test-support";
+import { createTestQuote } from "../../test-support/data-provider";
 
 useRegularMarketSession();
 
-const quote = (symbol: string, overrides: Partial<Quote> = {}) => makeQuote({ symbol, marketState: "CLOSED", ...overrides });
+const quote = (symbol: string, overrides: Partial<Quote> = {}) => createTestQuote({ symbol, marketState: "CLOSED", ...overrides });
 
 describe("provider quote identity and price domain", () => {
   test("rejects wrong symbols or known listings without rejecting exact provider listing aliases", () => {

@@ -8,7 +8,7 @@ import { parseReportedEarningsCohorts, promoteReportedEarningsResults } from "..
 import { YahooFinanceClient } from "../yahoo-finance";
 import { mapCloudFinancials } from "../gloomberb-cloud/normalizers";
 import { cacheRouterResource, listCachedResources } from "./cache";
-import { cleanupProviderRouterTestFiles, createTempDbPath } from "./test-support";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 import fixture from "../../test-support/fixtures/asml-earnings.json";
 
 const NOW = Date.parse("2026-09-22T12:00:00Z");
@@ -16,7 +16,7 @@ const policy = { staleMs: 3_600_000, expireMs: 604_800_000 };
 const target = { symbol: "ASML", exchange: "AMS" };
 const raw = () => structuredClone(fixture.provider.AMS) as unknown as TickerFinancials;
 const eps = (value: TickerFinancials) => value.annualStatements.filter(row => ["2022-12-31", "2023-12-31"].includes(row.date)).map(row => row.eps);
-afterEach(() => { setSystemTime(); cleanupProviderRouterTestFiles(); });
+afterEach(() => { setSystemTime(); removeTempDbFiles(); });
 
 test("native optional SEC earnings retries an outage, shares concurrent acquisition, and leaves statement history unsupported", async () => {
   setSystemTime(NOW);

@@ -9,7 +9,7 @@ import {
   setSharedMarketDataCoordinator,
 } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
-import { IDLE_COORDINATOR_QUOTES } from "./fixtures/quote-store";
+import { IDLE_COORDINATOR_QUOTES } from "../test-support/quote-store";
 import type { ChartResolveSources } from "./resolve";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import {

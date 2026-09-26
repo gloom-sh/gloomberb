@@ -2,20 +2,21 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
-import { cleanupProviderRouterTestFiles, createTempDbPath, fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(cleanupProviderRouterTestFiles);
+afterEach(removeTempDbFiles);
 
 test.each(["single", "batch"] as const)("%s financials recover a stale embedded Tokyo quote through the quote route", async (route) => {
   const persistence = new AppPersistence(createTempDbPath(`tokyo-quote-${route}`));
   const originalNow = Date.now;
   Date.now = () => Date.parse("2026-09-10T21:50:00Z");
   const calls = { financials: 0, fallbackFinancials: 0, fallbackQuote: 0 };
-  const staleQuote = makeQuote({ symbol: "7203", price: 2980.5, currency: "JPY", change: 9.5,
+  const staleQuote = createTestQuote({ symbol: "7203", price: 2980.5, currency: "JPY", change: 9.5,
     changePercent: 0.31975765735442613, previousClose: 2971, stale: true,
     lastUpdated: Date.parse("2026-09-10T06:24:00Z"), exchangeName: "TYO",
     providerId: "gloomberb-cloud", dataSource: "delayed", marketState: "PRE" });
-  const snapshot = makeFinancials({ quote: staleQuote, profile: { description: "Toyota Motor Corporation" },
+  const snapshot = createTestFinancials({ quote: staleQuote, profile: { description: "Toyota Motor Corporation" },
     annualStatements: Array.from({ length: 5 }, (_, i) => ({ date: `${2022 + i}-03-31`, currency: "JPY", totalRevenue: 100 + i, inventory: 10 })),
   });
   const cloud: DataProvider = {
@@ -32,7 +33,7 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
       calls.fallbackQuote++;
       expect([symbol, exchange]).toEqual(["7203", "TYO"]);
       if (quoteFails) throw new Error("Quote unavailable");
-      return makeQuote({ symbol, price: 2994, currency: "JPY", change: 23,
+      return createTestQuote({ symbol, price: 2994, currency: "JPY", change: 23,
         changePercent: 0.7741501178054527, lastUpdated: Date.parse("2026-09-10T06:30:00Z"),
         exchangeName: "TYO", providerId: "yahoo", marketState: "PRE" });
     },

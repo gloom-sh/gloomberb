@@ -10,7 +10,7 @@ import { GloomberbCloudProvider } from "../gloomberb-cloud";
 import { hasCircleOfferingPriceHistory } from "../listing-history";
 import { AssetDataRouter } from "./index";
 import { cacheRouterResource } from "./cache";
-import { fallbackProvider, makeFinancials, makeQuote } from "./test-support";
+import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 
 const originalHistory = apiClient.getCloudHistory;
 const originalQuote = apiClient.getCloudQuote;
@@ -81,7 +81,7 @@ test("poisoned exact and broader Cloud caches recover from a valid alternate, th
 
 test("unavailable fallback cannot turn a mixed inception window into a later comparison baseline", async () => {
   const cloud = cloudHistory([offer, first, next]);
-  apiClient.getCloudQuote = async symbol => ({ status: "success", data: makeQuote({ symbol, listingExchangeName: symbol === "CRCL" ? "NYSE" : "ARCA" }) });
+  apiClient.getCloudQuote = async symbol => ({ status: "success", data: createTestQuote({ symbol, listingExchangeName: symbol === "CRCL" ? "NYSE" : "ARCA" }) });
   const router = new AssetDataRouter(cloud);
   const spec = buildComparisonChartPreset(["CRCL:XNYS", "SPY:ARCX"]);
   spec.viewport = { range: "5Y", resolution: "1d", dateWindow: { start: "2025-06-01", end: "2025-06-10" } };
@@ -96,7 +96,7 @@ test("cached and refreshed financial histories exclude affected offers while pre
   const store = new AppPersistence(":memory:");
   try {
     let points = [offer, first, next];
-    const financials = () => makeFinancials({ quote: makeQuote({ symbol: "CRCL", listingExchangeName: "NYSE", providerId: "gloomberb-cloud" }), annualStatements: [{ date: "2024-12-31", totalRevenue: 100 }], profile: { description: "Issuer" }, priceHistory: points });
+    const financials = () => createTestFinancials({ quote: createTestQuote({ symbol: "CRCL", listingExchangeName: "NYSE", providerId: "gloomberb-cloud" }), annualStatements: [{ date: "2024-12-31", totalRevenue: 100 }], profile: { description: "Issuer" }, priceHistory: points });
     cacheRouterResource(store.resources, "financials", "CRCL", "exchange=NYSE", "provider:gloomberb-cloud", financials(), policy);
     const provider = { ...fallbackProvider, id: "gloomberb-cloud", getTickerFinancials: async () => financials() };
     const router = new AssetDataRouter(provider, [], store.resources);
@@ -119,7 +119,7 @@ test("fresh financial batches sanitize both immediate deep results and retained 
     const store = new AppPersistence(":memory:");
     try {
       let singleCalls = 0;
-      const financials = makeFinancials({ quote: makeQuote({ symbol: "CRCL", listingExchangeName: "NYSE", providerId: "gloomberb-cloud" }),
+      const financials = createTestFinancials({ quote: createTestQuote({ symbol: "CRCL", listingExchangeName: "NYSE", providerId: "gloomberb-cloud" }),
         profile: { description: "Issuer" },
         annualStatements: deep ? Array.from({ length: 5 }, (_, index) => ({ date: `${2020 + index}-12-31`, inventory: 100 })) : [],
         priceHistory: [offer, first, next] });

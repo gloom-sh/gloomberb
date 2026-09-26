@@ -14,24 +14,12 @@ import {
 import { composeBuiltinPlugin } from "../builtin/plugin-module";
 import { useMarketData, usePluginAppActions } from "../runtime";
 import { PluginRegistry } from "./index";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 
-const dataProvider: DataProvider = {
-  id: "test-provider",
-  name: "Test Provider",
-  getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
-  getQuote: async (symbol) => ({
-    symbol,
-    price: 1,
-    currency: "USD",
-    change: 0,
-    changePercent: 0,
-    lastUpdated: Date.now(),
-  }),
-  getExchangeRate: async () => 1,
-  search: async () => [],
-  getArticleSummary: async () => null,
-  getPriceHistory: async () => [],
-};
+const dataProvider: DataProvider = createTestDataProvider({
+  getTickerFinancials: async () => createTestFinancials(),
+  getQuote: async (symbol) => createTestQuote({ symbol, price: 1 }),
+});
 
 let currentRegistry: PluginRegistry | null = null;
 let currentPersistence: AppPersistence | null = null;

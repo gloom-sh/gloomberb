@@ -25,12 +25,7 @@ function makeTickerRepository() {
 
 test("qualified command inputs persist each selected venue without copying existing holdings", async () => {
   for (const savedVenue of [null, "NASDAQ", "AMS"]) {
-    const values = new Map<string, string>();
-    const tickerRepository = new JsonTickerRepository({
-      getItem: (key) => values.get(key) ?? null,
-      setItem: (key, value) => { values.set(key, value); },
-      removeItem: (key) => { values.delete(key); },
-    });
+    const tickerRepository = new JsonTickerRepository();
     const state = createInitialState(createDefaultConfig(":memory:"));
     if (savedVenue) {
       const saved = await tickerRepository.createTicker(createTestTicker("ASML", "ASML Holding", {

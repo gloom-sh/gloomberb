@@ -32,8 +32,7 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
   const id = "market-movers", Pane = marketMoversModule.panes[0]!.component;
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id, settings: {} }));
   initial.focusedPaneId = id;
-  const memory = new Map<string, string>();
-  const repo = new JsonTickerRepository({ getItem: key => memory.get(key) ?? null, setItem: (key, value) => { memory.set(key, value); }, removeItem: key => { memory.delete(key); } });
+  const repo = new JsonTickerRepository();
   const saved = await repo.createTicker(createTestTicker("ACME", "Remembered US share", { assetCategory: "STK" }).metadata);
   initial.tickers.set("ACME", saved);
   const stateRef = { current: initial };

@@ -7,7 +7,7 @@ import { extractFundamentalSeries, valuationPriceIssues } from "./fundamentals";
 import { resolveStudies } from "./studies";
 import { resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource, getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
-import { createQuoteStoreFixture } from "./fixtures/quote-store";
+import { createQuoteStoreFixture } from "../test-support/quote-store";
 import { CHART_SPEC_VERSION, type ChartSpec, type SecuritySeriesSource } from "./types";
 
 const source = (metric = "trailingPE"): SecuritySeriesSource => ({ kind: "security",

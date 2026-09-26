@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../types/config";
@@ -10,20 +7,9 @@ import { initializeAppState } from "./bootstrap";
 import type { InstrumentRef } from "../../market-data/request-types";
 import type { AppSessionSnapshot } from "../../core/state/session-persistence";
 import { createTestTicker } from "../../test-support/ticker";
+import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-const tempPaths: string[] = [];
-
-function createTempDbPath(name: string): string {
-  const path = join(tmpdir(), `gloomberb-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
-  tempPaths.push(path);
-  return path;
-}
-
-afterEach(() => {
-  for (const path of tempPaths.splice(0)) {
-    if (existsSync(path)) rmSync(path, { force: true });
-  }
-});
+afterEach(removeTempDbFiles);
 
 describe("initializeAppState", () => {
   test("a failed scoped cache read does not discard an independent target or stop startup", async () => {

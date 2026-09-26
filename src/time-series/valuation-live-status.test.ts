@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { resolveChartSpecData } from "./resolve";
 import { getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
-import { createQuoteStoreFixture } from "./fixtures/quote-store";
+import { createQuoteStoreFixture } from "../test-support/quote-store";
 import type { Quote, TickerFinancials } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 

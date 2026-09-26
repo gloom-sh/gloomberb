@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ChartSpec } from "./types";
 import { chartQuoteOverrideKeyForSource, chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets, observeLiveChartQuotes } from "./live-quotes";
-import { createQuoteStoreFixture } from "./fixtures/quote-store";
+import { createQuoteStoreFixture } from "../test-support/quote-store";
 
 test("live chart targets and quote overrides preserve same-local-symbol option definitions", async () => {
   const source = (strike: number) => ({ kind: "security" as const, fieldId: "price", instrument: { symbol: "ACME", exchange: "NASDAQ", brokerId: "fixture", brokerInstanceId: "feed", instrument: { brokerId: "fixture", brokerInstanceId: "feed", symbol: "ACME", localSymbol: "LEGACY", secType: "OPT", currency: "USD", right: "C" as const, strike, lastTradeDateOrContractMonth: "20261016", multiplier: "100" } } });

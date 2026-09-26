@@ -7,7 +7,7 @@ import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-u
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState } from "../../../state/app/context";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -60,19 +60,7 @@ function makeChain(
 }
 
 function makeFinancials(price: number): TickerFinancials {
-  return {
-    quote: {
-      symbol: "AAPL",
-      price,
-      currency: "USD",
-      change: 0,
-      changePercent: 0,
-      lastUpdated: Date.now(),
-    },
-    annualStatements: [],
-    quarterlyStatements: [],
-    priceHistory: [],
-  };
+  return createTestFinancials({ quote: createTestQuote({ price }) });
 }
 
 function OptionsHarness({

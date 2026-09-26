@@ -24,6 +24,7 @@ import {
   type ChatTestSetup,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import { createTestFinancials } from "../../../test-support/data-provider";
 
 let testSetup: ChatTestSetup | undefined;
 function setup(): ChatTestSetup {
@@ -1042,10 +1043,7 @@ describe("ChatContent", () => {
         height: 12,
         configureState(state) {
           state.tickers = new Map([["TSLA", createTestTicker("TSLA", "Tesla, Inc.")]]);
-          state.financials = new Map([["TSLA", {
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
+          state.financials = new Map([["TSLA", createTestFinancials({
             quote: {
               symbol: "TSLA",
               price: 250,
@@ -1054,7 +1052,7 @@ describe("ChatContent", () => {
               changePercent: -5,
               lastUpdated: Date.now(),
             },
-          }]]);
+          })]]);
         },
       }), {
         width: 60,
@@ -1098,10 +1096,7 @@ describe("ChatContent", () => {
         height: 12,
         configureState(state) {
           state.tickers = new Map([["META", createTestTicker("META", "Meta Platforms, Inc.")]]);
-          state.financials = new Map([["META", {
-            annualStatements: [],
-            quarterlyStatements: [],
-            priceHistory: [],
+          state.financials = new Map([["META", createTestFinancials({
             quote: {
               symbol: "META",
               price: 650,
@@ -1110,7 +1105,7 @@ describe("ChatContent", () => {
               changePercent: -0.5,
               lastUpdated: Date.now(),
             },
-          }]]);
+          })]]);
         },
       }), {
         width: 60,

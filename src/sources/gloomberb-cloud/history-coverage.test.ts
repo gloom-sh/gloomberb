@@ -4,7 +4,7 @@ import { resolveChartSpecData } from "../../time-series/resolve";
 import type { ChartSpec } from "../../time-series/types";
 import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "../provider-router";
-import { fallbackProvider } from "../provider-router/test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
 import { HistoryCoverageError } from "../history-coverage";
 import { GloomberbCloudProvider } from "./index";
 import { mapPricePoint } from "./normalizers";

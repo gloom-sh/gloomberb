@@ -8,7 +8,7 @@ import { ChartResolveCache, resolveChartSpecData } from "../../time-series/resol
 import type { ChartSpec } from "../../time-series/types";
 import { HistoryRetentionError, type HistoryRecoveryCandidate, type HistoryRetention } from "../history-retention";
 import { AssetDataRouter } from "../provider-router";
-import { fallbackProvider } from "../provider-router/test-support";
+import { fallbackProvider } from "../../test-support/data-provider";
 import { GloomberbCloudProvider } from "./index";
 import { formatCloudDateTime } from "./normalizers";
 
