@@ -24,8 +24,6 @@ import { importPluginHostModule } from "./host-module-imports";
  * host is symlinked in.
  */
 
-
-
 /**
  * Source for a module that re-exports one shared specifier from the host
  * registry. Named exports have to be listed statically — `export *` cannot
@@ -40,8 +38,9 @@ export function buildSharedModuleSource(specifier: string, exportNames: readonly
   ];
   for (const name of exportNames) {
     if (name === "default") continue;
-    // Not `export const`: a getter keeps live bindings working and avoids
-    // capturing a value the host may replace on a theme or locale change.
+    // Copied once, when the plugin loads. Shared modules keep anything that
+    // changes (the theme behind `colors`, the locale) behind a stable object or
+    // function, so the copy stays current.
     lines.push(`export const ${name} = mod[${JSON.stringify(name)}];`);
   }
   return lines.join("\n");
@@ -52,13 +51,13 @@ let hostExportMap: Map<string, string> | null = null;
 /**
  * Resolves a `gloomberb/*` specifier that is not shared to the host's own file.
  *
- * Those get bundled into the plugin, which is the intent: `gloomberb/types/config`
- * is constants, and a second copy of it costs nothing. Finding them is the
- * problem. A plugin installed under `~/.gloomberb/plugins` has a symlinked
- * `node_modules/gloomberb` (see host-link.ts), but one compiled straight out of
- * this repo's `node_modules` has none, and linking it there would point a nested
- * `node_modules` back at the repo root. Reading the host's own export map
- * resolves both without writing anything to disk.
+ * Those get bundled into the plugin, which is the intent: anything holding host
+ * state is in `SHARED_SPECIFIERS`, so a second copy of the rest costs nothing.
+ * Finding them is the problem. A plugin installed under `~/.gloomberb/plugins`
+ * has a symlinked `node_modules/gloomberb` (see host-link.ts), but one compiled
+ * straight out of this repo's `node_modules` has none, and linking it there
+ * would point a nested `node_modules` back at the repo root. Reading the host's
+ * own export map resolves both without writing anything to disk.
  */
 function hostModulePath(specifier: string): string | null {
   if (!hostExportMap) {

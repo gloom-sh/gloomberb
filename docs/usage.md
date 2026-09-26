@@ -7,10 +7,20 @@
 - [Command reference and chart composer](#command-reference)
 - [Live prices and refresh cadence](#live-prices-and-refresh-cadence)
 - [CLI commands and output formats](#cli)
+- [Plugins pane](#plugins-pane)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
+- [Debt maturities](#debt-maturities)
+- [Theses](#theses)
 - [Interface language](#localized-interface)
+- [Market and macro plugins](#market-and-macro-plugins)
 - [Live TV](#live-tv)
+- [Options scenarios](#options-scenarios)
+- [Option valuation models](#option-valuation-models)
+- [Relative rotation](#relative-rotation)
+- [Portfolio risk: PORT and MARS](#portfolio-risk-depth-port-and-mars)
+- [Equity criteria screener](#equity-criteria-screener)
+- [Backtest](#backtest)
 
 The desktop app and TUI share the command language and plugin system. The [browser app](browser.md) offers a smaller feature set. Use `HELP` in the app or `gloomberb help` in your shell for the commands available in your installation.
 
@@ -115,9 +125,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
-| `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
-
-| `OVME` | European or American option pricing, discrete dividends, Greeks and surface volatility |
+| `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
@@ -130,6 +138,10 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 Ticker Research shows the tabs that have data for the instrument. Stocks get the company tabs (analyst coverage, diagnostic, earnings calls, executives, filings, risk factors, hiring, holders, insider and short interest); funds keep events, dividends, options, congress trades and 13F; coins, currency pairs and indices keep the overview, chart, news and notes. Tabs sourced from SEC, FINRA and congressional filings are hidden for listings outside the US. Click the price chart on the Overview tab to open the Chart tab.
 
 Earnings-call data exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope; the interactive list loads 50. The server does not supply a total or a `hasMore` marker. When a response fills its source limit, exports report `sourceLimitReached: true`, `complete: false`, and `truncated: true`: additional calls may exist. `total` counts matching loaded calls; `totalIsExact: false` marks capped, pending, or stale results. A missing quarter in a capped lookup is not proof that the company has no such call. Pending discovery remains pending when reopening or refreshing the pane. Full-text documents can be read and searched without structured turns, but Q&A requires source segmentation.
+
+The ticker research `13F` tab shows fund positions for the ticker, reported value, shares, weight and quarter action; open a row for its fund detail and scroll to page more funds. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. CLI equivalents: `gloomberb fn 13F AAPL --view=ticker-holdings --offset=0 --json` (a ticker argument defaults to this view; `--view=by-ticker` lists the holders' whole 13F books) and `gloomberb fn 13F --view=crowding --json`.
+
+In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --view=overlap --compare=0001037389 --json`.
 
 ### Chart Composer
 
@@ -164,7 +176,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
 | `NI` | Sector news |
-| `SUB` | Authenticated Substack reader feed |
+| `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |
 | `TBO` | TheBuildout infrastructure intelligence |
@@ -199,7 +211,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
 | `HALT` | US trading halts with reason and resumption times ([Market Halts plugin](https://github.com/gloom-sh/gloom-market-halts)) |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
-| `BI` / `SP` | S&P 500 sector performance |
+| `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
 
@@ -213,6 +225,17 @@ transactions across years.
 The same feed is available through `gloomberb fn CG AAPL --year 2026 --json`.
 Use `--filingOffset` and `--offset` with the returned pagination metadata to read
 additional windows and trades.
+
+The CG **Tickers** tab groups the loaded trades, including appended years, by
+symbol. Enter opens that ticker's disclosures. The filter bar narrows side,
+owner, asset category, and the minimum disclosed dollar amount; `f` opens those
+filters by keyboard. `i` or **Mine** limits the view to portfolio and watchlist
+symbols, which are highlighted in the tables. A `!` beside lag marks disclosures
+filed more than 45 days after the transaction. CLI examples:
+`gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json` and
+`gloomberb fn CG AAPL --owner spouse --assetType option --json`.
+
+Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis.
 
 `YAS` opens a reactive bond form. Enter settlement, maturity, annual coupon and either yield percent or clean price per 100 face. `e` starts editing at Settlement; Tab and Shift+Tab then move through the fields and leave them past either end, and Escape stops editing. `m`, `f`, `d` and `n` switch the mode, frequency, day count and end-of-month schedule. The Cash flows and Sensitivity tabs retain the same terms. The end-of-month control is an explicit schedule choice and requires a month-end maturity.
 
@@ -429,21 +452,6 @@ gloomberb install gloom-sh/gloom-fear-greed
 
 Install [TV](https://github.com/gloom-sh/gloom-tv) with `gloomberb install gloom-sh/gloom-tv`. Existing installations restore it once after upgrading. Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
 
-The ticker research `13F` tab shows fund positions for the ticker, reported value, shares, weight and quarter action; open a row for its fund detail and scroll to page more funds. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. CLI equivalents: `gloomberb fn 13F AAPL --view=ticker-holdings --offset=0 --json` (a ticker argument defaults to this view; `--view=by-ticker` lists the holders' whole 13F books) and `gloomberb fn 13F --view=crowding --json`.
-
-In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --view=overlap --compare=0001037389 --json`.
-
-The CG **Tickers** tab groups the loaded trades, including appended years, by
-symbol. Enter opens that ticker's disclosures. The filter bar narrows side,
-owner, asset category, and the minimum disclosed dollar amount; `f` opens those
-filters by keyboard. `i` or **Mine** limits the view to portfolio and watchlist
-symbols, which are highlighted in the tables. A `!` beside lag marks disclosures
-filed more than 45 days after the transaction. CLI examples:
-`gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json` and
-`gloomberb fn CG AAPL --owner spouse --assetType option --json`.
-
-Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis.
-
 ## Options scenarios
 
 Open `OSA AAPL`, choose **Add leg** to enter a call or put, or **Chain** to select a quoted contract. In OMON, select the call or put cell and use **Add to OSA** (`a`); from the keyboard, `x` switches the cursor row between its call and put, and `[` / `]` step the expiry. Each handoff opens the leg editor in the ticker's existing OSA pane; saving appends the leg to its position. Set buy/sell, contracts, entry premium per unit, annualized IV and units per contract. The default multiplier is 100 and can be changed for a known deliverable.
@@ -475,7 +483,7 @@ CLI rates and IV are percentages; `--market-price` is a per-unit premium and use
 
 `shot OVME` accepts the same valuation flags and returns the captured inputs, price, Greeks, IV result and source metadata as numerical evidence. It verifies the rendered calculation against the requested inputs. Missing surface data, invalid values or a pane too short to show the metrics do not produce usable evidence. `shot HVG AAPL` and `shot HVT AAPL` also verify their plotted observations; use `--show-iv false` when only realized volatility is wanted.
 
-### Relative rotation
+## Relative rotation
 
 `RRG` or `GRR` opens US sector ETFs versus SPY. `RRG AAPL:NASDAQ,MSFT:NASDAQ`
 uses an explicit universe. Pane settings choose the benchmark, a linked watchlist
@@ -487,7 +495,8 @@ momentum history. Click column headers to sort. Missing aligned histories remain
 in the table with unavailable values and a footer notice. CSV export uses the
 pane menu. `gloomberb fn RRG --benchmark SPY:NYSEARCA --trail 6 --json` returns
 metrics, dated trails, rank sample counts and data limitations.
-### Portfolio risk depth: PORT and MARS
+
+## Portfolio risk depth: PORT and MARS
 
 `PORT` opens portfolio market risk; `MARS` is its alias. Add a local portfolio ID to select it, for example `PORT main`. Views cover Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history; Escape returns. Click portfolio tabs or press `p` to switch portfolios. Press `i` to import local account evidence from the clipboard, and `r` to refresh Cloud observations. Tables support sorting and CSV export.
 

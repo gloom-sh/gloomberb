@@ -100,7 +100,7 @@ Output is human-readable by default; use `--json`, `--csv`, or `--ndjson` for sc
 Plugins add panes, data providers, broker connections, and commands. Install one from GitHub:
 
 ```bash
-gloomberb install gloom-sh/gloomberb-tv
+gloomberb install gloom-sh/gloom-tv
 ```
 
 See the [plugin development guide](PLUGINS.md), [TV setup](docs/usage.md#live-tv), or [contributing guide](CONTRIBUTING.md) to get started.
