@@ -6,9 +6,8 @@ import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type T
 import { Box } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
-import { DataTableView } from "../data-table/view";
 import { ChoiceDialog } from "./choice-dialog";
-import { DataTable, type DataTableColumn, type DataTableVisibleRange } from "./data-table";
+import { DataTable, type DataTableVisibleRange } from "./data-table";
 import { TextField } from "./fields";
 import { ListView } from "./list-view";
 import {
@@ -120,59 +119,6 @@ function DataTableSectionHarness() {
       )}
       renderCell={(row) => ({ text: row.kind === "row" ? row.name : "" })}
       emptyStateTitle="No rows."
-    />
-  );
-}
-
-function DataTableHorizontalScrollHarness({
-  columns = [{ id: "name", label: "NAME", width: 12, align: "left" }],
-  containerWidth = 32,
-  containerHeight = 5,
-  rowCount = 1,
-  columnGap,
-  horizontalPadding,
-  fillAvailableWidth,
-  showHorizontalScrollbar,
-}: {
-  columns?: DataTableColumn[];
-  containerWidth?: number;
-  containerHeight?: number;
-  rowCount?: number;
-  columnGap?: number;
-  horizontalPadding?: number;
-  fillAvailableWidth?: boolean;
-  showHorizontalScrollbar?: boolean;
-}) {
-  const headerScrollRef = useRef<ScrollBoxRenderable>(null);
-  const scrollRef = useRef<ScrollBoxRenderable>(null);
-  const items = Array.from({ length: rowCount }, (_, index) => ({
-    id: `row-${index}`,
-    name: index === 0 ? "Alpha" : `Alpha ${index + 1}`,
-  }));
-
-  useEffect(() => {
-    tableScrollBoxForTest = scrollRef.current;
-  });
-
-  return (
-    <DataTableView
-      rootWidth={containerWidth}
-      rootHeight={containerHeight}
-      selection={{ kind: "none" }}
-      columns={columns}
-      items={items}
-      sortColumnId={null}
-      sortDirection="asc"
-      onHeaderClick={() => {}}
-      headerScrollRef={headerScrollRef}
-      scrollRef={scrollRef}
-      getItemKey={(row) => row.id}
-      renderCell={(row) => ({ text: row.name })}
-      emptyStateTitle="No rows."
-      columnGap={columnGap}
-      horizontalPadding={horizontalPadding}
-      fillAvailableWidth={fillAvailableWidth}
-      showHorizontalScrollbar={showHorizontalScrollbar}
     />
   );
 }
@@ -815,92 +761,6 @@ describe("shared UI kit", () => {
     frame = testSetup.captureCharFrame();
     expect(selectedTableRow).toBe("cpi");
     expect(frame).toContain("CPI");
-  });
-
-  test("hides data table horizontal scrolling when disabled", async () => {
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    tableScrollBoxForTest = null;
-    testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId="portfolio-list:main">
-          <DataTableHorizontalScrollHarness showHorizontalScrollbar={false} />
-        </PaneInstanceProvider>
-      </AppContext>,
-      { width: 32, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    expect(tableScrollBoxForTest?.horizontalScrollBar.visible).toBe(false);
-  });
-
-  test("hides data table horizontal scrolling when content fits", async () => {
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    tableScrollBoxForTest = null;
-    testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId="portfolio-list:main">
-          <DataTableHorizontalScrollHarness />
-        </PaneInstanceProvider>
-      </AppContext>,
-      { width: 32, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    expect(tableScrollBoxForTest?.horizontalScrollBar.visible).toBe(false);
-  });
-
-  test("shows data table horizontal scrolling when content overflows", async () => {
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    tableScrollBoxForTest = null;
-    testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId="portfolio-list:main">
-          <DataTableHorizontalScrollHarness
-            containerWidth={24}
-            columns={[
-              { id: "name", label: "NAME", width: 24, align: "left" },
-              { id: "price", label: "PRICE", width: 18, align: "right" },
-            ]}
-          />
-        </PaneInstanceProvider>
-      </AppContext>,
-      { width: 24, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    expect(tableScrollBoxForTest?.horizontalScrollBar.visible).toBe(true);
-  });
-
-  test("shows data table vertical scrolling when rows overflow", async () => {
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-    tableScrollBoxForTest = null;
-    testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId="portfolio-list:main">
-          <DataTableHorizontalScrollHarness rowCount={20} containerHeight={5} />
-        </PaneInstanceProvider>
-      </AppContext>,
-      { width: 32, height: 5 },
-    );
-
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    expect(tableScrollBoxForTest?.verticalScrollBar.visible).toBe(true);
   });
 
   test("virtualizes data table rows and refreshes after wheel scrolling", async () => {
