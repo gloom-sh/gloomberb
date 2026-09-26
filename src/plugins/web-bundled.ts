@@ -1,12 +1,7 @@
 /**
- * The plugins the hosted web app compiles into its own build.
- *
- * term.gloom.sh cannot clone a repository or run `bun install`, and it will not
- * evaluate code a visitor points it at: a plugin is a React component sharing
- * the host's module registry on the origin that holds the session, so there is
- * nothing to sandbox it with. That rules out installing plugins on the web, not
- * shipping them. Anything web-capable is compiled into the build instead, so a
- * visitor gets it with no install step, no marketplace trip, and no account.
+ * The plugins the hosted web app compiles into its own build. The web app never
+ * installs a plugin ("Where plugins run" in PLUGINS.md explains why), so
+ * anything web-capable ships this way, with no install step.
  *
  * Each entry is the package name of a devDependency, pinned by `bun.lock`, so
  * what the web app runs is a reviewed commit rather than whatever the plugin's
