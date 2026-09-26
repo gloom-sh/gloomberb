@@ -4,7 +4,6 @@ import type {
   ChatChannel,
   TeamAccentColor,
   TeamInviteLink,
-  TeamInvitePreview,
   TeamMember,
   TeamNotification,
   TeamReceivedInvitation,
@@ -88,22 +87,6 @@ export class CloudTeamsApi {
     await this.options.request<void>(
       `/teams/${encodeURIComponent(teamId)}/invite-links/${encodeURIComponent(token)}`,
       { method: "DELETE" },
-    );
-  }
-
-  async previewTeamInviteLink(token: string): Promise<TeamInvitePreview> {
-    return this.options.request<TeamInvitePreview>(
-      `/teams/join/${encodeURIComponent(token)}`,
-    );
-  }
-
-  async joinTeamThroughLink(token: string): Promise<TeamSummary> {
-    return this.options.request<TeamSummary>(
-      `/teams/join/${encodeURIComponent(token)}`,
-      {
-        method: "POST",
-        body: JSON.stringify({}),
-      },
     );
   }
 
@@ -197,13 +180,6 @@ export class CloudTeamsApi {
     await this.options.request<void>(`/teams/${encodeURIComponent(teamId)}`, {
       method: "DELETE",
     });
-  }
-
-  async listTeamChannels(teamId: string): Promise<ChatChannel[]> {
-    const body = await this.options.request<{ channels: ChatChannel[] }>(
-      `/teams/${encodeURIComponent(teamId)}/channels`,
-    );
-    return body.channels;
   }
 
   async createTeamChannel(teamId: string, name: string): Promise<ChatChannel> {

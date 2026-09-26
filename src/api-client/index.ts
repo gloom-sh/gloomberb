@@ -7,15 +7,12 @@ import {
 } from "../layout-marketplace/payload";
 import {
   type CloudLayoutEntry,
-  type CloudLayoutRevisionSummary,
-  type CloudLayoutVisibility,
   type LayoutRequirement,
   LayoutRevisionConflictError,
   parseCloudLayoutEntry,
   parseCloudLayoutList,
-  parseCloudLayoutRevisions,
 } from "../layout-marketplace/cloud";
-import type { SyncSettings, SyncSnapshot } from "../sync/types";
+import type { SyncSnapshot } from "../sync/types";
 import { withDeadline } from "../utils/async-deadline";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
@@ -34,7 +31,6 @@ import type {
   AssistCommandDescriptor,
   AssistCommandResponse,
   AuthUser,
-  CloudRoundupPreviewResponse,
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
   PersistedAuthUser
@@ -446,15 +442,6 @@ class GloomApiClient {
     }
   }
 
-  async listMyCloudLayouts(options?: { signal?: AbortSignal }): Promise<CloudLayoutEntry[]> {
-    const items = parseCloudLayoutList(await this.request<unknown>("/layouts/mine", {
-      method: "GET",
-      signal: options?.signal,
-    }));
-    if (!items) throw new Error("The layout service returned invalid data.");
-    return items;
-  }
-
   async listTeamLayouts(teamId: string, options?: { signal?: AbortSignal }): Promise<CloudLayoutEntry[]> {
     const items = parseCloudLayoutList(await this.request<unknown>(`/teams/${encodeURIComponent(teamId)}/layouts`, {
       method: "GET",
@@ -513,56 +500,6 @@ class GloomApiClient {
       }
       throw error;
     }
-  }
-
-  async updateCloudLayout(
-    id: string,
-    patch: { name?: string; visibility?: CloudLayoutVisibility },
-  ): Promise<CloudLayoutEntry> {
-    const item = parseCloudLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    }));
-    if (!item) throw new Error("The layout service returned invalid data.");
-    return item;
-  }
-
-  async deleteCloudLayout(id: string): Promise<void> {
-    await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, { method: "DELETE" });
-  }
-
-  async listCloudLayoutRevisions(id: string): Promise<CloudLayoutRevisionSummary[]> {
-    const items = parseCloudLayoutRevisions(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}/revisions`, {
-      method: "GET",
-    }));
-    if (!items) throw new Error("The layout service returned invalid data.");
-    return items;
-  }
-
-  async updateSyncSettings(update: Partial<SyncSettings>): Promise<SyncSettings> {
-    const result = await this.request<{ settings: SyncSettings }>("/sync/settings", {
-      method: "PATCH",
-      body: JSON.stringify(update),
-    });
-    if (this.currentUser) {
-      this.currentUser = {
-        ...this.currentUser,
-        syncEnabled: result.settings.syncEnabled,
-        weeklyRoundupEnabled: result.settings.weeklyRoundupEnabled,
-        positionAlertsEnabled: result.settings.positionAlertsEnabled,
-        lastSyncAt: result.settings.lastSyncAt ?? this.currentUser.lastSyncAt,
-        lastRoundupEmailAt: result.settings.lastRoundupEmailAt ?? this.currentUser.lastRoundupEmailAt,
-      };
-    }
-    return result.settings;
-  }
-
-  async getRoundupPreview(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/preview", { method: "POST", body: JSON.stringify({}) });
-  }
-
-  async sendRoundupTestEmail(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/test-email", { method: "POST", body: JSON.stringify({}) });
   }
 
   changePassword = this.auth.changePassword.bind(this.auth);
@@ -630,8 +567,6 @@ class GloomApiClient {
   listTeamInviteLinks = this.teams.listTeamInviteLinks.bind(this.teams);
   createTeamInviteLink = this.teams.createTeamInviteLink.bind(this.teams);
   deleteTeamInviteLink = this.teams.deleteTeamInviteLink.bind(this.teams);
-  previewTeamInviteLink = this.teams.previewTeamInviteLink.bind(this.teams);
-  joinTeamThroughLink = this.teams.joinTeamThroughLink.bind(this.teams);
   getTeamNotifications = this.teams.getTeamNotifications.bind(this.teams);
   listTeamInvitations = this.teams.listTeamInvitations.bind(this.teams);
   listMyTeamInvitations = this.teams.listMyTeamInvitations.bind(this.teams);
@@ -643,7 +578,6 @@ class GloomApiClient {
   removeTeamMember = this.teams.removeTeamMember.bind(this.teams);
   leaveTeam = this.teams.leaveTeam.bind(this.teams);
   deleteTeam = this.teams.deleteTeam.bind(this.teams);
-  listTeamChannels = this.teams.listTeamChannels.bind(this.teams);
   createTeamChannel = this.teams.createTeamChannel.bind(this.teams);
   deleteTeamChannel = this.teams.deleteTeamChannel.bind(this.teams);
   subscribeTeamUpdates = this.teams.subscribeTeamUpdates.bind(this.teams);
@@ -660,8 +594,6 @@ class GloomApiClient {
   createThesis = this.theses.createThesis.bind(this.theses);
   updateThesis = this.theses.updateThesis.bind(this.theses);
   deleteThesis = this.theses.deleteThesis.bind(this.theses);
-  listThesisRevisions = this.theses.listThesisRevisions.bind(this.theses);
-  listThesisSignals = this.theses.listThesisSignals.bind(this.theses);
   createThesisSignal = this.theses.createThesisSignal.bind(this.theses);
   resolveThesisSignal = this.theses.resolveThesisSignal.bind(this.theses);
   reviewThesis = this.theses.reviewThesis.bind(this.theses);
@@ -669,16 +601,12 @@ class GloomApiClient {
   listTeamCollections = this.collections.listTeamCollections.bind(this.collections);
   getTeamCollection = this.collections.getTeamCollection.bind(this.collections);
   createTeamCollection = this.collections.createTeamCollection.bind(this.collections);
-  updateTeamCollection = this.collections.updateTeamCollection.bind(this.collections);
-  deleteTeamCollection = this.collections.deleteTeamCollection.bind(this.collections);
   putTeamCollectionItem = this.collections.putTeamCollectionItem.bind(this.collections);
   removeTeamCollectionItem = this.collections.removeTeamCollectionItem.bind(this.collections);
   listTeamViews = this.views.listTeamViews.bind(this.views);
   getTeamView = this.views.getTeamView.bind(this.views);
   createTeamView = this.views.createTeamView.bind(this.views);
   publishTeamViewRevision = this.views.publishTeamViewRevision.bind(this.views);
-  renameTeamView = this.views.renameTeamView.bind(this.views);
-  deleteTeamView = this.views.deleteTeamView.bind(this.views);
   listTeamPluginState = this.views.listTeamPluginState.bind(this.views);
   getTeamPluginState = this.views.getTeamPluginState.bind(this.views);
   putTeamPluginState = this.views.putTeamPluginState.bind(this.views);
@@ -700,15 +628,12 @@ class GloomApiClient {
   getCloudWorldVenues = this.data.getCloudWorldVenues.bind(this.data);
   getCloudMarketScreener = this.data.getCloudMarketScreener.bind(this.data);
   getCloudOptionsChain = this.data.getCloudOptionsChain.bind(this.data);
-  getCloudProfile = this.data.getCloudProfile.bind(this.data);
-  getCloudFundamentals = this.data.getCloudFundamentals.bind(this.data);
   getCloudFinancials = this.data.getCloudFinancials.bind(this.data);
   getCloudFinancialsBatch = this.data.getCloudFinancialsBatch.bind(this.data);
   getCloudHolders = this.data.getCloudHolders.bind(this.data);
   getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
   getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
   getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
-  getCloudStatements = this.data.getCloudStatements.bind(this.data);
   getCloudHistory = this.data.getCloudHistory.bind(this.data);
   getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
@@ -754,7 +679,6 @@ class GloomApiClient {
   createCloudSavedSearch = this.data.createCloudSavedSearch.bind(this.data);
   updateCloudSavedSearch = this.data.updateCloudSavedSearch.bind(this.data);
   deleteCloudSavedSearch = this.data.deleteCloudSavedSearch.bind(this.data);
-  getCloudSavedSearchHits = this.data.getCloudSavedSearchHits.bind(this.data);
   getCloudNews = this.data.getCloudNews.bind(this.data);
   getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
   getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);

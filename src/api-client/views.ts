@@ -62,14 +62,6 @@ export class CloudViewsApi {
     }
   }
 
-  async renameTeamView(viewId: string, name: string): Promise<TeamView> {
-    return this.request(`/views/${encodeURIComponent(viewId)}`, { method: "PATCH", body: JSON.stringify({ name }) });
-  }
-
-  async deleteTeamView(viewId: string): Promise<void> {
-    await this.request(`/views/${encodeURIComponent(viewId)}`, { method: "DELETE" });
-  }
-
   // Plugin state
 
   async listTeamPluginState(teamId: string, pluginId: string): Promise<TeamPluginStateEntry[]> {
