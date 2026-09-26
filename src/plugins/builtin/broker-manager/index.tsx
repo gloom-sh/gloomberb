@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
@@ -6,8 +6,10 @@ import {
 import { signedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
 import {
   attachSignedInBrokerPersistence,
+  getSignedInBrokers,
   refreshSignedInBrokers,
   resetSignedInBrokerCatalog,
+  subscribeSignedInBrokers,
 } from "../../../brokers/signed-in/catalog";
 import { Button, DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
@@ -71,9 +73,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     };
   }, [config.brokerInstances, getBrokerAdapter]);
 
+  // Signed-in profiles take their broker's name from the connector list.
+  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const rows = useMemo(
     () => buildBrokerProfileRows(config, adapters, brokerAccounts),
-    [adapters, brokerAccounts, config, language, statusVersion],
+    [adapters, brokerAccounts, config, language, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
