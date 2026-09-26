@@ -35,6 +35,23 @@ describe("resolvePortfolioAccountMetrics", () => {
     }
   });
 
+  test("a reported previous close sets the day percentage, even when the snapshot NAV is later", () => {
+    const now = Date.now();
+    // The day figure and the NAV were taken minutes apart, so NAV minus P&L is not the prior close.
+    const account: BrokerAccount = {
+      accountId: "U1",
+      name: "Test",
+      netLiquidation: 1_010_000,
+      dailyPnl: 2_000,
+      previousNetLiquidation: 1_000_000,
+      updatedAt: now,
+      dailyPnlAsOf: now - 10 * 60_000,
+    };
+    const metrics = resolvePortfolioAccountMetrics(createTotals({ pricedLots: [] }), account);
+    expect(metrics.dailyPnl).toBe(2_000);
+    expect(metrics.dailyPnlPct).toBeCloseTo(0.2, 10);
+  });
+
   test("broker account profit cannot supply a missing or zero acquisition-cost denominator", () => {
     const account: BrokerAccount = { accountId: "test", name: "Test", unrealizedPnl: 200 };
     for (const cost of [Number.NaN, 0]) {

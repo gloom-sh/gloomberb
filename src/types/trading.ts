@@ -14,7 +14,8 @@ export interface BrokerAccount {
   accountId: string;
   name: string;
   currency?: string;
-  source?: "gateway" | "flex";
+  /** "cloud" is a connection held by the user's Gloom Cloud account. */
+  source?: "gateway" | "flex" | "cloud";
   updatedAt?: number;
   asOfDate?: string;
   netLiquidation?: number;
@@ -27,6 +28,10 @@ export interface BrokerAccount {
   initMarginReq?: number;
   maintMarginReq?: number;
   dailyPnl?: number;
+  /** Net liquidation at the previous close, when the broker reports its own day return. */
+  previousNetLiquidation?: number;
+  /** When the broker computed `dailyPnl`, if that differs from `updatedAt`. */
+  dailyPnlAsOf?: number;
   unrealizedPnl?: number;
   realizedPnl?: number;
   cashBalances?: BrokerCashBalance[];
@@ -36,11 +41,15 @@ export interface BrokerPortfolioPerformancePoint {
   date: string;
   value?: number;
   cumulativeReturn?: number;
+  /** This day's return alone, as a decimal fraction. */
+  dailyReturn?: number;
+  /** Deposits (positive) and withdrawals (negative) on this day, valued at its close. */
+  externalFlow?: number;
 }
 
 export interface BrokerPortfolioPerformance {
   accountId: string;
-  source: "flex";
+  source: "flex" | "cloud";
   period: string;
   currency?: string;
   fetchedAt: number;
@@ -48,6 +57,10 @@ export interface BrokerPortfolioPerformance {
   endDate?: string;
   lastSuccessfulUpdate?: string;
   stale?: boolean;
+  /** How the broker computes returns: time-weighted or money-weighted. */
+  measure?: "TWR" | "MWR";
+  /** Whether `externalFlow` was reported by the broker or implied from NAV and a time-weighted return. */
+  flowBasis?: "reported" | "derived";
   points: BrokerPortfolioPerformancePoint[];
 }
 
@@ -91,6 +104,8 @@ export interface BrokerOrder {
   stopPrice?: number;
   tif?: string;
   warningText?: string;
+  /** Set when the order is an instruction the user still reviews and submits at the broker. */
+  reviewUrl?: string;
   updatedAt: number;
   contract: BrokerContractRef;
 }
@@ -105,5 +120,9 @@ export interface BrokerExecution {
   price: number;
   time: number;
   exchange?: string;
+  commission?: number;
+  commissionCurrency?: string;
+  realizedPnl?: number;
+  netAmount?: number;
   contract: BrokerContractRef;
 }
