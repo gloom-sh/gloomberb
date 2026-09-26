@@ -11,7 +11,7 @@ import {
   coerceFieldString,
   coerceFieldValues,
 } from "../helpers";
-import type { WorkflowStringValues } from "./broker";
+import { resolveBrokerWorkflowSelection, type WorkflowStringValues } from "./broker";
 import { parseOwnerValue } from "./builtin";
 import type { PaneSettingField, PaneTemplateCreateOptions } from "../../../types/plugin";
 import type {
@@ -77,6 +77,7 @@ export async function submitCommandBarWorkflow(options: {
     CommandBarCollectionWorkflowActions,
     | "addTickerMembershipFromWorkflow"
     | "connectBrokerProfile"
+    | "connectSignedInBroker"
     | "createManualPortfolio"
     | "createWatchlist"
     | "setPortfolioPositionFromWorkflow"
@@ -103,6 +104,22 @@ export async function submitCommandBarWorkflow(options: {
     route,
     visibleFields,
   } = options;
+
+  const connectBrokerFromWorkflow = async (selectorKey: "brokerType" | "source") => {
+    const selection = resolveBrokerWorkflowSelection(route, selectorKey);
+    if (!selection) throw new Error("Broker is required.");
+    if (selection.method.kind === "signed-in") {
+      // The connect dialog cannot open over the command bar, so the workflow
+      // closes now and the outcome, a refusal included, arrives as a toast.
+      void collectionWorkflowActions.connectSignedInBroker(selection.method.broker).catch((error: unknown) => {
+        notify(error instanceof Error ? error.message : String(error), { type: "error" });
+      });
+      return;
+    }
+    const brokerId = selection.method.adapter.id;
+    const values = extractBrokerWorkflowValues(route.values, selectorKey, brokerId);
+    await collectionWorkflowActions.connectBrokerProfile(brokerId, values);
+  };
 
   switch (route.payload.kind) {
     case "builtin": {
@@ -135,18 +152,13 @@ export async function submitCommandBarWorkflow(options: {
               parseOwnerValue(route.values.owner),
             );
           } else {
-            const values = extractBrokerWorkflowValues(route.values, "source", source);
-            await collectionWorkflowActions.connectBrokerProfile(source, values);
+            await connectBrokerFromWorkflow("source");
           }
           break;
         }
-        case "add-broker-account": {
-          const brokerId = coerceFieldString(route.values.brokerType);
-          if (!brokerId) throw new Error("Broker is required.");
-          const values = extractBrokerWorkflowValues(route.values, "brokerType", brokerId);
-          await collectionWorkflowActions.connectBrokerProfile(brokerId, values);
+        case "add-broker-account":
+          await connectBrokerFromWorkflow("brokerType");
           break;
-        }
         case "add-portfolio": {
           const shares = coerceFieldString(route.values.shares).trim();
           if (!shares) {

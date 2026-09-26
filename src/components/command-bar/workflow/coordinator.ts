@@ -1,15 +1,19 @@
-import { useCallback, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useMemo, useSyncExternalStore, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 import { buildAddToPortfolioWorkflow } from "../../../plugins/builtin/portfolio-list/command-bar";
-import { getFirstVisibleFieldId } from "../helpers";
+import { buildBrokerDirectory } from "../../../brokers/directory";
 import {
-  buildBrokerChoices,
-  buildBrokerWorkflowRoute,
-} from "./broker";
+  getSignedInBrokers,
+  refreshSignedInBrokers,
+  subscribeSignedInBrokers,
+} from "../../../brokers/signed-in/catalog";
+import { SIGNED_IN_BROKER_TYPE } from "../../../brokers/signed-in/profile";
+import { getFirstVisibleFieldId } from "../helpers";
+import { buildBrokerWorkflowRoute } from "./broker";
 import { buildBuiltInWorkflowRoute } from "./builtin";
 import {
   createCommandBarCollectionWorkflowActions,
@@ -60,9 +64,11 @@ export function useCommandBarWorkflowCoordinator({
   tickerRepository,
   updateTopRoute,
 }: UseCommandBarWorkflowCoordinatorOptions) {
-  const brokerChoices = useMemo(
-    () => buildBrokerChoices(pluginRegistry.brokers),
-    [pluginRegistry.brokers],
+  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
+  // Before the connector list first arrives this is the installed brokers alone.
+  const brokerDirectory = useMemo(
+    () => buildBrokerDirectory({ signedIn: signedInBrokers, adapters: pluginRegistry.brokers.values() }),
+    [pluginRegistry.brokers, signedInBrokers],
   );
 
   const buildBrokerWorkflow = useCallback((
@@ -72,13 +78,13 @@ export function useCommandBarWorkflowCoordinator({
     submitLabel: string,
     includeManualOption: boolean,
   ): CommandBarWorkflowRoute | null => buildBrokerWorkflowRoute({
-    brokerChoices,
+    directory: brokerDirectory,
     includeManualOption,
     selectorKey,
     submitLabel,
     subtitle,
     title,
-  }), [brokerChoices]);
+  }), [brokerDirectory]);
 
   const collectionWorkflowActions = useMemo(() => createCommandBarCollectionWorkflowActions({
     activeCollectionId,
@@ -151,6 +157,8 @@ export function useCommandBarWorkflowCoordinator({
   }, [notify, openWorkflowRoute, stateRef]);
 
   const openBuiltInWorkflow = useCallback((actionId: string) => {
+    const listsBrokers = actionId === "add-broker-account" || actionId === "new-portfolio";
+    if (listsBrokers && pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
     const result = buildBuiltInWorkflowRoute({
       actionId,
       activeCollectionId,
@@ -171,6 +179,7 @@ export function useCommandBarWorkflowCoordinator({
     buildBrokerWorkflow,
     notify,
     openWorkflowRoute,
+    pluginRegistry.brokers,
     stateRef,
   ]);
 
