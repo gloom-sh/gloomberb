@@ -1216,19 +1216,19 @@ type CloudMarketStatus =
   | "retryable_error"
   | "fatal_error";
 
-/** The dates a history source vouches for. Which fields appear depends on the reason. */
+/** The dates a history source vouches for. Which boundary fields appear depends on the reason. */
 export interface CloudHistoryCoverage {
-  source?: string;
+  source: string;
   reasonCode?: string;
   /** First date (YYYY-MM-DD) whose share lineage the source verified. */
   verifiedLineageStart?: string;
   /** First bar date (YYYY-MM-DD) the source serves, such as a fund's inception. */
   firstAllowedBarDate?: string;
   inceptionDate?: string;
-  sourceUrl?: string;
-  firstBarDate?: string | null;
-  lastBarDate?: string | null;
-  barCount?: number;
+  sourceUrl: string;
+  firstBarDate: string | null;
+  lastBarDate: string | null;
+  barCount: number;
 }
 
 export interface CloudMarketResponse<T> {

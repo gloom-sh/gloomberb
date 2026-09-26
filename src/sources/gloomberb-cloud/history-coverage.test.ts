@@ -13,9 +13,10 @@ const originalHistory = apiClient.getCloudHistory;
 const originalQuote = apiClient.getCloudQuote;
 afterEach(() => { apiClient.getCloudHistory = originalHistory; apiClient.getCloudQuote = originalQuote; });
 // A source can vouch for prices from a boundary date for any reason; no symbol is special.
+const described = { source: "fixture", sourceUrl: "https://example.com/coverage", firstBarDate: null, lastBarDate: null, barCount: 0 };
 const boundaries: CloudHistoryCoverage[] = [
-  { source: "fixture", reasonCode: "UNVERIFIED_PREDECESSOR_LINEAGE", verifiedLineageStart: "2005-07-21" },
-  { source: "fixture", inceptionDate: "2005-07-21", firstAllowedBarDate: "2005-07-21" },
+  { ...described, reasonCode: "UNVERIFIED_PREDECESSOR_LINEAGE", verifiedLineageStart: "2005-07-21" },
+  { ...described, inceptionDate: "2005-07-21", firstAllowedBarDate: "2005-07-21" },
 ];
 const notice = "Verified price history starts 2005-07-21";
 const spec = (start: string, end: string): ChartSpec => ({ version: 2,

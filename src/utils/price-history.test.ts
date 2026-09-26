@@ -254,4 +254,14 @@ describe("leading zero-volume single-price bars", () => {
     const quietOpen = [{ ...traded("2026-09-01", 50), volume: 0 }, traded("2026-09-02", 51)];
     expect(dropLeadingPlaceholderBars(quietOpen)).toBe(quietOpen);
   });
+
+  test("keeps an index whose early decades carry no volume", () => {
+    // Long-lived index daily history: single-price bars without volume for
+    // decades, then volume reporting begins. Those bars are real closes.
+    const daily = [offer("1927-12-30"), offer("1928-01-03"), offer("1949-12-30"), { ...offer("1950-01-03"), volume: 1_260_000 }];
+    expect(dropLeadingPlaceholderBars(daily)).toBe(daily);
+    // Its weekly series starts with a one-day week, then ranged weeks still without volume.
+    const weekly = [offer("1927-12-26"), { ...traded("1928-01-02", 17.8), volume: 0 }, traded("1950-01-02", 17.1)];
+    expect(dropLeadingPlaceholderBars(weekly)).toBe(weekly);
+  });
 });

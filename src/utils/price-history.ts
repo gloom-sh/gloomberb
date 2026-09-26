@@ -301,12 +301,17 @@ function isPlaceholderBar(point: PricePoint): boolean {
 }
 
 const trimmedHistories = new WeakMap<PricePoint[], PricePoint[]>();
+// An offer priced the day before trading, or a value carried forward to the
+// opening auction, sits days at most before the first print.
+const PLACEHOLDER_LEAD_MAX_MS = 7 * DAY_MS;
 
 /**
  * Bars at the very start of a traded series with no volume and one price
  * (open = high = low = close) are placeholders, not trades: an offer price or
- * a carried-forward value before the first print. Series that never report
- * volume, such as indices and FX, keep every bar. Expects date order.
+ * a carried-forward value before the first print. They are dropped only when
+ * the next priced bar reports volume within days. Series that never report
+ * volume (FX, most indices) and long-lived indices whose early decades carry
+ * none keep every bar. Expects date order.
  */
 export function dropLeadingPlaceholderBars(points: PricePoint[]): PricePoint[] {
   if (points.length === 0 || !isPlaceholderBar(points[0]!)) return points;
@@ -314,8 +319,10 @@ export function dropLeadingPlaceholderBars(points: PricePoint[]): PricePoint[] {
   if (cached) return cached;
   let start = 1;
   while (start < points.length && isPlaceholderBar(points[start]!)) start++;
-  const traded = points.slice(start);
-  const result = traded.some((point) => (point.volume ?? 0) > 0) ? traded : points;
+  const firstPrint = points.slice(start).find((point) => Number.isFinite(point.close));
+  const result = firstPrint && (firstPrint.volume ?? 0) > 0
+    && getPricePointTimestamp(firstPrint) - getPricePointTimestamp(points[0]!) <= PLACEHOLDER_LEAD_MAX_MS
+    ? points.slice(start) : points;
   trimmedHistories.set(points, result);
   return result;
 }

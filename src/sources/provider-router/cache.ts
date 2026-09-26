@@ -147,7 +147,7 @@ export function sortCachedRecords<T>(
 }
 
 /** The listing a market cache variant key names, if any. */
-export function variantExchange(variantKey: string | undefined): string | undefined {
+function variantExchange(variantKey: string | undefined): string | undefined {
   return variantKey?.match(/(?:^|;)exchange=([^;]+)/)?.[1];
 }
 
