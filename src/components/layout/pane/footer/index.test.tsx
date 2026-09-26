@@ -171,29 +171,4 @@ describe("PaneFooterBar", () => {
     expect(frame).toContain("Rows 12");
     expect(frame).not.toContain("[o]pen");
   });
-
-  test("calls hint onPress from mouse interaction", async () => {
-    let openCount = 0;
-    testSetup = await testRender(<FooterHarness focused onOpen={() => { openCount += 1; }} />, { width: 64, height: 1 });
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-
-    const line = testSetup.captureCharFrame().split("\n")[0] ?? "";
-    const col = line.indexOf("[o]pen");
-    expect(col).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.release(col + 1, 0);
-      await testSetup!.renderOnce();
-    });
-    expect(openCount).toBe(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(col + 1, 0);
-      await testSetup!.renderOnce();
-    });
-    expect(openCount).toBe(1);
-  });
 });

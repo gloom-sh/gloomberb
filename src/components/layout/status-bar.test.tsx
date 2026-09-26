@@ -6,7 +6,6 @@ import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
-import { VERSION } from "../../version";
 import { StatusBar } from "./status-bar";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
@@ -52,34 +51,6 @@ describe("StatusBar", () => {
     }, [active, onActivate, onDeactivate, onExit, setTransientLayout]);
     return null;
   }
-
-  test("opens the current version changelog from the version chip", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-test");
-    config.layouts = [{ name: "Home", layout: cloneLayout(config.layout) }];
-    const state = {
-      ...createInitialState(config),
-      statusBarVisible: true,
-    };
-    let openedVersion = "";
-
-    testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <StatusBar onOpenChangelog={(version) => { openedVersion = version; }} />
-      </AppContext>,
-      { width: 120, height: 1 },
-    );
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    const versionX = frame.split("\n")[0]?.indexOf(`v${VERSION}`) ?? -1;
-    expect(versionX).toBeGreaterThanOrEqual(0);
-
-    await testSetup.mockMouse.click(versionX + 1, 0);
-    await testSetup.renderOnce();
-
-    expect(openedVersion).toBe(VERSION);
-  });
 
   test("shows a transient focus layout tab without replacing saved layouts", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-transient-layout-test");

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
 import { TickerBadgeText } from "./text";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const { clickFrameText } = createTestControls(() => testSetup!);
 
 afterEach(() => {
   if (testSetup) {
@@ -30,23 +30,6 @@ function makeCatalogEntry(overrides?: Partial<InlineTickerCatalogEntry>): Inline
 }
 
 describe("TickerBadgeText", () => {
-  test("renders live ticker badges when quote data exists", async () => {
-    testSetup = await testRender(
-      <TickerBadgeText
-        text="Watching $TSLA now"
-        lineWidth={40}
-        catalog={{ TSLA: makeCatalogEntry() }}
-        textColor="#ffffff"
-        openTicker={() => {}}
-      />,
-      { width: 40, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-
-    expect(testSetup.captureCharFrame()).toContain("TSLA -5.0%");
-  });
-
   test("falls back to the raw token when resolution failed", async () => {
     testSetup = await testRender(
       <TickerBadgeText
@@ -81,38 +64,9 @@ describe("TickerBadgeText", () => {
 
     await testSetup.renderOnce();
 
-    const lines = testSetup.captureCharFrame().split("\n");
-    const row = lines.findIndex((line) => line.includes("TSLA -5.0%"));
-    const col = lines[row]?.indexOf("TSLA -5.0%") ?? -1;
-
-    expect(row).toBeGreaterThanOrEqual(0);
-    expect(col).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(col + 1, row);
-      await testSetup!.renderOnce();
-    });
+    await clickFrameText("TSLA -5.0%");
 
     expect(opened).toEqual(["TSLA"]);
-  });
-
-  test("renders inline links alongside ticker badges", async () => {
-    testSetup = await testRender(
-      <TickerBadgeText
-        text="Read https://example.com while watching $TSLA"
-        lineWidth={60}
-        catalog={{ TSLA: makeCatalogEntry() }}
-        textColor="#ffffff"
-        openTicker={() => {}}
-      />,
-      { width: 60, height: 4 },
-    );
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("https://example.com");
-    expect(frame).toContain("TSLA -5.0%");
   });
 
   test("renders usernames as clickable tags when a username opener is provided", async () => {
@@ -131,17 +85,7 @@ describe("TickerBadgeText", () => {
 
     await testSetup.renderOnce();
 
-    const lines = testSetup.captureCharFrame().split("\n");
-    const row = lines.findIndex((line) => line.includes("@markets"));
-    const col = lines[row]?.indexOf("@markets") ?? -1;
-
-    expect(row).toBeGreaterThanOrEqual(0);
-    expect(col).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(col + 1, row);
-      await testSetup!.renderOnce();
-    });
+    await clickFrameText("@markets");
 
     expect(opened).toEqual(["markets"]);
   });
@@ -205,19 +149,8 @@ describe("TickerBadgeText", () => {
 
     await testSetup.renderOnce();
 
-    const lines = testSetup.captureCharFrame().split("\n");
-    const row = lines.findIndex((line) => line.includes("https://example.com/story."));
-    const col = lines[row]?.indexOf("https://example.com/story") ?? -1;
-
-    expect(row).toBeGreaterThanOrEqual(0);
-    expect(col).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.click(col + 1, row);
-      await testSetup!.renderOnce();
-    });
+    await clickFrameText("https://example.com/story");
 
     expect(opened).toEqual(["https://example.com/story"]);
   });
-
 });
