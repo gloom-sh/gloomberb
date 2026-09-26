@@ -1,4 +1,5 @@
 import type { DebtMaturitiesPayload } from "./debt-maturities";
+import type { RevenueBreakdownPayload, RevenueBreakdownView } from "./revenue-breakdown";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -393,6 +394,11 @@ export class CloudDataApi {
   async getCloudDebtMaturities(symbol: string): Promise<DebtMaturitiesPayload> {
     const params = new URLSearchParams({ symbol });
     return this.request<DebtMaturitiesPayload>(`/cloud/debt-maturities?${params}`, { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudRevenueBreakdown(symbol: string, view?: RevenueBreakdownView): Promise<RevenueBreakdownPayload> {
+    const params = new URLSearchParams({ symbol, ...(view ? { view } : {}) });
+    return this.request<RevenueBreakdownPayload>(`/cloud/revenue-breakdown?${params}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {

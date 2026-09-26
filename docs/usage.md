@@ -88,6 +88,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 |----------|----------|
 | `DES <ticker>` / `T <ticker>` | Security details for a ticker |
 | `FA <ticker>` | Financial statement view |
+| `SEG <ticker>` | Quarterly revenue by product, segment or region from 10-Q and 10-K filings |
 | `G <series>` | Custom chart composer |
 | `CAT [query]` | Browse and search chartable series |
 | `GP <ticker>` | Price chart |

@@ -211,6 +211,14 @@ Annual interest expense can include non-debt expenses depending on the reported 
 
 Company facts do not cover every maturity disclosure: custom tags and unmapped IFRS statements can leave a partial schedule or no schedule. Current verified examples include USD schedules for MSFT and AAPL and a native EUR principal schedule for ASML. TSM's IFRS reporting is unsupported. Verified examples currently lack the evidence needed for the debt-only cost proxy. Source refresh failures preserve the last dated result with a warning; a missing Cloud endpoint has an explicit unavailable state.
 
+## Revenue by product, segment and region (SEG)
+
+SEG, also the Revenue tab of Ticker Research, reads the revenue splits US filers tag in the XBRL of their 10-Q and 10-K filings: products and services, reportable segments, and geographic regions. Gloom Cloud backfills them from SEC's Financial Statement and Notes data sets and reads each new filing's XBRL as soon as EDGAR lists it, so a quarter appears the day it is filed. The Split filter picks products, segments or regions; options a company does not report are disabled.
+
+Quarters are the company's fiscal quarters. Fiscal Q4 is the 10-K year less the Q3 10-Q's nine months. Rows are the members that add up to reported revenue in the latest quarter, so subtotals such as Apple's "Products" beside iPhone and Mac are left out, and products reported only inside a segment (Alphabet's YouTube ads) sit beside the segments reported without products. When a filer renames a line in its 10-K, the renamed quarter shows as a gap rather than a guessed value. The latest column is that quarter's revenue; TTM needs four reported quarters spanning a year; % Total is the share of the quarter's reported revenue; YoY compares with the same fiscal quarter a year earlier.
+
+Trend scales each row's bars to its own range, so shape is comparable across rows; Actual draws every row on one scale, so size is; Text shows each quarter's value. Values are in USD as filed. Free and signed-out accounts see the two largest rows; Pro shows every row. Companies that tag revenue only with custom axes or concepts, and foreign filers on 20-F, have no breakdown.
+
 ## Portfolio analytics
 
 P&L for manual portfolios covers current holdings. Manual portfolios have no cash-flow performance history; reconcile corporate actions through **PF → Set position**. Distributions are not automatically credited.
