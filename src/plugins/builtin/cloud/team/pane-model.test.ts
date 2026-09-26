@@ -28,9 +28,9 @@ const team: TeamSummary = {
 };
 
 const members: TeamMember[] = [
-  { id: "m-1", role: "owner", joinedAt: "", user: { id: "u0", username: "vince", displayName: "Vince" } },
-  { id: "m-2", role: "admin", joinedAt: "", user: { id: "u2", username: "lucas", displayName: "Lucas" } },
-  { id: "m-3", role: "member", joinedAt: "", user: { id: "u3", username: "mika", displayName: "Mika" } },
+  { id: "m-1", role: "owner", joinedAt: "", user: { id: "u0", username: "ada", displayName: "Ada" } },
+  { id: "m-2", role: "admin", joinedAt: "", user: { id: "u2", username: "alice", displayName: "Alice" } },
+  { id: "m-3", role: "member", joinedAt: "", user: { id: "u3", username: "bob", displayName: "Bob" } },
 ];
 
 describe("team draft", () => {

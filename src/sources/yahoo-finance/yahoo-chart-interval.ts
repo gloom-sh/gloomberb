@@ -1,4 +1,4 @@
-/** Keep in sync with the backend Yahoo service's yahoo-chart-interval.ts. */
+/** Gloom Cloud's Yahoo history service applies the same range and interval rules; keep the two in sync. */
 const EARLIEST_HISTORY_SECOND = Date.parse("1900-01-01T00:00:00Z") / 1000;
 
 /** Yahoo's range=max overrides interval (for example monthly SHIB becomes

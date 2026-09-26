@@ -114,9 +114,9 @@ describe("desktop deeplinks", () => {
       messageId: "m:2",
       message: "Opened chat dm:abc.",
     });
-    expect(resolveDesktopDeepLinkAction("gloomberb://chat/dm?users=@vince,@alex")).toEqual({
+    expect(resolveDesktopDeepLinkAction("gloomberb://chat/dm?users=@ada,@alex")).toEqual({
       type: "open-chat-dm",
-      participants: "@vince,@alex",
+      participants: "@ada,@alex",
       message: "Opened DM.",
     });
   });

@@ -39,7 +39,7 @@ describe("DesktopChatMessage", () => {
       content: "theme message",
       replyToId: null,
       createdAt: "2026-08-25T12:00:00.000Z",
-      user: { id: "user-1", username: "vince", displayName: "Vince" },
+      user: { id: "user-1", username: "ada", displayName: "Ada" },
     };
     const noop = () => {};
     const messageElement = (

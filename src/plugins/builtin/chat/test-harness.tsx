@@ -78,11 +78,11 @@ export { MemoryPluginPersistence as MemoryPersistence } from "../../../test-supp
 export function makeAccountProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
   return {
     id: "u1",
-    email: "vince@example.com",
+    email: "ada@example.com",
     emailVerified: true,
     plan: "pro",
-    username: "vince",
-    name: "Vince",
+    username: "ada",
+    name: "Ada",
     company: "Gloom",
     title: null,
     bio: "Made Gloomberb",
@@ -130,7 +130,7 @@ export function createController(options: {
   testControllers.add(controller);
   const user = Object.prototype.hasOwnProperty.call(options, "user")
     ? options.user ?? null
-    : { id: "u0", username: "vince", emailVerified: true };
+    : { id: "u0", username: "ada", emailVerified: true };
   persistence.setState("session", {
     sessionToken: options.sessionToken ?? null,
     user,

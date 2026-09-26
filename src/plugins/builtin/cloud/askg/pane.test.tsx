@@ -142,7 +142,7 @@ beforeEach(() => {
     return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   });
   apiClient.setSessionToken("askg-pane-session");
-  apiClient.restoreCachedUser({ id: "u0", username: "vince", emailVerified: true, plan: "pro" });
+  apiClient.restoreCachedUser({ id: "u0", username: "ada", emailVerified: true, plan: "pro" });
   // The manifest only needs the pane catalog; no pane has to be registered for
   // the session to negotiate an empty tool set.
   resetASKGClientManifestCache();

@@ -27,15 +27,15 @@ const macroDesk = {
 };
 
 const members = [
-  { id: "m-1", role: "owner", joinedAt: "2026-09-01T00:00:00.000Z", user: { id: "u0", username: "vince", displayName: "Vince" } },
-  { id: "m-2", role: "admin", joinedAt: "2026-09-02T00:00:00.000Z", user: { id: "u2", username: "lucas", displayName: "Lucas Bing" } },
-  { id: "m-3", role: "member", joinedAt: "2026-09-03T00:00:00.000Z", user: { id: "u3", username: "mikahk", displayName: "Mika" } },
+  { id: "m-1", role: "owner", joinedAt: "2026-09-01T00:00:00.000Z", user: { id: "u0", username: "ada", displayName: "Ada" } },
+  { id: "m-2", role: "admin", joinedAt: "2026-09-02T00:00:00.000Z", user: { id: "u2", username: "alice", displayName: "Alice Byrne" } },
+  { id: "m-3", role: "member", joinedAt: "2026-09-03T00:00:00.000Z", user: { id: "u3", username: "bob", displayName: "Bob" } },
 ];
 
 function respond(path: string, method: string): unknown {
   if (path === "/teams/org-1/members") return { team: macroDesk, members };
   if (path === "/teams/org-1/invitations" && method === "GET") {
-    return { invitations: [{ id: "inv-1", status: "pending", role: "member", expiresAt: new Date(Date.now() + 6 * 86_400_000).toISOString(), createdAt: "2026-09-14T00:00:00.000Z", inviter: members[0]!.user, invitee: { id: "u9", username: "sneh", displayName: "Sneh" } }] };
+    return { invitations: [{ id: "inv-1", status: "pending", role: "member", expiresAt: new Date(Date.now() + 6 * 86_400_000).toISOString(), createdAt: "2026-09-14T00:00:00.000Z", inviter: members[0]!.user, invitee: { id: "u9", username: "carol", displayName: "Carol" } }] };
   }
   if (path === "/teams/org-1/invite-links") return { links: [{ token: "a".repeat(32), url: "https://gloom.sh/teams/invite/aaaaaaaa", teamId: "org-1", createdBy: "u0", expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString(), maxUses: null, uses: 3, createdAt: "2026-09-14T00:00:00.000Z" }] };
   if (path === "/teams") return { teams: teamsOnServer };
@@ -99,7 +99,7 @@ beforeEach(() => {
     });
   });
   apiClient.setSessionToken("team-pane-session");
-  apiClient.restoreCachedUser({ id: "u0", username: "vince", emailVerified: true, plan: "pro" });
+  apiClient.restoreCachedUser({ id: "u0", username: "ada", emailVerified: true, plan: "pro" });
   (teamStore as any).update({ teams: [macroDesk], invitations: [], loaded: true });
 });
 
@@ -121,9 +121,9 @@ describe("TeamPane", () => {
     expect(frame).toContain("MD· Macro Desk");
     expect(frame).toContain("Members");
     expect(frame).not.toContain("Members (3)");
-    expect(frame).toContain("@vince");
+    expect(frame).toContain("@ada");
     expect(frame).toContain("Owner");
-    expect(frame).toContain("@lucas");
+    expect(frame).toContain("@alice");
     expect(frame).toContain("Admin");
     expect(frame).toContain("Make member");
     expect(frame).toContain("Remove");
@@ -142,7 +142,7 @@ describe("TeamPane", () => {
     const frame = setup!.captureCharFrame();
     if (process.env.PRINT_FRAMES) console.log(frame);
     expect(frame).toContain("INVITE BY USERNAME");
-    expect(frame).toContain("@sneh");
+    expect(frame).toContain("@carol");
     expect(frame).toContain("gloom.sh/teams/invite/aaaaaaaa");
     expect(frame).toContain("3 uses");
     expect(frame).not.toContain("@example.com");

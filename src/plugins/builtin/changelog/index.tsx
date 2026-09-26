@@ -31,7 +31,7 @@ const CHANGELOG_LIMIT = 40;
 const CHANGELOG_TIMEOUT_MS = 5_000;
 const CHANGELOG_CACHE_TTL_MS = 10 * 60 * 1000;
 
-// ponytail: process-lifetime cache, move into the updater module if other
+// Process-lifetime cache. Move it into the updater module if other
 // surfaces start reading releases too.
 let cachedReleases: { releases: ChangelogRelease[]; fetchedAt: number } | null = null;
 

@@ -1,4 +1,4 @@
-// Wire declarations are mirrored in gloomberb-platform/server/src/services/askg/types.ts.
+// Wire declarations must match the Gloom Cloud /askg API.
 import type {
   HeadlessPaneArgumentDef,
   HeadlessPaneColumn,

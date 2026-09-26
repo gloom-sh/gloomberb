@@ -234,7 +234,7 @@ describe("ChatContent channel sidebar", () => {
   test("folding the Channels header hides public channels and keeps arrows out of them", async () => {
     const controller = createController({
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     installServerChannels(controller, [
       { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
@@ -298,7 +298,7 @@ describe("ChatContent channel sidebar", () => {
         user: { id: "u2", username: "bob", displayName: "Bob" },
       }],
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     installServerChannels(controller);
     controller.refreshChannels = async () => {};

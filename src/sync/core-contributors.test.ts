@@ -26,7 +26,7 @@ describe("core sync contributors", () => {
   }
 
   test("redacts local paths and credential-like config keys", async () => {
-    const config = createDefaultConfig("/Users/vince/private-data");
+    const config = createDefaultConfig("/Users/ada/private-data");
     config.brokerInstances = [{
       id: "broker-1",
       brokerType: "demo",
@@ -40,7 +40,7 @@ describe("core sync contributors", () => {
       "demo-plugin": {
         theme: "dark",
         token: "secret-token",
-        downloadPath: "/Users/vince/private-downloads",
+        downloadPath: "/Users/ada/private-downloads",
       },
     };
 
@@ -48,8 +48,8 @@ describe("core sync contributors", () => {
     const payload = await coreConfigSyncContributor.collect({ state });
     const serialized = JSON.stringify(payload);
 
-    expect(serialized).not.toContain("/Users/vince/private-data");
-    expect(serialized).not.toContain("/Users/vince/private-downloads");
+    expect(serialized).not.toContain("/Users/ada/private-data");
+    expect(serialized).not.toContain("/Users/ada/private-downloads");
     expect(serialized).not.toContain("secret-api-key");
     expect(serialized).not.toContain("secret-password");
     expect(serialized).not.toContain("secret-token");

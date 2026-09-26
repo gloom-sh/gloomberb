@@ -84,7 +84,7 @@ describe("useChatComposerRuntime", () => {
       content: "public message",
       replyToId: null,
       createdAt: "2026-05-27T10:26:44.737Z",
-      user: { id: "u2", username: "vince", displayName: "Vince" },
+      user: { id: "u2", username: "ada", displayName: "Ada" },
     };
 
     function Harness() {

@@ -23,12 +23,12 @@ function createController(): ChatController {
 function persistSession(persistence: MemoryPersistence, user: Record<string, unknown> = {}) {
   persistence.setState("session", {
     sessionToken: "token-123",
-    user: { id: "u1", username: "vince", ...user },
+    user: { id: "u1", username: "ada", ...user },
   }, { schemaVersion: 1 });
 }
 
 function chatMessage(input: Pick<ChatMessage, "id" | "content" | "createdAt"> & Partial<ChatMessage>): ChatMessage {
-  return { channelId: "everyone", replyToId: null, user: { id: "u1", username: "vince", displayName: "Vince" }, ...input };
+  return { channelId: "everyone", replyToId: null, user: { id: "u1", username: "ada", displayName: "Ada" }, ...input };
 }
 
 const TRANSCRIPT_KIND = "channel-transcript";
@@ -77,7 +77,7 @@ function mentionNotification(overrides: Partial<ChatNotification> = {}): ChatNot
     message: overrides.message ?? {
       id: messageId,
       channelId,
-      content: "hey @vince",
+      content: "hey @ada",
       replyToId: null,
       createdAt,
       user: { id: "u2", username: "bob", displayName: "Bob" },
@@ -168,7 +168,7 @@ describe("ChatController", () => {
 
     const snapshot = controller.getSnapshot();
     expect(apiClient.getSessionToken()).toBe("token-123");
-    expect(snapshot.user?.username).toBe("vince");
+    expect(snapshot.user?.username).toBe("ada");
     expect(snapshot.draft).toBe("cached draft");
     expect(snapshot.replyToId).toBe("m1");
     expect(snapshot.messages.map((entry) => entry.id)).toEqual(["m1"]);
@@ -182,7 +182,7 @@ describe("ChatController", () => {
     apiClient.setCookieSessionMode(true);
     apiClient.restoreCachedUser({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
     apiClient.getSession = async () => apiClient.getCurrentUser();
@@ -195,7 +195,7 @@ describe("ChatController", () => {
           content,
           replyToId: null,
           createdAt: "2026-08-23T00:00:00.000Z",
-          user: { id: "u1", username: "vince", displayName: "Vince" },
+          user: { id: "u1", username: "ada", displayName: "Ada" },
         };
       },
       close: () => {},
@@ -207,7 +207,7 @@ describe("ChatController", () => {
     expect(apiClient.getSessionToken()).toBeNull();
     expect(controller.getSnapshot()).toMatchObject({
       hasSavedSession: true,
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     expect(controller.send("hello from the browser")).toBe(true);
     await flushMicrotasks();
@@ -277,12 +277,12 @@ describe("ChatController", () => {
 
     expect(apiClient.getCurrentUser()).toMatchObject({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
     await expect(apiClient.ensureVerifiedSession()).resolves.toMatchObject({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
   });
@@ -294,7 +294,7 @@ describe("ChatController", () => {
     persistence.setState("session", {
       sessionToken: "token-123",
       websocketToken: "stale-ws-token",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -303,7 +303,7 @@ describe("ChatController", () => {
     expect(apiClient.getWebSocketToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toMatchObject({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
   });
@@ -371,7 +371,7 @@ describe("ChatController", () => {
 
     apiClient.setSessionToken("token-123");
     (controller as any).session.sessionToken = "token-123";
-    (controller as any).session.user = { id: "u1", username: "vince", emailVerified: false };
+    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: false };
 
     controller.setAppActive(false);
     (controller as any).realtime.syncVerificationPolling();
@@ -389,11 +389,11 @@ describe("ChatController", () => {
 
     apiClient.setSessionToken("token-123");
     (controller as any).session.sessionToken = "token-123";
-    (controller as any).session.user = { id: "u1", username: "vince", emailVerified: false };
+    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: false };
     (controller as any).realtime.syncVerificationPolling();
     expect((controller as any).realtime.verificationPollTimer).not.toBeNull();
 
-    (controller as any).session.user = { id: "u1", username: "vince", emailVerified: true };
+    (controller as any).session.user = { id: "u1", username: "ada", emailVerified: true };
     apiClient.connectChannel = () => ({
       send: async () => {
         throw new Error("not implemented");
@@ -510,11 +510,11 @@ describe("ChatController", () => {
       user: { id: string; username: string; emailVerified: boolean };
     }>("session", { schemaVersion: 1 })).toEqual({
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     expect(controller.getSnapshot().user).toEqual({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
     controller.dispose();
@@ -526,7 +526,7 @@ describe("ChatController", () => {
 
     persistence.setState("session", {
       sessionToken: "expired-token",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -557,7 +557,7 @@ describe("ChatController", () => {
 
     persistence.setState("session", {
       sessionToken: "expired-token",
-      user: { id: "u1", username: "vince", emailVerified: false },
+      user: { id: "u1", username: "ada", emailVerified: false },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -617,7 +617,7 @@ describe("ChatController", () => {
 
     persistence.setState("session", {
       sessionToken: "old-token",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -670,7 +670,7 @@ describe("ChatController", () => {
 
     persistence.setState("session", {
       sessionToken: "old-token",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -746,7 +746,7 @@ describe("ChatController", () => {
 
     persistence.setState("session", {
       sessionToken: null,
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
@@ -777,11 +777,11 @@ describe("ChatController", () => {
       user: { id: string; username: string; emailVerified: boolean };
     }>("session", { schemaVersion: 1 })).toEqual({
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     expect(controller.getSnapshot().user).toEqual({
       id: "u1",
-      username: "vince",
+      username: "ada",
       emailVerified: true,
     });
     expect((controller as any).realtime.sessionRetryTimer).not.toBeNull();
@@ -1288,7 +1288,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const message: ChatMessage = chatMessage({
       id: "m1",
-      content: "hey @Vince can you take a look?",
+      content: "hey @Ada can you take a look?",
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
     });
@@ -1334,7 +1334,7 @@ describe("ChatController", () => {
 
     expect(notifications).toEqual([{
       title: "#everyone",
-      body: "@bob mentioned you: hey @vince",
+      body: "@bob mentioned you: hey @ada",
       type: "info",
       desktop: "when-inactive",
     }]);
@@ -1386,7 +1386,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const message: ChatMessage = chatMessage({
       id: "m1",
-      content: "hey @vince",
+      content: "hey @ada",
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
     });
@@ -1481,9 +1481,9 @@ describe("ChatController", () => {
     persistSession(persistence, { emailVerified: true });
     apiClient.getSession = async () => ({
       id: "u1",
-      name: "Vince",
-      email: "vince@example.com",
-      username: "vince",
+      name: "Ada",
+      email: "ada@example.com",
+      username: "ada",
       emailVerified: true,
       image: null,
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -1511,7 +1511,7 @@ describe("ChatController", () => {
           replyToId: "m1",
           createdAt: "2026-03-28T00:02:00.000Z",
           user: { id: "u2", username: "bob", displayName: "Bob" },
-          replyTo: { content: "question", user: { id: "u1", username: "vince" } },
+          replyTo: { content: "question", user: { id: "u1", username: "ada" } },
         }),
       }],
     });
@@ -1596,7 +1596,7 @@ describe("ChatController", () => {
         replyToId: "m1",
         createdAt: "2026-03-28T00:02:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
-        replyTo: { content: "question", user: { id: "u1", username: "vince" } },
+        replyTo: { content: "question", user: { id: "u1", username: "ada" } },
       }),
     };
 
@@ -1747,7 +1747,7 @@ describe("ChatController", () => {
       replyToId: "m1",
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-      replyTo: { content: "question", user: { id: "u1", username: "vince" } },
+      replyTo: { content: "question", user: { id: "u1", username: "ada" } },
     });
 
     persistSession(persistence, { emailVerified: true });

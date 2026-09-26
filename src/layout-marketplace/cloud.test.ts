@@ -39,7 +39,7 @@ const entry = {
   paneIds: ["ticker-research", "chart"],
   requires: [{ pluginId: "gloomberb-tv", repo: "gloom-sh/gloomberb-tv", minVersion: "1.0.0" }, { bad: true }],
   note: "moved chart",
-  author: { username: "vince", displayName: "Vince" },
+  author: { username: "ada", displayName: "Ada" },
   createdBy: "u1",
   publishedAt: "2026-09-14T12:00:00.000Z",
   createdAt: "2026-09-14T11:00:00.000Z",
@@ -61,7 +61,7 @@ describe("cloud layout parsing", () => {
       paneIds: ["ticker-research", "chart"],
       requires: [{ pluginId: "gloomberb-tv", repo: "gloom-sh/gloomberb-tv", minVersion: "1.0.0" }],
       note: "moved chart",
-      author: { username: "vince", displayName: "Vince" },
+      author: { username: "ada", displayName: "Ada" },
     });
     expect(parsed?.layout.instances).toHaveLength(2);
     expect(parsed?.paneState.p1).toEqual({ activeTabId: "news" });
@@ -80,11 +80,11 @@ describe("cloud layout parsing", () => {
     expect(parseCloudLayoutRevisions({
       items: [
         { revision: 3, note: "moved chart", requires: [], author: { username: null, displayName: "Alice" }, publishedAt: "2026-09-14T12:00:00.000Z" },
-        { revision: 2, note: null, author: { username: "vince", displayName: "Vince" }, publishedAt: "2026-09-13T12:00:00.000Z" },
+        { revision: 2, note: null, author: { username: "ada", displayName: "Ada" }, publishedAt: "2026-09-13T12:00:00.000Z" },
       ],
     })).toEqual([
       { revision: 3, note: "moved chart", requires: [], author: { username: null, displayName: "Alice" }, publishedAt: "2026-09-14T12:00:00.000Z" },
-      { revision: 2, note: null, requires: [], author: { username: "vince", displayName: "Vince" }, publishedAt: "2026-09-13T12:00:00.000Z" },
+      { revision: 2, note: null, requires: [], author: { username: "ada", displayName: "Ada" }, publishedAt: "2026-09-13T12:00:00.000Z" },
     ]);
   });
 });

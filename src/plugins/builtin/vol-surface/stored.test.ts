@@ -21,7 +21,7 @@ function chain(expiry: number, volatility: number): OptionsChain {
     puts: strikes.map((strike) => contract(strike, "put")), providerId: "test", dataSource: "live", asOf: new Date(now).toISOString() };
 }
 
-/** The platform's compaction (server/src/services/implied-vol/capture.ts), including its rounding. */
+/** Gloom Cloud's compaction of a captured surface, including its rounding. */
 const round = (value: number | null | undefined, digits: number) => value == null || !Number.isFinite(value) ? null : Number(value.toFixed(digits));
 const compact = (expiry: SurfaceExpiry) => ({
   expiration: expiry.expiration, years: round(expiry.years, 8), rate: round(expiry.rate, 6), rateMethod: expiry.rateMethod,

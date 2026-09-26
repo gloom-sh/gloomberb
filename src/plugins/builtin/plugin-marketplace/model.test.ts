@@ -182,7 +182,7 @@ describe("mergeCatalog", () => {
     // installed as still available, plus an unlisted "gloomberb-adjacent" that
     // failed: two rows for one broken install.
     const entries = mergeCatalog({
-      registry: [registryPlugin({ id: "adjacent-indices", repo: "Lucas-Kohorst/gloomberb-adjacent" })],
+      registry: [registryPlugin({ id: "adjacent-indices", repo: "alice/gloomberb-adjacent" })],
       installed: [installedPlugin({
         id: "gloomberb-adjacent",
         name: "gloomberb-adjacent",

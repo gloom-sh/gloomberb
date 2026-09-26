@@ -29,8 +29,8 @@ afterEach(async () => {
 function makeUser(overrides: Partial<ChatUserSummary>): ChatUserSummary {
   return {
     id: "u1",
-    username: "vince",
-    displayName: "Vince",
+    username: "ada",
+    displayName: "Ada",
     profilePublic: true,
     ...overrides,
   };

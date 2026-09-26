@@ -42,7 +42,7 @@ function makeOwnMessage(content = "typo", createdAt = recentChatTimestamp()): Ch
     content,
     replyToId: null,
     createdAt,
-    user: { id: "u0", username: "vince", displayName: "Vince" },
+    user: { id: "u0", username: "ada", displayName: "Ada" },
   };
 }
 
@@ -379,7 +379,7 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const lines = setup().captureCharFrame().split("\n");
-    const headerLine = lines.find((line) => line.includes("vince"));
+    const headerLine = lines.find((line) => line.includes("ada"));
 
     expect(headerLine).toContain("Reply");
     expect(headerLine).toContain("Edit");
@@ -407,7 +407,7 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const lines = setup().captureCharFrame().split("\n");
-    const headerLine = lines.find((line) => line.includes("vince"));
+    const headerLine = lines.find((line) => line.includes("ada"));
 
     expect(headerLine).toContain("Reply");
     expect(headerLine).not.toContain("Edit");
@@ -749,7 +749,7 @@ describe("ChatContent", () => {
           content,
           replyToId: null,
           createdAt: "2026-03-30T00:00:30.000Z",
-          user: { id: "u0", username: "vince", displayName: "Vince" },
+          user: { id: "u0", username: "ada", displayName: "Ada" },
         };
       },
       close: () => {},
@@ -906,7 +906,7 @@ describe("ChatContent", () => {
         content: "hello",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u0", username: "vince", displayName: "Vince" },
+        user: { id: "u0", username: "ada", displayName: "Ada" },
         clientStatus: "sending",
         clientError: null,
       }],
@@ -1024,7 +1024,7 @@ describe("ChatContent", () => {
         content: "Watching $TSLA today",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
+        user: { id: "u1", username: "ada", displayName: "Ada" },
       }],
     });
     const opened: string[] = [];
@@ -1099,7 +1099,7 @@ describe("ChatContent", () => {
         content: "For example for $META it seems to look at Meta AI revenue, not mentioning the ad engine where revenues are most likely to translate",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
+        user: { id: "u1", username: "ada", displayName: "Ada" },
       }],
     });
 
@@ -1159,7 +1159,7 @@ describe("ChatContent", () => {
         content: "Read https://example.com/story.",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
+        user: { id: "u1", username: "ada", displayName: "Ada" },
       }],
     });
 
@@ -1187,7 +1187,7 @@ describe("ChatContent", () => {
         content: "again:\nhttps://github.com/houmain/keymapper/issues?weird_one=the_rest_of the query parameters got lost entirely :)",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
+        user: { id: "u1", username: "ada", displayName: "Ada" },
       }],
     });
 
@@ -1301,7 +1301,7 @@ describe("ChatContent", () => {
     const frame = setup().captureCharFrame();
     expect(frame).toContain("@");
     expect(frame).not.toContain("Shift+C");
-    expect(frame).not.toContain("vince");
+    expect(frame).not.toContain("ada");
   });
 
   test("shows clickable login actions instead of the cloud shortcut when logged out", async () => {
@@ -1355,7 +1355,7 @@ describe("ChatContent", () => {
   test("shows an unread mention badge and opens chat from the status widget", async () => {
     const controller = createController({
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     const openedTemplates: Array<{ templateId: string; options?: { arg?: string } }> = [];
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
@@ -1371,7 +1371,7 @@ describe("ChatContent", () => {
       (controller as any).mergeMessages([{
         id: "m1",
         channelId: "everyone",
-        content: "pinging @vince before the bell",
+        content: "pinging @ada before the bell",
         replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
@@ -1392,7 +1392,7 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const frame = setup().captureCharFrame();
-    expect(frame).toContain("vince");
+    expect(frame).toContain("ada");
     expect(frame).toContain("[1]");
 
     const line = frame.split("\n")[0] ?? "";
@@ -1412,7 +1412,7 @@ describe("ChatContent", () => {
   test("opens an unread direct-message channel from the status widget", async () => {
     const controller = createController({
       sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
+      user: { id: "u1", username: "ada", emailVerified: true },
     });
     const dmChannelId = "dm:test";
     installServerChannels(controller, [
@@ -1461,7 +1461,7 @@ describe("ChatContent", () => {
     await flushFrame();
 
     const frame = setup().captureCharFrame();
-    expect(frame).toContain("vince");
+    expect(frame).toContain("ada");
     expect(frame).toContain("[1]");
 
     const line = frame.split("\n")[0] ?? "";

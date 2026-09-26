@@ -1167,7 +1167,7 @@ describe("apiClient chat timestamps", () => {
               user: { id: "u2", username: "bob", displayName: "Bob" },
               replyTo: {
                 content: "parent",
-                user: { id: "u1", username: "vince" },
+                user: { id: "u1", username: "ada" },
               },
             },
           },
@@ -1275,7 +1275,7 @@ describe("apiClient chat timestamps", () => {
             user: { id: "u2", username: "bob", displayName: "Bob" },
             replyTo: {
               content: "parent",
-              user: { id: "u1", username: "vince" },
+              user: { id: "u1", username: "ada" },
             },
           },
         },
@@ -1312,7 +1312,7 @@ describe("apiClient account profile", () => {
             bio: "Markets.",
             profilePublic: true,
             publicEmail: "public@example.com",
-            xAccount: "vincelwt",
+            xAccount: "ada",
             sharedPortfolioId: "main",
             acceptUnknownDms: true,
             chatEmailNotificationsEnabled: false,

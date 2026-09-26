@@ -122,7 +122,7 @@ export function resolveFuturesColumnIds(visibleIds?: readonly string[]): Futures
  * magnitude fallback only covers contracts without a declared tick, and reads
  * the previous close so a live price crossing 10 keeps its decimals.
  *
- * ponytail: rates render as decimals, not the 32nds tick notation traders
+ * Rates render as decimals, not the 32nds tick notation traders
  * quote (108'17). Add a tick formatter if rates users ask for it.
  */
 function priceDecimals(price: number, contract: FuturesContract): number {

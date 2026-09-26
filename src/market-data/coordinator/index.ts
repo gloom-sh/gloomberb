@@ -103,7 +103,7 @@ const STREAM_QUOTE_BASELINE_LIMIT = 256;
  * financials on a 1934-ticker install, and a session there measured 2.33 MB of
  * resident memory per distinct ticker visited.
  *
- * ponytail: one number for every capped store. Filing text is the heaviest
+ * One number for every capped store. Filing text is the heaviest
  * entry of the group by some margin, so give secContentStore its own smaller
  * cap if this ceiling turns out to be too generous for it.
  */
