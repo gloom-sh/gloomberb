@@ -446,14 +446,16 @@ function formatSpreadChange(value: number): string {
 
 /**
  * The latest level, its move over a month, and the range of what the chart
- * shows. The month compares against the last level at least 30 days older,
- * and only when one exists within 45 days, so a gap never passes for a move.
+ * shows. The month compares against the last level 30 to 45 days older on the
+ * same contract, so neither a gap nor a roll to the next contract, which
+ * trades wider, passes for a move.
  */
 export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
   const latest = points.at(-1);
   if (!latest) return [];
   const latestTime = Date.parse(`${latest.date}T00:00:00Z`);
   const monthAgo = points.findLast((point) => {
+    if (point.maturity !== latest.maturity) return false;
     const age = latestTime - Date.parse(`${point.date}T00:00:00Z`);
     return age >= 30 * DAY_MS && age <= 45 * DAY_MS;
   });
@@ -464,7 +466,7 @@ export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): S
     ...(points.length >= 2 ? [{
       id: "range",
       label: "Range",
-      value: `${Math.round(Math.min(...levels))} to ${formatBp(Math.max(...levels))}`,
+      value: `${formatBp(Math.min(...levels)).slice(0, -2)} to ${formatBp(Math.max(...levels))}`,
       detail: `since ${points[0]!.date}`,
     }] : []),
   ];
