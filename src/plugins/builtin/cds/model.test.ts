@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { CloudCdsTradePayload } from "../../../api-client";
+import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
 import {
   formatNotional,
   issuerGroupKey,
   normalizeCdsTrades,
   resolveIssuerQuery,
+  spreadChartHeight,
+  spreadChartPoints,
+  spreadFigures,
   spreadToBasisPoints,
   summarizeIssuers,
   tradesForIssuer,
@@ -238,5 +241,50 @@ describe("resolveIssuerQuery", () => {
     // Untracked: the loader expands this through instrument search.
     expect(resolveIssuerQuery("orcl", null)).toBe("ORCL");
     expect(resolveIssuerQuery(null, null)).toBeNull();
+  });
+});
+
+function level(date: string, spreadBp: number): CloudCdsHistoryPointPayload {
+  return { date, spreadBp, prints: 5, reported: 1, maturity: "2031-12-20" };
+}
+
+describe("5Y spread chart", () => {
+  test("takes rows only when the pane can hold a chart and a table", () => {
+    expect(spreadChartHeight(92, 15)).toBe(0);
+    expect(spreadChartHeight(39, 28)).toBe(0);
+    expect(spreadChartHeight(92, 16)).toBe(6);
+    expect(spreadChartHeight(92, 26)).toBe(9);
+    expect(spreadChartHeight(92, 60)).toBe(12);
+  });
+
+  test("breaks the line across three weeks without a level", () => {
+    const points = spreadChartPoints([
+      level("2026-06-01", 157),
+      level("2026-06-19", 158),
+      level("2026-07-13", 187),
+    ]);
+    expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.value])).toEqual([
+      ["2026-06-01", 157],
+      ["2026-06-19", 158],
+      ["2026-06-20", null],
+      ["2026-07-13", 187],
+    ]);
+  });
+
+  test("sums up the latest level, its month, and the charted range", () => {
+    expect(spreadFigures([])).toEqual([]);
+    expect(spreadFigures([
+      level("2026-07-24", 214.6),
+      level("2026-08-24", 222),
+      level("2026-09-11", 181),
+      level("2026-09-25", 235),
+    ])).toEqual([
+      { id: "spread", label: "5Y spread", value: "235bp", detail: "2026-09-25" },
+      { id: "change", label: "1M", value: "+13bp" },
+      { id: "range", label: "Range", value: "181 to 235bp", detail: "since 2026-07-24" },
+    ]);
+    // No level 30 to 45 days back: a gap is not a month's move.
+    expect(spreadFigures([level("2026-06-01", 72.5), level("2026-09-25", 60)]).map((item) => item.id))
+      .toEqual(["spread", "range"]);
   });
 });
