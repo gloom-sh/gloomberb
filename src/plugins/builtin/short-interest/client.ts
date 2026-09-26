@@ -4,7 +4,8 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { financeRawNumber, yahooRawDate } from "../../../sources/yahoo-finance/mappers";
-import type { QuoteSummaryResponse, YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
+import { fetchYahooQuoteSummary } from "../../../sources/yahoo-finance/requests";
+import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
 import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import type { ShortInterestRecord } from "./types";
 
@@ -69,10 +70,7 @@ function normalizeRecords(result: YahooQuoteSummaryResult): ShortInterestRecord[
 }
 
 async function requestShortInterest(symbol: string): Promise<ShortInterestRecord[]> {
-  const params = new URLSearchParams({ modules: "defaultKeyStatistics" });
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-  const data = await yahoo.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-  const result = data.quoteSummary?.result?.[0];
+  const result = await fetchYahooQuoteSummary(yahoo, symbol, "defaultKeyStatistics");
   if (!result) throw new Error(`No short interest data for ${symbol}`);
   return normalizeRecords(result);
 }

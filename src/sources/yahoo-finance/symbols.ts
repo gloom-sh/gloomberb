@@ -116,6 +116,31 @@ export function getYahooSymbolsToTry(
   return [primary];
 }
 
+/**
+ * Runs `load` for each Yahoo spelling of a listing and returns the first
+ * success. With `hasValue`, an empty success is kept only until a later symbol
+ * returns data. Throws the last error when every symbol fails.
+ */
+export async function withYahooSymbols<T>(
+  symbols: readonly string[],
+  load: (symbol: string) => Promise<T>,
+  hasValue?: (value: T) => boolean,
+): Promise<T> {
+  let firstEmpty: { value: T } | undefined;
+  let lastError: unknown;
+  for (const symbol of symbols) {
+    try {
+      const value = await load(symbol);
+      if (!hasValue || hasValue(value)) return value;
+      firstEmpty ??= { value };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (firstEmpty) return firstEmpty.value;
+  throw lastError ?? new Error("No Yahoo symbol for this listing");
+}
+
 export function tickerHasYahooSuffix(ticker: string): boolean {
   const dot = ticker.indexOf(".");
   if (dot < 0) return false;

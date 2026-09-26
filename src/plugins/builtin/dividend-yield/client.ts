@@ -2,9 +2,9 @@ import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { deriveMarketState, financeRawNumber, mapYahooDividends } from "../../../sources/yahoo-finance/mappers";
 import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
-import { fetchYahooChart } from "../../../sources/yahoo-finance/requests";
-import { getYahooSymbolsToTry } from "../../../sources/yahoo-finance/symbols";
-import type { QuoteSummaryResponse } from "../../../sources/yahoo-finance/types";
+import { fetchYahooChart, fetchYahooQuoteSummary } from "../../../sources/yahoo-finance/requests";
+import { getYahooSymbolsToTry, withYahooSymbols } from "../../../sources/yahoo-finance/symbols";
+import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarYearsBefore } from "./calendar";
@@ -55,12 +55,7 @@ const EMPTY_DIVIDEND_FIELDS: QuoteSummaryDividendFields = {
   currency: null,
 };
 
-/**
- * Yahoo nests quote modules at quoteSummary.result[0], not the response root.
- */
-export function extractDividendFields(payload: unknown): QuoteSummaryDividendFields {
-  if (typeof payload !== "object" || payload === null) return { ...EMPTY_DIVIDEND_FIELDS };
-  const result = (payload as QuoteSummaryResponse).quoteSummary?.result?.[0];
+export function extractDividendFields(result: YahooQuoteSummaryResult | undefined): QuoteSummaryDividendFields {
   if (!result) return { ...EMPTY_DIVIDEND_FIELDS };
 
   const summaryDetail = result.summaryDetail;
@@ -135,15 +130,7 @@ export async function fetchDividendData(
     ? getYahooSymbolsToTry(symbol, exchange, { exactExchange: true })
     : exchange ? getYahooSymbolsToTry(symbol, exchange) : [symbol];
   if (symbols.length === 0) throw new Error(`Dividend source does not support the selected listing ${symbol}`);
-  let lastError: unknown;
-  for (const yahooSymbol of symbols) {
-    try {
-      return await fetchDividendDataForSymbol(yahooSymbol, currentPrice, currentPriceCurrency);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError ?? new Error(`No dividend data found for ${symbol}`);
+  return withYahooSymbols(symbols, (yahooSymbol) => fetchDividendDataForSymbol(yahooSymbol, currentPrice, currentPriceCurrency));
 }
 
 async function fetchDividendDataForSymbol(
@@ -151,25 +138,18 @@ async function fetchDividendDataForSymbol(
   currentPrice: number | null,
   currentPriceCurrency?: string,
 ): Promise<DividendData> {
-  const quoteUrl =
-    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`
-    + "?modules=summaryDetail,financialData,defaultKeyStatistics,calendarEvents";
-
   const [chartResult, quoteResult] = await Promise.allSettled([
     trackRequest("dividend-history", () =>
       fetchYahooChart(yahoo, symbol, "10y", "1mo"),
     ),
     trackRequest("quote-summary", () =>
-      yahoo.fetchJsonWithCrumb<QuoteSummaryResponse>(quoteUrl),
+      fetchYahooQuoteSummary(yahoo, symbol, "summaryDetail,financialData,defaultKeyStatistics,calendarEvents"),
     ),
   ]);
 
-  const summaryFailed = quoteResult.status === "rejected" || !!quoteResult.value?.quoteSummary?.error;
-  const quoteFields = quoteResult.status === "fulfilled" && !summaryFailed
-    ? extractDividendFields(quoteResult.value)
-    : null;
-  const summaryError = summaryFailed ? UNAVAILABLE_DIVIDEND_SUMMARY
-    : quoteFields && [quoteFields.exDividendDate, quoteFields.dividendDate]
+  const quoteFields = quoteResult.status === "fulfilled" ? extractDividendFields(quoteResult.value) : null;
+  const summaryError = !quoteFields ? UNAVAILABLE_DIVIDEND_SUMMARY
+    : [quoteFields.exDividendDate, quoteFields.dividendDate]
       .some((timestamp) => timestamp != null && reportedDividendDate(timestamp) === null)
       ? INVALID_DIVIDEND_SUMMARY_DATE : undefined;
 

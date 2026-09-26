@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { YahooFinanceClient } from "./yahoo-finance";
 import { getYahooSymbolsToTry } from "./yahoo-finance/symbols";
+import { setHttpFetchTransport } from "../utils/http-transport";
 
 describe("YahooFinanceClient exchange aliases", () => {
   afterEach(() => { setSystemTime(); });
@@ -10,19 +11,19 @@ describe("YahooFinanceClient exchange aliases", () => {
     setSystemTime(new Date("2026-09-23T15:00:00Z"));
     const provider = new YahooFinanceClient() as any;
     const previous = Date.now() - 7_200_000;
-    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 1 / 154, regularMarketTime: previous / 1000 }, history: [] });
+    provider.requests.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 1 / 154, regularMarketTime: previous / 1000 }, history: [] });
     const snapshot = await provider.getExchangeRateSnapshot("JPY");
     expect(snapshot.rate).toBeCloseTo(1 / 154, 12);
     expect(snapshot.asOf).toBe(new Date(previous).toISOString());
     expect(Date.parse(snapshot.fetchedAt)).toBeGreaterThan(previous);
     expect(snapshot.stale).toBe(true);
-    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 0.0065, regularMarketTime: previous / 1000 }, history: [{ date: new Date(previous), close: 0.006475719157606363 }] });
+    provider.requests.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 0.0065, regularMarketTime: previous / 1000 }, history: [{ date: new Date(previous), close: 0.006475719157606363 }] });
     expect((await provider.getExchangeRateSnapshot("JPY")).rate).toBe(0.006475719157606363);
-    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD" }, history: [{ date: new Date(previous), close: 1 / 155 }] });
+    provider.requests.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD" }, history: [{ date: new Date(previous), close: 1 / 155 }] });
     expect(await provider.getExchangeRateSnapshot("JPY")).toMatchObject({ rate: 1 / 155, asOf: new Date(previous).toISOString() });
-    provider.fetchChart = async () => ({ meta: { symbol: "USDJPY=X", currency: "JPY", regularMarketPrice: 154 }, history: [] });
+    provider.requests.fetchChart = async () => ({ meta: { symbol: "USDJPY=X", currency: "JPY", regularMarketPrice: 154 }, history: [] });
     await expect(provider.getExchangeRateSnapshot("JPY")).rejects.toThrow("pair mismatch");
-    provider.fetchChart = async () => ({ meta: { regularMarketPrice: 1 / 154 }, history: [{ date: new Date(previous), close: 1 / 155 }] });
+    provider.requests.fetchChart = async () => ({ meta: { regularMarketPrice: 1 / 154 }, history: [{ date: new Date(previous), close: 1 / 155 }] });
     // An unrelated old bar cannot supply the timestamp for an undated current price.
     expect((await provider.getExchangeRateSnapshot("JPY")).asOf).toBeUndefined();
   });
@@ -34,15 +35,15 @@ describe("YahooFinanceClient exchange aliases", () => {
       [type]: [{ asOfDate: "2025-12-31", reportedValue: { raw: value } }],
     });
 
-    provider.fetchChart = async () => ({
+    provider.requests.fetchChart = async () => ({
       meta: { currency: "USD", regularMarketPrice: 100, shortName: "AMD" },
       history: [{ date: new Date("2025-12-31T00:00:00Z"), close: 100 }],
     });
-    provider.fetchAssetProfile = async () => undefined;
-    provider.fetchQuoteSupplement = async () => ({});
-    provider.fetchExtendedHoursData = async () => ({});
+    provider.requests.fetchAssetProfile = async () => undefined;
+    provider.requests.fetchQuoteSupplement = async () => ({});
+    provider.requests.fetchExtendedHoursData = async () => ({});
     provider.secClient.getFinancialStatements = async () => null;
-    provider.fetchTimeseries = async () => [
+    provider.requests.fetchTimeseries = async () => [
       point("annualAccountsReceivable", 7_450_000_000),
       point("annualInventory", 4_880_000_000),
       point("annualStockBasedCompensation", 1_230_000_000),
@@ -84,14 +85,14 @@ describe("YahooFinanceClient exchange aliases", () => {
       [type]: [{ asOfDate: date, reportedValue: { raw: value } }],
     });
 
-    provider.fetchChart = async () => ({
+    provider.requests.fetchChart = async () => ({
       meta: { currency: "USD", regularMarketPrice: 100, shortName: "AMD" },
       history: [{ date: new Date("2025-12-31T00:00:00Z"), close: 100 }],
     });
-    provider.fetchAssetProfile = async () => undefined;
-    provider.fetchQuoteSupplement = async () => ({});
-    provider.fetchExtendedHoursData = async () => ({});
-    provider.fetchTimeseries = async () => [
+    provider.requests.fetchAssetProfile = async () => undefined;
+    provider.requests.fetchQuoteSupplement = async () => ({});
+    provider.requests.fetchExtendedHoursData = async () => ({});
+    provider.requests.fetchTimeseries = async () => [
       point("annualTotalRevenue", "2025-12-31", 200),
       point("quarterlyTotalRevenue", "2025-12-31", 60),
     ];
@@ -136,25 +137,25 @@ describe("YahooFinanceClient exchange aliases", () => {
   });
 
   test("symbol news drops search headlines Yahoo does not link to the symbol", async () => {
-    const originalFetch = globalThis.fetch;
     const news = [
       { title: "Bitcoin slips below 60k", link: "https://a", publisher: "A", providerPublishTime: 1_790_000_000, relatedTickers: ["btc-usd", "ETH-USD"] },
       { title: "Nissan steps up exports from China", link: "https://b", publisher: "B", providerPublishTime: 1_790_000_100, relatedTickers: ["7201.T"] },
       { title: "Rechargeable Thin Film Battery Market Outlook", link: "https://c", publisher: "C", providerPublishTime: 1_790_000_200 },
     ];
-    globalThis.fetch = (async () => Response.json({ news })) as unknown as typeof fetch;
+    // Through the shared transport, which the web build uses to proxy Yahoo.
+    setHttpFetchTransport(async () => Response.json({ news }));
     try {
       const items = await new YahooFinanceClient().getNews("BTC-USD", 10);
       expect(items.map((item) => item.title)).toEqual(["Bitcoin slips below 60k"]);
     } finally {
-      globalThis.fetch = originalFetch;
+      setHttpFetchTransport(null);
     }
   });
 
   test("maps manual resolution requests to yahoo chart range plus interval", async () => {
     const provider = new YahooFinanceClient() as any;
     let requested = false;
-    provider.fetchChart = async (symbol: string, range: string, interval: string) => {
+    provider.requests.fetchChart = async (symbol: string, range: string, interval: string) => {
       requested = true;
       expect({ symbol, range, interval }).toEqual({
         symbol: "AAPL",
@@ -232,7 +233,6 @@ describe("YahooFinanceClient exchange aliases", () => {
   test("preserves analyst rating price targets from upgrade history", async () => {
     const provider = new YahooFinanceClient() as any;
     let requestUrl = "";
-    provider.getSymbolsToTry = () => ["AMD"];
     provider.http.fetchJsonWithCrumb = async (url: string) => {
       requestUrl = url;
       return {
@@ -277,8 +277,7 @@ describe("YahooFinanceClient exchange aliases", () => {
     const provider = new YahooFinanceClient() as any;
     const unix = (date: string) => Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000);
 
-    provider.getSymbolsToTry = () => ["USAU"];
-    provider.fetchChart = async () => ({
+    provider.requests.fetchChart = async () => ({
       meta: { currency: "USD" },
       history: [{ date: new Date("2026-02-03T00:00:00Z"), close: 15 }],
       events: {

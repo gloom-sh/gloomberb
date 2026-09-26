@@ -14,7 +14,7 @@ import { getPublishedUsEquitySession } from "../../market-data/published-us-sess
 import { CANONICAL_EXCHANGE_ALIASES, canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { canonicalHistoryInterval } from "../history-retention";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
-import { getYahooSymbol, getYahooSymbolsToTry } from "./symbols";
+import { getYahooSymbol, getYahooSymbolsToTry, withYahooSymbols } from "./symbols";
 import type { ChartResult } from "./types";
 import { matchesYahooChartInterval } from "./yahoo-chart-interval";
 
@@ -135,32 +135,24 @@ export async function loadYahooPriceHistoryForResolutionWithMetadata({
   fetchChart: YahooChartFetcher;
 }): Promise<PriceHistoryResult> {
   const effectiveChartRange = chartRange ?? RANGE_PARAMS[bufferRange ?? "1Y"].range;
-  const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
-  let lastError: any;
+  return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol) => {
+    const result = await fetchChart(symbol, effectiveChartRange, resolution);
+    const { meta, history } = result;
+    const session = yahooHistorySession(ticker, exchange, symbol, resolution, result);
 
-  for (const symbol of symbolsToTry) {
-    try {
-      const result = await fetchChart(symbol, effectiveChartRange, resolution);
-      const { meta, history } = result;
-      const session = yahooHistorySession(ticker, exchange, symbol, resolution, result);
-
-      const { divisor } = resolveCurrencyUnit(meta.currency || "USD");
-      if (divisor !== 1) {
-        for (const point of history) {
-          point.close /= divisor;
-          if (point.open != null) point.open /= divisor;
-          if (point.high != null) point.high /= divisor;
-          if (point.low != null) point.low /= divisor;
-        }
+    const { divisor } = resolveCurrencyUnit(meta.currency || "USD");
+    if (divisor !== 1) {
+      for (const point of history) {
+        point.close /= divisor;
+        if (point.open != null) point.open /= divisor;
+        if (point.high != null) point.high /= divisor;
+        if (point.low != null) point.low /= divisor;
       }
-
-      const points = isIntradayResolution(resolution)
-        ? repairIsolatedIntradayOhlcOutliers(history)
-        : history;
-      return { points, resolution, ...(session ? { session } : {}) };
-    } catch (err) {
-      lastError = err;
     }
-  }
-  throw lastError || new Error(`No history for ${ticker}`);
+
+    const points = isIntradayResolution(resolution)
+      ? repairIsolatedIntradayOhlcOutliers(history)
+      : history;
+    return { points, resolution, ...(session ? { session } : {}) };
+  });
 }

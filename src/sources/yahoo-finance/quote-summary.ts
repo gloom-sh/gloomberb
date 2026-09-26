@@ -9,8 +9,6 @@ import { resolveCurrencyUnit } from "../../utils/currency-units";
 import {
   deriveShareChange,
   financeRawNumber,
-  hasAnalystResearchValue,
-  hasCorporateActionsValue,
   mapYahooAnalystResearchResponse,
   mapYahooCalendarEarnings,
   mapYahooDividends,
@@ -19,9 +17,11 @@ import {
   mapYahooSplits,
   yahooRawDate,
 } from "./mappers";
-import { getYahooSymbolsToTry } from "./symbols";
-import type { ChartResult, QuoteSummaryResponse } from "./types";
+import { getYahooSymbolsToTry, withYahooSymbols } from "./symbols";
+import type { ChartResult } from "./types";
 import { yahooSecurityName } from "./names";
+import { fetchYahooQuoteSummary } from "./requests";
+import { hasAnalystResearchValue, hasCorporateActionsValue } from "../provider-router/financials";
 
 interface YahooQuoteSummaryOptions {
   exchange?: string;
@@ -43,65 +43,51 @@ export async function loadYahooHolders({
   providerId,
   ticker,
 }: YahooQuoteSummaryOptions): Promise<HolderData> {
-  const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
-  let lastError: any;
+  return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol) => {
+    const result = await fetchYahooQuoteSummary({ fetchJsonWithCrumb }, symbol, "price,majorHoldersBreakdown,institutionOwnership");
+    if (!result) throw new Error(`No holder data for ${symbol}`);
 
-  for (const symbol of symbolsToTry) {
-    try {
-      const params = new URLSearchParams({
-        modules: "price,majorHoldersBreakdown,institutionOwnership",
-      });
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-      const data = await fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-      const result = data.quoteSummary?.result?.[0];
-      if (!result) throw new Error(`No holder data for ${symbol}`);
+    const holders: HolderRecord[] = (result.institutionOwnership?.ownershipList ?? [])
+      .map((item): HolderRecord | null => {
+        const name = item.organization?.trim();
+        if (!name) return null;
+        const shares = financeRawNumber(item.position);
+        const changePercent = financeRawNumber(item.pctChange);
+        return {
+          providerId,
+          ownerType: "institution",
+          name,
+          reportDate: yahooRawDate(item.reportDate),
+          shares,
+          value: financeRawNumber(item.value),
+          percentHeld: financeRawNumber(item.pctHeld),
+          changePercent,
+          changeShares: deriveShareChange(shares, changePercent),
+        };
+      })
+      .filter((holder): holder is HolderRecord => holder !== null);
+    const asOf = holders
+      .map((holder) => holder.reportDate)
+      .filter((date): date is string => !!date)
+      .sort()
+      .at(-1);
 
-      const holders: HolderRecord[] = (result.institutionOwnership?.ownershipList ?? [])
-        .map((item): HolderRecord | null => {
-          const name = item.organization?.trim();
-          if (!name) return null;
-          const shares = financeRawNumber(item.position);
-          const changePercent = financeRawNumber(item.pctChange);
-          return {
-            providerId,
-            ownerType: "institution",
-            name,
-            reportDate: yahooRawDate(item.reportDate),
-            shares,
-            value: financeRawNumber(item.value),
-            percentHeld: financeRawNumber(item.pctHeld),
-            changePercent,
-            changeShares: deriveShareChange(shares, changePercent),
-          };
-        })
-        .filter((holder): holder is HolderRecord => holder !== null);
-      const asOf = holders
-        .map((holder) => holder.reportDate)
-        .filter((date): date is string => !!date)
-        .sort()
-        .at(-1);
-
-      return {
-        providerId,
-        symbol: result.price?.symbol ?? symbol,
-        name: yahooSecurityName(result.price?.shortName, result.price?.longName),
-        currency: result.price?.currency,
-        exchange: result.price?.exchangeName,
-        asOf,
-        summary: {
-          insidersPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.insidersPercentHeld),
-          institutionsPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.institutionsPercentHeld),
-          institutionsFloatPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.institutionsFloatPercentHeld),
-          institutionsCount: financeRawNumber(result.majorHoldersBreakdown?.institutionsCount),
-        },
-        holders,
-      };
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error(`No holder data for ${ticker}`);
+    return {
+      providerId,
+      symbol: result.price?.symbol ?? symbol,
+      name: yahooSecurityName(result.price?.shortName, result.price?.longName),
+      currency: result.price?.currency,
+      exchange: result.price?.exchangeName,
+      asOf,
+      summary: {
+        insidersPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.insidersPercentHeld),
+        institutionsPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.institutionsPercentHeld),
+        institutionsFloatPercentHeld: financeRawNumber(result.majorHoldersBreakdown?.institutionsFloatPercentHeld),
+        institutionsCount: financeRawNumber(result.majorHoldersBreakdown?.institutionsCount),
+      },
+      holders,
+    };
+  });
 }
 
 export async function loadYahooAnalystResearch({
@@ -109,30 +95,15 @@ export async function loadYahooAnalystResearch({
   fetchJsonWithCrumb,
   ticker,
 }: YahooQuoteSummaryOptions): Promise<AnalystResearchData> {
-  const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
-  let firstEmpty: AnalystResearchData | null = null;
-  let lastError: any;
-
-  for (const symbol of symbolsToTry) {
-    try {
-      const params = new URLSearchParams({
-        modules: "price,financialData,recommendationTrend,upgradeDowngradeHistory,earningsTrend",
-      });
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-      const data = await fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-      const result = data.quoteSummary?.result?.[0];
-      if (!result) throw new Error(`No analyst data for ${symbol}`);
-
-      const research = mapYahooAnalystResearchResponse(result, symbol);
-      if (hasAnalystResearchValue(research)) return research;
-      firstEmpty ??= research;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  if (firstEmpty) return firstEmpty;
-  throw lastError || new Error(`No analyst data for ${ticker}`);
+  return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol) => {
+    const result = await fetchYahooQuoteSummary(
+      { fetchJsonWithCrumb },
+      symbol,
+      "price,financialData,recommendationTrend,upgradeDowngradeHistory,earningsTrend",
+    );
+    if (!result) throw new Error(`No analyst data for ${symbol}`);
+    return mapYahooAnalystResearchResponse(result, symbol);
+  }, hasAnalystResearchValue);
 }
 
 export async function loadYahooCorporateActions({
@@ -142,56 +113,37 @@ export async function loadYahooCorporateActions({
   providerId,
   ticker,
 }: YahooCorporateActionsOptions): Promise<CorporateActionsData> {
-  const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
-  let firstEmpty: CorporateActionsData | null = null;
-  let lastError: any;
+  return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol): Promise<CorporateActionsData> => {
+    const [chartResult, summaryResult] = await Promise.allSettled([
+      fetchChart(symbol, "5y", "1d"),
+      fetchYahooQuoteSummary({ fetchJsonWithCrumb }, symbol, "price,quoteType,calendarEvents,earningsHistory,earningsTrend").then((result) => {
+        if (!result) throw new Error(`No corporate actions for ${symbol}`);
+        return result;
+      }),
+    ]);
+    if (chartResult.status === "rejected" && summaryResult.status === "rejected") throw summaryResult.reason;
+    const chart = chartResult.status === "fulfilled" ? chartResult.value : undefined;
+    const result = summaryResult.status === "fulfilled" ? summaryResult.value : undefined;
+    const dividendUnit = resolveCurrencyUnit(chart?.meta.currency);
+    const dividends = mapYahooDividends(chart?.events, chart?.meta);
+    const completeDividends = chart && dividends.length === Object.keys(chart.events?.dividends ?? {}).length;
 
-  for (const symbol of symbolsToTry) {
-    try {
-      const params = new URLSearchParams({
-        modules: "price,quoteType,calendarEvents,earningsHistory,earningsTrend",
-      });
-      const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-      const [chartResult, summaryResult] = await Promise.allSettled([
-        fetchChart(symbol, "5y", "1d"),
-        fetchJsonWithCrumb<QuoteSummaryResponse>(url).then((data) => {
-          const result = data.quoteSummary?.result?.[0];
-          if (!result) throw new Error(`No corporate actions for ${symbol}`);
-          return result;
-        }),
-      ]);
-      if (chartResult.status === "rejected" && summaryResult.status === "rejected") throw summaryResult.reason;
-      const chart = chartResult.status === "fulfilled" ? chartResult.value : undefined;
-      const result = summaryResult.status === "fulfilled" ? summaryResult.value : undefined;
-      const dividendUnit = resolveCurrencyUnit(chart?.meta.currency);
-      const dividends = mapYahooDividends(chart?.events, chart?.meta);
-      const completeDividends = chart && dividends.length === Object.keys(chart.events?.dividends ?? {}).length;
-
-      const actions: CorporateActionsData = {
-        providerId,
-        fetchedAt: new Date().toISOString(),
-        coverage: { dividends: completeDividends ? "available" : "unavailable", splits: chart ? "available" : "unavailable", earnings: result?.calendarEvents || result?.earningsHistory ? "available" : "unavailable" },
-        symbol: result?.price?.symbol ?? symbol,
-        name: yahooSecurityName(result?.price?.shortName, result?.price?.longName),
-        currency: dividendUnit.currency || undefined,
-        exchange: result?.price?.exchangeName ?? result?.quoteType?.exchange,
-        dividends: dividends.map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),
-        splits: mapYahooSplits(chart?.events, chart?.meta),
-        earnings: [
-          ...mapYahooCalendarEarnings(result ?? {}),
-          ...mapYahooEarningsHistory(result ?? {}),
-        ],
-      };
-
-      if (hasCorporateActionsValue(actions)) return actions;
-      firstEmpty ??= actions;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-
-  if (firstEmpty) return firstEmpty;
-  throw lastError || new Error(`No corporate actions for ${ticker}`);
+    return {
+      providerId,
+      fetchedAt: new Date().toISOString(),
+      coverage: { dividends: completeDividends ? "available" : "unavailable", splits: chart ? "available" : "unavailable", earnings: result?.calendarEvents || result?.earningsHistory ? "available" : "unavailable" },
+      symbol: result?.price?.symbol ?? symbol,
+      name: yahooSecurityName(result?.price?.shortName, result?.price?.longName),
+      currency: dividendUnit.currency || undefined,
+      exchange: result?.price?.exchangeName ?? result?.quoteType?.exchange,
+      dividends: dividends.map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),
+      splits: mapYahooSplits(chart?.events, chart?.meta),
+      earnings: [
+        ...mapYahooCalendarEarnings(result ?? {}),
+        ...mapYahooEarningsHistory(result ?? {}),
+      ],
+    };
+  }, hasCorporateActionsValue);
 }
 
 export async function loadYahooEarningsCalendar(
@@ -207,10 +159,7 @@ export async function loadYahooEarningsCalendar(
 
     const settled = await Promise.allSettled(
       batch.map(async (symbol) => {
-        const params = new URLSearchParams({ modules: "calendarEvents,earningsTrend,earningsHistory,quoteType" });
-        const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-        const data = await fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-        const mod = data.quoteSummary?.result?.[0];
+        const mod = await fetchYahooQuoteSummary({ fetchJsonWithCrumb }, symbol, "calendarEvents,earningsTrend,earningsHistory,quoteType");
         return mod ? mapYahooEarningsCalendarEvent(mod, symbol) : null;
       }),
     );

@@ -13,29 +13,20 @@ function payment(date: string, amount = 0.5, currency = "USD"): DividendPayment 
 }
 
 describe("extractDividendFields", () => {
-  test("reads dividend modules from quoteSummary.result[0], not the response root", () => {
+  test("prefers the forward rate and financialData payout ratio over summaryDetail fallbacks", () => {
     const fields = extractDividendFields({
       summaryDetail: {
-        trailingAnnualDividendRate: { raw: 99 },
-        trailingAnnualDividendYield: { raw: 0.99 },
-        currency: "EUR",
+        trailingAnnualDividendRate: { raw: 1.02 },
+        trailingAnnualDividendYield: { raw: 0.0045 },
+        forwardAnnualDividendRate: { raw: 1.04 },
+        dividendRate: { raw: 9.99 },
+        payoutRatio: { raw: 0.99 },
+        exDividendDate: { raw: 1719792000 },
+        dividendDate: { raw: 1720396800 },
+        currency: "USD",
       },
-      quoteSummary: {
-        result: [{
-          summaryDetail: {
-            trailingAnnualDividendRate: { raw: 1.02 },
-            trailingAnnualDividendYield: { raw: 0.0045 },
-            forwardAnnualDividendRate: { raw: 1.04 },
-            dividendRate: { raw: 9.99 },
-            payoutRatio: { raw: 0.99 },
-            exDividendDate: { raw: 1719792000 },
-            dividendDate: { raw: 1720396800 },
-            currency: "USD",
-          },
-          financialData: {
-            payoutRatio: { raw: 0.14 },
-          },
-        }],
+      financialData: {
+        payoutRatio: { raw: 0.14 },
       },
     });
 
@@ -52,14 +43,10 @@ describe("extractDividendFields", () => {
 
   test("falls back to Yahoo's current summaryDetail field names", () => {
     const fields = extractDividendFields({
-      quoteSummary: {
-        result: [{
-          summaryDetail: {
-            dividendRate: { raw: 1.08 },
-            payoutRatio: { raw: 0.1204 },
-            currency: "USD",
-          },
-        }],
+      summaryDetail: {
+        dividendRate: { raw: 1.08 },
+        payoutRatio: { raw: 0.1204 },
+        currency: "USD",
       },
     });
 
@@ -212,9 +199,9 @@ describe("cash distribution calculations", () => {
   test("uses reported cash history over zero ETF summary fields, with calendar cutoffs and no future cash", () => {
     const payments = Array.from({ length: 12 }, (_, month) => payment(new Date(Date.UTC(2025, 9 + month, 1)).toISOString().slice(0, 10)));
     payments.push(payment("2026-10-01", 10), payment("2025-09-10", 20));
-    const fields = extractDividendFields({ quoteSummary: { result: [{ summaryDetail: {
+    const fields = extractDividendFields({ summaryDetail: {
       trailingAnnualDividendRate: { raw: 0 }, trailingAnnualDividendYield: { raw: 0 },
-    } }] } });
+    } });
     const metrics = buildDividendMetrics(payments, fields, 60, { now });
     expect(metrics.trailingRate).toBe(6);
     expect(metrics.trailingYield).toBeCloseTo(0.1, 12);
@@ -224,9 +211,9 @@ describe("cash distribution calculations", () => {
 
   test("normalizes pence cash into pounds and suppresses unverifiable summary rate units", () => {
     const payments = [payment("2026-06-04", 2.0301435, "GBp"), payment("2025-11-20", 1.9512, "GBp")];
-    const fields = extractDividendFields({ quoteSummary: { result: [{ summaryDetail: {
+    const fields = extractDividendFields({ summaryDetail: {
       currency: "GBp", trailingAnnualDividendRate: { raw: 0.046 }, forwardAnnualDividendRate: { raw: 0.04 },
-    } }] } });
+    } });
     const metrics = buildDividendMetrics(payments, fields, 1.28725, { now, summaryRatesComparable: false });
     expect(payments[0]).toMatchObject({ currency: "GBP", amount: 0.020301435 });
     expect(metrics.trailingRate).toBeCloseTo(0.039813435, 12);
@@ -236,9 +223,9 @@ describe("cash distribution calculations", () => {
   });
 
   test("distinguishes no reported cash from unavailable history and does not advertise past payment dates", () => {
-    const fields = extractDividendFields({ quoteSummary: { result: [{ summaryDetail: {
+    const fields = extractDividendFields({ summaryDetail: {
       dividendDate: { raw: Date.parse("2026-08-31") / 1000 },
-    } }] } });
+    } });
     expect(buildDividendMetrics([], fields, 100, { now }).trailingYield).toBe(0);
     const unavailable = buildDividendMetrics([], fields, 100, { now, historyAvailable: false });
     expect(unavailable.trailingYield).toBeNull();

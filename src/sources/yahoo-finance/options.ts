@@ -1,7 +1,7 @@
 import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { MarketState, OptionContract, OptionsChain, Quote } from "../../types/financials";
 import { parseOptionSymbol } from "../../utils/options";
-import { getYahooSymbolsToTry } from "./symbols";
+import { getYahooSymbolsToTry, withYahooSymbols } from "./symbols";
 
 type YahooFetchJsonWithCrumb = <T>(url: string) => Promise<T>;
 
@@ -87,51 +87,43 @@ export async function loadYahooOptionsChainResult({
   fetchJsonWithCrumb,
   ticker,
 }: LoadYahooOptionsChainOptions): Promise<YahooOptionsChainResult> {
-  const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
-  let lastError: any;
+  return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol): Promise<YahooOptionsChainResult> => {
+    let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`;
+    if (expirationDate != null) url += `?date=${expirationDate}`;
 
-  for (const symbol of symbolsToTry) {
-    try {
-      let url = `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`;
-      if (expirationDate != null) url += `?date=${expirationDate}`;
-
-      const data = await fetchJsonWithCrumb<{
-        optionChain?: {
-          result?: Array<{
-            underlyingSymbol?: string;
-            expirationDates?: number[];
-            quote?: { marketState?: unknown };
-            options?: Array<{
-              calls?: Array<Record<string, any>>;
-              puts?: Array<Record<string, any>>;
-            }>;
+    const data = await fetchJsonWithCrumb<{
+      optionChain?: {
+        result?: Array<{
+          underlyingSymbol?: string;
+          expirationDates?: number[];
+          quote?: { marketState?: unknown };
+          options?: Array<{
+            calls?: Array<Record<string, any>>;
+            puts?: Array<Record<string, any>>;
           }>;
-        };
-      }>(url);
-
-      const result = data.optionChain?.result?.[0];
-      if (!result) throw new Error("No options data");
-
-      const opts = result.options?.[0];
-      return {
-        chain: {
-          underlyingSymbol: result.underlyingSymbol ?? symbol,
-          expirationDates: result.expirationDates ?? [],
-          calls: (opts?.calls ?? []).map((contract) => mapYahooOptionContract(contract)),
-          puts: (opts?.puts ?? []).map((contract) => mapYahooOptionContract(contract)),
-          dataSource: "delayed",
-          feed: "yahoo",
-          delayMinutes: 15,
-          realtimeEligible: false,
-          asOf: new Date().toISOString(),
-        },
-        underlyingMarketState: normalizeYahooMarketState(result.quote?.marketState),
+        }>;
       };
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError || new Error(`No options chain for ${ticker}`);
+    }>(url);
+
+    const result = data.optionChain?.result?.[0];
+    if (!result) throw new Error("No options data");
+
+    const opts = result.options?.[0];
+    return {
+      chain: {
+        underlyingSymbol: result.underlyingSymbol ?? symbol,
+        expirationDates: result.expirationDates ?? [],
+        calls: (opts?.calls ?? []).map((contract) => mapYahooOptionContract(contract)),
+        puts: (opts?.puts ?? []).map((contract) => mapYahooOptionContract(contract)),
+        dataSource: "delayed",
+        feed: "yahoo",
+        delayMinutes: 15,
+        realtimeEligible: false,
+        asOf: new Date().toISOString(),
+      },
+      underlyingMarketState: normalizeYahooMarketState(result.quote?.marketState),
+    };
+  });
 }
 
 export async function loadYahooOptionsChain(

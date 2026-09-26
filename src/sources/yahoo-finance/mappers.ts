@@ -2,7 +2,6 @@ import type { EarningsEstimateBasis, EarningsEstimateField, EarningsEvent } from
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
-  CorporateActionsData,
   DividendAction,
   EarningsAction,
   MarketState,
@@ -29,20 +28,6 @@ export function financeRawNumber(value: unknown): number | undefined {
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   }
   return undefined;
-}
-
-export function hasAnalystResearchValue(data: AnalystResearchData): boolean {
-  return !!data.priceTarget
-    || data.recommendations.length > 0
-    || data.ratings.length > 0
-    || data.earningsEstimates.length > 0
-    || data.revenueEstimates.length > 0;
-}
-
-export function hasCorporateActionsValue(data: CorporateActionsData): boolean {
-  return data.dividends.length > 0
-    || data.splits.length > 0
-    || data.earnings.length > 0;
 }
 
 export function normalizePositiveMarketValue(value: number | undefined, divisor = 1): number | undefined {

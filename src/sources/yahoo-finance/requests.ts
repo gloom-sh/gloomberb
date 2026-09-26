@@ -17,6 +17,7 @@ import type {
   ChartResult,
   QuoteSummaryResponse,
   TimeseriesResponse,
+  YahooQuoteSummaryResult,
 } from "./types";
 import type { YahooHttpClient } from "./http";
 import { coverFxOpenClose, reconcileYahooCurrentPeriod, withoutLiveRowVolume } from "./chart-period";
@@ -144,14 +145,27 @@ export async function fetchYahooTimeseries(
   return data.timeseries?.result || [];
 }
 
+/**
+ * Yahoo nests the requested modules at quoteSummary.result[0]. An error body
+ * counts as a failed request; a response without a result resolves undefined.
+ */
+export async function fetchYahooQuoteSummary(
+  http: Pick<YahooHttpClient, "fetchJsonWithCrumb">,
+  symbol: string,
+  modules: string,
+): Promise<YahooQuoteSummaryResult | undefined> {
+  const params = new URLSearchParams({ modules });
+  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
+  const { quoteSummary } = await http.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
+  if (quoteSummary?.error) throw new Error(quoteSummary.error.description || `Yahoo quote summary failed for ${symbol}`);
+  return quoteSummary?.result?.[0];
+}
+
 export async function fetchYahooAssetProfile(
   http: YahooHttpClient,
   symbol: string,
 ): Promise<CompanyProfile | undefined> {
-  const params = new URLSearchParams({ modules: "assetProfile" });
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-  const data = await http.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-  const profile = data.quoteSummary?.result?.[0]?.assetProfile;
+  const profile = (await fetchYahooQuoteSummary(http, symbol, "assetProfile"))?.assetProfile;
   if (!profile) return undefined;
 
   const normalized: CompanyProfile = {
@@ -179,12 +193,10 @@ export async function fetchYahooQuoteSupplement(
   try {
     // A continuous futures alias also needs the contract its price belongs to.
     const futuresAlias = /=F$/i.test(symbol);
-    const params = new URLSearchParams({ modules: futuresAlias ? "summaryDetail,price" : "summaryDetail" });
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-    const data = await http.fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-    const summaryDetail = data.quoteSummary?.result?.[0]?.summaryDetail;
+    const result = await fetchYahooQuoteSummary(http, symbol, futuresAlias ? "summaryDetail,price" : "summaryDetail");
+    const summaryDetail = result?.summaryDetail;
     if (!summaryDetail) return {};
-    const price = data.quoteSummary?.result?.[0]?.price;
+    const price = result.price;
     const name = futuresAlias
       ? yahooFuturesAliasName(symbol, yahooSecurityName(price?.shortName, price?.longName), price?.underlyingSymbol)
       : undefined;
