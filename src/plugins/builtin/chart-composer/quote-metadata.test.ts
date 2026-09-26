@@ -3,6 +3,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteMetadata } from "../../../types/financials";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { AssetDataRouter } from "../../../sources/provider-router";
+import { QUOTE_SCHEMA_VERSION } from "../../../sources/provider-router/cache";
 import { loadChartPaneModel } from "./headless";
 import { buildPriceChartPreset } from "./presets";
 import { ChartResolveCache, resolveChartSpecData } from "../../../time-series/resolve";
@@ -164,7 +165,7 @@ test("routed metadata reuses stored quote facts while the same stale price stays
     store.resources.set({ namespace: "market", kind: "quote", entityKey: "EURUSD=X", variantKey: "exchange=CCY", sourceKey: "provider:recorded" },
       { symbol: "EURUSD=X", listingExchangeName: "CCY", currency: "USD", instrumentType: "CURRENCY", price: 1.16,
         change: 0, changePercent: 0, lastUpdated: 1234, stale: true, providerId: "recorded" },
-      { schemaVersion: 1, cachePolicy: { staleMs: 60_000, expireMs: 60_000 } });
+      { schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 } });
     const router = new AssetDataRouter(provider, [], store.resources);
     expect(await router.getQuoteMetadata("EURUSD=X", "CCY")).toMatchObject({ currency: "USD", instrumentType: "CURRENCY", source: { lastUpdated: 1234, stale: true } });
     expect(metadataCalls).toBe(0);

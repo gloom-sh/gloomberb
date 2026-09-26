@@ -3,6 +3,7 @@ import { AppPersistence } from "../../data/app-persistence";
 import type { Quote } from "../../types/financials";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { AssetDataRouter } from "./index";
+import { QUOTE_SCHEMA_VERSION } from "./cache";
 import { attachTestRegistry, brokerInstance, setBrokerInstances } from "./test-support";
 import { createTestFinancials, fallbackProvider } from "../../test-support/data-provider";
 
@@ -43,7 +44,7 @@ test("broker price and provider session survive scalar, batch and cached financi
       expectComposed(router.getCachedFinancialsForTargets([target]).get("AMD")?.quote, 100.25);
       brokerQuote.stale = true;
       store.resources.set({ namespace: "market", kind: "quote", entityKey: "AMD", variantKey: "exchange=NASDAQ", sourceKey: "broker:ibkr:ibkr-work" }, brokerQuote,
-        { schemaVersion: 1, cachePolicy: { staleMs: 60_000, expireMs: 60_000 }, fetchedAt: now });
+        { schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 }, fetchedAt: now });
       expect((await router.getQuote("AMD", "NASDAQ", context)).price).toBe(99.7);
     } finally {
       store.close();

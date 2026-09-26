@@ -4,6 +4,7 @@ import { AppPersistence } from "../../data/app-persistence";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import { AssetDataRouter } from "./index";
+import { QUOTE_SCHEMA_VERSION } from "./cache";
 import { isProviderQuoteUsableForCurrentSession } from "./financials";
 import { createTestQuote } from "../../test-support/data-provider";
 
@@ -63,7 +64,7 @@ describe("provider quote identity and price domain", () => {
     const router = new AssetDataRouter(fallback, [preferred], persistence.resources);
     try {
       const cacheKey = { namespace: "market", kind: "quote", entityKey: "ES=F", variantKey: "", sourceKey: "provider:wrong-contract" };
-      const corruptCache = () => persistence.resources.set(cacheKey, quote("NQ=F", { price: 43210 }), { cachePolicy: { staleMs: 60_000, expireMs: 60_000 } });
+      const corruptCache = () => persistence.resources.set(cacheKey, quote("NQ=F", { price: 43210 }), { schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 } });
       corruptCache();
       const noFallback = new AssetDataRouter(preferred, [], persistence.resources);
       await expect(noFallback.getQuote("ES=F")).rejects.toThrow("No quote provider");

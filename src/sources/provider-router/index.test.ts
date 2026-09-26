@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { CloudApiRequestTransport } from "../../api-client/request";
 import { AppPersistence } from "../../data/app-persistence";
 import { AssetDataRouter } from "./index";
-import { getRouterEntityKey } from "./cache";
+import { FINANCIALS_SCHEMA_VERSION, getRouterEntityKey, QUOTE_SCHEMA_VERSION } from "./cache";
 import { assetDataProvider } from "../../capabilities";
 import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -519,7 +519,7 @@ describe("AssetDataRouter", () => {
 
     try {
       persistence.resources.set(cacheKey, regularReference, {
-        cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
+        schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
         fetchedAt: Date.now() - 2 * 60_000,
       });
       const router = new AssetDataRouter(provider, [], persistence.resources);
@@ -531,7 +531,7 @@ describe("AssetDataRouter", () => {
       expect(providerCalls).toBe(1);
 
       persistence.resources.set(cacheKey, regularReference, {
-        cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
+        schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
         fetchedAt: Date.now(),
       });
       const forcedTransition = await router.getQuote(optionSymbol, "", {
@@ -543,7 +543,7 @@ describe("AssetDataRouter", () => {
 
       providerAvailable = false;
       persistence.resources.set(cacheKey, regularReference, {
-        cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
+        schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 24 * 60 * 60_000 },
         fetchedAt: Date.now() - 2 * 60_000,
       });
       const outageFallback = await router.getQuote(optionSymbol, "", context);
@@ -1882,7 +1882,7 @@ describe("AssetDataRouter", () => {
         },
       }),
       {
-        cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
+        schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
     );
@@ -1911,7 +1911,7 @@ describe("AssetDataRouter", () => {
         },
       }),
       {
-        cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
+        schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
     );

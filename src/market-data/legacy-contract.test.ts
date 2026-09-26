@@ -7,7 +7,7 @@ import { MarketDataCoordinator } from "./coordinator";
 import type { InstrumentRef } from "./request-types";
 import { buildChartKey, buildOptionsKey, toMarketDataContext } from "./selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
-import { getRouterEntityKey } from "../sources/provider-router/cache";
+import { FINANCIALS_SCHEMA_VERSION, getRouterEntityKey, QUOTE_SCHEMA_VERSION } from "../sources/provider-router/cache";
 
 useRegularMarketSession();
 
@@ -83,7 +83,7 @@ test.each([
   const target = { ...instrument(110), instrument: contract };
   const store = (kind: string, entityKey: string, value: unknown) => persistence.resources.set(
     { namespace: "market", kind, entityKey, variantKey: "exchange=NASDAQ", sourceKey: "provider:fixture-provider" }, value,
-    { ...(kind === "financials" ? { schemaVersion: 7 } : {}), cachePolicy: { staleMs: 60000, expireMs: 120000 } },
+    { schemaVersion: kind === "financials" ? FINANCIALS_SCHEMA_VERSION : QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60000, expireMs: 120000 } },
   );
   try {
     store("quote", "ACME", quote(999));

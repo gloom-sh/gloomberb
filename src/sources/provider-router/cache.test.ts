@@ -1,60 +1,39 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
-import { cacheRouterResource, listCachedResources } from "./cache";
+import { cacheRouterResource, FINANCIALS_SCHEMA_VERSION, listCachedResources, QUOTE_SCHEMA_VERSION } from "./cache";
 import { createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
 afterEach(removeTempDbFiles);
 
-test("legacy SEC EPS caches refresh for cloud and native without discarding unrelated resources", () => {
-  const persistence = new AppPersistence(createTempDbPath("eps-share-basis"));
+test("financials and quotes written under another schema version are misses until rewritten", () => {
+  const persistence = new AppPersistence(createTempDbPath("market-schema-gate"));
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  for (const sourceKey of ["provider:gloomberb-cloud", "provider:yahoo"]) {
-    const key = { namespace: "market", kind: "financials", entityKey: "AAPL", variantKey: "exchange=NASDAQ", sourceKey };
-    const old = createTestFinancials({ annualStatements: [{ date: "2017-09-30", dateSource: "sec", eps: 9.21 }] });
-    persistence.resources.set(key, old, { cachePolicy, schemaVersion: 6 });
-    expect(listCachedResources(persistence.resources, "financials", "AAPL", [key.variantKey], [sourceKey], true)).toEqual([]);
-    const current = createTestFinancials({ annualStatements: [{ date: "2017-09-30", dateSource: "sec", eps: 2.3025,
-      epsBasis: { status: "split-adjusted", source: "sec", originalValue: 9.21, basisDate: "2020-08-28", factor: 4, evidence: [] } }] });
-    cacheRouterResource(persistence.resources, "financials", "AAPL", key.variantKey, sourceKey, current, cachePolicy);
-    expect(listCachedResources(persistence.resources, "financials", "AAPL", [key.variantKey], [sourceKey], true)[0]!.value).toEqual(current);
-    persistence.resources.set({ ...key, entityKey: "MSFT" }, createTestFinancials({ annualStatements: [{ date: "2025-06-30", totalRevenue: 100 }] }), { cachePolicy, schemaVersion: 6 });
-    expect(listCachedResources(persistence.resources, "financials", "MSFT", [key.variantKey], [sourceKey], true)).toHaveLength(1);
+  const key = { namespace: "market", entityKey: "MSFT", variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
+  const financials = createTestFinancials({ annualStatements: [{ date: "2025-06-30", totalRevenue: 100 }] });
+  const quote = createTestQuote({ symbol: "MSFT" });
+  const read = (kind: string) => listCachedResources(persistence.resources, kind, "MSFT", [key.variantKey], [key.sourceKey], true);
+  for (const [kind, value, current] of [["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION]] as const) {
+    for (const schemaVersion of [current - 1, current + 1]) {
+      persistence.resources.set({ ...key, kind }, value, { cachePolicy, schemaVersion });
+      expect(read(kind)).toEqual([]);
+    }
+    cacheRouterResource(persistence.resources, kind, "MSFT", key.variantKey, key.sourceKey, value, cachePolicy);
+    expect(read(kind)[0]?.schemaVersion).toBe(current);
+    expect(read(kind)[0]?.value).toEqual(value);
   }
   persistence.close();
 });
 
-test("legacy SEC income refreshes while vendor statements and repaired attribution survive cache roundtrips", () => {
-  const persistence = new AppPersistence(createTempDbPath("income-attribution"));
-  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  for (const sourceKey of ["provider:gloomberb-cloud", "provider:yahoo"]) {
-    const key = { namespace: "market", kind: "financials", entityKey: "PLD", variantKey: "exchange=NYSE", sourceKey };
-    const old = createTestFinancials({ annualStatements: [{ date: "2025-12-31", dateSource: "sec", netIncome: 120 }] });
-    const read = () => listCachedResources(persistence.resources, "financials", "PLD", [key.variantKey], [sourceKey], true);
-    persistence.resources.set(key, old, { cachePolicy, schemaVersion: 8 });
-    expect(read()).toEqual([]);
-    const vendor = createTestFinancials({ annualStatements: [{ date: "2025-12-31", netIncome: 120 }] });
-    persistence.resources.set(key, vendor, { cachePolicy, schemaVersion: 8 });
-    expect(read()[0]!.value).toEqual(vendor);
-    const repaired = createTestFinancials({ annualStatements: [{ date: "2025-12-31", dateSource: "sec", netIncomeIncludingNoncontrollingInterests: 120,
-      unavailableFields: ["netIncome"], fieldSources: { netIncomeIncludingNoncontrollingInterests: {
-        source: "sec", concept: "ProfitLoss", basis: "consolidated", unit: "USD", endDate: "2025-12-31", filed: "2026-02-01",
-      } } }] });
-    cacheRouterResource(persistence.resources, "financials", "PLD", key.variantKey, sourceKey, repaired, cachePolicy);
-    expect(read()[0]!.value).toEqual(repaired);
-  }
-  persistence.close();
-});
-
-test("legacy cloud yields refresh without discarding quotes, accounts or native provider values", () => {
+test("cloud yields without provenance refresh without discarding quotes, accounts or native provider values", () => {
   const persistence = new AppPersistence(createTempDbPath("dividend-yield-provenance"));
   const key = { namespace: "market", kind: "financials", entityKey: "NESN", variantKey: "exchange=SWX", sourceKey: "provider:gloomberb-cloud" };
   const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
   const old = createTestFinancials({ quote: createTestQuote({ symbol: "NESN", currency: "CHF" }),
     fundamentals: { dividendYield: 0.16, revenue: 88775000064 }, profile: { description: "Nestle" },
     annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
-  persistence.resources.set(key, old, { cachePolicy, schemaVersion: 4 });
-  persistence.resources.set({ ...key, sourceKey: "provider:yahoo" }, old, { cachePolicy, schemaVersion: 4 });
+  // A new client can cache an old backend response during a rolling deploy.
+  for (const sourceKey of [key.sourceKey, "provider:yahoo"]) cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, sourceKey, old, cachePolicy);
   const read = (sourceKey = key.sourceKey) => listCachedResources(persistence.resources, "financials", "NESN", [key.variantKey], [sourceKey], true)[0]!;
   const record = read(); const value = record.value as ReturnType<typeof createTestFinancials>;
   expect(record.stale).toBe(true);
@@ -63,72 +42,9 @@ test("legacy cloud yields refresh without discarding quotes, accounts or native 
   expect(value.annualStatements).toEqual(old.annualStatements);
   expect(value.fundamentals?.revenue).toBe(88775000064);
   expect((read("provider:yahoo").value as ReturnType<typeof createTestFinancials>).fundamentals?.dividendYield).toBe(0.16);
-  // A new client can cache an old backend response during a rolling deploy.
-  cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, old, cachePolicy);
-  expect(read().schemaVersion).toBe(11);
-  expect(read().stale).toBe(true);
-  expect((read().value as ReturnType<typeof createTestFinancials>).fundamentals?.dividendYield).toBeUndefined();
-  expect((read().value as ReturnType<typeof createTestFinancials>).quote).toEqual(old.quote);
   const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "yahoo" as const } };
   cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, corrected, cachePolicy);
-  expect(read().schemaVersion).toBe(11);
   expect(read().stale).toBe(false);
   expect(read().value).toEqual(corrected);
-  persistence.close();
-});
-
-test("legacy cloud financial caches retain statements but refresh quotes whose freshness was lost", () => {
-  const persistence = new AppPersistence(createTempDbPath("nested-quote-freshness"));
-  const key = { namespace: "market", kind: "financials", entityKey: "7203", variantKey: "exchange=TYO", sourceKey: "provider:gloomberb-cloud" };
-  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  const old = createTestFinancials({ quote: createTestQuote({ symbol: "7203", currency: "JPY", price: 2980.5, providerId: "gloomberb-cloud" }),
-    annualStatements: [{ date: "2026-03-31", totalRevenue: 100, fieldAvailability: { totalRevenue: "2026-05-08" } }],
-  });
-  persistence.resources.set(key, old, { cachePolicy, schemaVersion: 3 });
-  const quote = createTestQuote({ symbol: "7203", currency: "JPY", price: 2994, providerId: "yahoo" });
-  persistence.resources.set({ ...key, kind: "quote", sourceKey: "provider:yahoo" }, quote, { cachePolicy });
-  const read = () => listCachedResources(persistence.resources, "financials", "7203", [key.variantKey], [key.sourceKey], true)[0]!.value as ReturnType<typeof createTestFinancials>;
-  expect(read().quote).toBeUndefined();
-  expect(read().annualStatements).toEqual(old.annualStatements);
-  expect(listCachedResources(persistence.resources, "quote", "7203", [key.variantKey], ["provider:yahoo"], true)[0]!.value).toEqual(quote);
-  cacheRouterResource(persistence.resources, "financials", "7203", key.variantKey, key.sourceKey, { ...old, quote: { ...old.quote!, stale: true } }, cachePolicy);
-  expect(read().quote?.stale).toBe(true);
-  persistence.close();
-});
-
-test("refreshes legacy SEC annual caches without discarding unrelated data and accepts repaired writes", () => {
-  const persistence = new AppPersistence(createTempDbPath("sec-annual-cache-version"));
-  const key = { namespace: "market", kind: "financials", entityKey: "COST", variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
-  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  const legacy = createTestFinancials({ annualStatements: [{ date: "2017-09-03", netIncome: 919_000_000, fieldAvailability: { netIncome: "2017-10-18" } }] });
-  persistence.resources.set(key, legacy, { cachePolicy });
-  persistence.resources.set({ ...key, sourceKey: "provider:gloomberb-cloud" }, createTestFinancials({ annualStatements: [{ date: "2025-08-31", netIncome: 8_099_000_000 }] }), { cachePolicy });
-  persistence.resources.set({ ...key, kind: "quote" }, createTestQuote({ symbol: "COST" }), { cachePolicy });
-  const read = (kind: string) => listCachedResources(persistence.resources, kind, "COST", ["exchange=NASDAQ"], ["provider:yahoo", "provider:gloomberb-cloud"], true);
-  expect(read("financials").map((row) => row.sourceKey)).toEqual(["provider:gloomberb-cloud"]);
-  expect(read("quote")).toHaveLength(1);
-
-  const repaired = createTestFinancials({ annualStatements: [{ date: "2017-09-03", netIncome: 2_679_000_000, fieldAvailability: { netIncome: "2017-10-18" } }] });
-  cacheRouterResource(persistence.resources, "financials", "COST", key.variantKey, key.sourceKey, repaired, cachePolicy);
-  expect(read("financials").find((row) => row.sourceKey === "provider:yahoo")?.value).toEqual(repaired);
-  persistence.close();
-});
-
-test("refreshes schema-two quarterly availability while retaining undated statements and unrelated cached data", () => {
-  const persistence = new AppPersistence(createTempDbPath("field-availability-cache-version"));
-  const key = { namespace: "market", kind: "financials", entityKey: "MSFT", variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
-  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
-  const unsafe = createTestFinancials({ annualStatements: [], quarterlyStatements: [{ date: "2025-12-31", totalRevenue: 100, grossProfit: 40,
-    availableAt: "2026-04-01", fieldAvailability: { totalRevenue: "2026-04-01", grossProfit: "2026-02-01" } }] });
-  persistence.resources.set(key, unsafe, { cachePolicy, schemaVersion: 2 });
-  persistence.resources.set({ ...key, sourceKey: "provider:gloomberb-cloud" }, createTestFinancials({ annualStatements: [], quarterlyStatements: [{ date: "2025-12-31", totalRevenue: 100 }] }), { cachePolicy, schemaVersion: 2 });
-  persistence.resources.set({ ...key, kind: "quote" }, createTestQuote({ symbol: "MSFT" }), { cachePolicy, schemaVersion: 2 });
-  const read = (kind: string) => listCachedResources(persistence.resources, kind, "MSFT", [key.variantKey], [key.sourceKey, "provider:gloomberb-cloud"], true);
-  expect(read("financials").map((row) => row.sourceKey)).toEqual(["provider:gloomberb-cloud"]);
-  expect(read("quote")).toHaveLength(1);
-  const repaired = createTestFinancials({ annualStatements: [], quarterlyStatements: [{ date: "2025-12-31", totalRevenue: 100, grossProfit: 40,
-    fieldAvailability: { grossProfit: "2026-02-01" } }] });
-  cacheRouterResource(persistence.resources, "financials", "MSFT", key.variantKey, key.sourceKey, repaired, cachePolicy);
-  expect(read("financials").find((record) => record.sourceKey === key.sourceKey)?.value).toEqual(repaired);
   persistence.close();
 });

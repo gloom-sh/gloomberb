@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { apiClient } from "../../api-client";
 import { GloomberbCloudProvider } from "../gloomberb-cloud";
 import { AssetDataRouter } from "./index";
+import { FINANCIALS_SCHEMA_VERSION } from "./cache";
 import { AppPersistence } from "../../data/app-persistence";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -50,10 +51,10 @@ test("old wrong-venue and unqualified caches cannot reintroduce Tokyo prices or 
   const policy = { staleMs: 60_000, expireMs: 600_000 };
   let store = new AppPersistence(path);
   try {
-    for (const variantKey of ["exchange=TSX", ""]) store.resources.set({ namespace: "market", kind: "financials", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, financials(999), { schemaVersion: 7, cachePolicy: policy });
+    for (const variantKey of ["exchange=TSX", ""]) store.resources.set({ namespace: "market", kind: "financials", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, financials(999), { schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: policy });
     for (const variantKey of ["exchange=TSX;start=2026-09-01;end=2026-09-11;bar=1h;version=6", "start=2026-09-01;end=2026-09-11;bar=1h;version=6"]) store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "7203.T", variantKey, sourceKey: "provider:gloomberb-cloud" }, { points: [{ date: new Date("2026-09-10T14:00:00Z"), close: 999 }], resolution: "1h" }, { cachePolicy: policy });
     // Unrelated records must survive any targeted repair.
-    store.resources.set({ namespace: "market", kind: "financials", entityKey: "UNRELATED", variantKey: "exchange=NYSE", sourceKey: "provider:gloomberb-cloud" }, { ...financials(777), quote: { ...quote(777), symbol: "UNRELATED", currency: "USD", exchangeName: "NYSE", listingExchangeName: "NYSE" } }, { schemaVersion: 7, cachePolicy: policy });
+    store.resources.set({ namespace: "market", kind: "financials", entityKey: "UNRELATED", variantKey: "exchange=NYSE", sourceKey: "provider:gloomberb-cloud" }, { ...financials(777), quote: { ...quote(777), symbol: "UNRELATED", currency: "USD", exchangeName: "NYSE", listingExchangeName: "NYSE" } }, { schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: policy });
     store.close(); store = new AppPersistence(path);
     const first = new AssetDataRouter(new GloomberbCloudProvider(), [], store.resources);
     expect(first.getCachedFinancialsForTargets([{ symbol: "7203.T", exchange: "TSE" }]).get("7203.T")?.quote?.price).not.toBe(999);

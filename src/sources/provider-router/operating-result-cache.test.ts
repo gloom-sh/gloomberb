@@ -10,7 +10,7 @@ import fixture from "../fixtures/sec-operating-expenses.json";
 
 afterEach(removeTempDbFiles);
 
-test("qualified SHOP legacy caches refresh and repaired ownership survives disk reopen without disturbing other listings", () => {
+test("repaired SHOP operating ownership survives disk reopen and stale-first merges", () => {
   const path = createTempDbPath("operating-cohorts");
   let persistence = new AppPersistence(path);
   const policy = { staleMs: 60_000, expireMs: 120_000 };
@@ -24,12 +24,7 @@ test("qualified SHOP legacy caches refresh and repaired ownership survives disk 
   const direct = parseCompanyFactsFinancialStatements(fixture.shop).annualStatements;
   const old = createTestFinancials({ quote: createTestQuote({ symbol: "SHOP", exchangeName: "NASDAQ", currency: "USD" }),
     financialCurrency: "USD", annualStatements: [{ ...vendor, operatingResult: undefined }], quarterlyStatements: [] });
-  persistence.resources.set(key, old, { schemaVersion: 9, cachePolicy: policy });
-  const read = (exchange = "NASDAQ") => listCachedResources(persistence.resources, "financials", "SHOP", [`exchange=${exchange}`], [key.sourceKey], true);
-  expect(read()).toEqual([]);
-  const toronto = createTestFinancials({ ...old, quote: createTestQuote({ symbol: "SHOP", exchangeName: "TSX", currency: "CAD" }) });
-  persistence.resources.set({ ...key, variantKey: "exchange=TSX" }, toronto, { schemaVersion: 9, cachePolicy: policy });
-  expect(read("TSX")).toHaveLength(1);
+  const read = () => listCachedResources(persistence.resources, "financials", "SHOP", [key.variantKey], [key.sourceKey], true);
   const corrected = { ...old, annualStatements: mergeFinancialStatementRows([vendor], direct) };
   cacheRouterResource(persistence.resources, "financials", "SHOP", key.variantKey, key.sourceKey, corrected, policy);
   persistence.close();

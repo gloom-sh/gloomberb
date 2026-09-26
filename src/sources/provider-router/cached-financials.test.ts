@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import { AssetDataRouter } from "./index";
-import { getRouterEntityKey } from "./cache";
+import { FINANCIALS_SCHEMA_VERSION, getRouterEntityKey, QUOTE_SCHEMA_VERSION } from "./cache";
 import { mergeFinancials, sanitizeCachedFinancials } from "./financials";
 import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
@@ -99,7 +99,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -128,7 +128,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -193,7 +193,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -224,7 +224,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -289,7 +289,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -349,7 +349,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -402,7 +402,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: old,
       },
@@ -431,7 +431,7 @@ describe("AssetDataRouter cached financials", () => {
         fundamentals: { revenue: 1234 },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },
@@ -506,7 +506,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },
@@ -523,7 +523,7 @@ describe("AssetDataRouter cached financials", () => {
         annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }],
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now + 1_000,
       },
@@ -553,7 +553,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now - 1_000,
       },
@@ -599,7 +599,7 @@ describe("AssetDataRouter cached financials", () => {
       variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };
     const reference = persistence.resources.get<ReturnType<typeof createTestFinancials>>(referenceKey)!.value;
     persistence.resources.set({ ...referenceKey, entityKey: "contract:275759" }, reference, {
-      schemaVersion: 4, cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 }, fetchedAt: now,
+      schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 }, fetchedAt: now,
     });
     const exact = await router.getTickerFinancials("VICR", "NASDAQ", context);
     expect(exact.quote?.price).toBe(292.83);
@@ -643,7 +643,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: FINANCIALS_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: old,
       },
@@ -669,7 +669,7 @@ describe("AssetDataRouter cached financials", () => {
         listingExchangeName: "JPX",
       }),
       {
-        schemaVersion: 4,
+        schemaVersion: QUOTE_SCHEMA_VERSION,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },

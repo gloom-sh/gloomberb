@@ -4,18 +4,19 @@ import type { CachedResourceRecord, ResourceStore } from "../../data/resource-st
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { Quote, TickerFinancials } from "../../types/financials";
-import { retractKnownCloudValuation } from "../gloomberb-cloud/valuation-observations";
 import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";
-import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
-import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { brokerContractIdentityKey } from "../../utils/instrument-identity";
 import { providerFinancialsMatchTarget, providerQuoteMatchesTarget } from "./financials";
 import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../../utils/operating-result";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 11;
-const QUOTE_SCHEMA_VERSION = 2;
+// A record written under another version is a miss: bump these instead of
+// repairing older records on read.
+export const FINANCIALS_SCHEMA_VERSION = 11;
+export const QUOTE_SCHEMA_VERSION = 2;
+const SCHEMA_VERSIONS: Record<string, number> = { financials: FINANCIALS_SCHEMA_VERSION, quote: QUOTE_SCHEMA_VERSION };
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -101,7 +102,7 @@ export function cacheRouterResource<T>(
 ): void {
   if (kind === "financials" && ["provider:yahoo", "provider:gloomberb-cloud"].includes(sourceKey) && !entityKey.startsWith("contract:")) {
     const financials = value as TickerFinancials;
-    const target = { symbol: entityKey, exchange: variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1] };
+    const target = { symbol: entityKey, exchange: variantExchange(variantKey) };
     const isRetry = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
     const retries = [
       isRetry(financials.operatingHistoryRetryAt) && hasShopOperatingIdentity(financials, target) ? financials.operatingHistoryRetryAt : undefined,
@@ -123,11 +124,7 @@ export function cacheRouterResource<T>(
       sourceKey,
     },
     value,
-    {
-      cachePolicy,
-      ...(kind === "financials" ? { schemaVersion: FINANCIALS_SCHEMA_VERSION } : {}),
-      ...(kind === "quote" ? { schemaVersion: QUOTE_SCHEMA_VERSION } : {}),
-    },
+    { cachePolicy, ...(SCHEMA_VERSIONS[kind] ? { schemaVersion: SCHEMA_VERSIONS[kind] } : {}) },
   );
 }
 
@@ -149,22 +146,9 @@ export function sortCachedRecords<T>(
   });
 }
 
-function hasUnverifiedLegacyAsmlValuation(record: CachedResourceRecord, value: TickerFinancials): boolean {
-  if (record.schemaVersion >= 6 || !RETRACTABLE_VALUATION_FIELDS.some((field) => value.fundamentals?.[field] != null)) return false;
-  const target = parsePublicTickerKey(record.entityKey);
-  const quote = parsePublicTickerKey(value.quote?.symbol ?? "");
-  if (![target.symbol, quote.symbol].some((symbol) => symbol === "ASML" || symbol === "ASML.AS")) return false;
-  const requested = target.exchange || (target.symbol === "ASML.AS" ? "AMS" : "")
-    || canonicalExchange(record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1]);
-  const rawListing = value.quote?.listingExchangeName || value.quote?.exchangeName || quote.exchange;
-  const listing = canonicalExchange(rawListing);
-  // Only corroborated non-US listings may retain their legacy valuation.
-  // A requested venue alone does not prove which listing supplied old data.
-  const verifiedForeign = ["ASML", "ASML.AS"].includes(quote.symbol) && resolveExchangeTimeZone(listing)
-    && rawListing?.trim().toUpperCase() !== "EURONEXT" && !["NASDAQ", "NYSE", "AMEX", "ARCA"].includes(listing)
-    && (!requested || requested === listing) && (!quote.exchange || quote.exchange === listing) && !!value.quote?.currency
-    && (listing !== "AMS" || value.quote.currency === "EUR");
-  return !verifiedForeign;
+/** The listing a market cache variant key names, if any. */
+export function variantExchange(variantKey: string | undefined): string | undefined {
+  return variantKey?.match(/(?:^|;)exchange=([^;]+)/)?.[1];
 }
 
 function cachedProviderFinancialsMatchTarget(value: TickerFinancials, symbol: string, exchange?: string): boolean {
@@ -195,110 +179,51 @@ export function listCachedResources<T>(
     variantKeys,
     sourceKeys,
     allowExpired,
+    ...(SCHEMA_VERSIONS[kind] ? { schemaVersion: SCHEMA_VERSIONS[kind] } : {}),
   }).filter((record) => {
-    if (record.sourceKey.startsWith("provider:") && !entityKey.startsWith("contract:")
-      && (kind === "financials" || kind === "quote")) {
-      const requestedExchange = parsePublicTickerKey(entityKey).exchange
-        || canonicalExchange(variantKeys.find((key) => /(?:^|;)exchange=/.test(key))?.match(/(?:^|;)exchange=([^;]+)/)?.[1]);
-      // Check every declared identity before stale-quote sanitation or merging
-      // can hide a conflicting symbol, metadata record or contribution.
-      if (kind === "financials"
-        ? !cachedProviderFinancialsMatchTarget(record.value as TickerFinancials, entityKey, requestedExchange)
-        : !providerQuoteMatchesTarget(record.value as Quote, entityKey, requestedExchange)) return false;
-      const quote = kind === "quote" ? record.value as Quote : (record.value as TickerFinancials).quote;
-      const metadata = kind === "financials" ? (record.value as TickerFinancials).quoteMetadata : undefined;
-      const declaredExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName
-        || metadata?.listingExchangeName || parsePublicTickerKey(quote?.symbol ?? metadata?.symbol ?? "").exchange);
-      // Generic legacy entries can retain a venue normalized under old alias
-      // rules (PCX used to mean AMEX). Refetch a conflicting public listing;
-      // never relabel it or let it outrank a fresh exact-listing response.
-      if (requestedExchange && declaredExchange && requestedExchange !== declaredExchange) return false;
-      // A bare lookup that names no listing cannot say which venue it priced:
-      // the unqualified BA quote is Boeing's, never BAE Systems' London line.
-      if (requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
-        && !/(?:^|;)exchange=/.test(record.variantKey)) return false;
-      // An unqualified lookup cannot tell real AMEX metadata from old PCX
-      // normalization. Refresh only those legacy records; newly verified
-      // AMEX data and explicitly requested AMEX listings remain reusable.
-      if (!requestedExchange && declaredExchange === "AMEX"
-        && record.schemaVersion < (kind === "financials" ? 8 : 2)) return false;
-    }
-    // The scoped reported operating cohort must be reacquired, never invented
-    // from legacy independently selected fields. Other issuers/listings survive.
-    if (kind === "financials" && record.schemaVersion < 10 && !record.entityKey.startsWith("contract:")
-      && hasShopOperatingIdentity(record.value as TickerFinancials, {
-        symbol: record.entityKey, exchange: record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1],
-      })) return false;
-    // The first operating-table implementation discarded independent sibling
-    // documents and stamped the partial aggregate as complete. Reacquire only
-    // affected native/cloud SHOP sources, including saved extended requests.
-    if (kind === "financials" && record.schemaVersion < 11 && !record.entityKey.startsWith("contract:")
-      && ["provider:yahoo", "provider:gloomberb-cloud"].includes(record.sourceKey)
-      && hasShopOperatingIdentity(record.value as TickerFinancials, {
-        symbol: record.entityKey, exchange: record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1],
-      })) return false;
-    // Earlier SEC projections used consolidated/common income as parent income.
-    // Refetch the filing evidence; unrelated vendor statements remain usable.
-    if (kind === "financials" && record.schemaVersion < 9) {
-      const value = record.value as TickerFinancials;
-      if ([...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
-        .some((row) => row.dateSource === "sec"
-          && (row.netIncome !== undefined || row.netIncomeCommonStockholders !== undefined))) return false;
-    }
-    // Older SEC projections can mix pre/post-split EPS in one long history.
-    // Refresh the source evidence instead of relabeling old numbers locally.
-    if (kind === "financials" && record.schemaVersion < 7) {
-      const value = record.value as TickerFinancials;
-      if ([...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
-        .some((row) => row.dateSource === "sec" && row.eps !== undefined)) return false;
-    }
-    if (kind !== "financials" || record.schemaVersion >= 3) return true;
-    // Earlier merges could date unknown fields from a partial availability map,
-    // in addition to the older SEC annual/concept errors. Cached dates cannot
-    // distinguish inferred metadata from source evidence; refresh dated rows.
-    // Unrelated quote/history/company and undated financial caches remain usable.
-    const value = record.value as TickerFinancials;
-    return ![...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
-      .some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
+    if (!record.sourceKey.startsWith("provider:") || entityKey.startsWith("contract:")
+      || (kind !== "financials" && kind !== "quote")) return true;
+    const requestedExchange = parsePublicTickerKey(entityKey).exchange
+      || canonicalExchange(variantExchange(variantKeys.find((key) => variantExchange(key) !== undefined)));
+    // Check every declared identity before stale-quote sanitation or merging
+    // can hide a conflicting symbol, metadata record or contribution.
+    if (kind === "financials"
+      ? !cachedProviderFinancialsMatchTarget(record.value as TickerFinancials, entityKey, requestedExchange)
+      : !providerQuoteMatchesTarget(record.value as Quote, entityKey, requestedExchange)) return false;
+    const quote = kind === "quote" ? record.value as Quote : (record.value as TickerFinancials).quote;
+    const metadata = kind === "financials" ? (record.value as TickerFinancials).quoteMetadata : undefined;
+    const declaredExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName
+      || metadata?.listingExchangeName || parsePublicTickerKey(quote?.symbol ?? metadata?.symbol ?? "").exchange);
+    // Refetch a record that declares another public listing; never relabel it
+    // or let it outrank a fresh exact-listing response.
+    if (requestedExchange && declaredExchange && requestedExchange !== declaredExchange) return false;
+    // A bare lookup that names no listing cannot say which venue it priced:
+    // the unqualified BA quote is Boeing's, never BAE Systems' London line.
+    return !(requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
+      && variantExchange(record.variantKey) === undefined);
   }).map((record) => {
-    if (kind === "financials") {
-      const financials = record.value as TickerFinancials;
-      const ownSymbol = financials.quote?.symbol ?? financials.quoteMetadata?.symbol;
-      const withdrawn = withdrawKnownProviderStatements(financials, {
-        symbol: record.entityKey.startsWith("contract:") ? ownSymbol ?? "" : record.entityKey,
-        exchange: record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1],
-      }, record.sourceKey);
-      if (withdrawn !== record.value) record = { ...record, stale: true, value: withdrawn as T };
-      if (!record.entityKey.startsWith("contract:")) record = { ...record,
-        value: normalizeFinancialOperatingResults(record.value as TickerFinancials, {
-          symbol: record.entityKey, exchange: record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1],
-        }) as T,
-      };
-    }
-    if (kind !== "financials" || record.sourceKey !== "provider:gloomberb-cloud") return record;
-    // Legacy cloud aggregates lost the nested quote's stale flag. Retain valid
-    // issuer data, but obtain the quote through its independent freshness route.
-    let value = record.value as TickerFinancials;
-    const retracted = retractKnownCloudValuation(value, {
-      symbol: record.entityKey,
-      exchange: record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1],
-    });
-    const knownInvalidValuation = retracted !== value;
-    value = retracted;
-    const legacyValuation = hasUnverifiedLegacyAsmlValuation(record, value);
-    if (record.schemaVersion < 4) value = { ...value, quote: undefined, quoteContributions: undefined };
+    if (kind !== "financials") return record;
+    const exchange = variantExchange(record.variantKey);
+    const financials = record.value as TickerFinancials;
+    const ownSymbol = financials.quote?.symbol ?? financials.quoteMetadata?.symbol;
+    const withdrawn = withdrawKnownProviderStatements(financials, {
+      symbol: record.entityKey.startsWith("contract:") ? ownSymbol ?? "" : record.entityKey, exchange,
+    }, record.sourceKey);
+    if (withdrawn !== record.value) record = { ...record, stale: true, value: withdrawn as T };
+    if (!record.entityKey.startsWith("contract:")) record = { ...record,
+      value: normalizeFinancialOperatingResults(record.value as TickerFinancials, { symbol: record.entityKey, exchange }) as T,
+    };
+    if (record.sourceKey !== "provider:gloomberb-cloud") return record;
     // A new client can cache an old backend response during a rolling deploy.
-    // Require the metric's own provenance as well as the cache schema before
-    // reusing a cloud yield; retain valid quotes and other issuer data.
+    // Require the metric's own provenance before reusing a cloud yield; retain
+    // valid quotes and other issuer data.
+    const value = record.value as TickerFinancials;
     const statistics = value.fundamentals;
     const hasDividendProvenance = ["forward", "trailing"].includes(statistics?.dividendYieldBasis ?? "")
       && ["twelvedata", "yahoo"].includes(statistics?.dividendYieldSource ?? "");
-    const legacyYield = statistics?.dividendYield != null && (record.schemaVersion < 5 || !hasDividendProvenance);
-    if (legacyYield) value = { ...value, fundamentals: { ...value.fundamentals,
-      dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined, dividendRate: undefined } };
-    if (legacyValuation) value = { ...value, fundamentals: redactUnavailableFundamentals({ ...value.fundamentals,
-      unavailableFields: [...RETRACTABLE_VALUATION_FIELDS] }) };
-    return { ...record, stale: record.stale || legacyYield || legacyValuation || knownInvalidValuation, value: value as T };
+    if (statistics?.dividendYield == null || hasDividendProvenance) return record;
+    return { ...record, stale: true, value: { ...value, fundamentals: { ...statistics,
+      dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined, dividendRate: undefined } } as T };
   });
   if (records.length === 0) return [];
 

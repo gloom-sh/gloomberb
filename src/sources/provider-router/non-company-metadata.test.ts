@@ -9,6 +9,7 @@ import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import { AssetDataRouter } from "./index";
+import { FINANCIALS_SCHEMA_VERSION } from "./cache";
 import { mergeFinancials, mergeRefreshedFinancials, sanitizeCachedFinancials } from "./financials";
 
 let clock: ReturnType<typeof spyOn>;
@@ -44,7 +45,7 @@ for (const venue of ["ARCA", undefined]) for (const state of ["fresh", "stale", 
     }) : new GloomberbCloudProvider();
     try {
       store.resources.set({ namespace: "market", kind: "financials", entityKey: "FUND", variantKey: "", sourceKey: `provider:${provider.id}` },
-        snapshot({ ...quote(), stale: true }), { schemaVersion: 8, cachePolicy: { staleMs: 60_000, expireMs: 300_000 } });
+        snapshot({ ...quote(), stale: true }), { schemaVersion: FINANCIALS_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 300_000 } });
       store.close(); store = new AppPersistence(db);
       const result = await new AssetDataRouter(provider, [], store.resources).getTickerFinancials("FUND");
       expect(loads).toBe(1);

@@ -177,30 +177,6 @@ test("secondary native operating retries survive the provider cache projection",
   } finally { persistence.close(); }
 });
 
-test("schema-ten SHOP source records refresh without invalidating independent providers or other listings", () => {
-  setSystemTime(NOW);
-  const persistence = new AppPersistence(createTempDbPath("operating-legacy-partial"));
-  try {
-    for (const sourceKey of ["provider:yahoo", "provider:gloomberb-cloud", "provider:independent", "broker:fixture"]) {
-      for (const [symbol, exchange, currency] of [["SHOP", "NASDAQ", "USD"], ["SHOP", "TSX", "CAD"], ["MSFT", "NASDAQ", "USD"]]) {
-        for (const extended of [false, true]) {
-          const variantKey = `exchange=${exchange}${extended ? ";history=extended:v1" : ""}`;
-          const key = { namespace: "market", kind: "financials", entityKey: symbol!, variantKey, sourceKey };
-          const value = vendorFinancials(symbol, exchange, currency);
-          persistence.resources.set(key, value, { cachePolicy: ordinaryPolicy, schemaVersion: 10 });
-          const read = () => listCachedResources(persistence.resources, "financials", symbol!, [variantKey], [sourceKey], true);
-          const affected = symbol === "SHOP" && exchange === "NASDAQ" && ["provider:yahoo", "provider:gloomberb-cloud"].includes(sourceKey);
-          expect(read()).toHaveLength(affected ? 0 : 1);
-          if (affected) {
-            cacheRouterResource(persistence.resources, "financials", symbol!, variantKey, sourceKey, value, ordinaryPolicy);
-            expect(read()).toHaveLength(1);
-          }
-        }
-      }
-    }
-  } finally { persistence.close(); }
-});
-
 test("retry deadlines only shorten qualified native or Cloud SHOP staleness and retain usable financials", () => {
   setSystemTime(NOW);
   const persistence = new AppPersistence(createTempDbPath("operating-retry-scope"));
