@@ -13,6 +13,15 @@ const LAYOUT_SHARE_PATH = /^\/l\/[a-f0-9]{32}\/?$/;
 const API_PATH = /^\/api(?:\/|$)/;
 const HTTP_PROXY_PATH = "/http-proxy";
 const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
+const ROBOTS_PATH = "/robots.txt";
+
+/**
+ * Crawling stays allowed on purpose. Deep links are kept out of the index by
+ * the `x-robots-tag` header on their HTML, which a crawler only sees if it may
+ * fetch the page. A `Disallow` would leave already indexed URLs stuck as
+ * "Indexed, though blocked by robots.txt".
+ */
+const ROBOTS_TXT = "User-agent: *\nAllow: /\n";
 
 /**
  * Lets the iOS app claim `https://term.gloom.sh/s/...` share links.
@@ -52,13 +61,13 @@ export const SECURITY_HEADERS = {
   "x-frame-options": "DENY",
 } as const;
 
-export function withSecurityHeaders(response: Response, options: { share?: boolean } = {}): Response {
+export function withSecurityHeaders(response: Response, options: { share?: boolean; noindex?: boolean } = {}): Response {
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  const html = (headers.get("content-type") ?? "").includes("text/html");
   if (options.share) headers.set("x-robots-tag", "noindex, nofollow, noarchive");
-  if ((headers.get("content-type") ?? "").includes("text/html")) {
-    headers.set("cache-control", "no-store");
-  }
+  else if (options.noindex && html) headers.set("x-robots-tag", "noindex");
+  if (html) headers.set("cache-control", "no-store");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -107,13 +116,23 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
       }),
     );
   }
+  // Without this the SPA fallback answers with the app's HTML.
+  if (url.pathname === ROBOTS_PATH) {
+    return withSecurityHeaders(new Response(ROBOTS_TXT, {
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },
+    }));
+  }
   const socialShare = SHARE_PATH.test(url.pathname) || LAYOUT_SHARE_PATH.test(url.pathname);
   if (socialShare) {
     const assetUrl = new URL("/share.html", url.origin);
     const assetRequest = new Request(assetUrl, { method: request.method, headers: request.headers });
     return withSecurityHeaders(await env.ASSETS.fetch(assetRequest), { share: true });
   }
-  return withSecurityHeaders(await env.ASSETS.fetch(request));
+  // Every path and query gets the same "Gloomberb" shell, so deep links such as
+  // `/?ticker=GPC&tab=executives` would be indexed as thin duplicates. Only the
+  // bare root stays indexable.
+  const deepLink = url.pathname !== "/" || url.search !== "";
+  return withSecurityHeaders(await env.ASSETS.fetch(request), { noindex: deepLink });
 }
 
 export default {
