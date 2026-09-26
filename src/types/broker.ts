@@ -149,6 +149,16 @@ export interface BrokerAdapter {
   placeOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder>;
   modifyOrder?(instance: BrokerInstanceConfig, orderId: number, request: BrokerOrderRequest): Promise<BrokerOrder>;
   cancelOrder?(instance: BrokerInstanceConfig, orderId: number): Promise<void>;
+  /**
+   * How the Brokers pane names a profile, for adapters that front more than
+   * one broker: `{brokerName} · {method}` instead of adapter name and mode.
+   */
+  describeInstance?(instance: BrokerInstanceConfig): { brokerName: string; method: string };
+  /**
+   * The broker a profile's portfolios belong to, when it is not the adapter id.
+   * A portfolio keeps its broker when the user switches connection method.
+   */
+  portfolioBrokerId?(instance: BrokerInstanceConfig): string;
 }
 
 export function resolveBrokerConfigFields(
