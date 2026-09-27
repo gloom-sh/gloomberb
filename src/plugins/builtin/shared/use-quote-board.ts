@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DataTableVisibleRange, PaneFooterSegment } from "../../../components";
+import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
 import { useQuoteEntries } from "../../../market-data/hooks";
+import { marketStateColor, marketStateLabel } from "../../../market-data/market/status";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useAppVisible, usePaneVisible } from "../../../state/app/activity";
 import { useQuoteStreaming } from "../../../state/hooks/quote-streaming";
-import { colors } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { MarketState, Quote } from "../../../types/financials";
+import { formatPercentRaw } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
 
 export interface BoardQuoteState {
@@ -394,5 +396,101 @@ export function marketStatusDot(state: MarketState | undefined): { char: string;
       return { char: "●", color: colors.warning };
     default:
       return { char: "●", color: colors.negative };
+  }
+}
+
+const ERROR_MESSAGE_MAX_LENGTH = 48;
+
+/** The reason a board is empty, taken from the per-symbol errors the board records. */
+export function boardErrorMessage(quotes: BoardQuoteMap): string | null {
+  let total = 0;
+  let unavailable = 0;
+  let message: string | null = null;
+  for (const state of quotes.values()) {
+    total += 1;
+    if (state.quote || state.loading) continue;
+    unavailable += 1;
+    message ??= state.error;
+  }
+  if (total === 0 || unavailable < total || !message) return null;
+  return message.length > ERROR_MESSAGE_MAX_LENGTH
+    ? `${message.slice(0, ERROR_MESSAGE_MAX_LENGTH - 1)}…`
+    : message;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * 24-hour UTC, like the other panes' TIME UTC columns, so the cell stays 5 wide
+ * and never clips. A quote from an earlier UTC day shows its date instead, so a
+ * closed market's last print is not read as a time today.
+ */
+export function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
+  if (!lastUpdated) return "—";
+  const date = new Date(lastUpdated);
+  const today = new Date(now);
+  if (date.getUTCFullYear() !== today.getUTCFullYear() || date.getUTCMonth() !== today.getUTCMonth()
+    || date.getUTCDate() !== today.getUTCDate()) {
+    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  }
+  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+/** The quote columns every board draws the same way. */
+export type QuoteBoardCellKind = "status" | "price" | "change" | "changePercent" | "time";
+
+export interface QuoteBoardCellFormat {
+  /** Spell out the session instead of a colored dot. */
+  sessionText?: boolean;
+  /** Called with a finite price. */
+  formatPrice: (quote: Quote) => string;
+  /** Called with a finite change; the text carries its sign. */
+  formatChange: (quote: Quote) => string;
+}
+
+/** A row is loading while it has no quote yet, so none of its cells shows a no-data dash. */
+export function isBoardRowLoading(state: BoardQuoteState | undefined): boolean {
+  return !state?.quote && (state?.loading ?? true);
+}
+
+export function renderQuoteBoardCell(
+  kind: QuoteBoardCellKind,
+  state: BoardQuoteState | undefined,
+  selected: boolean,
+  format: QuoteBoardCellFormat,
+): DataTableCell {
+  const quote = state?.quote;
+  const selectedColor = selected ? colors.selectedText : undefined;
+  const dimmed = selected ? colors.selectedText : colors.textDim;
+  // One row must not mix a loading marker with a no-data marker.
+  if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: dimmed };
+
+  switch (kind) {
+    case "status": {
+      if (format.sessionText) {
+        const marketState = quote?.marketState;
+        return {
+          text: marketState ? marketStateLabel(marketState) : "—",
+          color: selectedColor ?? (marketState ? marketStateColor(marketState) : colors.textDim),
+        };
+      }
+      const dot = marketStatusDot(quote?.marketState);
+      return { text: dot.char, color: selectedColor ?? dot.color };
+    }
+    case "price":
+      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: dimmed };
+      // A retained quote still beats a dash; dim it so stale is visible.
+      return { text: format.formatPrice(quote), color: state?.stale ? dimmed : selectedColor };
+    case "change":
+      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
+      return { text: format.formatChange(quote), color: selectedColor ?? priceColor(quote.change) };
+    case "changePercent":
+      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: dimmed };
+      return {
+        text: formatPercentRaw(quote.changePercent),
+        color: selectedColor ?? priceColor(quote.changePercent),
+      };
+    case "time":
+      return { text: formatQuoteTime(quote?.lastUpdated), color: dimmed };
   }
 }

@@ -1,11 +1,9 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { marketStateColor, marketStateLabel } from "../../../market-data/market/status";
-import { colors, priceColor } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
-import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
-import { formatQuoteTime } from "../world-indices/table";
+import { formatCompact, formatNumber } from "../../../utils/format";
+import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "./contracts";
 import { futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
 
@@ -172,24 +170,8 @@ export function renderFuturesCell(
   const quote = state?.quote;
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   const dimmed = rowState.selected ? colors.selectedText : colors.textDim;
-  // One row must not mix a loading marker with a no-data marker.
-  const loadingCell = !quote && (state?.loading ?? true);
 
   switch (column.id) {
-    case "status": {
-      if (loadingCell) return { text: "", color: dimmed };
-      if (options?.sessionText) {
-        const marketState = quote?.marketState;
-        return {
-          text: marketState ? marketStateLabel(marketState) : "—",
-          color: rowState.selected
-            ? colors.selectedText
-            : marketState ? marketStateColor(marketState) : colors.textDim,
-        };
-      }
-      const dot = marketStatusDot(quote?.marketState);
-      return { text: dot.char, color: rowState.selected ? colors.selectedText : dot.color };
-    }
     case "code":
       return {
         text: contract.code,
@@ -198,36 +180,14 @@ export function renderFuturesCell(
       };
     case "name":
       return { text: futuresContractName(contract, quote), color: selectedColor };
-    case "price":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote) return { text: "—", color: dimmed };
-      // A retained quote still beats a dash; dim it so stale is visible.
-      return {
-        text: formatContractPrice(quote, contract),
-        color: state?.stale ? dimmed : selectedColor,
-      };
-    case "change":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
-      return {
-        text: formatContractChange(quote, contract),
-        color: selectedColor ?? priceColor(quote.change),
-      };
-    case "changePercent":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: dimmed };
-      return {
-        text: formatPercentRaw(quote.changePercent),
-        color: selectedColor ?? priceColor(quote.changePercent),
-      };
     case "volume":
-      if (loadingCell) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
         return { text: "—", color: dimmed };
       }
       return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
     case "prevClose":
-      if (loadingCell) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
         return { text: "—", color: dimmed };
       }
@@ -235,8 +195,11 @@ export function renderFuturesCell(
         text: formatContractPrice({ ...quote, price: quote.previousClose }, contract),
         color: selectedColor ?? colors.textDim,
       };
-    case "time":
-      if (loadingCell) return { text: "…", color: dimmed };
-      return { text: formatQuoteTime(quote?.lastUpdated), color: dimmed };
+    default:
+      return renderQuoteBoardCell(column.id, state, rowState.selected, {
+        sessionText: options?.sessionText,
+        formatPrice: (quoted) => formatContractPrice(quoted, contract),
+        formatChange: (quoted) => formatContractChange(quoted, contract),
+      });
   }
 }

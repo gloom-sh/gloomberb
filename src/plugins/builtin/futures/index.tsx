@@ -21,13 +21,13 @@ import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import {
+  boardErrorMessage,
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
   useVisibleBoardSymbols,
   type BoardQuoteMap,
 } from "../shared/use-quote-board";
-import { boardErrorMessage } from "../world-indices/footer";
 import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
