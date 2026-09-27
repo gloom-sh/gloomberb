@@ -40,9 +40,15 @@ export interface YieldTenorRow {
 /** The look-backs drawn as ghosts; the session before is a change, not a curve worth drawing. */
 const GHOST_IDS: readonly YieldCurveLookbackId[] = ["1W", "1M"];
 
-function yieldAt(points: readonly YieldPoint[] | null | undefined, maturity: string): number | null {
-  const value = points?.find((point) => point.maturity === maturity)?.yield;
-  return value != null && Number.isFinite(value) ? value : null;
+/**
+ * A look-back value to read a move against. A tenor that has not published
+ * since the look-back's session (a lagging or cached tenor, most often against
+ * the session before) has no move yet, not a zero one.
+ */
+function pastYield(points: readonly YieldPoint[] | null | undefined, current: YieldPoint): number | null {
+  const past = points?.find((point) => point.maturity === current.maturity);
+  if (past?.yield == null || !Number.isFinite(past.yield)) return null;
+  return isYieldObservationDate(past.asOf) && isYieldObservationDate(current.asOf) && past.asOf >= current.asOf ? null : past.yield;
 }
 
 /** One row per tenor: the yield and how far it moved since the session before, a week and a month back. */
@@ -52,7 +58,7 @@ export function yieldTenorRows(points: readonly YieldPoint[], lookbacks: YieldLo
     .map((point) => {
       const current = point.yield != null && Number.isFinite(point.yield) ? point.yield : null;
       const change = (id: YieldCurveLookbackId) => {
-        const past = yieldAt(lookbacks[id], point.maturity);
+        const past = pastYield(lookbacks[id], point);
         return current == null || past == null ? null : current - past;
       };
       return { id: point.maturity, years: point.maturityYears, yield: current,
@@ -81,7 +87,11 @@ export function yieldSpreads(points: readonly YieldPoint[], lookbacks: YieldLook
   return SPREADS.map(({ id, short, long }) => {
     const spread = curveSpread(points, short, long);
     const before = curveSpread(lookbacks["1D"], short, long);
-    return { id, spread, change1d: spread == null || before == null ? null : spread - before };
+    // Both tenors share a session here, so the short one dates the spread; one not newer than the look-back has no move yet.
+    const session = points.find((point) => point.maturity === short)?.asOf;
+    const beforeSession = lookbacks["1D"]?.find((point) => point.maturity === short)?.asOf;
+    const moved = spread != null && before != null && !(session && beforeSession && beforeSession >= session);
+    return { id, spread, change1d: moved ? spread - before : null };
   });
 }
 

@@ -63,4 +63,9 @@ test("curve spreads need both tenors from one session, and their day move reads 
   expect(spreads[2]!.change1d).toBeNull();
   expect(yieldSpreads(today.map((point) => point.maturity === "10Y" ? { ...point, asOf: "2026-09-23" } : point))
     .map((entry) => entry.spread)).toEqual([null, null, expect.any(Number)]);
+  // A cached tenor still on the session before has not moved yet: no change, not 0bp.
+  const lagging = today.map((point) => point.maturity === "2Y" || point.maturity === "10Y"
+    ? { ...point, yield: before.find((entry) => entry.maturity === point.maturity)!.yield, asOf: "2026-09-23" } : point);
+  expect(yieldSpreads(lagging, { "1D": before })[0]).toMatchObject({ spread: expect.any(Number), change1d: null });
+  expect(yieldTenorRows(lagging, { "1D": before }).find((row) => row.id === "2Y")!.change1d).toBeNull();
 });
