@@ -866,7 +866,7 @@ await ctx.removeBrokerInstance(instance.id);
 
 Panes can expose per-instance settings that persist with the layout. These settings are part of the pane definition, can be edited from the pane header or command bar, and are available to both first-party and external plugins.
 
-Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table.
+Table panes built with the shared `DataTable` can opt into an Excel-compatible CSV action with `tableExport: true`. The action exports the current sorted, filtered rows and visible columns. It is available when the pane has one active table. Right-aligned number columns export as plain numbers with the unit in the header; a cell's optional `value` (the full-precision number, or an ISO date) replaces its text in the export.
 
 ```typescript
 ctx.registerPane({

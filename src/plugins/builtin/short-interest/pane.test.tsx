@@ -40,7 +40,7 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   expect(setup!.captureCharFrame()).toContain("% FLOAT");
   expect(setup!.captureCharFrame()).toContain("25.00%");
   await exportPaneTable("si", "full.csv"); const full = takeSavedTextFile()!.text;
-  expect(full).toContain("2026-08-31,20M,2.30,'-,25.00%");
+  expect(full).toContain("2026-08-31,20000000,2.30,,25.00");
   await act(async () => { resize(48); setup!.resize(48, 23); });
   await settleFrame(setup!, 6);
   for (let i = 0; i < 4; i++) await emitKeypress(setup!, { name: "right", ctrl: true });

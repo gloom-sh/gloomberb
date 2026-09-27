@@ -68,23 +68,27 @@ export function renderMarketMoverCell(
     case "changePercent":
       return {
         text: formatPercentRaw(row.changePercent ?? undefined),
+        value: row.changePercent,
         color: priceColor(row.changePercent ?? 0),
       };
     case "volume":
-      return { text: formatCompact(row.volume ?? undefined, { fixedDecimals: true }), color: colors.textDim };
+      return { text: formatCompact(row.volume ?? undefined, { fixedDecimals: true }), value: row.volume, color: colors.textDim };
     case "volumeRatio":
       return {
         text: formatVolRatio(row.volumeRatio),
+        value: row.volumeRatio != null && row.volumeRatio >= 0 ? row.volumeRatio : null,
         color: volRatioColor(row.volumeRatio),
       };
     case "range":
       return {
         text: fiftyTwoWeekPosition(row.price, row.fiftyTwoWeekLow, row.fiftyTwoWeekHigh),
+        value: fiftyTwoWeekPositionPercent(row.price, row.fiftyTwoWeekLow, row.fiftyTwoWeekHigh),
         color: colors.textDim,
       };
     case "marketCap":
       return {
         text: row.marketCap != null ? formatCompact(row.marketCap, { fixedDecimals: true }) : "—",
+        value: row.marketCap,
         color: colors.textDim,
       };
   }

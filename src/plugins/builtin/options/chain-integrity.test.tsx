@@ -266,7 +266,7 @@ test("preserves missing activity through source, summaries, CSV and CLI", async 
   expect(result.frame).toMatch(/Volume\s+\S+/);
   expect(result.frame).toMatch(/P\/C vol\s+--/);
   expect(result.frame).toMatch(/P\/C OI\s+--/);
-  expect(result.csv).toContain(",\u2014,");
+  expect(result.csv).toContain(",10,,");
   expect(cli.rows[0]!.volume).toBe(10);
   expect(cli.rows[1]!.openInterest).toBe(20);
   expect(cli.text).not.toContain("NaN");

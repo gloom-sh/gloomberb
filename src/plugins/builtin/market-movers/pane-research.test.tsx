@@ -109,13 +109,13 @@ test("actual routed live snapshots update the ratio and clear missing fields; ex
   const quote = { symbol: "LIVE", price: 11, currency: "USD", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.now() - 60_000, dataSource: "live", delivery: "stream", stale: false };
   const update = async (patch: object) => { await act(async () => { deliver({ ...quote, ...patch }); await new Promise(resolve => setTimeout(resolve, 520)); }); await settleFrame(setup!, 4); };
   await update({ volume: 1000, change: 1, changePercent: 10 });
-  expect(await csv()).toContain("1.0k,10x");
+  expect(await csv()).toContain(",11.00,10,1000,10,");
   await update({ price: 12, lastUpdated: quote.lastUpdated + 1000 });
-  expect(await csv()).toContain("$12.00,—,—,—");
+  expect(await csv()).toContain(",12.00,,,,");
   await update({ volume: 0, change: 0, changePercent: 0, lastUpdated: quote.lastUpdated + 2000 });
-  expect(await csv()).toContain("0.00%,0,0.0x");
+  expect(await csv()).toContain(",0,0,0,,");
   await update({ price: 12, previousClose: 10, volume: 300, lastUpdated: quote.lastUpdated + 3000 });
-  expect(await csv()).toContain("'+20.00%,300,3.0x");
+  expect(await csv()).toContain(",12.00,20,300,3,");
 });
 
 test("routed major-unit and unknown-unit quotes keep range context honest", async () => {
@@ -123,14 +123,14 @@ test("routed major-unit and unknown-unit quotes keep range context honest", asyn
   const provider = new AssetDataRouter(createTestDataProvider({ subscribeQuotes: (targets, onQuote) => { deliver = quote => onQuote(targets.find(target => target.symbol === "UNIT")!, quote); return () => {}; } }));
   coordinator = new MarketDataCoordinator(provider); setSharedMarketDataCoordinator(coordinator);
   await mount(() => payload([raw("UNIT", { regularMarketPrice: 125, currency: "GBp", fiftyTwoWeekLow: 100, fiftyTwoWeekHigh: 200 })]));
-  expect(await csv()).toContain("£1.25");
+  expect(await csv()).toMatch(/LAST \(£\),.*\n.*,1\.25,/);
   const quote = { symbol: "UNIT", price: 1.25, change: 0, changePercent: 0, currency: "GBP", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.now() - 60_000, dataSource: "live", delivery: "stream", stale: false };
   await act(async () => { deliver(quote); }); await settleFrame(setup!, 4);
-  expect(await csv()).toContain("25%");
+  expect(await csv()).toContain(",1.25,0,,,25,");
   await act(async () => { deliver({ ...quote, price: 12, currency: "", lastUpdated: quote.lastUpdated + 1000 }); await new Promise(resolve => setTimeout(resolve, 520)); }); await settleFrame(setup!, 4);
   const unknown = await csv();
   expect(unknown).toContain(",12.00,");
   expect(unknown).not.toContain("£");
-  expect(unknown).not.toContain("25%");
+  expect(unknown).not.toContain(",25,");
   expect(unknown).not.toContain("$");
 });

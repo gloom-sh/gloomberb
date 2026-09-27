@@ -472,22 +472,29 @@ export function renderQuoteBoardCell(
         };
       }
       const dot = marketStatusDot(quote?.marketState);
-      return { text: dot.char, color: dot.color };
+      // The dot is a picture; the export says which session it means.
+      return { text: dot.char, value: quote?.marketState ? marketStateLabel(quote.marketState) : null, color: dot.color };
     }
     case "price":
       if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: colors.textDim };
       // A retained quote still beats a dash; dim it so stale is visible.
-      return { text: format.formatPrice(quote), color: state?.stale ? colors.textDim : undefined };
+      return { text: format.formatPrice(quote), value: quote.price, color: state?.stale ? colors.textDim : undefined };
     case "change":
       if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: colors.textDim };
+      // No raw value: a change is a difference of two prices, so its float noise would outlive the text.
       return { text: format.formatChange(quote), color: priceColor(quote.change) };
     case "changePercent":
       if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: colors.textDim };
       return {
         text: formatPercentRaw(quote.changePercent),
+        value: quote.changePercent,
         color: priceColor(quote.changePercent),
       };
     case "time":
-      return { text: formatQuoteTime(quote?.lastUpdated), color: colors.textDim };
+      return {
+        text: formatQuoteTime(quote?.lastUpdated),
+        value: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString().replace(".000Z", "Z") : null,
+        color: colors.textDim,
+      };
   }
 }

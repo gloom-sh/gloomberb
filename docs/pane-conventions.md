@@ -242,6 +242,12 @@ notice and the band collapses; the table stays.
 **Export.** The table exports what it shows. A column left out only to save
 room (a quote time every row shares) goes into `getExportMetadata`; a column
 drawn only as graphics (an inline bar) is left out of the CSV by itself.
+Numbers export as numbers: a right-aligned column whose cells all read as one
+unit (`+1.25%`, `1.20B`, `$12.50`, `21.4x`, `12bp`) writes bare numbers and
+names the unit in its header, and dashes become empty cells. Give a cell
+`value` when the text rounds or shortens what it shows (compact volumes, a
+date without its year, a time of day): the full number in the unit the cell
+shows (3.45 for `+3.45%`), or an ISO date.
 
 **Details.** A stack detail that shows a chart and a table uses the same
 header, with the detail's height.

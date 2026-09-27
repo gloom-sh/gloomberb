@@ -76,6 +76,11 @@ function historicalPriceDecimals(rows: readonly HistoricalPriceRow[], assetCateg
   }]), assetCategory);
 }
 
+/** The exported price: the digits the table shows, without the width limit. */
+function exportPrice(value: number | null | undefined, decimals: number): number | null {
+  return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(Math.min(20, decimals)));
+}
+
 function formatMaybePercent(value: number | null): string {
   return value == null ? "-" : formatPercent(value);
 }
@@ -215,19 +220,20 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       case "date":
         return { text: row.date, color: colors.textDim };
       case "open":
-        return { text: formatMaybePrice(row.point.open, priceDecimals, column.width), color: colors.text };
       case "high":
-        return { text: formatMaybePrice(row.point.high, priceDecimals, column.width), color: colors.text };
       case "low":
-        return { text: formatMaybePrice(row.point.low, priceDecimals, column.width), color: colors.text };
       case "close":
-        return { text: formatMaybePrice(row.point.close, priceDecimals, column.width), color: colors.textBright, attributes: TextAttributes.BOLD };
+        return {
+          text: formatMaybePrice(row.point[column.id], priceDecimals, column.width),
+          value: exportPrice(row.point[column.id], priceDecimals),
+          ...(column.id === "close" ? { color: colors.textBright, attributes: TextAttributes.BOLD } : { color: colors.text }),
+        };
       case "change":
-        return { text: formatMaybePrice(row.change, priceDecimals, column.width), color: priceColor(row.change ?? 0) };
+        return { text: formatMaybePrice(row.change, priceDecimals, column.width), value: exportPrice(row.change, priceDecimals), color: priceColor(row.change ?? 0) };
       case "changePercent":
-        return { text: formatMaybePercent(row.changePercent), color: priceColor(row.changePercent ?? 0) };
+        return { text: formatMaybePercent(row.changePercent), value: row.changePercent == null ? null : row.changePercent * 100, color: priceColor(row.changePercent ?? 0) };
       case "volume":
-        return { text: formatMaybeCompact(row.point.volume), color: colors.textDim };
+        return { text: formatMaybeCompact(row.point.volume), value: row.point.volume ?? null, color: colors.textDim };
     }
   }, [priceDecimals]);
 

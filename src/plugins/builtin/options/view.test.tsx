@@ -581,7 +581,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   const lines = saved.trim().split("\n").map((line) => line.split(","));
   const deltaColumns = lines[0]!.flatMap((cell, i) => cell.includes("Δ") ? [i] : []);
   expect(deltaColumns).toHaveLength(2);
-  for (const row of lines.slice(1)) for (const i of deltaColumns) expect(row[i]).toBe("—");
+  for (const row of lines.slice(1)) for (const i of deltaColumns) expect(row[i]).toBe("");
   expect(saved).toContain("10.05,10.15,10.10");
   await act(async () => { setStale(false); });
   await renderSettled();

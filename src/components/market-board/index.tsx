@@ -144,7 +144,9 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
     const asOf = row.asOfText ?? row.asOf ?? "--";
-    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, color: row.status === "stale" ? colors.warning : colors.textDim };
+    // A narrow board drops the year; the export keeps the full date.
+    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, ...(row.asOf ? { value: row.asOf } : {}),
+      color: row.status === "stale" ? colors.warning : colors.textDim };
   };
   return <DataTableStackView columns={columns} items={items} getItemKey={(row) => row.id} renderCell={renderCell}
     focused={focused} selection={{ kind: "id", selectedId, getId: (row) => row.id, onChange: onSelectedIdChange }}
