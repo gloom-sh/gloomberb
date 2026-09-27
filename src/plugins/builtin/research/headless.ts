@@ -9,19 +9,8 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
-import { formatEventMetric, buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
-
-const ESTIMATE_COLUMNS = [
-  { key: "date", header: "Date" },
-  { key: "status", header: "Event" },
-  { key: "period", header: "Period" },
-  { key: "qEps", header: "Q EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
-  { key: "qRevenue", header: "Q revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
-  { key: "annualEps", header: "Annual EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
-  { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
-  { key: "value", header: "Value", align: "right" as const },
-  { key: "detail", header: "Detail" },
-];
+import { buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
+import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 
 export interface EarningsEstimateSources {
   actions: CorporateActionsData | null;
@@ -38,47 +27,18 @@ export interface EarningsEstimatesHeadlessDependencies {
   ): Promise<EarningsEstimateSources>;
 }
 
-async function settledValue<T>(
-  promise: Promise<T> | null,
-  errors: string[],
-  label: string,
-): Promise<T | null> {
-  if (!promise) return null;
-  try {
-    return await promise;
-  } catch (error) {
-    errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
-}
-
 const defaultDependencies: EarningsEstimatesHeadlessDependencies = {
   async loadSources(symbol, context) {
-    const errors: string[] = [];
-    const provider = context.marketData;
-    const [actions, estimates, financials] = await Promise.all([
-      settledValue(
-        provider.getCorporateActions?.(symbol, "") ?? null,
-        errors,
-        "corporate actions",
-      ),
-      settledValue(
-        provider.getAnalystResearch?.(symbol, "") ?? null,
-        errors,
-        "analyst estimates",
-      ),
-      settledValue(provider.getTickerFinancials(symbol, ""), errors, "financials"),
-    ]);
+    const { actions, estimates, financials, currency, ...failures } = await loadEventSources(context.marketData, symbol);
+    const errors = [
+      failures.actionsError === null ? null : `corporate actions: ${failures.actionsError}`,
+      failures.estimatesError === null ? null : `analyst estimates: ${failures.estimatesError}`,
+      failures.financialsError === null ? null : `financials: ${failures.financialsError}`,
+    ].filter((error): error is string => error !== null);
     if (!actions && !estimates && !financials && errors.length > 0) {
       throw new Error(errors.join("; "));
     }
-    return {
-      actions,
-      estimates,
-      financials,
-      currency: actions?.currency ?? estimates?.currency ?? financials?.quote?.currency ?? "USD",
-      errors,
-    };
+    return { actions, estimates, financials, currency, errors };
   },
 };
 
@@ -110,7 +70,7 @@ export function projectEarningsEstimatesHeadless(
   if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
-    columns: ESTIMATE_COLUMNS,
+    columns: EVENT_COLUMNS,
     rows,
     errors: errors.length ? errors : undefined,
     metadata: {
@@ -158,7 +118,7 @@ export function createEarningsEstimatesHeadless(
         maximum: 200,
       },
     ],
-    columns: ESTIMATE_COLUMNS,
+    columns: EVENT_COLUMNS,
     describe: (args) => `Earnings Estimates | ${String(args.argument)}`,
     async load(args, context) {
       return projectEarningsEstimatesHeadless(

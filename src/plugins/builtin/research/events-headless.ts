@@ -8,19 +8,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatEventMetric, buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
-
-const COLUMNS = [
-  { key: "date", header: "Date" },
-  { key: "status", header: "Event" },
-  { key: "period", header: "Period" },
-  { key: "qEps", header: "Q EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
-  { key: "qRevenue", header: "Q revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
-  { key: "annualEps", header: "Annual EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
-  { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
-  { key: "value", header: "Value", align: "right" as const },
-  { key: "detail", header: "Detail" },
-];
+import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
+import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 
 export interface EventHeadlessData {
   actions: CorporateActionsData | null;
@@ -42,25 +31,11 @@ export interface EventsHeadlessDependencies {
 
 const defaultDependencies: EventsHeadlessDependencies = {
   async load(_args, symbol, provider) {
-    const [actions, estimates, financials] = await Promise.allSettled([
-      provider.getCorporateActions ? provider.getCorporateActions(symbol, "") : Promise.reject(new Error("Corporate actions source unavailable")),
-      provider.getAnalystResearch
-        ? provider.getAnalystResearch(symbol, "")
-        : Promise.reject(new Error("Analyst estimates source unavailable")),
-      provider.getTickerFinancials(symbol, ""),
-    ]);
-    const actionsData = actions.status === "fulfilled" ? actions.value : null;
-    const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
-    const financialsData = financials.status === "fulfilled" ? financials.value : null;
-    const error = (result: PromiseSettledResult<unknown>) => result.status === "rejected" ? String(result.reason instanceof Error ? result.reason.message : result.reason) : null;
+    const sources = await loadEventSources(provider, symbol);
     return {
-      actions: actionsData,
-      estimates: estimatesData,
-      financials: financialsData,
-      actionsError: error(actions),
-      estimatesError: error(estimates),
-      financialsError: error(financials),
-      currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "USD",
+      ...sources,
+      actionsError: provider.getCorporateActions ? sources.actionsError : "Corporate actions source unavailable",
+      estimatesError: provider.getAnalystResearch ? sources.estimatesError : "Analyst estimates source unavailable",
     };
   },
 };
@@ -76,7 +51,7 @@ export function createEventsHeadless(
       description: "Ticker whose corporate actions and estimates should be returned.",
     },
     options: [],
-    columns: COLUMNS,
+    columns: EVENT_COLUMNS,
     describe: (args) => `Corporate Actions | ${String(args.argument)}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
