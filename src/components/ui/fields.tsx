@@ -37,8 +37,8 @@ export interface TextFieldProps {
   label?: string;
   /**
    * The form's current field, in a form that walks its fields with the
-   * keyboard. The terminal marks the label (see FieldLabel); the desktop
-   * field's focus ring already shows it.
+   * keyboard. The terminal marks its label with "> " and indents the other
+   * labels to match; the desktop field's focus ring already shows it.
    */
   active?: boolean;
   /**

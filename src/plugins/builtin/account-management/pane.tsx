@@ -20,7 +20,6 @@ import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
   ScrollBox,
-  Text,
   Textarea,
   TextAttributes,
   useRendererHost,
