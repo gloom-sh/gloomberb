@@ -2,6 +2,7 @@ import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
 import {
   ApiRequestError,
+  parseApiErrorCode,
   parseApiErrorMessage,
   parseRetryAfterMs,
   type RevisionConflictError,
@@ -246,6 +247,7 @@ export class CloudApiRequestTransport {
             parseApiErrorMessage(text),
             response.status,
             parseRetryAfterMs(response.headers.get("Retry-After")),
+            parseApiErrorCode(text),
           );
         }
         return response;
@@ -324,6 +326,7 @@ export class CloudApiRequestTransport {
           msg,
           res.status,
           parseRetryAfterMs(res.headers.get("Retry-After")),
+          parseApiErrorCode(text),
         );
       }
 

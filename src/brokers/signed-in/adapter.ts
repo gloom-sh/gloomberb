@@ -32,8 +32,9 @@ export function describeSignedInBrokerError(error: unknown, brokerName: string):
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
+/** The broker does not offer this. A broker tool that failed is also a 422, but a failure. */
 function isUnsupported(error: unknown): boolean {
-  return error instanceof ApiRequestError && error.status === 422;
+  return error instanceof ApiRequestError && error.status === 422 && error.code === "unsupported";
 }
 
 type BrokerRequest = <T>(
@@ -92,7 +93,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
   const get = <T>(instance: BrokerInstanceConfig, path: string) =>
     deps.request<T>(signedInBrokerId(instance), path);
 
-  /** A route the broker does not offer (422) is an empty answer, not a failure. */
+  /** A route the broker does not offer is an empty answer, not a failure. */
   const getOptional = <T>(instance: BrokerInstanceConfig, path: string, fallback: T) =>
     track(instance, () => get<T>(instance, path).catch((error) => {
       if (isUnsupported(error)) return fallback;

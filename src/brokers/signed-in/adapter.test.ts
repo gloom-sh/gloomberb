@@ -51,11 +51,22 @@ describe("signedInBrokerAdapter", () => {
   test("a successful call marks the profile connected, and an unsupported route is an empty answer", async () => {
     const { adapter } = adapterAnswering((path) => path === "/snapshot"
       ? { accounts: [{ accountId: "U123", name: "U123", source: "cloud" }], positions: [], fetchedAt: 1 }
-      : new ApiRequestError("unsupported", 422));
+      : new ApiRequestError("Interactive Brokers does not support this in Gloom.", 422, undefined, "unsupported"));
     expect(adapter.getStatus!(instance).state).toBe("disconnected");
     expect(await adapter.listAccounts!(instance)).toEqual([{ accountId: "U123", name: "U123", source: "cloud" }]);
     expect(await adapter.listExecutions!(instance)).toEqual([]);
+    expect(await adapter.listOpenOrders!(instance)).toEqual([]);
+    expect(await adapter.getPortfolioPerformance!(instance, "U123")).toBeNull();
     expect(adapter.getStatus!(instance)).toMatchObject({ state: "connected", mode: "Sign in" });
+  });
+
+  test("a broker tool that failed is an error, not an empty answer", async () => {
+    const message = "Interactive Brokers could not complete the request.";
+    const { adapter } = adapterAnswering(() => new ApiRequestError(message, 422, undefined, "tool_error"));
+    await expect(adapter.listOpenOrders!(instance)).rejects.toThrow(message);
+    await expect(adapter.listExecutions!(instance)).rejects.toThrow(message);
+    await expect(adapter.getPortfolioPerformance!(instance, "U123")).rejects.toThrow(message);
+    expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
   });
 
   test("falls back to the profile label while the connector list is unknown", async () => {

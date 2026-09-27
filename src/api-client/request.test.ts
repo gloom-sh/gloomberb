@@ -180,3 +180,25 @@ describe("putWithRevision", () => {
     expect(conflict).toMatchObject({ current: null, currentRevision: 4 });
   });
 });
+
+describe("CloudApiRequestTransport errors", () => {
+  test("a failure carries the body's error code next to its message", async () => {
+    const answer = (status: number, body: string) => new CloudApiRequestTransport({
+      fetchTransport: async () => ({ ok: false, status, headers: new Headers(), text: async () => body }) as Response,
+    });
+
+    const unsupported = await answer(422, JSON.stringify({ error: "unsupported", message: "Robinhood does not support this in Gloom." }))
+      .request("/brokers/robinhood/orders")
+      .catch((error: unknown) => error);
+    expect(unsupported).toBeInstanceOf(ApiRequestError);
+    expect(unsupported).toMatchObject({ status: 422, code: "unsupported" });
+
+    const toolError = await answer(422, JSON.stringify({ error: "tool_error", message: "IBKR could not complete the request." }))
+      .request("/brokers/ibkr/orders")
+      .catch((error: unknown) => error);
+    expect(toolError).toMatchObject({ status: 422, code: "tool_error" });
+
+    const plain = await answer(502, "Bad gateway").request("/brokers/ibkr/orders").catch((error: unknown) => error);
+    expect(plain).toMatchObject({ status: 502, code: undefined });
+  });
+});
