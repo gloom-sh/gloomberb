@@ -1324,4 +1324,10 @@ export const zhTW: Record<string, string> = {
   "Received": "已收到",
   "In progress": "處理中",
   "Resolved": "已解決",
+  "{label} is required.": "{label}不可留空。",
+  "Choose listing for {symbol}": "選擇 {symbol} 的上市市場",
+  "Add {symbol} to Portfolio": "將 {symbol} 新增到投資組合",
+  "Open this from the main window.": "請在主視窗中開啟。",
+  "Done.": "完成。",
+  "Could not complete that action.": "無法完成該操作。",
 };

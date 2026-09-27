@@ -12,6 +12,7 @@ import {
   makeDataProvider,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import { openFormModal } from "../../form-modal";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -414,19 +415,15 @@ describe("CommandBar", () => {
     expect(frame).toContain("Below");
   });
 
-  test("opens plugin command workflows from a launch request", async () => {
+  // The alerts pane, event alerts and the marketplace open forms this way,
+  // with the bar closed; the command's own parser fills the focused ticker.
+  test("opens a plugin command's form without the bar, prefilled from the focused ticker", async () => {
     testSetup = await testRender(<CommandBarHarness
       query=""
+      live
       selectedTicker="AMD"
       extraTickers={[createTestTicker("AMD", "Advanced Micro Devices")]}
-      configureState={(state) => ({
-        ...state,
-        commandBarLaunchRequest: {
-          kind: "plugin-command",
-          commandId: "set-alert",
-          sequence: 1,
-        },
-      })}
+      configureState={(state) => ({ ...state, commandBarOpen: false })}
       configurePluginRegistry={(pluginRegistry) => {
         registerAlertCommand(pluginRegistry, {
           label: "Set Alert",
@@ -445,33 +442,34 @@ describe("CommandBar", () => {
       height: 24,
     });
 
+    await act(async () => {
+      expect(openFormModal({ kind: "plugin-command", commandId: "set-alert" })).toBe(true);
+    });
     const frame = await waitForFrameToContain("Target Price");
     expect(frame).toContain("Set Alert");
-    expect(frame).toContain("Symbol");
     expect(frame).toContain("Condition");
     expect(frame).toContain("AMD");
+    expect(frame).toContain("bar:closed");
   });
 
   // The status bar tab menu and the desktop Layout menu open New and Rename
-  // Layout this way; a launch the bar ignores leaves them on an empty bar.
-  test("opens a built-in workflow from a launch request", async () => {
+  // Layout this way.
+  test("opens a built-in form without the bar", async () => {
     testSetup = await testRender(<CommandBarHarness
       query=""
-      configureState={(state) => ({
-        ...state,
-        commandBarLaunchRequest: {
-          kind: "builtin-workflow",
-          actionId: "new-layout",
-          sequence: 1,
-        },
-      })}
+      live
+      configureState={(state) => ({ ...state, commandBarOpen: false })}
     />, {
       width: 80,
       height: 24,
     });
 
+    await act(async () => {
+      openFormModal({ kind: "builtin", actionId: "new-layout" });
+    });
     const frame = await waitForFrameToContain("Layout Name");
     expect(frame).toContain("Create Layout");
+    expect(frame).toContain("bar:closed");
   });
 
   test("opens ticker search from a launch request with saved ticker metadata", async () => {
@@ -541,24 +539,23 @@ describe("CommandBar", () => {
     expect(frame).not.toContain("Back");
   });
 
-  test("QQ without an active ticker opens inline ticker-list entry on enter", async () => {
-    testSetup = await testRender(<CommandBarHarness query="QQ" />, {
+  test("QQ without an active ticker asks for the tickers in the form modal on enter", async () => {
+    testSetup = await testRender(<CommandBarHarness query="QQ" live />, {
       width: 100,
       height: 20,
     });
 
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain("Quote Monitor");
-    expect(testSetup.captureCharFrame()).not.toContain("Back");
 
     await act(async () => {
       testSetup!.mockInput.pressEnter();
       await testSetup!.renderOnce();
     });
 
-    const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Back");
-    expect(frame).toContain("Quote Tickers");
+    const frame = await waitForFrameToContain("Quote Tickers");
+    expect(frame).toContain("Create Pane");
+    expect(frame).toContain("bar:closed");
   });
 
   test("T without an active ticker opens ticker search on enter", async () => {
@@ -975,7 +972,7 @@ describe("CommandBar", () => {
     expect(aaplRow).toBeLessThan(apcRow);
   });
 
-  test("renders form-layout wizard fields together on one screen", async () => {
+  test("renders a wizard's fields together in the form modal", async () => {
     testSetup = await testRender(
       <CommandBarHarness
         query="auth login"
@@ -987,7 +984,6 @@ describe("CommandBar", () => {
             description: "Log in to your account",
             keywords: ["login", "auth"],
             category: "config",
-            wizardLayout: "form",
             wizard: [
               { key: "email", label: "Email", type: "text", placeholder: "email@example.com" },
               { key: "password", label: "Password", type: "password", placeholder: "Your password" },
@@ -1001,16 +997,11 @@ describe("CommandBar", () => {
 
     await testSetup.renderOnce();
     await clickFrameText("Auth Login");
-    await act(async () => {
-      await testSetup!.renderOnce();
-    });
-
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Back");
+    const frame = await waitForFrameToContain("Your password");
     expect(frame).toContain("Email");
     expect(frame).toContain("Password");
-    expect(frame).toContain("Your password");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
+    expect(frame).toContain("bar:closed");
   });
 
   test("submits single-field form-layout wizards", async () => {
@@ -1065,8 +1056,7 @@ describe("CommandBar", () => {
     expect(submitted).toEqual([{ name: "Research" }]);
   });
 
-  // Enter on a select opens its picker, and picking pops back without sending,
-  // so a form that ends in a select is only sendable by the chord.
+  // Enter on a select opens its picker, and picking moves on without sending.
   test("sends a form whose last field is a select with Ctrl+S", async () => {
     const submitted: Array<Record<string, string> | undefined> = [];
 
@@ -1101,13 +1091,15 @@ describe("CommandBar", () => {
     );
 
     await testSetup.renderOnce();
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2 });
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
+    await waitForFrameToContain("Filing");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
     await waitForFrameToContain("Insider Trade");
-    await emitKeypress(testSetup, [{ name: "down" }, { name: "return", sequence: "\r" }], { frames: 2 });
+    await emitKeypress(testSetup, { name: "down" }, { frames: 2, trackPropagation: true });
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true });
     expect(submitted).toEqual([]);
 
-    await emitKeypress(testSetup, { name: "s", ctrl: true, sequence: "\x13" }, { frames: 2 });
+    await emitKeypress(testSetup, { name: "s", ctrl: true, sequence: "\x13" }, { frames: 2, trackPropagation: true });
     await act(async () => {
       await Bun.sleep(0);
       await testSetup!.renderOnce();

@@ -7,7 +7,6 @@ import type { TickerRecord } from "../../../types/ticker";
 import {
   CommandBarHarness,
   createCommandBarTestControls,
-  expectSingleBackControl,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
@@ -197,7 +196,7 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).toContain("Avg Cost");
     expect(frame).toContain("205.5");
     expect(frame).not.toContain("Only Manual Portfolio");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
   });
 
   test("add-to-portfolio can still add membership without entering a position", async () => {
@@ -296,7 +295,7 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).toContain("AAPL");
     expect(frame).toContain("10");
     expect(frame).toContain("180");
-    expectSingleBackControl(frame);
+    expect(frame).toContain("Cancel");
   });
 
   test("submits the portfolio position workflow and persists a manual position", async () => {

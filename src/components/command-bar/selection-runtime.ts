@@ -14,10 +14,7 @@ import type {
 } from "../../types/plugin";
 import { resolveCommandBarMode, type CommandBarMode } from "./view-model";
 import type { ListScreenState, ResultItem } from "./list/model";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 import type { CollectionCommandId } from "./helpers";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
 import {
@@ -74,7 +71,6 @@ interface UseCommandBarSelectionRuntimeOptions {
   stateConfigLayout: AppState["config"]["layout"];
   stateRef: MutableRefObject<AppState>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: MutableRefObject<ListScreenState | null>;
 }
 
@@ -108,7 +104,6 @@ export function useCommandBarSelectionRuntime({
   stateConfigLayout,
   stateRef,
   updateTopRoute,
-  updateWorkflowValue,
   visibleListStateRef,
 }: UseCommandBarSelectionRuntimeOptions) {
   const startThemePicker = useCallback((arg: string) => {
@@ -278,7 +273,6 @@ export function useCommandBarSelectionRuntime({
         selectedId: selected.id,
         setRouteStack,
         updateTopRoute,
-        updateWorkflowValue,
       });
       return;
     }
@@ -303,7 +297,6 @@ export function useCommandBarSelectionRuntime({
     setRouteStack,
     stateConfigLayout,
     updateTopRoute,
-    updateWorkflowValue,
     visibleListStateRef,
   ]);
 

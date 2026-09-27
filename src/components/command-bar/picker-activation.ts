@@ -9,7 +9,6 @@ import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-
 import type { OpenInlineConfirm } from "./routing/confirm";
 import { isCollectionCommand, type CollectionCommandId } from "./helpers";
 import type {
-  CommandBarFieldValue,
   CommandBarPickerRoute,
   CommandBarRoute,
 } from "./workflow/types";
@@ -26,7 +25,6 @@ export function activatePickerSelectionAction({
   selectedId,
   setRouteStack,
   updateTopRoute,
-  updateWorkflowValue,
 }: {
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   collectionWorkflowActions: CommandBarCollectionWorkflowActions;
@@ -39,7 +37,6 @@ export function activatePickerSelectionAction({
   selectedId: string;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
 }): void {
   const option = route.options.find((entry) => entry.id === selectedId);
   if (!option || option.disabled) return;
@@ -109,11 +106,6 @@ export function activatePickerSelectionAction({
     }
     case "field-select": {
       const parentKind = String(route.payload?.parentKind ?? "");
-      if (parentKind === "workflow") {
-        updateWorkflowValue(String(route.payload?.fieldId ?? ""), option.id);
-        setRouteStack((current) => current.slice(0, -1));
-        return;
-      }
       if (parentKind === "pane-settings") {
         const paneId = String(route.payload?.paneId ?? "");
         const field = route.payload?.field as PaneSettingField | undefined;

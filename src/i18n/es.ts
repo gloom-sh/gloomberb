@@ -1328,4 +1328,10 @@ export const es: Record<string, string> = {
   "Received": "Recibido",
   "In progress": "En curso",
   "Resolved": "Resuelto",
+  "{label} is required.": "{label} es obligatorio.",
+  "Choose listing for {symbol}": "Elige el mercado de {symbol}",
+  "Add {symbol} to Portfolio": "Agregar {symbol} a cartera",
+  "Open this from the main window.": "Ábrelo desde la ventana principal.",
+  "Done.": "Listo.",
+  "Could not complete that action.": "No se pudo completar esa acción.",
 };

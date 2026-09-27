@@ -438,6 +438,8 @@ function AppInner({
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
+              dataProvider={dataProvider}
+              tickerRepository={tickerRepository}
               desktopWindowBridge={desktopWindowBridge}
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}

@@ -49,21 +49,6 @@ export function getWorkflowFieldDescription(field: CommandBarWorkflowField): str
   return description;
 }
 
-export function estimateWorkflowBodyRows(route: CommandBarWorkflowRoute): number {
-  const visibleFields = getVisibleWorkflowFields(route.fields, route.values);
-  const introRows = (route.subtitle ? 1 : 0)
-    + (route.description?.length ?? 0)
-    + (route.subtitle || (route.description?.length ?? 0) > 0 ? 1 : 0);
-  const fieldRows = visibleFields.reduce((total, field, index) => {
-    const controlRows = field.type === "textarea" ? 6 : 1;
-    const descriptionRows = getWorkflowFieldDescription(field) ? 1 : 0;
-    const gapRows = index === visibleFields.length - 1 ? 0 : 1;
-    return total + 1 + controlRows + descriptionRows + gapRows;
-  }, 0);
-  const statusRows = (route.error ? 1 : 0) + (route.pending && route.pendingLabel ? 1 : 0);
-  return introRows + fieldRows + statusRows + 1;
-}
-
 export function coerceFieldString(value: CommandBarFieldValue | undefined): string {
   return typeof value === "string" ? value : "";
 }

@@ -1,6 +1,6 @@
 import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchesKeyChord, useKeybindings, type ResolvedKeybindings } from "../../app/keybindings";
-import type { SelectFieldHandle } from "../ui/select-field";
+import { useDialogState } from "../../ui/dialog";
 import {
   consumeShortcutEvent,
   handleConfirmRouteShortcut,
@@ -8,7 +8,6 @@ import {
   handlePickerRouteShortcut,
   handleRouteBackShortcut,
   handleThemePickerShortcut,
-  handleWorkflowRouteShortcut,
   isCommitShortcut,
   isMoveDownShortcut,
   isMoveUpShortcut,
@@ -18,12 +17,7 @@ import {
 } from "./keyboard-handlers";
 import type { ListJump, ListScreenState } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-  CommandBarWorkflowField,
-  CommandBarWorkflowRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 
 interface CommandBarKeyboardShortcutArgs {
   acceptRootShortcutTab: () => boolean;
@@ -33,31 +27,18 @@ interface CommandBarKeyboardShortcutArgs {
   confirmCurrentRoute: () => void | Promise<void>;
   currentRoute: CommandBarRoute | null;
   dismissCommandBar: () => void;
-  getWorkflowFieldStringValue: (
-    field: CommandBarWorkflowField,
-    value: CommandBarFieldValue | undefined,
-  ) => string;
   handleMultiSelectMove: (direction: "up" | "down") => void;
   handleMultiSelectToggle: (optionId: string) => void;
   jumpListSelection: (target: ListJump) => void;
   moveListSelection: (delta: number) => void;
-  moveWorkflowFocus: (delta: number) => void;
-  nativePaneChrome: boolean;
-  openWorkflowFieldPicker: (
-    route: CommandBarWorkflowRoute,
-    field: CommandBarWorkflowField,
-  ) => void;
   popRoute: () => void;
   /** Clears an AI assist request; returns true when Esc was spent on it. */
   resetAssist: () => boolean;
   rootModeKind: string;
   setActiveListQuery: (query: string) => void;
-  submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   themePickerActive: boolean;
   themePickerRef: RefLike<ThemePickerHandle | null>;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: RefLike<ListScreenState | null>;
-  workflowSelectFieldRefs: RefLike<Map<string, SelectFieldHandle>>;
 }
 
 /**
@@ -88,26 +69,23 @@ export function useCommandBarKeyboardShortcuts({
   confirmCurrentRoute,
   currentRoute,
   dismissCommandBar,
-  getWorkflowFieldStringValue,
   handleMultiSelectMove,
   handleMultiSelectToggle,
   jumpListSelection,
   moveListSelection,
-  moveWorkflowFocus,
-  nativePaneChrome,
-  openWorkflowFieldPicker,
   popRoute,
   resetAssist,
   rootModeKind,
   setActiveListQuery,
-  submitWorkflowRoute,
   themePickerActive,
   themePickerRef,
-  updateWorkflowValue,
   visibleListStateRef,
-  workflowSelectFieldRefs,
 }: CommandBarKeyboardShortcutArgs): void {
   const keybindings = useKeybindings();
+  // The bar sits under every dialog; one opened over it (a form, a sign-in)
+  // gets the keyboard. The bar's handler runs first in the dispatch, so it
+  // steps aside rather than relying on the dialog to stop it.
+  const dialogOpen = useDialogState((state) => state.isOpen);
   useShortcut((event) => {
     if (event.name === "escape" || isTickerSearchToggle(event, keybindings)) {
       event.stopPropagation();
@@ -150,21 +128,6 @@ export function useCommandBarKeyboardShortcuts({
     }
 
     if (handleRouteBackShortcut({ currentRoute, event, popRoute })) {
-      return;
-    }
-
-    if (handleWorkflowRouteShortcut({
-      currentRoute,
-      event,
-      getWorkflowFieldStringValue,
-      moveWorkflowFocus,
-      nativePaneChrome,
-      openWorkflowFieldPicker,
-      popRoute,
-      submitWorkflowRoute,
-      updateWorkflowValue,
-      workflowSelectFieldRefs,
-    })) {
       return;
     }
 
@@ -235,5 +198,5 @@ export function useCommandBarKeyboardShortcuts({
       }
       activateListSelection();
     }
-  }, { phase: "before", allowEditable: true });
+  }, { phase: "before", allowEditable: true, enabled: !dialogOpen });
 }

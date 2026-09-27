@@ -8,7 +8,6 @@ import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { CommandBarMultiSelectBody, isMultiSelectPickerRoute } from "../multi-select-picker";
 import { ThemePicker } from "../theme-picker";
-import { CommandBarWorkflowBody } from "../workflow/body";
 import type { CommandBarConfirmRoute, CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
@@ -36,7 +35,6 @@ export function CommandBarPanel({
   committedThemeId,
   contentPadding,
   currentRoute,
-  getWorkflowInputRef,
   hasChromeRow,
   labelWidth,
   listBodyHeight,
@@ -46,24 +44,17 @@ export function CommandBarPanel({
   nativePaneChrome,
   onBack,
   onConfirmRoute,
-  onFieldFocus,
-  onFieldPickerOpen,
-  onFieldValueChange,
   onListHoverIndex,
   onListRowMouseDown,
   onListScroll,
-  onMoveFieldFocus,
   onMultiSelectCommit,
   onMultiSelectSelect,
   onMultiSelectToggle,
   onNativeOccluderChange,
-  onSelectFieldRef,
   onOverlayClose,
   onQueryChange,
   onThemeCommit,
   onThemePreview,
-  onWorkflowActiveTextareaSync,
-  onWorkflowSubmit,
   panelBounds,
   queryDisplayWidth,
   rootGhostSuffix,
@@ -76,7 +67,6 @@ export function CommandBarPanel({
   themePickerRef,
   trailingWidth,
   visibleListState,
-  workflowScrollRef,
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
   const palette = useCommandBarPalette(nativePaneChrome);
@@ -95,8 +85,8 @@ export function CommandBarPanel({
   }, [listBodyHeight, nativeListScrollRef, selectedScrollRowIndex, visibleListState?.kind, visibleListState?.query]);
 
   // The header prompt is the bar's input while a list screen is showing. A
-  // workflow owns its own fields, so it publishes nothing and the prompt goes
-  // quiet rather than taking focus from them.
+  // confirm has nothing to type, so it publishes nothing and the prompt goes
+  // quiet.
   useLayoutEffect(() => {
     if (!visibleListState) {
       publishCommandBarPrompt(null);
@@ -242,24 +232,6 @@ export function CommandBarPanel({
               onRowMouseDown={onListRowMouseDown}
             />
           )}
-          {currentRoute?.kind === "workflow" && (
-            <CommandBarWorkflowBody
-              route={currentRoute}
-              bodyHeight={bodyHeight}
-              contentPadding={contentPadding}
-              nativePaneChrome={nativePaneChrome}
-              queryDisplayWidth={queryDisplayWidth}
-              workflowScrollRef={workflowScrollRef}
-              getWorkflowInputRef={getWorkflowInputRef}
-              onActiveTextareaSync={onWorkflowActiveTextareaSync}
-              onFieldFocus={onFieldFocus}
-              onFieldPickerOpen={onFieldPickerOpen}
-              onFieldValueChange={onFieldValueChange}
-              onMoveFieldFocus={onMoveFieldFocus}
-              onSelectFieldRef={onSelectFieldRef}
-              onSubmit={onWorkflowSubmit}
-            />
-          )}
           {currentRoute?.kind === "confirm" && (
             <CommandBarConfirmBody
               route={currentRoute}
@@ -296,7 +268,6 @@ function getCommandBarPanelTitle(route: CommandBarRoute): string {
   }
   if (route.kind === "picker") return route.title;
   if (route.kind === "pane-settings") return "Pane Settings";
-  if (route.kind === "workflow") return route.title;
   return route.title;
 }
 

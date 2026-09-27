@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { AmbiguousTickerError } from "../../../tickers/search";
 import { buildTickerListingPicker } from "./ticker-listing-picker";
-import { updateRouteStack } from "./route-actions";
-import type { CommandBarRoute, CommandBarWorkflowRoute } from "./types";
+import { applyFormValue } from "../../form-modal/model";
+import type { CommandBarWorkflowRoute } from "./types";
 
 const workflow: CommandBarWorkflowRoute = {
   kind: "workflow", workflowId: "fundamental-graph-pane", title: "Fundamental Graph",
@@ -21,10 +21,7 @@ test("listing choice retains the complete research form and changes only the amb
   expect(picker.options.map((option) => [option.id, option.detail])).toEqual([
     ["MSFT, COST:XNAS, AAPL", "Costco Wholesale"], ["MSFT, COST:XLON, AAPL", "Costain Group"],
   ]);
-  let routes: CommandBarRoute[] = [workflow, picker];
-  updateRouteStack((updater) => { routes = typeof updater === "function" ? updater(routes) : updater; },
-    String(picker.payload!.fieldId), picker.options[0]!.id);
-  const updated = routes[0] as CommandBarWorkflowRoute;
+  const updated = applyFormValue(workflow, String(picker.payload!.fieldId), picker.options[0]!.id);
   expect(updated.values).toEqual({ ...workflow.values, tickers: "MSFT, COST:XNAS, AAPL" });
   expect(workflow.values.tickers).toBe("MSFT, COST, AAPL");
   // The next unresolved ticker gets its own choice without undoing the first.

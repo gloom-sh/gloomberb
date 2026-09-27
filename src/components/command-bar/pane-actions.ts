@@ -17,6 +17,23 @@ import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { AppAction, AppState } from "../../state/app/context";
 
+/** Points the portfolio pane the focus follows (or the main one) at a collection. */
+export function showCollectionInPortfolioPane(
+  state: AppState,
+  dispatch: Dispatch<AppAction>,
+  collectionId: string,
+): void {
+  const targetPaneId = resolveFollowBindingInstance(
+    state.config.layout,
+    state.focusedPaneId,
+    (instance) => instance.paneId === "portfolio-list",
+  )?.instanceId
+    ?? findPrimaryPaneInstance(state.config.layout, "portfolio-list")?.instanceId
+    ?? null;
+  if (!targetPaneId) return;
+  dispatch({ type: "UPDATE_PANE_STATE", paneId: targetPaneId, patch: { collectionId } });
+}
+
 interface CommandBarPaneActionsOptions {
   dispatch: Dispatch<AppAction>;
   pluginRegistry: PluginRegistry;
@@ -29,16 +46,7 @@ export function useCommandBarPaneActions({
   stateRef,
 }: CommandBarPaneActionsOptions) {
   const setActiveCollection = useCallback((collectionId: string) => {
-    const currentState = stateRef.current;
-    const targetPaneId = resolveFollowBindingInstance(
-      currentState.config.layout,
-      currentState.focusedPaneId,
-      (instance) => instance.paneId === "portfolio-list",
-    )?.instanceId
-      ?? findPrimaryPaneInstance(currentState.config.layout, "portfolio-list")?.instanceId
-      ?? null;
-    if (!targetPaneId) return;
-    dispatch({ type: "UPDATE_PANE_STATE", paneId: targetPaneId, patch: { collectionId } });
+    showCollectionInPortfolioPane(stateRef.current, dispatch, collectionId);
   }, [dispatch, stateRef]);
 
   const retargetTickerResearchPane = useCallback((paneId: string, symbol: string, options?: PinTickerOptions) => {

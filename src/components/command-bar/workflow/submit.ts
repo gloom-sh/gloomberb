@@ -1,4 +1,5 @@
 import type { Dispatch } from "react";
+import { t, tf } from "../../../i18n";
 import type { AppAction } from "../../../state/app/context";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type {
@@ -21,6 +22,7 @@ import type {
 
 export type WorkflowSuccessDisposition = "back" | "close" | "stay";
 
+/** The first required field left empty, and what to tell the user about it. */
 export function validateRequiredWorkflowFields(options: {
   fields: readonly CommandBarWorkflowField[];
   values: Record<string, CommandBarFieldValue>;
@@ -28,20 +30,15 @@ export function validateRequiredWorkflowFields(options: {
     field: CommandBarWorkflowField,
     value: CommandBarFieldValue | undefined,
   ) => string;
-}): string | null {
+}): { fieldId: string; message: string } | null {
   for (const field of options.fields) {
     if (!field.required) continue;
     if (field.type === "toggle") continue;
     const value = options.values[field.id];
-    if (field.type === "multi-select" || field.type === "ordered-multi-select") {
-      if (coerceFieldValues(value).length === 0) {
-        return `${field.label} is required.`;
-      }
-      continue;
-    }
-    if (!options.getFieldStringValue(field, value).trim()) {
-      return `${field.label} is required.`;
-    }
+    const empty = field.type === "multi-select" || field.type === "ordered-multi-select"
+      ? coerceFieldValues(value).length === 0
+      : !options.getFieldStringValue(field, value).trim();
+    if (empty) return { fieldId: field.id, message: tf("{label} is required.", { label: t(field.label) }) };
   }
   return null;
 }
@@ -109,8 +106,8 @@ export async function submitCommandBarWorkflow(options: {
     const selection = resolveBrokerWorkflowSelection(route, selectorKey);
     if (!selection) throw new Error("Broker is required.");
     if (selection.method.kind === "signed-in") {
-      // The connect dialog cannot open over the command bar, so the workflow
-      // closes now and the outcome, a refusal included, arrives as a toast.
+      // The connect dialog opens over the form, which closes now; the outcome,
+      // a refusal included, arrives as a toast.
       void collectionWorkflowActions.connectSignedInBroker(selection.method.broker).catch((error: unknown) => {
         notify(error instanceof Error ? error.message : String(error), { type: "error" });
       });

@@ -645,11 +645,12 @@ describe("CommandBar pane and layout routes", () => {
     }]);
   });
 
-  test("edits pane settings inline inside the command bar", async () => {
+  test("edits a text pane setting in the form modal", async () => {
     const appliedValues: Array<{ paneId: string; key: string; value: unknown }> = [];
 
     testSetup = await testRender(<CommandBarHarness
       query="PS"
+      live
       configureState={(state) => ({
         ...state,
         focusedPaneId: "quote-monitor:main",

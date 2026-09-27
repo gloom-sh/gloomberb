@@ -1,14 +1,16 @@
 import { expect } from "bun:test";
-import { useReducer } from "react";
+import { useLayoutEffect, useMemo, useReducer, useRef, type Dispatch } from "react";
+import { AppDialogBridge } from "../../../app/dialog-bridge";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { useShortcut } from "../../../react/input";
-import { TestDialogProvider } from "../../../renderers/opentui/test-utils";
+import { RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import {
   AppContext,
   appReducer,
   createInitialState,
   getEffectiveThemeId,
   type AppAction,
+  type AppContextStoreValue,
   type AppState,
 } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
@@ -20,6 +22,7 @@ import type { PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, Text } from "../../../ui";
 import { Header } from "../../layout/header";
+import { FormModalHost } from "../../form-modal";
 import { CommandBar } from "./index";
 import { createTestTicker } from "../../../test-support/ticker";
 
@@ -208,6 +211,38 @@ export function makeQuoteMonitorPaneSettingsDescriptor(
   } as any;
 }
 
+/**
+ * A store like the app's: one object for the life of the harness, current
+ * the moment an action is dispatched, so a form or a confirm that outlives
+ * the bar still reads the latest state.
+ */
+function useLiveAppStore(initialState: AppState, onAction?: (action: AppAction) => void): { state: AppState; store: AppContextStoreValue } {
+  const [state, reactDispatch] = useReducer(appReducer, initialState);
+  const stateRef = useRef(state);
+  const onActionRef = useRef(onAction);
+  onActionRef.current = onAction;
+  const listenersRef = useRef(new Set<() => void>());
+  const store = useMemo<AppContextStoreValue>(() => ({
+    dispatch: ((action: AppAction) => {
+      stateRef.current = appReducer(stateRef.current, action);
+      onActionRef.current?.(action);
+      reactDispatch(action);
+    }) as Dispatch<AppAction>,
+    getState: () => stateRef.current,
+    subscribe: (listener) => {
+      listenersRef.current.add(listener);
+      return () => {
+        listenersRef.current.delete(listener);
+      };
+    },
+  }), []);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+    for (const listener of listenersRef.current) listener();
+  }, [state]);
+  return { state, store };
+}
+
 function ThemeProbe() {
   return <Text>{`theme:${useThemeId()}`}</Text>;
 }
@@ -237,6 +272,8 @@ export function CommandBarHarness({
   onCheckForUpdates,
   onAction,
   onUnhandledEnter,
+  remoteRegistry,
+  storeRef,
 }: {
   query: string;
   disabledPlugins?: string[];
@@ -253,6 +290,10 @@ export function CommandBarHarness({
   onCheckForUpdates?: () => void | Promise<void>;
   onAction?: (action: AppAction) => void;
   onUnhandledEnter?: () => void;
+  /** The registry the app would own, to see what remote control sees. */
+  remoteRegistry?: RemoteUiRegistry;
+  /** Receives the live store, to dispatch as the rest of the app would. */
+  storeRef?: { current: AppContextStoreValue | null };
 }) {
   let config = {
     ...createDefaultConfig("/tmp/gloomberb-test"),
@@ -293,19 +334,18 @@ export function CommandBarHarness({
   };
   const pluginRegistry = makePluginRegistry(hasPaneSettings);
   configurePluginRegistry?.(pluginRegistry);
-  const [liveState, dispatch] = useReducer(appReducer, state);
-  const currentState = live ? liveState : state;
-  const currentDispatch = live
-    ? (action: AppAction) => {
-      onAction?.(action);
-      dispatch(action);
-    }
-    : (_action: AppAction) => {};
+  const liveStore = useLiveAppStore(state, onAction);
+  const currentState = live ? liveStore.state : state;
+  const store = live ? liveStore.store : createStaticAppStore(state);
+  if (storeRef) storeRef.current = store;
 
+  // The dialog host is testRender's, outside this tree, as it is outside the
+  // app in production: dialogs reach the store only through the bridge.
   return (
-    <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
-      <AppContext value={createStaticAppStore(currentState, currentDispatch)}>
-        <TestDialogProvider>
+    <RemoteUiRegistryProvider registry={remoteRegistry}>
+      <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
+        <AppContext value={store}>
+          <AppDialogBridge />
           {/* The header hosts the bar's input while it is open, so typing in a
               test needs the real header on the first row. */}
           <Header />
@@ -315,6 +355,7 @@ export function CommandBarHarness({
               the one place no sheet height can cover. */}
           <Box flexDirection="row" gap={1} height={1}>
             {live && <ThemeProbe />}
+            {live && <Text>{currentState.commandBarOpen ? "bar:open" : "bar:closed"}</Text>}
             {showQueryState && <Text>{`query:${currentState.commandBarQuery}`}</Text>}
           </Box>
           {currentState.commandBarOpen && (
@@ -326,9 +367,14 @@ export function CommandBarHarness({
               onCheckForUpdates={onCheckForUpdates}
             />
           )}
+          <FormModalHost
+            dataProvider={dataProvider}
+            pluginRegistry={pluginRegistry}
+            tickerRepository={tickerRepository as any}
+          />
           {onUnhandledEnter && <UnhandledEnterProbe onEnter={onUnhandledEnter} />}
-        </TestDialogProvider>
-      </AppContext>
-    </ThemeProvider>
+        </AppContext>
+      </ThemeProvider>
+    </RemoteUiRegistryProvider>
   );
 }

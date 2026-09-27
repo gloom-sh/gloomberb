@@ -11,17 +11,13 @@ import {
   moveMultiSelectPickerOption,
   toggleMultiSelectPickerOption,
 } from "./multi-select-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 
 interface UseCommandBarMultiSelectRuntimeOptions {
   currentRoute: CommandBarRoute | null;
   pluginRegistry: PluginRegistry;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
 }
 
 export function useCommandBarMultiSelectRuntime({
@@ -29,7 +25,6 @@ export function useCommandBarMultiSelectRuntime({
   pluginRegistry,
   setRouteStack,
   updateTopRoute,
-  updateWorkflowValue,
 }: UseCommandBarMultiSelectRuntimeOptions): {
   commitMultiSelectPicker: () => void;
   handleMultiSelectMove: (direction: "up" | "down") => void;
@@ -65,14 +60,12 @@ export function useCommandBarMultiSelectRuntime({
       route: currentRoute,
       setRouteStack,
       updateTopRoute,
-      updateWorkflowValue,
     });
   }, [
     currentRoute,
     pluginRegistry,
     setRouteStack,
     updateTopRoute,
-    updateWorkflowValue,
   ]);
 
   const handleMultiSelectSelect = useCallback((index: number) => {

@@ -1322,4 +1322,10 @@ export const ko: Record<string, string> = {
   "Received": "접수됨",
   "In progress": "진행 중",
   "Resolved": "해결됨",
+  "{label} is required.": "{label}은(는) 필수입니다.",
+  "Choose listing for {symbol}": "{symbol} 상장 시장 선택",
+  "Add {symbol} to Portfolio": "{symbol} 포트폴리오에 추가",
+  "Open this from the main window.": "메인 창에서 여세요.",
+  "Done.": "완료했습니다.",
+  "Could not complete that action.": "작업을 완료할 수 없습니다.",
 };

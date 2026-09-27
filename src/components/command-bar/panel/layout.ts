@@ -1,6 +1,5 @@
 import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { resolveAppHeaderHeightCells, resolveHeaderPromptGeometry } from "../../layout/shell/chrome";
-import { estimateWorkflowBodyRows } from "../workflow/fields";
 import { NATIVE_COMMAND_SURFACE } from "./native-surface";
 import type { CommandBarRoute } from "../workflow/types";
 
@@ -102,12 +101,6 @@ export function resolveCommandBarPanelLayout({
     ),
   );
   const baseBodyHeight = Math.max(BODY_MIN_ROWS, listBudget - chromeRows);
-  const workflowBodyHeight = currentRoute?.kind === "workflow"
-    ? Math.min(
-      Math.max(BODY_MIN_ROWS, termHeight - bottomClearance - paddingRows - chromeRows),
-      Math.max(7, estimateWorkflowBodyRows(currentRoute)),
-    )
-    : baseBodyHeight;
   // The theme picker keeps its own rows rather than a list state, so it reports
   // a count of its own; without one the sheet used to open at full height over
   // a dozen themes.
@@ -118,11 +111,9 @@ export function resolveCommandBarPanelLayout({
   const listBodyHeight = shouldUseCompactListHeight
     ? Math.min(baseBodyHeight, Math.max(1, compactRowCount))
     : baseBodyHeight;
-  const bodyHeight = currentRoute?.kind === "workflow"
-    ? workflowBodyHeight
-    : shouldUseCompactListHeight
-      ? listBodyHeight
-      : baseBodyHeight;
+  const bodyHeight = shouldUseCompactListHeight
+    ? listBodyHeight
+    : baseBodyHeight;
   const barHeight = bodyHeight + paddingRows + chromeRows;
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
   const barTop = appHeaderHeight;

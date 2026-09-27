@@ -1,19 +1,8 @@
 import type { KeyEventLike } from "../../react/input";
 import { isPlainBackspace } from "../../utils/back-navigation";
-import { openSelectField, type SelectFieldHandle } from "../ui/select-field";
-import {
-  coerceFieldBoolean,
-  getVisibleWorkflowFields,
-  isWorkflowTextField,
-} from "./helpers";
 import type { ListJump, ListScreenState } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-  CommandBarWorkflowField,
-  CommandBarWorkflowRoute,
-} from "./workflow/types";
+import type { CommandBarRoute } from "./workflow/types";
 
 export type RefLike<T> = { current: T };
 
@@ -40,10 +29,10 @@ export function isPlainTab(event: KeyEventLike): boolean {
 }
 
 /**
- * Ctrl+S (Cmd+S on a Mac desktop) submits a workflow from any field. Not
+ * Ctrl+S (Cmd+S on a Mac desktop) submits a form from any field. Not
  * Ctrl+Enter: a desktop text field already submits or moves on for any Enter
- * before this handler sees the key, so the form would be sent twice. Shift
- * stays out of it: Cmd/Ctrl+Shift+S shares the focused pane.
+ * before the form's handler sees the key, so the form would be sent twice.
+ * Shift stays out of it: Cmd/Ctrl+Shift+S shares the focused pane.
  */
 export function isWorkflowSubmitShortcut(event: KeyEventLike): boolean {
   return (event.ctrl || event.meta) && !event.alt && !event.shift && event.name === "s";
@@ -119,107 +108,6 @@ export function handleRouteBackShortcut({
     return true;
   }
   return false;
-}
-
-export function handleWorkflowRouteShortcut({
-  currentRoute,
-  event,
-  getWorkflowFieldStringValue,
-  moveWorkflowFocus,
-  nativePaneChrome,
-  openWorkflowFieldPicker,
-  popRoute,
-  submitWorkflowRoute,
-  updateWorkflowValue,
-  workflowSelectFieldRefs,
-}: {
-  currentRoute: CommandBarRoute | null;
-  event: KeyEventLike;
-  getWorkflowFieldStringValue: (
-    field: CommandBarWorkflowField,
-    value: CommandBarFieldValue | undefined,
-  ) => string;
-  moveWorkflowFocus: (delta: number) => void;
-  nativePaneChrome: boolean;
-  openWorkflowFieldPicker: (
-    route: CommandBarWorkflowRoute,
-    field: CommandBarWorkflowField,
-  ) => void;
-  popRoute: () => void;
-  submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
-  workflowSelectFieldRefs: RefLike<Map<string, SelectFieldHandle>>;
-}): boolean {
-  if (currentRoute?.kind !== "workflow") return false;
-
-  const visibleFields = getVisibleWorkflowFields(currentRoute.fields, currentRoute.values);
-  const activeField = visibleFields.find((field) => field.id === currentRoute.activeFieldId) ?? visibleFields[0];
-  const activeTextarea = activeField?.type === "textarea";
-
-  // From any field, so a form that ends in a select or a toggle, where Enter
-  // opens the picker, can still be sent without the mouse.
-  if (isWorkflowSubmitShortcut(event)) {
-    consumeShortcutEvent(event);
-    if (!currentRoute.pending) void submitWorkflowRoute(currentRoute);
-    return true;
-  }
-
-  if (isPlainBackspace(event)) {
-    const activeValue = activeField
-      ? getWorkflowFieldStringValue(activeField, currentRoute.values[activeField.id])
-      : "";
-    if (!activeField || !isWorkflowTextField(activeField) || activeValue.length === 0) {
-      consumeShortcutEvent(event);
-      popRoute();
-      return true;
-    }
-  }
-
-  if (event.name === "tab") {
-    consumeShortcutEvent(event);
-    moveWorkflowFocus(event.shift ? -1 : 1);
-    return true;
-  }
-
-  if (activeTextarea && (event.name === "up" || event.name === "down" || (event.ctrl && (event.name === "p" || event.name === "n")))) {
-    return true;
-  }
-
-  if (isMoveUpShortcut(event)) {
-    consumeShortcutEvent(event);
-    moveWorkflowFocus(-1);
-    return true;
-  }
-
-  if (isMoveDownShortcut(event)) {
-    consumeShortcutEvent(event);
-    moveWorkflowFocus(1);
-    return true;
-  }
-
-  if (event.name === "space" && activeField?.type === "toggle") {
-    consumeShortcutEvent(event);
-    updateWorkflowValue(activeField.id, !coerceFieldBoolean(currentRoute.values[activeField.id]));
-    return true;
-  }
-
-  if (
-    isCommitShortcut(event)
-    || (nativePaneChrome && event.name === "space" && activeField?.type === "select")
-  ) {
-    if (!activeField) return true;
-    if (activeField.type === "select" || activeField.type === "multi-select" || activeField.type === "ordered-multi-select" || activeField.type === "toggle") {
-      consumeShortcutEvent(event);
-      if (nativePaneChrome && activeField.type === "select") {
-        openSelectField(workflowSelectFieldRefs.current.get(activeField.id));
-        return true;
-      }
-      openWorkflowFieldPicker(currentRoute, activeField);
-      return true;
-    }
-  }
-
-  return true;
 }
 
 export function handlePickerRouteShortcut({

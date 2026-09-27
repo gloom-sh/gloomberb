@@ -1324,4 +1324,10 @@ export const zhCN: Record<string, string> = {
   "Received": "已收到",
   "In progress": "处理中",
   "Resolved": "已解决",
+  "{label} is required.": "{label}不能为空。",
+  "Choose listing for {symbol}": "选择 {symbol} 的上市市场",
+  "Add {symbol} to Portfolio": "将 {symbol} 添加到投资组合",
+  "Open this from the main window.": "请在主窗口中打开。",
+  "Done.": "完成。",
+  "Could not complete that action.": "无法完成该操作。",
 };

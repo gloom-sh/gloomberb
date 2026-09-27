@@ -1324,4 +1324,10 @@ export const ja: Record<string, string> = {
   "Received": "受付済み",
   "In progress": "対応中",
   "Resolved": "解決済み",
+  "{label} is required.": "{label}を入力してください。",
+  "Choose listing for {symbol}": "{symbol} の上場市場を選択",
+  "Add {symbol} to Portfolio": "{symbol} をポートフォリオに追加",
+  "Open this from the main window.": "メインウィンドウから開いてください。",
+  "Done.": "完了しました。",
+  "Could not complete that action.": "その操作を完了できませんでした。",
 };

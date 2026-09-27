@@ -87,7 +87,12 @@ export interface CommandBarConfirmRoute extends CommandBarRouteBase {
   successBehavior?: "close" | "back" | "stay";
 }
 
-export interface CommandBarWorkflowRoute extends CommandBarRouteBase {
+/**
+ * A form: fields, values and what submitting does. It opens in the form modal
+ * (`components/form-modal`), never as a screen of the bar, so it is not a
+ * `CommandBarRoute`.
+ */
+export interface CommandBarWorkflowRoute {
   kind: "workflow";
   workflowId: string;
   title: string;
@@ -126,5 +131,4 @@ export type CommandBarRoute =
   | CommandBarModeRoute
   | CommandBarPickerRoute
   | CommandBarConfirmRoute
-  | CommandBarWorkflowRoute
   | CommandBarPaneSettingsRoute;

@@ -123,22 +123,14 @@ export function commitMultiSelectPickerAction({
   route,
   setRouteStack,
   updateTopRoute,
-  updateWorkflowValue,
 }: {
   pluginRegistry: PluginRegistry;
   route: CommandBarMultiSelectPickerRoute;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
 }): void {
   const selectedValues = getMultiSelectPickerSelectedValues(route);
   const parentKind = String(route.payload?.parentKind ?? "");
-  if (parentKind === "workflow") {
-    updateWorkflowValue(String(route.payload?.fieldId ?? ""), selectedValues);
-    setRouteStack((current) => current.slice(0, -1));
-    return;
-  }
-
   if (parentKind === "pane-settings") {
     const paneId = String(route.payload?.paneId ?? "");
     const field = route.payload?.field as PaneSettingField | undefined;

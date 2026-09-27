@@ -1,3 +1,4 @@
+import { tf } from "../../../i18n";
 import { AmbiguousTickerError } from "../../../tickers/search";
 import { formatTickerListInput, parseTickerListInput } from "../../../tickers/list";
 import type { CommandBarPickerRoute, CommandBarWorkflowRoute } from "./types";
@@ -21,7 +22,7 @@ export function buildTickerListingPicker(
   return {
     kind: "picker",
     pickerId: "field-select",
-    title: `Choose listing for ${error.query}`,
+    title: tf("Choose listing for {symbol}", { symbol: error.query }),
     query: "",
     selectedIdx: 0,
     hoveredIdx: null,

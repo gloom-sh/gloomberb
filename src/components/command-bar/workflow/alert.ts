@@ -4,14 +4,12 @@ import type { Quote } from "../../../types/financials";
 import { coerceFieldString } from "../helpers";
 import type {
   CommandBarFieldValue,
-  CommandBarRoute,
   CommandBarWorkflowField,
   CommandBarWorkflowRoute,
 } from "./types";
 
-function isSetAlertWorkflow(route: CommandBarRoute | null): route is CommandBarWorkflowRoute {
-  return route?.kind === "workflow"
-    && route.payload.kind === "plugin-command"
+function isSetAlertWorkflow(route: CommandBarWorkflowRoute): boolean {
+  return route.payload.kind === "plugin-command"
     && route.payload.actionId === "set-alert";
 }
 
@@ -47,14 +45,19 @@ function updateAlertWorkflowFieldDescriptions(
   });
 }
 
+/**
+ * Add Alert checks the symbol as it is typed, shows the quote under it and
+ * fills the target from the current price until the user types their own. Run
+ * by the form that owns the values.
+ */
 export function useAlertWorkflowQuoteSync({
   dataProvider,
   route,
-  updateTopRoute,
+  updateRoute,
 }: {
   dataProvider: DataProvider;
-  route: CommandBarRoute | null;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
+  route: CommandBarWorkflowRoute;
+  updateRoute: (updater: (route: CommandBarWorkflowRoute) => CommandBarWorkflowRoute) => void;
 }): void {
   const quoteRequestRef = useRef(0);
   const alertWorkflowActive = isSetAlertWorkflow(route);
@@ -69,7 +72,7 @@ export function useAlertWorkflowQuoteSync({
     quoteRequestRef.current = requestId;
 
     if (!alertWorkflowSymbol) {
-      updateTopRoute((route) => {
+      updateRoute((route) => {
         if (!isSetAlertWorkflow(route)) return route;
         return {
           ...route,
@@ -87,7 +90,7 @@ export function useAlertWorkflowQuoteSync({
       return;
     }
 
-    updateTopRoute((route) => {
+    updateRoute((route) => {
       if (!isSetAlertWorkflow(route)) return route;
       if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
       return {
@@ -112,7 +115,7 @@ export function useAlertWorkflowQuoteSync({
         }
 
         const quotePrice = formatAlertWorkflowPrice(quote.price);
-        updateTopRoute((route) => {
+        updateRoute((route) => {
           if (!isSetAlertWorkflow(route)) return route;
           if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
 
@@ -142,7 +145,7 @@ export function useAlertWorkflowQuoteSync({
       .catch((error) => {
         if (quoteRequestRef.current !== requestId) return;
         const message = summarizeAlertWorkflowQuoteError(alertWorkflowSymbol, error);
-        updateTopRoute((route) => {
+        updateRoute((route) => {
           if (!isSetAlertWorkflow(route)) return route;
           if (normalizeAlertWorkflowSymbol(route.values.symbol) !== alertWorkflowSymbol) return route;
           return {
@@ -160,5 +163,5 @@ export function useAlertWorkflowQuoteSync({
           };
         });
       });
-  }, [alertWorkflowActive, alertWorkflowSymbol, dataProvider, updateTopRoute]);
+  }, [alertWorkflowActive, alertWorkflowSymbol, dataProvider, updateRoute]);
 }

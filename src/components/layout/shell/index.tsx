@@ -63,6 +63,9 @@ import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { BrokerSignInDialogHost } from "../../../brokers/signed-in/sign-in-dialog";
 import { FeedbackDialogHost } from "../../feedback-dialog";
+import { FormModalHost } from "../../form-modal";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
+import type { DataProvider } from "../../../types/data-provider";
 import { useShellPaneActions } from "./pane/actions";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -80,6 +83,9 @@ export { resolvePaneManagementShortcut } from "./shortcuts";
 
 interface ShellProps {
   pluginRegistry: PluginRegistry;
+  /** What forms submit through; without them the shell opens no forms. */
+  dataProvider?: DataProvider;
+  tickerRepository?: AppTickerRepositoryPort;
   desktopWindowBridge?: DesktopWindowBridge;
   desktopDockPreview?: DesktopDockPreviewState | null;
   commandBarNativeOccluder?: LayoutBounds | null;
@@ -94,6 +100,8 @@ interface TransientFocusLayoutState {
 
 export function Shell({
   pluginRegistry,
+  dataProvider,
+  tickerRepository,
   desktopWindowBridge,
   desktopDockPreview,
   commandBarNativeOccluder = null,
@@ -795,6 +803,9 @@ export function Shell({
       <BrokerSignInDialogHost />
       <AuthDialogHost />
       <FeedbackDialogHost />
+      {dataProvider && tickerRepository && (
+        <FormModalHost dataProvider={dataProvider} pluginRegistry={pluginRegistry} tickerRepository={tickerRepository} />
+      )}
       <Box
         position="absolute"
         left={0}

@@ -65,8 +65,6 @@ export function getScreenFooterLeft(route: CommandBarRoute | null): string {
       return "up/down move  enter select";
     case "pane-settings":
       return "up/down move  enter edit";
-    case "workflow":
-      return "tab move  enter act";
     case "confirm":
       return "enter confirm  esc cancel";
     default:
@@ -77,7 +75,6 @@ export function getScreenFooterLeft(route: CommandBarRoute | null): string {
 export function getScreenFooterRight(route: CommandBarRoute | null): string {
   if (!route) return "esc cancel";
 
-  if (route.kind === "workflow") return "backspace/esc back";
   if (route.kind === "confirm") return "backspace/esc back";
 
   if (

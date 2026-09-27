@@ -6,7 +6,6 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import type { SelectFieldHandle } from "../../ui/select-field";
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { AppState } from "../../../state/app/context";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
@@ -24,17 +23,7 @@ import {
 import { useCommandBarMultiSelectRuntime } from "../multi-select-runtime";
 import { useCommandBarPanelState } from "./state";
 import type { ThemePickerHandle } from "../theme-picker";
-import type {
-  CommandBarFieldValue,
-  CommandBarRoute,
-  CommandBarWorkflowField,
-  CommandBarWorkflowRoute,
-} from "../workflow/types";
-
-type OpenWorkflowFieldPicker = (
-  route: CommandBarWorkflowRoute,
-  field: CommandBarWorkflowField,
-) => void;
+import type { CommandBarRoute } from "../workflow/types";
 
 interface CommandBarPanelRuntimeOptions {
   acceptRootShortcutTab: () => boolean;
@@ -50,19 +39,11 @@ interface CommandBarPanelRuntimeOptions {
   currentRoute: CommandBarRoute | null;
   currentRouteRef: MutableRefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
-  focusWorkflowField: (fieldId: string) => void;
-  getWorkflowFieldStringValue: (
-    field: CommandBarWorkflowField,
-    value: CommandBarFieldValue | undefined,
-  ) => string;
-  getWorkflowInputRef: CommandBarPanelProps["getWorkflowInputRef"];
   markRootSelectionNavigated: () => void;
-  moveWorkflowFocus: (delta: number) => void;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
   nativePaneChrome: boolean;
   nativeWindowChrome?: boolean;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
-  openWorkflowFieldPicker: OpenWorkflowFieldPicker;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   popRoute: () => void;
@@ -75,10 +56,7 @@ interface CommandBarPanelRuntimeOptions {
   setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
-  setWorkflowSelectFieldRef: (fieldId: string, element: SelectFieldHandle | null) => void;
   stateRef: MutableRefObject<AppState>;
-  submitWorkflowRoute: (route: CommandBarWorkflowRoute) => void | Promise<void>;
-  syncActiveWorkflowTextarea: (route: CommandBarWorkflowRoute) => void;
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
@@ -86,10 +64,7 @@ interface CommandBarPanelRuntimeOptions {
   themePickerRef: RefObject<ThemePickerHandle | null>;
   titleBarOverlay: boolean | undefined;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  updateWorkflowValue: (fieldId: string, value: CommandBarFieldValue) => void;
   visibleListStateRef: MutableRefObject<ListScreenState | null>;
-  workflowSelectFieldRefs: MutableRefObject<Map<string, SelectFieldHandle>>;
-  workflowScrollRef: RefObject<ScrollBoxRenderable | null>;
 }
 
 export function useCommandBarPanelRuntime({
@@ -106,16 +81,11 @@ export function useCommandBarPanelRuntime({
   currentRoute,
   currentRouteRef,
   dismissCommandBar,
-  focusWorkflowField,
-  getWorkflowFieldStringValue,
-  getWorkflowInputRef,
   markRootSelectionNavigated,
-  moveWorkflowFocus,
   nativeListScrollRef,
   nativePaneChrome,
   nativeWindowChrome,
   onNativeOccluderChange,
-  openWorkflowFieldPicker,
   persistConfig,
   pluginRegistry,
   popRoute,
@@ -128,10 +98,7 @@ export function useCommandBarPanelRuntime({
   setRootHoveredIdx,
   setRootSelectedIdx,
   setRouteStack,
-  setWorkflowSelectFieldRef,
   stateRef,
-  submitWorkflowRoute,
-  syncActiveWorkflowTextarea,
   termHeight,
   termWidth,
   themePickerActive,
@@ -139,10 +106,7 @@ export function useCommandBarPanelRuntime({
   themePickerRef,
   titleBarOverlay,
   updateTopRoute,
-  updateWorkflowValue,
   visibleListStateRef,
-  workflowSelectFieldRefs,
-  workflowScrollRef,
 }: CommandBarPanelRuntimeOptions): CommandBarPanelProps {
   const activateListSelectionRef = useRef(activateListSelection);
   activateListSelectionRef.current = activateListSelection;
@@ -188,8 +152,7 @@ export function useCommandBarPanelRuntime({
     pluginRegistry,
     setRouteStack,
     updateTopRoute,
-    updateWorkflowValue,
-  });
+    });
 
   const handleConfirmRoute = useCallback(() => {
     void confirmCurrentRoute();
@@ -203,24 +166,17 @@ export function useCommandBarPanelRuntime({
     confirmCurrentRoute,
     currentRoute,
     dismissCommandBar,
-    getWorkflowFieldStringValue,
     handleMultiSelectMove,
     handleMultiSelectToggle,
     jumpListSelection,
     moveListSelection,
-    moveWorkflowFocus,
-    nativePaneChrome,
-    openWorkflowFieldPicker,
     popRoute,
     resetAssist,
     rootModeKind,
     setActiveListQuery,
-    submitWorkflowRoute,
     themePickerActive,
     themePickerRef,
-    updateWorkflowValue,
     visibleListStateRef,
-    workflowSelectFieldRefs,
   });
 
   const {
@@ -265,7 +221,6 @@ export function useCommandBarPanelRuntime({
     committedThemeId,
     contentPadding: panelLayout.contentPadding,
     currentRoute,
-    getWorkflowInputRef,
     hasChromeRow: panelLayout.hasChromeRow,
     labelWidth: panelLayout.labelWidth,
     listBodyHeight: panelLayout.listBodyHeight,
@@ -275,24 +230,17 @@ export function useCommandBarPanelRuntime({
     nativePaneChrome,
     onBack: popRoute,
     onConfirmRoute: handleConfirmRoute,
-    onFieldFocus: focusWorkflowField,
-    onFieldPickerOpen: openWorkflowFieldPicker,
-    onFieldValueChange: updateWorkflowValue,
     onListHoverIndex: setHoveredIndex,
     onListRowMouseDown: handleListRowMouseDown,
     onListScroll: handleListScroll,
-    onMoveFieldFocus: moveWorkflowFocus,
     onMultiSelectCommit: commitMultiSelectPicker,
     onMultiSelectSelect: handleMultiSelectSelect,
     onMultiSelectToggle: handleMultiSelectToggle,
     onNativeOccluderChange,
-    onSelectFieldRef: setWorkflowSelectFieldRef,
     onOverlayClose: closeAll,
     onQueryChange: setActiveListQuery,
     onThemeCommit: handleThemeCommit,
     onThemePreview: applyThemePreview,
-    onWorkflowActiveTextareaSync: syncActiveWorkflowTextarea,
-    onWorkflowSubmit: submitWorkflowRoute,
     panelBounds: panelLayout.panelBounds,
     queryDisplayWidth: panelLayout.queryDisplayWidth,
     rootGhostSuffix,
@@ -305,6 +253,5 @@ export function useCommandBarPanelRuntime({
     themePickerRef,
     trailingWidth: panelLayout.trailingWidth,
     visibleListState,
-    workflowScrollRef,
   };
 }
