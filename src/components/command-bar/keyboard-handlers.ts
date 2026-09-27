@@ -52,40 +52,6 @@ export function resolveListJump(event: KeyEventLike): ListJump | null {
   return null;
 }
 
-export function handleConfirmRouteShortcut({
-  confirmCurrentRoute,
-  currentRoute,
-  event,
-  popRoute,
-}: {
-  confirmCurrentRoute: () => void | Promise<void>;
-  currentRoute: CommandBarRoute | null;
-  event: KeyEventLike;
-  popRoute: () => void;
-}): boolean {
-  if (currentRoute?.kind !== "confirm") return false;
-
-  if (isPlainBackspace(event)) {
-    consumeShortcutEvent(event);
-    popRoute();
-    return true;
-  }
-  if (isCommitShortcut(event) || event.name === "y") {
-    consumeShortcutEvent(event);
-    void confirmCurrentRoute();
-    return true;
-  }
-  if (event.name === "n") {
-    consumeShortcutEvent(event);
-    popRoute();
-    return true;
-  }
-  // One action and no fields: Tab has nowhere to go, and on the desktop it
-  // must not carry focus out of the bar.
-  if (event.name === "tab") consumeShortcutEvent(event);
-  return true;
-}
-
 export function handleRouteBackShortcut({
   currentRoute,
   event,

@@ -1,71 +1,44 @@
-import { useCallback, useMemo, type Dispatch, type MutableRefObject } from "react";
+import { useCallback, useMemo, useRef, type Dispatch } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { AppAction, AppState } from "../../../state/app/context";
+import { useAppGetState, type AppAction } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 import { openFormModal, type FormModalRequest } from "../../form-modal";
-import {
-  createCommandBarCollectionWorkflowActions,
-  type CommandBarNotifyFn,
-} from "./collection-actions";
+import { createLiveCollectionActions, type FormModalDeps } from "../../form-modal/deps";
+import type { CommandBarNotifyFn } from "./collection-actions";
 import type { CommandBarWorkflowRoute } from "./types";
 
 interface UseCommandBarWorkflowCoordinatorOptions {
-  activeCollectionId: string | null;
-  activeTickerSymbol: string | null;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   notify: CommandBarNotifyFn;
-  persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
-  setActiveCollection: (collectionId: string) => void;
-  stateRef: MutableRefObject<AppState>;
   tickerRepository: AppTickerRepositoryPort;
 }
 
 /**
  * The bar finds a form and hands it to the form modal, closing itself; the
  * modal builds and submits it. The collection actions stay here for the
- * pickers and confirms the bar still shows.
+ * pickers and confirms the bar still starts, and read the app's store when
+ * they run: a confirm outlives the bar that opened it.
  */
 export function useCommandBarWorkflowCoordinator({
-  activeCollectionId,
-  activeTickerSymbol,
   closeAll,
   dataProvider,
   dispatch,
   notify,
-  persistConfig,
   pluginRegistry,
-  setActiveCollection,
-  stateRef,
   tickerRepository,
 }: UseCommandBarWorkflowCoordinatorOptions) {
-  const collectionWorkflowActions = useMemo(() => createCommandBarCollectionWorkflowActions({
-    activeCollectionId,
-    activeTickerSymbol,
-    dataProvider,
-    dispatch,
-    getState: () => stateRef.current,
-    notify,
-    persistConfig,
-    pluginRegistry,
-    setActiveCollection,
-    tickerRepository,
-  }), [
-    activeCollectionId,
-    activeTickerSymbol,
-    dataProvider,
-    dispatch,
-    notify,
-    persistConfig,
-    pluginRegistry,
-    setActiveCollection,
-    stateRef,
-    tickerRepository,
-  ]);
+  const getState = useAppGetState();
+  const depsRef = useRef<FormModalDeps>(null as unknown as FormModalDeps);
+  depsRef.current = { dataProvider, dispatch, getState, pluginRegistry, tickerRepository };
+  const collectionWorkflowActions = useMemo(
+    () => createLiveCollectionActions(() => depsRef.current, notify),
+    [notify],
+  );
 
   const openForm = useCallback((request: FormModalRequest) => {
     if (openFormModal(request)) closeAll({ revertThemePreview: false });
@@ -91,8 +64,8 @@ export function useCommandBarWorkflowCoordinator({
     tickerRepository,
     pluginRegistry,
     dispatch,
-    getState: () => stateRef.current,
-  }), [dataProvider, dispatch, pluginRegistry, stateRef, tickerRepository]);
+    getState,
+  }), [dataProvider, dispatch, getState, pluginRegistry, tickerRepository]);
 
   return {
     buildSharedWorkflowDeps,

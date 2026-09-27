@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { buildBrokerDirectory } from "../../brokers/directory";
 import {
   getSignedInBrokers,
@@ -12,6 +12,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
 import { useDialog, type AlertContext } from "../../ui/dialog";
+import { CONFIRM_MODAL_WIDTH, ConfirmModalContent } from "./confirm";
 import { FormModalContent, type FormModalRuntime } from "./content";
 import type { FormModalDeps } from "./deps";
 import type { FormRoute } from "./model";
@@ -41,8 +42,9 @@ interface FormModalHostProps {
 
 /**
  * Opens every form (a built-in workflow, a plugin command's wizard, a pane
- * template's settings) as one centered modal. Mounted by the main window's
- * shell for the life of the app; `openFormModal` reaches it. Renders nothing.
+ * template's settings) and every confirm as one centered modal. Mounted by the
+ * main window's shell for the life of the app; `openFormModal` and
+ * `openConfirmModal` reach it. Renders nothing.
  */
 export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }: FormModalHostProps) {
   const dialog = useDialog();
@@ -77,19 +79,35 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
 
   useEffect(() => subscribeFormModalRequests((request) => {
     if (openRef.current) return false;
-    const state = stateRef.current;
-    const result = resolveFormRequest(request, depsRef.current, brokerDirectoryRef.current);
-    if (result.kind === "notice") {
-      pluginRegistry.notify({ body: t(result.message), type: "info" });
-      return true;
+    let width: number;
+    let closeOnClickOutside: boolean;
+    let render: (context: AlertContext, runtime: FormModalRuntime) => ReactNode;
+    if (request.kind === "confirm") {
+      width = CONFIRM_MODAL_WIDTH;
+      // Nothing typed to lose.
+      closeOnClickOutside = true;
+      render = (context, runtime) => (
+        <ConfirmModalContent {...context} confirm={request.confirm} runtime={runtime} width={width} />
+      );
+    } else {
+      const result = resolveFormRequest(request, depsRef.current, brokerDirectoryRef.current);
+      if (result.kind === "notice") {
+        pluginRegistry.notify({ body: t(result.message), type: "info" });
+        return true;
+      }
+      if (result.kind === "none") return false;
+      const route = result.route;
+      width = formModalWidth(route);
+      // A stray click must not throw away what was typed.
+      closeOnClickOutside = false;
+      render = (context, runtime) => (
+        <FormModalContent {...context} initialRoute={route} runtime={runtime} width={width} />
+      );
     }
-    if (result.kind === "none") return false;
 
     const handle: { dismiss: (() => void) | null } = { dismiss: null };
     openRef.current = handle;
-    if (state.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
-    const route = result.route;
-    const width = formModalWidth(route);
+    if (stateRef.current.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
     const runtime: FormModalRuntime = {
       getDeps: () => depsRef.current,
       bindDismiss: (dismiss) => { handle.dismiss = dismiss; },
@@ -98,12 +116,9 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
     // and the terminal host commits a dialog synchronously.
     queueMicrotask(() => {
       void dialog.alert({
-        // A stray click must not throw away what was typed.
-        closeOnClickOutside: false,
+        closeOnClickOutside,
         style: { width },
-        content: (context: AlertContext) => (
-          <FormModalContent {...context} initialRoute={route} runtime={runtime} width={width} />
-        ),
+        content: (context: AlertContext) => render(context, runtime),
       }).finally(() => {
         if (openRef.current === handle) openRef.current = null;
       });
@@ -115,7 +130,7 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
 }
 
 function resolveFormRequest(
-  request: FormModalRequest,
+  request: Exclude<FormModalRequest, { kind: "confirm" }>,
   deps: FormModalDeps,
   brokerDirectory: ReturnType<typeof buildBrokerDirectory>,
 ): FormRouteResult {

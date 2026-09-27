@@ -35,7 +35,6 @@ interface CommandBarPanelRuntimeOptions {
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   commitTheme: (themeId: string) => void;
   committedThemeId: string;
-  confirmCurrentRoute: () => void | Promise<void>;
   currentRoute: CommandBarRoute | null;
   currentRouteRef: MutableRefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
@@ -77,7 +76,6 @@ export function useCommandBarPanelRuntime({
   closeAll,
   commitTheme,
   committedThemeId,
-  confirmCurrentRoute,
   currentRoute,
   currentRouteRef,
   dismissCommandBar,
@@ -154,16 +152,11 @@ export function useCommandBarPanelRuntime({
     updateTopRoute,
     });
 
-  const handleConfirmRoute = useCallback(() => {
-    void confirmCurrentRoute();
-  }, [confirmCurrentRoute]);
-
   useCommandBarKeyboardShortcuts({
     acceptRootShortcutTab,
     acceptSelectedShortcutTab,
     activateListSelection,
     commitMultiSelectPicker,
-    confirmCurrentRoute,
     currentRoute,
     dismissCommandBar,
     handleMultiSelectMove,
@@ -229,7 +222,6 @@ export function useCommandBarPanelRuntime({
     nativeOccluderRect: panelLayout.nativeOccluderRect,
     nativePaneChrome,
     onBack: popRoute,
-    onConfirmRoute: handleConfirmRoute,
     onListHoverIndex: setHoveredIndex,
     onListRowMouseDown: handleListRowMouseDown,
     onListScroll: handleListScroll,

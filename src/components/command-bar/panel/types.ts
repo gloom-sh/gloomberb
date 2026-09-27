@@ -21,7 +21,6 @@ export interface CommandBarPanelProps {
   nativeOccluderRect: LayoutBounds;
   nativePaneChrome: boolean;
   onBack: () => void;
-  onConfirmRoute: () => void;
   onListHoverIndex: (index: number | null) => void;
   onListRowMouseDown: (event: any, item: ResultItem, globalIdx: number) => void;
   onListScroll: (event: CommandBarListScrollEvent) => void;

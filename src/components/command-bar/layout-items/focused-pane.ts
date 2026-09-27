@@ -15,6 +15,7 @@ export function buildFocusedPaneLayoutItems({
   currentLayout,
   duplicatePane,
   focusedPaneId,
+  getState,
   openInlineConfirm,
   persistLayoutChange,
   pluginRegistry,
@@ -141,7 +142,7 @@ export function buildFocusedPaneLayoutItems({
             cancelLabel: "Back",
             tone: "danger",
             onConfirm: () => {
-              persistLayoutChange(removePane(currentLayout, focusedPane.instanceId));
+              persistLayoutChange(removePane(getState().config.layout, focusedPane.instanceId));
             },
           });
         }

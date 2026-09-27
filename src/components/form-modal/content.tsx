@@ -53,7 +53,7 @@ export interface FormModalRuntime {
 /** Terminal rows the dialog spends around the body: border, padding, title and its spacer, spacer and buttons. */
 const TERMINAL_CHROME_ROWS = 2 + 2 + 2 + 2;
 /** Border and padding the terminal dialog host draws around the content. */
-const TERMINAL_DIALOG_INSET = 6;
+export const TERMINAL_DIALOG_INSET = 6;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : t("Could not complete that action.");

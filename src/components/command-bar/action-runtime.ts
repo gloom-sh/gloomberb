@@ -2,7 +2,6 @@ import {
   useCallback,
   type Dispatch,
   type MutableRefObject,
-  type SetStateAction,
 } from "react";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -15,7 +14,7 @@ import { useCommandBarTickerSearchActions } from "./routes/ticker-search/actions
 import { useCommandBarPluginCommandActions } from "./commands/plugin/actions";
 import { useCommandBarPaneTemplateActions } from "./pane-templates/workflow";
 import { useCommandBarDirectCommandRuntime } from "./commands/direct/runtime";
-import { useCommandBarConfirmRoute } from "./routing/confirm";
+import { useCommandBarInlineConfirm } from "./routing/confirm";
 import { useCommandBarPaneActions } from "./pane-actions";
 import { useCommandBarWorkflowCoordinator } from "./workflow/coordinator";
 import { useCommandBarRouteActions } from "./routing/actions";
@@ -29,7 +28,6 @@ interface UseCommandBarActionRuntimeOptions {
   activeTickerSymbol: string | null;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   config: AppState["config"];
-  currentRoute: CommandBarRoute | null;
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   focusedPaneId: string | null;
@@ -40,7 +38,6 @@ interface UseCommandBarActionRuntimeOptions {
   quitApp: () => void;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
   setRootQuery: (query: string) => void;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   skipTickerSearchDebounceRef: MutableRefObject<boolean>;
   state: AppState;
   stateRef: MutableRefObject<AppState>;
@@ -57,7 +54,6 @@ export function useCommandBarActionRuntime({
   activeTickerSymbol,
   closeAll,
   config,
-  currentRoute,
   dataProvider,
   dispatch,
   focusedPaneId,
@@ -68,7 +64,6 @@ export function useCommandBarActionRuntime({
   quitApp,
   rootThemeBaseIdRef,
   setRootQuery,
-  setRouteStack,
   skipTickerSearchDebounceRef,
   state,
   stateRef,
@@ -81,7 +76,6 @@ export function useCommandBarActionRuntime({
     duplicatePane,
     focusTicker,
     persistLayoutChange,
-    setActiveCollection,
   } = useCommandBarPaneActions({
     dispatch,
     pluginRegistry,
@@ -133,29 +127,15 @@ export function useCommandBarActionRuntime({
     openForm,
     openWorkflowRoute,
   } = useCommandBarWorkflowCoordinator({
-    activeCollectionId,
-    activeTickerSymbol,
     closeAll,
     dataProvider,
     dispatch,
     notify,
-    persistConfig,
     pluginRegistry,
-    setActiveCollection,
-    stateRef,
     tickerRepository,
   });
 
-  const {
-    confirmCurrentRoute,
-    openInlineConfirm,
-  } = useCommandBarConfirmRoute({
-    closeAll,
-    currentRoute,
-    pushRoute,
-    setRouteStack,
-    updateTopRoute,
-  });
+  const openInlineConfirm = useCommandBarInlineConfirm({ closeAll });
 
   const {
     buildLayoutItems,
@@ -256,7 +236,6 @@ export function useCommandBarActionRuntime({
     quitApp,
     rootThemeBaseIdRef,
     setRootQuery,
-    stateRef,
     themePickerRef,
   });
 
@@ -267,7 +246,6 @@ export function useCommandBarActionRuntime({
     buildTickerSearchResultItems,
     buildWindowModeItems,
     collectionWorkflowActions,
-    confirmCurrentRoute,
     createPaneTemplateItem,
     createPluginCommandItem,
     executeCollectionCommand,

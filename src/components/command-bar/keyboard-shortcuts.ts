@@ -3,7 +3,6 @@ import { matchesKeyChord, useKeybindings, type ResolvedKeybindings } from "../..
 import { useDialogState } from "../../ui/dialog";
 import {
   consumeShortcutEvent,
-  handleConfirmRouteShortcut,
   handlePaneSettingsRouteShortcut,
   handlePickerRouteShortcut,
   handleRouteBackShortcut,
@@ -24,7 +23,6 @@ interface CommandBarKeyboardShortcutArgs {
   acceptSelectedShortcutTab: () => boolean;
   activateListSelection: (options?: { secondary?: boolean }) => void;
   commitMultiSelectPicker: () => void;
-  confirmCurrentRoute: () => void | Promise<void>;
   currentRoute: CommandBarRoute | null;
   dismissCommandBar: () => void;
   handleMultiSelectMove: (direction: "up" | "down") => void;
@@ -66,7 +64,6 @@ export function useCommandBarKeyboardShortcuts({
   acceptSelectedShortcutTab,
   activateListSelection,
   commitMultiSelectPicker,
-  confirmCurrentRoute,
   currentRoute,
   dismissCommandBar,
   handleMultiSelectMove,
@@ -116,15 +113,6 @@ export function useCommandBarKeyboardShortcuts({
         }
         return;
       }
-    }
-
-    if (handleConfirmRouteShortcut({
-      confirmCurrentRoute,
-      currentRoute,
-      event,
-      popRoute,
-    })) {
-      return;
     }
 
     if (handleRouteBackShortcut({ currentRoute, event, popRoute })) {

@@ -15,6 +15,8 @@ export interface LayoutItemsContext {
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
   focusedPaneId: string | null;
+  /** The store as it is now: a confirm acts on the layout at the moment it runs. */
+  getState: () => AppState;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   persistLayoutChange: (layout: LayoutConfig) => void;

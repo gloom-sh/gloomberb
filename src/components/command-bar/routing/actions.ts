@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type MutableRefObject } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { AppAction, AppState } from "../../../state/app/context";
+import { useAppGetState, type AppAction, type AppState } from "../../../state/app/context";
 import type { TickerFinancials } from "../../../types/financials";
 import type { PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
@@ -76,6 +76,7 @@ export function useCommandBarRouteActions({
   stateRef,
   updateTopRoute,
 }: UseCommandBarRouteActionsOptions) {
+  const getState = useAppGetState();
   const buildWindowModeItems = useCallback((arg: string): ResultItem[] => buildWindowModeResultItems({
     arg,
     closeAll,
@@ -91,6 +92,7 @@ export function useCommandBarRouteActions({
     confirmDangerousActions: options?.confirmDangerousActions,
     dispatch,
     duplicatePane,
+    getState,
     openBuiltInWorkflow,
     openInlineConfirm,
     persistLayoutChange,
@@ -102,6 +104,7 @@ export function useCommandBarRouteActions({
     closeAll,
     dispatch,
     duplicatePane,
+    getState,
     openBuiltInWorkflow,
     openInlineConfirm,
     persistLayoutChange,

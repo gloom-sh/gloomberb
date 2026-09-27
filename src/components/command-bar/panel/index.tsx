@@ -3,12 +3,12 @@ import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
-import { Button, Spinner } from "../../ui";
+import { Button } from "../../ui";
 import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { CommandBarMultiSelectBody, isMultiSelectPickerRoute } from "../multi-select-picker";
 import { ThemePicker } from "../theme-picker";
-import type { CommandBarConfirmRoute, CommandBarRoute } from "../workflow/types";
+import type { CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
@@ -43,7 +43,6 @@ export function CommandBarPanel({
   nativeOccluderRect,
   nativePaneChrome,
   onBack,
-  onConfirmRoute,
   onListHoverIndex,
   onListRowMouseDown,
   onListScroll,
@@ -84,9 +83,7 @@ export function CommandBarPanel({
     }
   }, [listBodyHeight, nativeListScrollRef, selectedScrollRowIndex, visibleListState?.kind, visibleListState?.query]);
 
-  // The header prompt is the bar's input while a list screen is showing. A
-  // confirm has nothing to type, so it publishes nothing and the prompt goes
-  // quiet.
+  // The header prompt is the bar's input while a list screen is showing.
   useLayoutEffect(() => {
     if (!visibleListState) {
       publishCommandBarPrompt(null);
@@ -232,15 +229,6 @@ export function CommandBarPanel({
               onRowMouseDown={onListRowMouseDown}
             />
           )}
-          {currentRoute?.kind === "confirm" && (
-            <CommandBarConfirmBody
-              route={currentRoute}
-              bodyHeight={bodyHeight}
-              contentPadding={contentPadding}
-              queryDisplayWidth={queryDisplayWidth}
-              onConfirm={onConfirmRoute}
-            />
-          )}
           {isMultiSelectPickerRoute(currentRoute) && (
             <CommandBarMultiSelectBody
               route={currentRoute}
@@ -260,59 +248,11 @@ export function CommandBarPanel({
   );
 }
 
-
 function getCommandBarPanelTitle(route: CommandBarRoute): string {
   if (route.kind === "mode") {
     if (route.screen === "layout") return "Layout Actions";
     return "Security Description";
   }
   if (route.kind === "picker") return route.title;
-  if (route.kind === "pane-settings") return "Pane Settings";
-  return route.title;
-}
-
-function CommandBarConfirmBody({
-  route,
-  bodyHeight,
-  contentPadding,
-  queryDisplayWidth,
-  onConfirm,
-}: {
-  route: CommandBarConfirmRoute;
-  bodyHeight: number;
-  contentPadding: number;
-  queryDisplayWidth: number;
-  onConfirm: () => void;
-}) {
-  const themeColors = useThemeColors();
-  const palette = useCommandBarPalette(false);
-  return (
-    <Box flexDirection="column" height={bodyHeight} paddingX={contentPadding}>
-      {route.body.map((line, index) => (
-        <Box key={`confirm:${index}`} height={1}>
-          <Text fg={palette.text}>{truncateToDisplayWidth(t(line), queryDisplayWidth)}</Text>
-        </Box>
-      ))}
-      <Box height={1} />
-      {route.error && (
-        <Box height={1}>
-          <Text fg={themeColors.negative}>{truncateToDisplayWidth(route.error, queryDisplayWidth)}</Text>
-        </Box>
-      )}
-      {route.pending && (
-        <Box height={1}>
-          <Spinner label={t("Working…")} />
-        </Box>
-      )}
-      <Box flexGrow={1} />
-      <Box flexDirection="row" gap={1}>
-        <Button
-          label={t(route.confirmLabel)}
-          variant={route.tone === "danger" ? "danger" : "primary"}
-          onPress={onConfirm}
-          disabled={route.pending}
-        />
-      </Box>
-    </Box>
-  );
+  return "Pane Settings";
 }

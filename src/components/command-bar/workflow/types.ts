@@ -73,24 +73,10 @@ export interface CommandBarPickerRoute extends CommandBarRouteBase {
   payload?: Record<string, unknown>;
 }
 
-export interface CommandBarConfirmRoute extends CommandBarRouteBase {
-  kind: "confirm";
-  confirmId: string;
-  title: string;
-  body: string[];
-  confirmLabel: string;
-  cancelLabel?: string;
-  tone: "default" | "danger";
-  onConfirm: () => void | Promise<void>;
-  pending: boolean;
-  error: string | null;
-  successBehavior?: "close" | "back" | "stay";
-}
-
 /**
  * A form: fields, values and what submitting does. It opens in the form modal
  * (`components/form-modal`), never as a screen of the bar, so it is not a
- * `CommandBarRoute`.
+ * `CommandBarRoute`. Confirms open there too (`openConfirmModal`).
  */
 export interface CommandBarWorkflowRoute {
   kind: "workflow";
@@ -130,5 +116,4 @@ interface CommandBarPaneSettingsRoute extends CommandBarRouteBase {
 export type CommandBarRoute =
   | CommandBarModeRoute
   | CommandBarPickerRoute
-  | CommandBarConfirmRoute
   | CommandBarPaneSettingsRoute;

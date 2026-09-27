@@ -45,10 +45,6 @@ export function useCommandBarPaneActions({
   pluginRegistry,
   stateRef,
 }: CommandBarPaneActionsOptions) {
-  const setActiveCollection = useCallback((collectionId: string) => {
-    showCollectionInPortfolioPane(stateRef.current, dispatch, collectionId);
-  }, [dispatch, stateRef]);
-
   const retargetTickerResearchPane = useCallback((paneId: string, symbol: string, options?: PinTickerOptions) => {
     const currentState = stateRef.current;
     const targetPane = findPaneInstance(currentState.config.layout, paneId);
@@ -125,6 +121,5 @@ export function useCommandBarPaneActions({
     duplicatePane,
     focusTicker,
     persistLayoutChange,
-    setActiveCollection,
   };
 }

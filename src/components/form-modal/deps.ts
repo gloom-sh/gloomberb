@@ -48,3 +48,26 @@ export function createFormCollectionActions(
     tickerRepository: deps.tickerRepository,
   });
 }
+
+/**
+ * Collection actions for work that can outlive its caller, such as a confirm
+ * the bar opened and closed behind: each call builds them from the app as it
+ * is then, so a delete never writes an older config back over a newer one.
+ */
+export function createLiveCollectionActions(
+  getDeps: () => FormModalDeps,
+  notify: CommandBarNotifyFn,
+): CommandBarCollectionWorkflowActions {
+  const current = () => createFormCollectionActions(getDeps(), notify);
+  return {
+    connectBrokerProfile: (brokerId, values) => current().connectBrokerProfile(brokerId, values),
+    connectSignedInBroker: (broker) => current().connectSignedInBroker(broker),
+    createManualPortfolio: (name, owner) => current().createManualPortfolio(name, owner),
+    createWatchlist: (name, owner) => current().createWatchlist(name, owner),
+    deletePortfolio: (portfolioId) => current().deletePortfolio(portfolioId),
+    deleteWatchlist: (watchlistId) => current().deleteWatchlist(watchlistId),
+    disconnectBrokerInstance: (instanceId) => current().disconnectBrokerInstance(instanceId),
+    setPortfolioPositionFromWorkflow: (values) => current().setPortfolioPositionFromWorkflow(values),
+    addTickerMembershipFromWorkflow: (values) => current().addTickerMembershipFromWorkflow(values),
+  };
+}

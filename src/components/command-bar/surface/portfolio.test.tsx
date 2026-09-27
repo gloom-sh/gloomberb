@@ -459,6 +459,12 @@ describe("CommandBar portfolio commands", () => {
       testSetup!.mockInput.pressEnter();
       await testSetup!.renderOnce();
     });
+    // The confirm opens in the form modal.
+    await waitForFrameToContain('Delete "Research"?');
+    await act(async () => {
+      await Bun.sleep(5);
+      await testSetup!.renderOnce();
+    });
     await act(async () => {
       testSetup!.mockInput.pressEnter();
       await Bun.sleep(0);
