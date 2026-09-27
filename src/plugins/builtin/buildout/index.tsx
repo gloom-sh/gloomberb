@@ -1,4 +1,4 @@
-import { BuildoutPane } from "../buildout/pane";
+import { BuildoutPane } from "./pane";
 import type { PluginModule } from "../plugin-module";
 
 export const buildoutModule: PluginModule = {
