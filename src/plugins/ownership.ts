@@ -1,3 +1,10 @@
+/**
+ * Built-in module ids and the built-in plugin that owns each one. Every key
+ * does two jobs: config, sync and session state saved under it is rewritten to
+ * the owner, and it is reserved, because an external plugin using it would
+ * have its state merged into the owner the same way. A module that moves out
+ * to an external plugin leaves this map so that plugin can claim its id.
+ */
 const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   analytics: "portfolio",
   "broker-manager": "broker",
@@ -34,12 +41,8 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   "world-indices": "market-overview",
 };
 
-const NON_TOGGLEABLE_BUILTIN_PLUGIN_IDS = new Set([
-  "application",
-  "changelog",
-  "help",
-  "layout-manager",
-]);
+/** The one built-in that cannot be disabled; its legacy module ids normalize to it. */
+const NON_TOGGLEABLE_BUILTIN_PLUGIN_ID = "application";
 
 const LEGACY_MODULE_IDS_BY_OWNER: Record<string, readonly string[]> = {
   application: ["layout-manager", "help", "changelog"],
@@ -54,16 +57,11 @@ export function isReservedBuiltinPluginId(pluginId: string): boolean {
   return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_OWNER_ALIASES, pluginId);
 }
 
-export function isNonToggleableBuiltinPluginId(pluginId: string): boolean {
-  return NON_TOGGLEABLE_BUILTIN_PLUGIN_IDS.has(pluginId);
-}
-
 export function normalizeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
   return [...new Set(
     pluginIds
-      .filter((pluginId) => !isNonToggleableBuiltinPluginId(pluginId))
       .map(normalizeBuiltinPluginOwnerId)
-      .filter((pluginId) => !isNonToggleableBuiltinPluginId(pluginId)),
+      .filter((pluginId) => pluginId !== NON_TOGGLEABLE_BUILTIN_PLUGIN_ID),
   )];
 }
 
