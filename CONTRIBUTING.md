@@ -69,6 +69,7 @@ Some changes need one more check:
 | Desktop view code | `bun run desktop:view:build` |
 | Web app, share page or Worker code | `bun run web:audit` and `bun run cloudflare:dry-run` |
 | Build scripts or the terminal entry point | `bun run build` |
+| Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
 
 Try UI changes in the app as well. [`.agents/skills/tui-testing/SKILL.md`](.agents/skills/tui-testing/SKILL.md) shows how to drive the terminal app from tmux; give it a throwaway `GLOOMBERB_HOME`.
 

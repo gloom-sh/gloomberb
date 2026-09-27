@@ -1,0 +1,45 @@
+name: Performance
+
+# Separate from Verify so a noisy runner never blocks the checks a merge needs.
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tui-benchmarks:
+    runs-on: ubuntu-latest
+    env:
+      TERM: xterm-256color
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Check out the base branch next to the PR
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          git worktree add ../base FETCH_HEAD
+          cd ../base && bun install --frozen-lockfile
+
+      # Fails when the typical keypress is clearly slower than on the base
+      # branch; the table lands in the job summary either way.
+      - name: Compare navigation speed with the base branch
+        run: bun run benchmark:tui:compare --base ../base
+
+      # Fails when browsing more tickers keeps growing the live heap.
+      - name: Check memory levels off while browsing tickers
+        run: bun run benchmark:tui:memory

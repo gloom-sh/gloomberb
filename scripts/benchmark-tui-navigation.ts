@@ -10,6 +10,7 @@ import {
   summarizeInteractionPerformance,
   type InteractionPerformanceSample,
 } from "../src/renderers/opentui/interaction-performance";
+import { median, positiveInteger, runTmux, shellQuote, takeOption, waitForFile } from "./tui-benchmark-harness";
 
 interface Options {
   command: string;
@@ -19,6 +20,7 @@ interface Options {
   output: string;
   width: number;
   height: number;
+  root: string;
 }
 
 interface CachedSeriesRow {
@@ -37,8 +39,9 @@ interface CachedSeriesRow {
   size_bytes: number;
 }
 
-const root = resolve(import.meta.dir, "..");
 const options = parseOptions(process.argv.slice(2));
+// `--root` measures another checkout (CI's base branch) with this copy of the harness.
+const root = options.root;
 const session = `gloomberb-nav-${process.pid}`;
 const sandbox = await mkdtemp(join(tmpdir(), "gloomberb-nav-"));
 const sandboxHome = join(sandbox, "home");
@@ -65,13 +68,14 @@ try {
   ]);
   await runTmux(["pipe-pane", "-o", "-t", session, `cat > ${shellQuote(appLog)}`]);
 
-  await waitForFile(join(dataDir, "remote-control.tui.json"), 15_000);
+  // A cold checkout (every CI run) transpiles the whole app on first launch.
+  await waitForFile(join(dataDir, "remote-control.tui.json"), 60_000);
   await Bun.sleep(500);
   await runTmux(["send-keys", "-t", session, "C-p"]);
   await Bun.sleep(100);
   await runTmux(["send-keys", "-t", session, "-l", options.command]);
   await runTmux(["send-keys", "-t", session, "Enter"]);
-  await waitForPopulatedTable(dataDir, options.expectedPaneId, 15_000);
+  await waitForPopulatedTable(dataDir, options.expectedPaneId, 30_000);
   await Bun.sleep(500);
 
   await sendNavigation("Down", 2, 35);
@@ -115,14 +119,8 @@ try {
     (maximum, sample) => Math.max(maximum, sample.rssBytes),
     0,
   );
-  const cells = navigationFrames
-    .map((sample) => sample.cellsUpdated)
-    .sort((left, right) => left - right);
-  const medianCellsUpdated = cells.length === 0
-    ? 0
-    : cells.length % 2 === 0
-      ? (cells[cells.length / 2 - 1]! + cells[cells.length / 2]!) / 2
-      : cells[Math.floor(cells.length / 2)]!;
+  const cells = navigationFrames.map((sample) => sample.cellsUpdated);
+  const medianCellsUpdated = median(cells);
   console.log(JSON.stringify({
     command: options.command,
     dimensions: { width: options.width, height: options.height },
@@ -212,26 +210,6 @@ async function currentDatabasePath(): Promise<string | null> {
   }
 }
 
-async function runTmux(args: string[], check = true): Promise<void> {
-  const process = Bun.spawn(["tmux", ...args], { stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stderr).text(),
-  ]);
-  if (check && exitCode !== 0) {
-    throw new Error(`tmux ${args[0]} failed: ${stderr.trim() || `exit ${exitCode}`}`);
-  }
-}
-
-async function waitForFile(path: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (existsSync(path)) return;
-    await Bun.sleep(50);
-  }
-  throw new Error(`Benchmark report was not written: ${path}`);
-}
-
 async function waitForPopulatedTable(
   targetDataDir: string,
   expectedPaneId: string,
@@ -306,24 +284,7 @@ function parseOptions(args: string[]): Options {
     output: resolve(output),
     width: positiveInteger(takeOption(args, "--width"), 140, "width"),
     height: positiveInteger(takeOption(args, "--height"), 45, "height"),
+    root: resolve(takeOption(args, "--root") ?? join(import.meta.dir, "..")),
   };
 }
 
-function takeOption(args: string[], name: string): string | undefined {
-  const equals = args.find((argument) => argument.startsWith(`${name}=`));
-  if (equals) return equals.slice(name.length + 1);
-  const index = args.indexOf(name);
-  if (index < 0) return undefined;
-  return args[index + 1];
-}
-
-function positiveInteger(raw: string | undefined, fallback: number, label: string): number {
-  if (raw == null) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1) throw new Error(`${label} must be a positive integer.`);
-  return value;
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}

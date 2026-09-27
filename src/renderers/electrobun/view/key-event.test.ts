@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldConsumeWebAppKeyDown } from "./key-event";
+import { hasWebCtrlModifier, normalizeWebKeyName, shouldConsumeWebAppKeyDown, webKeySequence } from "./key-event";
 
 function keyEvent(overrides: Record<string, unknown>) {
   return {
@@ -31,4 +31,11 @@ describe("shouldConsumeWebAppKeyDown", () => {
     expect(shouldConsumeWebAppKeyDown(keyEvent({ key: "c", metaKey: true }))).toBe(false);
     expect(shouldConsumeWebAppKeyDown(keyEvent({ key: "c", ctrlKey: true, shiftKey: true }))).toBe(true);
   });
+});
+
+test("a keydown without a key, as browser autofill sends, normalizes instead of throwing", () => {
+  const autofill = keyEvent({ key: undefined });
+  expect(normalizeWebKeyName(undefined)).toBe("");
+  expect(webKeySequence(autofill)).toBe("");
+  expect(hasWebCtrlModifier(autofill)).toBe(false);
 });

@@ -146,6 +146,9 @@ back button or clicking Back pops it. Rules:
 - Footer hints change when the detail is open; notice footers describing the
   list get `enabled: !detailOpen`.
 - `prefetchDetail` warms the cache once the cursor rests; it never mutates.
+- A detail read as text sits in a `DetailScrollBody` whose ref is the
+  stack's `detailScrollRef`, so j/k step it a line at a time and the next
+  item starts at the top.
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.

@@ -74,6 +74,8 @@
     "typecheck:scripts": "tsc --project tsconfig.scripts.json",
     "test": "bun test",
     "benchmark:tui:navigation": "bun run scripts/benchmark-tui-navigation.ts",
+    "benchmark:tui:compare": "bun run scripts/benchmark-tui-compare.ts",
+    "benchmark:tui:memory": "bun run scripts/benchmark-tui-memory.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"
   },

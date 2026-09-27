@@ -1,6 +1,7 @@
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../../ui";
 import { useShortcut } from "../../../../../react/input";
+import { scrollByLines } from "../../../../../state/pane-scroll-registry";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
@@ -284,13 +285,6 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
     ],
   }), [chooseSource, dialog, hasOtherCoverage, openTickerChoice, openableTickers]);
 
-  const scrollBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-  }, []);
-
   useEffect(() => {
     const scrollBox = scrollRef.current;
     if (scrollBox) scrollBox.scrollTop = 0;
@@ -298,17 +292,11 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
 
   useShortcut((event) => {
     if (!focused) return;
-    if (isPlainKey(event, "j", "down")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollBy(1);
-      return;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollBy(-1);
-    }
+    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+    if (!delta) return;
+    event.stopPropagation();
+    event.preventDefault();
+    if (scrollRef.current) scrollByLines(scrollRef.current, delta);
   });
 
   return (

@@ -8,6 +8,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 
 export interface FilingYearReaderOptions {
@@ -60,26 +61,16 @@ export function useFilingYearReader({
     onSelectYear(years[(index + 1) % years.length]!);
   }, [onSelectYear, year, years]);
 
-  const scrollBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const max = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(max, scrollBox.scrollTop + delta));
-  }, []);
-
   // The pane footer binds the `o` and `y` hints.
   useShortcut(
     (event) => {
       if (handleRefreshKey(event, refresh)) return;
       // One line per press; marked handled so the pane scroll keys, which
       // page the document, do not scroll it again.
-      if (isPlainKey(event, "j", "down")) {
-        event.preventDefault();
-        scrollBy(1);
-      } else if (isPlainKey(event, "k", "up")) {
-        event.preventDefault();
-        scrollBy(-1);
-      }
+      const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      if (scrollRef.current) scrollByLines(scrollRef.current, delta);
     },
     { enabled: focused, scope },
   );

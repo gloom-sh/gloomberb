@@ -1,5 +1,8 @@
 import { useShortcut } from "../../react/input";
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { scrollByLines } from "../../state/pane-scroll-registry";
+import type { ScrollBoxRenderable } from "../../ui";
+import { isPlainKey } from "../../utils/keyboard";
 import {
   DataTableView,
   type DataTableKeyEvent,
@@ -25,6 +28,12 @@ export interface DataTableStackViewProps<
   detailTitle?: string;
   onDetailKeyDown?: (event: DataTableKeyEvent) => boolean | void;
   /**
+   * The open detail's scroll body, usually a `DetailScrollBody`. j/k and the
+   * up/down arrows step it one line, where the pane scroll keys would move a
+   * quarter page. `onDetailKeyDown` sees the key first.
+   */
+  detailScrollRef?: RefObject<ScrollBoxRenderable | null>;
+  /**
    * Warms whatever the detail of `item` will need, once the cursor has rested
    * on it. Runs before Enter, so it must be free of side effects beyond
    * filling a cache: no read marking, no state that opens the detail. Called
@@ -44,13 +53,24 @@ export function DataTableStackView<
   detailTitle,
   keyboardNavigation = true,
   onDetailKeyDown,
+  detailScrollRef,
   prefetchDetail,
   onCursorChange,
   ...tableProps
 }: DataTableStackViewProps<T, C>) {
   useShortcut((event) => {
     if (!focused || !detailOpen || !keyboardNavigation) return;
-    if (onDetailKeyDown?.(event) === true) event.preventDefault();
+    if (onDetailKeyDown?.(event) === true) {
+      event.preventDefault();
+      return;
+    }
+    const scrollBox = detailScrollRef?.current;
+    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
+    if (!scrollBox || !delta) return;
+    // Claimed at either end too, so the pane scroll keys never page it on.
+    event.stopPropagation();
+    event.preventDefault();
+    scrollByLines(scrollBox, delta);
   });
 
   const prefetchRef = useRef(prefetchDetail);

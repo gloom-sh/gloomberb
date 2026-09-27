@@ -70,6 +70,15 @@ function scrollTargetByDelta(scrollBox: ScrollBoxRenderable, delta: number): num
   return target == null || target === scrollBox.scrollTop ? null : target;
 }
 
+/**
+ * Moves a scroll box by whole lines, kept within its content. For bodies that
+ * step one line per key, where the pane scroll keys would move a quarter page.
+ */
+export function scrollByLines(scrollBox: ScrollBoxRenderable, delta: number): void {
+  const target = scrollTargetByDelta(scrollBox, delta);
+  if (target != null) scrollBox.scrollTop = target;
+}
+
 function arrowScrollLines(scrollBox: ScrollBoxRenderable): number {
   return Math.max(MIN_ARROW_SCROLL_LINES, Math.floor((scrollBox.viewport?.height ?? 0) / 4));
 }

@@ -6,7 +6,6 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
   chartTableChromeRows,
   Button,
@@ -26,7 +25,6 @@ import {
   usePaneNoticeFooter,
   type ChartTableChart,
   type DataTableColumn,
-  type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
 import {
@@ -370,18 +368,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [model, view, sort],
   );
   const openRow = rows.find((row) => row.id === open);
-  // j/k scroll an open metric the way they move the table, as in other details.
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
-    const scrollBox = detailScrollRef.current;
-    if (!delta || !scrollBox?.viewport) return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
-    return true;
-  }, []);
   // Columns that say the same thing on every row belong in the footer, not repeated per row.
   const showPercentile = rows.some((row) => row.percentile != null);
   const sharedDate =
@@ -719,7 +706,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             />
           ) : null
         }
-        onDetailKeyDown={handleDetailKeyDown}
+        detailScrollRef={detailScrollRef}
         emptyContent={
           evidenceMissing ? (
             <Box paddingX={1} paddingY={1}>

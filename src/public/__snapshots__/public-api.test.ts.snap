@@ -53,6 +53,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "DataTable",
     "DataTableStackView",
     "DataTableView",
+    "DetailScrollBody",
     "DialogFrame",
     "DisclosureMarker",
     "Divider",

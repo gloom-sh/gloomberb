@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useRef, useState } from "react";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
@@ -8,8 +8,10 @@ import {
 } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
-import { Box, Text } from "../../ui";
-import type { DataTableCell, DataTableColumn } from "../ui";
+import type { PaneProps } from "../../types/plugin";
+import { Box, Text, type ScrollBoxRenderable } from "../../ui";
+import { PaneContent } from "../layout/pane/content";
+import { DetailScrollBody, type DataTableCell, type DataTableColumn } from "../ui";
 import { DataTableStackView, DETAIL_PREFETCH_REST_MS } from "./stack-view";
 
 interface Row {
@@ -29,6 +31,7 @@ let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
 afterEach(async () => {
   prefetched = [];
+  detailScrollBox = null;
   if (!testSetup) return;
   await act(async () => {
     testSetup!.renderer.destroy();
@@ -37,6 +40,7 @@ afterEach(async () => {
 });
 
 let prefetched: string[] = [];
+let detailScrollBox: ScrollBoxRenderable | null = null;
 
 function Harness() {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -84,6 +88,42 @@ function Harness() {
         />
       </PaneInstanceProvider>
     </AppContext>
+  );
+}
+
+function LongDetailPane({ focused, width, height }: PaneProps) {
+  const [open, setOpen] = useState(false);
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  return (
+    <DataTableStackView<Row, Column>
+      focused={focused}
+      detailOpen={open}
+      onBack={() => setOpen(false)}
+      detailContent={open ? (
+        <DetailScrollBody
+          ref={(node) => {
+            detailScrollRef.current = node;
+            detailScrollBox = node;
+          }}
+        >
+          {Array.from({ length: 40 }, (_, index) => (
+            <Box key={index} height={1}><Text>{`Line ${index}`}</Text></Box>
+          ))}
+        </DetailScrollBody>
+      ) : <Box flexGrow={1} />}
+      detailScrollRef={detailScrollRef}
+      selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
+      onActivate={() => setOpen(true)}
+      rootWidth={width}
+      rootHeight={height}
+      columns={[{ id: "title", label: "Title", width: 20, align: "left" }]}
+      items={rows}
+      sortColumnId={null}
+      sortDirection="asc"
+      getItemKey={(row) => row.id}
+      renderCell={(row): DataTableCell => ({ text: row.title })}
+      emptyStateTitle="No rows"
+    />
   );
 }
 
@@ -142,5 +182,34 @@ describe("DataTableStackView", () => {
 
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, DETAIL_PREFETCH_REST_MS + 30)); });
     expect(prefetched).toEqual(["first"]);
+  });
+
+  test("steps an open detail one line per key, where the pane scroll keys would page it", async () => {
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-stack-view-test"));
+    testSetup = await testRender(
+      <AppContext value={createStaticAppStore(state)}>
+        <PaneContent component={LongDetailPane} paneId="test-pane:main" paneType="test-pane" focused width={40} height={12} />
+      </AppContext>,
+      { width: 40, height: 12 },
+    );
+    await renderSettled();
+    const press = (key: () => void) => act(async () => {
+      key();
+      await testSetup!.renderOnce();
+    });
+
+    await press(() => testSetup!.mockInput.pressEnter());
+    await renderSettled();
+    expect(detailScrollBox?.scrollTop).toBe(0);
+
+    await press(() => testSetup!.mockInput.pressKey("j"));
+    await press(() => testSetup!.mockInput.pressArrow("down"));
+    expect(detailScrollBox?.scrollTop).toBe(2);
+
+    await press(() => testSetup!.mockInput.pressKey("k"));
+    expect(detailScrollBox?.scrollTop).toBe(1);
+    await press(() => testSetup!.mockInput.pressArrow("up"));
+    await press(() => testSetup!.mockInput.pressArrow("up"));
+    expect(detailScrollBox?.scrollTop).toBe(0);
   });
 });

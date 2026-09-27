@@ -26,6 +26,7 @@ import {
   type InputRenderable,
   type ScrollBoxRenderable,
 } from "../../../ui";
+import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -551,10 +552,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }, [detailOpen, selectedCallId, ticker, access.emailVerified, access.hasProAccess]);
 
   const scrollTranscriptBy = useCallback((delta: number) => {
-    const scrollBox = transcriptScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
+    if (transcriptScrollRef.current) scrollByLines(transcriptScrollRef.current, delta);
   }, []);
 
   // A new call or a narrowed transcript should start at the top.
