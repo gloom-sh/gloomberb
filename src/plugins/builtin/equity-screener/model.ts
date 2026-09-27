@@ -1,6 +1,7 @@
 import {
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
+  SOCIAL_FIELDS,
   type NumericField,
   type ScreenMetric,
   type ScreenCriterion,
@@ -41,8 +42,15 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   institutionalHolders: "13F HOLDERS",
   institutionalNewHolders: "13F NEW",
   institutionalExits: "13F EXITS",
+  xPostsPerDay: "X POSTS/D",
+  xPostsVsMedian: "X VS MED",
+  wikiViewsPerDay: "WIKI/D",
+  wikiViewsVsMedian: "WIKI VS MED",
 };
 const COMPACT = new Set<NumericField>(["marketCap", "volume", "averageVolume20d", "shortInterestShares"]);
+/** Daily counts: whole numbers below a thousand, compact above. */
+const DAILY_COUNTS = new Set<NumericField>(["xPostsPerDay", "wikiViewsPerDay"]);
+const RATIOS = new Set<NumericField>(["xPostsVsMedian", "wikiViewsVsMedian"]);
 const SIGNED = new Set<NumericField>(["changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent"]);
 const COUNTS = new Set<NumericField>(["insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap"]);
@@ -52,6 +60,8 @@ const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "
 export function formatScreenValue(field: NumericField, value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "--";
   if (COMPACT.has(field)) return formatCompact(value, { fixedDecimals: true });
+  if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
+  if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
   if (COUNTS.has(field)) return value.toFixed(0);
   if (field === "price") return value.toFixed(2);
   // A value that rounds to zero prints 0.0, never -0.0.
@@ -106,6 +116,10 @@ export const screenLabel = (field: string) =>
     changePercent: "Change %",
     daysToCover: "Days to cover",
     dividendYieldPercent: "Dividend yield %",
+    xPostsPerDay: "X posts per day",
+    xPostsVsMedian: "X posts vs median",
+    wikiViewsPerDay: "Wikipedia views per day",
+    wikiViewsVsMedian: "Wikipedia views vs median",
   })[field] ??
   field
     .replace(/([A-Z])/g, " $1")
@@ -266,6 +280,11 @@ const requiredDate = (value: unknown) =>
 const validDate = (value: unknown) => value === null || requiredDate(value);
 export const screenDefinitionKey = (value: ScreenDefinition) =>
   JSON.stringify(parseScreenDefinition(value));
+const unavailableMetric = (): ScreenMetric => ({
+  value: null, unit: "", asOf: null, availableAt: null, observedAt: null, source: "Gloom Cloud",
+  state: "unavailable", scope: "reported", reason: "Not provided by this server", sourceUrl: null,
+  percentile: { value: null, sampleCount: 0, scope: "covered-universe" },
+});
 export function validateScreenPayload(value: unknown): ScreenPayload {
   const data = value as ScreenPayload;
   if (
@@ -307,6 +326,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
+      // A server from before social fields omits them; they read as unavailable.
+      if (!row.metrics[field] && (SOCIAL_FIELDS as readonly string[]).includes(field))
+        row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (
         !metric ||

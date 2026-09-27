@@ -114,3 +114,16 @@ test("result columns lead with the focus metric and the screen's criteria; money
   expect(resultFields(definition, "trailingPE").slice(0, 3)).toEqual(["trailingPE", "operatingMarginPercent", "marketCap"]);
   expect(resultFields({ ...definition, currency: null }, "trailingPE")).not.toContain("price");
 });
+
+test("social attention fields format as daily counts and ratios, and an older server's rows still load", () => {
+  expect([formatScreenValue("xPostsPerDay", 77), formatScreenValue("wikiViewsPerDay", 5_916), formatScreenValue("xPostsVsMedian", 2.46)])
+    .toEqual(["77", formatScreenValue("volume", 5_916), "2.5x"]);
+  const older = payload();
+  for (const row of older.rows) for (const field of ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const)
+    delete (row.metrics as Partial<typeof row.metrics>)[field];
+  const loaded = validateScreenPayload(older);
+  expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
+  const broken = payload();
+  delete (broken.rows[0]!.metrics as Partial<typeof broken.rows[0]["metrics"]>).price;
+  expect(() => validateScreenPayload(broken)).toThrow("price");
+});

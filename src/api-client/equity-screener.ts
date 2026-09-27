@@ -22,7 +22,13 @@ export const NUMERIC_FIELDS = [
   "institutionalHolders",
   "institutionalNewHolders",
   "institutionalExits",
+  "xPostsPerDay",
+  "xPostsVsMedian",
+  "wikiViewsPerDay",
+  "wikiViewsVsMedian",
 ] as const;
+/** Social attention; a server from before them omits these metrics. */
+export const SOCIAL_FIELDS = ["xPostsPerDay", "xPostsVsMedian", "wikiViewsPerDay", "wikiViewsVsMedian"] as const;
 export const CATEGORY_FIELDS = [
   "symbol",
   "exchange",
