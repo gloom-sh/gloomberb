@@ -336,35 +336,105 @@ describe("form modal", () => {
     expect(submitted).toEqual([{ mode: "live", account: "DU1" }]);
   });
 
-  test("an ambiguous ticker asks for the listing over the form, then sends once with the pick", async () => {
+  function registerCompareTemplate(registry: PluginRegistry) {
+    (registry.paneTemplates as Map<string, unknown>).set("compare-pane", {
+      id: "compare-pane",
+      paneId: "quote-monitor",
+      label: "Compare",
+      shortcut: { prefix: "CMP", argPlaceholder: "tickers", argKind: "ticker-list" },
+      wizard: [
+        { key: "tickers", label: "Tickers", type: "text" },
+        { key: "range", label: "Range", type: "text", defaultValue: "1Y" },
+      ],
+    });
+  }
+
+  const COST = new AmbiguousTickerError("COST", ["COST:XNAS", "COST:XLON"], {
+    "COST:XNAS": "Costco Wholesale",
+    "COST:XLON": "Costain Group",
+  });
+  const BP = new AmbiguousTickerError("BP", ["BP:XNYS", "BP:XLON"], {
+    "BP:XNYS": "BP ADR",
+    "BP:XLON": "BP plc",
+  });
+
+  test("ambiguous tickers ask for their listings one at a time over the form, sending again after each pick", async () => {
     const created: PaneTemplateCreateOptions[] = [];
     await renderForm((registry) => {
-      (registry.paneTemplates as Map<string, unknown>).set("compare-pane", {
-        id: "compare-pane",
-        paneId: "quote-monitor",
-        label: "Compare",
-        shortcut: { prefix: "CMP", argPlaceholder: "tickers", argKind: "ticker-list" },
-      });
+      registerCompareTemplate(registry);
       registry.createPaneFromTemplateAsyncFn = async (_templateId, options) => {
         created.push(options ?? {});
-        if (created.length === 1) {
-          throw new AmbiguousTickerError("COST", ["COST:XNAS", "COST:XLON"], {
-            "COST:XNAS": "Costco Wholesale",
-            "COST:XLON": "Costain Group",
-          });
-        }
+        if (!options?.arg?.includes("COST:")) throw COST;
+        if (!options.arg.includes("BP:")) throw BP;
       };
     }, { kind: "pane-template", templateId: "compare-pane" });
     await waitForForm("Tickers");
 
-    await type("MSFT, COST");
+    await type("MSFT, COST, BP");
+    await press(ENTER);
+    // Enter on the last field sends the form.
     await press(ENTER);
     await waitForFrameToContain("Choose listing for COST");
     await press({ name: "down" }, ENTER);
+    await waitForFrameToContain("Choose listing for BP");
+    expect(frame()).not.toContain("Choose listing for COST");
+    await press(ENTER);
     await settle();
 
-    expect(created.map((options) => options.arg)).toEqual(["MSFT, COST", "MSFT, COST:XLON"]);
+    expect(created.map((options) => options.arg)).toEqual([
+      "MSFT, COST, BP",
+      "MSFT, COST:XLON, BP",
+      "MSFT, COST:XLON, BP:XNYS",
+    ]);
     expect(frame()).not.toContain("Tickers");
+  });
+
+  test("Esc in the listing picker keeps the form as it was, and typing reaches its field again", async () => {
+    const created: PaneTemplateCreateOptions[] = [];
+    await renderForm((registry) => {
+      registerCompareTemplate(registry);
+      registry.createPaneFromTemplateAsyncFn = async (_templateId, options) => {
+        created.push(options ?? {});
+        throw COST;
+      };
+    }, { kind: "pane-template", templateId: "compare-pane" });
+    await waitForForm("Tickers");
+
+    await type("COST");
+    await press({ name: "s", ctrl: true, sequence: "\x13" });
+    await waitForFrameToContain("Choose listing for COST");
+    await press(ESC);
+    await settle();
+    expect(frame()).not.toContain("Choose listing for COST");
+    expect(created).toHaveLength(1);
+
+    await type(", MSFT");
+    expect(frame()).toContain("COST, MSFT");
+  });
+
+  test("a pane template form keeps the options its caller passed, as createPaneFromTemplate does", async () => {
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    await renderForm((registry) => {
+      registerCompareTemplate(registry);
+      registry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+        created.push({ templateId, options });
+      };
+    }, { kind: "pane-template", templateId: "compare-pane", options: { symbol: "AAPL", symbols: ["AAPL"] } });
+    await waitForForm("Tickers");
+
+    await type("AAPL, MSFT");
+    await press({ name: "s", ctrl: true, sequence: "\x13" });
+    await settle();
+
+    expect(created).toEqual([{
+      templateId: "compare-pane",
+      options: {
+        symbol: "AAPL",
+        symbols: ["AAPL"],
+        arg: "AAPL, MSFT",
+        values: { tickers: "AAPL, MSFT", range: "1Y" },
+      },
+    }]);
   });
 });
 

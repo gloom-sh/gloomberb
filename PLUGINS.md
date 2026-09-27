@@ -1087,7 +1087,7 @@ ctx.registerPaneTemplate({
     argKind: "ticker",
   },
 
-  // Optional: wizard steps shown before creating the pane
+  // Optional: fields asked in a form before creating the pane
   wizard: [
     { key: "interval", label: "Interval", type: "select", options: [
       { label: "1D", value: "1d" },
@@ -1479,7 +1479,7 @@ setup(ctx) {
 }
 ```
 
-Commands can also define a multi-step wizard flow:
+Commands can also ask for values first. The wizard's steps open as one form in a centered dialog, every field at once:
 
 ```typescript
 ctx.registerCommand({
@@ -1494,16 +1494,15 @@ ctx.registerCommand({
       { label: "Below", value: "below" },
     ]},
   ],
-  wizardLayout: "form",  // "steps" (default) or "form" (all fields at once)
   async execute(values) {
     // values.price, values.direction
   },
 });
 ```
 
-Wizard step types: `text`, `password`, `number`, `select`, `info`. Steps can use `dependsOn` to conditionally appear based on a previous step's value.
+Wizard step types: `text`, `password`, `number`, `select`, `textarea`, `info`. A step is required unless it sets `required: false`, and `info` steps show their `body` above the fields. Steps can use `dependsOn` to conditionally appear based on a previous step's value. A pane template's `wizard` opens the same form, from the command bar or from `ctx.createPaneFromTemplate`, and creates the pane when it is sent. `wizardLayout` is ignored.
 
-Commands can require confirmation before executing:
+Commands can require confirmation before executing. The confirm opens as a centered dialog:
 
 ```typescript
 ctx.registerCommand({

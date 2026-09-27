@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch } from "react";
 import { getPaneTemplateDisplayLabel } from "../../components/command-bar/pane-templates/items";
 import { createPaneTemplateOrThrow } from "../../components/command-bar/workflow/ops";
+import { openFormModal } from "../../components/form-modal";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
@@ -10,10 +11,7 @@ import type {
   PaneDef,
   PaneTemplateCreateOptions,
   PaneTemplateInstanceConfig,
-  WizardStep,
 } from "../../types/plugin";
-import type { DialogApi } from "../../ui/dialog";
-import { runPaneTemplateDialogWizard } from "../pane-template-dialog-wizard";
 
 interface UseAppPaneTemplateRuntimeOptions {
   buildPaneInstance: (paneType: string, options?: {
@@ -24,7 +22,6 @@ interface UseAppPaneTemplateRuntimeOptions {
     instanceId?: string;
   }) => PaneInstanceConfig | null;
   dataProvider: DataProvider;
-  dialog: DialogApi;
   dispatch: Dispatch<AppAction>;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   placePaneInstance: (
@@ -40,7 +37,6 @@ interface UseAppPaneTemplateRuntimeOptions {
 export function useAppPaneTemplateRuntime({
   buildPaneInstance,
   dataProvider,
-  dialog,
   dispatch,
   notify,
   placePaneInstance,
@@ -48,38 +44,23 @@ export function useAppPaneTemplateRuntime({
   stateRef,
   tickerRepository,
 }: UseAppPaneTemplateRuntimeOptions) {
-  const runPaneTemplateWizard = useCallback((steps: WizardStep[]) => (
-    runPaneTemplateDialogWizard(dialog, steps)
-  ), [dialog]);
-
   const createPaneFromTemplate = useCallback(async (templateId: string, options?: PaneTemplateCreateOptions) => {
     const template = pluginRegistry.paneTemplates.get(templateId);
     if (!template) return;
 
-    let resolvedOptions = options;
-    const shouldRunDialogWizard = !!template.wizard
+    // A template that asks for settings asks in the same form the command bar
+    // opens, which creates the pane when it is sent.
+    const asksForSettings = !!template.wizard
       && template.wizard.length > 0
       && !options?.values
       && (!options?.arg || template.wizard.some((step) => step.type === "textarea"));
-    if (shouldRunDialogWizard && template.wizard) {
-      const wizardSteps = options?.arg && template.shortcut?.argPlaceholder
-        ? template.wizard.map((step) => (
-          step.key === template.shortcut?.argPlaceholder
-            ? { ...step, defaultValue: options.arg }
-            : step
-        ))
-        : template.wizard;
-      const values = await runPaneTemplateWizard(wizardSteps);
-      if (!values) return;
-      resolvedOptions = {
-        ...options,
-        values,
-        arg: template.shortcut?.argPlaceholder ? values[template.shortcut.argPlaceholder] : options?.arg,
-      };
+    if (asksForSettings) {
+      openFormModal({ kind: "pane-template", templateId, arg: options?.arg, options });
+      return;
     }
 
     try {
-      await createPaneTemplateOrThrow(templateId, resolvedOptions, {
+      await createPaneTemplateOrThrow(templateId, options, {
         dataProvider,
         tickerRepository,
         pluginRegistry,
@@ -101,7 +82,6 @@ export function useAppPaneTemplateRuntime({
     notify,
     placePaneInstance,
     pluginRegistry,
-    runPaneTemplateWizard,
     stateRef,
     tickerRepository,
   ]);

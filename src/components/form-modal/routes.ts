@@ -7,7 +7,7 @@ import {
   getFocusedTickerSymbol,
   type AppState,
 } from "../../state/app/context";
-import type { CommandDef } from "../../types/plugin";
+import type { CommandDef, PaneTemplateCreateOptions } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
 import { buildPaneTemplateWorkflowRoute } from "../command-bar/pane-templates/workflow-route";
 import { buildBrokerWorkflowRoute } from "../command-bar/workflow/broker";
@@ -125,15 +125,17 @@ export function buildPaneTemplateFormRoute(
   templateId: string,
   arg: string | undefined,
   state: AppState,
+  createOptions?: PaneTemplateCreateOptions,
 ): FormRouteResult {
   const template = pluginRegistry.paneTemplates.get(templateId);
   if (!template) return { kind: "none" };
+  const route = buildPaneTemplateWorkflowRoute({
+    activeTicker: getFocusedTickerSymbol(state),
+    arg,
+    template,
+  });
   return {
     kind: "route",
-    route: buildPaneTemplateWorkflowRoute({
-      activeTicker: getFocusedTickerSymbol(state),
-      arg,
-      template,
-    }),
+    route: createOptions ? { ...route, payloadMeta: { ...route.payloadMeta, createOptions } } : route,
   };
 }

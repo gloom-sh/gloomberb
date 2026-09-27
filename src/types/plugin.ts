@@ -494,6 +494,7 @@ export interface CommandDef {
   description?: string;
   wizard?: WizardStep[];
   confirm?: CommandConfirmDef | ((context: CommandConfirmContext) => CommandConfirmDef | null);
+  /** @deprecated Ignored: a wizard always opens as one form with every step at once. */
   wizardLayout?: "steps" | "form";
   hidden?: () => boolean;
 }

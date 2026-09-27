@@ -245,7 +245,6 @@ export function useAppPaneRuntime({
   const { createPaneFromTemplate } = useAppPaneTemplateRuntime({
     buildPaneInstance,
     dataProvider,
-    dialog,
     dispatch,
     notify,
     placePaneInstance,

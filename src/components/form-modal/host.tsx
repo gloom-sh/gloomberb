@@ -146,7 +146,7 @@ function resolveFormRequest(
       return command ? buildPluginCommandFormRoute(command, state, request.values) : { kind: "none" };
     }
     case "pane-template":
-      return buildPaneTemplateFormRoute(deps.pluginRegistry, request.templateId, request.arg, state);
+      return buildPaneTemplateFormRoute(deps.pluginRegistry, request.templateId, request.arg, state, request.options);
     case "add-to-portfolio":
       return buildAddToPortfolioFormRoute(request.ticker, request.portfolioId, state);
     case "route":

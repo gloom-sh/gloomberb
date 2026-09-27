@@ -1,3 +1,4 @@
+import type { PaneTemplateCreateOptions } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
 import type { CommandBarWorkflowRoute } from "../command-bar/workflow/types";
 
@@ -25,7 +26,8 @@ export interface ConfirmModalOptions {
 export type FormModalRequest =
   | { kind: "builtin"; actionId: string }
   | { kind: "plugin-command"; commandId: string; values?: Record<string, string> }
-  | { kind: "pane-template"; templateId: string; arg?: string }
+  /** `options` are the caller's own (a symbol, an instrument), kept for the pane the form creates. */
+  | { kind: "pane-template"; templateId: string; arg?: string; options?: PaneTemplateCreateOptions }
   | { kind: "add-to-portfolio"; ticker: TickerRecord; portfolioId?: string | null }
   | { kind: "route"; route: CommandBarWorkflowRoute }
   | { kind: "confirm"; confirm: ConfirmModalOptions };

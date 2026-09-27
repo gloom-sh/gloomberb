@@ -191,14 +191,17 @@ export async function submitCommandBarWorkflow(options: {
       const template = pluginRegistry.paneTemplates.get(route.payload.actionId);
       if (!template) throw new Error("Pane template not found.");
       const argPlaceholder = String(route.payloadMeta?.argPlaceholder ?? "");
+      // What a plugin passed to `createPaneFromTemplate` along with the form.
+      const baseOptions = route.payloadMeta?.createOptions as PaneTemplateCreateOptions | undefined;
       const values = collectWorkflowStringValues({
         fields: visibleFields,
         getFieldStringValue,
         values: route.values,
       });
       const createOptions: PaneTemplateCreateOptions = {
+        ...baseOptions,
         values,
-        arg: argPlaceholder ? values[argPlaceholder] : undefined,
+        arg: argPlaceholder ? values[argPlaceholder] : baseOptions?.arg,
       };
       await pluginRegistry.createPaneFromTemplateAsyncFn(template.id, createOptions);
       if (route.successLabel) {
