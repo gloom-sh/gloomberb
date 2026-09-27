@@ -290,7 +290,6 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 }
 
 export const brokerManagerModule: PluginModule = {
-  broker: signedInBrokerAdapter,
   panes: [
     {
       id: "brokers",
@@ -318,6 +317,8 @@ export const brokerManagerModule: PluginModule = {
   ],
 
   setup(ctx) {
+    // Brokers whose connection the Gloom account holds; the backend lists them.
+    ctx.registerBroker(signedInBrokerAdapter);
     attachSignedInBrokerPersistence(ctx.persistence);
     // The app fetches the connector list; a CLI run and the desktop's Bun half read the saved one.
     if (getCurrentPluginTarget() !== "cli") void refreshSignedInBrokers();

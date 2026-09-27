@@ -583,7 +583,7 @@ describe("switching an account to sign-in", () => {
       findBroker: () => null,
     });
     const brokers = new Map<string, BrokerAdapter>([["ibkr", createDemoBroker()], ["signed-in", signedInAdapter]]);
-    const tickerRepository = createTickerRepository([flexTicker("AAPL", 10), flexTicker("MSFT", 5)]);
+    const tickerRepository = new JsonTickerRepository(undefined, [flexTicker("AAPL", 10), flexTicker("MSFT", 5)]);
 
     const result = await syncBrokerInstance({ config, instanceId: "signed-in-ibkr", brokers, tickerRepository: tickerRepository as any });
 
