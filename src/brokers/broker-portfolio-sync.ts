@@ -55,6 +55,31 @@ export function isHeldByOtherSignedInProfile(
   return !!owner && owner.id !== instance.id && isSignedInBrokerProfile(owner);
 }
 
+/**
+ * Who keeps a portfolio when the profile holding it is removed: another
+ * enabled profile of the same broker that syncs the same account. Only a
+ * hand-over to or from a signed-in profile (an account switching how it
+ * connects) keeps the portfolio; otherwise it goes with its profile.
+ */
+export function findPortfolioHeir(
+  config: AppConfig,
+  removed: BrokerInstanceConfig,
+  portfolio: Portfolio,
+  brokers: ReadonlyMap<string, BrokerAdapter>,
+  syncsAccount: (instance: BrokerInstanceConfig, accountId: string) => boolean,
+): BrokerInstanceConfig | null {
+  const accountId = portfolio.brokerAccountId;
+  if (!accountId) return null;
+  const brokerId = portfolio.brokerId ?? resolvePortfolioBrokerId(removed, brokers.get(removed.brokerType));
+  return config.brokerInstances.find((candidate) =>
+    candidate.id !== removed.id
+    && candidate.enabled !== false
+    && (isSignedInBrokerProfile(removed) || isSignedInBrokerProfile(candidate))
+    && resolvePortfolioBrokerId(candidate, brokers.get(candidate.brokerType)) === brokerId
+    && syncsAccount(candidate, accountId)
+  ) ?? null;
+}
+
 function updateBrokerPortfolioSource(
   config: AppConfig,
   portfolio: Portfolio,

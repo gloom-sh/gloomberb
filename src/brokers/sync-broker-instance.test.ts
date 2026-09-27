@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDefaultConfig, type BrokerInstanceConfig } from "../types/config";
+import { createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "../types/config";
 import type { BrokerAdapter } from "../types/broker";
-import type { TickerRecord } from "../types/ticker";
+import type { Portfolio, TickerRecord } from "../types/ticker";
+import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
@@ -734,5 +735,112 @@ describe("switching an account to sign-in", () => {
     ]);
     expect(result.tickers.has("MSFT")).toBe(false);
     expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toHaveLength(1);
+  });
+});
+
+describe("removing one of an account's profiles", () => {
+  const flex: BrokerInstanceConfig = {
+    id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", connectionMode: "flex", config: { connectionMode: "flex" }, enabled: true,
+  };
+  const gateway: BrokerInstanceConfig = {
+    id: "ibkr-gateway", brokerType: "ibkr", label: "IBKR Gateway", connectionMode: "gateway", config: { connectionMode: "gateway" }, enabled: true,
+  };
+  const signedIn: BrokerInstanceConfig = {
+    id: "signed-in-ibkr", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, enabled: true,
+  };
+  const portfolioId = "broker:ibkr-flex:U123";
+  const heldBy = (instanceId: string): Portfolio => ({
+    id: portfolioId, name: "U123", currency: "USD", brokerId: "ibkr", brokerInstanceId: instanceId, brokerAccountId: "U123",
+  });
+  const position = (ticker: string, instance: BrokerInstanceConfig): TickerRecord => createTestTicker(ticker, ticker, {
+    portfolios: [portfolioId],
+    positions: [{
+      portfolio: portfolioId, shares: 10, avgCost: 100, currency: "USD", broker: instance.brokerType, brokerInstanceId: instance.id, brokerAccountId: "U123",
+    }],
+    broker_contracts: [],
+  });
+
+  async function remove(options: {
+    instances: BrokerInstanceConfig[];
+    portfolio: Portfolio;
+    tickers: TickerRecord[];
+    brokerAccounts?: Record<string, BrokerAccount[]>;
+    instanceId: string;
+  }) {
+    // Removing a profile saves the config, so it gets a directory of its own.
+    const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-remove-profile-"));
+    const config: AppConfig = { ...createDefaultConfig(dataDir), portfolios: [options.portfolio], brokerInstances: options.instances };
+    const tickers = new Map(options.tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
+    const stateRef: { current: AppState } = {
+      current: { ...createInitialState(config), tickers, brokerAccounts: options.brokerAccounts ?? {} },
+    };
+    const pluginRegistry = {
+      brokers: new Map<string, BrokerAdapter>([["ibkr", createDemoBroker()], ["signed-in", createSignedInBrokerAdapter()]]),
+      persistence: { resources: new MemoryResourceStore() },
+      events: { emit() {} },
+    } as unknown as PluginRegistry;
+    const synced: string[] = [];
+    bindPluginRegistryRuntimeAccess({
+      dataProvider: createTestDataProvider(),
+      dispatch: (action: AppAction) => { stateRef.current = appReducer(stateRef.current, action); },
+      importBrokerPositions: async (instanceId) => { synced.push(instanceId); },
+      marketData: {} as any,
+      pluginRegistry,
+      stateRef,
+      tickerRepository: new JsonTickerRepository(undefined, options.tickers) as any,
+    });
+    try {
+      await pluginRegistry.removeBrokerInstanceFn(options.instanceId);
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+    return { state: stateRef.current, synced };
+  }
+
+  test("removing the signed-in profile hands the portfolio back to Flex", async () => {
+    const { state, synced } = await remove({
+      instances: [flex, signedIn],
+      portfolio: heldBy("signed-in-ibkr"),
+      tickers: [position("AAPL", signedIn)],
+      brokerAccounts: { "ibkr-flex": [{ accountId: "U123", name: "U123", currency: "USD" }] },
+      instanceId: "signed-in-ibkr",
+    });
+
+    expect(state.config.brokerInstances.map((instance) => instance.id)).toEqual(["ibkr-flex"]);
+    expect(state.config.portfolios).toEqual([heldBy("ibkr-flex")]);
+    expect(state.tickers.has("AAPL")).toBe(false);
+    expect(synced).toEqual(["ibkr-flex"]);
+  });
+
+  test("removing Gateway hands the portfolio to the signed-in profile, keeping its positions", async () => {
+    const { state, synced } = await remove({
+      instances: [gateway, signedIn],
+      portfolio: heldBy("ibkr-gateway"),
+      tickers: [position("AAPL", gateway), position("MSFT", signedIn)],
+      instanceId: "ibkr-gateway",
+    });
+
+    expect(state.config.portfolios).toEqual([heldBy("signed-in-ibkr")]);
+    expect(state.tickers.has("AAPL")).toBe(false);
+    expect(state.tickers.get("MSFT")?.metadata).toMatchObject({
+      portfolios: [portfolioId],
+      positions: [expect.objectContaining({ brokerInstanceId: "signed-in-ibkr" })],
+    });
+    expect(synced).toEqual(["signed-in-ibkr"]);
+  });
+
+  test("without a signed-in profile, the portfolio still goes with the profile that held it", async () => {
+    const { state, synced } = await remove({
+      instances: [flex, gateway],
+      portfolio: heldBy("ibkr-gateway"),
+      tickers: [position("AAPL", gateway), position("MSFT", flex)],
+      brokerAccounts: { "ibkr-flex": [{ accountId: "U123", name: "U123", currency: "USD" }] },
+      instanceId: "ibkr-gateway",
+    });
+
+    expect(state.config.portfolios).toEqual([]);
+    expect(state.tickers.has("AAPL")).toBe(false);
+    expect(state.tickers.get("MSFT")?.metadata.portfolios).toEqual([]);
+    expect(synced).toEqual([]);
   });
 });
