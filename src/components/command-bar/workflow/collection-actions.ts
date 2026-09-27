@@ -10,7 +10,11 @@ import {
   validateBrokerProfileValues,
 } from "../../../brokers/profile-form";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
-import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect";
+import {
+  connectSignedInBrokerProfile,
+  disconnectSignedInProfile,
+  signedInBrokerForProfile,
+} from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
   createManualPortfolio as createManualPortfolioConfig,
@@ -25,7 +29,6 @@ import { coerceFieldString } from "../helpers";
 import { slugifyName } from "../../../utils/slugify";
 import { resolveTickerInputOrThrow } from "./ops";
 import { resolveCollectionTicker } from "./collection-ticker";
-import { disconnectSignedInProfile } from "../../../brokers/signed-in/connect";
 
 export type CommandBarNotifyFn = (
   body: string,
@@ -298,10 +301,16 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (!instance) {
         throw new Error("Broker profile not found.");
       }
-      await disconnectSignedInProfile(instance);
+      const { stillConnected } = await disconnectSignedInProfile(instance);
       await pluginRegistry.removeBrokerInstanceFn(instanceId);
       const freshConfig = pluginRegistry.getConfigFn();
       dispatch({ type: "SET_CONFIG", config: freshConfig });
+      if (stillConnected) {
+        // Signed out of Gloom, so the account keeps the broker for its other devices and agents.
+        const broker = signedInBrokerForProfile(instance, instance.label);
+        notify(`Removed ${instance.label}. Sign in to Gloom to disconnect ${broker.name} from your account.`, { type: "info" });
+        return;
+      }
       notify(`Removed ${instance.label}.`, { type: "success" });
     },
   };

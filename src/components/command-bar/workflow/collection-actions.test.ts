@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Dispatch } from "react";
+import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import { createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createDefaultConfig } from "../../../types/config";
+import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import type { DataProvider } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { EventBus } from "../../../plugins/event-bus";
@@ -90,5 +92,39 @@ describe("command-bar collection workflow actions", () => {
 
     expect(order).toEqual(["event"]);
     expect(payloads).toEqual([{ symbol: "AAPL", portfolioId: "main" }]);
+  });
+
+  test("disconnecting a signed-in profile while signed out of Gloom says the account keeps the broker", async () => {
+    const signedIn: BrokerInstanceConfig = { id: "ibkr-main", brokerType: "signed-in", label: "IBKR", connectionMode: "ibkr", config: {} };
+    const config = { ...createDefaultConfig(":memory:"), brokerInstances: [signedIn] };
+    const state: AppState = createInitialState(config);
+    const removed: string[] = [];
+    const notices: Array<{ body: string; type?: string }> = [];
+    const actions = createCommandBarCollectionWorkflowActions({
+      activeCollectionId: "main",
+      activeTickerSymbol: null,
+      dataProvider: {} as DataProvider,
+      dispatch: (() => {}) as Dispatch<AppAction>,
+      getState: () => state,
+      notify: (body, options) => notices.push({ body, type: options?.type }),
+      persistConfig: () => {},
+      pluginRegistry: {
+        events: new EventBus(),
+        getConfigFn: () => ({ ...config, brokerInstances: [] }),
+        removeBrokerInstanceFn: async (instanceId: string) => { removed.push(instanceId); },
+      } as unknown as PluginRegistry,
+      setActiveCollection: () => {},
+      tickerRepository: {} as never,
+    });
+    const brokerRequest = apiClient.brokerRequest;
+    apiClient.brokerRequest = async () => { throw new ApiRequestError("Unauthorized", 401); };
+    try {
+      await actions.disconnectBrokerInstance("ibkr-main");
+    } finally {
+      apiClient.brokerRequest = brokerRequest;
+    }
+
+    expect(removed).toEqual(["ibkr-main"]);
+    expect(notices).toEqual([{ body: "Removed IBKR. Sign in to Gloom to disconnect IBKR from your account.", type: "info" }]);
   });
 });
