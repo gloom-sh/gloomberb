@@ -196,7 +196,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
           if (column.id === "tenor") return { text: row.tenor, color: row.value == null ? colors.textMuted : colors.text };
           if (column.id === "value") return { text: number(row.value), color: row.value == null ? colors.textMuted : colors.warning };
           const change = column.id === "change1w" ? row.change1w : row.change1m;
-          // Up and down colors, as on every board; the percentile says whether vol is high.
+          // Up and down colors, as on every board; the board's 1Y percentile says whether vol is high.
           return { text: number(change, true), color: change == null ? colors.textMuted : signColor(change) };
         }}
         rootBefore={<ChartTableHeader width={width} height={curveHeight} tableRows={curveRows.length} figures={curveStats} chart={curveBandStrip ? {
@@ -221,7 +221,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
               : String(row.date ?? "--"),
+            // Changes take the sign; vol high for its year is the warning a rise used to carry.
             color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
+              : column.id === "percentile1y" && row.percentile1y != null && Math.round(row.percentile1y) >= 80 ? colors.warning
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
           <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>
