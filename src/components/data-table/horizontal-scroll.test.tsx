@@ -6,18 +6,17 @@ import { AppContext, PaneInstanceProvider, createInitialState } from "../../stat
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Input } from "../../ui";
-import type { DataTableColumn } from "../ui/data-table/types";
 import { Tabs } from "../ui/tabs";
 import { DataTableView } from "./view";
 
 /** The identifier column is wide enough that one scroll step hides it. */
-const WIDE_ID_COLUMNS: DataTableColumn[] = [
+const WIDE_ID_COLUMNS = [
   { id: "id", label: "TICKER", width: 30 },
   { id: "value", label: "VALUE", width: 16 },
   { id: "weight", label: "WEIGHT", width: 12 },
 ];
 /** A narrow identifier column ahead of wide values, the shape a frozen first column pins. */
-const NARROW_ID_COLUMNS: DataTableColumn[] = [
+const NARROW_ID_COLUMNS = [
   { id: "id", label: "TICKER", width: 6 },
   { id: "value", label: "VALUE", width: 30 },
   { id: "weight", label: "WEIGHT", width: 30 },
@@ -34,7 +33,7 @@ interface Options {
   manyRows: boolean;
   frozen: boolean;
   tabs: boolean;
-  columns: DataTableColumn[];
+  columns: typeof WIDE_ID_COLUMNS;
 }
 const DEFAULT_OPTIONS: Options = {
   focused: true,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane } from "./state";
+import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane, type AppState } from "./state";
 import { cloneLayout, createBlankLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
 import type { AppSessionSnapshot } from "../session-persistence";
 import { removePane } from "../../../plugins/pane-manager";
@@ -880,7 +880,7 @@ describe("focus restore", () => {
 
   test("preserves the restore source while activating a pane in another panel", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test-focus-activation");
-    let state = {
+    let state: AppState = {
       ...createInitialState(config),
       focusedPaneId: "portfolio-list:main",
       previousFocusedPaneId: null,

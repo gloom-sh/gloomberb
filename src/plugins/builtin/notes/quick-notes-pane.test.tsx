@@ -136,7 +136,7 @@ describe("createQuickNotesPane", () => {
       async load() {
         throw new Error("EACCES: permission denied");
       },
-    } as TestNotesFiles;
+    } as unknown as TestNotesFiles;
     const QuickNotesPane = createQuickNotesPane(registryFor(failing));
 
     testSetup = await testRender(
