@@ -1,15 +1,12 @@
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
-import { displayWidth } from "../../../utils/format";
 import type { BucketBar } from "./model";
 
 const EIGHTHS = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
 const CAP = "▸";
 
-/** Cells the capped bar keeps after its end for the cap and the value. */
-export function wallLabelReserve(label: string): number {
-  return displayWidth(label) + 2;
-}
+/** Cells a capped bar keeps after its end for the cap. */
+export const WALL_CAP_RESERVE = 2;
 
 function blocks(cells: number): string {
   const full = Math.floor(cells);
@@ -20,15 +17,14 @@ function blocks(cells: number): string {
 /**
  * One maturity bucket of the wall, inline in its table row. Dated buckets
  * share one scale; a bucket past it (Thereafter, open ended) runs to the end,
- * capped, with its value, so its length is never read as a measure. The
- * desktop draws an element; the terminal draws block cells.
+ * capped, so its length is never read as a measure; its PRINCIPAL cell says
+ * how much. The desktop draws an element; the terminal draws block cells.
  */
-export function WallBar({ bar, width, reserve, label, selected }: {
+export function WallBar({ bar, width, reserve, selected }: {
   bar: BucketBar | null;
   width: number;
   /** Cells kept clear at the end so a capped bar outruns every dated one. */
   reserve: number;
-  label: string;
   selected: boolean;
 }) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
@@ -50,7 +46,7 @@ export function WallBar({ bar, width, reserve, label, selected }: {
             }}
           />
         </Box>
-        {bar.capped ? <Text fg={labelColor}>{`${CAP} ${label}`}</Text> : null}
+        {bar.capped ? <Text fg={labelColor}>{CAP}</Text> : null}
       </Box>
     );
   }
@@ -59,7 +55,7 @@ export function WallBar({ bar, width, reserve, label, selected }: {
     return (
       <Box flexDirection="row" width={width} overflow="hidden">
         <Text fg={colors.warning}>{"█".repeat(scale)}</Text>
-        <Text fg={labelColor}>{`${CAP} ${label}`}</Text>
+        <Text fg={labelColor}>{` ${CAP}`}</Text>
       </Box>
     );
   }

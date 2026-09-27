@@ -15,8 +15,10 @@ import {
   CompositeChart,
   DataTableStackView,
   EmptyState,
+  formatPercentAxis,
   KeyValueRow,
   PaneStatusBody,
+  scalarPoint,
   Tabs,
   useChartTableSelection,
   usePaneHeaderTabs,
@@ -68,7 +70,7 @@ import {
   type HistoryColumnId,
 } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { WallBar, wallLabelReserve } from "./wall-bar";
+import { WALL_CAP_RESERVE, WallBar } from "./wall-bar";
 
 const PANELS = [{ id: "main" }];
 const TABS = [
@@ -346,6 +348,16 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     [bars, latest?.currency],
   );
   const barAxis = useMemo(() => historyAxis(bars), [bars]);
+  // The table shows where the wall stands now; the chart shows how its near
+  // end moved across filings, the history behind the figures' percentiles.
+  const nearTermSeries = useMemo(() => bars.length < 2 ? [] : [
+    staticSeries(bars.map((row) => scalarPoint(new Date(row.asOf), row.next12MonthsShare)), {
+      id: "due-12m", label: "Due next 12 months", color: colors.warning, calendarSpaced: true,
+    }),
+    staticSeries(bars.map((row) => scalarPoint(new Date(row.asOf), row.next3YearsShare)), {
+      id: "due-3y", label: "Due next 3 years", color: colors.borderFocused, calendarSpaced: true,
+    }),
+  ], [bars]);
   const historyLink = useChartTableSelection({
     rows: history,
     getId: historyKey,
@@ -357,12 +369,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   });
   const wallScale = latest ? datedBucketScale(latest) : 0;
   // A bucket past the dated scale keeps room at the end for its value.
-  const wallReserve = Math.max(
-    0,
-    ...buckets.map((row) =>
-      bucketBar(row, wallScale)?.capped ? wallLabelReserve(debtAmount(row.value)) : 0,
-    ),
-  );
+  const wallReserve = buckets.some((row) => bucketBar(row, wallScale)?.capped) ? WALL_CAP_RESERVE : 0;
   const bucketColumnList = useMemo(() => bucketColumns(width), [width]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   // An open bucket or filing covers its tab; the tab keys wait until it closes.
@@ -460,7 +467,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         bar={bucketBar(row, wallScale)}
         width={column.width}
         reserve={wallReserve}
-        label={debtAmount(row.value)}
         selected={state.selected}
       />
     ),
@@ -541,14 +547,19 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                 rootWidth={width}
                 rootHeight={bodyHeight}
                 rootBefore={
-                  // The wall is drawn in the table, so the header zone is the figures.
+                  // The wall is drawn in the table; the chart is its near end over time.
                   <ChartTableHeader
                     width={width}
                     height={bodyHeight}
                     tableRows={buckets.length}
                     tableChromeRows={tableChrome(bucketColumnList, width)}
                     figures={statItems}
-                    chart={null}
+                    chart={nearTermSeries.length ? {
+                      series: nearTermSeries,
+                      formatValue: debtPercent,
+                      formatAxisValue: formatPercentAxis,
+                      remoteKind: "debt-near-term-share",
+                    } : null}
                   />
                 }
                 columns={bucketColumnList}

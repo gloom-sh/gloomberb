@@ -69,26 +69,28 @@ test("the maturity wall is an inline bar column scaled to the dated years", asyn
   const lines = await render(94, 29);
   const row = (label: string) => lines.find((line) => line.includes(label));
   expect(row("MATURITY")).toContain("WALL");
-  // No column chart repeats the six rows above the table.
-  expect(lines.join("\n")).not.toContain("●");
+  // The chart above is the wall's near end across filings, not the six rows again.
+  expect(lines.some((line) => line.includes("● Due next 12 months"))).toBe(true);
   // 10M to 50M across the dated years: the longest dated bucket fills the scale.
   const dated = ["InNextTwelve", "InYearTwo", "InYearThree", "InYearFour", "InYearFive"].map((label) => bar(row(label)));
   expect(dated).toEqual([...dated].sort((left, right) => left - right));
   expect(dated[1]! / dated[0]!).toBeCloseTo(2, 0);
-  // Thereafter (60M) runs past the scale, capped and labelled with its value.
+  // Thereafter (60M) runs past the scale, capped; its PRINCIPAL cell says how much, once.
   const thereafter = row("AfterYearFive")!;
   expect(bar(thereafter)).toBe(dated[4]);
-  expect(thereafter).toContain("▸ 60.00M");
+  expect(thereafter).toContain("▸");
+  expect(thereafter.split("60.00M")).toHaveLength(2);
   // The figures stay above the table.
   expect(lines.slice(0, 4).join("\n")).toContain("Principal total");
 });
 
-test("a short or narrow maturity pane keeps every bucket and drops the wall and figures first", async () => {
+test("a short or narrow maturity pane keeps the table's rows, and the chart shrinks to a strip", async () => {
   const lines = await render(40, 10);
   expect(lines.join("\n")).not.toContain("WALL");
-  for (const label of ["InNextTwelve", "AfterYearFive"]) expect(lines.some((line) => line.includes(label))).toBe(true);
-  // One row of figures, the table's header and six rows, then the footer.
-  expect(lines[2]).toContain("MATURITY");
+  // One row of figures, the strip, then the table's header and five buckets.
+  expect(lines[2]).toMatch(/^ ● Due next 12 months .*%/);
+  expect(lines[3]).toContain("MATURITY");
+  expect(lines.filter((line) => /^ In(NextTwelve|Year)/.test(line))).toHaveLength(5);
   expect(lines[9]).toContain("just now");
 });
 
