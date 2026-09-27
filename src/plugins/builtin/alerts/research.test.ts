@@ -17,6 +17,13 @@ test("wizard values become a normalized synced rule that reads back with its des
   expect(alertKindLabel(rules[0]!.kind)).toBe("Unusual volume");
 });
 
+test("filing rules take the SCHEDULE 13D/13G names and keep rules saved as SC 13D/13G", () => {
+  const rule = createResearchAlert("filing_type", { "filing_type:symbol": "aapl", "filing_type:form": "schedule 13g/a" }, 1_000);
+  expect(JSON.parse(rule.value)).toMatchObject({ symbol: "AAPL", form: "SCHEDULE 13G/A" });
+  const saved = { ...rule, value: JSON.stringify({ version: 1, symbol: "AAPL", exchange: "US", form: "SC 13D" }) };
+  expect(readEventAlerts(JSON.stringify([saved])).rules).toHaveLength(1);
+});
+
 test("invalid contracts, exchanges and thresholds are refused before sync", () => {
   expect(() => createResearchAlert("iv_spike", { "iv_spike:contract": "AAPL" })).toThrow("OCC contract");
   expect(() => createResearchAlert("fifty_two_week", { "fifty_two_week:symbol": "SAP", "fifty_two_week:exchange": "XETRA" })).toThrow();

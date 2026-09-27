@@ -30,11 +30,15 @@ export const RESEARCH_ALERT_FORMS = [
   "10-K",
   "10-Q",
   "S-1",
-  "SC 13D",
-  "SC 13G",
+  "SCHEDULE 13D",
+  "SCHEDULE 13D/A",
+  "SCHEDULE 13G",
+  "SCHEDULE 13G/A",
   "6-K",
   "20-F",
 ] as const
+/** EDGAR renamed SC 13D/13G to SCHEDULE 13D/13G on 2024-12-18; rules saved with the old names stay valid and the server matches both. */
+const LEGACY_RESEARCH_ALERT_FORMS: readonly string[] = ["SC 13D", "SC 13G"]
 const US_EXCHANGES = new Set([
   "",
   "NASDAQ",
@@ -140,7 +144,8 @@ export function normalizeResearchRule(
         if (
           !RESEARCH_ALERT_FORMS.includes(
             form as (typeof RESEARCH_ALERT_FORMS)[number],
-          )
+          ) &&
+          !LEGACY_RESEARCH_ALERT_FORMS.includes(form)
         )
           return null
         result.form = form
