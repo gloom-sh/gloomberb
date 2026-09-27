@@ -425,7 +425,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
  * and never clips. A quote from an earlier UTC day shows its date instead, so a
  * closed market's last print is not read as a time today.
  */
-export function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
+function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
   if (!lastUpdated) return "—";
   const date = new Date(lastUpdated);
   const today = new Date(now);
