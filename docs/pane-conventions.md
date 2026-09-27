@@ -85,7 +85,9 @@ the origin of a number. The one count the kit draws is the
   clickable. Hints follow the selection: a different array when a row is
   selected, a detail is open, a tab changes. A hint with no target is omitted
   or `disabled`, never a no-op.
-- `r` refreshes every pane. No per-pane refresh hint (PR #589).
+- `r` refreshes every pane. No per-pane refresh hint (PR #589). Built-in
+  panes bind it with `usePaneRefreshKey(reload, { focused })`, or with
+  `handleRefreshKey` inside a table's key handler.
 - Tabs scope the footer: wrap each tab body in `PaneFooterScope active`, and
   pass `enabled: false` to wrappers for mounted but inactive views.
 - Forms leave the footer alone. When the form shows Save and Cancel, the
