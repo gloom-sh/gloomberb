@@ -2,7 +2,7 @@ import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useShortcut } from "../../../react/input";
 import { TextAttributes } from "../../../ui";
-import type { GloomPlugin, PaneProps } from "../../../types/plugin";
+import type { AppNotificationRequest, GloomPlugin, PaneProps } from "../../../types/plugin";
 import {
   DataTableStackView,
   isTableScrollNearEnd,
@@ -18,28 +18,23 @@ import { usePluginAppActions } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID, DEBUG_PANE_ID, DEBUG_SOURCE_SETTING } from "./template";
 import { colors } from "../../../theme/colors";
 import { debugLog, type LogEntry, type LogLevel } from "../../../utils/debug-log";
-import { writeFileSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { saveTextFileToDownloads } from "../../../utils/save-text-file";
 
-function exportDebugLogFile(options: {
-  filterLevel?: LogLevel | null;
-  filterSource?: string | null;
-}): { ok: true; filename: string } | { ok: false } {
+/** Writes the log (narrowed by the pane's filters, if any) to ~/Downloads and says where. */
+async function exportDebugLog(
+  notify: (notification: AppNotificationRequest) => unknown,
+  filter: { level?: LogLevel | null; source?: string | null } = {},
+): Promise<void> {
   const text = debugLog.exportAsText(
-    options.filterLevel || options.filterSource
-      ? { level: options.filterLevel ?? undefined, source: options.filterSource ?? undefined }
+    filter.level || filter.source
+      ? { level: filter.level ?? undefined, source: filter.source ?? undefined }
       : undefined,
   );
-  const downloadsDir = join(homedir(), "Downloads");
   const filename = `gloomberb-debug-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.log`;
-  const filepath = join(downloadsDir, filename);
-
   try {
-    writeFileSync(filepath, text);
-    return { ok: true, filename };
+    notify({ body: `Exported to ${await saveTextFileToDownloads(filename, text)}`, type: "success" });
   } catch {
-    return { ok: false };
+    notify({ body: "Failed to export logs", type: "error" });
   }
 }
 
@@ -155,12 +150,7 @@ function DebugPane({ focused, width, height }: PaneProps) {
   }, [openEntry, openId]);
 
   const exportLogs = useCallback(() => {
-    const result = exportDebugLogFile({ filterLevel, filterSource });
-    if (result.ok) {
-      notify({ body: `Exported to ~/Downloads/${result.filename}`, type: "success" });
-      return;
-    }
-    notify({ body: "Failed to export logs", type: "error" });
+    void exportDebugLog(notify, { level: filterLevel, source: filterSource });
   }, [filterLevel, filterSource, notify]);
 
   const clearLogs = useCallback(() => {
@@ -338,14 +328,7 @@ export const debugPlugin: GloomPlugin = {
       description: "Export debug logs to ~/Downloads",
       keywords: ["export", "debug", "log", "download", "save"],
       category: "config",
-      execute: () => {
-        const result = exportDebugLogFile({});
-        if (result.ok) {
-          ctx.notify({ body: `Exported to ~/Downloads/${result.filename}`, type: "success" });
-        } else {
-          ctx.notify({ body: "Failed to export logs", type: "error" });
-        }
-      },
+      execute: () => exportDebugLog((notification) => ctx.notify(notification)),
     });
 
   },
