@@ -7,7 +7,7 @@ import {
   DialogHostProvider,
   type AlertContext,
   type DialogApi,
-  type DialogSize,
+  type DialogOptions,
   type DialogStyle,
   type PromptContext,
 } from "../../ui/dialog";
@@ -17,7 +17,7 @@ interface DialogRecord {
   id: string;
   content: unknown;
   kind: DialogKind;
-  size?: DialogSize;
+  size?: DialogOptions["size"];
   style?: DialogStyle;
   closeOnEscape?: boolean;
   closeOnClickOutside?: boolean;
@@ -29,7 +29,7 @@ function renderDialogContent(content: unknown, context: AlertContext | PromptCon
     : content as ReactNode;
 }
 
-function dialogWidth(size: DialogSize, terminalWidth: number): number {
+function dialogWidth(size: DialogOptions["size"], terminalWidth: number): number {
   const requestedWidth = size === "small"
     ? 40
     : size === "large"

@@ -61,9 +61,11 @@ export function TextPromptDialog({
       return value;
     }
   };
-  const submit = () => {
-    const text = current().trim();
-    if (text || allowEmpty) resolve(text);
+  // The one-line field submits the text it holds, which can be ahead of the
+  // last render when Enter arrives with the typing (a paste, a fast typist).
+  const submit = (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed || allowEmpty) resolve(trimmed);
   };
 
   useDialogKeyboard((event) => {
@@ -98,7 +100,7 @@ export function TextPromptDialog({
                 { name: "return", shift: true, action: "newline" },
                 { name: "linefeed", shift: true, action: "newline" },
               ]}
-              onSubmit={submit}
+              onSubmit={() => submit(current())}
               onInput={setValue}
             />
           </Box>
@@ -117,7 +119,7 @@ export function TextPromptDialog({
         <Box height={1} />
         <Box flexDirection="row" gap={1}>
           {/* A textarea is read when it submits, so its button stays live. */}
-          <Button label={confirmLabel} variant="primary" disabled={!multiline && !allowEmpty && !value.trim()} onPress={submit} />
+          <Button label={confirmLabel} variant="primary" disabled={!multiline && !allowEmpty && !value.trim()} onPress={() => submit(current())} />
           <Button label="Cancel" variant="secondary" onPress={dismiss} />
         </Box>
       </Box>

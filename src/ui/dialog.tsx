@@ -27,7 +27,11 @@ export interface DialogStyle {
  */
 export interface DialogOptions<C = AlertContext> {
   content?: ReactNode | ((context: C) => ReactNode);
-  size?: DialogSize;
+  /**
+   * Any string still compiles, so an options object built ahead (where "large"
+   * widens to string) keeps working; the terminal treats an unknown size as medium.
+   */
+  size?: DialogSize | (string & {});
   style?: DialogStyle;
   /** Terminal: Esc closes the dialog unless this is false. The desktop always closes on Esc. */
   closeOnEscape?: boolean;
