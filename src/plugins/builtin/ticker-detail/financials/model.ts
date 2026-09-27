@@ -1,7 +1,6 @@
 import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
-import { operatingResultDisagrees } from "../../../../utils/operating-result";
-import { canCompareOperatingField } from "../../../../utils/operating-result-aggregation";
+import { hasNonIncomeStatementGap } from "../../../../utils/statement-gaps";
 import {
   formatGrowthShort,
   formatNumber,
@@ -114,9 +113,6 @@ export function canCompareFinancialRow(
   if (!previous) return false;
   const key = row.kind === "group" ? row.summaryKey : row.key;
   if (key && SHARE_COUNT_FIELDS.has(key)) return true;
-  const operatingKey = key ?? (row.id.split(":")[0] === "gross-margin" ? "grossProfit"
-    : row.id.split(":")[0] === "operating-margin" ? "operatingIncome" : undefined);
-  if (operatingKey && !canCompareOperatingField(current, previous, operatingKey)) return false;
   const currentCurrency = (current.currency ?? financialCurrency)?.trim();
   const previousCurrency = (previous.currency ?? financialCurrency)?.trim();
   return !!currentCurrency && currentCurrency === previousCurrency;
@@ -201,21 +197,13 @@ export function financialStatementCurrency(
 
 export function financialStatementLimitations(financials: TickerFinancials | null | undefined): string[] {
   const limitations: string[] = [];
-  const operatingNotice = financialOperatingSourceNotice(financials);
-  if (operatingNotice) limitations.push(operatingNotice);
-  if ([...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])].some(row => row.withdrawnObservations?.length)) {
+  if ([...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])].some(hasNonIncomeStatementGap)) {
     limitations.push("Some statement values conflict with issuer filings and are unavailable.");
   }
   if ([...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])].some(row => row.unavailableFields?.includes("netIncome"))) {
     limitations.push("Parent net income is unavailable for some reported periods.");
   }
   return limitations;
-}
-
-export function financialOperatingSourceNotice(financials: TickerFinancials | null | undefined): string | undefined {
-  const statements = [...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])];
-  if (!statements.some(operatingResultDisagrees)) return undefined;
-  return "Reported operating results differ from provider figures. EBITDA and Total Expenses retain their separate source definitions.";
 }
 
 export function resolveFinancialPeriod(

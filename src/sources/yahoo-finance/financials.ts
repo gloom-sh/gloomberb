@@ -1,13 +1,13 @@
-import type { FinancialStatement, PricePoint } from "../../types/financials";
-import { addProviderOperatingObservation, OPERATING_PROVIDER_FIELDS } from "../../utils/operating-result";
+import type { EarningsField, FinancialStatement, PricePoint } from "../../types/financials";
 import { computePriceReturnForHorizon } from "../../market-data/performance";
 import { isFinancialPeriodDate, latestFinancialPeriod } from "../../utils/latest-financial-period";
+import { withStatementGaps } from "../../utils/statement-gaps";
 
 export const YAHOO_TIMESERIES_TYPES = {
   annual: [
     "annualTotalRevenue", "annualCostOfRevenue", "annualGrossProfit",
     "annualSellingGeneralAndAdministration", "annualResearchAndDevelopment",
-    "annualOperatingExpense", "annualOperatingIncome",
+    "annualOperatingExpense", "annualOperatingIncome", "annualTotalOperatingIncomeAsReported",
     "annualOperatingRevenue", "annualTotalExpenses", "annualPretaxIncome",
     "annualNormalizedIncome", "annualNetIncomeCommonStockholders",
     "annualNetIncomeContinuousOperations", "annualOtherIncomeExpense",
@@ -71,7 +71,7 @@ export const YAHOO_TIMESERIES_TYPES = {
   quarterly: [
     "quarterlyTotalRevenue", "quarterlyCostOfRevenue", "quarterlyGrossProfit",
     "quarterlySellingGeneralAndAdministration", "quarterlyResearchAndDevelopment",
-    "quarterlyOperatingExpense", "quarterlyOperatingIncome",
+    "quarterlyOperatingExpense", "quarterlyOperatingIncome", "quarterlyTotalOperatingIncomeAsReported",
     "quarterlyOperatingRevenue", "quarterlyTotalExpenses", "quarterlyPretaxIncome",
     "quarterlyNormalizedIncome", "quarterlyNetIncomeCommonStockholders",
     "quarterlyNetIncomeContinuousOperations", "quarterlyOtherIncomeExpense",
@@ -182,10 +182,31 @@ export function computeYahooReturn(history: PricePoint[], years: 1 | 3): number 
   }) ?? undefined;
 }
 
+function finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Reported EPS must agree with the row's own income and weighted shares: a
+ * row can pair EPS from one accounting basis with income from another. Basic
+ * EPS that differs from income to common holders, and from net income, over
+ * basic shares by more than 2% (or 0.01, which absorbs rounding of small EPS)
+ * is unavailable rather than replaced. Diluted EPS can legitimately adjust its
+ * numerator (as-converted share classes, operating partnership units), so it
+ * is checked against diluted shares only once basic EPS has failed.
+ */
+function withConsistentEps(row: FinancialStatement): FinancialStatement {
+  const incomes = [row.netIncomeCommonStockholders, row.netIncome].filter(finite);
+  const consistent = (eps: number | undefined, shares: number | undefined) => !finite(eps) || !finite(shares) || shares <= 0
+    || incomes.length === 0 || incomes.some((income) => Math.abs(eps - income / shares) <= Math.max(0.02 * Math.abs(eps), 0.01));
+  if (consistent(row.basicEps, row.basicShares)) return row;
+  const fields: EarningsField[] = consistent(row.eps, row.dilutedShares) ? ["basicEps"] : ["basicEps", "eps"];
+  return withStatementGaps(row, fields);
+}
+
 export function buildYahooStatements(
   metrics: YahooTimeseriesMetrics,
   prefix: "annual" | "quarterly",
-  operatingOwnership = false,
 ): FinancialStatement[] {
   const byDate = new Map<string, FinancialStatement>();
   const assign = (type: string, field: keyof FinancialStatement) => {
@@ -195,13 +216,6 @@ export function buildYahooStatements(
       if (row.currency && point.currency && row.currency !== point.currency) continue;
       if (point.currency) row.currency = point.currency;
       (row as any)[field] = typeof point.value === "number" && Number.isFinite(point.value) ? point.value : undefined;
-      if (operatingOwnership && OPERATING_PROVIDER_FIELDS.includes(field as typeof OPERATING_PROVIDER_FIELDS[number])) {
-        const operatingField = field as typeof OPERATING_PROVIDER_FIELDS[number];
-        if (row.operatingResult?.provider) delete row.operatingResult.provider[operatingField];
-        if (point.currency && point.currency === row.currency && point.periodType === (prefix === "annual" ? "12M" : "3M")) {
-          addProviderOperatingObservation(row, operatingField, "yahoo", type.slice(prefix.length), prefix);
-        }
-      }
       byDate.set(point.asOfDate, row);
     }
   };
@@ -344,5 +358,16 @@ export function buildYahooStatements(
   assign(`${prefix}OrdinarySharesNumber`, "ordinarySharesNumber");
   assign(`${prefix}TreasurySharesNumber`, "treasurySharesNumber");
 
-  return Array.from(byDate.values()).sort((left, right) => left.date.localeCompare(right.date));
+  // Yahoo's OperatingIncome leaves out items it treats as unusual, such as
+  // impairments and credit losses some issuers report inside operating
+  // expenses. The as-reported series matches the filing; where Yahoo has it,
+  // it is the operating income, and expenses are what gross profit leaves.
+  for (const point of metrics[`${prefix}TotalOperatingIncomeAsReported`] || []) {
+    const row = byDate.get(point.asOfDate);
+    if (!row || !finite(point.value) || (row.currency && point.currency && row.currency !== point.currency)) continue;
+    row.operatingIncome = point.value;
+    if (finite(row.grossProfit)) row.operatingExpense = row.grossProfit - point.value;
+  }
+
+  return Array.from(byDate.values()).map(withConsistentEps).sort((left, right) => left.date.localeCompare(right.date));
 }

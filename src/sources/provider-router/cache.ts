@@ -1,20 +1,17 @@
-import { hasAsmlEarningsIdentity } from "../../utils/reported-earnings-result";
 import { yahooSuffixExchange } from "../yahoo-finance/symbols";
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { Quote, TickerFinancials } from "../../types/financials";
-import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { brokerContractIdentityKey } from "../../utils/instrument-identity";
 import { providerFinancialsMatchTarget, providerQuoteMatchesTarget } from "./financials";
-import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../../utils/operating-result";
 
 const MARKET_NAMESPACE = "market";
 // A record written under another version is a miss: bump these instead of
 // repairing older records on read.
-export const FINANCIALS_SCHEMA_VERSION = 11;
+export const FINANCIALS_SCHEMA_VERSION = 12;
 export const QUOTE_SCHEMA_VERSION = 2;
 const SCHEMA_VERSIONS: Record<string, number> = { financials: FINANCIALS_SCHEMA_VERSION, quote: QUOTE_SCHEMA_VERSION };
 
@@ -100,21 +97,6 @@ export function cacheRouterResource<T>(
   value: T,
   cachePolicy: CachePolicy,
 ): void {
-  if (kind === "financials" && ["provider:yahoo", "provider:gloomberb-cloud"].includes(sourceKey) && !entityKey.startsWith("contract:")) {
-    const financials = value as TickerFinancials;
-    const target = { symbol: entityKey, exchange: variantExchange(variantKey) };
-    const isRetry = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
-    const retries = [
-      isRetry(financials.operatingHistoryRetryAt) && hasShopOperatingIdentity(financials, target) ? financials.operatingHistoryRetryAt : undefined,
-      isRetry(financials.earningsHistoryRetryAt) && hasAsmlEarningsIdentity(financials, target) ? financials.earningsHistoryRetryAt : undefined,
-    ].filter(isRetry);
-    const retryAt = Math.min(...retries);
-    if (Number.isFinite(retryAt)) {
-      // Keep usable partial statements while allowing the SEC source's
-      // short retry (or completed background load) to escape the normal TTL.
-      cachePolicy = { ...cachePolicy, staleMs: Math.min(cachePolicy.staleMs, Math.max(0, retryAt - Date.now())) };
-    }
-  }
   resources?.set(
     {
       namespace: MARKET_NAMESPACE,
@@ -202,18 +184,7 @@ export function listCachedResources<T>(
     return !(requestedExchange && !declaredExchange && !parsePublicTickerKey(entityKey).exchange
       && variantExchange(record.variantKey) === undefined);
   }).map((record) => {
-    if (kind !== "financials") return record;
-    const exchange = variantExchange(record.variantKey);
-    const financials = record.value as TickerFinancials;
-    const ownSymbol = financials.quote?.symbol ?? financials.quoteMetadata?.symbol;
-    const withdrawn = withdrawKnownProviderStatements(financials, {
-      symbol: record.entityKey.startsWith("contract:") ? ownSymbol ?? "" : record.entityKey, exchange,
-    }, record.sourceKey);
-    if (withdrawn !== record.value) record = { ...record, stale: true, value: withdrawn as T };
-    if (!record.entityKey.startsWith("contract:")) record = { ...record,
-      value: normalizeFinancialOperatingResults(record.value as TickerFinancials, { symbol: record.entityKey, exchange }) as T,
-    };
-    if (record.sourceKey !== "provider:gloomberb-cloud") return record;
+    if (kind !== "financials" || record.sourceKey !== "provider:gloomberb-cloud") return record;
     // A new client can cache an old backend response during a rolling deploy.
     // Require the metric's own provenance before reusing a cloud yield; retain
     // valid quotes and other issuer data.

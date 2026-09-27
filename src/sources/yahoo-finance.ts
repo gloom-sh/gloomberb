@@ -1,4 +1,3 @@
-import { hasAsmlEarningsIdentity, promoteReportedEarningsResults } from "../utils/reported-earnings-result";
 import { exchangeRateMetadata } from "../utils/exchange-rate-snapshot";
 import { fxFreshUntil } from "../utils/fx-market-hours";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
@@ -13,9 +12,9 @@ import {
 import type { InstrumentSearchResult } from "../types/instrument";
 import { parseOptionSymbol } from "../utils/options";
 import { SecEdgarClient } from "./sec-edgar";
+import { withCheckedFourthQuarters } from "./sec-edgar/fourth-quarter";
 import { mergeFinancialStatementRows } from "../utils/financial-statements";
-import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../utils/operating-result";
-import { withdrawKnownProviderStatements } from "../utils/statement-observations";
+import { canonicalExchange } from "../utils/exchanges";
 import { YahooHttpClient } from "./yahoo-finance/http";
 import { resolveCurrencyUnit } from "../utils/currency-units";
 import { getYahooSymbol, getYahooSymbolsToTry, withYahooSymbols } from "./yahoo-finance/symbols";
@@ -51,6 +50,7 @@ import {
   loadYahooTickerFinancials,
 } from "./yahoo-finance/snapshots";
 
+/** US listings, as canonical exchanges, whose issuers file statements with the SEC. */
 const SEC_STATEMENT_SUPPLEMENT_EXCHANGES = new Set([
   "",
   "AMEX",
@@ -59,9 +59,7 @@ const SEC_STATEMENT_SUPPLEMENT_EXCHANGES = new Set([
   "BYX",
   "IEX",
   "NASDAQ",
-  "NMS",
   "NYSE",
-  "NYSEARCA",
   "OTC",
   "PINK",
 ]);
@@ -90,9 +88,7 @@ export class YahooFinanceClient implements DataProvider {
   private shouldSupplementSecStatements(ticker: string, exchange: string, financials: TickerFinancials): boolean {
     if (!/^[A-Z0-9.-]+$/i.test(ticker.trim())) return false;
     if (ticker.includes(".") && !/^[A-Z]+\.[AB]$/i.test(ticker)) return false;
-    const normalizedExchange = exchange.trim().toUpperCase();
-    return (SEC_STATEMENT_SUPPLEMENT_EXCHANGES.has(normalizedExchange)
-      || hasShopOperatingIdentity(financials, { symbol: ticker, exchange }))
+    return SEC_STATEMENT_SUPPLEMENT_EXCHANGES.has(canonicalExchange(exchange))
       && (financials.quote?.currency ?? "USD").toUpperCase() === "USD"
       && ![financials.financialCurrency, ...financials.annualStatements.map((row) => row.currency), ...financials.quarterlyStatements.map((row) => row.currency)].some((currency) => currency != null && currency.toUpperCase() !== "USD");
   }
@@ -105,43 +101,31 @@ export class YahooFinanceClient implements DataProvider {
   ): Promise<TickerFinancials> {
     const stamp = (status: "available" | "unsupported" | "retryable-failure") => extended
       ? { mode: "extended" as const, source: "sec" as const, status, fetchedAt: new Date().toISOString() } : undefined;
-    if (hasAsmlEarningsIdentity(financials, { symbol: ticker, exchange })) {
-      // Listing qualification above permits the Amsterdam symbol to use the
-      // verified issuer lookup. Annual EPS does not establish full SEC history.
-      const source = await this.secClient.getFinancialStatements("ASML", { reportedEarningsResults: true });
-      return { ...financials, statementHistory: stamp("unsupported"),
-        earningsHistoryRetryAt: this.secClient.getEarningsHistoryRetryAt(),
-        annualStatements: promoteReportedEarningsResults(financials.annualStatements, source?.reportedEarningsResults ?? [], "annual"),
-      };
-    }
     if (!this.shouldSupplementSecStatements(ticker, exchange, financials)) return { ...financials, statementHistory: stamp("unsupported") };
-    const operatingTarget = hasShopOperatingIdentity(financials, { symbol: ticker, exchange });
-    const retry = () => operatingTarget ? this.secClient.getOperatingTablesRetryAt(ticker) : undefined;
     try {
-      const secStatements = await this.secClient.getFinancialStatements(ticker, { reportedOperatingResults: operatingTarget });
+      const secStatements = await this.secClient.getFinancialStatements(ticker);
       if (
         !secStatements
         || (secStatements.annualStatements.length === 0 && secStatements.quarterlyStatements.length === 0)
       ) {
-        return { ...financials, statementHistory: stamp("unsupported"), operatingHistoryRetryAt: retry() };
+        return { ...financials, statementHistory: stamp("unsupported") };
       }
-      if (!operatingTarget) {
-        for (const row of [...secStatements.annualStatements, ...secStatements.quarterlyStatements]) delete row.operatingResult;
-      }
-      return normalizeFinancialOperatingResults({
+      // Drop the vendor fourth quarters SEC's filings contradict before either
+      // source can fill the other's gaps.
+      const quarterlyStatements = withCheckedFourthQuarters(financials, secStatements.fourthQuarters ?? []);
+      return {
         ...financials,
         financialCurrency: financials.financialCurrency ?? "USD",
         statementHistory: stamp("available"),
-        operatingHistoryRetryAt: retry(),
         annualStatements: extended
           ? mergeFinancialStatementRows(secStatements.annualStatements, financials.annualStatements)
           : mergeFinancialStatementRows(financials.annualStatements, secStatements.annualStatements),
         quarterlyStatements: extended
-          ? mergeFinancialStatementRows(secStatements.quarterlyStatements, financials.quarterlyStatements)
-          : mergeFinancialStatementRows(financials.quarterlyStatements, secStatements.quarterlyStatements),
-      }, { symbol: ticker, exchange });
+          ? mergeFinancialStatementRows(secStatements.quarterlyStatements, quarterlyStatements)
+          : mergeFinancialStatementRows(quarterlyStatements, secStatements.quarterlyStatements),
+      };
     } catch {
-      return { ...financials, statementHistory: stamp("retryable-failure"), operatingHistoryRetryAt: retry() };
+      return { ...financials, statementHistory: stamp("retryable-failure") };
     }
   }
 
@@ -149,10 +133,7 @@ export class YahooFinanceClient implements DataProvider {
   async getTickerFinancials(ticker: string, exchange = "", context?: MarketDataRequestContext): Promise<TickerFinancials> {
     return withYahooSymbols(getYahooSymbolsToTry(ticker, exchange), async (symbol) => {
       const result = await loadYahooTickerFinancials(symbol, this.requests);
-      return withdrawKnownProviderStatements(
-        await this.supplementSecStatements(ticker, exchange, result, context?.statementHistory === "extended"),
-        { symbol: ticker, exchange }, "provider:yahoo",
-      );
+      return this.supplementSecStatements(ticker, exchange, result, context?.statementHistory === "extended");
     });
   }
 

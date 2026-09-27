@@ -223,3 +223,60 @@ test("Yahoo futures quote measures its move from the current contract's settleme
   expect(quote.previousClose).toBe(18.56);
   expect(quote.change).toBeCloseTo(0.2, 8);
 });
+
+// Rows Yahoo served, EUR, amounts as captured on 2026-09-22. The 2022 and
+// 2023 EPS are IFRS figures beside US GAAP income and shares.
+const ASML_ROWS = [
+  ["2022-12-31", 5_624_200_000, 16.08, 16.07, 397_700_000, 398_000_000],
+  ["2023-12-31", 7_839_000_000, 20.61, 20.59, 393_800_000, 394_100_000],
+  ["2024-12-31", 7_571_600_000, 19.25, 19.24, 393_300_000, 393_600_000],
+  ["2025-12-31", 9_609_400_000, 24.73, 24.71, 388_500_000, 388_900_000],
+] as const;
+
+function yahooAnnual(rows: ReadonlyArray<readonly [string, number, number, number, number, number]>, currency: string) {
+  const series = (pick: (row: readonly [string, number, number, number, number, number]) => number) =>
+    rows.map((row) => ({ asOfDate: row[0], value: pick(row), currency, periodType: "12M" }));
+  return buildYahooStatements({
+    annualNetIncomeCommonStockholders: series((row) => row[1]), annualNetIncome: series((row) => row[1]),
+    annualBasicEPS: series((row) => row[2]), annualDilutedEPS: series((row) => row[3]),
+    annualBasicAverageShares: series((row) => row[4]), annualDilutedAverageShares: series((row) => row[5]),
+  }, "annual");
+}
+
+test("EPS that disagrees with the row's own income and shares is unavailable, not replaced", () => {
+  const asml = yahooAnnual(ASML_ROWS, "EUR");
+  expect(asml.map((row) => [row.basicEps, row.eps, row.unavailableEarnings])).toEqual([
+    [undefined, undefined, ["basicEps", "eps"]], [undefined, undefined, ["basicEps", "eps"]],
+    [19.25, 19.24, undefined], [24.73, 24.71, undefined],
+  ]);
+  // Controls: AAPL FY2025 and MSFT FY2025, and a tiny EPS whose rounding
+  // is more than 2% but within a cent.
+  for (const row of yahooAnnual([
+    ["2025-09-27", 112_010_000_000, 7.49, 7.46, 14_948_500_000, 15_004_697_000],
+    ["2025-06-30", 101_832_000_000, 13.70, 13.64, 7_433_000_000, 7_465_000_000],
+    ["2023-12-31", 132_000_000, 0.10, 0.10, 1_282_000_000, 1_300_000_000],
+  ], "USD")) expect(row.unavailableEarnings).toBeUndefined();
+});
+
+test("Yahoo's as-reported operating income wins, and expenses stay what gross profit leaves", () => {
+  // SHOP FY2025: Yahoo's normalized series leaves out transaction and loan
+  // losses; the as-reported series matches the 10-K.
+  const series = (value: number | undefined) => [{ asOfDate: "2025-12-31", value, currency: "USD", periodType: "12M" }];
+  const shop = buildYahooStatements({
+    annualGrossProfit: series(5_555_000_000), annualOperatingExpense: series(3_670_000_000),
+    annualOperatingIncome: series(1_885_000_000), annualTotalOperatingIncomeAsReported: series(1_468_000_000),
+  }, "annual")[0]!;
+  expect([shop.operatingIncome, shop.operatingExpense]).toEqual([1_468_000_000, 4_087_000_000]);
+  // Control: MSFT FY2025 reports the same figure in both series.
+  const msft = buildYahooStatements({
+    annualGrossProfit: series(193_893_000_000), annualOperatingExpense: series(65_365_000_000),
+    annualOperatingIncome: series(128_528_000_000), annualTotalOperatingIncomeAsReported: series(128_528_000_000),
+  }, "annual")[0]!;
+  expect([msft.operatingIncome, msft.operatingExpense]).toEqual([128_528_000_000, 65_365_000_000]);
+  // A dated but empty as-reported observation keeps the normalized figures.
+  const empty = buildYahooStatements({
+    annualGrossProfit: series(5_555_000_000), annualOperatingExpense: series(3_670_000_000),
+    annualOperatingIncome: series(1_885_000_000), annualTotalOperatingIncomeAsReported: series(undefined),
+  }, "annual")[0]!;
+  expect([empty.operatingIncome, empty.operatingExpense]).toEqual([1_885_000_000, 3_670_000_000]);
+});

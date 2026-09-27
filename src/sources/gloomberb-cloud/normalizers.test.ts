@@ -3,6 +3,7 @@ import { formatCloudDateTime, mapCloudFinancials, mapQuote } from "./normalizers
 import type { CloudQuotePayload } from "../../api-client";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market-data/quotes/contributions";
 import { resolveCanonicalQuote, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
+import { deriveQuarterlyStatements } from "../../time-series/fundamentals";
 
 test("intraday boundaries use venue time or explicit UTC while daily dates stay UTC calendar dates", () => {
   const winter = new Date("2026-01-15T01:02:03.456Z");
@@ -132,4 +133,32 @@ test("a stream frame from the next trading day drops the previous day's close, o
   const anchored = mergeQuoteContribution(normalizeQuoteContribution(tuesday), { ...tuesday, previousClose: 110, open: 111 });
   const later = mergeQuoteContribution(anchored, { ...tuesday, price: 113, lastUpdated: tuesdayAt + 60_000 });
   expect(later).toMatchObject({ price: 113, previousClose: 110, open: 111 });
+});
+
+test("served withdrawal ids become gaps that charts do not recompute", () => {
+  // Cloud strips O's Q4 2025 revenue and names it; its quarters mix measures,
+  // so the full year minus them would chart 1,642,725,000.
+  const financials = mapCloudFinancials({
+    annualStatements: [{ date: "2025-12-31", currency: "USD", totalRevenue: 5_749_377_000 }],
+    quarterlyStatements: [
+      { date: "2025-03-31", currency: "USD", totalRevenue: 1_380_505_000 },
+      { date: "2025-06-30", currency: "USD", totalRevenue: 1_338_516_000 },
+      { date: "2025-09-30", currency: "USD", totalRevenue: 1_387_631_000 },
+      { date: "2025-12-31", currency: "USD", netIncome: 296_085_000, withdrawnObservations: ["o-2025q4-revenue", "unknown-id"] },
+    ],
+    priceHistory: [],
+  });
+  expect(financials.quarterlyStatements.at(-1)).toEqual({
+    date: "2025-12-31", currency: "USD", netIncome: 296_085_000, unavailableFields: ["totalRevenue"],
+  });
+  expect(deriveQuarterlyStatements(financials.quarterlyStatements, financials.annualStatements).at(-1)?.totalRevenue).toBeUndefined();
+  const earnings = mapCloudFinancials({
+    annualStatements: [{ date: "2022-12-31", currency: "EUR", basicEps: 16.08, withdrawnObservations: [
+      "x-2022-annual-mixed-basicEps", "x-2022-annual-mixed-eps", "x-q4-operating-revenue", "x-q4-pretax", "x-q4-tax",
+    ] }],
+    quarterlyStatements: [],
+    priceHistory: [],
+  }).annualStatements[0];
+  expect(earnings).toEqual({ date: "2022-12-31", currency: "EUR", unavailableEarnings: ["basicEps", "eps"],
+    unavailableFields: ["operatingRevenue", "pretaxIncome", "taxProvision"] });
 });

@@ -1,4 +1,3 @@
-import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
 import { selectCachedResource } from "./cache";
 import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
 import type { MarketDataRequestContext } from "../../types/data-provider";
@@ -82,7 +81,6 @@ export class ProviderRouterPrimaryRoutes {
           const attempt = value.statementHistory;
           value = { ...mergeFinancials(value, previous?.value ?? null)!, statementHistory: attempt };
         }
-        value = withdrawKnownProviderStatements(value, { symbol: ticker, exchange }, sourceKey);
         // Validate the raw identities before quote normalization can choose one
         // of conflicting quote/metadata contributions, including contract routes.
         const fallbackProfile = primaryIdentity && rawValue
@@ -93,8 +91,6 @@ export class ProviderRouterPrimaryRoutes {
             quoteMetadata: value.quoteMetadata ?? (value.quote ? quoteMetadataFromQuote(value.quote) : undefined),
             financialCurrency: value.financialCurrency,
             statementHistory: value.statementHistory,
-            operatingHistoryRetryAt: value.operatingHistoryRetryAt,
-            earningsHistoryRetryAt: value.earningsHistoryRetryAt,
             annualStatements: value.annualStatements,
             quarterlyStatements: value.quarterlyStatements,
             priceHistory: [],

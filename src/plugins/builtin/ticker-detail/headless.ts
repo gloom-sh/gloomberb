@@ -6,7 +6,7 @@ import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
-import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, financialOperatingSourceNotice, formatFinancialHeader } from "./financials/model";
+import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
@@ -32,19 +32,15 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const statementCurrency = financialStatementCurrency(financials, [
       ...financials.annualStatements, ...financials.quarterlyStatements,
     ]);
-    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, withdrawnObservations, epsBasis, earningsResult, unavailableEarnings, aggregation, operatingResult, operatingResultAggregation }) => ({
+    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, fieldSources, unavailableFields, epsBasis, unavailableEarnings, aggregation }) => ({
       date, currency: currency ?? statementCurrency ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
       ...(fieldSources ? { fieldSources } : {}),
       ...(unavailableFields ? { unavailableFields } : {}),
-      ...(withdrawnObservations ? { withdrawnObservations } : {}),
       ...(epsBasis ? { epsBasis } : {}),
-      ...(earningsResult ? { earningsResult } : {}),
       ...(unavailableEarnings ? { unavailableEarnings } : {}),
       ...(aggregation ? { aggregation } : {}),
-      ...(operatingResult ? { operatingResult } : {}),
-      ...(operatingResultAggregation ? { operatingResultAggregation } : {}),
       dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
@@ -75,7 +71,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
-        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE, financialOperatingSourceNotice(financials)].filter((notice): notice is string => !!notice) : [],
+        notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [],
         limitations: financialStatementLimitations(financials),
         dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },

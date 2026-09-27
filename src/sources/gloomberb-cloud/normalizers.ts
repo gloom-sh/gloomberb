@@ -1,5 +1,6 @@
 import type { TimeRange } from "../../time-series/range";
 import type {
+  FinancialStatement,
   Fundamentals,
   OptionsChain,
   PricePoint,
@@ -19,8 +20,7 @@ import { resolveExchangeTimeZone } from "../../utils/exchanges";
 import { createProviderMiss } from "../provider-errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
-import { withdrawKnownProviderStatements } from "../../utils/statement-observations";
-import { hasShopOperatingIdentity, normalizeFinancialOperatingResults } from "../../utils/operating-result";
+import { readWithdrawnObservations } from "../../utils/statement-gaps";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -238,16 +238,24 @@ export function mapCloudFundamentals(fundamentals: Fundamentals | undefined): Fu
   return result;
 }
 
+/**
+ * A served statement row with withdrawn values read as declared gaps, without
+ * the per-issuer provenance the service can still attach.
+ */
+function mapCloudStatement(row: FinancialStatement): FinancialStatement {
+  const { earningsResult: _earnings, operatingResult: _operating, operatingResultAggregation: _aggregation, ...statement } = row;
+  return readWithdrawnObservations(statement);
+}
+
 export function mapCloudFinancials(
   financials: CloudFinancialsPayload,
   providerMeta?: CloudProviderMeta,
-  target?: { symbol: string; exchange?: string },
 ): TickerFinancials {
   const rawQuote = financials.quote;
   const quote = rawQuote ? mapQuote(rawQuote, providerMeta) : undefined;
   const divisor = rawQuote ? resolveCurrencyUnit(rawQuote.currency).divisor : 1;
   const exchange = rawQuote?.listingExchangeName ?? rawQuote?.exchangeName ?? "";
-  return normalizeFinancialOperatingResults(withdrawKnownProviderStatements({
+  return {
     quote,
     quoteMetadata: financials.quoteMetadata,
     quoteContributions: financials.quoteContributions,
@@ -255,20 +263,15 @@ export function mapCloudFinancials(
     fundamentals: mapCloudFundamentals(financials.fundamentals),
     financialCurrency: financials.financialCurrency,
     statementHistory: financials.statementHistory,
-    operatingHistoryRetryAt: typeof financials.operatingHistoryRetryAt === "number" && Number.isFinite(financials.operatingHistoryRetryAt)
-      && financials.operatingHistoryRetryAt > 0 && hasShopOperatingIdentity({
-        quote, quoteMetadata: financials.quoteMetadata, financialCurrency: financials.financialCurrency,
-      }, target) ? financials.operatingHistoryRetryAt : undefined,
-    earningsHistoryRetryAt: financials.earningsHistoryRetryAt,
-    annualStatements: financials.annualStatements ?? [],
-    quarterlyStatements: financials.quarterlyStatements ?? [],
+    annualStatements: (financials.annualStatements ?? []).map(mapCloudStatement),
+    quarterlyStatements: (financials.quarterlyStatements ?? []).map(mapCloudStatement),
     priceHistory: (financials.priceHistory ?? []).map((point) =>
       point.date instanceof Date
         ? point
         : mapPricePoint(point as unknown as CloudPricePointPayload, divisor, exchange),
     ),
     ...(financials.epsEstimates ? { epsEstimates: financials.epsEstimates } : {}),
-  }, target ?? { symbol: quote?.symbol ?? financials.quoteMetadata?.symbol ?? "", exchange }, "provider:gloomberb-cloud"), target);
+  };
 }
 
 export function mapOptionsChain(

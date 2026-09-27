@@ -1,15 +1,10 @@
-import { normalizeStatementEarningsResult } from "../utils/earnings-result";
-import { EARNINGS_FIELDS, hasEarningsWithdrawal, hasUnavailableEarnings, mergeReportedEarningsResult, ownedReportedEarningsCohort } from "../utils/reported-earnings-result";
 import type {
   FinancialStatement,
-  ProviderOperatingField,
   TickerFinancials,
 } from "../types/financials";
 import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
 import { copyIncomeField, incomeFieldKnowledgeDate, incomeFieldOwner, isIncomeStatementField } from "../utils/income-statement";
-import { derivedOperatingObservation, mergeStatementOperatingResult, providerOperatingObservation, reportedOperatingCohort } from "../utils/operating-result";
-import { canAggregateOperatingField, canDeriveOperatingQuarter, isOperatingField, operatingResultAggregation } from "../utils/operating-result-aggregation";
-import { hasStatementWithdrawals, isWithdrawnStatementValue, mergeStatementWithdrawals, redactWithdrawnStatement } from "../utils/statement-observations";
+import { hasStatementGap, mergeStatementGaps } from "../utils/statement-gaps";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
 import { reportingCurrencySeries } from "./reporting-currency";
@@ -21,9 +16,6 @@ type NumericStatementField =
   | "totalRevenue"
   | "grossProfit"
   | "operatingIncome"
-  | "operatingExpense"
-  | "totalExpenses"
-  | "depreciationAndAmortization"
   | "netIncome"
   | "netIncomeIncludingNoncontrollingInterests"
   | "netIncomeCommonStockholders"
@@ -84,10 +76,6 @@ const NUMERIC_STATEMENT_FIELDS: readonly NumericStatementField[] = [
   ...QUARTERLY_AVERAGE_FIELDS,
   "netIncomeCommonStockholders",
   "eps",
-  // Preserve the complete operating cohort even when only income is charted.
-  "operatingExpense",
-  "totalExpenses",
-  "depreciationAndAmortization",
 ];
 
 const FUNDAMENTAL_IDS = new Set([
@@ -237,13 +225,13 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
   const dateSource = periodDateSource(statements);
   const merged: InternalStatement = { date: dateSource.date, currency: dateSource.currency };
   const compatibleStatements = statements.filter((statement) => statement.currency === dateSource.currency);
-  mergeStatementWithdrawals(merged, compatibleStatements);
   const derivedFields: NumericStatementField[] = [];
   const fieldAvailability: Record<string, string> = {};
   const record = merged as unknown as Record<string, unknown>;
-  const operatingOwners = new Map<ProviderOperatingField, FinancialStatement>();
 
   for (const field of NUMERIC_STATEMENT_FIELDS) {
+    // A gap declared for the period is never filled from another report.
+    if (!isIncomeStatementField(field) && compatibleStatements.some((statement) => hasStatementGap(statement, field))) continue;
     if (isIncomeStatementField(field)) {
       const qualified = compatibleStatements.filter(statement => statement.date === dateSource.date && incomeFieldOwner(field, statement));
       if (qualified.length) {
@@ -259,7 +247,6 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
         && incomeFieldOwner(field, statement)) return [];
       const value = statementNumber(statement, field);
       if (value === null) return [];
-      if (isWithdrawnStatementValue({ ...merged, fieldSources: statement.fieldSources }, field, value)) return [];
       return [{
         statement,
         value,
@@ -276,44 +263,12 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
     if (candidates.length === 0) continue;
     const selected = selectFieldCandidate(verifiedEps.length ? verifiedEps : candidates);
     record[field] = selected.value;
-    if (isOperatingField(field)) operatingOwners.set(field, selected.statement);
     if (field === "eps" && selected.statement.epsBasis) merged.epsBasis = selected.statement.epsBasis;
     if (selected.availableAt) fieldAvailability[field] = selected.availableAt;
     if (selected.derived) derivedFields.push(field);
   }
 
-  // Keep the actual winner for each independent companion. The reported trio
-  // is then selected together by the same cohort merge used during acquisition.
-  const reportedOwners = compatibleStatements.filter(statement => statement.date === merged.date && reportedOperatingCohort(statement))
-    .toSorted((left, right) => {
-      const a = reportedOperatingCohort(left)!;
-      const b = reportedOperatingCohort(right)!;
-      return a.filed.localeCompare(b.filed) || a.accessionNumber.localeCompare(b.accessionNumber);
-    });
-  if (reportedOwners.length || [...operatingOwners.values()].some(statement => statement.operatingResult)) {
-    const provider = Object.fromEntries([...operatingOwners].flatMap(([field, owner]) => {
-      const observation = providerOperatingObservation(owner, field);
-      return observation ? [[field, observation]] : [];
-    }));
-    const ebitdaOwner = operatingOwners.get("ebitda");
-    const derived = ebitdaOwner ? derivedOperatingObservation(ebitdaOwner, "ebitda") : undefined;
-    merged.operatingResult = { version: 1,
-      ...(Object.keys(provider).length ? { provider } : {}),
-      ...(derived ? { derived: { ebitda: derived } } : {}),
-    };
-    if (reportedOwners.length) {
-      for (const owner of reportedOwners) mergeStatementOperatingResult(merged, { ...merged }, owner);
-    } else mergeStatementOperatingResult(merged, { ...merged });
-    const cohort = reportedOperatingCohort(merged);
-    if (cohort) for (const field of ["grossProfit", "operatingExpense", "operatingIncome"] as const) {
-      fieldAvailability[field] = cohort.filed;
-    }
-  }
-
-  mergeReportedEarningsResult(merged, compatibleStatements);
-  const earnings = ownedReportedEarningsCohort(merged);
-  if (earnings) for (const field of EARNINGS_FIELDS) fieldAvailability[field] = earnings.filed;
-  for (const field of EARNINGS_FIELDS) if (merged[field] === undefined) delete fieldAvailability[field];
+  mergeStatementGaps(merged, compatibleStatements);
   merged.fieldAvailability = fieldAvailability;
   merged.availableAt = completeStatementAvailability(merged);
   if (NUMERIC_STATEMENT_FIELDS.every(field => statementNumber(merged, field) === null)) {
@@ -322,19 +277,17 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
     merged.availableAt = completeAvailability([dateSource.availableAt]);
   }
   if (derivedFields.length > 0) merged.__timeSeriesDerivedFields = derivedFields;
-  return redactWithdrawnStatement(merged);
+  return merged;
 }
 
 function mergeStatementsByPeriod(
   statements: readonly FinancialStatement[],
 ): InternalStatement[] {
   const groups: InternalStatement[][] = [];
-  const sorted = statements.map(row => normalizeStatementEarningsResult(row)).sort((left, right) => left.date.localeCompare(right.date));
+  const sorted = [...statements].sort((left, right) => left.date.localeCompare(right.date));
   for (const statement of sorted) {
     const lastGroup = groups.at(-1);
-    if (lastGroup && areNearbyFinancialPeriodEnds(lastGroup[0]!.date, statement.date)
-      && (lastGroup[0]!.date === statement.date || (!hasStatementWithdrawals(statement) && !lastGroup.some(hasStatementWithdrawals)
-        && !statement.operatingResult && !statement.earningsResult && !lastGroup.some(row => row.operatingResult || row.earningsResult)))) {
+    if (lastGroup && areNearbyFinancialPeriodEnds(lastGroup[0]!.date, statement.date)) {
       lastGroup.push(statement as InternalStatement);
     } else groups.push([statement as InternalStatement]);
   }
@@ -405,8 +358,11 @@ export function deriveQuarterlyStatements(
     let changed = false;
 
     for (const field of QUARTERLY_FLOW_FIELDS) {
-      if (!canDeriveOperatingQuarter(annualStatement, mergedQuarterly, field)) continue;
-      if (isIncomeStatementField(field) && target.unavailableFields?.includes(field)) continue;
+      // A line unavailable for the fourth quarter stays a gap: the full year
+      // minus the other quarters would recreate the value a source withheld.
+      if (hasStatementGap(target, field) || mergedQuarterly.some((statement) => (
+        areNearbyFinancialPeriodEnds(statement.date, annualStatement.date) && hasStatementGap(statement, field)
+      ))) continue;
       if (statementNumber(target, field) !== null) continue;
       const annualValue = statementNumber(annualStatement, field);
       if (annualValue === null) continue;
@@ -416,7 +372,6 @@ export function deriveQuarterlyStatements(
       if (inputTimes.some((time, index) => index > 0 && (time - inputTimes[index - 1]! < 60 * DAY_MS || time - inputTimes[index - 1]! > 120 * DAY_MS))) continue;
       const derived = annualValue - previousInputs.reduce((sum, input) => sum + input.value, 0);
       if (!Number.isFinite(derived)) continue;
-      if (isWithdrawnStatementValue(target, field, derived)) continue;
       const availableAt = completeAvailability([
         statementFieldAvailability(annualStatement, field),
         ...previousInputs.map((input) => input.availableAt),
@@ -465,7 +420,6 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
       fieldAvailability: {},
       __timeSeriesTtm: true,
       __timeSeriesDerivedFields: [],
-      operatingResultAggregation: operatingResultAggregation(window),
     };
     const unresolvedEps = window.find((statement) => statement.epsBasis?.status === "unresolved");
     if (unresolvedEps) ttm.epsBasis = unresolvedEps.epsBasis;
@@ -486,7 +440,6 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
     if (hasAverageShareInputs && !hasCompleteAverageShares) ttm.__timeSeriesIncompleteAverageShares = true;
 
     for (const field of [...TTM_SUM_FIELDS, ...QUARTERLY_AVERAGE_FIELDS]) {
-      if (!canAggregateOperatingField(window, field)) continue;
       const values = window.map((statement) => statementNumber(statement, field));
       if (!values.every((value): value is number => value !== null)) continue;
       if (QUARTERLY_AVERAGE_FIELDS.includes(field) && !values.every(value => value > 0)) continue;
@@ -592,7 +545,7 @@ function selectedCash(statement: FinancialStatement): SelectedStatementField | n
 function selectedEps(
   statement: InternalStatement,
 ): { value: number; dependencies: NumericStatementField[] } | null {
-  if (statement.epsBasis?.status === "unresolved" || hasEarningsWithdrawal(statement, "eps") || hasUnavailableEarnings(statement, "eps")) return null;
+  if (statement.epsBasis?.status === "unresolved" || hasStatementGap(statement, "eps")) return null;
   if (finiteNumber(statement.eps)) {
     return { value: statement.eps, dependencies: ["eps"] };
   }
@@ -718,16 +671,9 @@ function pointForStatement(
     provenance: {
       quality: derived || (metric === "eps" && statement.epsBasis?.factor !== undefined && statement.epsBasis.factor !== 1) ? "derived" : "reported",
       ...((metric === "eps" || metric === "trailingPE") && statement.epsBasis ? { secEpsBasis: statement.epsBasis } : {}),
-      ...((metric === "eps" || metric === "trailingPE") && ownedReportedEarningsCohort(statement)
-        ? { earningsResult: statement.earningsResult } : {}),
-      ...((metric === "eps" || metric === "trailingPE")
-        && (hasUnavailableEarnings(statement, "eps") || hasEarningsWithdrawal(statement, "eps"))
+      ...((metric === "eps" || metric === "trailingPE") && hasStatementGap(statement, "eps")
         ? { unavailableEarnings: ["eps" as const] } : {}),
       currency: statement.currency,
-      ...(metricDependencies(metric, statement).some(isOperatingField) ? {
-        ...(statement.operatingResult ? { operatingResult: statement.operatingResult } : {}),
-        ...(statement.operatingResultAggregation ? { operatingResultAggregation: statement.operatingResultAggregation } : {}),
-      } : {}),
     },
   };
 }
@@ -749,7 +695,7 @@ function historicalValuation(
 
 function hasValuationInputs(statement: InternalStatement, metric: string): boolean {
   if (metric === "trailingPE") {
-    return hasEarningsWithdrawal(statement, "eps") || hasUnavailableEarnings(statement, "eps") || statement.epsBasis?.status === "unresolved"
+    return hasStatementGap(statement, "eps") || statement.epsBasis?.status === "unresolved"
       || statement.__timeSeriesIncompleteCommonIncome === true
       || statement.__timeSeriesIncompleteAverageShares === true
       || selectedEps(statement) !== null;
@@ -851,10 +797,6 @@ function currentDerivedValuationPoint(
     provenance: {
       providerId: quote.providerId,
       quality: "derived",
-      ...(metricDependencies(metric, statement).some(isOperatingField) ? {
-        ...(statement.operatingResult ? { operatingResult: statement.operatingResult } : {}),
-        ...(statement.operatingResultAggregation ? { operatingResultAggregation: statement.operatingResultAggregation } : {}),
-      } : {}),
     },
   };
 }
@@ -917,8 +859,7 @@ function dedupeFundamentalPeriods(points: readonly TimeSeriesPoint[]): TimeSerie
     const lastGroup = groups.at(-1);
     if (lastGroup && areNearbyFinancialPeriodEnds(lastGroup[0]!.observedAt, point.observedAt)
       && (lastGroup[0]!.observedAt.getTime() === point.observedAt.getTime()
-        || ![point, ...lastGroup].some(item => item.provenance?.operatingResult
-          || item.provenance?.earningsResult || item.provenance?.unavailableEarnings?.length))) {
+        || ![point, ...lastGroup].some(item => item.provenance?.unavailableEarnings?.length))) {
       lastGroup.push(point);
     } else groups.push([point]);
   }

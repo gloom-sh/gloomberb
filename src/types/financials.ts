@@ -302,10 +302,22 @@ export interface IncomeStatementSource {
   basis: "parent" | "consolidated" | "common";
 }
 
+/**
+ * Statement lines a source can declare unavailable for one period. A declared
+ * gap survives merges and caches, and charts never recompute it, for example
+ * as the full year minus the other quarters.
+ */
+export type StatementGapField = IncomeStatementField | "totalRevenue" | "operatingRevenue" | "pretaxIncome" | "taxProvision";
+
+/** Per-share earnings lines that can be declared unavailable. */
+export type EarningsField = "basicEps" | "eps";
+
+/** @deprecated Operating results no longer carry filing or provider provenance. */
 export type ReportedOperatingField = "grossProfit" | "operatingExpense" | "operatingIncome";
+/** @deprecated Operating results no longer carry filing or provider provenance. */
 export type ProviderOperatingField = ReportedOperatingField | "totalExpenses" | "ebitda";
 
-/** Direct reported operating result; every member belongs to one filing cohort. */
+/** @deprecated No longer populated. Operating income follows the provider's as-reported figure. */
 export interface ReportedOperatingCohort {
   cik: string;
   period: "annual" | "quarterly";
@@ -326,7 +338,7 @@ export interface ReportedOperatingCohort {
   };
 }
 
-/** A provider metric is independently owned, not a synonym for a reported subtotal. */
+/** @deprecated No longer populated. */
 export interface ProviderOperatingObservation {
   provider: "yahoo" | "twelvedata";
   sourceField: string;
@@ -336,6 +348,7 @@ export interface ProviderOperatingObservation {
   value: number;
 }
 
+/** @deprecated No longer populated. */
 export interface OperatingResult {
   version: 1;
   reported?: ReportedOperatingCohort;
@@ -343,6 +356,7 @@ export interface OperatingResult {
   derived?: { ebitda?: DerivedOperatingObservation };
 }
 
+/** @deprecated No longer populated. */
 export interface DerivedOperatingObservation {
   definition: "operating-income-plus-depreciation-amortization";
   period: "annual" | "quarterly";
@@ -352,16 +366,47 @@ export interface DerivedOperatingObservation {
   inputs: { operatingIncome: number; depreciationAndAmortization: number };
 }
 
+/** @deprecated No longer populated. */
+export interface OperatingResultAggregation {
+  kind: "trailing-four-quarters";
+  sourcePeriods: Array<Pick<FinancialStatement, "date" | "currency" | "operatingResult" | "depreciationAndAmortization" | ProviderOperatingField>>;
+  unavailableFields: ProviderOperatingField[];
+}
+
+/** @deprecated No longer populated. EPS that disagrees with its row's income and shares is listed in `unavailableEarnings` instead. */
+export interface ReportedEarningsCohort {
+  cik: string;
+  basis: "us-gaap";
+  shareBasis: "ordinary";
+  period: "annual";
+  startDate: string;
+  endDate: string;
+  currency: "EUR";
+  accessionNumber: string;
+  filed: string;
+  form: "20-F" | "20-F/A";
+  values: Record<EarningsField, number>;
+  anchors: Record<"netIncome" | "totalRevenue" | "operatingIncome" | "basicShares" | "dilutedShares", number> & { grossProfit?: number };
+  concepts: Record<EarningsField | "netIncome" | "totalRevenue" | "operatingIncome" | "basicShares" | "dilutedShares", { concept: string; unit: string }>
+    & { grossProfit?: { concept: string; unit: string } };
+}
+
+/** @deprecated No longer populated. */
+export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
+
 export interface FinancialStatement {
-  /** Directly reported annual EPS and its accounting/share-basis evidence. */
-  earningsResult?: import("../utils/reported-earnings-result").EarningsResultProvenance;
-  /** EPS whose claimed source ownership failed validation; sparse rows cannot restore it. */
-  unavailableEarnings?: import("../utils/reported-earnings-result").EarningsField[];
-  /** Operating concepts have ownership independent of net income and fiscal dates. */
+  /** @deprecated No longer populated. */
+  earningsResult?: EarningsResultProvenance;
+  /** EPS lines unavailable for this period, for example because they disagree with the row's own income and shares. */
+  unavailableEarnings?: EarningsField[];
+  /** @deprecated No longer populated. */
   operatingResult?: OperatingResult;
-  /** Derived operating sums retain their actual quarter inputs, not a single filing owner. */
-  operatingResultAggregation?: import("../utils/operating-result-aggregation").OperatingResultAggregation;
-  /** Unresolved, source-attested observation withdrawals; identifiers are validated on read. */
+  /** @deprecated No longer populated. */
+  operatingResultAggregation?: OperatingResultAggregation;
+  /**
+   * @deprecated No longer populated. Gloom Cloud withdrawal ids are read into
+   * `unavailableFields` and `unavailableEarnings` when a response arrives.
+   */
   withdrawnObservations?: string[];
   /** SEC EPS share basis; raw source values remain available in the evidence. */
   epsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
@@ -384,8 +429,8 @@ export interface FinancialStatement {
   fieldAvailability?: Record<string, string>;
   /** Income attribution belongs to each field, not to the row's date evidence. */
   fieldSources?: Partial<Record<IncomeStatementField, IncomeStatementSource>>;
-  /** Explicit source coverage gaps must not be filled by another income basis. */
-  unavailableFields?: IncomeStatementField[];
+  /** Lines unavailable for this period; another source or income basis must not fill them. */
+  unavailableFields?: StatementGapField[];
   // Income Statement
   totalRevenue?: number;
   costOfRevenue?: number;
@@ -609,9 +654,9 @@ export interface EpsEstimateHistory {
 
 export interface TickerFinancials {
   statementHistory?: StatementHistoryAttempt;
-  /** SEC operating-table retry deadline; cache eligibility, not a financial observation. */
+  /** @deprecated No longer populated. */
   operatingHistoryRetryAt?: number;
-  /** Optional annual EPS acquisition retry; independent of statement-history coverage. */
+  /** @deprecated No longer populated. */
   earningsHistoryRetryAt?: number;
   financialCurrency?: string;
   quote?: Quote;

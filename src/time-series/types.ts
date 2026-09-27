@@ -113,10 +113,13 @@ export interface TimeSeriesPoint {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
     secEpsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
-    earningsResult?: import("../utils/reported-earnings-result").EarningsResultProvenance;
-    unavailableEarnings?: import("../utils/reported-earnings-result").EarningsField[];
+    /** @deprecated No longer populated. */
+    earningsResult?: import("../types/financials").EarningsResultProvenance;
+    unavailableEarnings?: import("../types/financials").EarningsField[];
+    /** @deprecated No longer populated. */
     operatingResult?: import("../types/financials").OperatingResult;
-    operatingResultAggregation?: import("../utils/operating-result-aggregation").OperatingResultAggregation;
+    /** @deprecated No longer populated. */
+    operatingResultAggregation?: import("../types/financials").OperatingResultAggregation;
     providerId?: string;
     quality?: "reported" | "derived" | "estimated";
     /** Reporting currency of this monetary statement observation. */

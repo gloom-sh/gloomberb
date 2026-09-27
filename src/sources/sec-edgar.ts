@@ -1,10 +1,6 @@
-import { contradictsEarningsCohort, parseReportedEarningsCohorts, type ReportedEarningsCohort } from "../utils/reported-earnings-result";
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
-import type { FinancialStatement, IncomeStatementSource } from "../types/financials";
-import { parseReportedOperatingCohorts, promoteReportedOperatingResults, type ReportedOperatingCohort } from "../utils/operating-result";
-import { parseShopOperatingTable } from "../utils/shop-operating-table";
+import type { FinancialStatement, IncomeStatementSource, StatementGapField } from "../types/financials";
 import { INCOME_STATEMENT_FIELDS } from "../utils/income-statement";
-import { withdrawKnownSecQuarter } from "../utils/statement-observations";
 import { createSecEpsBasisResolver } from "../utils/sec-eps-basis";
 import { truncateWithEllipsis } from "../utils/text-wrap";
 import { decodeHtmlEntities } from "../utils/html-entities";
@@ -14,6 +10,7 @@ import {
   isPdfDocument,
 } from "./sec-edgar/content";
 import { parseSecAcceptanceTime } from "./sec-edgar/acceptance-time";
+import { secFourthQuarters, withGuardedFourthQuarters, type SecFourthQuarter } from "./sec-edgar/fourth-quarter";
 
 export { extractFilingContent } from "./sec-edgar/content";
 
@@ -87,9 +84,10 @@ type CompanyFactsStatementField = {
 };
 
 export type SecCompanyFactsStatements = {
-  reportedEarningsResults?: ReportedEarningsCohort[];
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  /** Full years and fourth quarters SEC's filings support, for checking a vendor's quarters. */
+  fourthQuarters?: SecFourthQuarter[];
 };
 
 const COMPANY_FACTS_STATEMENT_FIELDS: CompanyFactsStatementField[] = [
@@ -135,6 +133,19 @@ const COMPANY_FACTS_STATEMENT_FIELDS: CompanyFactsStatementField[] = [
   { field: "eps", tags: ["EarningsPerShareDiluted"], units: ["USD/shares"], periodType: "duration" },
   { field: "basicShares", tags: ["WeightedAverageNumberOfSharesOutstandingBasic"], units: ["shares"], periodType: "duration" },
   { field: "dilutedShares", tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"], units: ["shares"], periodType: "duration" },
+];
+
+/** Lines whose fiscal fourth quarter is checked: a statement field's facts, or tags read only for the check. */
+const FOURTH_QUARTER_LINES: Array<{ fields: StatementGapField[]; source: keyof FinancialStatement | string[] }> = [
+  { fields: ["totalRevenue", "operatingRevenue"], source: "totalRevenue" },
+  { fields: ["netIncome"], source: "netIncome" },
+  { fields: ["netIncomeIncludingNoncontrollingInterests"], source: "netIncomeIncludingNoncontrollingInterests" },
+  { fields: ["netIncomeCommonStockholders"], source: "netIncomeCommonStockholders" },
+  { fields: ["pretaxIncome"], source: [
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+  ] },
+  { fields: ["taxProvision"], source: ["IncomeTaxExpenseBenefit"] },
 ];
 
 function normalize(value?: string): string {
@@ -699,27 +710,18 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
   }
 
   const resolveEps = createSecEpsBasisResolver(payload);
-  const statements = withdrawKnownSecQuarter({
+  const fourthQuarters = FOURTH_QUARTER_LINES.flatMap(({ fields, source }) => secFourthQuarters(fields, typeof source === "string"
+    ? fieldEntries.find(({ field }) => field.field === source)?.entries ?? []
+    : source.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, ["USD"]).map((entry) => ({ ...entry, tagPriority, concept: tag })))));
+  return {
     annualStatements: finalizeCompanyFactsStatements(annualRows, annualSelectedFacts, resolveEps),
-    quarterlyStatements: finalizeCompanyFactsStatements(quarterlyRows, quarterlySelectedFacts, resolveEps),
-  }, companyFactsRecord(payload)?.cik);
-  const cohorts = parseReportedOperatingCohorts(payload, "0001594805");
-  if (cohorts.length) {
-    statements.annualStatements = promoteReportedOperatingResults(statements.annualStatements, cohorts, "annual");
-    statements.quarterlyStatements = promoteReportedOperatingResults(statements.quarterlyStatements, cohorts, "quarterly");
-  }
-  return statements;
+    quarterlyStatements: withGuardedFourthQuarters(finalizeCompanyFactsStatements(quarterlyRows, quarterlySelectedFacts, resolveEps), fourthQuarters),
+    fourthQuarters,
+  };
 }
 
 export class SecEdgarClient {
-  private asmlEarnings?: { cohorts: ReportedEarningsCohort[]; expiresAt: number; fetchedAt: number };
-  private asmlEarningsPromise?: Promise<ReportedEarningsCohort[]>;
-  private asmlEarningsRetryAt = 0;
   private lookupPromise: Promise<Map<string, LookupEntry>> | null = null;
-  private shopOperatingTables?: { cohorts: ReportedOperatingCohort[]; expiresAt: number };
-  private shopOperatingTablesPartial?: { cohorts: ReportedOperatingCohort[]; expiresAt: number };
-  private shopOperatingTablesPromise?: Promise<ReportedOperatingCohort[]>;
-  private shopOperatingTablesRetryAt = 0;
 
   private defaultHeaders() {
     return {
@@ -814,158 +816,17 @@ export class SecEdgarClient {
     return filings;
   }
 
-  private loadShopOperatingTables(entry: LookupEntry): Promise<ReportedOperatingCohort[]> {
-    if (entry.cik !== "0001594805" || normalize(entry.exchange) !== "NASDAQ") return Promise.resolve([]);
-    if (this.shopOperatingTables && this.shopOperatingTables.expiresAt > Date.now()) return Promise.resolve(this.shopOperatingTables.cohorts);
-    if (this.shopOperatingTablesPartial && this.shopOperatingTablesPartial.expiresAt > Date.now()) return Promise.resolve(this.shopOperatingTablesPartial.cohorts);
-    if (this.shopOperatingTablesRetryAt > Date.now()) return Promise.resolve(this.previousShopOperatingTables());
-    if (this.shopOperatingTablesPromise) return this.shopOperatingTablesPromise;
-    const pending = (async () => {
-      const payload = await this.fetchJson<unknown>(`${SUBMISSIONS_URL}/CIK${entry.cik}.json`);
-      if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC operating submissions issuer mismatch");
-      // One current submissions response and at most two primary documents.
-      // No archive crawl and no accession/period-specific production constants.
-      const recent = parseRecentFilings(payload, 1000)
-        .filter(filing => filing.cik === entry.cik && /^(10-K|10-Q)(\/A)?$/.test(filing.form))
-        .sort((a, b) => b.filingDate.getTime() - a.filingDate.getTime() || b.accessionNumber.localeCompare(a.accessionNumber));
-      const filings = ["10-K", "10-Q"].flatMap(form => {
-        const filing = recent.find(item => item.form === form || item.form === `${form}/A`);
-        return filing ? [filing] : [];
-      });
-      if (!filings.length) throw new Error("SEC operating filings are unavailable");
-      const results = await Promise.allSettled(filings.map(async filing => {
-        // An unsupported latest filing must not silently select an older one.
-        if (!/^(10-K|10-Q)$/.test(filing.form)
-          || !/^0001594805-\d{2}-\d{6}$/.test(filing.accessionNumber)
-          || !/^[A-Za-z0-9_-]+\.html?$/.test(filing.primaryDocument ?? "")) throw new Error("SEC operating filing is unsupported");
-        const documentUrl = filing.primaryDocumentUrl!;
-        const { body } = await this.fetchText(documentUrl);
-        const cohorts = parseShopOperatingTable(body, { cik: entry.cik, accessionNumber: filing.accessionNumber,
-          filed: filing.filingDate.toISOString().slice(0, 10), form: filing.form, documentUrl });
-        if (!cohorts.length) throw new Error("SEC operating table has no qualified quarters");
-        return cohorts;
-      }));
-      const supported = results.flatMap(result => result.status === "fulfilled" ? result.value : []);
-      if (!supported.length) throw new Error("SEC operating tables are unavailable");
-      if (filings.length === 2 && results.every(result => result.status === "fulfilled")) {
-        this.shopOperatingTables = { cohorts: supported, expiresAt: Date.now() + 6 * 60 * 60_000 };
-        this.shopOperatingTablesPartial = undefined;
-        this.shopOperatingTablesRetryAt = 0;
-        return supported;
-      }
-      // A qualified sibling remains evidence at its original filing date. Keep
-      // prior coverage without extending the complete snapshot's lifetime.
-      const cohorts = [...new Map([...this.previousShopOperatingTables(), ...supported].map(cohort => [
-        JSON.stringify([cohort.accessionNumber, cohort.startDate, cohort.endDate, cohort.origin]), cohort,
-      ])).values()];
-      this.shopOperatingTablesRetryAt = Date.now() + 60_000;
-      this.shopOperatingTablesPartial = { cohorts, expiresAt: this.shopOperatingTablesRetryAt };
-      return cohorts;
-    })().catch(() => {
-      this.shopOperatingTablesRetryAt = Date.now() + 60_000;
-      // Preserve the last qualified snapshot and original expiry on failure.
-      return this.previousShopOperatingTables();
-    });
-    this.shopOperatingTablesPromise = pending;
-    void pending.finally(() => { if (this.shopOperatingTablesPromise === pending) this.shopOperatingTablesPromise = undefined; });
-    return pending;
-  }
-
-  private previousShopOperatingTables(): ReportedOperatingCohort[] {
-    return this.shopOperatingTablesPartial?.cohorts ?? this.shopOperatingTables?.cohorts ?? [];
-  }
-
-  /** Let the outer financial cache revisit an incomplete optional acquisition. */
-  getOperatingTablesRetryAt(ticker: string): number | undefined {
-    if (normalize(ticker) !== "SHOP") return undefined;
-    if (this.shopOperatingTables && this.shopOperatingTables.expiresAt > Date.now()) return undefined;
-    if (this.shopOperatingTablesPromise) return Date.now() + 60_000;
-    return this.shopOperatingTablesRetryAt || Date.now() + 60_000;
-  }
-
-  private previousAsmlEarnings(): ReportedEarningsCohort[] {
-    const age = this.asmlEarnings ? Date.now() - this.asmlEarnings.fetchedAt : Infinity;
-    return age >= 0 && age <= 24 * 60 * 60_000 ? this.asmlEarnings!.cohorts : [];
-  }
-
-  /** Optional EUR/20-F projection; it never widens the generic USD parser. */
-  private loadAsmlEarnings(): Promise<ReportedEarningsCohort[]> {
-    if (this.previousAsmlEarnings().length && this.asmlEarnings!.expiresAt > Date.now()) return Promise.resolve(this.asmlEarnings!.cohorts);
-    if (this.asmlEarningsPromise) return this.asmlEarningsPromise;
-    if (this.asmlEarningsRetryAt > Date.now()) return Promise.resolve(this.previousAsmlEarnings());
-    const pending = (async () => {
-      const entry = (await this.loadLookup()).get("ASML");
-      if (entry?.cik !== "0000937966" || normalize(entry.exchange) !== "NASDAQ") throw new Error("SEC earnings issuer mismatch");
-      const payload = await this.fetchJson<unknown>(`${COMPANY_FACTS_URL}/CIK${entry.cik}.json`);
-      if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
-      const fresh = parseReportedEarningsCohorts(payload, entry.cik);
-      const complete = ["2022-12-31", "2023-12-31"].every(end => fresh.some(group => group.endDate === end));
-      const keys = new Set(fresh.map(group => `${group.endDate}:${group.accessionNumber}`));
-      const retained = complete ? [] : this.previousAsmlEarnings().filter(group =>
-        !keys.has(`${group.endDate}:${group.accessionNumber}`) && !contradictsEarningsCohort(payload, group));
-      const cohorts = [...retained, ...fresh];
-      this.asmlEarningsRetryAt = complete ? 0 : Date.now() + 60_000;
-      this.asmlEarnings = { cohorts, expiresAt: complete ? Date.now() + 6 * 60 * 60_000 : 0,
-        fetchedAt: retained.length ? this.asmlEarnings!.fetchedAt : Date.now() };
-      return cohorts;
-    })().catch(() => {
-      this.asmlEarningsRetryAt = Date.now() + 60_000;
-      return this.previousAsmlEarnings();
-    });
-    this.asmlEarningsPromise = pending;
-    void pending.finally(() => { if (this.asmlEarningsPromise === pending) this.asmlEarningsPromise = undefined; });
-    return pending;
-  }
-
-  getEarningsHistoryRetryAt(): number | undefined {
-    return this.asmlEarningsPromise ? Date.now() + 60_000 : this.asmlEarningsRetryAt || undefined;
-  }
-
-  private async asmlEarningsWithinBudget(): Promise<ReportedEarningsCohort[]> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        this.loadAsmlEarnings(),
-        new Promise<ReportedEarningsCohort[]>(resolve => {
-          timer = setTimeout(() => resolve(this.previousAsmlEarnings()), 750);
-        }),
-      ]);
-    } finally { if (timer) clearTimeout(timer); }
-  }
-
-  async getFinancialStatements(ticker: string, options: { reportedOperatingResults?: boolean; reportedEarningsResults?: boolean } = {}): Promise<SecCompanyFactsStatements | null> {
+  async getFinancialStatements(ticker: string): Promise<SecCompanyFactsStatements | null> {
     const normalizedTicker = normalize(ticker);
     if (!normalizedTicker) return null;
 
-    if (options.reportedEarningsResults && normalizedTicker === "ASML") return {
-      annualStatements: [], quarterlyStatements: [], reportedEarningsResults: await this.asmlEarningsWithinBudget(),
-    };
     const lookup = await this.loadLookup();
     const entry = lookup.get(normalizedTicker) ?? lookup.get(normalizedTicker.replace(/\./g, "-"));
     if (!entry) return null;
 
-    const operatingTarget = options.reportedOperatingResults && normalizedTicker === "SHOP"
-      && entry.cik === "0001594805" && normalize(entry.exchange) === "NASDAQ";
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const [companyFacts, tableResult] = await Promise.allSettled([
-      this.fetchJson<unknown>(`${COMPANY_FACTS_URL}/CIK${entry.cik}.json`).then(payload => {
-        if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
-        return payload;
-      }),
-      operatingTarget ? Promise.race([
-        this.loadShopOperatingTables(entry),
-        new Promise<ReportedOperatingCohort[]>(resolve => { timer = setTimeout(() => resolve(this.previousShopOperatingTables()), 750); }),
-      ]).finally(() => { if (timer) clearTimeout(timer); }) : Promise.resolve([] as ReportedOperatingCohort[]),
-    ]);
-    const tables = tableResult.status === "fulfilled" ? tableResult.value : [];
-    if (companyFacts.status === "rejected" && !tables.length) throw companyFacts.reason;
-    const payload = companyFacts.status === "fulfilled" ? companyFacts.value : undefined;
+    const payload = await this.fetchJson<unknown>(`${COMPANY_FACTS_URL}/CIK${entry.cik}.json`);
+    if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
     const statements = parseCompanyFactsFinancialStatements(payload);
-    if (operatingTarget) {
-      const cohorts = [...parseReportedOperatingCohorts(payload, entry.cik), ...tables];
-      statements.annualStatements = promoteReportedOperatingResults(statements.annualStatements, cohorts, "annual");
-      statements.quarterlyStatements = promoteReportedOperatingResults(statements.quarterlyStatements, cohorts, "quarterly");
-    }
     if (/[.-]/.test(normalizedTicker)) {
       for (const row of [...statements.annualStatements, ...statements.quarterlyStatements]) {
         for (const field of ["eps", "basicShares", "dilutedShares"] as const) {
