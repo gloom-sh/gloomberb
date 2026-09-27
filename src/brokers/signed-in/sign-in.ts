@@ -6,9 +6,15 @@
  * the Cloud account, shared by every device and by the user's agents.
  */
 import { ApiRequestError } from "../../api-client/errors";
-import { fetchSignedInBrokerConnection, startSignedInBrokerConnect, type SignedInBroker } from "./client";
+import {
+  fetchSignedInBrokerConnection,
+  startSignedInBrokerConnect,
+  type SignedInBroker,
+  type SignedInBrokerConnection,
+} from "./client";
 
-export type BrokerSignInPhase = "starting" | "waiting" | "connected" | "error";
+/** "signed-out": Gloom refused the session, so the dialog host signs in again. */
+export type BrokerSignInPhase = "starting" | "waiting" | "connected" | "signed-out" | "error";
 
 export interface BrokerSignInSnapshot {
   phase: BrokerSignInPhase;
@@ -20,7 +26,7 @@ export interface BrokerSignInSnapshot {
 
 export interface BrokerSignInIo {
   start(brokerId: string, write: boolean): Promise<{ connectUrl: string; code: string; expiresAt: string }>;
-  isConnected(brokerId: string, write: boolean): Promise<boolean>;
+  fetchConnection(brokerId: string): Promise<Pick<SignedInBrokerConnection, "status">>;
   now(): number;
   delay(ms: number): Promise<void>;
 }
@@ -32,18 +38,24 @@ const DEFAULT_CODE_TTL_MS = 15 * 60_000;
 
 const defaultIo: BrokerSignInIo = {
   start: (brokerId, write) => startSignedInBrokerConnect(brokerId, write),
-  async isConnected(brokerId, write) {
-    const connection = await fetchSignedInBrokerConnection(brokerId);
-    return connection.status === "connected" && (!write || connection.canTrade);
-  },
+  fetchConnection: (brokerId) => fetchSignedInBrokerConnection(brokerId),
   now: () => Date.now(),
   delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
 function describeStartError(error: unknown, broker: SignedInBroker): string {
-  if (error instanceof ApiRequestError && error.status === 401) return "Sign in to Gloom first.";
   if (error instanceof ApiRequestError && error.status === 404) return `${broker.name} is not available right now.`;
   return "Can't reach Gloom. Retrying...";
+}
+
+/**
+ * When a code stops working. An expiry this device's clock already sees as
+ * past (the clock runs fast) counts as missing, or every code would expire
+ * the moment it arrived.
+ */
+function codeDeadline(expiresAt: string, now: number): number {
+  const parsed = Date.parse(expiresAt);
+  return Number.isFinite(parsed) && parsed > now ? parsed : now + DEFAULT_CODE_TTL_MS;
 }
 
 export class BrokerSignInController {
@@ -99,10 +111,14 @@ export class BrokerSignInController {
         started = await this.io.start(this.broker.id, this.write);
       } catch (error) {
         if (stale()) return;
-        const message = describeStartError(error, this.broker);
-        this.update({ phase: "error", error: message });
-        // Signed out or unknown broker will not fix itself by retrying.
-        if (error instanceof ApiRequestError && (error.status === 401 || error.status === 404)) return;
+        // A session Gloom no longer accepts (expired, or signed out elsewhere) needs a new sign-in.
+        if (error instanceof ApiRequestError && error.status === 401) {
+          this.update({ phase: "signed-out", error: "Sign in to Gloom first." });
+          return;
+        }
+        this.update({ phase: "error", error: describeStartError(error, this.broker) });
+        // An unknown broker will not fix itself by retrying.
+        if (error instanceof ApiRequestError && error.status === 404) return;
         await this.io.delay(retryMs);
         retryMs = Math.min(retryMs * 2, RETRY_MAX_MS);
         continue;
@@ -110,13 +126,14 @@ export class BrokerSignInController {
       if (stale()) return;
       retryMs = POLL_INTERVAL_MS;
       this.update({ phase: "waiting", connectUrl: started.connectUrl, code: started.code, error: null });
-      const expiresAt = Date.parse(started.expiresAt);
-      const deadline = Number.isFinite(expiresAt) ? expiresAt : this.io.now() + DEFAULT_CODE_TTL_MS;
-      while (!stale() && this.io.now() < deadline) {
+      const deadline = codeDeadline(started.expiresAt, this.io.now());
+      // At least one poll per code, so the next code is never asked for at once.
+      do {
         await this.io.delay(POLL_INTERVAL_MS);
         if (stale()) return;
         try {
-          if (await this.io.isConnected(this.broker.id, this.write)) {
+          // Connected is enough: a user who declined trading still gets a read-only connection.
+          if ((await this.io.fetchConnection(this.broker.id)).status === "connected") {
             if (!stale()) this.update({ phase: "connected", error: null });
             this.generation += 1;
             return;
@@ -125,7 +142,37 @@ export class BrokerSignInController {
         } catch {
           if (!stale()) this.update({ error: "Connection problem, retrying..." });
         }
-      }
+      } while (!stale() && this.io.now() < deadline);
     }
   }
+}
+
+/** How one showing of the connect dialog ended. */
+export type BrokerSignInOutcome = "connected" | "cancelled" | "signed-out";
+
+export interface BrokerSignInSteps {
+  isSignedIn(): boolean;
+  /** The Gloom device sign-in; true once signed in. */
+  signInToGloom(): Promise<boolean>;
+  connectBroker(broker: SignedInBroker, write: boolean): Promise<BrokerSignInOutcome>;
+}
+
+/**
+ * Connects `broker`, signing in to Gloom first when there is no session. A
+ * session kept on this device that Gloom no longer accepts only shows once the
+ * connect starts, so that signs in and tries the broker once more.
+ */
+export async function runBrokerSignIn(
+  broker: SignedInBroker,
+  write: boolean | undefined,
+  steps: BrokerSignInSteps,
+): Promise<boolean> {
+  if (!steps.isSignedIn() && !await steps.signInToGloom()) return false;
+  // Trading is asked for only where the broker takes orders from Gloom.
+  const scope = write ?? Boolean(broker.capabilities.orders);
+  let outcome = await steps.connectBroker(broker, scope);
+  if (outcome === "signed-out" && await steps.signInToGloom()) {
+    outcome = await steps.connectBroker(broker, scope);
+  }
+  return outcome === "connected";
 }

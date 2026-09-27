@@ -16,13 +16,19 @@ import { useDialog, useDialogKeyboard, type PromptContext } from "../../ui/dialo
 import { isPlainKey } from "../../utils/keyboard";
 import { DeviceSignInDialog } from "../../plugins/builtin/cloud/device-signin-dialog";
 import type { SignedInBroker } from "./client";
-import { BrokerSignInController, type BrokerSignInSnapshot } from "./sign-in";
+import {
+  BrokerSignInController,
+  runBrokerSignIn,
+  type BrokerSignInOutcome,
+  type BrokerSignInSnapshot,
+} from "./sign-in";
 
 function signInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): { text: string; color: string } {
   switch (snapshot.phase) {
     case "connected":
       return { text: t("Connected"), color: colors.positive };
     case "error":
+    case "signed-out":
       return { text: snapshot.error ?? t("Something went wrong."), color: colors.negative };
     case "waiting":
       return snapshot.error
@@ -38,7 +44,7 @@ function BrokerSignInDialog({
   dismiss,
   broker,
   write,
-}: PromptContext<boolean> & { broker: SignedInBroker; write: boolean }) {
+}: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean }) {
   useAppLanguage();
   const { height: termHeight } = useViewport();
   const controllerRef = useRef<BrokerSignInController | null>(null);
@@ -55,17 +61,22 @@ function BrokerSignInDialog({
     };
   }, [controller]);
 
-  // Close after a beat so "Connected" is visible; enter skips the wait.
+  // Close after a beat so "Connected" is visible; enter skips the wait. Signed
+  // out closes at once, for the host to sign in to Gloom.
   useEffect(() => {
+    if (snapshot.phase === "signed-out") {
+      resolve("signed-out");
+      return;
+    }
     if (snapshot.phase !== "connected") return;
-    const closeTimer = setTimeout(() => resolve(true), 900);
+    const closeTimer = setTimeout(() => resolve("connected"), 900);
     return () => clearTimeout(closeTimer);
   }, [resolve, snapshot.phase]);
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
     if (event.name === "enter" || event.name === "return") {
-      if (snapshot.phase === "connected") resolve(true);
+      if (snapshot.phase === "connected") resolve("connected");
     } else if (isPlainKey(event, "r") && snapshot.phase !== "connected") {
       controller.start();
     } else if (event.name === "escape") {
@@ -116,7 +127,7 @@ function BrokerSignInDialog({
 
 export interface BrokerSignInRequest {
   broker: SignedInBroker;
-  /** Ask for trading as well as reading when the broker offers it. Defaults to true. */
+  /** Ask for trading as well as reading. Defaults to whether the broker takes orders. */
   write?: boolean;
   resolve: (connected: boolean) => void;
 }
@@ -131,7 +142,8 @@ const requestListeners = new Set<(request: BrokerSignInRequest) => void>();
 export function requestBrokerSignIn(broker: SignedInBroker, options: { write?: boolean } = {}): Promise<boolean> {
   if (requestListeners.size === 0) return Promise.resolve(false);
   return new Promise((resolve) => {
-    for (const listener of requestListeners) listener({ broker, write: options.write, resolve });
+    const write = options.write ?? Boolean(broker.capabilities.orders);
+    for (const listener of requestListeners) listener({ broker, write, resolve });
   });
 }
 
@@ -146,27 +158,20 @@ export function BrokerSignInDialogHost() {
         return;
       }
       openRef.current = true;
-      void (async () => {
-        // The broker connection belongs to the Gloom account, so there must be one.
-        if (!apiClient.isSignedIn()) {
-          const user = await dialog.prompt<AuthUser | undefined>({
-            size: "full",
-            content: (context: unknown) => <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} />,
-          });
-          if (!user) return false;
-        }
-        const connected = await dialog.prompt<boolean>({
+      // The broker connection belongs to the Gloom account, so there must be one.
+      void runBrokerSignIn(request.broker, request.write, {
+        isSignedIn: () => apiClient.isSignedIn(),
+        signInToGloom: async () => !!await dialog.prompt<AuthUser | undefined>({
+          size: "full",
+          content: (context: unknown) => <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} />,
+        }),
+        connectBroker: async (broker, write) => await dialog.prompt<BrokerSignInOutcome>({
           size: "full",
           content: (context: unknown) => (
-            <BrokerSignInDialog
-              {...(context as PromptContext<boolean>)}
-              broker={request.broker}
-              write={request.write ?? true}
-            />
+            <BrokerSignInDialog {...(context as PromptContext<BrokerSignInOutcome>)} broker={broker} write={write} />
           ),
-        });
-        return connected === true;
-      })()
+        }) ?? "cancelled",
+      })
         .then(request.resolve, () => request.resolve(false))
         .finally(() => {
           openRef.current = false;
