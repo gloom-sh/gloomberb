@@ -7,6 +7,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
+import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -42,13 +43,9 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
     { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
   ];
-  const statRows = statGridRows(items, width);
-  return <Box flexDirection="column" width={width} height={height}>
-    <StatGrid items={items} width={width} />
-    <PaneStatusBody empty={row.history.every((point) => point.value == null)} subject="history" emptyTitle="No history available.">
-      <ObservationChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
-    </PaneStatusBody>
-  </Box>;
+  return <StatChartDetail items={items} width={width} height={height} empty={row.history.every((point) => point.value == null)}
+    emptySubject="history" emptyTitle="No history available."
+    renderChart={(chartHeight) => <ObservationChart row={row} width={width} height={chartHeight} focused={focused} />} />;
 }
 
 export function MoneyMarketsPane({ width, height, focused }: PaneProps) {

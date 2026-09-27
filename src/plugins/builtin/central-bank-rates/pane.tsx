@@ -1,11 +1,12 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
+import { CompositeChart, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
+import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -35,14 +36,10 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
     { id: "source", label: "Source", value: row.source?.toUpperCase() ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];
-  const summaryHeight = statGridRows(items, width);
-  return <Box flexDirection="column" width={width} height={height}>
-    <StatGrid items={items} width={width} />
-    <PaneStatusBody empty={!history.some((point) => point.value != null)} subject="policy history" emptyTitle="No policy history available.">
-      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - summaryHeight)} showLegend={false}
-        focused={focused} navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />
-    </PaneStatusBody>
-  </Box>;
+  return <StatChartDetail items={items} width={width} height={height} empty={!history.some((point) => point.value != null)}
+    emptySubject="policy history" emptyTitle="No policy history available."
+    renderChart={(chartHeight) => <CompositeChart series={series} panels={PANELS} width={width} height={chartHeight} showLegend={false}
+      focused={focused} navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />} />;
 }
 
 export function CentralBankRatesPane({ width, height, focused }: PaneProps) {

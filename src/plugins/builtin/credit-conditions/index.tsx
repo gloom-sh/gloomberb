@@ -3,8 +3,6 @@ import {
   CompositeChart,
   MarketBoardStack,
   PaneStatusBody,
-  StatGrid,
-  statGridRows,
   usePaneFooter,
   usePaneNoticeFooter,
   type MarketBoardRow,
@@ -13,10 +11,10 @@ import {
 } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -63,14 +61,10 @@ function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow
     { id: "range", label: "1Y range", value: `${formatBp(row.rangeLowBp)} to ${formatBp(row.rangeHighBp)}` },
     { id: "series", label: "FRED", value: row.seriesId, detail: row.frequency },
   ];
-  const statRows = statGridRows(items, width);
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      <StatGrid items={items} width={width} />
-      <PaneStatusBody empty={row.history.length < 2} subject="spread history" emptyTitle="No spread history available.">
-        <SpreadChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
-      </PaneStatusBody>
-    </Box>
+    <StatChartDetail items={items} width={width} height={height} empty={row.history.length < 2}
+      emptySubject="spread history" emptyTitle="No spread history available."
+      renderChart={(chartHeight) => <SpreadChart row={row} width={width} height={chartHeight} focused={focused} />} />
   );
 }
 

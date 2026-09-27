@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
+import { Box } from "../../ui";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../utils/sort-values";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
-import type { DataTableColumn, DataTableCell } from "../ui";
+import { PaneStatusBody, StatGrid, statGridRows, type DataTableColumn, type DataTableCell, type StatItem } from "../ui";
 import { getTableWidth } from "../ui/table-layout";
 
 export interface MarketBoardRow {
@@ -150,4 +151,28 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
       if (id !== "history") setSort((current) => nextHeaderSort(current, id));
     }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={rootBefore}
     freezeFirstColumn emptyStateTitle={emptyTitle} />;
+}
+
+export interface StatChartDetailProps {
+  items: StatItem[];
+  width: number;
+  height: number;
+  /** Nothing to chart; the body says so under the figures instead. */
+  empty: boolean;
+  emptySubject: string;
+  emptyTitle: string;
+  /** The history chart, given the rows the figures leave it. */
+  renderChart: (height: number) => ReactNode;
+}
+
+/** An opened board row: its figures over a chart of its history. */
+export function StatChartDetail({ items, width, height, empty, emptySubject, emptyTitle, renderChart }: StatChartDetailProps) {
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <StatGrid items={items} width={width} />
+      <PaneStatusBody empty={empty} subject={emptySubject} emptyTitle={emptyTitle}>
+        {renderChart(Math.max(3, height - statGridRows(items, width)))}
+      </PaneStatusBody>
+    </Box>
+  );
 }
