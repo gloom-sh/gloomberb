@@ -9,9 +9,11 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { createRemoteUiRegistry } from "../../remote/semantic-tree";
 import type { AppContextStoreValue } from "../../state/app/context";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
 import { AmbiguousTickerError } from "../../tickers/search";
 import type { BrokerInstanceConfig } from "../../types/config";
+import type { DataProvider } from "../../types/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../types/plugin";
 import { buildBrokerWorkflowRoute } from "../command-bar/workflow/broker";
 import {
@@ -86,12 +88,18 @@ function registerCommand(registry: PluginRegistry, command: Partial<CommandDef> 
 async function renderForm(
   configure: (registry: PluginRegistry) => void,
   request: Parameters<typeof openFormModal>[0],
-  options: { notes?: Array<{ body: string; type?: string }>; storeRef?: { current: AppContextStoreValue | null }; remoteRegistry?: ReturnType<typeof createRemoteUiRegistry> } = {},
+  options: {
+    notes?: Array<{ body: string; type?: string }>;
+    storeRef?: { current: AppContextStoreValue | null };
+    remoteRegistry?: ReturnType<typeof createRemoteUiRegistry>;
+    dataProvider?: DataProvider;
+  } = {},
 ) {
   testSetup = await testRender(
     <CommandBarHarness
       query=""
       live
+      dataProvider={options.dataProvider}
       storeRef={options.storeRef}
       remoteRegistry={options.remoteRegistry}
       configureState={(state) => ({ ...state, commandBarOpen: false })}
@@ -298,6 +306,43 @@ describe("form modal", () => {
     await settle();
 
     expect(submitted).toEqual([{ prompt: "cheap\nquality", limit: "205" }]);
+  });
+
+  test("Add Alert checks its symbol in the form, and a new symbol keeps the target the user typed", async () => {
+    const quotes: Record<string, { price: number; name: string }> = {
+      AMD: { price: 201.5, name: "Advanced Micro Devices" },
+      NVDA: { price: 120.25, name: "NVIDIA Corp." },
+    };
+    const dataProvider = createTestDataProvider({
+      getQuote: async (symbol) => {
+        const quote = quotes[symbol];
+        if (!quote) throw new Error(`No quote for ${symbol}.`);
+        return createTestQuote({ symbol, ...quote });
+      },
+    });
+    await renderForm((registry) => registerCommand(registry, {
+      id: "set-alert",
+      label: "Add Alert",
+      wizard: [
+        { key: "symbol", label: "Symbol", type: "text" },
+        { key: "condition", label: "Condition", type: "select", options: [{ label: "Above", value: "above" }] },
+        { key: "price", label: "Target Price", type: "number" },
+      ],
+    }), { kind: "plugin-command", commandId: "set-alert", values: { symbol: "AMD" } }, { dataProvider });
+    await waitForFrameToContain("Advanced Micro Devices");
+    await waitForForm("Current price 201.5; edit to set the target.");
+
+    // A target of the user's own, then another symbol.
+    await press({ name: "tab" }, { name: "tab" });
+    for (let index = 0; index < "201.5".length; index++) await press({ name: "backspace" });
+    await type("180");
+    await press({ name: "tab", shift: true }, { name: "tab", shift: true });
+    for (let index = 0; index < "AMD".length; index++) await press({ name: "backspace" });
+    await type("NVDA");
+
+    await waitForFrameToContain("NVIDIA Corp.");
+    await waitForFrameToContain("Current price 120.25; edit to set the target.");
+    expect(frame().split("\n").some((line) => /^\W*180\W*$/.test(line))).toBe(true);
   });
 
   test("the bar opening over a form closes the form", async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { tf } from "../../../i18n";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { coerceFieldString } from "../helpers";
@@ -8,9 +9,11 @@ import type {
   CommandBarWorkflowRoute,
 } from "./types";
 
+/** Add Alert's form, the one whose symbol is checked as it is typed. */
+const SET_ALERT_WORKFLOW_ID = "plugin-command:set-alert";
+
 function isSetAlertWorkflow(route: CommandBarWorkflowRoute): boolean {
-  return route.payload.kind === "plugin-command"
-    && route.payload.actionId === "set-alert";
+  return route.workflowId === SET_ALERT_WORKFLOW_ID;
 }
 
 function normalizeAlertWorkflowSymbol(value: CommandBarFieldValue | undefined): string {
@@ -31,7 +34,7 @@ function formatAlertWorkflowQuote(quote: Quote): string {
 
 function summarizeAlertWorkflowQuoteError(symbol: string, error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message;
-  return `No quote found for "${symbol}".`;
+  return tf('No quote found for "{symbol}".', { symbol });
 }
 
 function updateAlertWorkflowFieldDescriptions(
@@ -48,7 +51,7 @@ function updateAlertWorkflowFieldDescriptions(
 /**
  * Add Alert checks the symbol as it is typed, shows the quote under it and
  * fills the target from the current price until the user types their own. Run
- * by the form that owns the values.
+ * by every form, which owns the values; it acts only in Add Alert's.
  */
 export function useAlertWorkflowQuoteSync({
   dataProvider,
@@ -96,7 +99,7 @@ export function useAlertWorkflowQuoteSync({
       return {
         ...route,
         fields: updateAlertWorkflowFieldDescriptions(route.fields, {
-          symbol: `Checking ${alertWorkflowSymbol}...`,
+          symbol: tf("Checking {symbol}...", { symbol: alertWorkflowSymbol }),
           price: "Target fills from the current price after the symbol resolves.",
         }),
         payloadMeta: {
@@ -111,7 +114,7 @@ export function useAlertWorkflowQuoteSync({
       .then((quote) => {
         if (quoteRequestRef.current !== requestId) return;
         if (!quote || typeof quote.price !== "number" || !Number.isFinite(quote.price)) {
-          throw new Error(`No quote found for "${alertWorkflowSymbol}".`);
+          throw new Error(tf('No quote found for "{symbol}".', { symbol: alertWorkflowSymbol }));
         }
 
         const quotePrice = formatAlertWorkflowPrice(quote.price);
@@ -131,7 +134,7 @@ export function useAlertWorkflowQuoteSync({
             values: nextValues,
             fields: updateAlertWorkflowFieldDescriptions(route.fields, {
               symbol: formatAlertWorkflowQuote(quote),
-              price: `Current price ${quotePrice}; edit to set the target.`,
+              price: tf("Current price {price}; edit to set the target.", { price: quotePrice }),
             }),
             payloadMeta: {
               ...(route.payloadMeta ?? {}),

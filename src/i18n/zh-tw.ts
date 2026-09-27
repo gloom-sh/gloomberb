@@ -1341,4 +1341,9 @@ export const zhTW: Record<string, string> = {
   "Contacting Gloom...": "正在連線 Gloom...",
   "Something went wrong.": "發生錯誤。",
   "Connecting broker…": "正在連線券商…",
+  "Enter a symbol to validate it.": "輸入代號以驗證。",
+  "Target fills from the current price after the symbol resolves.": "代號確認後，目標價以目前價格填入。",
+  "Checking {symbol}...": "正在檢查 {symbol}...",
+  "Current price {price}; edit to set the target.": "目前價格 {price}；可編輯以設定目標。",
+  "No quote found for \"{symbol}\".": "找不到 \"{symbol}\" 的報價。",
 };

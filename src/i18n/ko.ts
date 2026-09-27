@@ -1339,4 +1339,9 @@ export const ko: Record<string, string> = {
   "Contacting Gloom...": "Gloom에 연결하는 중...",
   "Something went wrong.": "문제가 발생했습니다.",
   "Connecting broker…": "브로커 연결 중…",
+  "Enter a symbol to validate it.": "심볼을 입력하면 확인합니다.",
+  "Target fills from the current price after the symbol resolves.": "심볼이 확인되면 현재가로 목표가가 채워집니다.",
+  "Checking {symbol}...": "{symbol} 확인 중...",
+  "Current price {price}; edit to set the target.": "현재가 {price}. 수정해 목표가를 설정하세요.",
+  "No quote found for \"{symbol}\".": "\"{symbol}\"의 시세를 찾을 수 없습니다.",
 };

@@ -1345,4 +1345,9 @@ export const es: Record<string, string> = {
   "Contacting Gloom...": "Contactando con Gloom...",
   "Something went wrong.": "Algo salió mal.",
   "Connecting broker…": "Conectando bróker…",
+  "Enter a symbol to validate it.": "Introduce un símbolo para validarlo.",
+  "Target fills from the current price after the symbol resolves.": "El objetivo toma el precio actual cuando se resuelve el símbolo.",
+  "Checking {symbol}...": "Comprobando {symbol}...",
+  "Current price {price}; edit to set the target.": "Precio actual {price}; edítalo para fijar el objetivo.",
+  "No quote found for \"{symbol}\".": "No se encontró cotización para \"{symbol}\".",
 };

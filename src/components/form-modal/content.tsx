@@ -207,6 +207,8 @@ export function FormModalContent({
     connectBroker: connectBrokerInForm,
   }), [connectBrokerInForm, dialog]);
 
+  // Effects that follow what is typed run here, with the values, and each
+  // acts only in the form it belongs to, going by its workflow id.
   useAlertWorkflowQuoteSync({
     dataProvider: runtime.getDeps().dataProvider,
     route,

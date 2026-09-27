@@ -1341,4 +1341,9 @@ export const ja: Record<string, string> = {
   "Contacting Gloom...": "Gloom に接続中...",
   "Something went wrong.": "問題が発生しました。",
   "Connecting broker…": "証券会社に接続中…",
+  "Enter a symbol to validate it.": "シンボルを入力すると確認します。",
+  "Target fills from the current price after the symbol resolves.": "シンボルを確認すると、現在値が目標に入ります。",
+  "Checking {symbol}...": "{symbol} を確認中...",
+  "Current price {price}; edit to set the target.": "現在値 {price}。編集して目標を設定します。",
+  "No quote found for \"{symbol}\".": "\"{symbol}\" の相場が見つかりません。",
 };

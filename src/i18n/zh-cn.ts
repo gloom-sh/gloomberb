@@ -1341,4 +1341,9 @@ export const zhCN: Record<string, string> = {
   "Contacting Gloom...": "正在连接 Gloom...",
   "Something went wrong.": "出了点问题。",
   "Connecting broker…": "正在连接券商…",
+  "Enter a symbol to validate it.": "输入代码以验证。",
+  "Target fills from the current price after the symbol resolves.": "代码确认后，目标价按当前价格填入。",
+  "Checking {symbol}...": "正在检查 {symbol}...",
+  "Current price {price}; edit to set the target.": "当前价格 {price}；可编辑以设定目标。",
+  "No quote found for \"{symbol}\".": "未找到 \"{symbol}\" 的报价。",
 };
