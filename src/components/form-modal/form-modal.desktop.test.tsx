@@ -12,7 +12,7 @@ import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import type { CommandBarWorkflowRoute } from "../command-bar/workflow/types";
 import { FormModalHost } from "./host";
-import { openFormModal } from "./request";
+import { openConfirmModal, openFormModal } from "./request";
 
 const { window: testWindow, render } = createDomTestHarness();
 
@@ -96,3 +96,48 @@ test("on the desktop Enter moves on once, Tab stays in the form, and Esc closes 
   await press("Escape");
   expect(testWindow.document.querySelectorAll(".gloom-dialog")).toHaveLength(0);
 });
+
+// The dialog itself holds the focus, so the confirm hears Enter and y itself;
+// no button is focused to take Enter a second time.
+test("on the desktop a confirm runs once on Enter and cancels on n", async () => {
+  let calls = 0;
+  const store = createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-confirm-desktop")));
+  await render(
+    <WebInputHostProvider>
+      <WebDialogHostProvider>
+        <AppContext value={store}>
+          <AppDialogBridge />
+          <FormModalHost
+            dataProvider={createTestDataProvider({ id: "test" })}
+            pluginRegistry={registryWith(() => {})}
+            tickerRepository={{} as never}
+          />
+        </AppContext>
+      </WebDialogHostProvider>
+    </WebInputHostProvider>,
+  );
+  const confirm = {
+    confirmId: "delete-note",
+    title: "Delete Note",
+    body: ["Delete this note?"],
+    confirmLabel: "Delete",
+    onConfirm: () => { calls += 1; },
+  };
+  await act(async () => {
+    expect(openConfirmModal(confirm)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  await press("Enter");
+  await press("Enter");
+  expect(calls).toBe(1);
+  expect(testWindow.document.querySelectorAll(".gloom-dialog")).toHaveLength(0);
+
+  await act(async () => {
+    openConfirmModal(confirm);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  await press("n");
+  expect(testWindow.document.querySelectorAll(".gloom-dialog")).toHaveLength(0);
+  expect(calls).toBe(1);
+});
+
