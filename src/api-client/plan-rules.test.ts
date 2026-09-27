@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolvePlanAccess, type PlanAccessUser } from "./plan-access";
+import { resolvePlanAccess, type PlanAccessUser } from "./plan-rules";
 
 const NOW = Date.parse("2026-08-04T12:00:00.000Z");
 const HOUR = 60 * 60 * 1000;
