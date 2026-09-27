@@ -45,3 +45,11 @@ export function moneyMarketHistory(row: MoneyMarketRow) {
   const { windowStart, windowEnd } = row.percentile;
   return row.history.filter((point) => (!windowStart || point.date >= windowStart) && (!windowEnd || point.date <= windowEnd));
 }
+
+/**
+ * The rank window's fixings. FRED dates bank holidays with no value; no rate
+ * was published those days, so charts run across them instead of breaking.
+ */
+export function moneyMarketObservations(row: MoneyMarketRow): Array<{ date: string; value: number }> {
+  return moneyMarketHistory(row).flatMap((point) => point.value == null ? [] : [{ date: point.date, value: point.value }]);
+}

@@ -13,7 +13,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
-import { moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketRateChange, moneyMarketRows, moneyMarketValue } from "./model";
+import { moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketNotices, moneyMarketObservations, moneyMarketRateChange, moneyMarketRows, moneyMarketValue } from "./model";
 
 const TABS = [{ value: "rates", label: "Rates" }, { value: "bills", label: "Bills" }, { value: "liquidity", label: "Liquidity" }];
 const PANELS = [{ id: "main" }];
@@ -25,13 +25,13 @@ function boardRow(row: MoneyMarketRow): BoardRow {
   return { id: row.id, label: row.label, value: row.value, valueText: moneyMarketValue(row.value, row.unit),
     change: row.change, changeText: moneyMarketChange(row.change, row.changeUnit), percentile: row.percentile.value,
     asOf: row.asOf, status: row.status, observation: row,
-    history: moneyMarketHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]),
+    history: moneyMarketObservations(row).map((point) => ({ date: new Date(point.date), close: point.value })),
   };
 }
 
 /** The year the board's rank and range come from, named like its row. */
 function observationSeries(row: MoneyMarketRow) {
-  return [staticSeries(moneyMarketHistory(row).map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
+  return [staticSeries(moneyMarketObservations(row).map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.value })),
     { id: row.id, label: row.label, color: colors.positive, calendarSpaced: true })];
 }
 
