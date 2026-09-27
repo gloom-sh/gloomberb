@@ -186,26 +186,23 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     release: ChangelogRelease,
     column: ChangelogColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
         return {
           text: formatShortDate(release.publishedAt, { fallback: "" }),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "version":
         return {
           text: release.version,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };
       case "title":
         return {
           text: release.title,
-          color: selectedColor ?? colors.text,
+          color: colors.text,
         };
     }
   }, []);
@@ -273,6 +270,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(release) => release.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle="No changelog entries."
       showHorizontalScrollbar={false}
     />

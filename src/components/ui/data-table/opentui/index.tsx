@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
+import { usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { useDoubleClickActivation } from "../../../use-double-click-activation";
@@ -23,14 +23,11 @@ import {
 import type {
   DataTableColumn,
   DataTableProps,
-  DataTableVisibleRange,
 } from "../types";
-import { resolveDataTableVisibleRange } from "../visible-range";
+import { resolveDataTableScrollTop } from "../visible-range";
+import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
-import {
-  resolveDataTableScrollTop,
-  resolveDataTableVisibleWindow,
-} from "./model";
+import { resolveDataTableVisibleWindow } from "./model";
 
 interface DataTableRowPointerTarget<T> {
   item: T;
@@ -76,6 +73,7 @@ function OpenTuiDataTableRowInner<
   renderSectionHeader,
   rowContextMenuSurface,
   selected,
+  selectedTextOverridesCellColor,
 }: {
   /** Only compared by the row memo; see `getRowVersion`. */
   rowVersion?: unknown;
@@ -103,6 +101,7 @@ function OpenTuiDataTableRowInner<
   renderSectionHeader?: DataTableProps<T, C>["renderSectionHeader"];
   rowContextMenuSurface: boolean;
   selected: boolean;
+  selectedTextOverridesCellColor: boolean;
 }) {
   const sectionHeader = renderSectionHeader?.(item, index) ?? null;
 
@@ -204,7 +203,9 @@ function OpenTuiDataTableRowInner<
             )) : (
               <Text
                 attributes={cell.attributes ?? TextAttributes.NONE}
-                fg={cell.color ?? (selected ? colors.selectedText : colors.text)}
+                fg={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
+                  ? colors.selectedText
+                  : cell.color ?? colors.text}
               >
                 {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${inset < column.width ? fitTableCellText(cell.text, column.width - inset, column.align) : ""}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
@@ -237,10 +238,12 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   onTableMouseDown,
   visibleRangeKey,
   onVisibleRangeChange,
+  visibleRangeBuffer,
   onRowMouseDown,
   onRowContextMenu,
   rowContextMenuSurface = false,
   renderCell,
+  selectedTextOverridesCellColor = false,
   getRowVersion,
   renderSectionHeader,
   getRowBackgroundColor,
@@ -261,7 +264,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 }: DataTableProps<T, C>) {
   const columns = useStableColumns(columnsProp);
   const colors = useThemeColors();
-  const dispatch = useAppDispatch();
+  const focusPane = useFocusOwningPane();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
   const nativeRenderer = useNativeRenderer();
@@ -272,10 +275,6 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   }, [freezeFirstColumn, scrollRef]);
   const lastAppliedScrollRequestRef = useRef<string | null>(null);
   const controlledScrollTopRef = useRef<number | null>(null);
-  const lastVisibleRangeRef = useRef<{
-    key: string | number | undefined;
-    range: DataTableVisibleRange;
-  } | null>(null);
   const scrollTop = virtualize ? (scrollRef.current?.scrollTop ?? 0) : 0;
   const measuredViewportHeight = scrollRef.current?.viewport?.height;
   const tableWindow = useMemo(
@@ -329,25 +328,20 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
+  const reportVisibleRange = useVisibleRangeEmitter({
+    itemCount: items.length,
+    visibleRangeKey,
+    visibleRangeBuffer,
+    onVisibleRangeChange,
+  });
   const emitVisibleRange = useCallback(() => {
-    if (!onVisibleRangeChange) return;
     const scrollBox = scrollRef.current;
-    const range = resolveDataTableVisibleRange({
-      itemCount: items.length,
+    reportVisibleRange({
       rowSize: 1,
       scrollOffset: scrollBox?.scrollTop ?? scrollTop,
       viewportSize: scrollBox?.viewport?.height ?? viewportHeight,
     });
-    const previous = lastVisibleRangeRef.current;
-    if (
-      previous !== null
-      && previous.key === visibleRangeKey
-      && previous.range.start === range.start
-      && previous.range.end === range.end
-    ) return;
-    lastVisibleRangeRef.current = { key: visibleRangeKey, range };
-    onVisibleRangeChange(range);
-  }, [items.length, onVisibleRangeChange, scrollRef, scrollTop, viewportHeight, visibleRangeKey]);
+  }, [reportVisibleRange, scrollRef, scrollTop, viewportHeight]);
   const handleRowMouseDown =
     useDoubleClickActivation<DataTableRowPointerTarget<T>>({
       onSelect: ({ item, index }) => {
@@ -407,10 +401,6 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     emitVisibleRange();
     queueMicrotask(emitVisibleRange);
   }, [emitVisibleRange]);
-  const focusPane = useCallback(() => {
-    if (!paneInstanceId) return;
-    dispatch({ type: "FOCUS_PANE", paneId: paneInstanceId });
-  }, [dispatch, paneInstanceId]);
 
   const applyScrollToIndex = useCallback(() => {
     if (scrollToIndex == null) return true;
@@ -645,6 +635,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     rowContextMenuSurface={rowContextMenuSurface}
                     rowVersion={getRowVersion?.(item, index)}
                     selected={isSelected(item, index)}
+                    selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                   />
                 );
               }),

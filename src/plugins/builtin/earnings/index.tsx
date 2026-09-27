@@ -159,11 +159,7 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: EarningsDisplayRow,
     column: EarningsColumn,
-    _index: number,
-    rowState: { selected: boolean },
-  ) => {
-    return renderEarningsCell(row, column, rowState.selected, sharedCurrency);
-  }, [sharedCurrency]);
+  ) => renderEarningsCell(row, column, sharedCurrency), [sharedCurrency]);
 
   usePaneFooter("earnings-calendar", () => {
     const symbol = openEvent?.symbol ?? selectedEvent?.symbol ?? null;
@@ -220,6 +216,7 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => row.key}
       renderSectionHeader={renderEarningsSectionHeader}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={
         loading
           ? "Loading earnings..."

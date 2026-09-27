@@ -700,13 +700,12 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         detailScrollRef={detailScrollRef}
         emptyContent={
           evidenceMissing ? (
-            <Box paddingX={1} paddingY={1}>
-              <EmptyState
-                title="This view needs dated local evidence."
-                message={frozen ? undefined : "Copy version 1 evidence JSON, then import it from the clipboard."}
-                actions={frozen ? undefined : <Button label="Import evidence" compact onPress={() => void importEvidence()} />}
-              />
-            </Box>
+            <PaneStatusBody
+              empty
+              emptyTitle="This view needs dated local evidence."
+              emptyMessage={frozen ? undefined : "Copy version 1 evidence JSON, then import it from the clipboard."}
+              actions={frozen ? undefined : <Button label="Import evidence" compact onPress={() => void importEvidence()} />}
+            />
           ) : undefined
         }
         emptyStateTitle="No comparable observations."

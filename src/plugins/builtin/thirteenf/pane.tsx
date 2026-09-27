@@ -396,6 +396,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         }}
         getItemKey={(row) => row.id}
         renderCell={renderBrowserCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={emptyTitle}
       />
     </Box>
@@ -668,6 +669,7 @@ export function FundDetailView({
           }))}
           getItemKey={(row) => row.id}
           renderCell={renderTimelineCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No 13F filings."
         />
       ) : (
@@ -694,7 +696,8 @@ export function FundDetailView({
           onActivate={(row) => {
             if (row.ticker) pinTicker(row.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
           }}
-          renderCell={(row, column, index, state) => column.id === "mine" ? { text: mine.has(row.ticker) ? "yes" : "", color: state.selected ? colors.selectedText : colors.positive } : renderHoldingCell(row, column, index, state)}
+          renderCell={(row, column, index, state) => column.id === "mine" ? { text: mine.has(row.ticker) ? "yes" : "", color: colors.positive } : renderHoldingCell(row, column, index, state)}
+          selectedTextOverridesCellColor
           emptyStateTitle="No 13F holdings."
         />
       )}
@@ -874,6 +877,7 @@ function FilingDetailView({
         }}
         getItemKey={(row) => row.id}
         renderCell={renderFilingPositionCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={emptyTitle}
       />
     </Box>

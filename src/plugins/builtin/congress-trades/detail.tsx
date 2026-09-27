@@ -345,6 +345,7 @@ export function MemberTradesDetail({
         }}
         getItemKey={(trade) => trade.id}
         renderCell={renderCongressTradeCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={emptyTitle}
         showHorizontalScrollbar={false}
         scrollRef={tradeScrollRef}

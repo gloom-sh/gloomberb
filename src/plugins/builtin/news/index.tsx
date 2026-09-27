@@ -4,13 +4,12 @@ import { newsPluginMeta } from "../builtin-plugin-meta";
 import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { EmptyState } from "../../../components";
+import { EmptyState, PaneStatusBody } from "../../../components";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../news/hooks";
 import { newsWireModule } from "./wire";
 import { NewsDetailView, useNewsArticleDetail } from "./wire/news/detail-view";
 import {
   NewsArticleStackView,
-  newsTableStatusContent,
   type NewsSortPreference,
 } from "./wire/news/table";
 import { useNewsArticleFooter } from "./wire/news/footer";
@@ -118,13 +117,16 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
       )}
       detailTitle={detailWithSummary?.title}
       columns={["time", "source", "title", "categories", "sentiment"]}
-      emptyContent={newsTableStatusContent({
-        loading,
-        error,
-        subject: "News",
-        emptyTitle: `No news for ${ticker.metadata.ticker}`,
-        emptyMessage: "Stories appear as sources publish them.",
-      })}
+      emptyContent={(
+        <PaneStatusBody
+          loading={loading}
+          error={error}
+          empty
+          subject="News"
+          emptyTitle={`No news for ${ticker.metadata.ticker}`}
+          emptyMessage="Stories appear as sources publish them."
+        />
+      )}
       emptyStateTitle={`No news for ${ticker.metadata.ticker}`}
       emptyStateHint="Stories appear as sources publish them."
       scrollRef={scrollRef}

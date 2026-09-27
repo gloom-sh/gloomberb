@@ -116,9 +116,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: FuturesTableRow,
     column: FuturesColumn,
-    _index: number,
-    rowState: { selected: boolean },
-  ) => renderFuturesCell(row, column, rowState, quotes, { sessionText }), [quotes, sessionText]);
+  ) => renderFuturesCell(row, column, quotes, { sessionText }), [quotes, sessionText]);
 
   const toggleSector = useCallback((sector: FuturesSector) => {
     setCollapsedSectors((current) => {
@@ -238,6 +236,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderSectorHeader}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={searchQuery.trim()
         ? "No matching contracts."
         : "No market data provider connected."}

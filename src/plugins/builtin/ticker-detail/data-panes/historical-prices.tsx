@@ -210,27 +210,24 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: HistoricalPriceRow,
     column: HistoryColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
-        return { text: row.date, color: selectedColor ?? colors.textDim };
+        return { text: row.date, color: colors.textDim };
       case "open":
-        return { text: formatMaybePrice(row.point.open, priceDecimals, column.width), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.open, priceDecimals, column.width), color: colors.text };
       case "high":
-        return { text: formatMaybePrice(row.point.high, priceDecimals, column.width), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.high, priceDecimals, column.width), color: colors.text };
       case "low":
-        return { text: formatMaybePrice(row.point.low, priceDecimals, column.width), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.low, priceDecimals, column.width), color: colors.text };
       case "close":
-        return { text: formatMaybePrice(row.point.close, priceDecimals, column.width), color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: formatMaybePrice(row.point.close, priceDecimals, column.width), color: colors.textBright, attributes: TextAttributes.BOLD };
       case "change":
-        return { text: formatMaybePrice(row.change, priceDecimals, column.width), color: selectedColor ?? priceColor(row.change ?? 0) };
+        return { text: formatMaybePrice(row.change, priceDecimals, column.width), color: priceColor(row.change ?? 0) };
       case "changePercent":
-        return { text: formatMaybePercent(row.changePercent), color: selectedColor ?? priceColor(row.changePercent ?? 0) };
+        return { text: formatMaybePercent(row.changePercent), color: priceColor(row.changePercent ?? 0) };
       case "volume":
-        return { text: formatMaybeCompact(row.point.volume), color: selectedColor ?? colors.textDim };
+        return { text: formatMaybeCompact(row.point.volume), color: colors.textDim };
     }
   }, [priceDecimals]);
 
@@ -274,6 +271,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
         />
       )}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       getExportMetadata={() => [
         ["Ticker", symbol ? publicTickerKey(symbol, exchange) : ""],
         ["Requested range", range],

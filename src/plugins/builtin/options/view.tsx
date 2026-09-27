@@ -699,6 +699,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
         onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..." : "No strikes available."}
         rootWidth={Math.max(1, width - 2 + inset * 2)}
         rootHeight={tableHeight}

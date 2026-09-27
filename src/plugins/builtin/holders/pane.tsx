@@ -240,10 +240,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "holder": {
-        const color = selectedColor ?? colors.textBright;
+        const color = rowState.selected ? colors.selectedText : colors.textBright;
         if (!fundMatches.has(row.id)) return { text: row.name, color, attributes: TextAttributes.BOLD };
         // A fund with a 13F opens on Enter or o. The name gives way first, so
         // the marker survives a narrow column.
@@ -260,26 +259,26 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       }
       case "value":
-        return { text: formatMoneyCompact(row.value, currency), color: selectedColor ?? colors.text };
+        return { text: formatMoneyCompact(row.value, currency), color: colors.text };
       case "shares":
-        return { text: formatCompact(row.shares), color: selectedColor ?? colors.text };
+        return { text: formatCompact(row.shares), color: colors.text };
       case "changeShares":
         return {
           text: formatSignedCompact(row.changeShares),
-          color: selectedColor ?? (row.changeShares != null ? priceColor(row.changeShares) : colors.textDim),
+          color: row.changeShares != null ? priceColor(row.changeShares) : colors.textDim,
         };
       case "changePercent":
         return {
           text: formatMaybePercent(row.changePercent),
-          color: selectedColor ?? (row.changePercent != null ? priceColor(row.changePercent) : colors.textDim),
+          color: row.changePercent != null ? priceColor(row.changePercent) : colors.textDim,
         };
       case "percentHeld":
         return {
           text: formatHolderOwnershipPercent(resolveHolderOwnershipPercent(row, marketCap)),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "reportDate":
-        return { text: displayDate(row.reportDate), color: selectedColor ?? colors.textDim };
+        return { text: displayDate(row.reportDate), color: colors.textDim };
     }
   }, [currency, fundMatches, marketCap]);
 
@@ -346,6 +345,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onHeaderClick={handleHeaderClick}
           getItemKey={(row) => row.id}
           renderCell={renderCell}
+          selectedTextOverridesCellColor
           emptyStateTitle={statusTitle ?? "No holders available"}
         />
       ) : (

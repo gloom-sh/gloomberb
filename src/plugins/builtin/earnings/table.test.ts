@@ -21,7 +21,7 @@ function event(values: Partial<EarningsEvent> = {}): EarningsEvent {
 
 function cell(id: EarningsColumn["id"], values: Partial<EarningsEvent>) {
   return renderEarningsCell({ kind: "event", key: "test", eventIdx: 0, event: event(values) },
-    buildEarningsColumns(180).find((column) => column.id === id)!, false);
+    buildEarningsColumns(180).find((column) => column.id === id)!);
 }
 
 describe("earnings estimate comparison basis", () => {
@@ -56,7 +56,7 @@ describe("earnings estimate comparison basis", () => {
     const columns = buildEarningsColumns(210, shared);
     for (const id of ["epsRange", "revenueRange"] as const) {
       const column = columns.find((candidate) => candidate.id === id)!;
-      const text = renderEarningsCell({ kind: "event", key: "test", eventIdx: 0, event: large }, column, false, shared).text;
+      const text = renderEarningsCell({ kind: "event", key: "test", eventIdx: 0, event: large }, column, shared).text;
       expect(text.length).toBeLessThanOrEqual(column.width);
     }
   });
@@ -66,7 +66,7 @@ describe("earnings estimate comparison basis", () => {
     const script = `import { buildEarningsColumns, renderEarningsCell } from ${JSON.stringify(modulePath)};
       const column = buildEarningsColumns(180).find(c => c.id === 'date');
       const dates = ['2026-09-12T00:00:00Z', '2026-12-31T23:00:00Z'];
-      console.log(JSON.stringify(dates.map(date => renderEarningsCell({kind:'event', event:{earningsDate:new Date(date)}},column,false).text)));`;
+      console.log(JSON.stringify(dates.map(date => renderEarningsCell({kind:'event', event:{earningsDate:new Date(date)}},column).text)));`;
     for (const timezone of ["UTC", "America/Los_Angeles", "Pacific/Kiritimati"]) {
       const result = Bun.spawnSync([process.execPath, "-e", script], { env: { ...process.env, TZ: timezone } });
       expect(result.exitCode).toBe(0);

@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Button, EmptyState, PaneFooterScope, usePaneTabs } from "../../../components";
+import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -277,49 +277,43 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     alert: AlertRule,
     column: AlertColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "status":
         return {
           text: alert.status === "triggered" ? "Triggered" : "Active",
-          color: selectedColor ?? (alert.status === "triggered" ? colors.positive : colors.textDim),
+          color: alert.status === "triggered" ? colors.positive : colors.textDim,
           attributes: alert.status === "triggered" ? TextAttributes.BOLD : TextAttributes.NONE,
         };
       case "symbol":
         return {
           text: alert.symbol,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           attributes: TextAttributes.BOLD,
         };
       case "current":
         return {
           text: formatCurrentPrice(alert, column.width),
-          color: selectedColor ?? (alert.lastCheckError ? colors.negative : colors.text),
+          color: alert.lastCheckError ? colors.negative : colors.text,
         };
       case "target":
-        return { text: formatAlertTargetPrice(alert, column.width), color: selectedColor };
+        return { text: formatAlertTargetPrice(alert, column.width) };
       case "away":
         return {
           text: formatAlertDistance(alert),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "condition":
-        return {
-          text: conditionLabel(alert.condition),
-          color: selectedColor,
-        };
+        return { text: conditionLabel(alert.condition) };
       case "quote":
         return {
           text: formatQuoteChecked(alert),
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "triggered":
         return {
           text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : "-",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
     }
   }, []);
@@ -345,12 +339,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         if (alert.status === "triggered") rearmAlert(alert.id);
       }}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle="Saved alerts could not be read."
       emptyStateHint={storeError ?? undefined}
       emptyContent={storeError ? undefined : (
-        <Box paddingX={1} paddingY={1}>
-          <EmptyState title="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
-        </Box>
+        <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
       )}
       showHorizontalScrollbar={showHorizontalScrollbar}
     />

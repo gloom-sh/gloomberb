@@ -126,3 +126,46 @@ test("controlled centering keeps following late quotes until the user scrolls", 
   await act(async () => { updateQuoteTarget(70); await settle(); });
   expect(body.scrollTop).toBe(0);
 });
+
+test("an opted-in table draws the selected row in selection text unless a cell keeps its tone", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={["a", "b"]}
+          columns={[
+            { id: "name", label: "Name", width: 6 },
+            { id: "pnl", label: "P&L", width: 6, align: "right" },
+          ]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={String}
+          isSelected={(item) => item === "a"}
+          onSelect={() => {}}
+          renderCell={(item, column) => column.id === "pnl"
+            ? { text: "+1", color: "#00ff00", keepColorWhenSelected: true }
+            : { text: item, color: "#999999" }}
+          selectedTextOverridesCellColor
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const colorsByRow = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')].map((row) => (
+    [...row.querySelectorAll("span")].map((span) => (span as HTMLElement).style.color)
+  ));
+  expect(colorsByRow).toEqual([
+    ["var(--gloom-selected-text)", "#00ff00"],
+    ["#999999", "#00ff00"],
+  ]);
+});

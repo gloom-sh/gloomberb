@@ -41,7 +41,7 @@ for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
     expect(report.rows[0]).toMatchObject({ epsEstimate: eps, epsCurrency, revenueCurrency, forecastPeriod: "0q", forecastPeriodEnd: "2026-09-30", estimateBasis: event.estimateBasis });
     expect(providerCalls).toBe(1);
     expect(requests).toBe(1);
-    const cell = renderEarningsCell({ kind: "event", key: symbol, eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === "epsEstimate")!, false);
+    const cell = renderEarningsCell({ kind: "event", key: symbol, eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === "epsEstimate")!);
     expect(cell.text).toStartWith(epsCurrency);
   });
 }
@@ -158,7 +158,7 @@ test("missing averages cannot combine independently sourced range endpoints", ()
     sourceEstimates: { epsLow: 1.2, epsHigh: 6, revenueLow: 80, revenueHigh: 120 },
     estimateBasis: { epsLow: { sourceValue: 120, sourceCurrency: "GBp" }, epsHigh: { sourceValue: 6, currency: null } } });
   for (const id of ["epsRange", "revenueRange"]) {
-    expect(renderEarningsCell({ kind: "event", key: "SYN", eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === id)!, false).text).toBe("—");
+    expect(renderEarningsCell({ kind: "event", key: "SYN", eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === id)!).text).toBe("—");
   }
   trend.earningsEstimate!.high = 180;
   const samePeriod = mapYahooEarningsCalendarEvent(source, "SYN")!;

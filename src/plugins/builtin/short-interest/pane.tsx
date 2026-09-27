@@ -87,21 +87,18 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const renderCell = useCallback((
     row: ShortInterestRow,
     column: ShortInterestColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "settlementDate":
-        return { text: row.settlementDate, color: selectedColor ?? colors.textDim };
+        return { text: row.settlementDate, color: colors.textDim };
       case "sharesShort":
-        return { text: row.sharesShort, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.sharesShort, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "shortRatio":
-        return { text: row.shortRatio, color: selectedColor ?? colors.text };
+        return { text: row.shortRatio, color: colors.text };
       case "averageDailyVolume":
-        return { text: row.averageDailyVolume, color: selectedColor ?? colors.textDim };
+        return { text: row.averageDailyVolume, color: colors.textDim };
       case "shortPercentFloat":
-        return { text: row.shortPercentFloat, color: selectedColor ?? colors.text };
+        return { text: row.shortPercentFloat, color: colors.text };
     }
   }, []);
 
@@ -163,6 +160,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         onHeaderClick={handleHeaderClick}
         getItemKey={rowKey}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={status === "loading" ? "Loading..." : "No data"}
       />
     </Box>

@@ -197,6 +197,7 @@ function WebDataTableRowInner<
   rowStart,
   rowContextMenuSurface,
   selected,
+  selectedTextOverridesCellColor,
 }: {
   /** Only compared by the row memo; see `getRowVersion`. */
   rowVersion?: unknown;
@@ -223,6 +224,7 @@ function WebDataTableRowInner<
   rowStart: number;
   rowContextMenuSurface: boolean;
   selected: boolean;
+  selectedTextOverridesCellColor: boolean;
 }) {
   const { ref, insets } = useFrozenColumnInsets(freezeFirstColumn === true, scrollLeft, viewportWidth, columns, columnGap * WEB_CELL_WIDTH);
   const sectionHeader: DataTableSectionHeader | null =
@@ -392,7 +394,9 @@ function WebDataTableRowInner<
                 title={cell.text}
                 style={clippedCellTextStyle(
                   column,
-                  cell.color ?? (selected ? CSS_SELECTED_TEXT : CSS_TEXT),
+                  selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
+                    ? CSS_SELECTED_TEXT
+                    : cell.color ?? CSS_TEXT,
                   cell.attributes ?? TextAttributes.NONE,
                 )}
               >

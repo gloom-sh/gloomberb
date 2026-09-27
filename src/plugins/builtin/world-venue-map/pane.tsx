@@ -185,22 +185,19 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     venue: CloudWorldVenuePayload,
     column: VenueColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "status":
         return {
           text: venue.isOpen ? "●" : "○",
-          color: selectedColor ?? (venue.isOpen ? colors.positive : colors.textDim),
+          color: venue.isOpen ? colors.positive : colors.textDim,
         };
       case "mic":
-        return { text: venue.mic, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: venue.mic, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "name":
-        return { text: venue.title, color: selectedColor ?? colors.textMuted };
+        return { text: venue.title, color: colors.textMuted };
       case "time":
-        return { text: formatVenueLocalTime(venue.timezone, now), color: selectedColor ?? colors.textDim };
+        return { text: formatVenueLocalTime(venue.timezone, now), color: colors.textDim };
     }
   }, [now]);
 
@@ -237,6 +234,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       sortDirection="asc"
       getItemKey={(venue) => venue.mic}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={query.trim() ? "No matching venues." : "No venue data."}
       emptyStateHint={query.trim() ? "Clear search." : undefined}
     />

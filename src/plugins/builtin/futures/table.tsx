@@ -159,7 +159,6 @@ function formatContractChange(quote: Quote, contract: FuturesContract): string {
 export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
-  rowState: { selected: boolean },
   quotes: BoardQuoteMap,
   options?: { sessionText?: boolean },
 ): DataTableCell {
@@ -168,35 +167,33 @@ export function renderFuturesCell(
   const { contract } = row;
   const state = quotes.get(contract.symbol);
   const quote = state?.quote;
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
-  const dimmed = rowState.selected ? colors.selectedText : colors.textDim;
 
   switch (column.id) {
     case "code":
       return {
         text: contract.code,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: futuresContractName(contract, quote), color: selectedColor };
+      return { text: futuresContractName(contract, quote) };
     case "volume":
-      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
-        return { text: "—", color: dimmed };
+        return { text: "—", color: colors.textDim };
       }
-      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: colors.textDim };
     case "prevClose":
-      if (isBoardRowLoading(state)) return { text: "…", color: dimmed };
+      if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
-        return { text: "—", color: dimmed };
+        return { text: "—", color: colors.textDim };
       }
       return {
         text: formatContractPrice({ ...quote, price: quote.previousClose }, contract),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     default:
-      return renderQuoteBoardCell(column.id, state, rowState.selected, {
+      return renderQuoteBoardCell(column.id, state, {
         sessionText: options?.sessionText,
         formatPrice: (quoted) => formatContractPrice(quoted, contract),
         formatChange: (quoted) => formatContractChange(quoted, contract),

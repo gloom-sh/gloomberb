@@ -420,6 +420,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyContent={renderBuildoutPageStatus(state, activeTab, selectedList)}
       emptyStateTitle={selectedList ? "No companies" : "No rows"}
       onRootKeyDown={handleRootKeyDown}

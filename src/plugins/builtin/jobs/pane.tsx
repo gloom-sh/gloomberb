@@ -388,19 +388,18 @@ function CompanyView({
     focused,
   });
 
-  const renderCell = useCallback((row: PostingRow, column: PostingColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderCell = useCallback((row: PostingRow, column: PostingColumn): DataTableCell => {
     switch (column.id) {
       case "title":
-        return { text: row.title, color: selectedColor ?? colors.textBright };
+        return { text: row.title, color: colors.textBright };
       case "function":
-        return { text: row.seniority && width >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: selectedColor ?? colors.text };
+        return { text: row.seniority && width >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: colors.text };
       case "location":
-        return { text: row.location, color: selectedColor ?? colors.textDim };
+        return { text: row.location, color: colors.textDim };
       case "posted":
-        return { text: row.posted, color: selectedColor ?? (row.posting.postedAt && !row.posted.includes("mo") ? colors.text : colors.textDim) };
+        return { text: row.posted, color: row.posting.postedAt && !row.posted.includes("mo") ? colors.text : colors.textDim };
       case "salary":
-        return { text: row.salary, color: selectedColor ?? colors.positive };
+        return { text: row.salary, color: colors.positive };
     }
   }, [width]);
 
@@ -481,6 +480,7 @@ function CompanyView({
             }))}
             getItemKey={(row) => row.key}
             renderCell={renderCell}
+            selectedTextOverridesCellColor
             emptyStateTitle="No open roles"
           />
         ) : tab === "locations" ? (
@@ -660,25 +660,24 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
       : [],
   }), [status, more.loadingMore, error, data, detailOpen, open, selected, navigateTicker]);
 
-  const renderCell = useCallback((row: MoverRow, column: MoverColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderCell = useCallback((row: MoverRow, column: MoverColumn): DataTableCell => {
     switch (column.id) {
       case "ticker":
-        return { text: row.ticker, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.ticker, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "company":
-        return { text: row.company, color: selectedColor ?? colors.text };
+        return { text: row.company, color: colors.text };
       case "open":
-        return { text: row.open, color: selectedColor ?? colors.textBright };
+        return { text: row.open, color: colors.textBright };
       case "change":
-        return { text: row.change, color: selectedColor ?? toneColor(changeTone(row.changeValue)) };
+        return { text: row.change, color: toneColor(changeTone(row.changeValue)) };
       case "posted30d":
-        return { text: row.posted30d, color: selectedColor ?? colors.text };
+        return { text: row.posted30d, color: colors.text };
       case "new7d":
-        return { text: row.new7d, color: selectedColor ?? colors.text };
+        return { text: row.new7d, color: colors.text };
       case "function":
-        return { text: row.function, color: selectedColor ?? colors.textDim };
+        return { text: row.function, color: colors.textDim };
       case "country":
-        return { text: row.country, color: selectedColor ?? colors.textDim };
+        return { text: row.country, color: colors.textDim };
     }
   }, []);
 
@@ -719,6 +718,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
         }))}
         getItemKey={(row) => row.key}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={status === "loading" ? "Loading..." : "No companies covered yet"}
       />
     </Box>

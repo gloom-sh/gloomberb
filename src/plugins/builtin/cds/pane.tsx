@@ -63,24 +63,22 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 function renderIssuerCell(
   row: CdsIssuerSummary,
   column: IssuerColumn,
-  selected: boolean,
 ): DataTableCell {
-  const selectedColor = selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "issuer":
       return {
         text: row.issuer,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "trades":
-      return { text: String(row.trades), color: selectedColor ?? colors.text };
+      return { text: String(row.trades), color: colors.text };
     case "last":
-      return { text: formatEventTime(row.lastTradeAt), color: selectedColor ?? colors.textMuted };
+      return { text: formatEventTime(row.lastTradeAt), color: colors.textMuted };
     case "spread":
       return {
         text: formatBp(row.latestSpreadBp),
-        color: selectedColor ?? (row.latestSpreadBp == null ? colors.textDim : colors.text),
+        color: row.latestSpreadBp == null ? colors.textDim : colors.text,
       };
   }
 }
@@ -89,40 +87,32 @@ function renderIssuerCell(
 // identity between pane renders.
 const issuerKey = (row: CdsIssuerSummary) => row.key;
 const tradeKey = (trade: CdsTrade) => trade.id;
-const renderIssuerRow = (
-  row: CdsIssuerSummary,
-  column: IssuerColumn,
-  _index: number,
-  state: { selected: boolean },
-) => renderIssuerCell(row, column, state.selected);
 /**
  * Trades on another contract than the one the 5Y line follows are dimmed, so
  * the headline, the line and the bright rows describe the same instrument.
  */
-function renderTradeCell(row: CdsTrade, column: TradeColumn, selected: boolean, lineMaturity: string | null): DataTableCell {
-  const selectedColor = selected
-    ? colors.selectedText
-    : lineMaturity && row.maturity !== lineMaturity ? colors.textDim : undefined;
+function renderTradeCell(row: CdsTrade, column: TradeColumn, lineMaturity: string | null): DataTableCell {
+  const dimmed = lineMaturity && row.maturity !== lineMaturity ? colors.textDim : undefined;
   switch (column.id) {
     case "time":
-      return { text: formatEventTime(row.eventAt), color: selectedColor ?? colors.textMuted };
+      return { text: formatEventTime(row.eventAt), color: dimmed ?? colors.textMuted };
     case "maturity":
-      return { text: formatMaturity(row.maturity), color: selectedColor ?? colors.text };
+      return { text: formatMaturity(row.maturity), color: dimmed ?? colors.text };
     case "notional":
-      return { text: formatNotional(row), color: selectedColor ?? colors.textBright };
+      return { text: formatNotional(row), color: dimmed ?? colors.textBright };
     case "currency":
-      return { text: row.currency ?? "--", color: selectedColor ?? colors.textDim };
+      return { text: row.currency ?? "--", color: dimmed ?? colors.textDim };
     case "coupon":
-      return { text: formatBp(row.couponBp), color: selectedColor ?? colors.text };
+      return { text: formatBp(row.couponBp), color: dimmed ?? colors.text };
     case "spread":
       return {
         text: formatBp(row.spreadBp),
-        color: selectedColor ?? (row.spreadBp == null ? colors.textDim : colors.textBright),
+        color: dimmed ?? (row.spreadBp == null ? colors.textDim : colors.textBright),
       };
     case "upfront":
       return {
         text: formatUpfront(row),
-        color: selectedColor ?? (row.upfront == null ? colors.textDim : colors.text),
+        color: dimmed ?? (row.upfront == null ? colors.textDim : colors.text),
       };
   }
 }
@@ -154,8 +144,8 @@ function CdsTradeTable({
   lineMaturity?: string | null;
 }) {
   const columns = useMemo(() => buildTradeColumns(width), [width]);
-  const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn, _index: number, state: { selected: boolean }) => (
-    renderTradeCell(trade, column, state.selected, lineMaturity)
+  const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn) => (
+    renderTradeCell(trade, column, lineMaturity)
   ), [lineMaturity]);
   return (
     <DataTableView<CdsTrade, TradeColumn>
@@ -177,6 +167,7 @@ function CdsTradeTable({
       onHeaderClick={(columnId) => onSort(columnId as TradeColumnId)}
       getItemKey={tradeKey}
       renderCell={renderTradeRow}
+      selectedTextOverridesCellColor
       emptyStateTitle="No reported trades."
     />
   );
@@ -448,7 +439,8 @@ export function CdsPane({
         nextHeaderSort(current, columnId as IssuerColumnId, { resetTo: DEFAULT_ISSUER_SORT })
       ))}
       getItemKey={issuerKey}
-      renderCell={renderIssuerRow}
+      renderCell={renderIssuerCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={error ? "CDS activity unavailable." : "No reported single-name CDS trades."}
     />
   );

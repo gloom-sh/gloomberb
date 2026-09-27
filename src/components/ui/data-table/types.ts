@@ -15,6 +15,11 @@ export interface DataTableCell {
   text: string;
   content?: ReactNode;
   color?: string;
+  /**
+   * Keeps `color` on the selected row of a table with
+   * `selectedTextOverridesCellColor`, for a tone the selection must not hide.
+   */
+  keepColorWhenSelected?: boolean;
   backgroundColor?: string;
   attributes?: number;
   onMouseDown?: (event: any) => void;
@@ -73,6 +78,8 @@ export interface DataTableProps<
   /** Changes when the meaning of row indexes changes without changing table geometry. */
   visibleRangeKey?: string | number;
   onVisibleRangeChange?: (range: DataTableVisibleRange) => void;
+  /** Rows past each edge of the viewport that the reported range also covers. */
+  visibleRangeBuffer?: number;
   onRowMouseDown?: (item: T, index: number, event: any) => boolean | void;
   onRowContextMenu?: (item: T, index: number, event: any) => void;
   rowContextMenuSurface?: boolean;
@@ -82,6 +89,12 @@ export interface DataTableProps<
     index: number,
     rowState: DataTableRowState,
   ) => DataTableCell;
+  /**
+   * Draws every text cell of the selected row in the selection text color,
+   * over the cell's own `color` unless it sets `keepColorWhenSelected`.
+   * Without it only cells that leave `color` unset turn to that color.
+   */
+  selectedTextOverridesCellColor?: boolean;
   /**
    * What a row's cells were drawn from, compared by identity. Visible rows are
    * memoized: one re-renders when its item, selection, version or `renderCell`

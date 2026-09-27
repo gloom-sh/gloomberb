@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from 
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../../ui";
 import {
   DataTableStackView,
-  PaneStatusBody,
   TickerBadgeList,
   sortStackItems,
   usePaneFooter,
@@ -46,37 +45,6 @@ function fitTickerSymbols(symbols: string[], width: number): string[] {
     fitted.push(symbol);
   }
   return fitted;
-}
-
-/**
- * Body for a table with no rows yet: loading while the query is in flight, the
- * failure when the sources errored, and the empty state otherwise. Always own
- * the body rather than falling back to the table's built-in empty state, whose
- * desktop markup runs the title and the hint together on one line.
- */
-export function newsTableStatusContent({
-  loading,
-  error,
-  subject,
-  emptyTitle,
-  emptyMessage,
-}: {
-  loading: boolean;
-  error?: string | null;
-  subject: string;
-  emptyTitle: string;
-  emptyMessage?: string;
-}): ReactNode {
-  return (
-    <PaneStatusBody
-      loading={loading}
-      error={error}
-      empty
-      subject={subject}
-      emptyTitle={emptyTitle}
-      emptyMessage={emptyMessage}
-    />
-  );
 }
 
 export type NewsSortPreference = StackSortPreference<NewsColumnId>;
@@ -310,20 +278,19 @@ export function NewsArticleStackView({
     index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "rank":
-        return { text: String(index + 1), color: selectedColor ?? colors.textDim };
+        return { text: String(index + 1), color: colors.textDim };
       case "time":
-        return { text: formatRelativeTime(item.publishedAt), color: selectedColor ?? colors.textDim };
+        return { text: formatRelativeTime(item.publishedAt), color: colors.textDim };
       case "source":
-        return { text: item.source, color: selectedColor ?? colors.textMuted };
+        return { text: item.source, color: colors.textMuted };
       case "title":
         return {
           // Unclipped: the table fits it to the width the column really gets,
           // which on desktop is wider than the width it was laid out at.
           text: titleForArticle?.(item) ?? item.title,
-          color: selectedColor ?? colors.text,
+          color: colors.text,
           attributes: readArticleIds?.has(item.id)
             ? TextAttributes.NONE
             : TextAttributes.BOLD,
@@ -336,22 +303,22 @@ export function NewsArticleStackView({
             <TickerBadgeList
               symbols={tickers}
               width={column.width}
-              fallbackColor={selectedColor ?? colors.textBright}
+              fallbackColor={rowState.selected ? colors.selectedText : colors.textBright}
             />
           ),
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
         };
       }
       case "categories":
         return {
           text: formatNewsCategory(item.categories[0]) || "-",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "sentiment": {
         const sentiment = item.sentiment;
         return {
           text: sentiment ? sentiment.slice(0, 3) : "-",
-          color: selectedColor ?? (
+          color: (
             sentiment === "positive"
               ? colors.positive
               : sentiment === "negative"
@@ -363,7 +330,7 @@ export function NewsArticleStackView({
       case "importance":
         return {
           text: String(item.importance),
-          color: selectedColor ?? (item.importance >= 80 ? colors.positive : colors.textDim),
+          color: item.importance >= 80 ? colors.positive : colors.textDim,
         };
     }
   }, [readArticleIds, titleForArticle]);
@@ -395,6 +362,7 @@ export function NewsArticleStackView({
       }))}
       getItemKey={(item) => item.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyContent={emptyContent}
       emptyStateTitle={emptyStateTitle}
       emptyStateHint={emptyStateHint}

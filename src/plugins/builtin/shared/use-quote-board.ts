@@ -456,14 +456,11 @@ export function isBoardRowLoading(state: BoardQuoteState | undefined): boolean {
 export function renderQuoteBoardCell(
   kind: QuoteBoardCellKind,
   state: BoardQuoteState | undefined,
-  selected: boolean,
   format: QuoteBoardCellFormat,
 ): DataTableCell {
   const quote = state?.quote;
-  const selectedColor = selected ? colors.selectedText : undefined;
-  const dimmed = selected ? colors.selectedText : colors.textDim;
   // One row must not mix a loading marker with a no-data marker.
-  if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: dimmed };
+  if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: colors.textDim };
 
   switch (kind) {
     case "status": {
@@ -471,26 +468,26 @@ export function renderQuoteBoardCell(
         const marketState = quote?.marketState;
         return {
           text: marketState ? marketStateLabel(marketState) : "—",
-          color: selectedColor ?? (marketState ? marketStateColor(marketState) : colors.textDim),
+          color: marketState ? marketStateColor(marketState) : colors.textDim,
         };
       }
       const dot = marketStatusDot(quote?.marketState);
-      return { text: dot.char, color: selectedColor ?? dot.color };
+      return { text: dot.char, color: dot.color };
     }
     case "price":
-      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: dimmed };
+      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: colors.textDim };
       // A retained quote still beats a dash; dim it so stale is visible.
-      return { text: format.formatPrice(quote), color: state?.stale ? dimmed : selectedColor };
+      return { text: format.formatPrice(quote), color: state?.stale ? colors.textDim : undefined };
     case "change":
-      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
-      return { text: format.formatChange(quote), color: selectedColor ?? priceColor(quote.change) };
+      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: colors.textDim };
+      return { text: format.formatChange(quote), color: priceColor(quote.change) };
     case "changePercent":
-      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: dimmed };
+      if (!quote || !Number.isFinite(quote.changePercent)) return { text: "—", color: colors.textDim };
       return {
         text: formatPercentRaw(quote.changePercent),
-        color: selectedColor ?? priceColor(quote.changePercent),
+        color: priceColor(quote.changePercent),
       };
     case "time":
-      return { text: formatQuoteTime(quote?.lastUpdated), color: dimmed };
+      return { text: formatQuoteTime(quote?.lastUpdated), color: colors.textDim };
   }
 }

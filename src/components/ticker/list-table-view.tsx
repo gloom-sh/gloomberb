@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useMemo,
   useRef,
@@ -186,7 +185,7 @@ export function TickerListTableView({
   keyboardNavigation = true,
   onRootKeyDown,
   onVisibleRangeChange,
-  visibleRangeBuffer = 0,
+  visibleRangeBuffer,
   resetScrollKey,
   columns,
   tickers,
@@ -211,43 +210,11 @@ export function TickerListTableView({
   const renderer = useRendererHost();
   const { showContextMenu } = useContextMenu();
   const { nativeContextMenu } = useUiCapabilities();
-  const internalHeaderScrollRef = useRef<ScrollBoxRenderable>(null);
-  const internalScrollRef = useRef<ScrollBoxRenderable>(null);
-  const effectiveHeaderScrollRef = headerScrollRef ?? internalHeaderScrollRef;
-  const effectiveScrollRef = scrollRef ?? internalScrollRef;
   const safeFlashSymbols = flashSymbols ?? EMPTY_FLASH_SYMBOLS;
   const selectedIndex = useMemo(
     () => tickers.findIndex((ticker) => ticker.metadata.ticker === cursorSymbol),
     [cursorSymbol, tickers],
   );
-  const lastScrollCursorSymbolRef = useRef<string | null | undefined>(undefined);
-
-  const emitVisibleRange = useCallback(() => {
-    if (!onVisibleRangeChange) return;
-    const scrollBox = effectiveScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const start = Math.max(0, scrollBox.scrollTop - visibleRangeBuffer);
-    const end = Math.min(
-      tickers.length,
-      scrollBox.scrollTop + scrollBox.viewport.height + visibleRangeBuffer,
-    );
-    onVisibleRangeChange({ start, end });
-  }, [effectiveScrollRef, onVisibleRangeChange, tickers.length, visibleRangeBuffer]);
-
-  const handleBodyScrollActivity = useCallback(() => {
-    onBodyScrollActivity?.();
-    emitVisibleRange();
-  }, [emitVisibleRange, onBodyScrollActivity]);
-
-  useEffect(() => {
-    const shouldScrollToCursor = lastScrollCursorSymbolRef.current !== cursorSymbol;
-    lastScrollCursorSymbolRef.current = cursorSymbol;
-    if (shouldScrollToCursor && selectedIndex >= 0) queueMicrotask(emitVisibleRange);
-  }, [cursorSymbol, emitVisibleRange, selectedIndex]);
-
-  useEffect(() => {
-    queueMicrotask(emitVisibleRange);
-  }, [emitVisibleRange]);
 
   // A quote tick replaces the financials map and the flash set. The cell
   // renderer reads both through refs so it keeps one identity, and each row's
@@ -377,10 +344,12 @@ export function TickerListTableView({
       rootWidth={rootWidth}
       rootHeight={rootHeight}
       rootBackgroundColor={rootBackgroundColor}
-      headerScrollRef={effectiveHeaderScrollRef}
-      scrollRef={effectiveScrollRef}
+      headerScrollRef={headerScrollRef}
+      scrollRef={scrollRef}
       syncHeaderScroll={syncHeaderScroll}
-      onBodyScrollActivity={handleBodyScrollActivity}
+      onBodyScrollActivity={onBodyScrollActivity}
+      onVisibleRangeChange={onVisibleRangeChange}
+      visibleRangeBuffer={visibleRangeBuffer}
       keyboardNavigation={keyboardNavigation}
       onRootKeyDown={onRootKeyDown}
       resetScrollKey={resetScrollKey}

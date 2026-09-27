@@ -211,28 +211,27 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
-        return { text: row.date, color: selectedColor ?? colors.textDim };
+        return { text: row.date, color: colors.textDim };
       case "firm":
-        return { text: row.firm, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.firm, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "action":
-        return { text: row.action ?? "-", color: selectedColor ?? ratingActionColor(row.action) };
+        return { text: row.action ?? "-", color: ratingActionColor(row.action) };
       case "current":
-        return { text: row.current ?? "-", color: selectedColor ?? colors.text };
+        return { text: row.current ?? "-", color: colors.text };
       case "target": {
         const delta = ratingTargetDelta(row);
         const hasTarget = row.currentPriceTarget != null || row.priorPriceTarget != null;
         return {
           text: formatRatingTarget(row, ratingCurrency, column),
-          color: selectedColor ?? (hasTarget ? colors.textBright : colors.textDim),
+          color: hasTarget ? colors.textBright : colors.textDim,
           backgroundColor: rowState.selected ? undefined : ratingTargetBackground(delta),
           attributes: hasTarget ? TextAttributes.BOLD : undefined,
         };
       }
       case "prior":
-        return { text: row.prior ?? "-", color: selectedColor ?? colors.textDim };
+        return { text: row.prior ?? "-", color: colors.textDim };
     }
   }, [ratingCurrency]);
 
@@ -298,6 +297,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         onHeaderClick={handleHeaderClick}
         getItemKey={(row, index) => `${row.date}:${row.firm}:${index}`}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={loading ? "Loading analyst data..." : error ?? "No analyst data"}
       />
     </>

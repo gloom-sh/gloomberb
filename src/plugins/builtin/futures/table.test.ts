@@ -32,7 +32,7 @@ function cellText(
   const quotes: BoardQuoteMap = new Map([
     ["X=F", { quote: quote as Quote, loading: false, error: null, stale: false }],
   ]);
-  return renderFuturesCell(row, column, { selected: false }, quotes).text;
+  return renderFuturesCell(row, column, quotes).text;
 }
 
 describe("futures price formatting", () => {

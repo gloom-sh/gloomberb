@@ -125,7 +125,7 @@ export function CompanyDetail({
           { label: "1Y", value: company.return1y, color: metricColor(company.return1y) },
           { label: "3Y", value: company.return3y, color: metricColor(company.return3y) },
           { label: "Sector", value: [company.primarySector, company.primarySubsector, company.primaryTechnology].filter(Boolean).join(" / ") },
-          { label: "Critical", value: company.aiCriticality, color: criticalityColor(company.aiCriticality, false) },
+          { label: "Critical", value: company.aiCriticality, color: criticalityColor(company.aiCriticality) },
           { label: "Maturity", value: company.maturity },
           { label: "Export", value: company.exportControlExposure },
           { label: "Employees", value: company.employeeCount },

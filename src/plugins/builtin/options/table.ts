@@ -286,10 +286,8 @@ export function renderOptionCell(
   /** The contract the cursor row has picked: only its half and the strike take the highlight. */
   activeSide?: OptionSide | null,
 ): DataTableCell {
-  const rowState = cursorState.selected && column.side && activeSide && column.side !== activeSide
-    ? { selected: false }
-    : cursorState;
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const otherHalf = cursorState.selected && !!column.side && !!activeSide && column.side !== activeSide;
+  const rowState = otherHalf ? { selected: false } : cursorState;
   const rowSurface = rowState.selected ? colors.selected : colors.bg;
 
   if (column.field === "strike") {
@@ -299,7 +297,7 @@ export function renderOptionCell(
     const surface = backgroundColor ?? rowSurface;
     return {
       text: formatStrikeLabel(row.strike),
-      color: selectedColor ?? optionRoleColor("strike", surface),
+      color: optionRoleColor("strike", surface),
       backgroundColor,
       attributes: rowState.selected || row.isPositionStrike ? TextAttributes.BOLD : TextAttributes.NONE,
     };
@@ -310,7 +308,8 @@ export function renderOptionCell(
   const surface = backgroundColor ?? rowSurface;
   return {
     text: formatOptionContractCell(row, contract, column),
-    color: selectedColor ?? (contract ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface)),
+    color: contract ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
+    keepColorWhenSelected: otherHalf,
     backgroundColor,
   };
 }

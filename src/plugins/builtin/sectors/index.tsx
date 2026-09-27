@@ -234,37 +234,34 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: SectorRow,
     column: SectorColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "name":
-        return { text: row.name, color: selectedColor ?? colors.text };
+        return { text: row.name, color: colors.text };
       case "etf":
-        return { text: row.etf, color: selectedColor ?? colors.textDim };
+        return { text: row.etf, color: colors.textDim };
       case "price":
         if (row.loading && row.price === null) {
-          return { text: "…", color: selectedColor ?? colors.textDim };
+          return { text: "…", color: colors.textDim };
         }
         return {
           text: row.price !== null ? formatCurrency(row.price, row.currency) : "—",
-          color: selectedColor ?? (row.price !== null ? colors.text : colors.textDim),
+          color: row.price !== null ? colors.text : colors.textDim,
         };
       case "changePercent":
         return {
           text: row.changePercent !== null ? formatPercentRaw(shownPercent(row.changePercent)) : "—",
-          color: selectedColor ?? (row.changePercent !== null ? priceColor(shownPercent(row.changePercent)) : colors.textDim),
+          color: row.changePercent !== null ? priceColor(shownPercent(row.changePercent)) : colors.textDim,
         };
       case "return1M":
         return {
           text: row.loading && row.return1M === null ? "…" : row.return1M !== null ? formatPercentRaw(shownPercent(row.return1M)) : "—",
-          color: selectedColor ?? (row.return1M !== null ? priceColor(shownPercent(row.return1M)) : colors.textDim),
+          color: row.return1M !== null ? priceColor(shownPercent(row.return1M)) : colors.textDim,
         };
       case "return1Y":
         return {
           text: row.loading && row.return1Y === null ? "…" : row.return1Y !== null ? formatPercentRaw(shownPercent(row.return1Y)) : "—",
-          color: selectedColor ?? (row.return1Y !== null ? priceColor(shownPercent(row.return1Y)) : colors.textDim),
+          color: row.return1Y !== null ? priceColor(shownPercent(row.return1Y)) : colors.textDim,
         };
       case "bar":
         return {
@@ -335,6 +332,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.etf}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={loadError ?? "No sectors selected."}
     />
   );

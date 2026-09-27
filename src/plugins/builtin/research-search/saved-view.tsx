@@ -88,22 +88,19 @@ export function SavedSearchesView({
   const renderCell = useCallback((
     search: CloudSavedSearch,
     column: SavedColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "name":
-        return { text: search.name || search.query, color: selectedColor ?? colors.text };
+        return { text: search.name || search.query, color: colors.text };
       case "filters":
         return {
           text: describeFilters(search.filters) || "\u2014",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "alert":
         return {
           text: search.alertEnabled ? "on" : "off",
-          color: selectedColor ?? (search.alertEnabled ? colors.positive : colors.textMuted),
+          color: search.alertEnabled ? colors.positive : colors.textMuted,
           // The cell is the switch, so alerts can be flipped without the keyboard.
           content: (
             <Checkbox
@@ -117,12 +114,12 @@ export function SavedSearchesView({
       case "last":
         return {
           text: search.lastMatchAt ? formatHitDate(search.lastMatchAt) : "\u2014",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "hits":
         return {
           text: search.matchCount > 0 ? String(search.matchCount) : "\u2014",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
     }
   }, [onToggleAlert]);
@@ -167,6 +164,7 @@ export function SavedSearchesView({
       }))}
       getItemKey={(search) => search.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       showHorizontalScrollbar={false}
       emptyStateTitle={emptyTitle}
     />

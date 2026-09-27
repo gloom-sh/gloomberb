@@ -104,11 +104,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: WorldIndexTableRow,
     column: WorldIndexColumn,
-    _index: number,
-    rowState: { selected: boolean },
-  ) => {
-    return renderWorldIndexCell(row, column, rowState, quotes, { sessionText });
-  }, [quotes, sessionText]);
+  ) => renderWorldIndexCell(row, column, quotes, { sessionText }), [quotes, sessionText]);
 
   useWorldIndicesFooter(quotes, refresh, focused);
 
@@ -139,6 +135,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderRegionHeader}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle="No market data provider connected."
     />
   );

@@ -456,6 +456,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             const cell = renderCongressTradeCell(trade, column, index, row);
             return !row.selected && trade.ticker && mineTickers.has(trade.ticker) && column.id === "member" ? { ...cell, color: colors.borderFocused } : cell;
           }}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching trades in this filing window."
           scrollRef={tradeScrollRef}
           onBodyScrollActivity={onTradeScroll}
@@ -469,10 +470,11 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
           sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
           onHeaderClick={(columnId) => setTickerSort((current) => nextHeaderSort(current, columnId as TickerColumnId, { firstDirection: columnId === "ticker" ? "asc" : "desc" }))}
-          renderCell={(row, column, index, selected) => {
-            const cell = renderCongressTickerCell(row, column, index, selected);
+          renderCell={(row, column, _index, selected) => {
+            const cell = renderCongressTickerCell(row, column);
             return !selected.selected && mineTickers.has(row.ticker) && column.id === "ticker" ? { ...cell, color: colors.borderFocused } : cell;
           }}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching tickers." scrollRef={tradeScrollRef} onBodyScrollActivity={onTradeScroll}
         />
       ) : (
@@ -504,6 +506,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           onHeaderClick={(columnId) => setMemberSort((current) => nextHeaderSort(current, columnId as MemberColumnId, { firstDirection: columnId === "member" || columnId === "district" ? "asc" : "desc" }))}
           getItemKey={(member) => member.id}
           renderCell={renderCongressMemberCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No matching members."
           scrollRef={tradeScrollRef}
           onBodyScrollActivity={onTradeScroll}

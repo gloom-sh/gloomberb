@@ -167,19 +167,16 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: CatalogSeriesRow,
     column: CatalogColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "series":
-        return { text: row.label, color: selectedColor ?? colors.textBright };
+        return { text: row.label, color: colors.textBright };
       case "publisher":
-        return { text: row.publisher, color: selectedColor ?? colors.textMuted };
+        return { text: row.publisher, color: colors.textMuted };
       case "kind":
-        return { text: row.kind, color: selectedColor ?? colors.textDim };
+        return { text: row.kind, color: colors.textDim };
       case "expression":
-        return { text: row.expression, color: selectedColor ?? colors.text };
+        return { text: row.expression, color: colors.text };
     }
   }, []);
 
@@ -248,6 +245,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => row.id}
       onActivate={chartSelected}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={emptyCopy.title}
       emptyStateHint={emptyCopy.hint}
     />

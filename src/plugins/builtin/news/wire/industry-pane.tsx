@@ -4,11 +4,10 @@ import type { PaneProps } from "../../../../types/plugin";
 import type { MarketNewsItem } from "../../../../types/news-source";
 import { useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { usePluginPaneState } from "../../../runtime";
-import { usePaneTabs } from "../../../../components";
+import { PaneStatusBody, usePaneTabs } from "../../../../components";
 import { useNewsArticleStack } from "./news/preset-pane";
 import {
   NewsArticleStackView,
-  newsTableStatusContent,
   type NewsColumnId,
   type NewsSortPreference,
 } from "./news/table";
@@ -92,13 +91,16 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
       {...stack}
       rootHeight={height}
       rootBefore={rootBefore}
-      emptyContent={newsTableStatusContent({
-        loading,
-        error,
-        subject: "Sector news",
-        emptyTitle: "No news in this category",
-        emptyMessage: "Try another category or wait for the next feed refresh.",
-      })}
+      emptyContent={(
+        <PaneStatusBody
+          loading={loading}
+          error={error}
+          empty
+          subject="Sector news"
+          emptyTitle="No news in this category"
+          emptyMessage="Try another category or wait for the next feed refresh."
+        />
+      )}
       emptyStateTitle="No news in this category"
       emptyStateHint="Try another category or wait for the next feed refresh."
       scrollRef={scrollRef}

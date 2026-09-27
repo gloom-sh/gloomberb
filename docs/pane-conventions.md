@@ -133,7 +133,11 @@ columns), `ListView` (short single-column choice), `ActionRow` (summary row
 with one action or a disclosure), `buildSectionedRows` (grouped rows). Every
 table has `columns`, `items`, `getItemKey`, `renderCell`, a `selection`, and
 `onActivate`; header clicks sort; `tableExport: true` on the pane def adds
-CSV.
+CSV. A table that colors its cells passes `selectedTextOverridesCellColor`
+so the selected row reads in the selection color without each cell checking
+`rowState.selected`; a cell whose tone must survive the selection sets
+`keepColorWhenSelected`. Custom `content` still takes its colors from
+`rowState`.
 
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack

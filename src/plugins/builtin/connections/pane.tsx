@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  DataTableStackView, KeyValueRow, SectionHeading, Spinner, usePaneFooter, type DataTableCell,
+  DataTableStackView, KeyValueRow, PaneStatusBody, SectionHeading, usePaneFooter, type DataTableCell,
   type DataTableColumn
 } from "../../../components";
 import type {
@@ -223,11 +223,7 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
         onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as ConnectionColumn["id"]))}
         getItemKey={(source) => source.id}
         renderCell={renderCell}
-        emptyContent={settled ? undefined : (
-          <Box paddingX={1} paddingY={1}>
-            <Spinner label="Waiting for services to register..." />
-          </Box>
-        )}
+        emptyContent={settled ? undefined : <PaneStatusBody loading loadingLabel="Waiting for services to register..." />}
         emptyStateTitle="No connection activity yet."
         emptyStateHint="Sources appear when providers and services register."
       />

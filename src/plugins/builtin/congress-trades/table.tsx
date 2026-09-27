@@ -18,8 +18,7 @@ import {
   type TickerColumn,
 } from "./model";
 
-export function sideColor(side: CloudCongressTradePayload["side"], selected: boolean): string {
-  if (selected) return colors.selectedText;
+export function sideColor(side: CloudCongressTradePayload["side"]): string {
   if (side === "BUY") return colors.positive;
   if (side === "SELL") return colors.negative;
   if (side === "EXCHANGE") return colors.text;
@@ -32,19 +31,18 @@ export function renderCongressTradeCell(
   _index: number,
   rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
-    case "returnSinceTx": case "returnSinceFiling": return { text: formatCongressReturn(trade[column.id]), color: selectedColor ?? (trade[column.id] == null ? colors.textDim : trade[column.id]! >= 0 ? colors.positive : colors.negative) };
+    case "returnSinceTx": case "returnSinceFiling": return { text: formatCongressReturn(trade[column.id]), color: trade[column.id] == null ? colors.textDim : trade[column.id]! >= 0 ? colors.positive : colors.negative };
     case "filed":
-      return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "tx":
-      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "lag":
-      return { text: `${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? "!" : ""}`, color: selectedColor ?? ((trade.lagDays ?? 0) > 45 ? colors.warning : colors.textDim) };
+      return { text: `${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? "!" : ""}`, color: (trade.lagDays ?? 0) > 45 ? colors.warning : colors.textDim };
     case "member":
-      return { text: trade.memberName, color: selectedColor ?? colors.text };
+      return { text: trade.memberName, color: colors.text };
     case "side":
-      return { text: trade.side, color: sideColor(trade.side, rowState.selected), attributes: TextAttributes.BOLD };
+      return { text: trade.side, color: sideColor(trade.side), attributes: TextAttributes.BOLD };
     case "ticker":
       return {
         text: trade.ticker ?? (column.assetFallback && trade.assetName ? trade.assetName : "--"),
@@ -52,57 +50,53 @@ export function renderCongressTradeCell(
           <TickerBadgeList
             symbols={[trade.ticker]}
             width={column.width}
-            fallbackColor={selectedColor ?? colors.positive}
+            fallbackColor={rowState.selected ? colors.selectedText : colors.positive}
           />
         ) : undefined,
-        color: selectedColor ?? (trade.ticker ? colors.positive : colors.textDim),
+        color: trade.ticker ? colors.positive : colors.textDim,
         attributes: trade.ticker ? TextAttributes.BOLD : 0,
       };
     case "amount":
       return {
         text: formatAmountRange(trade.amountLow, trade.amountHigh, trade.amount),
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
       };
     case "asset":
-      return { text: tradeAssetLabel(trade), color: selectedColor ?? colors.text };
+      return { text: tradeAssetLabel(trade), color: colors.text };
     case "owner":
-      return { text: trade.owner, color: selectedColor ?? colors.textDim };
+      return { text: trade.owner, color: colors.textDim };
   }
 }
 
-export function renderCongressTickerCell(ticker: CloudCongressTickerPayload, column: TickerColumn, _index: number, row: { selected: boolean }): DataTableCell {
-  const selectedColor = row.selected ? colors.selectedText : undefined;
-  if (column.id === "ticker") return { text: ticker.ticker, color: selectedColor ?? colors.textBright };
-  if (column.id === "range") return { text: formatAmountRange(ticker.estimatedLow, ticker.estimatedHigh), color: selectedColor ?? colors.text };
-  if (column.id === "lastFilingDate") return { text: ticker.lastFilingDate ?? "--", color: selectedColor ?? colors.textDim };
-  return { text: String(ticker[column.id]), color: selectedColor ?? (column.id === "buyCount" ? colors.positive : column.id === "sellCount" ? colors.negative : colors.text) };
+export function renderCongressTickerCell(ticker: CloudCongressTickerPayload, column: TickerColumn): DataTableCell {
+  if (column.id === "ticker") return { text: ticker.ticker, color: colors.textBright };
+  if (column.id === "range") return { text: formatAmountRange(ticker.estimatedLow, ticker.estimatedHigh), color: colors.text };
+  if (column.id === "lastFilingDate") return { text: ticker.lastFilingDate ?? "--", color: colors.textDim };
+  return { text: String(ticker[column.id]), color: column.id === "buyCount" ? colors.positive : column.id === "sellCount" ? colors.negative : colors.text };
 }
 
 export function renderCongressMemberCell(
   member: CloudCongressMemberPayload,
   column: MemberColumn,
-  _index: number,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
-    case "party": return { text: member.party ?? "--", color: selectedColor ?? colors.textDim };
-    case "medianReturn": case "buyHitRate": return { text: column.id === "buyHitRate" ? member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%` : formatCongressReturn(member.medianReturn), color: selectedColor ?? colors.text };
+    case "party": return { text: member.party ?? "--", color: colors.textDim };
+    case "medianReturn": case "buyHitRate": return { text: column.id === "buyHitRate" ? member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%` : formatCongressReturn(member.medianReturn), color: colors.text };
     case "member":
-      return { text: member.memberName, color: selectedColor ?? colors.text };
+      return { text: member.memberName, color: colors.text };
     case "district":
-      return { text: member.stateDistrict || "--", color: selectedColor ?? colors.textDim };
+      return { text: member.stateDistrict || "--", color: colors.textDim };
     case "trades":
-      return { text: String(member.tradeCount), color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+      return { text: String(member.tradeCount), color: colors.textBright, attributes: TextAttributes.BOLD };
     case "buys":
-      return { text: String(member.buyCount), color: selectedColor ?? colors.positive };
+      return { text: String(member.buyCount), color: colors.positive };
     case "sells":
-      return { text: String(member.sellCount), color: selectedColor ?? colors.negative };
+      return { text: String(member.sellCount), color: colors.negative };
     case "range":
-      return { text: formatAmountRange(member.estimatedLow, member.estimatedHigh), color: selectedColor ?? colors.textBright };
+      return { text: formatAmountRange(member.estimatedLow, member.estimatedHigh), color: colors.textBright };
     case "last":
-      return { text: formatShortDate(member.lastFilingDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(member.lastFilingDate, FILING_DAY_FORMAT), color: colors.textDim };
     case "lag":
-      return { text: formatLag(member.avgLagDays), color: selectedColor ?? colors.textDim };
+      return { text: formatLag(member.avgLagDays), color: colors.textDim };
   }
 }

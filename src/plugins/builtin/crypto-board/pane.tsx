@@ -72,21 +72,20 @@ function quoteTargets(
   }));
 }
 
-function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolean): DataTableCell {
-  const selectedColor = selected ? colors.selectedText : undefined;
+function renderCryptoCell(row: CryptoRow, column: CryptoColumn): DataTableCell {
   const signed = (value: number | null) => ({
     text: formatCryptoPercent(value),
-    color: selectedColor ?? (value == null ? colors.textDim : priceColor(value)),
+    color: value == null ? colors.textDim : priceColor(value),
   });
   switch (column.id) {
     case "rank":
-      return { text: String(row.rank), color: selectedColor ?? colors.textDim };
+      return { text: String(row.rank), color: colors.textDim };
     case "code":
-      return { text: row.code, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+      return { text: row.code, color: colors.textBright, attributes: TextAttributes.BOLD };
     case "name":
-      return { text: row.name, color: selectedColor };
+      return { text: row.name };
     case "price":
-      return { text: row.priceText, color: selectedColor };
+      return { text: row.priceText };
     case "changePercent":
       return signed(row.changePercent);
     case "return7d":
@@ -101,9 +100,9 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
         content: <PriceSparkline priceHistory={row.history} width={column.width} period="1M" />,
       };
     case "volume24h":
-      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: row.volume24h == null ? "—" : formatCompact(row.volume24h, { fixedDecimals: true }), color: colors.textDim };
     case "marketCap":
-      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+      return { text: row.marketCap == null ? "—" : formatCompact(row.marketCap, { fixedDecimals: true }), color: colors.textDim };
   }
 }
 
@@ -155,12 +154,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     const timer = setInterval(() => void reloadBoard(false), boardRefreshMs);
     return () => clearInterval(timer);
   }, [boardRefreshMs, paneVisible, reloadBoard]);
-  const renderCell = useCallback(
-    (row: CryptoRow, column: CryptoColumn, _index: number, rowState: { selected: boolean }) => (
-      renderCryptoCell(row, column, rowState.selected)
-    ),
-    [],
-  );
   useEffect(() => {
     if (!rows.length) return;
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
@@ -244,7 +237,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
           })}
           visibleRangeKey={`${activeTab}:${sort.columnId}:${sort.direction}`}
           onVisibleRangeChange={setVisibleRange}
-          renderCell={renderCell}
+          renderCell={renderCryptoCell}
+          selectedTextOverridesCellColor
           emptyStateTitle="No crypto assets returned."
         />
       </PaneStatusBody>

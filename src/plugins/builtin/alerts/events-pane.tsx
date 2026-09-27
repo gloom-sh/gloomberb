@@ -1,11 +1,10 @@
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCallback, useMemo, useState } from "react";
-import { Box } from "../../../ui";
 import {
   Button,
   ConfirmDialog,
   DataTableView,
-  EmptyState,
+  PaneStatusBody,
   usePaneFooter,
   type DataTableColumn,
 } from "../../../components";
@@ -193,13 +192,12 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       })}
       emptyStateTitle={error ?? "No event alerts"}
       emptyContent={error ? undefined : (
-        <Box paddingX={1} paddingY={1}>
-          <EmptyState
-            title="No event alerts"
-            message="Follow filings, news, earnings, members, funds or market moves."
-            actions={<Button label="Add event alert" compact onPress={add} />}
-          />
-        </Box>
+        <PaneStatusBody
+          empty
+          emptyTitle="No event alerts"
+          emptyMessage="Follow filings, news, earnings, members, funds or market moves."
+          actions={<Button label="Add event alert" compact onPress={add} />}
+        />
       )}
     />
   );

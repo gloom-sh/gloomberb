@@ -246,6 +246,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         getItemKey={moverKey}
         onActivate={openSymbol}
         renderCell={renderMarketMoverCell}
+        selectedTextOverridesCellColor
         emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No movers returned."}
         emptyContent={loadError ? (
           <Box paddingX={1} paddingY={1}>

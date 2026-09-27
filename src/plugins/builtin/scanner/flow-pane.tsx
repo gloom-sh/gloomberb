@@ -67,47 +67,39 @@ function buildColumns(width: number, dated: boolean): DataTableColumn[] {
 
 // Stable table adapters so memoized rows survive feed ticks.
 const eventKey = (event: ScannerFlowEvent) => event.id;
-const renderRow = (
-  event: ScannerFlowEvent,
-  column: DataTableColumn,
-  _index: number,
-  rowState: { selected: boolean },
-) => renderCell(event, column, rowState);
 
 function renderCell(
   event: ScannerFlowEvent,
   column: DataTableColumn,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   const rightColor = event.right === "C" ? colors.positive : colors.negative;
   switch (column.id) {
     case "time":
-      return { text: formatFlowTime(event.at), color: selectedColor ?? colors.textDim };
+      return { text: formatFlowTime(event.at), color: colors.textDim };
     case "ticker":
       return {
         text: event.underlying,
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "type":
-      return { text: formatFlowType(event), color: selectedColor ?? rightColor };
+      return { text: formatFlowType(event), color: rightColor };
     case "strike":
-      return { text: formatNumber(event.strike, event.strike % 1 === 0 ? 0 : 2), color: selectedColor };
+      return { text: formatNumber(event.strike, event.strike % 1 === 0 ? 0 : 2) };
     case "expiry":
-      return { text: formatFlowExpiry(event.expiry), color: selectedColor ?? colors.textDim };
+      return { text: formatFlowExpiry(event.expiry), color: colors.textDim };
     case "side":
-      return { text: formatFlowSide(event.side), color: selectedColor ?? colors.textDim };
+      return { text: formatFlowSide(event.side), color: colors.textDim };
     case "size":
-      return { text: formatCompact(event.size), color: selectedColor };
+      return { text: formatCompact(event.size) };
     case "premium":
       return {
         text: formatFlowPremium(event.premium),
-        color: selectedColor ?? rightColor,
+        color: rightColor,
         attributes: TextAttributes.BOLD,
       };
     default:
-      return { text: formatFlowVolOi(event.volOi), color: selectedColor ?? colors.textDim };
+      return { text: formatFlowVolOi(event.volOi), color: colors.textDim };
   }
 }
 
@@ -238,7 +230,8 @@ function FlowPane({ focused, width, height }: PaneProps) {
         sortDirection="desc"
         getItemKey={eventKey}
         onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
-        renderCell={renderRow}
+        renderCell={renderCell}
+        selectedTextOverridesCellColor
         emptyContent={
           !feed.payload
             ? <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />

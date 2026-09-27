@@ -220,29 +220,28 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
-  const renderCell = useCallback((row: RelativeRow, column: RelativeColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const renderCell = useCallback((row: RelativeRow, column: RelativeColumn): DataTableCell => {
     switch (column.id) {
       case "symbol":
-        return { text: row.symbol, color: selectedColor ?? (row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright), attributes: TextAttributes.BOLD };
+        return { text: row.symbol, color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
       case "price":
-        return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: selectedColor ?? colors.text };
+        return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: colors.text };
       case "changePercent":
-        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: selectedColor ?? priceColor(row.changePercent ?? 0) };
+        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: priceColor(row.changePercent ?? 0) };
       case "marketCap":
-        return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: selectedColor ?? colors.textDim };
+        return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":
-        return { text: formatPriceEarnings(row.reportedMultiples.trailingPE), color: selectedColor ?? colors.text };
+        return { text: formatPriceEarnings(row.reportedMultiples.trailingPE), color: colors.text };
       case "forwardPE":
-        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: selectedColor ?? colors.text };
+        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
-        return { text: formatNumber(row.evSales ?? undefined, 1), color: selectedColor ?? colors.text };
+        return { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
       case "fcfYield":
-        return { text: formatLevelPercent(row.fcfYield ?? undefined), color: selectedColor ?? priceColor(row.fcfYield ?? 0) };
+        return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":
-        return { text: formatPercent(row.revenueGrowth ?? undefined), color: selectedColor ?? priceColor(row.revenueGrowth ?? 0) };
+        return { text: formatPercent(row.revenueGrowth ?? undefined), color: priceColor(row.revenueGrowth ?? 0) };
       case "operatingMargin":
-        return { text: formatLevelPercent(row.operatingMargin ?? undefined), color: selectedColor ?? colors.text };
+        return { text: formatLevelPercent(row.operatingMargin ?? undefined), color: colors.text };
     }
   }, []);
 
@@ -277,6 +276,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.symbol}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       getExportMetadata={() => sortedRows.flatMap((row) => [
         [row.symbol, "Quote as of", parseDisplayDate(row.quoteAsOf)?.toISOString() ?? "unavailable", "Stale", String(row.quoteStale ?? "unknown")],
         [row.symbol, "Fundamentals retrieved", row.fundamentalsProvenance?.retrievedAt ?? "unavailable",

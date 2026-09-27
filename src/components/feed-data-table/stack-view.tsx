@@ -10,7 +10,7 @@ import { nextHeaderSort } from "../../utils/sort-values";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
 import { usePaneFooter } from "../layout/pane/footer";
-import type { DataTableRootKeyContext } from "../data-table/view";
+import type { DataTableKeyEvent, DataTableRootKeyContext } from "../data-table/view";
 import {
   activeStackIndex,
   sortIndexedStackRows,
@@ -49,18 +49,7 @@ interface FeedDataTableStackViewProps {
   onSelect: (index: number) => void;
   rootBefore?: ReactNode;
   rootAfter?: ReactNode;
-  onRootKeyDown?: (event: {
-    name?: string;
-    sequence?: string;
-    ctrl?: boolean;
-    meta?: boolean;
-    super?: boolean;
-    alt?: boolean;
-    option?: boolean;
-    shift?: boolean;
-    preventDefault?: () => void;
-    stopPropagation?: () => void;
-  }, context: DataTableRootKeyContext) => boolean | void;
+  onRootKeyDown?: (event: DataTableKeyEvent, context: DataTableRootKeyContext) => boolean | void;
   sourceLabel?: string;
   titleLabel?: string;
   emptyStateTitle?: string;
@@ -230,22 +219,21 @@ export function FeedDataTableStackView({
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "time":
         return {
           text: row.item.timestamp ? formatTimeAgo(row.item.timestamp) : "",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       case "source":
         return {
           text: row.item.eyebrow ?? "",
-          color: selectedColor ?? colors.textMuted,
+          color: colors.textMuted,
         };
       case "title":
         return {
           text: row.item.title,
-          color: selectedColor ?? colors.text,
+          color: colors.text,
           attributes: isItemRead
             ? isItemRead(row.item)
               ? TextAttributes.NONE
@@ -329,6 +317,7 @@ export function FeedDataTableStackView({
         )}
       getItemKey={(row) => row.item.id}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={t(emptyStateTitle)}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}

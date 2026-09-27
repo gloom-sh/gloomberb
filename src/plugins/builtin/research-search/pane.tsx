@@ -352,26 +352,25 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "ticker":
         return {
           text: hit.ticker,
-          color: selectedColor ?? colors.textBright,
+          color: colors.textBright,
           content: (
             <TickerBadgeList
               symbols={[hit.ticker]}
               width={column.width}
-              fallbackColor={selectedColor ?? colors.textBright}
+              fallbackColor={rowState.selected ? colors.selectedText : colors.textBright}
             />
           ),
         };
       case "type":
-        return { text: hitTypeLabel(hit), color: selectedColor ?? colors.textMuted };
+        return { text: hitTypeLabel(hit), color: colors.textMuted };
       case "date":
-        return { text: formatHitDate(hit.publishedAt), color: selectedColor ?? colors.textDim };
+        return { text: formatHitDate(hit.publishedAt), color: colors.textDim };
       case "title":
-        return { text: hit.title, color: selectedColor ?? colors.text };
+        return { text: hit.title, color: colors.text };
       case "match": {
         // The count leads so collapsing chunks into one row stays visible even
         // where the snippet behind it is cut off.
@@ -385,8 +384,8 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
           content: (
             <SnippetText
               segments={segments}
-              color={selectedColor ?? colors.text}
-              dimColor={selectedColor ?? colors.textDim}
+              color={rowState.selected ? colors.selectedText : colors.text}
+              dimColor={rowState.selected ? colors.selectedText : colors.textDim}
             />
           ),
         };
@@ -712,6 +711,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         }}
         getItemKey={(hit) => hit.id}
         renderCell={renderCell}
+        selectedTextOverridesCellColor
         showHorizontalScrollbar={false}
         emptyContent={status === "loading" && hits.length === 0
           ? <Spinner label="Searching..." />

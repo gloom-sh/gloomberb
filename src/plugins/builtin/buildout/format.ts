@@ -62,20 +62,17 @@ export function activityLabel(value: number | null | undefined) {
   return "None";
 }
 
-export function activityColor(value: number | null | undefined, selected: boolean) {
-  if (selected) return colors.selectedText;
+export function activityColor(value: number | null | undefined) {
   if (value == null || value <= 0) return colors.textMuted;
   return value >= 2 ? colors.warning : colors.neutral;
 }
 
-export function metricColor(value: unknown, selected = false) {
-  if (selected) return colors.selectedText;
+export function metricColor(value: unknown) {
   const parsed = metricNumber(value);
   return parsed == null ? colors.textDim : priceColor(parsed);
 }
 
-export function criticalityColor(value: string | null | undefined, selected: boolean) {
-  if (selected) return colors.selectedText;
+export function criticalityColor(value: string | null | undefined) {
   switch ((value ?? "").trim().toUpperCase()) {
     case "CORE":
       return colors.negative;

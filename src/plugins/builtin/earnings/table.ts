@@ -99,15 +99,14 @@ function formatAnalystSummary(event: EarningsEvent): string {
   return `${eps}/${revenue}`;
 }
 
-function estimateColor(value: number | null | undefined, selectedColor: string | undefined): string | undefined {
-  if (selectedColor) return selectedColor;
+function estimateColor(value: number | null | undefined): string {
   if (value == null || value === 0) return colors.textDim;
   return value > 0 ? colors.positive : colors.negative;
 }
 
-function growthCell(value: number | null, selectedColor: string | undefined): DataTableCell {
+function growthCell(value: number | null): DataTableCell {
   const shown = displayedValue(value, 4);
-  return { text: shown != null ? formatPercent(shown) : "—", color: estimateColor(shown, selectedColor) };
+  return { text: shown != null ? formatPercent(shown) : "—", color: estimateColor(shown) };
 }
 
 export function buildEarningsColumns(width: number, sharedCurrency: string | null = null): EarningsColumn[] {
@@ -162,58 +161,55 @@ export function renderEarningsSectionHeader(row: EarningsDisplayRow) {
 export function renderEarningsCell(
   row: EarningsDisplayRow,
   column: EarningsColumn,
-  selected: boolean,
   sharedCurrency: string | null = null,
 ): DataTableCell {
   if (row.kind !== "event") return { text: "" };
-
-  const selectedColor = selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "date":
-      return { text: formatDate(row.event.earningsDate), color: selectedColor ?? colors.textDim };
+      return { text: formatDate(row.event.earningsDate), color: colors.textDim };
     case "when":
       return {
         text: row.event.timing || formatTime(row.event.earningsCallDate),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     case "status":
       if (row.event.isDateEstimate == null) {
         return {
           text: "—",
-          color: selectedColor ?? colors.textDim,
+          color: colors.textDim,
         };
       }
       return {
         text: row.event.isDateEstimate === true ? "est" : "firm",
-        color: selectedColor ?? (row.event.isDateEstimate === true ? colors.warning : colors.textDim),
+        color: row.event.isDateEstimate === true ? colors.warning : colors.textDim,
       };
     case "symbol":
       return {
         text: row.event.symbol,
-        color: selectedColor ?? colors.text,
+        color: colors.text,
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: row.event.name, color: selectedColor ?? colors.text };
+      return { text: row.event.name, color: colors.text };
     case "forecastEnd":
-      return { text: earningsForecastPeriod(row.event)?.periodEndDate ?? "—", color: selectedColor ?? colors.textDim };
+      return { text: earningsForecastPeriod(row.event)?.periodEndDate ?? "—", color: colors.textDim };
     case "epsEstimate":
       return {
         text: formatEstimate(row.event, "epsEstimate", value => formatNumber(value, 2), sharedCurrency),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     case "epsRange":
       return {
         text: formatEstimateRange(row.event, "epsLow", "epsHigh", value => formatNumber(value, 2), sharedCurrency),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     case "epsGrowth":
-      return growthCell(coherentEarningsValue(row.event, "epsGrowth"), selectedColor);
+      return growthCell(coherentEarningsValue(row.event, "epsGrowth"));
     case "epsTrend": {
       const change = displayedValue(earningsEpsChange30d(row.event), 2);
       return {
         text: change != null ? withCurrency(row.event.estimateBasis?.epsEstimate?.currency, formatNumber(change, 2), sharedCurrency) : "—",
-        color: estimateColor(change, selectedColor),
+        color: estimateColor(change),
       };
     }
     case "epsRevisions": {
@@ -222,25 +218,25 @@ export function renderEarningsCell(
       const net = up != null && down != null ? up - down : null;
       return {
         text: formatRevisionSummary(row.event),
-        color: selectedColor ?? (net != null && net > 0 ? colors.positive : net != null && net < 0 ? colors.negative : colors.textDim),
+        color: net != null && net > 0 ? colors.positive : net != null && net < 0 ? colors.negative : colors.textDim,
       };
     }
     case "revenueEstimate":
       return {
         text: formatEstimate(row.event, "revenueEstimate", formatCompact, sharedCurrency),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     case "revenueRange":
       return {
         text: formatEstimateRange(row.event, "revenueLow", "revenueHigh", formatCompact, sharedCurrency),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
     case "revenueGrowth":
-      return growthCell(coherentEarningsValue(row.event, "revenueGrowth"), selectedColor);
+      return growthCell(coherentEarningsValue(row.event, "revenueGrowth"));
     case "analysts":
       return {
         text: formatAnalystSummary(row.event),
-        color: selectedColor ?? colors.textDim,
+        color: colors.textDim,
       };
   }
 }

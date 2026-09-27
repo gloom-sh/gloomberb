@@ -562,29 +562,26 @@ export function CorporateActionsView({
   const renderCell = useCallback((
     row: EventRow,
     column: EventColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "date":
-        return { text: row.date, color: selectedColor ?? colors.textDim };
+        return { text: row.date, color: colors.textDim };
       case "status":
-        return { text: row.status, color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: row.status, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "period":
-        return { text: row.period, color: selectedColor ?? colors.textDim };
+        return { text: row.period, color: colors.textDim };
       case "qEps":
-        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
       case "qRevenue":
-        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
       case "annualEps":
-        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualEps, unit ? undefined : row.epsCurrency, "eps"), color: colors.textDim };
       case "annualRevenue":
-        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualRevenue, unit ? undefined : row.revenueCurrency, "revenue"), color: colors.textDim };
       case "value":
-        return { text: row.value, color: selectedColor ?? toneColor(row.tone) };
+        return { text: row.value, color: toneColor(row.tone) };
       case "detail":
-        return { text: row.detail, color: selectedColor ?? colors.text };
+        return { text: row.detail, color: colors.text };
     }
   }, [unit]);
 
@@ -634,6 +631,7 @@ export function CorporateActionsView({
       sortDirection="desc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       getRowBackgroundColor={rowBackground}
       emptyStateTitle={loading
         ? (variant === "earnings-estimates" ? "Loading earnings estimates..." : "Loading events...")

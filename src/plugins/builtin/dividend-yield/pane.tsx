@@ -106,21 +106,18 @@ const rowKey = (row: DividendRow) => row.key;
 function renderCell(
   row: DividendRow,
   column: DividendColumn,
-  _index: number,
-  rowState: { selected: boolean },
 ): DataTableCell {
-  const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "exDate":
-      return { text: row.exDate, color: selectedColor ?? colors.textDim };
+      return { text: row.exDate, color: colors.textDim };
     case "amount":
       return {
         text: formatDistributionAmount(row.amount, row.currency),
-        color: selectedColor ?? colors.textBright,
+        color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "currency":
-      return { text: row.currency, color: selectedColor ?? colors.textDim };
+      return { text: row.currency, color: colors.textDim };
   }
 }
 
@@ -272,6 +269,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={emptyTitle}
     />
   );

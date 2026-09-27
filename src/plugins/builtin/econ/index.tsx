@@ -295,39 +295,35 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const renderCell = useCallback((
     row: DisplayRow,
     column: EconCalendarColumn,
-    _index: number,
-    rowState: { selected: boolean },
   ): DataTableCell => {
     if (row.kind !== "event") return { text: "" };
 
     const ev = row.event;
-    const selectedColor = rowState.selected ? colors.selectedText : undefined;
-
     switch (column.id) {
       case "time":
-        return { text: timeLabel(ev.date), color: selectedColor ?? colors.textMuted };
+        return { text: timeLabel(ev.date), color: colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {
           text: indicator.text,
-          color: selectedColor ?? indicator.color,
+          color: indicator.color,
         };
       }
       case "country":
         // The ISO code, not a flag emoji: emoji widths do not match a fixed
         // column and pushed the right-hand columns off the pane.
-        return { text: ev.country, color: selectedColor ?? colors.textMuted };
+        return { text: ev.country, color: colors.textMuted };
       case "event":
-        return { text: ev.event, color: selectedColor ?? colors.text };
+        return { text: ev.event, color: colors.text };
       case "actual":
         return {
           text: ev.actual ?? "—",
-          color: selectedColor ?? actualColor(ev.actual, ev.forecast),
+          color: actualColor(ev.actual, ev.forecast),
         };
       case "forecast":
-        return { text: ev.forecast ?? "—", color: selectedColor ?? colors.textDim };
+        return { text: ev.forecast ?? "—", color: colors.textDim };
       case "prior":
-        return { text: ev.prior ?? "—", color: selectedColor ?? colors.textDim };
+        return { text: ev.prior ?? "—", color: colors.textDim };
     }
   }, []);
 
@@ -387,6 +383,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
+      selectedTextOverridesCellColor
       emptyStateTitle={loading || !settled ? "Loading economic events..." : "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
