@@ -132,6 +132,31 @@ function priceDecimals(price: number, contract: FuturesContract): number {
   return 6;
 }
 
+const currencySymbols = new Map<string, string>();
+
+/**
+ * The board prints dollar prices bare. Anything else carries its unit on the
+ * price and on the change, so Dutch TTF gas at 72.071 euros is not read as
+ * dollars beside Henry Hub: US cents (`USX`) as a `c` suffix, other
+ * currencies as their symbol.
+ */
+function currencyMarks(currency: string | undefined): { prefix: string; suffix: string } {
+  const code = currency?.trim().toUpperCase() ?? "";
+  if (!code || code === "USD") return { prefix: "", suffix: "" };
+  if (code === "USX") return { prefix: "", suffix: "c" };
+  let symbol = currencySymbols.get(code);
+  if (symbol === undefined) {
+    try {
+      symbol = new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" })
+        .formatToParts(0).find((part) => part.type === "currency")?.value ?? code;
+    } catch {
+      symbol = code;
+    }
+    currencySymbols.set(code, symbol);
+  }
+  return symbol.length === 1 ? { prefix: symbol, suffix: "" } : { prefix: "", suffix: ` ${symbol}` };
+}
+
 /**
  * Trailing zeros are kept: a EUR contract at 1.1600 has to line up with the
  * 1.3544 pound contract beside it, and with its own "+0.0002" change.
@@ -139,7 +164,8 @@ function priceDecimals(price: number, contract: FuturesContract): number {
 function formatContractPrice(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.price)) return "—";
   const text = formatNumber(quote.price, priceDecimals(quote.previousClose ?? quote.price, contract));
-  return quote.currency === "USX" ? `${text}c` : text;
+  const { prefix, suffix } = currencyMarks(quote.currency);
+  return `${prefix}${text}${suffix}`;
 }
 
 /**
@@ -153,7 +179,8 @@ function formatContractChange(quote: Quote, contract: FuturesContract): string {
     ? priceDecimals(quote.previousClose ?? quote.price, contract)
     : 2;
   const text = formatNumber(Math.abs(quote.change), decimals);
-  return `${quote.change >= 0 ? "+" : "-"}${text}`;
+  const { prefix, suffix } = currencyMarks(quote.currency);
+  return `${quote.change >= 0 ? "+" : "-"}${prefix}${text}${suffix}`;
 }
 
 export function renderFuturesCell(

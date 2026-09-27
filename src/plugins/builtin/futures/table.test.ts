@@ -61,7 +61,14 @@ describe("futures price formatting", () => {
 
   test("marks cent-quoted grains so they are not read as dollars", () => {
     expect(cellText("price", { price: 483.25, currency: "USX" }, "agriculture")).toBe("483.25c");
+    expect(cellText("change", { price: 483.25, change: -2.5, currency: "USX" }, "agriculture")).toBe("-2.50c");
     expect(cellText("price", { price: 483.25, currency: "USD" }, "agriculture")).toBe("483.25");
+  });
+
+  test("marks a euro-quoted contract on its price and its change", () => {
+    // Dutch TTF gas quotes in EUR per MWh beside dollar-quoted Henry Hub.
+    expect(cellText("price", { price: 72.071, currency: "EUR" }, "energy", 0.001)).toBe("€72.071");
+    expect(cellText("change", { price: 72.071, change: -3.035, currency: "EUR" }, "energy", 0.001)).toBe("-€3.035");
   });
 
   test("scales the session change to the price, not to its own magnitude", () => {

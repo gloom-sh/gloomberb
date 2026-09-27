@@ -4,6 +4,7 @@ export type FuturesSector =
   | "energy"
   | "metals"
   | "agriculture"
+  | "livestock"
   | "currencies";
 
 export interface FuturesContract {
@@ -20,6 +21,8 @@ export interface FuturesContract {
    * 32nd-based ticks (down to 1/256) do not map to a readable decimal count.
    */
   tick?: number;
+  /** False where the contract curve (CTM) does not cover the root yet. */
+  curve?: false;
 }
 
 /** 0.005 -> 3, 0.25 -> 2, 1 -> 0. Written for ticks, not general numbers. */
@@ -47,23 +50,36 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "CL=F", code: "CL", name: "WTI Crude Oil", sector: "energy", tick: 0.01 },
   { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil", sector: "energy", tick: 0.01 },
   { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", tick: 0.001 },
+  // Quoted in euros per MWh.
+  { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", tick: 0.001, curve: false },
   { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", tick: 0.0001 },
   { symbol: "HO=F", code: "HO", name: "Heating Oil", sector: "energy", tick: 0.0001 },
 
   { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", tick: 0.1 },
   { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", tick: 0.005 },
   { symbol: "HG=F", code: "HG", name: "Copper", sector: "metals", tick: 0.0005 },
+  { symbol: "ALI=F", code: "ALI", name: "Aluminum", sector: "metals", tick: 0.25, curve: false },
   { symbol: "PL=F", code: "PL", name: "Platinum", sector: "metals", tick: 0.1 },
   { symbol: "PA=F", code: "PA", name: "Palladium", sector: "metals", tick: 0.1 },
 
-  // Grains and softs quote in US cents; the tick is in those same cents.
+  // Most grains and softs quote in US cents (cocoa, soybean meal and lumber in
+  // dollars); a tick is in the quote's own units.
   { symbol: "ZC=F", code: "ZC", name: "Corn", sector: "agriculture", tick: 0.25 },
   { symbol: "ZS=F", code: "ZS", name: "Soybeans", sector: "agriculture", tick: 0.25 },
+  { symbol: "ZM=F", code: "ZM", name: "Soybean Meal", sector: "agriculture", tick: 0.1, curve: false },
+  { symbol: "ZL=F", code: "ZL", name: "Soybean Oil", sector: "agriculture", tick: 0.01, curve: false },
   { symbol: "ZW=F", code: "ZW", name: "Chicago SRW Wheat", sector: "agriculture", tick: 0.25 },
+  { symbol: "KE=F", code: "KE", name: "KC HRW Wheat", sector: "agriculture", tick: 0.25, curve: false },
   { symbol: "KC=F", code: "KC", name: "Coffee", sector: "agriculture", tick: 0.05 },
   { symbol: "SB=F", code: "SB", name: "Sugar #11", sector: "agriculture", tick: 0.01 },
   { symbol: "CC=F", code: "CC", name: "Cocoa", sector: "agriculture", tick: 1 },
   { symbol: "CT=F", code: "CT", name: "Cotton #2", sector: "agriculture", tick: 0.01 },
+  { symbol: "OJ=F", code: "OJ", name: "Orange Juice", sector: "agriculture", tick: 0.05, curve: false },
+  { symbol: "LBR=F", code: "LBR", name: "Lumber", sector: "agriculture", tick: 0.5, curve: false },
+
+  // Quoted in US cents per pound.
+  { symbol: "LE=F", code: "LE", name: "Live Cattle", sector: "livestock", tick: 0.025, curve: false },
+  { symbol: "HE=F", code: "HE", name: "Lean Hogs", sector: "livestock", tick: 0.025, curve: false },
 
   { symbol: "6E=F", code: "6E", name: "Euro FX", sector: "currencies", tick: 0.00005 },
   { symbol: "6J=F", code: "6J", name: "Japanese Yen", sector: "currencies", tick: 0.0000005 },
@@ -79,6 +95,7 @@ export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {
   energy: "Energy",
   metals: "Metals",
   agriculture: "Agriculture",
+  livestock: "Livestock",
   currencies: "Currencies",
 };
 
@@ -88,6 +105,7 @@ export const FUTURES_SECTOR_ORDER: FuturesSector[] = [
   "energy",
   "metals",
   "agriculture",
+  "livestock",
   "currencies",
 ];
 

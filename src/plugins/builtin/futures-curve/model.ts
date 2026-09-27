@@ -6,7 +6,10 @@ import type { CompositeAxisDomain } from "../../../components/chart/composite/ty
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
-export const CURVE_ROOTS = [...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })), { value: "VX", label: "VX VIX Futures" }];
+export const CURVE_ROOTS = [
+  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })),
+  { value: "VX", label: "VX VIX Futures" },
+];
 
 export function normalizeCurveRoot(value: unknown): string | null {
   if (typeof value !== "string") return null;

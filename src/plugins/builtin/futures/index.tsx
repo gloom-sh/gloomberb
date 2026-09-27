@@ -297,7 +297,7 @@ export const futuresModule: PluginModule = {
       paneId: FUTURES_PANE_ID,
       label: "Futures Board",
       description:
-        "Front-month futures across equity index, rates, energy, metals, agriculture, and FX with last price, session change, search, and collapsible sectors.",
+        "Front-month futures across equity index, rates, energy, metals, agriculture, livestock, and FX with last price, session change, search, and collapsible sectors.",
       keywords: [
         "futures",
         "commodities",
@@ -308,6 +308,11 @@ export const futuresModule: PluginModule = {
         "copper",
         "corn",
         "wheat",
+        "cattle",
+        "hogs",
+        "lumber",
+        "aluminum",
+        "ttf",
         "treasuries",
         "contracts",
         "cme",
