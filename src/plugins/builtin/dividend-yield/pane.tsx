@@ -26,15 +26,13 @@ import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
+import { buildTrailingCashChartPoints, formatDividendYield, toDividendRows, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
   sortRows,
-  toDividendRows,
   type DividendColumn,
   type DividendColumnId,
-  type DividendRow,
   type DividendSortPreference,
 } from "./model";
 import type { DividendMetrics } from "./types";

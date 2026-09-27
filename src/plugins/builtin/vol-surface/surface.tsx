@@ -1,11 +1,12 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import { Surface3DChart } from "../../../components/chart/surface3d/chart";
-import { volatilitySurfaceInput, type SurfaceCamera, type SurfaceCell, type SurfaceZRange, type VolatilitySurfaceGrid } from "./raster";
+import type { Surface3DCamera } from "../../../components/chart/surface3d/model";
+import { volatilitySurfaceInput, type SurfaceCell, type SurfaceZRange, type VolatilitySurfaceGrid } from "./raster";
 
 export interface VolatilitySurfaceProps {
   grid: VolatilitySurfaceGrid;
-  camera: SurfaceCamera;
-  onCameraChange: (camera: SurfaceCamera) => void;
+  camera: Surface3DCamera;
+  onCameraChange: (camera: Surface3DCamera) => void;
   selected: SurfaceCell | null;
   onSelect: (cell: SurfaceCell) => void;
   width: number;

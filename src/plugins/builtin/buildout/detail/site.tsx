@@ -1,7 +1,8 @@
 import { Section } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
-import { activityColor, activityLabel, dateShort, sourceDomains, truncate } from "../format";
+import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import { activityColor, activityLabel, dateShort, sourceDomains } from "../format";
 import type { BuildoutSite } from "../model/types";
 import { SiteSatelliteImages } from "./satellite-images";
 import { DetailSpecGrid, InlineSources, MarkdownBlock, SourceDetailLines, tickerBadges, type InlineTickerCatalog } from "./ui";
@@ -61,7 +62,7 @@ export function SiteDetail({
               : null;
             return (
               <Text key={observation.id ?? index} fg={colors.textMuted}>
-                {truncate([
+                {truncateWithEllipsis([
                   dateShort(observation.captureDate),
                   observation.observationSource,
                   observation.note,
@@ -104,7 +105,7 @@ export function SiteDetail({
                   })
                   : null}
                 <Text fg={colors.textMuted}>
-                  {truncate(`${builder.companyName ?? "Company"}${builder.role ? ` - ${builder.role}` : ""}`, Math.max(0, bodyWidth - (builder.companyTicker ? 12 : 0)))}
+                  {truncateWithEllipsis(`${builder.companyName ?? "Company"}${builder.role ? ` - ${builder.role}` : ""}`, Math.max(0, bodyWidth - (builder.companyTicker ? 12 : 0)))}
                 </Text>
               </Box>
               <MarkdownBlock text={builder.summary} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />

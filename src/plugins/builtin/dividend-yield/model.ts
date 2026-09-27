@@ -2,9 +2,6 @@ import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { DividendRow } from "./view";
 
-export { toDividendRows } from "./view";
-export type { DividendRow } from "./view";
-
 export type DividendColumnId = "exDate" | "amount" | "currency";
 export type DividendColumn = DataTableColumn & { id: DividendColumnId };
 

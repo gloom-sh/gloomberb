@@ -1,6 +1,7 @@
 import { Box, Text } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { higherContrast } from "../../../theme/color-utils";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import type { FloatingResizeCorner, FloatingRect, LayoutBounds, DockGeometryOptions } from "../../../plugins/pane-manager";
 import {
   windowEditHasPendingCommit,
@@ -41,13 +42,6 @@ export function resolveNativeFloatingResizeCornerRect(rect: FloatingRect, corner
   return { x, y, width: size, height: size };
 }
 
-function truncateStatusText(text: string, width: number): string {
-  if (width <= 0) return "";
-  if (text.length <= width) return text;
-  if (width <= 3) return ".".repeat(width);
-  return `${text.slice(0, width - 3)}...`;
-}
-
 const HELP_SEPARATOR = "  ";
 const POINTER_HELP = "click a window to select it, drag to resize";
 
@@ -75,7 +69,7 @@ export function wrapWindowEditHelp(items: readonly string[], width: number, line
   } else if (last >= 0 && `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`.length <= width) {
     lines[last] = `${lines[last]}${HELP_SEPARATOR}${POINTER_HELP}`;
   }
-  return lines.slice(0, lineCount).map((line) => truncateStatusText(line, width));
+  return lines.slice(0, lineCount).map((line) => truncateToDisplayWidth(line, width));
 }
 
 export function NativeWindowEditStatus({
@@ -115,7 +109,7 @@ export function NativeWindowEditStatus({
       data-gloom-role="window-mode-status"
     >
       <Text fg={textColor} bold selectable={false} width={lineWidth}>
-        {truncateStatusText(`${status}${pending}`, lineWidth)}
+        {truncateToDisplayWidth(`${status}${pending}`, lineWidth)}
       </Text>
       {help.map((line, index) => (
         <Text key={index} fg={textColor} selectable={false} width={lineWidth}>

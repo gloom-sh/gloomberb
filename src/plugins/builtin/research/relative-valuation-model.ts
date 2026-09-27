@@ -1,7 +1,6 @@
 import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
 import type { Quote, TickerFinancials } from "../../../types/financials";
-export { convertMarketCapitalization as comparableMarketCap } from "../../../utils/market-capitalization";
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
 export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale: retained values may be out of date";

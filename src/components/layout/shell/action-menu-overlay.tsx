@@ -2,9 +2,9 @@ import { useRef } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { MenuPopover } from "../../ui/menu";
 import { colors } from "../../../theme/colors";
-import { MENU_Z_INDEX, truncateMenuText, type PaneMenuEntry } from "./menu";
+import { MENU_Z_INDEX, type PaneMenuEntry } from "./menu";
 import { t } from "../../../i18n";
-import { displayWidth, padTo } from "../../../utils/format";
+import { displayWidth, padTo, truncateToDisplayWidth } from "../../../utils/format";
 
 export interface ActionMenuState {
   paneId: string;
@@ -120,7 +120,7 @@ export function ShellActionMenuOverlay({
         const acceleratorWidth = accelerator.length;
         const labelWidth = accelerator ? Math.max(1, innerWidth - acceleratorWidth - 1) : innerWidth;
         const mark = item.checked === undefined ? "" : item.checked ? "[x] " : "[ ] ";
-        const label = mark + truncateMenuText(t(item.label), Math.max(1, labelWidth - mark.length));
+        const label = mark + truncateToDisplayWidth(t(item.label), Math.max(1, labelWidth - mark.length));
         const spacer = accelerator ? " ".repeat(Math.max(1, innerWidth - displayWidth(label) - acceleratorWidth)) : "";
         const line = padTo(`${label}${spacer}${accelerator}`, innerWidth);
         return (

@@ -10,9 +10,9 @@ import {
 } from "../../../state/app/context";
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import type { PaneProps } from "../../../types/plugin";
+import { formatChatPaneTitle } from "./channel-labels";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
-  formatChatPaneTitle,
   LAST_VISITED_CHAT_CHANNEL_KEY,
   normalizeChannelId,
 } from "./channels";

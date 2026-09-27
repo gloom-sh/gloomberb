@@ -11,10 +11,10 @@ import {
   TextAttributes,
   type ScrollBoxRenderable,
 } from "../../../ui";
-import { truncateTextSegments } from "../../../utils/format";
+import { truncateTextSegments, truncateToDisplayWidth } from "../../../utils/format";
 import { Spinner } from "../../ui";
 import { useCommandBarPalette } from "../panel/palette";
-import { getRowPresentation, truncateText } from "../view-model";
+import { getRowPresentation } from "../view-model";
 import {
   BADGE_COLUMN_WIDTH,
   BADGE_GAP,
@@ -79,12 +79,12 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   const labelColumnWidth = Math.max(1, labelWidth - BADGE_INDENT);
   // A long title stops one cell short of the right column, so its ellipsis
   // never runs into the date or shortcut sitting there.
-  const label = truncateText(presentation.label, Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0)));
+  const label = truncateToDisplayWidth(presentation.label, Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0)));
   // "current" outranks the shortcut on the right; otherwise a badge lifted from
   // `right` must not be repeated there.
   const trailing = badgeConsumesRight(item) && !item.current
     ? ""
-    : truncateText(presentation.trailing, trailingWidth);
+    : truncateToDisplayWidth(presentation.trailing, trailingWidth);
   const lineWidth = labelColumnWidth + trailingWidth;
   const lines = useMemo(
     () => getResultItemLines(item).map((line) => truncateTextSegments(
@@ -203,7 +203,7 @@ function CommandBarRowBadge({ text, tone, width }: { text: string; tone: Command
   return (
     <Box width={width} height={1}>
       <Text fg={commandBarBadgeText(tone, themeColors)}>
-        {truncateText(text, width).padStart(width, " ")}
+        {truncateToDisplayWidth(text, width).padStart(width, " ")}
       </Text>
     </Box>
   );
@@ -293,7 +293,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         if (row.kind === "message") {
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text fg={palette.text}>{truncateText(t(row.label), labelEdgeWidth)}</Text>
+              <Text fg={palette.text}>{truncateToDisplayWidth(t(row.label), labelEdgeWidth)}</Text>
             </Box>
           );
         }
@@ -301,7 +301,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
               <Text attributes={TextAttributes.BOLD} fg={row.accent ? palette.accent : palette.heading}>
-                {truncateText(t(row.label), labelEdgeWidth)}
+                {truncateToDisplayWidth(t(row.label), labelEdgeWidth)}
               </Text>
             </Box>
           );

@@ -7,7 +7,8 @@ import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { Box, Text } from "../../../../ui";
 import { formatCompact } from "../../../../utils/format";
-import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, textOrNull, tickerSymbol, truncate } from "../format";
+import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, textOrNull, tickerSymbol } from "../format";
 import type { BuildoutCompany } from "../model/types";
 import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, tickerBadges, type DetailSpec, type InlineTickerCatalog } from "./ui";
 import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
@@ -245,7 +246,7 @@ export function CompanyDetail({
             ].filter(Boolean);
             return (
               <Box key={`${site.name}-${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-                <Text fg={colors.textMuted}>{truncate(parts.join(" - "), bodyWidth)}</Text>
+                <Text fg={colors.textMuted}>{truncateWithEllipsis(parts.join(" - "), bodyWidth)}</Text>
                 {site.involvementSummary ? (
                   <MarkdownBlock text={site.involvementSummary} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
                 ) : null}
@@ -258,7 +259,7 @@ export function CompanyDetail({
         <Section title="Recent Intel" width={bodyWidth}>
           {company.intelligence!.slice(0, 5).map((item, index) => (
             <Box key={`${item.headline ?? "intel"}:${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-              <Text fg={colors.textDim}>{truncate(`${dateShort(item.publishedAt)} ${item.headline ?? ""}`, bodyWidth)}</Text>
+              <Text fg={colors.textDim}>{truncateWithEllipsis(`${dateShort(item.publishedAt)} ${item.headline ?? ""}`, bodyWidth)}</Text>
               <MarkdownBlock text={item.content} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>
           ))}

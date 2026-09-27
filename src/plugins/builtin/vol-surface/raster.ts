@@ -1,7 +1,4 @@
-import {
-  DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera,
-  type Surface3DCamera, type Surface3DInput,
-} from "../../../components/chart/surface3d/model";
+import type { Surface3DInput } from "../../../components/chart/surface3d/model";
 
 /** Row-major decimal IV. Missing cells remain holes, including across tenors. */
 export interface VolatilitySurfaceGrid {
@@ -17,11 +14,7 @@ export interface VolatilitySurfaceGrid {
   volatilities: readonly (readonly (number | null)[])[];
   axis?: "moneyness" | "delta";
 }
-export type SurfaceCamera = Surface3DCamera;
 export interface SurfaceCell { tenorIndex: number; moneynessIndex: number }
-export const DEFAULT_SURFACE_CAMERA = DEFAULT_SURFACE3D_CAMERA;
-export const rotateSurfaceCamera = rotateSurface3DCamera;
-export const zoomSurfaceCamera = zoomSurface3DCamera;
 
 export function tenorLabel(years: number): string {
   const days = years * 365;

@@ -10,6 +10,7 @@ import {
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { Button, Spinner } from "../../ui";
 import type { SelectFieldHandle } from "../../ui/select-field";
@@ -17,7 +18,6 @@ import {
   getVisibleWorkflowFields,
 } from "../helpers";
 import { useCommandBarPalette } from "../panel/palette";
-import { truncateText } from "../view-model";
 import { CommandBarWorkflowFieldRow } from "./field-row";
 import type {
   CommandBarFieldValue,
@@ -85,12 +85,12 @@ export function CommandBarWorkflowBody({
     <>
       {route.subtitle && (
         <Box height={1}>
-          <Text fg={palette.subtle}>{truncateText(t(route.subtitle), queryDisplayWidth)}</Text>
+          <Text fg={palette.subtle}>{truncateToDisplayWidth(t(route.subtitle), queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.description?.map((line, index) => (
         <Box key={`workflow-desc:${index}`} height={1}>
-          <Text fg={palette.subtle}>{truncateText(t(line), queryDisplayWidth)}</Text>
+          <Text fg={palette.subtle}>{truncateToDisplayWidth(t(line), queryDisplayWidth)}</Text>
         </Box>
       ))}
       {route.subtitle || (route.description?.length ?? 0) > 0 ? <Box height={1} /> : null}
@@ -116,7 +116,7 @@ export function CommandBarWorkflowBody({
       })}
       {route.error && (
         <Box height={1}>
-          <Text fg={palette.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
+          <Text fg={palette.negative}>{truncateToDisplayWidth(route.error, queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.pendingLabel && route.pending && (

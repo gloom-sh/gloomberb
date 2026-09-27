@@ -5,9 +5,9 @@ import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "
 import { AccountManagementPane } from "../account-management/pane";
 import { chatController } from "../chat/controller";
 import { chatSidebarStore } from "../chat/sidebar-store";
+import { formatChatPaneTitle } from "../chat/channel-labels";
 import {
   buildDmCommandResults,
-  formatChatPaneTitle,
   getPreferredChatOpenChannelId,
   hasOnlyDmUsernameArgs,
   normalizeShortcutChannelId,

@@ -14,6 +14,7 @@ import {
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
@@ -33,7 +34,6 @@ import {
   formatCongressReturn,
   formatLag,
   sortedTrades,
-  truncate,
   type LoadStatus,
   type TradeColumn,
   type TradeColumnId,
@@ -81,7 +81,7 @@ export function TradeDetail({
         <DetailLine label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <DetailLine label="party" value={trade.party ?? "--"} />
         <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
+        <DetailLine label="asset" value={truncateWithEllipsis(trade.assetName, Math.max(10, lineWidth - 16))} />
         <DetailLine label="amount" value={trade.amount} tone="value" />
         <DetailLine label="owner" value={trade.owner} />
         <DetailLine label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
@@ -92,12 +92,12 @@ export function TradeDetail({
         <DetailLine label="filed" value={trade.filingDate} />
         <DetailLine label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <DetailLine label="status" value={trade.filingStatus} /> : null}
-        {trade.subholdingOf ? <DetailLine label="subholding" value={truncate(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
+        {trade.subholdingOf ? <DetailLine label="subholding" value={truncateWithEllipsis(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
         {trade.description ? (
           <>
             <Text>{" "}</Text>
             <Text fg={colors.textDim}>description</Text>
-            <Text fg={colors.text}>{truncate(trade.description, lineWidth)}</Text>
+            <Text fg={colors.text}>{truncateWithEllipsis(trade.description, lineWidth)}</Text>
           </>
         ) : null}
       </Box>

@@ -28,7 +28,9 @@ import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
   type SurfaceSettings, type SurfaceSnapshot } from "./model";
-import { DEFAULT_SURFACE_CAMERA, rotateSurfaceCamera, zoomSurfaceCamera, type SurfaceCamera } from "./raster";
+import {
+  DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera, type Surface3DCamera,
+} from "../../../components/chart/surface3d/model";
 import { VolatilitySurface } from "./surface";
 import { expiryLabel, formatIv, formatPrice, SmileChart, TermChart } from "./charts";
 import { surfaceCoordinateLabel } from "./headless";
@@ -79,7 +81,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const setSurfaceCoordinate = deltaSurface ? setSurfaceDelta : setSurfaceMoneyness;
   const [coordinate, setCoordinate] = usePluginPaneState("coordinate", 1);
   const [limit, setLimit] = usePluginPaneState("expiryLimit", 18);
-  const [camera, setCamera] = usePluginPaneState<SurfaceCamera>("camera", DEFAULT_SURFACE_CAMERA);
+  const [camera, setCamera] = usePluginPaneState<Surface3DCamera>("camera", DEFAULT_SURFACE3D_CAMERA);
   const [fixedYears, setFixedYears] = usePluginPaneState<number | null>("fixedYears", null);
   const [historyDate, setHistoryDate] = usePluginPaneState<string | null>("historyDate", null);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "tenor", direction: "asc" });
@@ -280,7 +282,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     const next = values[Math.max(0, Math.min(values.length - 1, index + direction))];
     if (next != null) setSurfaceCoordinate(next);
   };
-  const zoomCamera = (factor: number) => setCamera((value) => zoomSurfaceCamera(value, factor));
+  const zoomCamera = (factor: number) => setCamera((value) => zoomSurface3DCamera(value, factor));
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.meta || event.alt) return false;
     const key = event.name;
@@ -297,9 +299,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     else if (key === "d" && surface3d) setSurfaceAxis(deltaSurface ? "moneyness" : "delta");
     else if (activeTab === "table" && (key === "h" || key === "l")) stepTab(key === "h" ? -1 : 1);
     else if (surface3d && ["left", "right", "up", "down", "h", "j", "k", "l", "+", "=", "-", "0"].includes(key ?? "")) {
-      setCamera((value) => key === "0" ? DEFAULT_SURFACE_CAMERA : ["+", "=", "-"].includes(key!)
-        ? zoomSurfaceCamera(value, key === "-" ? 1 / 1.08 : 1.08)
-        : rotateSurfaceCamera(value, ["left", "h"].includes(key!) ? -0.1 : ["right", "l"].includes(key!) ? 0.1 : 0,
+      setCamera((value) => key === "0" ? DEFAULT_SURFACE3D_CAMERA : ["+", "=", "-"].includes(key!)
+        ? zoomSurface3DCamera(value, key === "-" ? 1 / 1.08 : 1.08)
+        : rotateSurface3DCamera(value, ["left", "h"].includes(key!) ? -0.1 : ["right", "l"].includes(key!) ? 0.1 : 0,
           ["up", "k"].includes(key!) ? 0.07 : ["down", "j"].includes(key!) ? -0.07 : 0));
     } else if ((activeTab === "table" || activeTab === "surface" && !bitmapAvailable) && ["left", "right"].includes(key ?? "") && selectedRow) {
       const next = selectedRow.cells[Math.max(0, Math.min(selectedRow.cells.length - 1, cellIndex + (key === "right" ? 1 : -1)))];
@@ -352,7 +354,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       ...(canLoadMore ? [{ id: "more", key: "m", label: "ore expiries", onPress: loadMore }] : []),
       ...(activeTab === "surface" && bitmapAvailable ? [
         { id: "axis", key: "d", label: deltaSurface ? "moneyness axis" : "delta axis", title: deltaSurface ? "Moneyness Axis" : "Delta Axis", onPress: () => setSurfaceAxis(deltaSurface ? "moneyness" : "delta") },
-        { id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
+        { id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE3D_CAMERA) }] : []),
       ...(storedDates.length ? [{ id: "history", key: "t", label: historyDate ? " live" : " stored dates", onPress: toggleHistory }] : []),
       // Dates run newest first, so older is a step forward in the list.
       ...(historyDate ? [

@@ -8,9 +8,9 @@ import { chatController } from "../controller";
 import {
   estimateComposerHeight,
 } from "../layout";
+import { formatChatPaneTitle } from "../channel-labels";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
-  formatChatPaneTitle,
   normalizeChannelId,
 } from "../channels";
 import { ChatComposerArea } from "./composer";

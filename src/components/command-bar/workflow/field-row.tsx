@@ -9,6 +9,7 @@ import {
   type InputRenderable,
   type TextareaRenderable,
 } from "../../../ui";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { NumberField, TextField } from "../../ui";
 import { SelectField, type SelectFieldHandle } from "../../ui/select-field";
 import {
@@ -18,7 +19,6 @@ import {
   summarizeWorkflowFieldValue,
 } from "../helpers";
 import { useCommandBarPalette } from "../panel/palette";
-import { truncateText } from "../view-model";
 import type {
   CommandBarFieldValue,
   CommandBarWorkflowField,
@@ -207,14 +207,14 @@ export function CommandBarWorkflowFieldRow({
           style={nativePaneChrome ? { borderRadius: 4 } : undefined}
         >
           <Text fg={active ? palette.text : palette.subtle}>
-            {truncateText(t(summarizeWorkflowFieldValue(field, value)), queryDisplayWidth)}
+            {truncateToDisplayWidth(t(summarizeWorkflowFieldValue(field, value)), queryDisplayWidth)}
           </Text>
         </Box>
       )}
       {translatedFieldDescription && (
         <Box height={1}>
           <Text fg={palette.subtle}>
-            {truncateText(translatedFieldDescription, queryDisplayWidth)}
+            {truncateToDisplayWidth(translatedFieldDescription, queryDisplayWidth)}
           </Text>
         </Box>
       )}

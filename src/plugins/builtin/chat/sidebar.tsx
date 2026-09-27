@@ -2,12 +2,10 @@ import { ActionRow } from "../../../components/ui/action-row";
 import { Icon } from "../../../components/ui/icon";
 import { useMemo, useSyncExternalStore } from "react";
 import {
-  getPaneSidebarWidth,
   getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
-  shouldShowPaneSidebar,
 } from "../../../components";
 import { Box, Span, Text, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
@@ -20,28 +18,14 @@ import { teamStore } from "../cloud/team/store";
 import type { ChatController } from "./controller";
 import { chatSidebarStore } from "./sidebar-store";
 import { buildChatSidebarRows } from "./sidebar-rows";
-import {
-  channelPrefix,
-  formatChannelLabel,
-} from "./channels";
+import { formatChannelLabel } from "./channel-labels";
+import { channelPrefix } from "./channels";
 
 const DESKTOP_NOTIFICATION_ICON_WIDTH = 3;
 /** Leading gutter plus the one-column active marker every channel row carries. */
 const CHANNEL_ROW_INDENT = 2;
 /** Width of a header's trailing action, so its label truncates clear of it. */
 const SECTION_ACTION_WIDTH = 3;
-
-export function shouldShowChannelSidebar(channelCount: number, width: number, height: number): boolean {
-  return shouldShowPaneSidebar(channelCount, width, height);
-}
-
-export function getChannelSidebarWidth(
-  width: number,
-  nativePaneChrome: boolean,
-  preferredWidth?: number | null,
-): number {
-  return getPaneSidebarWidth(width, nativePaneChrome, preferredWidth);
-}
 
 function ChannelNotificationIcon({
   enabled,
