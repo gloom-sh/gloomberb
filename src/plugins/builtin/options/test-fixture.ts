@@ -1,34 +1,8 @@
 import { act } from "react";
-import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider, type CombinedPaneFooter } from "../../../components/layout/pane/footer";
 import { takeSavedTextFile, type testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
-import { Box } from "../../../ui";
-import { OptionsView } from "./view";
 
 type Setup = Awaited<ReturnType<typeof testRender>>;
-
-/** OptionsView above its footer bar. With `footerKeysPaneId` the pane's footer key handlers are live too. */
-export function OptionsFrame({ width, height, footerKeysPaneId, onFooter }: {
-  width: number;
-  height: number;
-  footerKeysPaneId?: string;
-  onFooter?: (footer: CombinedPaneFooter) => void;
-}) {
-  return (
-    <PaneFooterProvider>
-      {(footer) => {
-        onFooter?.(footer);
-        return (
-          <Box width={width} height={height} flexDirection="column">
-            <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused /></Box>
-            <PaneFooterBar footer={footer} focused width={width} />
-            {footerKeysPaneId ? <PaneFooterKeys paneId={footerKeysPaneId} footer={footer} focused /> : null}
-          </Box>
-        );
-      }}
-    </PaneFooterProvider>
-  );
-}
 
 /**
  * Settle, key and capture helpers for an OptionsView render. `keyHoldMs` waits

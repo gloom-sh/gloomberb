@@ -10,12 +10,13 @@ import { loadYahooOptionsChain } from "../../../sources/yahoo-finance/options";
 import { createInitialState } from "../../../state/app/context";
 import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { OptionsChain } from "../../../types/financials";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { draftFromParams, type OptionCalcDraft } from "../options-calculator/model";
-import { OptionsFrame, createOptionsControls } from "./test-harness";
+import { createOptionsControls } from "./test-fixture";
+import { OptionsView } from "./view";
 
 const EXPIRY = Date.UTC(2028, 0, 21) / 1000;
 const NOW = Date.UTC(2026, 8, 17, 16);
@@ -103,10 +104,12 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
   });
   await act(async () => {
     setup = await testRender(
-      <TestPaneProvider state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime}>
-        <OptionsFrame width={width} height={22} footerKeysPaneId={PANE}
-          onFooter={(footer) => { footerParts = footer.info.flatMap((segment) => segment.parts); }} />
-      </TestPaneProvider>,
+      <TestPaneFrame state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime} width={width} height={22} footerKeys>
+        {(body, footer) => {
+          footerParts = footer.info.flatMap((segment) => segment.parts);
+          return <OptionsView {...body} focused />;
+        }}
+      </TestPaneFrame>,
       { width, height: 22 },
     );
   });

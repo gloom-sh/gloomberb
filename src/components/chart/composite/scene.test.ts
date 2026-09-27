@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { TimeSeriesPoint } from "../../../time-series/types";
 import {
   allocateCompositePanelHeights,
   applyCompositeChartCursor,

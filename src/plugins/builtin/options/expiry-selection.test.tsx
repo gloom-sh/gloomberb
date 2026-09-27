@@ -7,10 +7,11 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { TestPaneFrame, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { OptionsFrame, createOptionsControls } from "./test-harness";
+import { createOptionsControls } from "./test-fixture";
+import { OptionsView } from "./view";
 import { optionsModule } from "./index";
 import { draftFromParams } from "../options-calculator/model";
 
@@ -117,9 +118,9 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
       dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
         instances: [{ ...pane, settings: { ...pane.settings, ...incoming.settings } }] } });
     };
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
-      <OptionsFrame width={width} height={18} />
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime} width={width} height={18}>
+      {(body) => <OptionsView {...body} focused />}
+    </TestPaneFrame>;
   }
   await act(async () => { setup = await testRender(<Harness />, { width, height: 18 }); });
   await settle();
