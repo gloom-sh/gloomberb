@@ -51,7 +51,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const { symbol, ticker, financials } = usePaneTicker();
   const dataProvider = useAssetData();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "chart");
+  const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
