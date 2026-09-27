@@ -1346,4 +1346,12 @@ export const ja: Record<string, string> = {
   "Checking {symbol}...": "{symbol} を確認中...",
   "Current price {price}; edit to set the target.": "現在値 {price}。編集して目標を設定します。",
   "No quote found for \"{symbol}\".": "\"{symbol}\" の相場が見つかりません。",
+  "Sign in (recommended)": "サインイン (推奨)",
+  "On this device ({broker})": "このデバイスで ({broker})",
+  "Portfolio Source": "ポートフォリオの取得元",
+  "Method": "方法",
+  "Choose a source for the new portfolio.": "新しいポートフォリオの取得元を選択します。",
+  "Create Portfolio": "ポートフォリオを作成",
+  "Connect Broker": "証券会社を接続",
+  "Connect": "接続",
 };

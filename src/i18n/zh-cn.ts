@@ -1346,4 +1346,12 @@ export const zhCN: Record<string, string> = {
   "Checking {symbol}...": "正在检查 {symbol}...",
   "Current price {price}; edit to set the target.": "当前价格 {price}；可编辑以设定目标。",
   "No quote found for \"{symbol}\".": "未找到 \"{symbol}\" 的报价。",
+  "Sign in (recommended)": "登录（推荐）",
+  "On this device ({broker})": "在此设备上（{broker}）",
+  "Portfolio Source": "投资组合来源",
+  "Method": "方式",
+  "Choose a source for the new portfolio.": "为新投资组合选择来源。",
+  "Create Portfolio": "创建投资组合",
+  "Connect Broker": "连接券商",
+  "Connect": "连接",
 };

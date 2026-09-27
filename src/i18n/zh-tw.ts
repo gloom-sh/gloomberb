@@ -1346,4 +1346,12 @@ export const zhTW: Record<string, string> = {
   "Checking {symbol}...": "正在檢查 {symbol}...",
   "Current price {price}; edit to set the target.": "目前價格 {price}；可編輯以設定目標。",
   "No quote found for \"{symbol}\".": "找不到 \"{symbol}\" 的報價。",
+  "Sign in (recommended)": "登入（建議）",
+  "On this device ({broker})": "在此裝置上（{broker}）",
+  "Portfolio Source": "投資組合來源",
+  "Method": "方式",
+  "Choose a source for the new portfolio.": "為新投資組合選擇來源。",
+  "Create Portfolio": "建立投資組合",
+  "Connect Broker": "連線券商",
+  "Connect": "連線",
 };

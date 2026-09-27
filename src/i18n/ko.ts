@@ -1344,4 +1344,12 @@ export const ko: Record<string, string> = {
   "Checking {symbol}...": "{symbol} 확인 중...",
   "Current price {price}; edit to set the target.": "현재가 {price}. 수정해 목표가를 설정하세요.",
   "No quote found for \"{symbol}\".": "\"{symbol}\"의 시세를 찾을 수 없습니다.",
+  "Sign in (recommended)": "로그인 (권장)",
+  "On this device ({broker})": "이 기기에서 ({broker})",
+  "Portfolio Source": "포트폴리오 소스",
+  "Method": "방식",
+  "Choose a source for the new portfolio.": "새 포트폴리오의 소스를 선택하세요.",
+  "Create Portfolio": "포트폴리오 만들기",
+  "Connect Broker": "브로커 연결",
+  "Connect": "연결",
 };

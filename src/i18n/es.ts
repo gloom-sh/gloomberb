@@ -1350,4 +1350,12 @@ export const es: Record<string, string> = {
   "Checking {symbol}...": "Comprobando {symbol}...",
   "Current price {price}; edit to set the target.": "Precio actual {price}; edítalo para fijar el objetivo.",
   "No quote found for \"{symbol}\".": "No se encontró cotización para \"{symbol}\".",
+  "Sign in (recommended)": "Iniciar sesión (recomendado)",
+  "On this device ({broker})": "En este dispositivo ({broker})",
+  "Portfolio Source": "Origen de la cartera",
+  "Method": "Método",
+  "Choose a source for the new portfolio.": "Elige un origen para la nueva cartera.",
+  "Create Portfolio": "Crear cartera",
+  "Connect Broker": "Conectar bróker",
+  "Connect": "Conectar",
 };

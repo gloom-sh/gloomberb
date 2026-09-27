@@ -4,6 +4,7 @@
  * adapter. One broker offered both ways is one entry with two methods, so Add
  * Broker and onboarding list "Interactive Brokers" once.
  */
+import { t, tf } from "../i18n";
 import type { BrokerAdapter } from "../types/broker";
 import type { SignedInBroker } from "./signed-in/client";
 import { SIGNED_IN_BROKER_TYPE } from "./signed-in/profile";
@@ -50,7 +51,7 @@ export function buildBrokerDirectory({
 
 export function brokerMethodLabel(entry: BrokerDirectoryEntry, method: BrokerMethod): string {
   if (method.kind === "signed-in") {
-    return entry.methods.some((candidate) => candidate.kind === "device") ? "Sign in (recommended)" : "Sign in";
+    return entry.methods.some((candidate) => candidate.kind === "device") ? t("Sign in (recommended)") : t("Sign in");
   }
-  return entry.methods.length > 1 ? `On this device (${method.adapter.name})` : method.adapter.name;
+  return entry.methods.length > 1 ? tf("On this device ({broker})", { broker: method.adapter.name }) : method.adapter.name;
 }
