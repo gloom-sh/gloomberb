@@ -672,8 +672,6 @@ export function migrateLegacyChartSavedPaneState(
       .some((key) => hasOwn(legacyState, key));
     const hasStandaloneState = ["period", "chartKind", "metric", "periods", "hiddenSeriesIds"]
       .some((key) => hasOwn(legacyState, key));
-    const hasDetailState = ["detailPeriod", "detailChartKind", "detailMetric"]
-      .some((key) => hasOwn(legacyState, key));
     const originalSettings = originalPaneSettings(originalLayout, instanceId);
     const graphWasActive = state.activeTabId === "fundamental-graphs"
       || originalSettings?.lockedTabId === "fundamental-graphs";

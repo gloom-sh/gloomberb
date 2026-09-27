@@ -2,8 +2,6 @@ import {
   cloneLayout,
   createDefaultConfig,
   CURRENT_CONFIG_VERSION,
-  DEFAULT_COLUMNS,
-  DEFAULT_PORTFOLIO_COLUMN_IDS,
   getPlacedPaneInstanceIds,
   type LayoutConfig,
 } from "../../../types/config";
@@ -21,33 +19,9 @@ import {
 import { sanitizeLayout } from "../layout";
 
 const CLOUD_DEFAULT_CONFIG_VERSION = 13;
-const CLOUD_MACRO_SPLIT_CONFIG_VERSION = 15;
-const PORTFOLIO_DEFAULT_COLUMNS_CONFIG_VERSION = 17;
 const BUILTIN_OWNERSHIP_AND_CHART_CONFIG_VERSION = 20;
 const ONBOARDING_BACKFILL_CONFIG_VERSION = 21;
 const UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION = 22;
-
-const LEGACY_MAIN_PORTFOLIO_COLUMN_IDS = DEFAULT_COLUMNS.map((column) => column.id);
-const PRE_SPARKLINE_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
-  "shares",
-  "avg_cost",
-  "cost_basis",
-  "mkt_value",
-  "pnl",
-  "pnl_pct",
-];
-const PRE_DAY_PNL_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
-  "sparkline",
-  "shares",
-  "avg_cost",
-  "cost_basis",
-  "mkt_value",
-  "pnl",
-  "pnl_pct",
-];
-const BUILTIN_SOURCE_IDS = new Set(["yahoo", "gloomberb-cloud"]);
 
 interface ConfigMigration {
   name: string;
@@ -66,16 +40,6 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     name: "enable-cloud-by-default",
     toVersion: CLOUD_DEFAULT_CONFIG_VERSION,
     migrate: migrateCloudDefault,
-  },
-  {
-    name: "split-cloud-macro-and-data-sources",
-    toVersion: CLOUD_MACRO_SPLIT_CONFIG_VERSION,
-    migrate: migrateCloudMacroAndSources,
-  },
-  {
-    name: "refresh-portfolio-default-columns",
-    toVersion: PORTFOLIO_DEFAULT_COLUMNS_CONFIG_VERSION,
-    migrate: migratePortfolioDefaultColumns,
   },
   {
     name: "consolidate-builtins-and-chart-state",
@@ -180,71 +144,13 @@ function migrateUnreachablePaneInstances(
   };
 }
 
+// v0.5 shipped with Gloom Cloud in disabledPlugins by default, so without this
+// those installs would upgrade onto the delayed fallback with Cloud switched off.
 function migrateCloudDefault(saved: Record<string, unknown>): Record<string, unknown> {
   return {
     ...saved,
     disabledPlugins: stringList(saved.disabledPlugins)
       .filter((pluginId) => pluginId !== "gloomberb-cloud"),
-  };
-}
-
-function migrateCloudMacroAndSources(saved: Record<string, unknown>): Record<string, unknown> {
-  const disabledPlugins = stringList(saved.disabledPlugins);
-  if (disabledPlugins.includes("gloomberb-cloud") && !disabledPlugins.includes("macro")) {
-    disabledPlugins.push("macro");
-  }
-  const disabledSources = new Set(stringList(saved.disabledSources));
-  for (const pluginId of disabledPlugins) {
-    if (BUILTIN_SOURCE_IDS.has(pluginId)) disabledSources.add(pluginId);
-  }
-  return {
-    ...saved,
-    disabledPlugins,
-    disabledSources: [...disabledSources],
-  };
-}
-
-function hasExactColumnIds(value: unknown, expected: string[]): boolean {
-  return Array.isArray(value)
-    && value.length === expected.length
-    && value.every((entry, index) => entry === expected[index]);
-}
-
-function shouldMigratePortfolioColumnIds(value: unknown): boolean {
-  return hasExactColumnIds(value, LEGACY_MAIN_PORTFOLIO_COLUMN_IDS)
-    || hasExactColumnIds(value, PRE_SPARKLINE_PORTFOLIO_COLUMN_IDS)
-    || hasExactColumnIds(value, PRE_DAY_PNL_PORTFOLIO_COLUMN_IDS);
-}
-
-function migratePortfolioColumnsInLayout(value: unknown): unknown {
-  if (!isPlainRecord(value) || !Array.isArray(value.instances)) return value;
-  let changed = false;
-  const instances = value.instances.map((instance) => {
-    if (!isPlainRecord(instance) || instance.paneId !== "portfolio-list" || !isPlainRecord(instance.settings)) {
-      return instance;
-    }
-    if (!shouldMigratePortfolioColumnIds(instance.settings.columnIds)) return instance;
-    changed = true;
-    return {
-      ...instance,
-      settings: {
-        ...instance.settings,
-        columnIds: [...DEFAULT_PORTFOLIO_COLUMN_IDS],
-      },
-    };
-  });
-  return changed ? { ...value, instances } : value;
-}
-
-function migratePortfolioDefaultColumns(saved: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...saved,
-    layout: migratePortfolioColumnsInLayout(saved.layout),
-    layouts: Array.isArray(saved.layouts)
-      ? saved.layouts.map((entry) => isPlainRecord(entry)
-        ? { ...entry, layout: migratePortfolioColumnsInLayout(entry.layout) }
-        : entry)
-      : saved.layouts,
   };
 }
 

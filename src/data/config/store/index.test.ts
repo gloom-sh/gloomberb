@@ -5,9 +5,7 @@ import { tmpdir } from "os";
 import { exportConfig, importConfig, loadConfig, sanitizeLayout, saveConfig } from "./index";
 import {
   CURRENT_CONFIG_VERSION,
-  DEFAULT_COLUMNS,
   DEFAULT_LAYOUT,
-  DEFAULT_PORTFOLIO_COLUMN_IDS,
   findPaneInstance,
   type AppConfig,
 } from "../../../types/config";
@@ -817,50 +815,20 @@ describe("loadConfig", () => {
     });
   });
 
-  test("does not repeat the legacy Cloud-to-Macro disable migration", async () => {
-    const dataDir = await createTempConfigDir();
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 19,
-      disabledPlugins: ["gloomberb-cloud"],
-    }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(config.disabledPlugins).toEqual(["gloomberb-cloud"]);
-  });
-
-  test("enables Gloom Cloud when migrating older default configs", async () => {
-    const dataDir = await createTempConfigDir();
-    await writeConfigJson(dataDir, createSavedConfig({
+  test("enables Gloom Cloud only for configs saved before it became the default", async () => {
+    const beforeDir = await createTempConfigDir();
+    await writeConfigJson(beforeDir, createSavedConfig({
       configVersion: 12,
       disabledPlugins: ["gloomberb-cloud", "news"],
     }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(config.disabledPlugins).toEqual(["news"]);
-  });
-
-  test("runs the Cloud-to-Macro split only before its v15 boundary", async () => {
-    const beforeDir = await createTempConfigDir();
-    await writeConfigJson(beforeDir, createSavedConfig({
-      configVersion: 14,
-      disabledPlugins: ["gloomberb-cloud"],
-      disabledSources: [],
-    }));
-    const before = await loadConfig(beforeDir);
-    expect(before.disabledPlugins).toEqual(["gloomberb-cloud", "macro"]);
-    expect(before.disabledSources).toEqual(["gloomberb-cloud"]);
+    expect((await loadConfig(beforeDir)).disabledPlugins).toEqual(["news"]);
 
     const atBoundaryDir = await createTempConfigDir();
     await writeConfigJson(atBoundaryDir, createSavedConfig({
-      configVersion: 15,
+      configVersion: 13,
       disabledPlugins: ["gloomberb-cloud"],
-      disabledSources: [],
     }));
-    const atBoundary = await loadConfig(atBoundaryDir);
-    expect(atBoundary.disabledPlugins).toEqual(["gloomberb-cloud"]);
-    expect(atBoundary.disabledSources).toEqual([]);
+    expect((await loadConfig(atBoundaryDir)).disabledPlugins).toEqual(["gloomberb-cloud"]);
   });
 
   test("preserves IBKR gateway configs without migration rewrites", async () => {
@@ -944,7 +912,6 @@ describe("loadConfig", () => {
 
   test("does not replay historical migrations for current configs or saves", async () => {
     const dataDir = await createTempConfigDir();
-    const selectedPortfolioColumns = DEFAULT_COLUMNS.map((column) => column.id);
     const currentLayout = {
       ...DEFAULT_LAYOUT,
       instances: DEFAULT_LAYOUT.instances.map((instance) => (
@@ -957,14 +924,6 @@ describe("loadConfig", () => {
               chartResolution: "1d",
             },
           }
-          : instance.instanceId === "portfolio-list:main"
-            ? {
-              ...instance,
-              settings: {
-                ...(instance.settings ?? {}),
-                columnIds: selectedPortfolioColumns,
-              },
-            }
           : instance
       )),
     };
@@ -1000,82 +959,16 @@ describe("loadConfig", () => {
     expect(config.layouts[0]?.paneState).toEqual(legacyPaneState);
     expect(config.pluginConfig).toEqual(legacyPluginConfig);
     expect(config.disabledPlugins).toEqual(["options", "gloomberb-cloud"]);
-    expect(findPaneInstance(config.layout, "portfolio-list:main")?.settings?.columnIds)
-      .toEqual(selectedPortfolioColumns);
 
     await saveConfig(config);
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as typeof config;
     expect(persisted.layouts[0]?.paneState).toEqual(legacyPaneState);
     expect(persisted.pluginConfig).toEqual(legacyPluginConfig);
     expect(persisted.disabledPlugins).toEqual(["options", "gloomberb-cloud"]);
-    expect(findPaneInstance(persisted.layout, "portfolio-list:main")?.settings?.columnIds)
-      .toEqual(selectedPortfolioColumns);
     expect(findPaneInstance(persisted.layout, "ticker-detail:main")?.settings).toEqual(expect.objectContaining({
       chartRangePreset: "6M",
       chartResolution: "1d",
     }));
-  });
-
-  test("migrates legacy main portfolio panes to the portfolio default columns", async () => {
-    const dataDir = await createTempConfigDir();
-    const legacyColumnIds = DEFAULT_COLUMNS.map((column) => column.id);
-    const legacyLayout = {
-      ...DEFAULT_LAYOUT,
-      instances: DEFAULT_LAYOUT.instances.map((instance) => (
-        instance.instanceId === "portfolio-list:main"
-          ? {
-            ...instance,
-            settings: {
-              ...(instance.settings ?? {}),
-              columnIds: legacyColumnIds,
-            },
-          }
-          : instance
-      )),
-    };
-
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 10,
-      layout: legacyLayout,
-      layouts: [{ name: "Default", layout: legacyLayout }],
-    }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(findPaneInstance(config.layout, "portfolio-list:main")?.settings?.columnIds).toEqual(DEFAULT_PORTFOLIO_COLUMN_IDS);
-    expect(findPaneInstance(config.layouts[0]?.layout ?? DEFAULT_LAYOUT, "portfolio-list:main")?.settings?.columnIds)
-      .toEqual(DEFAULT_PORTFOLIO_COLUMN_IDS);
-  });
-
-  test("does not replay the portfolio column migration at its v17 boundary", async () => {
-    const dataDir = await createTempConfigDir();
-    const selectedColumnIds = DEFAULT_COLUMNS.map((column) => column.id);
-    const layout = {
-      ...DEFAULT_LAYOUT,
-      instances: DEFAULT_LAYOUT.instances.map((instance) => (
-        instance.instanceId === "portfolio-list:main"
-          ? {
-            ...instance,
-            settings: {
-              ...(instance.settings ?? {}),
-              columnIds: selectedColumnIds,
-            },
-          }
-          : instance
-      )),
-    };
-
-    await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 17,
-      layout,
-      layouts: [{ name: "Default", layout }],
-    }));
-
-    const config = await loadConfig(dataDir);
-
-    expect(findPaneInstance(config.layout, "portfolio-list:main")?.settings?.columnIds).toEqual(selectedColumnIds);
-    expect(findPaneInstance(config.layouts[0]?.layout ?? DEFAULT_LAYOUT, "portfolio-list:main")?.settings?.columnIds)
-      .toEqual(selectedColumnIds);
   });
 
   test("falls back to the default layout when persisted layouts use the obsolete column shape", async () => {
