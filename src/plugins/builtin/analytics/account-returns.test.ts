@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
-import { accountDailyReturns, annualizedVolatility, maxDrawdown } from "./account-returns";
-import { brokerPerformanceEvidence } from "./risk-evidence";
+import { accountDailyReturns } from "./account-returns";
+import { brokerPerformanceEvidence, type PortfolioRiskEvidence } from "./risk-evidence";
+import { buildPortfolioRisk } from "./risk-model";
 
 function performance(overrides: Partial<BrokerPortfolioPerformance> = {}): BrokerPortfolioPerformance {
   // Twelve trading days, 1% up then 2% down alternating, with a deposit on day 5.
@@ -46,11 +47,23 @@ describe("accountDailyReturns", () => {
     expect(accountDailyReturns(monthly)).toBeNull();
   });
 
-  test("drawdown compounds from the running peak and volatility annualizes daily spread", () => {
-    const returns = accountDailyReturns(performance())!;
+  test("fill the Performance view without flow evidence and add account statistics beside it", () => {
+    const portfolio = { id: "broker:ibkr:U1", name: "U1", currency: "USD" };
+    const market = { histories: [], yields: null, volatility: null, warnings: [], fetchedAt: "2026-09-30T00:00:00.000Z" };
+    const rows = (evidence: PortfolioRiskEvidence | null) => new Map(
+      buildPortfolioRisk(portfolio, [], market, evidence, undefined, accountDailyReturns(performance()))
+        .rows.performance.map((row) => [row.id, row.value]),
+    );
+    const alone = rows(null);
+    expect(alone.get("twr")).toBeCloseTo((1.01 ** 6 * 0.98 ** 5 - 1) * 100, 10);
     // The peak is the first +1%; the trough follows the fifth -2%, four gains later.
-    expect(maxDrawdown(returns)).toBeCloseTo(1.01 ** 4 * 0.98 ** 5 - 1, 12);
-    expect(annualizedVolatility(returns)!).toBeGreaterThan(0.2);
+    expect(alone.get("drawdown")).toBeCloseTo((1.01 ** 4 * 0.98 ** 5 - 1) * 100, 10);
+    expect(alone.get("account-volatility")).toBeGreaterThan(20);
+    expect(alone.get("account-sharpe")).toBeLessThan(0);
+    // No SPY history, so no beta rather than a beta against nothing.
+    expect(alone.get("account-beta")).toBeNull();
+    const withFlows = rows(brokerPerformanceEvidence(portfolio, performance(), new Date("2026-09-30")));
+    expect([...withFlows.keys()]).toEqual(["twr", "mwr", "drawdown", "account-sharpe", "account-beta", "account-volatility"]);
   });
 });
 

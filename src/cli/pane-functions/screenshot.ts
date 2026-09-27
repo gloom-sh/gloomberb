@@ -515,7 +515,7 @@ export async function buildDesktopShotPayload(
     }
   } else if (resolved.pane.id === "analytics") {
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
-    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, analyticsView: "risk", riskSnapshot: loaded.result.metadata?.model ?? null } };
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, riskSnapshot: loaded.result.metadata?.model ?? null } };
   } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
     chartModel = loaded.result as ChartPaneModel;

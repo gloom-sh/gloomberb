@@ -2,7 +2,7 @@ import {
   historyStatistics,
   type HistoryStatistics,
 } from "../../../components/chart/curve/model";
-import type { DatedReturn } from "./metrics";
+import { computeSharpeRatio, type DatedReturn } from "./metrics";
 
 export interface RiskSamplePoint extends DatedReturn {
   benchmark: number;
@@ -172,7 +172,12 @@ export function rollingBasketRisk(
 ): RiskStatistic[] {
   if (!Number.isInteger(window) || window < 60)
     throw new Error("Risk window must contain at least 60 daily sessions");
-  const definitions = [
+  const definitions: Array<{
+    id: string;
+    label: string;
+    unit?: RiskStatistic["unit"];
+    value: (rows: RiskSamplePoint[]) => number | null;
+  }> = [
     {
       id: "return",
       label: `${window}D basket return`,
@@ -198,6 +203,13 @@ export function rollingBasketRisk(
       label: `${window}D annualized volatility`,
       value: (rows: RiskSamplePoint[]) =>
         100 * sampleVolatility(rows.map((row) => row.value))!,
+    },
+    {
+      id: "sharpe",
+      label: `${window}D Sharpe`,
+      unit: "ratio",
+      value: (rows: RiskSamplePoint[]) =>
+        computeSharpeRatio(rows.map((row) => row.value)),
     },
     {
       id: "drawdown",
@@ -245,7 +257,7 @@ export function rollingBasketRisk(
       id: definition.id,
       label: definition.label,
       value,
-      unit: "%" as const,
+      unit: definition.unit ?? "%",
       asOf,
       startDate:
         value == null ? null : (sample.at(-window)?.startDateKey ?? null),
@@ -261,21 +273,22 @@ export function rollingBeta(
   factor: readonly DatedReturn[],
   label: string,
   id: string,
+  window = RISK_WINDOW,
 ): RiskStatistic {
   const history = asset.map((point, index) => {
-    const rows = asset.slice(Math.max(0, index - RISK_WINDOW + 1), index + 1);
+    const rows = asset.slice(Math.max(0, index - window + 1), index + 1);
     const contiguous = rows.every(
       (row, i) => i === 0 || row.startDateKey === rows[i - 1]!.dateKey,
     );
     return {
       date: point.dateKey,
-      value: contiguous ? (regressReturns(rows, factor)?.beta ?? null) : null,
+      value: contiguous ? (regressReturns(rows, factor, window)?.beta ?? null) : null,
     };
   });
   const latest = history.at(-1),
     value = latest?.value ?? null,
     asOf = latest?.date ?? null;
-  const sample = regressReturns(asset.slice(-RISK_WINDOW), factor);
+  const sample = regressReturns(asset.slice(-window), factor, window);
   return {
     id,
     label,

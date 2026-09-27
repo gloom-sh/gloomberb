@@ -2,10 +2,6 @@ import { expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import { resolveDatedReturns } from "./metrics";
 import { qualifySharpeCadence, qualifyReturnTimestamps } from "./sharpe-cadence";
-import { buildBenchmarkReturnSeries, buildPortfolioBetaResult, buildPortfolioChartTargets, buildPortfolioReturnSeries, PORTFOLIO_BENCHMARK } from "./pane-model";
-import { buildChartKey } from "../../../market-data/selectors";
-import type { TickerRecord } from "../../../types/ticker";
-import { createTestTicker } from "../../../test-support/ticker";
 
 const datedReturns = (history: PricePoint[]) => resolveDatedReturns(history).returns;
 
@@ -85,31 +81,4 @@ test("beta timestamp eligibility does not borrow a calendar or a missing benchma
   const nonmidnight = history.map((point) => ({ ...point, date: new Date(point.date.getTime() + 14.5 * 3_600_000) }));
   expect(qualifyReturnTimestamps(datedReturns(nonmidnight), [{ ...source, history: nonmidnight }]).supported).toBe(false);
   expect(qualifyReturnTimestamps(datedReturns(nonmidnight), [{ ...source, exchange: "NYSE", history: nonmidnight }]).supported).toBe(true);
-});
-
-test("beta validates both sources on its actual overlap, preserving valid comparison beyond unrelated old observations", () => {
-  const ticker: TickerRecord = createTestTicker("CONTROL", "Controlled", {
-    exchange: "NYSE",
-    portfolios: ["main"],
-    positions: [{ portfolio: "main", shares: 1, avgCost: 100, markPrice: 100, currency: "USD", broker: "manual" }],
-  });
-  const dates = ["03", "04", "05", "06", "09", "10", "11", "12", "13", "16", "17", "18", "19", "20"];
-  const prices = (factor: number) => {
-    let close = 100;
-    return dates.map((day, index) => ({ date: new Date(`2026-11-${day}`), close: index ? (close *= 1 + factor * [.01, -.02, .005][index % 3]!) : close }));
-  };
-  const target = buildPortfolioChartTargets([ticker])[0]!;
-  const request = { instrument: { symbol: PORTFOLIO_BENCHMARK.symbol, exchange: PORTFOLIO_BENCHMARK.exchange }, bufferRange: "1Y" as const, granularity: "range" as const };
-  const old = [{ date: new Date("2026-10-30T12:00Z"), close: 98 }, { date: new Date("2026-10-30T13:00Z"), close: 99 }];
-  const beta = (holding: PricePoint[], benchmark: PricePoint[]) => buildPortfolioBetaResult(
-    buildPortfolioReturnSeries({ chartTargets: [target], chartEntries: new Map([[buildChartKey(target.request!), { data: holding }]]), financials: new Map(), columnContext: { activeTab: "main", baseCurrency: "USD", exchangeRates: new Map(), now: 0 } }),
-    buildBenchmarkReturnSeries(request, new Map([[buildChartKey(request), { data: benchmark }]])),
-  );
-  const clean = beta(prices(2), prices(1));
-  expect(clean.value).toBeCloseTo(2, 8);
-  expect(beta(prices(2), [...old, ...prices(1)]).value).toBeCloseTo(clean.value!, 8);
-  expect(beta([...old, ...prices(2)], prices(1)).value).toBeCloseTo(clean.value!, 8);
-  const intraday = [{ date: new Date("2026-11-05T12:00Z"), close: 98 }, { date: new Date("2026-11-05T13:00Z"), close: 99 }];
-  expect(beta(prices(2), [...prices(1), ...intraday]).value).toBeNull();
-  expect(beta([...prices(2), ...intraday], prices(1)).value).toBeNull();
 });

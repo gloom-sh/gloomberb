@@ -1,15 +1,8 @@
-import type { DataTableColumn } from "../../../components";
 import type { ColumnConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { compareSortValues } from "../../../utils/sort-values";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
-
-type SectorColumnId = "sector" | "weight" | "value" | "pnl" | "return" | "bar";
-
-export interface SectorTableColumn extends DataTableColumn {
-  id: SectorColumnId;
-}
 
 export interface SectorTableRow {
   id: string;
@@ -27,37 +20,9 @@ export interface PortfolioSectorAllocation {
   fundSymbols: string[];
 }
 
-export interface SectorSortPreference {
-  columnId: SectorColumnId | null;
-  direction: "asc" | "desc";
-}
-
-export const DEFAULT_SECTOR_SORT: SectorSortPreference = {
-  columnId: "weight",
-  direction: "desc",
-};
-
 const PORTFOLIO_VALUE_COLUMN: ColumnConfig = { id: "mkt_value", label: "VALUE", width: 10, align: "right" };
 const PORTFOLIO_PNL_COLUMN: ColumnConfig = { id: "pnl", label: "P&L", width: 10, align: "right" };
 const PORTFOLIO_COST_COLUMN: ColumnConfig = { id: "cost_basis", label: "COST", width: 10, align: "right" };
-
-export function buildSectorColumns(width: number): SectorTableColumn[] {
-  const sectorWidth = Math.max(12, Math.min(22, Math.floor(width * 0.28)));
-  const weightWidth = 8;
-  const valueWidth = 10;
-  const pnlWidth = 10;
-  const returnWidth = 8;
-  const barWidth = Math.max(8, width - sectorWidth - weightWidth - valueWidth - pnlWidth - returnWidth - 10);
-
-  return [
-    { id: "sector", label: "SECTOR", width: sectorWidth, align: "left" },
-    { id: "weight", label: "WEIGHT", width: weightWidth, align: "right" },
-    { id: "value", label: "VALUE", width: valueWidth, align: "right" },
-    { id: "pnl", label: "P&L", width: pnlWidth, align: "right" },
-    { id: "return", label: "P&L %", width: returnWidth, align: "right" },
-    { id: "bar", label: "ALLOCATION", width: barWidth, align: "left" },
-  ];
-}
 
 export function getPortfolioPositionValue(
   ticker: TickerRecord,
@@ -66,22 +31,6 @@ export function getPortfolioPositionValue(
 ): number | null {
   const value = getSortValue(PORTFOLIO_VALUE_COLUMN, ticker, financials, columnContext);
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
-}
-
-function getSectorSortValue(row: SectorTableRow, columnId: SectorColumnId): string | number | null {
-  switch (columnId) {
-    case "sector":
-      return row.sector;
-    case "value":
-      return row.value;
-    case "pnl":
-      return row.pnl;
-    case "return":
-      return row.returnPct;
-    case "bar":
-    case "weight":
-      return row.weight;
-  }
 }
 
 export function buildTrackedCurrencies(
@@ -162,15 +111,4 @@ export function buildSectorRowsFromPortfolioColumns(
     }))
     .sort((left, right) => compareSortValues(left.weight, right.weight, "desc") || left.sector.localeCompare(right.sector));
   return { rows, unvaluedSymbols, fundSymbols };
-}
-
-export function sortSectorRows(rows: SectorTableRow[], sort: SectorSortPreference): SectorTableRow[] {
-  const columnId = sort.columnId;
-  if (!columnId) return rows;
-
-  return [...rows].sort((left, right) => {
-    const leftValue = getSectorSortValue(left, columnId);
-    const rightValue = getSectorSortValue(right, columnId);
-    return compareSortValues(leftValue, rightValue, sort.direction);
-  });
 }

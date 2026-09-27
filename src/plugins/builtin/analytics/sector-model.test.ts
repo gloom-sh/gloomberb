@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { TickerRecord } from "../../../types/ticker";
-import { buildSectorRowsFromPortfolioColumns, sortSectorRows } from "./sector-model";
+import { buildSectorRowsFromPortfolioColumns } from "./sector-model";
 import { createTestTicker } from "../../../test-support/ticker";
 
 const holding = (symbol: string, currency = "USD", assetCategory = "STK"): TickerRecord => (createTestTicker(symbol, symbol, {
@@ -37,10 +37,6 @@ test("gross long/short concentration keeps signed P&L and missing cost cannot be
   expect(aggregate().returnPct).toBeCloseTo(300 / 2300 * 100);
   short.metadata.positions[0]!.avgCost = Number.NaN;
   expect(aggregate()).toMatchObject({ value: 2400, costBasis: null, pnl: null, weight: 1, returnPct: null });
-  const rows = [aggregate(), { ...aggregate(), id: "known", returnPct: -5 }];
-  for (const direction of ["asc", "desc"] as const) {
-    expect(sortSectorRows(rows, { columnId: "return", direction }).at(-1)?.returnPct).toBeNull();
-  }
 });
 
 test("known zero broker values and marks retain zero weight and losses without becoming missing data", () => {

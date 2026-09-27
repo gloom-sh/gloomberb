@@ -248,6 +248,16 @@ describe("buildPortfolioSummarySegments", () => {
     });
 
     expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175.0k");
+    expect(segments.find((segment) => segment.id === "leverage")?.parts[1]?.text).toBe("1.4x");
+    // Leverage is a ratio of two converted figures, so the display currency cannot move it.
+    const converted = buildPortfolioSummarySegments({
+      totals, accountState: { account, sourceLabel: "Live" }, convertAccountValue: (value) => value * 1.2,
+    });
+    expect(converted.find((segment) => segment.id === "leverage")?.parts[1]?.text).toBe("1.4x");
+    const noNetLiquidation = buildPortfolioSummarySegments({
+      totals, accountState: { account: { ...account, netLiquidation: 0 }, sourceLabel: "Live" },
+    });
+    expect(noNetLiquidation.some((segment) => segment.id === "leverage")).toBe(false);
   });
 
   test("drops low-priority broker segments before required ones", () => {

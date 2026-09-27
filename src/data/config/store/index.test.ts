@@ -378,6 +378,37 @@ describe("sanitizeLayout", () => {
 });
 
 describe("loadConfig", () => {
+  test("opens saved Analytics overview panes on Performance and leaves risk panes alone", async () => {
+    const dataDir = await createTempConfigDir();
+    const analytics = (instanceId: string, settings?: Record<string, unknown>) => ({
+      instanceId, paneId: "analytics", binding: { kind: "none" as const }, params: { portfolioId: "main" }, ...(settings ? { settings } : {}),
+    });
+    const savedLayout = {
+      ...DEFAULT_LAYOUT,
+      instances: [
+        ...DEFAULT_LAYOUT.instances,
+        analytics("analytics:old"),
+        analytics("analytics:overview", { analyticsView: "overview", equityShift: -15 }),
+        analytics("analytics:risk", { analyticsView: "risk", riskView: "factors" }),
+      ],
+      floating: ["analytics:old", "analytics:overview", "analytics:risk"]
+        .map((instanceId) => ({ instanceId, x: 0, y: 0, width: 80, height: 30 })),
+    };
+    await writeConfigJson(dataDir, createSavedConfig({
+      configVersion: 23,
+      layout: savedLayout,
+      layouts: [{ name: "Default", layout: savedLayout }],
+    }));
+
+    const config = await loadConfig(dataDir);
+
+    for (const layout of [config.layout, config.layouts[0]!.layout]) {
+      expect(findPaneInstance(layout, "analytics:old")?.settings).toEqual({ riskView: "performance" });
+      expect(findPaneInstance(layout, "analytics:overview")?.settings).toEqual({ riskView: "performance", equityShift: -15 });
+      expect(findPaneInstance(layout, "analytics:risk")?.settings).toEqual({ riskView: "factors" });
+    }
+  });
+
   test("migrates unreachable pane instances and their saved state", async () => {
     const dataDir = await createTempConfigDir();
     const hiddenPaneId = "ticker-research:closed";

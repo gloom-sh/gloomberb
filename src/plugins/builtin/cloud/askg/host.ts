@@ -71,15 +71,16 @@ export interface ASKGPaneTarget {
 /**
  * Reverses the manifest's naming so a timeline row can open the pane the tool
  * read from. Tool names come from a template shortcut prefix or a pane id,
- * lowercased, which is what `buildASKGToolManifests` advertised.
+ * lowercased, which is what `buildASKGToolManifests` advertised. Aliases match
+ * too, so a row from a template that has since become an alias still opens.
  */
 export function resolveToolPaneTarget(toolName: string): ASKGPaneTarget | null {
   const registry = getSharedRegistry();
   if (!registry) return null;
   const normalized = toolName.toLowerCase();
   for (const template of registry.paneTemplates.values()) {
-    const token = (template.shortcut?.prefix ?? template.id).toLowerCase();
-    if (token !== normalized) continue;
+    const tokens = [template.shortcut?.prefix ?? template.id, ...(template.shortcut?.aliases ?? [])];
+    if (!tokens.some((token) => token.toLowerCase() === normalized)) continue;
     return { templateId: template.id, paneId: template.paneId, label: template.label };
   }
   const pane = registry.panes.get(toolName);
