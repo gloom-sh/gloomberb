@@ -44,7 +44,8 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
-      label: formatFinancialHeader(date, currency ?? statementCurrency, dateSource, false, aggregation?.periodEnd).trim(),
+      // Rows in the shared money unit no longer name it, so the header does.
+      label: formatFinancialHeader(date, [currency ?? statementCurrency, table.unit].filter(Boolean).join(" ") || undefined, dateSource, false, aggregation?.periodEnd).trim(),
     })) ?? [];
     const rows = table?.rows.map((row) => ({
       id: row.id, kind: row.kind, metric: row.unitLabel,
@@ -68,7 +69,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
       metadata: {
-        symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, quoteCurrency: financials.quote?.currency ?? null,
+        symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: requestedPeriod, growthBasis: requestedPeriod === "quarterly" ? "QoQ" : "YoY", columns: dates,
         notices: rows.length ? [FINANCIAL_VINTAGE_NOTICE] : [],

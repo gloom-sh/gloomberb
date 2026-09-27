@@ -58,7 +58,10 @@ export type FinancialTableRow =
     id: string;
     key?: keyof FinancialStatement;
     compute?: (statement: FinancialStatement) => number | undefined;
+    label: string;
     unitLabel: string;
+    /** Money unit word (`bn`) the values are in, "" for whole units; null for ratios, per-share values and share counts. */
+    moneyUnit: string | null;
     divisor: number;
     format: FinancialMetricFormat;
     showGrowth: boolean;
@@ -70,6 +73,7 @@ export type FinancialTableRow =
     id: string;
     label: string;
     unitLabel: string;
+    moneyUnit: string | null;
     summaryKey?: keyof FinancialStatement;
     divisor: number;
     format: FinancialMetricFormat;
@@ -166,16 +170,75 @@ export function formatFinancialValue(
 }
 
 /**
- * A statement column's header. The compact form is what the table prints: the
- * period and its S/P date marker, with no currency, because the table names a
- * shared currency once above it and appends one only to columns that differ.
+ * A statement column's header for reports. The compact form is the period as
+ * the pane prints it without a fiscal calendar: `TTM`, or the period end date
+ * the query bar shows as of. Table columns use `financialColumnLabel`.
  */
 export function formatFinancialHeader(date: string, currency?: string, dateSource?: FinancialStatement["dateSource"], compact = false, periodEnd?: string): string {
+  if (compact) return date === "TTM" ? "TTM" : date.slice(0, 10);
   const period = date === "TTM" ? (periodEnd ? `TTM ${periodEnd}` : "TTM") : date.slice(0, 10);
-  if (compact) return date === "TTM" ? period : `${period} ${dateSource === "sec" ? "S" : "P"}`;
   const label = currency ? `${period} ${currency}` : period;
   if (date === "TTM") return label;
   return `${label} ${dateSource === "sec" ? "(SEC date)" : "(provider date)"}`;
+}
+
+/**
+ * The month a period end closes. A 52/53-week period that ends in a month's
+ * first week (Jan 3, 2026) closes the month before, as its filer counts it.
+ */
+function closingMonth(date: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return null;
+  let year = Number(match[1]);
+  let month = Number(match[2]);
+  if (Number(match[3]) <= 7) {
+    month -= 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+  }
+  return month >= 1 && month <= 12 ? { year, month } : null;
+}
+
+/** The month the issuer's fiscal year ends, from its latest annual statement. */
+export function fiscalYearEndMonth(annualStatements: readonly Pick<FinancialStatement, "date">[]): number | null {
+  const latest = annualStatements.reduce<string | null>((max, { date }) => (!max || date > max ? date : max), null);
+  return latest ? closingMonth(latest)?.month ?? null : null;
+}
+
+/**
+ * A fiscal period as issuers and Bloomberg name it: `FY2026` for a year,
+ * `Q4 FY26` for a quarter. A fiscal year is named by the calendar year it
+ * ends in. Without a fiscal calendar, or for a period off it (a transition
+ * period, an off-cycle observation), the period end date is shown instead.
+ */
+export function fiscalPeriodLabel(date: string, kind: FinancialPeriod, yearEndMonth: number | null): string {
+  const closing = closingMonth(date);
+  if (!closing || yearEndMonth == null) return date.slice(0, 10);
+  const offset = (closing.month - yearEndMonth + 12) % 12;
+  if (kind === "annual") return offset === 0 ? `FY${closing.year}` : date.slice(0, 10);
+  if (offset % 3 !== 0) return date.slice(0, 10);
+  const fiscalYear = closing.month <= yearEndMonth ? closing.year : closing.year + 1;
+  return `Q${offset === 0 ? 4 : offset / 3} FY${String(fiscalYear).slice(-2)}`;
+}
+
+/** A table column's label: the fiscal period, and `TTM` with the quarter it runs to. */
+export function financialColumnLabel(
+  statement: FinancialTableStatement,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+): string {
+  if (statement.date !== "TTM") return fiscalPeriodLabel(statement.date, kind, yearEndMonth);
+  const periodEnd = statement.aggregation?.periodEnd;
+  return periodEnd ? `TTM ${fiscalPeriodLabel(periodEnd, "quarterly", yearEndMonth)}` : "TTM";
+}
+
+/** The end of the latest period on screen, which the query bar shows as of. */
+export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
+  return statements
+    .map((statement) => statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10))
+    .reduce<string | undefined>((max, end) => (end && (!max || end > max) ? end : max), undefined);
 }
 
 export function financialStatementDateNotice(statements: readonly FinancialStatement[]): string {
@@ -294,6 +357,9 @@ function distinctChildren(
   return kept;
 }
 
+const UNIT_WORDS: Record<string, string> = { K: "k", M: "mn", B: "bn", T: "tn" };
+const UNIT_DIVISORS: Record<string, number> = { k: 1e3, mn: 1e6, bn: 1e9, tn: 1e12 };
+
 function resolveMetricUnit(
   statements: FinancialStatement[],
   def: Pick<MetricDef, "key" | "compute" | "format">,
@@ -304,10 +370,36 @@ function resolveMetricUnit(
   const isPercent = format === "percent";
   const allValues = statements.map((statement) => statementMetricValue(def, statement));
   const { suffix, divisor } = isEps || isPercent ? { suffix: "", divisor: 1 } : pickUnit(allValues);
+  const unit = UNIT_WORDS[suffix] ?? suffix;
   return {
-    unitLabel: suffix ? `${label} (${suffix})` : label,
+    unitLabel: unit ? `${label} (${unit})` : label,
+    // Share counts are not money, so they never take the table's money unit.
+    moneyUnit: format === "compact" && !(def.key && SHARE_COUNT_FIELDS.has(def.key)) ? unit : null,
+    label,
     divisor,
     format,
+  };
+}
+
+/**
+ * The money unit most rows share (`bn`), said once beside the currency. Rows
+ * in that unit drop their `(bn)`, and money rows too small for any unit are
+ * shown in it; rows in another unit, and share counts, keep theirs.
+ */
+export function shareFinancialUnit<T extends { unitLabel: string; label: string; moneyUnit: string | null; divisor: number }>(
+  rows: readonly T[],
+): { rows: T[]; unit: string | undefined } {
+  const counts = new Map<string, number>();
+  for (const row of rows) if (row.moneyUnit) counts.set(row.moneyUnit, (counts.get(row.moneyUnit) ?? 0) + 1);
+  const unit = [...counts].sort((left, right) => right[1] - left[1])[0]?.[0];
+  if (!unit) return { rows: [...rows], unit: undefined };
+  return {
+    rows: rows.map((row) => {
+      if (row.moneyUnit === unit) return { ...row, unitLabel: row.label };
+      if (row.moneyUnit === "") return { ...row, unitLabel: row.label, moneyUnit: unit, divisor: UNIT_DIVISORS[unit]! };
+      return row;
+    }),
+    unit,
   };
 }
 
@@ -323,13 +415,15 @@ export function buildFinancialRows(
     if (!hasFinancialRowValue(def, statements)) continue;
 
     if (!isFinancialGroup(def)) {
-      const { unitLabel, divisor, format } = resolveMetricUnit(statements, def, def.label);
+      const { unitLabel, moneyUnit, divisor, format } = resolveMetricUnit(statements, def, def.label);
       rows.push({
         kind: "metric",
         id: `${def.id ?? String(def.key)}:${depth}`,
         key: def.key,
         compute: def.compute,
+        label: def.label,
         unitLabel,
+        moneyUnit,
         divisor,
         format,
         showGrowth: def.showGrowth ?? format !== "percent",
@@ -344,13 +438,14 @@ export function buildFinancialRows(
     const expanded = toggleable && !collapsedGroups.has(def.id);
     const metricUnit = def.summaryKey
       ? resolveMetricUnit(statements, { key: def.summaryKey, format: def.format ?? "compact" }, def.label)
-      : { unitLabel: def.label, divisor: 1, format: def.format ?? "compact" };
+      : { unitLabel: def.label, moneyUnit: null, divisor: 1, format: def.format ?? "compact" };
 
     rows.push({
       kind: "group",
       id: def.id,
       label: def.label,
       unitLabel: metricUnit.unitLabel,
+      moneyUnit: metricUnit.moneyUnit,
       summaryKey: def.summaryKey,
       divisor: metricUnit.divisor,
       format: metricUnit.format,
@@ -411,6 +506,15 @@ export interface FinancialTableModel {
   subTab: FinancialSubTab;
   statements: FinancialTableStatement[];
   rows: FinancialTableModelRow[];
+  /** Money unit word the rows share (`bn`), stated once beside the currency. */
+  unit: string | undefined;
+}
+
+function coversLatestYear(ttm: FinancialTableStatement, latestYear: FinancialStatement | undefined): boolean {
+  const periodEnd = ttm.aggregation?.periodEnd;
+  if (!periodEnd || !latestYear) return false;
+  const days = Math.abs(Date.parse(periodEnd) - Date.parse(latestYear.date)) / 86_400_000;
+  return days <= 7;
 }
 
 export function selectFinancialStatements(
@@ -427,7 +531,10 @@ export function selectFinancialStatements(
     .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
     .slice(-limit)
     .reverse();
-  const ttm = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
+  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
+  // Right after a fiscal year closes, the last four quarters are that year:
+  // the reported year is shown, not a second column of the same period.
+  const ttm = trailing && !coversLatestYear(trailing, rawStatements[0]) ? trailing : null;
   const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
   const statements: FinancialTableStatement[] = ttm ? [ttm, ...rawStatements] : rawStatements;
 
@@ -480,7 +587,8 @@ export function buildFinancialTableModel(
   const collapsedGroups = options.expandAll
     ? new Set<string>()
     : new Set(options.collapsedGroupIds ?? collectDefaultCollapsedGroupIds(subTab.rows));
-  const rows = buildFinancialRows(subTab.rows, statements, collapsedGroups).map((row): FinancialTableModelRow => {
+  const { rows: tableRows, unit } = shareFinancialUnit(buildFinancialRows(subTab.rows, statements, collapsedGroups));
+  const rows = tableRows.map((row): FinancialTableModelRow => {
     const cells = statements.map((statement) => {
       const previous = previousStatementMap.get(statement.date);
       const value = row.kind === "group"
@@ -513,5 +621,5 @@ export function buildFinancialTableModel(
     };
   });
 
-  return { period, subTab, statements, rows };
+  return { period, subTab, statements, rows, unit };
 }

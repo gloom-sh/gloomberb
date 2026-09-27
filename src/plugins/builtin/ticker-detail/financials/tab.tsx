@@ -24,16 +24,19 @@ import {
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   computeGrowth,
+  financialColumnLabel,
+  fiscalYearEndMonth,
   formatFinancialCell,
-  formatFinancialHeader,
   financialStatementCurrency,
   financialStatementLimitations,
   formatFinancialValue,
+  latestFinancialPeriodEnd,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
   semanticGrowthValue,
   selectFinancialStatements,
+  shareFinancialUnit,
   statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
@@ -50,9 +53,14 @@ const financialRowBackground = (row: FinancialTableRow) => (
   row.kind === "group" && row.depth === 0 ? colors.panel : undefined
 );
 
-/** The compact header, plus the column's currency when the table has no single one. */
-function financialColumnHeader(statement: FinancialTableStatement, sharedCurrency: string | undefined): string {
-  const header = formatFinancialHeader(statement.date, undefined, statement.dateSource, true, statement.aggregation?.periodEnd);
+/** The fiscal period, plus the column's currency when the table has no single one. */
+function financialColumnHeader(
+  statement: FinancialTableStatement,
+  kind: FinancialPeriod,
+  yearEndMonth: number | null,
+  sharedCurrency: string | undefined,
+): string {
+  const header = financialColumnLabel(statement, kind, yearEndMonth);
   return !sharedCurrency && statement.currency ? `${header} ${statement.currency}` : header;
 }
 
@@ -257,6 +265,8 @@ export function ResolvedFinancialsTab({
   // One currency for every column goes in the query bar with the growth basis;
   // a column in a different currency (or none) says so in its own header.
   const growthBasis = isAnnual ? "YoY" : "QoQ";
+  const yearEndMonth = useMemo(() => fiscalYearEndMonth(annualStatements), [annualStatements]);
+  const annualDates = useMemo(() => new Set(annualStatements.map(({ date }) => date)), [annualStatements]);
   const columns = useMemo<FinancialTableColumn[]>(() => [
     {
       id: "metric",
@@ -269,16 +279,24 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(financialColumnHeader(statement, comparisonCurrency), FINANCIAL_COL_W, "center"),
+      // The annual balance sheet leads with a newer quarter-end position.
+      label: padTo(financialColumnHeader(
+        statement,
+        isAnnual && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly",
+        yearEndMonth,
+        comparisonCurrency,
+      ), FINANCIAL_COL_W, "center"),
       width: FINANCIAL_COL_W,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
     })),
-  ], [comparisonCurrency, displayStatements, isAnnual]);
-  const rows = useMemo(
-    () => buildFinancialRows(subTab.rows, displayStatements, collapsedGroups),
+  ], [annualDates, comparisonCurrency, displayStatements, isAnnual, yearEndMonth]);
+  const { rows, unit } = useMemo(
+    () => shareFinancialUnit(buildFinancialRows(subTab.rows, displayStatements, collapsedGroups)),
     [collapsedGroups, displayStatements, subTab.rows],
   );
+  const moneyUnit = [comparisonCurrency, unit].filter(Boolean).join(" ");
+  const periodEnd = latestFinancialPeriodEnd(displayStatements);
   const renderCell = useCallback((
     row: FinancialTableRow,
     column: FinancialTableColumn,
@@ -422,7 +440,9 @@ export function ResolvedFinancialsTab({
         emptyStateTitle="No financial data"
         getExportMetadata={() => [
           ["Currency", comparisonCurrency ?? "per column"],
+          ...(unit ? [["Unit", unit]] : []),
           ["Growth", growthBasis],
+          ...(periodEnd ? [["As of", periodEnd]] : []),
         ]}
         showHorizontalScrollbar
         resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
@@ -443,7 +463,7 @@ export function ResolvedFinancialsTab({
               ],
               onChange: (value: string) => setPeriod(value as FinancialPeriod),
             }}
-            meta={[comparisonCurrency, growthBasis].filter(Boolean).join(" · ")}
+            meta={[moneyUnit, growthBasis, periodEnd ? `as of ${periodEnd}` : ""].filter(Boolean).join(" · ")}
           />
         )}
       />
