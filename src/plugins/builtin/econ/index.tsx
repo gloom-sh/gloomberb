@@ -92,7 +92,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))
     .sort((a, b) => a.date.getTime() - b.date.getTime()),
   [countryFilter, events, impactFilter]);
-  const selectedIdx = Math.max(0, filtered.findIndex((ev) => ev.id === selectedKey));
   const detailEvent = useMemo(
     () => (openKey ? events.find((ev) => ev.id === openKey) ?? null : null),
     [events, openKey],
@@ -120,6 +119,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       nowRowIdx = r;
     }
   }
+  // Without a remembered row the pane sits at the present: the next release,
+  // or the latest one once the week's releases are all out.
+  const rememberedIdx = filtered.findIndex((ev) => ev.id === selectedKey);
+  const selectedIdx = rememberedIdx >= 0 ? rememberedIdx
+    : nextUpcomingEventIdx >= 0 ? nextUpcomingEventIdx : Math.max(0, filtered.length - 1);
 
   // On initial load, scroll to NOW and select the first upcoming event
   const initialScrollDone = useRef(false);
@@ -154,7 +158,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
 
-  // A forced reload starts over from the top row once it answers.
+  // A forced reload goes back to the present once it answers.
   const forcedResult = calendar.data?.forced ? calendar.data : null;
   useEffect(() => {
     if (forcedResult) setSelectedKey(null);
