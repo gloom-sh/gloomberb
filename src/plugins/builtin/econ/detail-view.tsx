@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../../api-client";
 import {
   ChartTableHeader,
-  ChoiceDialog,
   DataTableView,
   formatPercentAxis,
   PaneStatusBody,
@@ -25,11 +24,10 @@ import {
   type FredSeriesData,
   type FredSeriesRequest,
 } from "../../../data/fred-series";
-import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
 import { displayWidth } from "../../../utils/format";
+import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, timeLabel } from "./calendar-model";
 import type { EconEvent } from "./types";
@@ -179,36 +177,17 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
 
   // The related badges open on click; the keyboard reaches them through `t`,
   // which asks which one when there are several.
-  const openTicker = useInlineTickerOpener();
-  const dialog = useOptionalDialog();
+  const openTickerChoice = useOpenTickerChoice();
   const relatedTickers = useMemo(() => mapping?.relatedTickers ?? [], [mapping]);
-  const openRelated = useCallback(async () => {
-    if (relatedTickers.length === 1) {
-      openTicker(relatedTickers[0]!);
-      return;
-    }
-    if (!dialog || relatedTickers.length === 0) return;
-    const symbol = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title="Open related ticker"
-          choices={relatedTickers.map((ticker) => ({ id: ticker, label: ticker }))}
-        />
-      ),
-    }).catch(() => undefined);
-    if (symbol) openTicker(symbol);
-  }, [dialog, openTicker, relatedTickers]);
   usePaneFooter("econ-detail:related", () => relatedTickers.length > 0 ? {
     hints: [{
       id: "related",
       key: "t",
       label: relatedTickers.length === 1 ? "icker" : "ickers",
       title: relatedTickers.length === 1 ? `Open ${relatedTickers[0]}` : "Open Related Ticker…",
-      onPress: () => { void openRelated(); },
+      onPress: () => openTickerChoice(relatedTickers),
     }],
-  } : null, [openRelated, relatedTickers]);
+  } : null, [openTickerChoice, relatedTickers]);
 
   // The stack bar names the event; the detail opens on the release figures,
   // the outcome first so a short detail keeps it.
