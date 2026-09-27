@@ -17,6 +17,7 @@ import {
   type LegacyChartMigrationContext,
 } from "../chart-settings";
 import { sanitizeLayout } from "../layout";
+import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 
 const CLOUD_DEFAULT_CONFIG_VERSION = 13;
@@ -151,40 +152,6 @@ function migrateCloudDefault(saved: Record<string, unknown>): Record<string, unk
   };
 }
 
-function sanitizeSerializableValue(value: unknown): unknown {
-  if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => sanitizeSerializableValue(entry))
-      .filter((entry) => entry !== undefined);
-  }
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.entries(value)
-        .map(([key, entry]) => [key, sanitizeSerializableValue(entry)])
-        .filter(([, entry]) => entry !== undefined),
-    );
-  }
-  return undefined;
-}
-
-function migrationPaneState(
-  value: unknown,
-  layout: LayoutConfig,
-): Record<string, Record<string, unknown>> | undefined {
-  if (!isRecord(value)) return undefined;
-  const validPaneIds = new Set(layout.instances.map((instance) => instance.instanceId));
-  const paneState = Object.fromEntries(
-    Object.entries(value)
-      .filter(([paneId, entry]) => validPaneIds.has(paneId) && isRecord(entry))
-      .map(([paneId, entry]) => [paneId, sanitizeSerializableValue(entry)])
-      .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1])),
-  );
-  return normalizeBuiltinPaneStatePluginOwners(paneState);
-}
-
 function legacyRenderMode(value: unknown): LegacyChartMigrationContext["defaultRenderMode"] {
   return value === "area"
     || value === "line"
@@ -204,7 +171,8 @@ function migrateSavedLayouts(
   return value.map((entry) => {
     if (!isRecord(entry) || typeof entry.name !== "string") return entry;
     const layout = sanitizeLayout(entry.layout, fallbackLayout, chartMigration);
-    const paneState = migrationPaneState(entry.paneState, layout);
+    const sanitized = sanitizeSavedPaneState(entry.paneState, layout);
+    const paneState = sanitized && normalizeBuiltinPaneStatePluginOwners(sanitized);
     const migrated = migrateLegacyChartSavedPaneState(layout, paneState, entry.layout);
     return {
       ...entry,
