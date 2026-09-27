@@ -13,7 +13,8 @@ import { formatRelativeAge } from "../../../utils/datetime-format";
 import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
-import { isBrokerErrorMessage, stateColor } from "./table";
+import type { BrokerManagerMessage } from "./pane-actions";
+import { stateColor } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | string;
 
@@ -151,7 +152,7 @@ export function BrokerDetailContent({
   editFields: BrokerConfigField[];
   activeEditKey: BrokerEditKey;
   busy: string | null;
-  message: string | null;
+  message: BrokerManagerMessage | null;
   width: number;
   /** The edit form's shortcut scope, shared with the pane's field ring. */
   editScope: string;
@@ -190,7 +191,9 @@ export function BrokerDetailContent({
 
   // Never wider than the detail pane, so a narrow floating pane shrinks instead of clipping.
   const fieldWidth = Math.max(12, Math.min(34, width - 2));
-  const detailStatusMessage = isBrokerErrorMessage(message) ? message : row.message || t("No status message.");
+  // A failed action outranks the profile's own status until the next action.
+  const actionError = message?.tone === "error" ? message.text : null;
+  const detailStatusMessage = actionError ?? (row.message || t("No status message."));
   const editAdapter = row.adapter;
 
   return (
@@ -204,7 +207,7 @@ export function BrokerDetailContent({
           {truncateToDisplayWidth(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
         </Text>
         <Text
-          fg={isBrokerErrorMessage(detailStatusMessage) ? colors.negative : colors.textDim}
+          fg={actionError || row.state === "error" ? colors.negative : colors.textDim}
           width={width}
           wrapText
         >

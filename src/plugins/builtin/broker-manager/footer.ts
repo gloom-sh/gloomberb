@@ -1,6 +1,6 @@
 import { useMemo, useRef } from "react";
 import { usePaneFooter, type PaneFooterSegment, type PaneHint } from "../../../components";
-import { isBrokerErrorMessage } from "./table";
+import type { BrokerManagerMessage } from "./pane-actions";
 
 interface BrokerManagerFooterActions {
   connectSelected: () => Promise<void>;
@@ -29,7 +29,7 @@ export function useBrokerManagerFooter({
   canUseSelectedBroker: boolean;
   editing: boolean;
   /** The last result of an action, or null. */
-  message: string | null;
+  message: BrokerManagerMessage | null;
 }) {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -62,7 +62,7 @@ export function useBrokerManagerFooter({
   // so the footer carries only what changes: the running action and its result.
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(busy ? [{ id: "busy", parts: [{ text: busy, tone: "muted" as const }] }] : []),
-    ...(message ? [{ id: "message", parts: [{ text: message, tone: isBrokerErrorMessage(message) ? "negative" as const : "muted" as const }] }] : []),
+    ...(message ? [{ id: "message", parts: [{ text: message.text, tone: message.tone === "error" ? "negative" as const : "muted" as const }] }] : []),
   ], [busy, message]);
 
   usePaneFooter("broker-manager", () => ({
