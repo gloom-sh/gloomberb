@@ -7,7 +7,6 @@ import {
   type ChannelRuntimeState,
   type MergeMessagesOptions,
 } from "./state";
-import { isLegacyTimestampCursor } from "./utils";
 
 interface ChatFetchDeps {
   mergeMessages(channelId: string, messages: ChatMessage[], options?: MergeMessagesOptions): void;
@@ -19,10 +18,9 @@ export async function fetchLatestChannelMessages(
   channel: ChannelRuntimeState,
   deps: ChatFetchDeps,
 ): Promise<void> {
-  const legacyTimestampCursor = isLegacyTimestampCursor(channel.lastCursor);
   const hasIncrementalCursor = !!channel.lastCursor;
   const hadMessages = channel.messages.length > 0;
-  const countIncrementalUnread = hadMessages && hasIncrementalCursor && !legacyTimestampCursor;
+  const countIncrementalUnread = hadMessages && hasIncrementalCursor;
   // The first fetch of a session drops the cursor so anything missed while the
   // socket was connected comes back. Merging is keyed by message id, so
   // re-reading known messages changes nothing and counts no unread.
@@ -40,17 +38,6 @@ export async function fetchLatestChannelMessages(
     if (messages.length > 0) {
       deps.mergeMessages(channelId, messages, { countUnread: countIncrementalUnread });
       return;
-    }
-    if (legacyTimestampCursor) {
-      const fullRefresh = await apiClient.getMessages(channelId, { limit: MESSAGE_PAGE_SIZE });
-      if (fullRefresh.length < MESSAGE_PAGE_SIZE) {
-        channel.reachedOldestMessage = true;
-      }
-      if (fullRefresh.length > 0) {
-        deps.mergeMessages(channelId, fullRefresh, { countUnread: false });
-        return;
-      }
-      channel.lastCursor = null;
     }
     deps.persistChannelState(channelId);
     return;

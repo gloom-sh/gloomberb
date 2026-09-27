@@ -1,7 +1,6 @@
 import type { ChatMessage } from "../../../../api-client";
 import { t, tf } from "../../../../i18n";
 
-const ISO_TIMESTAMP_CURSOR = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const USERNAME_MENTION = /(^|[^A-Za-z0-9_])@([A-Za-z][A-Za-z0-9_]{2,29})(?![A-Za-z0-9_])/g;
 
 export function normalizeChatUsername(username: string | null | undefined): string | null {
@@ -50,21 +49,8 @@ export function formatChannelToast(message: ChatMessage, direct = false): string
   return snippet ? `@${author}: ${snippet}` : tf("@{author} sent a message.", { author });
 }
 
-export function isLegacyTimestampCursor(cursor: string | null): boolean {
-  return !!cursor && ISO_TIMESTAMP_CURSOR.test(cursor);
-}
-
 export function getLatestMessageId(messages: ChatMessage[]): string | null {
   return messages[messages.length - 1]?.id ?? null;
-}
-
-export function resolveHydratedCursor(messages: ChatMessage[], persistedCursor: string | null): string | null {
-  const transcriptCursor = getLatestMessageId(messages);
-  if (!transcriptCursor) return null;
-  if (!persistedCursor || isLegacyTimestampCursor(persistedCursor)) {
-    return persistedCursor ?? transcriptCursor;
-  }
-  return persistedCursor === transcriptCursor ? persistedCursor : transcriptCursor;
 }
 
 export function createClientMessageId(): string {

@@ -5,7 +5,6 @@ import type { RssFeedConfig } from "./rss/parser";
 
 const USER_FEEDS_KEY = "feeds";
 const DISABLED_DEFAULT_FEED_IDS_KEY = "disabledDefaultFeedIds";
-const LEGACY_DISABLED_DEFAULT_FEEDS_KEY = "disabledDefaultFeeds";
 
 const DEFAULT_FEED_IDS = new Set(DEFAULT_FEEDS.map((feed) => feed.id));
 
@@ -98,13 +97,11 @@ function normalizeUserFeed(value: unknown): RssFeedConfig | null {
 }
 
 function normalizeDisabledDefaultFeedIds(values: unknown[]): string[] {
-  const legacyNameToId = new Map(DEFAULT_FEEDS.map((feed) => [feed.name, feed.id]));
   const ids = new Set<string>();
   for (const value of values) {
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
-    const id = DEFAULT_FEED_IDS.has(trimmed) ? trimmed : legacyNameToId.get(trimmed);
-    if (id) ids.add(id);
+    if (DEFAULT_FEED_IDS.has(trimmed)) ids.add(trimmed);
   }
   return [...ids];
 }
@@ -137,14 +134,9 @@ export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSe
     .filter((feed): feed is RssFeedConfig => !!feed);
 
   const rawDisabledIds = configState.get<unknown>(DISABLED_DEFAULT_FEED_IDS_KEY);
-  const rawLegacyDisabled = configState.get<unknown>(LEGACY_DISABLED_DEFAULT_FEEDS_KEY);
-  const disabledDefaultFeedIds = normalizeDisabledDefaultFeedIds([
-    ...parseJsonArray(rawDisabledIds),
-    ...parseJsonArray(rawLegacyDisabled),
-  ]);
+  const disabledDefaultFeedIds = normalizeDisabledDefaultFeedIds(parseJsonArray(rawDisabledIds));
 
-  const needsMigration = rawLegacyDisabled !== null
-    || (rawUserFeeds !== null && !sameUserFeeds(rawUserFeeds, userFeeds))
+  const needsMigration = (rawUserFeeds !== null && !sameUserFeeds(rawUserFeeds, userFeeds))
     || (rawDisabledIds !== null && !sameIdList(rawDisabledIds, disabledDefaultFeedIds));
 
   return { userFeeds, disabledDefaultFeedIds, needsMigration };
@@ -156,7 +148,6 @@ export async function saveNewsFeedSettings(
 ): Promise<void> {
   await configState.set(USER_FEEDS_KEY, settings.userFeeds);
   await configState.set(DISABLED_DEFAULT_FEED_IDS_KEY, settings.disabledDefaultFeedIds);
-  await configState.delete(LEGACY_DISABLED_DEFAULT_FEEDS_KEY);
 }
 
 export function getEnabledNewsFeeds(settings: Pick<NewsFeedSettings, "userFeeds" | "disabledDefaultFeedIds">): RssFeedConfig[] {

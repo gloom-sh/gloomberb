@@ -153,7 +153,7 @@ describe("ChatController", () => {
     persistence.setState("channel:everyone", {
       draft: "cached draft",
       replyToId: "m1",
-      lastCursor: "2026-03-28T00:00:00.000Z",
+      lastCursor: "m1",
       lastViewedMessageId: "m1",
     }, { schemaVersion: 1 });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
@@ -1771,58 +1771,6 @@ describe("ChatController", () => {
       type: "info",
       desktop: "when-inactive",
     }]);
-  });
-
-  test("recovers from a legacy timestamp cursor by falling back to a full transcript fetch", async () => {
-    const persistence = new MemoryPersistence();
-    const controller = createController();
-    const cached: ChatMessage = chatMessage({
-      id: "m1",
-      content: "cached",
-      createdAt: "2026-03-28T00:00:00.000Z",
-    });
-    const fullTranscript: ChatMessage[] = [
-      cached,
-      chatMessage({
-        id: "m2",
-        content: "fresh",
-        createdAt: "2026-03-28T00:01:00.000Z",
-        user: { id: "u2", username: "bob", displayName: "Bob" },
-      }),
-    ];
-
-    persistence.setState("channel:everyone", {
-      draft: "",
-      replyToId: null,
-      lastCursor: "2026-03-28T00:00:00.000Z",
-      lastViewedMessageId: "m1",
-    }, { schemaVersion: 1 });
-    persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
-      messages: [cached],
-    }, {
-      sourceKey: TRANSCRIPT_SOURCE,
-      schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
-      cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
-    });
-
-    controller.attachPersistence(persistence);
-
-    const calls: Array<{ channelId: string; opts?: { after?: string; before?: string; limit?: number } }> = [];
-    apiClient.getMessages = async (channelId, opts) => {
-      calls.push({ channelId, opts });
-      return opts?.after ? [] : fullTranscript;
-    };
-
-    await controller.refreshMessages();
-
-    // The session backfill already ignores the cursor, so the legacy timestamp
-    // is never sent and the old wasted round trip is gone.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.opts?.after).toBeUndefined();
-    expect(controller.getSnapshot().messages.map((entry) => entry.id)).toEqual(["m1", "m2"]);
-    expect(persistence.getState<{ lastCursor: string }>("channel:everyone", { schemaVersion: 1 })).toMatchObject({
-      lastCursor: "m2",
-    });
   });
 
   test("loads older messages before the oldest cached message without moving the latest cursor", async () => {

@@ -32,13 +32,13 @@ class MemoryConfigState implements PluginConfigState {
 }
 
 describe("news feed config", () => {
-  test("normalizes legacy JSON feed storage and migrates disabled default feed names to ids", async () => {
+  test("normalizes legacy JSON feed storage and drops unknown disabled default feed ids", async () => {
     const config = new MemoryConfigState();
     config.values.set("feeds", JSON.stringify([
       { url: "https://example.com/rss.xml", name: "Example", authority: 120 },
       { url: "ftp://example.com/invalid.xml", name: "Invalid" },
     ]));
-    config.values.set("disabledDefaultFeeds", JSON.stringify(["CNBC", "missing"]));
+    config.values.set("disabledDefaultFeedIds", JSON.stringify(["default-cnbc-top", "missing"]));
 
     const settings = loadNewsFeedSettings(config);
 

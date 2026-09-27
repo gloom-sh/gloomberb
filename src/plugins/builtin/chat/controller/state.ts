@@ -4,7 +4,7 @@ import type {
   ChatMessage,
   PersistedAuthUser,
 } from "../../../../api-client";
-import { createClientMessageId, getLatestMessageId, resolveHydratedCursor } from "./utils";
+import { createClientMessageId, getLatestMessageId } from "./utils";
 
 export const SESSION_STATE_KEY = "session";
 export const DEFAULT_CHAT_CHANNEL_ID = "everyone";
@@ -168,7 +168,9 @@ export function hydrateChannelRuntimeState({
     : null;
   channel.replyToId = persistedChannel?.replyToId ?? null;
   channel.messages = messages;
-  channel.lastCursor = resolveHydratedCursor(messages, persistedChannel?.lastCursor ?? null);
+  // The cursor follows the cached transcript, so a persisted cursor that ran
+  // ahead of the cache is never sent to the server.
+  channel.lastCursor = getLatestMessageId(messages);
   channel.lastViewedMessageId = userId
     ? persistedChannel?.lastViewedMessageId ?? getLatestMessageId(messages)
     : null;
