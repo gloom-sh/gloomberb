@@ -1,6 +1,6 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { CloudWorldVenuePayload } from "../../../api-client";
-import { Box, ChartSurface, Text, useNativeRenderer, useUiHost } from "../../../ui";
+import { Box, ChartSurface, Text, useNativeRenderer, useUiCapabilities, useUiHost } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../../components/chart/native/bitmap-support";
 import { drawCircle, drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
@@ -515,7 +515,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
 }
 
 export function WorldVenueMap(props: WorldVenueMapProps) {
-  return useUiHost().kind === "desktop-web"
+  return useUiCapabilities().nativePaneChrome === true
     ? <DesktopWorldVenueMap {...props} />
     : <TerminalWorldVenueMap {...props} />;
 }

@@ -37,7 +37,7 @@ import {
   useActionShortcut,
   useCommandBarShortcut,
   useRendererHost,
-  useUiHost,
+  useUiCapabilities,
   type InputRenderable,
 } from "../../ui";
 import { useDialogState } from "../../ui/dialog";
@@ -136,7 +136,7 @@ function keyReachesPastOnboardingModal(event: KeyEventLike, keybindings: Resolve
 export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const commandBarShortcut = useCommandBarShortcut();
   const notificationActionShortcut = useActionShortcut("notification-action");

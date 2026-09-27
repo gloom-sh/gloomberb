@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import type { ListViewItem } from "../../ui";
@@ -15,7 +15,7 @@ export function PortfolioChoicePanel({
   onOptionSelect: (idx: number) => void;
   onOptionActivate: (idx: number) => void;
 }) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   return (
     <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>

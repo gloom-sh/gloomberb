@@ -1,4 +1,4 @@
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import type { ScannerHiloPayload } from "../../../api-client";
 import { buildHiloBarRows, terminalBarCells, type HiloBarRow } from "./hilo-model";
@@ -95,7 +95,7 @@ function DesktopHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number })
 }
 
 export function HiloBars({ windows, width }: HiloBarsProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const rows = buildHiloBarRows(windows);
 
   return (

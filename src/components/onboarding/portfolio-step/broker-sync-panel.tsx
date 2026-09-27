@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { ListViewItem } from "../../ui";
@@ -16,7 +16,7 @@ export function BrokerSyncPanel({
   brokerSyncError: string | null;
 }) {
   const brokerLabel = getBrokerLabel(choices, selectedBrokerId);
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   return (
     <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>

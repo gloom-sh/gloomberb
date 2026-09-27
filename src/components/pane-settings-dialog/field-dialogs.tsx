@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../ui";
+import { Box, Text, useUiCapabilities } from "../../ui";
 import { t } from "../../i18n";
 import { type AlertContext, useDialogKeyboard } from "../../ui/dialog";
 import { useEffect, useRef, useState } from "react";
@@ -116,7 +116,7 @@ function useTextFieldDialogController({
 }
 
 export function TextFieldDialog(props: TextFieldDialogProps) {
-  return useUiHost().kind === "desktop-web"
+  return useUiCapabilities().nativePaneChrome === true
     ? <DesktopTextFieldDialog {...props} />
     : <TuiTextFieldDialog {...props} />;
 }

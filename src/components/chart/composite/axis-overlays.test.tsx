@@ -18,6 +18,7 @@ function renderAxis(
     capabilities: {
       cellWidthPx: 8,
       fractionalViewport: kind === "desktop-web",
+      nativePaneChrome: kind === "desktop-web",
     },
     Box: WebBox,
     Text: WebText,

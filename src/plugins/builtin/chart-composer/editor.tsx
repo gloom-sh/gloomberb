@@ -1,4 +1,4 @@
-import { Box, Text, useNativeRenderer, useUiHost } from "../../../ui";
+import { Box, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
 import { DialogFrame, ListView, TextField } from "../../../components/ui";
 import type { PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
@@ -19,7 +19,7 @@ export interface SeriesEditorDialogProps extends PromptContext<ChartSpec | null>
 }
 
 export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEditorDialogProps) {
-  const isDesktop = useUiHost().kind === "desktop-web";
+  const isDesktop = useUiCapabilities().nativePaneChrome === true;
   const nativeRenderer = useNativeRenderer();
   const controller = useSeriesEditorController({
     dialogId,

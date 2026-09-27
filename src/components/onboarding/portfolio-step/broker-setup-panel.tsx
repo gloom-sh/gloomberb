@@ -1,4 +1,4 @@
-import { Box, Span, Strong, Text, Underline, useUiHost } from "../../../ui";
+import { Box, Span, Strong, Text, Underline, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { ExternalLink, type ListViewItem } from "../../ui";
@@ -45,7 +45,7 @@ export function BrokerSetupPanel({
   const brokerLabel = getBrokerLabel(choices, selectedBrokerId);
   const connectionMode = brokerValues[selectedBrokerId]?.connectionMode;
   const isGateway = connectionMode === "gateway";
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   return (
     <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>

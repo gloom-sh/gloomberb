@@ -5,7 +5,6 @@ import {
   Text,
   useNativeRenderer,
   useUiCapabilities,
-  useUiHost,
 } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
@@ -151,7 +150,7 @@ export function PriceSparkline({
   area?: boolean;
 }) {
   const colors = useThemeColors();
-  const uiHost = useUiHost();
+  const { nativePaneChrome } = useUiCapabilities();
   const sparklineHistory = useMemo(() => resolveSparklineHistory(priceHistory ?? [], period), [period, priceHistory]);
   const values = useMemo(() => sparklineValues(sparklineHistory), [sparklineHistory]);
   if (values.length < 2) {
@@ -159,7 +158,7 @@ export function PriceSparkline({
   }
 
   const color = sparklineColor(values, trend, colors);
-  return uiHost.kind === "desktop-web"
+  return nativePaneChrome
     ? <DesktopPriceSparkline values={values} width={width} height={height} color={color} emptyColor={colors.textMuted} />
     : <TerminalPriceSparkline priceHistory={sparklineHistory} values={values} width={width} height={height} color={color} area={area} />;
 }
@@ -177,10 +176,10 @@ export function PriceAreaSparklineBackground({
   insetTop?: number;
 }) {
   const colors = useThemeColors();
-  const uiHost = useUiHost();
+  const { nativePaneChrome } = useUiCapabilities();
   const sparklineHistory = useMemo(() => resolveSparklineHistory(priceHistory ?? [], period), [period, priceHistory]);
   const values = useMemo(() => sparklineValues(sparklineHistory), [sparklineHistory]);
-  if (uiHost.kind !== "desktop-web" || values.length < 2) return null;
+  if (!nativePaneChrome || values.length < 2) return null;
 
   const color = sparklineColor(values, trend, colors);
   const baseline = 100;

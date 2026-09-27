@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { BAR_CELLS_PER_QUARTER } from "./model";
@@ -42,7 +42,7 @@ export function QuarterBars({
   onHover?: (hover: BarHover | null) => void;
 }) {
   const colors = useThemeColors();
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const low = muted ? blendHex(colors.bg, colors.textMuted, 0.5) : blendHex(colors.bg, colors.textMuted, 0.75);
   const high = muted ? colors.textMuted : colors.textBright;
   const shade = (level: number) => blendHex(low, high, level);

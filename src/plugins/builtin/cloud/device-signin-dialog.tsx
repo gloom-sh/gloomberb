@@ -10,7 +10,7 @@ import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut, useViewport } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes, useUiHost, useRendererHost } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, useRendererHost } from "../../../ui";
 import { Button } from "../../../components/ui/button";
 import { renderAsciiText } from "../../../ui/ascii-font";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
@@ -63,7 +63,7 @@ export function DeviceSignInPanel({
 }) {
   useAppLanguage();
   const renderer = useRendererHost();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   // Cell lines still drive layout on desktop: they give the code its row/column
   // footprint, but the pixels come from the SVG below.
   const qrLines = useMemo(

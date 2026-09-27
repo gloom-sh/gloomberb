@@ -1,4 +1,4 @@
-import { useUiHost } from "../../ui";
+import { useUiCapabilities } from "../../ui";
 import { DesktopSpeedometerGauge } from "./desktop";
 import {
   DEFAULT_MAX_WIDTH,
@@ -36,7 +36,7 @@ export function SpeedometerGauge({
     maxWidth,
     compact,
   };
-  return useUiHost().kind === "desktop-web"
+  return useUiCapabilities().nativePaneChrome === true
     ? <DesktopSpeedometerGauge {...props} />
     : <TerminalSpeedometerGauge {...props} />;
 }

@@ -1,4 +1,4 @@
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { blendHex, colors } from "../../../theme/colors";
 import { formatNumber, truncateToDisplayWidth } from "../../../utils/format";
 import type { ShareBarRow } from "./model";
@@ -44,7 +44,7 @@ function terminalBar(ratio: number, cells: number): string {
 }
 
 export function ShareBars({ rows, width, color = colors.borderFocused, showDelta = false }: ShareBarsProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const hasDelta = showDelta && rows.some((row) => row.delta != null && row.delta !== 0);
   const labelWidth = labelWidthFor(width);
   const trailing = COUNT_WIDTH + SHARE_WIDTH + (hasDelta ? DELTA_WIDTH + 1 : 0) + 2;

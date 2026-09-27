@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Box, Text, TextAttributes, useUiHost } from "../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { useViewport } from "../../react/input";
 import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
@@ -38,7 +38,7 @@ export function OnboardingModal({
   desktopWidth?: string;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
 
   if (desktop) {
@@ -131,7 +131,7 @@ export function OnboardingCoach({
   actions: ReactNode;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
 
   if (desktop) {
@@ -225,7 +225,7 @@ export function OnboardingTitle({
   description?: string;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   if (desktop) {
     return (
@@ -316,7 +316,7 @@ export function OnboardingHeader({
   showDismiss?: boolean;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const sections: Array<{ id: OnboardingSectionId; label: string }> = [
     { id: "portfolio", label: t("Portfolio") },
     { id: "cloud", label: t("Gloom Cloud") },
@@ -401,7 +401,7 @@ export function OnboardingHeader({
  * their hints in the body and ignore `hint`.
  */
 export function OnboardingActions({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const colors = useThemeColors();
   if (desktop) {
     return (
@@ -434,7 +434,7 @@ export function OnboardingActions({ children, hint }: { children: ReactNode; hin
 }
 
 export function OnboardingButton(props: ButtonProps) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   return <Button {...props} height={props.height ?? (desktop ? ONBOARDING_DESKTOP.buttonHeight : 1)} />;
 }
 
@@ -450,7 +450,7 @@ export function OnboardingChoiceList({
   onActivate: (index: number) => void;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   if (!desktop) {
     return (
@@ -537,7 +537,7 @@ export function OnboardingFeature({
   description: string;
 }) {
   const colors = useThemeColors();
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   if (!desktop) {
     return (
       <Box height={2} flexDirection="row" minWidth={0}>

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { TextField } from "../../ui";
@@ -89,7 +89,7 @@ export function AccountFormPanel({
   onPasswordChange: (value: string) => void;
   onFieldFocus: (index: 0 | 1) => void;
 }) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   const onEmail = fieldIdx <= 0;
 
   if (desktop) {

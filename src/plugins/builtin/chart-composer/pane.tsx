@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import {
   ChoiceDialog,
   EmptyState,
@@ -170,7 +170,7 @@ function ChartComposerSurface({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const { publicSharing, cellWidthPx = 8 } = useUiCapabilities();
-  const desktopWeb = useUiHost().kind === "desktop-web";
+  const desktopWeb = useUiCapabilities().nativePaneChrome === true;
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);

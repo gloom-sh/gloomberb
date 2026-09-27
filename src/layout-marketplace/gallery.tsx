@@ -6,7 +6,7 @@ import { useShortcut } from "../react/input";
 import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
-import { useRendererHost, useUiHost } from "../ui";
+import { useRendererHost, useUiCapabilities } from "../ui";
 import { apiClient, type TeamSummary } from "../api-client";
 import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
 import { teamStore } from "../plugins/builtin/cloud/team/store";
@@ -578,7 +578,7 @@ export function LayoutMarketplaceGallery({
     missingPaneIds: (layout) => missingPaneIds(layout, panes),
   };
 
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   // The desktop always previews something, so with no pick its actions follow
   // the layout in use; the terminal list always has an explicit row.
   const selected = desktop ? resolvePreviewEntry(controller) : controller.entries.find((entry) => entry.id === selectedId) ?? null;

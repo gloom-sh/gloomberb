@@ -1,4 +1,4 @@
-import { Box, useUiHost } from "../ui";
+import { Box, useUiCapabilities } from "../ui";
 import { colors } from "../theme/colors";
 import { Checkbox } from "./ui/checkbox";
 import { ListView, type ListRowState, type ListViewItem } from "./ui/list-view";
@@ -89,7 +89,7 @@ export function ToggleList({
   remoteScope,
   remoteMetadata,
 }: ToggleListProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const listItems: ListViewItem[] = items.map((item) => ({
     id: item.id,
     label: item.label,

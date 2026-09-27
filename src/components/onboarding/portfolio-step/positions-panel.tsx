@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex, priceColor } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
@@ -347,6 +347,6 @@ export interface PositionsPanelProps {
 }
 
 export function PositionsPanel(props: PositionsPanelProps) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   return desktop ? <DesktopPositionsPanel {...props} /> : <TuiPositionsPanel {...props} />;
 }

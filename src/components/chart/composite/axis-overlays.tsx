@@ -1,4 +1,4 @@
-import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
 
 export interface StaticChartXAxisLabel {
@@ -54,8 +54,7 @@ export function StaticXAxisLabels({
   /** Anchors that stay put while the cursor moves, such as a measure start. */
   extraMarkers?: readonly StaticXAxisMarker[];
 }) {
-  const uiHost = useUiHost();
-  const { cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
+  const { cellWidthPx = 8, fractionalViewport = false, nativePaneChrome } = useUiCapabilities();
   const visibleLabels = labels.filter(Boolean);
   const visiblePositionedLabels = positionedLabels?.filter((entry) => (
     entry.label.length > 0 && Number.isFinite(entry.ratio)
@@ -89,7 +88,7 @@ export function StaticXAxisLabels({
     && cursorLabelWidth > 0
     ? Math.max(0, Math.min(Math.max(0, width - cursorLabelWidth), Math.round(cursorColumn) - Math.floor(cursorLabelWidth / 2)))
     : null;
-  const isDesktop = uiHost.kind === "desktop-web";
+  const isDesktop = nativePaneChrome === true;
   const extraMarkerLeft = (label: string, ratio: number) => (
     Math.max(0, Math.min(width - label.length, Math.round(ratio * (width - 1)) - Math.floor(label.length / 2)))
   );
@@ -258,11 +257,11 @@ export function StaticXMarkerOverlay({
   height: number;
   fallbackColor?: string;
 }) {
-  const uiHost = useUiHost();
+  const { nativePaneChrome } = useUiCapabilities();
   const visibleMarkers = markers.filter((marker) => Number.isFinite(marker.xRatio));
   if (visibleMarkers.length === 0 || width <= 0 || height <= 0) return null;
 
-  if (uiHost.kind === "desktop-web") {
+  if (nativePaneChrome) {
     return (
       <Box position="absolute" left={0} top={0} width={width} height={height}>
         {visibleMarkers.map((marker) => (

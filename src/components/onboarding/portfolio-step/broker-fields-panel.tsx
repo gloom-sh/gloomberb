@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { BrokerConfigField } from "../../../types/broker";
@@ -32,7 +32,7 @@ export function BrokerFieldsPanel({
   inputRef: RefObject<InputRenderable | null>;
 }) {
   const values = brokerValues[selectedBrokerId] ?? {};
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
 
   return (
     <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>

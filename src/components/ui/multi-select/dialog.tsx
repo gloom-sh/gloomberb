@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { useShortcut, useViewport } from "../../../react/input";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../../../ui/dialog";
@@ -215,7 +215,7 @@ export function MultiSelectDialogContent({
   idPrefix,
   rowAction,
 }: MultiSelectDialogContentProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const optionByValue = useMemo(() => new Map(options.map((option) => [option.value, option])), [options]);
   const [selectedValues, setSelectedValues] = useState(() => normalizeDialogSelectedValues(options, selectedValuesProp, ordered));
   const [displayValues, setDisplayValues] = useState(() => getMultiSelectDisplayValues(options, selectedValuesProp, ordered));
@@ -394,7 +394,7 @@ function MultiSelectDialogButtonInner({
   onOpenChange,
   rowAction,
 }: MultiSelectDialogButtonProps, ref: ForwardedRef<MultiSelectDialogButtonHandle>) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const dialog = useDialog();
   const triggerMouseDownRef = useRef(false);
   const [popoverOpen, setPopoverOpen] = useState(false);

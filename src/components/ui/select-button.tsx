@@ -1,7 +1,7 @@
 import { useCallback, useImperativeHandle, useRef, type Ref } from "react";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { useThemeColors } from "../../theme/theme-context";
-import { Box, Text, TextAttributes, useUiHost } from "../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { type PromptContext, useDialog } from "../../ui/dialog";
 import { ChoiceDialog } from "./choice-dialog";
 import { SelectField, openSelectField, type SelectFieldHandle } from "./select-field";
@@ -72,7 +72,7 @@ export function SelectButton<T extends string = string>({
   controlRef,
 }: SelectButtonProps<T>) {
   const colors = useThemeColors();
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const dialog = useDialog();
   const current = options.find((option) => option.value === value);
   const selectFieldRef = useRef<SelectFieldHandle | null>(null);

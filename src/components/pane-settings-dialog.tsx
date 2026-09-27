@@ -1,4 +1,4 @@
-import { useUiHost } from "../ui";
+import { useUiCapabilities } from "../ui";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../ui/dialog";
 import { useEffect, useRef, useState } from "react";
 import type { PaneSettingField } from "../types/plugin";
@@ -34,7 +34,7 @@ export function PaneSettingsDialogContent({
   applyFieldValue,
 }: PaneSettingsDialogContentProps) {
   const dialog = useDialog();
-  const isDesktop = useUiHost().kind === "desktop-web";
+  const isDesktop = useUiCapabilities().nativePaneChrome === true;
   const descriptor = pluginRegistry.resolvePaneSettings(paneId);
   const fields = descriptor?.settingsDef.fields ?? [];
   // The cursor steps over action rows that cannot run, as the mouse does.

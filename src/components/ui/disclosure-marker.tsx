@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../ui";
+import { Box, Text, useUiCapabilities } from "../../ui";
 
 export interface DisclosureMarkerProps {
   expanded: boolean;
@@ -18,7 +18,7 @@ export interface DisclosureMarkerProps {
  * the row started against and the two states never lined up with each other.
  */
 export function DisclosureMarker({ expanded, color, width = 1 }: DisclosureMarkerProps) {
-  const desktop = useUiHost().kind === "desktop-web";
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   if (!desktop) return <Text fg={color}>{expanded ? "\u25be" : "\u25b8"}</Text>;
   return (
     <Box width={width} marginRight={width === 2 ? -1 : 0} style={{ flexShrink: 0, alignItems: "center", justifyContent: "center" }}>

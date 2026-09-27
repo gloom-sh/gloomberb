@@ -27,7 +27,6 @@ import {
   TextAttributes,
   useRendererHost,
   useUiCapabilities,
-  useUiHost,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -102,7 +101,7 @@ function PayMixBar({
   row: CloudExecutiveRowPayload;
   width: number;
 }) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   // Colours follow the pieces that are drawn, so the common salary and stock
   // pair never lands on two neighbouring shades of the palette.
   const parts = PAY_PARTS.map((part) => ({

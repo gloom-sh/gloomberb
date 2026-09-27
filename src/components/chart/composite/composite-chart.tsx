@@ -8,7 +8,6 @@ import {
   Text,
   useNativeRenderer,
   useUiCapabilities,
-  useUiHost,
   type BoxRenderable,
   type ChartSurfaceProps,
   type ScrollBoxRenderable,
@@ -824,7 +823,7 @@ function CompositePanelSurface({
   onPointerPress,
   showTextFallback,
 }: CompositePanelSurfaceProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
@@ -1510,7 +1509,7 @@ function CompositeLegend({
   isSeriesToggleable: CompositeChartProps["isSeriesToggleable"];
   keyboardIndex?: number | null;
 }) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
@@ -1836,7 +1835,7 @@ export function CompositeChart({
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const showTextFallback = useShowChartTextFallback();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);

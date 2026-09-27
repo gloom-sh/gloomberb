@@ -12,7 +12,7 @@ import { WebInput } from "./host/input";
 import { WebButton, WebTextField } from "./desktop/controls";
 import { noopRendererHost } from "../../../test-support/renderer-host";
 
-const BASE_CAPABILITIES = { cellWidthPx: 8, cellHeightPx: 18, fractionalViewport: true };
+const BASE_CAPABILITIES = { cellWidthPx: 8, cellHeightPx: 18, fractionalViewport: true, nativePaneChrome: true };
 
 function createUi(capabilities: UiHost["capabilities"]): UiHost {
   return {

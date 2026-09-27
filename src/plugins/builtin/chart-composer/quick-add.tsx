@@ -3,7 +3,7 @@ import {
   Box,
   Text,
   useNativeRenderer,
-  useUiHost,
+  useUiCapabilities,
   type BoxRenderable,
   type InputRenderable,
 } from "../../../ui";
@@ -107,7 +107,7 @@ export function ChartSeriesQuickAdd({
   onActiveChange?: (active: boolean) => void;
   onWidthChange?: (width: number) => void;
 }) {
-  const ui = useUiHost();
+  const domRenderer = useUiCapabilities().nativePaneChrome === true;
   const nativeRenderer = useNativeRenderer();
   const paneId = useOptionalPaneInstanceId();
   const quickAddId = useId();
@@ -156,7 +156,7 @@ export function ChartSeriesQuickAdd({
 
   useEffect(() => {
     const occluderId = `${quickAddId}:drawer`;
-    if (ui.kind === "desktop-web" || drawerHeight <= 0 || !paneId || !drawerRef.current) {
+    if (domRenderer || drawerHeight <= 0 || !paneId || !drawerRef.current) {
       nativeSurfaceManager.removeLocalOccluder(occluderId);
       return;
     }
@@ -193,7 +193,7 @@ export function ChartSeriesQuickAdd({
       if (drawer.onLifecyclePass === lifecyclePass) drawer.onLifecyclePass = previousLifecyclePass;
       nativeSurfaceManager.removeLocalOccluder(occluderId);
     };
-  }, [drawerHeight, nativeRenderer, nativeSurfaceManager, paneId, quickAddId, ui.kind]);
+  }, [domRenderer, drawerHeight, nativeRenderer, nativeSurfaceManager, paneId, quickAddId]);
 
   useEffect(() => {
     onActiveChange?.(inputFocused && focused);
@@ -221,7 +221,7 @@ export function ChartSeriesQuickAdd({
   }, [active, focused]);
 
   useEffect(() => {
-    if (ui.kind !== "desktop-web") return;
+    if (!domRenderer) return;
 
     // Watch regardless of what state believes: the field can hold the document
     // focus after the state that tracks it has already moved on.
@@ -232,7 +232,7 @@ export function ChartSeriesQuickAdd({
 
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown, true);
-  }, [quickAddId, ui.kind]);
+  }, [domRenderer, quickAddId]);
 
   const cancelPendingBlur = useCallback(() => {
     if (blurTimerRef.current === null) return;
@@ -335,7 +335,7 @@ export function ChartSeriesQuickAdd({
       : null
   ), [active, focusInput, shortcutEnabled]);
 
-  const desktop = ui.kind === "desktop-web";
+  const desktop = domRenderer;
   const quickAddRow = (
       <InlineQuickAddRow
         value={query}

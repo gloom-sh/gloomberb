@@ -1,4 +1,4 @@
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { moveBarRatio } from "./sector-model";
 
@@ -13,7 +13,7 @@ export interface SectorMoveBarProps {
  * so box-drawing characters never reach the browser renderer.
  */
 export function SectorMoveBar({ changePercent, width }: SectorMoveBarProps) {
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   if (changePercent == null || width <= 0) return <Text fg={colors.textDim}>{""}</Text>;
 
   const ratio = moveBarRatio(changePercent);

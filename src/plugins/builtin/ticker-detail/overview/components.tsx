@@ -2,7 +2,7 @@ import { t } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
-import { Box, Text, useUiHost } from "../../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { displayWidth, formatNumber, padTo } from "../../../../utils/format";
 import type { PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../portfolio-list/position-metrics";
@@ -36,7 +36,7 @@ function RangeTrack({
   markerColor: string;
 }) {
   // The desktop webview must not draw rules out of box-drawing glyphs.
-  if (useUiHost().kind === "desktop-web") {
+  if (useUiCapabilities().nativePaneChrome === true) {
     return (
       <Box
         marginLeft={1}

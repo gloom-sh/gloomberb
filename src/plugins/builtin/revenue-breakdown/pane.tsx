@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -121,7 +121,7 @@ function LockedOverlay({ rows, noun, onPress }: { rows: number; noun: string; on
 
 function RevenueBreakdownView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const colors = useThemeColors();
-  const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const { ticker, symbol: boundSymbol } = usePaneTickerIdentity();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
