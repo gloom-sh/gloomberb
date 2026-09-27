@@ -452,11 +452,6 @@ export async function loadRegistryListings(): Promise<Map<string, RegistryListin
   return listings;
 }
 
-/** The registry's listing for a repository, so a CLI install lands where the catalog says. */
-export async function resolveRegistryListing(repo: string): Promise<RegistryListing | null> {
-  return (await loadRegistryListings()).get(repo.toLowerCase()) ?? null;
-}
-
 /**
  * Installs a plugin the way the marketplace does: a listed one at the commit
  * the registry reviewed, and not at all on a Gloomberb too old to run it.
@@ -468,8 +463,8 @@ export async function installListedPlugin(
   options: Omit<PluginInstallOptions, "pin"> = {},
   listings?: ReadonlyMap<string, RegistryListing>,
 ): Promise<PluginDirectoryInfo> {
-  const repo = parseGitHubRef(ref).repo;
-  const listing = listings ? listings.get(repo.toLowerCase()) : await resolveRegistryListing(repo);
+  const repo = parseGitHubRef(ref).repo.toLowerCase();
+  const listing = (listings ?? await loadRegistryListings()).get(repo);
   const required = requiredGloomberb(listing?.minGloomberb);
   if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
   return installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
