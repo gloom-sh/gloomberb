@@ -1,4 +1,4 @@
-import type { MarketDataRequestContext } from "../types/data-provider";
+import type { MarketDataRequestContext, QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote, TickerFinancials } from "../types/financials";
 import type { InstrumentRef, OptionsRequest, SecFilingsRequest, ChartRequest } from "./request-types";
 import type { QueryEntry } from "./result-types";
@@ -13,6 +13,27 @@ export function toMarketDataContext(instrument: InstrumentRef): MarketDataReques
     brokerInstanceId: instrument.brokerInstanceId,
     instrument: instrument.instrument ?? null,
   };
+}
+
+/** The flat instrument a quote subscription target addresses. */
+export function instrumentFromQuoteTarget(target: QuoteSubscriptionTarget): InstrumentRef {
+  return {
+    symbol: target.symbol,
+    exchange: target.exchange,
+    brokerId: target.context?.brokerId,
+    brokerInstanceId: target.context?.brokerInstanceId,
+    instrument: target.context?.instrument ?? null,
+  };
+}
+
+/** One instrument per quote key, in the order the targets first name them. */
+export function uniqueQuoteInstruments(targets: readonly QuoteSubscriptionTarget[]): InstrumentRef[] {
+  const unique = new Map<string, InstrumentRef>();
+  for (const target of targets) {
+    const instrument = instrumentFromQuoteTarget(target);
+    unique.set(buildQuoteKey(instrument), instrument);
+  }
+  return [...unique.values()];
 }
 
 export function buildQuoteKey(instrument: InstrumentRef): string {
