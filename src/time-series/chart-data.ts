@@ -4,6 +4,7 @@ import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { quoteFutureToleranceMs } from "../market-data/quotes/clock";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
+import { zonedDateKey } from "../utils/zoned-date-time";
 import {
   CHART_RESOLUTION_STEP_MS,
   type ManualChartResolution,
@@ -71,9 +72,7 @@ export function calendarBarStart(
   dateLabel = timestamp % DAY_MS === 0,
 ): string {
   const day = dateLabel ? new Date(timestamp).toISOString().slice(0, 10) :
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: resolveExchangeTimeZone(exchange) ?? "UTC", year: "numeric", month: "2-digit", day: "2-digit",
-    }).format(new Date(timestamp));
+    zonedDateKey(timestamp, resolveExchangeTimeZone(exchange) ?? "UTC");
   if (resolution === "1mo") return `${day.slice(0, 7)}-01`;
   if (resolution === "1wk") {
     const monday = new Date(`${day}T00:00:00Z`);

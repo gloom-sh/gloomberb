@@ -3,7 +3,7 @@ import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
-import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 
 const US_EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
@@ -49,7 +49,6 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
   BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
 };
-const exchangeLocalDateFormatters = new Map<string, Intl.DateTimeFormat>();
 const exchangeLocalTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const usSessionFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -83,20 +82,6 @@ function isUsExtendedHoursExchange(exchange?: string): boolean {
   return US_EXTENDED_HOURS_EXCHANGES.has(canonicalExchange(exchange));
 }
 
-function getExchangeLocalDateFormatter(timeZone: string): Intl.DateTimeFormat {
-  let formatter = exchangeLocalDateFormatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    exchangeLocalDateFormatters.set(timeZone, formatter);
-  }
-  return formatter;
-}
-
 function getExchangeLocalTimeFormatter(timeZone: string): Intl.DateTimeFormat {
   let formatter = exchangeLocalTimeFormatters.get(timeZone);
   if (!formatter) {
@@ -115,16 +100,7 @@ function exchangeLocalDate(exchange: string, timestampMs: number): string | null
   const timeZone = EXCHANGE_TIME_ZONES[canonicalExchange(exchange)];
   if (!timeZone) return null;
   const minute = Math.floor(timestampMs / 60_000);
-  return perMinute(localDateCache, `${timeZone}:${minute}`, () => formatExchangeLocalDate(timeZone, minute * 60_000));
-}
-
-function formatExchangeLocalDate(timeZone: string, timestampMs: number): string | null {
-  const parts = getExchangeLocalDateFormatter(timeZone).formatToParts(new Date(timestampMs));
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-  if (!year || !month || !day) return null;
-  return `${year}-${month}-${day}`;
+  return perMinute(localDateCache, `${timeZone}:${minute}`, () => zonedDateKey(minute * 60_000, timeZone));
 }
 
 function exchangeLocalMinuteOfDay(exchange: string, timestampMs: number): number | null {

@@ -1,5 +1,6 @@
 import { createPluginCache } from "./plugin-cache";
 import { getPublishedUsEquityCalendarDay } from "../market-data/published-us-sessions";
+import { zonedDateKey } from "../utils/zoned-date-time";
 import type {
   CloudFredObservationPayload,
   CloudFredSeriesInfoPayload,
@@ -16,9 +17,6 @@ const CACHE_POLICY = {
 // Cloud re-reads a daily series this often until the last business day is published.
 const PUBLICATION_PENDING_REFRESH_MS = 30 * 60 * 1000;
 const DAY_MS = 86_400_000;
-const newYorkDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-});
 
 export interface FredSeriesData {
   observations: CloudFredObservationPayload[];
@@ -109,7 +107,7 @@ export function isFredPublicationPending(
   const daily = recent.length >= 3 && recent.every((date, index) =>
     index === 0 || Date.parse(date) - Date.parse(recent[index - 1]!) <= 4 * DAY_MS);
   if (!daily) return false;
-  const today = Date.parse(`${newYorkDate.format(now)}T00:00:00Z`);
+  const today = Date.parse(`${zonedDateKey(now, "America/New_York")}T00:00:00Z`);
   if (!isUsBusinessDay(today)) return false;
   for (let offset = 1; offset <= 10; offset++) {
     const day = today - offset * DAY_MS;

@@ -10,7 +10,7 @@ import {
 import { resolveExchangeTimeZone } from "../utils/exchanges";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
-import { zonedWallClockToUtcMs } from "../utils/zoned-date-time";
+import { zonedDateKey, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 import { fetchHistoryResult } from "../sources/history-result";
 import type { PriceHistoryResult } from "../types/price-history";
 
@@ -48,25 +48,6 @@ export interface LoadedIntradayWindow extends IntradayWindow {
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const HISTORICAL_RETRY_DELAY_MS = 61 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-
-function sessionDateFormatter(timeZone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
-function sessionDate(timestamp: number, timeZone: string): string {
-  const parts = new Map(
-    sessionDateFormatter(timeZone)
-      .formatToParts(new Date(timestamp))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-  return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
-}
 
 export function parseSessionDate(value: string): {
   year: number;
@@ -135,7 +116,7 @@ function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
 }
 
 export function intradaySessionDates(points: readonly PricePoint[], timeZone: string): string[] {
-  return [...new Set(normalizedPoints(points).map((point) => sessionDate(getPricePointTimestamp(point), timeZone)))];
+  return [...new Set(normalizedPoints(points).map((point) => zonedDateKey(getPricePointTimestamp(point), timeZone)))];
 }
 
 export function resolveIntradaySessionWindow(
@@ -150,7 +131,7 @@ export function resolveIntradaySessionWindow(
   const normalized = normalizedPoints(points);
   const bySession = new Map<string, PricePoint[]>();
   for (const point of normalized) {
-    const date = sessionDate(getPricePointTimestamp(point), timeZone);
+    const date = zonedDateKey(getPricePointTimestamp(point), timeZone);
     const sessionPoints = bySession.get(date) ?? [];
     sessionPoints.push(point);
     bySession.set(date, sessionPoints);
@@ -180,7 +161,7 @@ export function hasIntradayBars(window: IntradayWindow, timeZone = "UTC"): boole
   const pointsBySession = new Map<string, number[]>();
   for (const point of window.points) {
     const timestamp = getPricePointTimestamp(point);
-    const date = sessionDate(timestamp, timeZone);
+    const date = zonedDateKey(timestamp, timeZone);
     const timestamps = pointsBySession.get(date) ?? [];
     timestamps.push(timestamp);
     pointsBySession.set(date, timestamps);

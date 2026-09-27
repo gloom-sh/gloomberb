@@ -1,13 +1,11 @@
 import { canonicalHistoryInterval } from "../sources/history-retention";
 import type { HistorySession } from "../types/price-history";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { zonedDateKey } from "../utils/zoned-date-time";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "./published-us-sessions";
 
 const intervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
 const sourceKinds = new Set(["yahoo", "twelvedata", "alpaca"]);
-const NY_CLOCK = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-});
 const DAY = 86_400_000;
 const FEED_DELAY = 15 * 60_000;
 // Sources stamp observedAt with their own clock; a desktop clock a little
@@ -49,11 +47,6 @@ export function parseHistorySession(
     timestampConvention: record.timestampConvention, barAlignment: record.barAlignment, observedAt: Math.min(record.observedAt, now) };
 }
 
-function localDate(time: number): string {
-  const parts = new Map(NY_CLOCK.formatToParts(new Date(time)).map(part => [part.type, part.value]));
-  return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
-}
-
 function precedingSession(exchange: string, date: string) {
   const dateStart = Date.parse(`${date}T00:00:00Z`);
   for (let offset = 1; offset <= 10; offset++) {
@@ -72,7 +65,7 @@ export function regularHistorySessionStaleness(latestTime: number, now: number, 
   const count = Number.parseInt(session.interval);
   const intervalMs = count * (session.interval.endsWith("h") ? 3_600_000 : 60_000);
   const allowedLag = Math.max(30 * 60_000, 2 * intervalMs + FEED_DELAY);
-  const date = localDate(now);
+  const date = zonedDateKey(now, "America/New_York");
   const today = getPublishedUsEquitySession(session.exchange, date);
   if (!today) return null;
   const isOpeningBar = (time: number, window: { open: number; close: number }) =>
