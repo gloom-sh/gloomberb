@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Button, EmptyState, Tabs, PaneFooterScope, usePaneHeaderTabs } from "../../../components";
+import { Button, EmptyState, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -79,24 +79,16 @@ const ALERT_TABS = [
 
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: ALERT_TABS,
     activeValue: tab,
     onSelect: setTab,
     focused: props.focused,
+    dense: true,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
   return (
     <Box flexDirection="column" width={props.width} height={props.height}>
-      {!tabsInHeader && (
-        <Tabs
-          tabs={ALERT_TABS}
-          activeValue={tab}
-          onSelect={setTab}
-          focused={props.focused}
-          dense
-        />
-      )}
+      {tabStrip}
       <PaneFooterScope active>
         {tab === "events" ? (
           <EventAlertsPane {...props} height={Math.max(1, props.height - tabRows)} />

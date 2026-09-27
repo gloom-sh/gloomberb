@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   usePaneTicker, type DataTableColumn, type StatItem } from "../../../components";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
@@ -150,8 +150,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,
   };
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true });
   const reference = showIv ? iv.data?.reference ?? null : null;
   // The cone has no IV line of its own, so the dated ATM IV it is read against sits above it.
   const coneStats: StatItem[] = view === "cone" && model && reference
@@ -160,7 +159,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const sortedCone = [...(model?.cone ?? [])].sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   const coneTableHeight = Math.min(Math.max(2, sortedCone.length + 1), 10, Math.max(4, Math.floor(contentHeight * 0.42)));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} variant="underline" dense focused={focused} />}
+    {tabStrip}
     <QueryBar width={width} filters={[
       { id: "estimator", label: "Estimator", value: estimator, options: ESTIMATOR_OPTIONS, onChange: (value: string) => setEstimator(value as RealizedVolatilityEstimator) },
       { id: "lookback", label: "Lookback", value: String(lookback), options: [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }], onChange: setLookback },

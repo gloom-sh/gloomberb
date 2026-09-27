@@ -81,7 +81,8 @@ function registrationSignature(registration: PaneHeaderTabsRegistration | null):
 /**
  * Hands the pane's tab strip to the chrome. Returns true when the chrome draws
  * it, in which case the pane must not draw its own `Tabs` or reserve a row.
- * Pass null when the pane has no strip right now.
+ * Pass null when the pane has no strip right now. `usePaneTabs` wraps this
+ * and also returns the body strip.
  */
 export function usePaneHeaderTabs(registration: PaneHeaderTabsRegistration | null): boolean {
   const context = useContext(PaneHeaderTabsContext);

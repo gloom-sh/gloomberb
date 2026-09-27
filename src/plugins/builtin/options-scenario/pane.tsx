@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, StatGrid, statGridRows,
-  Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
+  usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type SelectControl, type StatItem } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
 import { Box } from "../../../ui";
@@ -228,8 +228,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   // A detail covers the tabs, so they stop answering h/l until it closes.
   const tabsFocused = focused && !volActive && !detail;
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true });
   const risk = scenario?.expiryRisk;
   const stats: StatItem[] = scenario ? [
     { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
@@ -284,7 +283,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         : column.id === "price" || column.id === "strike" ? money(leg[column.id])
         : String(leg[column.id as keyof ScenarioLeg]), color: column.id === "quantity" ? leg.quantity > 0 ? colors.positive : colors.negative : colors.text })} />;
   const root = <>
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={tabsFocused} />}
+    {tabStrip}
     {scenario && <>
       <QueryBar
         width={width}

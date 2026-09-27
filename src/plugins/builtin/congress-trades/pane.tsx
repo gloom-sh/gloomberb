@@ -3,11 +3,10 @@ import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
   PaneStatusBody,
-  Tabs,
   usePaneNoticeFooter,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneMenuItems,
+  usePaneTabs,
   ChoiceDialog,
   useTableLoadMore,
 } from "../../../components";
@@ -399,29 +398,14 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
       ? detailMember.memberName
       : undefined;
 
-  const tabsInHeader = usePaneHeaderTabs(tickerFilter ? null : {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(tickerFilter ? null : {
     tabs: CONGRESS_TABS,
     activeValue: activeTab,
     onSelect: selectTab,
     focused: focused && !detailMode,
+    compact: true,
   });
-  const tabRows = tickerFilter || tabsInHeader ? 0 : 1;
-  const tabs = tickerFilter || tabsInHeader ? null : (
-    <Box height={1}>
-      <Tabs
-        tabs={[
-          { label: "Trades", value: "trades" },
-          { label: "Members", value: "members" },
-          { label: "Tickers", value: "tickers" },
-        ]}
-        activeValue={activeTab}
-        onSelect={selectTab}
-        compact
-        variant="underline"
-        focused={focused && !detailMode}
-      />
-    </Box>
-  );
+  const tabs = tabStrip && <Box height={1}>{tabStrip}</Box>;
 
   if (!payload && (status === "loading" || error)) {
     return (

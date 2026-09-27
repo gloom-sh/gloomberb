@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
-import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
+import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -88,11 +88,10 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail, dense: true });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !detail} dense />}
+    {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>
       {data && stats ? <DataTableStackView<TapeRow> columns={tab === "quotes" ? QUOTES : TRADES} items={rows}
         focused={focused} rootWidth={width} rootHeight={Math.max(3, height - tabRows)}

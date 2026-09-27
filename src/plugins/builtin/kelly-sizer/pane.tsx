@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, useUiCapabilities, type InputRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
@@ -7,12 +7,12 @@ import {
   FieldGrid,
   QueryBar,
   StatGrid,
-  Tabs,
   fieldGridColumns,
   fieldGridRows,
   statGridRows,
   usePaneFooter,
-  usePaneHeaderTabs,
+  usePaneTabs,
+  useQueryBarSearch,
   type GridField,
   type QueryBarFilter,
 } from "../../../components";
@@ -109,10 +109,8 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const [currentValueOverride, setCurrentValueOverride] = usePaneStateValue<number | null>("currentValueOverride", null);
   const [selectedFieldIndex, setSelectedFieldIndex] = useState(0);
   const [activeInputId, setActiveInputId] = useState<string | null>(null);
-  const tickerInputRef = useRef<InputRenderable | null>(null);
-  const [tickerSearchActive, setTickerSearchActive] = useState(false);
+  const { active: tickerSearchActive, focus: focusSearch, searchProps: tickerSearchProps } = useQueryBarSearch();
   const [tickerSearchQuery, setTickerSearchQuery] = useState(requestedSymbol ?? "");
-  const [tickerSearchFocusToken, setTickerSearchFocusToken] = useState(0);
   const [tickerSearchStatus, setTickerSearchStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -127,10 +125,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const focusTickerSearch = useCallback(() => {
-    setTickerSearchActive(true);
-    setTickerSearchFocusToken((value) => value + 1);
+    focusSearch();
     activateInput(null);
-  }, [activateInput]);
+  }, [activateInput, focusSearch]);
 
   const resolveTickerQuery = useCallback(async (query: string) => {
     const normalizedQuery = query.trim().toUpperCase();
@@ -461,13 +458,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     setSelectedFieldIndex(0);
     activateInput(null);
   };
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: modeTabs,
     activeValue: mode,
     onSelect: selectMode,
     focused: focused && !activeInputId,
+    compact: true,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
   const gridColumns = fieldGridColumns(width);
   const gridRows = fieldGridRows(gridFields, gridColumns);
   const resultItems = buildKellyResultItems({
@@ -543,13 +540,11 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           },
           placeholder: "ticker",
           focused,
-          active: tickerSearchActive,
+          ...tickerSearchProps,
           onActiveChange: (active) => {
-            setTickerSearchActive(active);
+            tickerSearchProps.onActiveChange(active);
             if (active) activateInput(null);
           },
-          focusToken: tickerSearchFocusToken,
-          inputRef: tickerInputRef,
           debounceMs: 500,
           normalizeValue: (value) => value.trim().toUpperCase(),
         }}
@@ -565,17 +560,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         meta={meta}
       />
 
-      {!tabsInHeader && (
-        <Box height={1} paddingX={1}>
-          <Tabs
-            tabs={modeTabs}
-            activeValue={mode}
-            onSelect={selectMode}
-            compact
-            focused={focused && !activeInputId}
-          />
-        </Box>
-      )}
+      {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
 
       <FieldGrid
         fields={gridFields}

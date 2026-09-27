@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -32,16 +32,13 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const [peer, setPeer] = useState<FundDetailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const searchRef = useRef<InputRenderable | null>(null);
-  const [focusToken, setFocusToken] = useState(0);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const [fundSort, setFundSort] = useState<{ columnId: "name" | "cik"; direction: SortDirection }>({ columnId: "name", direction: "asc" });
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const moreController = useRef<AbortController | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const focusSearch = useCallback(() => { setSearchFocused(true); setFocusToken(value => value + 1); }, []);
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("overlap:mine", false);
   const [sort, setSort] = usePluginPaneState<{ id: "weight" | "comparedWeight"; desc: boolean }>("overlap:sort", { id: "weight", desc: true });
   const mine = useMineTickers();
@@ -79,7 +76,6 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   useShortcut(event => {
     if (!focused || event.targetEditable) return;
     handleRefreshKey(event, refreshData, { stopPropagation: true });
-    if (isPlainKey(event, "/") && !target) { event.preventDefault?.(); focusSearch(); }
     if (isPlainKey(event, "m") && target) { event.preventDefault?.(); setMineOnly(value => !value); }
   });
   const period = peer ? overlapPeriod(data, peer) : null;
@@ -107,10 +103,8 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     sortColumnId={fundSort.columnId} sortDirection={fundSort.direction} onHeaderClick={id => setFundSort(current => nextHeaderSort(current, id === "cik" ? "cik" : "name"))}
     rootWidth={width} columns={[{ id: "name", label: "FUND", width: Math.max(20, width - 17), align: "left" }, { id: "cik", label: "CIK", width: 12, align: "left" }]}
     items={[...funds].sort((a, b) => a[fundSort.columnId].localeCompare(b[fundSort.columnId]) * (fundSort.direction === "desc" ? -1 : 1))} getItemKey={row => row.cik} selection={{ kind: "id", selectedId, getId: row => row.cik, onChange: setSelectedId }}
-    onActivate={fund => { setSearchFocused(false); setTarget(fund); }}
-    rootBefore={<QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "Second fund name or CIK", focused, active: searchFocused,
-      onActiveChange: (active) => active ? focusSearch() : setSearchFocused(false), focusToken, inputRef: searchRef, debounceMs: 250,
-      onNavigateDown: () => setSearchFocused(false) }} />}
+    onActivate={fund => { blurSearch(); setTarget(fund); }}
+    rootBefore={<QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "Second fund name or CIK", focused, ...searchProps, debounceMs: 250 }} />}
     renderCell={(row, column, _index, state) => ({ text: column.id === "name" ? row.name : row.cik, color: state.selected ? colors.selectedText : colors.text })}
     emptyStateTitle={loading ? "Searching funds..." : query ? "No matching funds." : "Search for a second fund."}
   />;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, Tabs, useChartTableSelection,
-  usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableColumn, type StatItem } from "../../../components";
+import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection,
+  usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -153,8 +153,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     ...(data ? [{ id: "basis", parts: [{ text: observationBasis, tone: "muted" as const }] }] : []),
     ...(asOf ? [{ id: "date", parts: [{ text: observationTime && (tab === "board" || liveObservation) ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
   ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, data, asOf, observationTime, observationBasis, tab, liveObservation]);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const contentHeight = Math.max(5, height - tabRows);
   // The board needs only its rows; the selected index history takes the rest.
   const boardHeight = Math.max(5, Math.min(rows.length + 2, Math.floor(contentHeight * 0.62)));
@@ -181,7 +180,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} variant="underline" dense focused={focused} />}
+    {tabStrip}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>
       {data && tab === "curve" && <DataTableView<VolatilityCurveRow> focused={focused} columns={CURVE_COLUMNS} items={curveRows}
         rootWidth={width} rootHeight={curveHeight}

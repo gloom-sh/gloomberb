@@ -3,10 +3,8 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import {
   Badge,
   DataTableView,
-  QueryBar,
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
+  usePaneTabs,
   usePaneTicker,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -302,9 +300,18 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: VIEW_TABS, activeValue: viewMode, onSelect: selectView, focused });
   // As a research tab, h/l move between research tabs; `s` switches the view.
   const inResearchTab = useInResearchTab();
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
+    tabs: VIEW_TABS,
+    activeValue: viewMode,
+    onSelect: selectView,
+    focused,
+    keyboardNavigation: !inResearchTab,
+    compact: true,
+    variant: "bare",
+    queryBarWidth: width,
+  });
 
   // Both views share one status; the treemap must not claim "no chartable
   // values" while the request is still in flight or the pane has no ticker.
@@ -313,27 +320,11 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     : loading && !data
       ? "Loading holders..."
       : !data && error ? error : sortedRows.length === 0 ? "No holders available" : null;
-  const tabRows = tabsInHeader ? 0 : 1;
   const chartHeight = Math.max(1, height - tabRows - (nativePaneChrome ? 1 : 0));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {!tabsInHeader && nativePaneChrome && (
-        <QueryBar width={width} view={{ value: viewMode, options: VIEW_TABS, onChange: selectView }} />
-      )}
-      {!tabsInHeader && !nativePaneChrome && (
-        <Box height={1} paddingX={1}>
-          <Tabs
-            tabs={VIEW_TABS}
-            activeValue={viewMode}
-            onSelect={selectView}
-            compact
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={!inResearchTab}
-          />
-        </Box>
-      )}
+      {nativePaneChrome ? tabStrip : tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
 
       {viewMode === "table" ? (
         <DataTableView<HolderRow, HolderColumn>

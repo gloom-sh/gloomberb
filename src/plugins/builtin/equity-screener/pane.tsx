@@ -15,11 +15,10 @@ import {
   PageStackView,
   PaneStatusBody,
   QueryBar,
-  Tabs,
-  usePaneHeaderTabs,
   TextField,
   usePaneFooter,
   usePaneNoticeFooter,
+  usePaneTabs,
   useTableLoadMore,
   type DataTableColumn,
   type DataTableVisibleRange,
@@ -631,13 +630,14 @@ function EquityScreenView({
       hint.onPress();
     }
   });
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: TABS,
     activeValue: mode,
     onSelect: switchMode,
     focused: focused && !saveForm && editing === null,
+    dense: true,
   });
-  const bodyHeight = Math.max(5, height - 1 - (tabsInHeader ? 0 : 1));
+  const bodyHeight = Math.max(5, height - 1 - tabRows);
   const saveContent = !access.emailVerified ? (
     <SignInWall
       action="save and open your screens"
@@ -970,15 +970,7 @@ function EquityScreenView({
     );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={TABS}
-          activeValue={mode}
-          onSelect={switchMode}
-          focused={focused && !saveForm && editing === null}
-          dense
-        />
-      )}
+      {tabStrip}
       <PageStackView
         focused={focused}
         detailOpen={saveForm}

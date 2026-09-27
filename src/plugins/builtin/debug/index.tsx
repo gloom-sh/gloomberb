@@ -1,4 +1,4 @@
-import { Box, ScrollBox, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useShortcut } from "../../../react/input";
 import { TextAttributes } from "../../../ui";
@@ -8,6 +8,7 @@ import {
   isTableScrollNearEnd,
   QueryBar,
   usePaneFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type SelectControl,
@@ -17,7 +18,6 @@ import { usePluginAppActions } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID, DEBUG_PANE_ID, DEBUG_SOURCE_SETTING } from "./template";
 import { colors } from "../../../theme/colors";
 import { debugLog, type LogEntry, type LogLevel } from "../../../utils/debug-log";
-import { isPlainKey } from "../../../utils/keyboard";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -117,9 +117,7 @@ function DebugPane({ focused, width, height }: PaneProps) {
   // Persisted with the pane so a log opened for one plugin stays on that plugin.
   const [filterSource, setFilterSource] = usePaneSettingValue<string | null>(DEBUG_SOURCE_SETTING, null);
   const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchFocus, setSearchFocus] = useState(0);
-  const searchInput = useRef<InputRenderable | null>(null);
+  const { active: searching, searchProps } = useQueryBarSearch();
   const levelControl = useRef<SelectControl>(null);
   const sourceControl = useRef<SelectControl>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -180,10 +178,6 @@ function DebugPane({ focused, width, height }: PaneProps) {
     setAutoScroll(false);
     setSelectedId(visibleEntries[0] ? String(visibleEntries[0].id) : null);
   }, [visibleEntries]);
-  const focusSearch = useCallback(() => {
-    setSearching(true);
-    setSearchFocus((value) => value + 1);
-  }, []);
 
   // e/c/a are footer hints, which bind them exactly (no modifiers), so a copy
   // chord never clears the log.
@@ -191,8 +185,6 @@ function DebugPane({ focused, width, height }: PaneProps) {
     if (!focused || openId || searching || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
     if (event.name === "l") { event.preventDefault?.(); levelControl.current?.open(); return; }
     if (event.name === "s") { event.preventDefault?.(); sourceControl.current?.open(); return; }
-    // Plain `/` only: Shift+/ is `?`, which opens Help.
-    if (isPlainKey(event, "/")) { event.preventDefault?.(); focusSearch(); return; }
     // Top and end of the log; G also resumes following new entries. Some
     // terminals report Shift+G as an uppercase name.
     if (event.name === "g" && !event.shift) { event.preventDefault?.(); jumpTop(); return; }
@@ -229,11 +221,7 @@ function DebugPane({ focused, width, height }: PaneProps) {
               onChange: setQuery,
               placeholder: "message",
               focused,
-              active: searching,
-              onActiveChange: setSearching,
-              focusToken: searchFocus,
-              inputRef: searchInput,
-              onNavigateDown: () => setSearching(false),
+              ...searchProps,
             }}
             filters={[
               {

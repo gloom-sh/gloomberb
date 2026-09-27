@@ -244,15 +244,15 @@ header, with the detail's height.
 
 - `Tabs` is the only tab strip: controlled, mouse, `h`/`l` and arrows while
   focused, `underline` for pane sections, `pill` for layout tabs, `bare`.
-  A pane's primary strip is registered with `usePaneHeaderTabs` (above any
-  early return): the desktop draws it in the pane title bar and the hook
-  returns true; the terminal draws the pane's own `Tabs` as the first row of
-  the body. Subtract the tab row only when it is in the body. Never in the
+  A pane's primary strip is `usePaneTabs` (above any early return): the
+  desktop draws it in the pane title bar and `strip` is null; the terminal
+  draws `strip` as the first row of the body. Subtract `rows`. Never in the
   footer. Register `null` while a sign-in wall or any state makes every tab
   show the same thing.
 - A strip inside content that already has a title-bar strip (a Ticker
-  Research tab, a stack detail) becomes a `QueryBar` view or inline filter on
-  the desktop; the terminal keeps its `Tabs` row.
+  Research tab, a stack detail) becomes a `QueryBar` view (`usePaneTabs`
+  with `queryBarWidth`) or inline filter on the desktop; the terminal keeps
+  its `Tabs` row.
 - The active tab is `usePluginPaneState`. A user-configurable tab set is a
   pane setting, with `hideTabs` for panes locked to one view.
 - Content, one of two ways: one body reloaded per tab when tabs are views
@@ -277,6 +277,9 @@ header, with the detail's height.
   four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
   field. One terminal row; on the desktop it scrolls sideways when narrow.
   Status never goes in the bar; units and as-of context may use `meta`.
+- `useQueryBarSearch()` holds whether the search owns the keyboard; spread its
+  `searchProps` into `search`. The bar already binds `/`, so a pane binds it
+  again only to add a condition.
 - A stack detail whose content starts with a `QueryBar` gets Back and the item
   title as the bar's first segments automatically; do not add a second row.
 - Every menu, dropdown and pop-up list is `MenuPopover`/`Menu` in the kit

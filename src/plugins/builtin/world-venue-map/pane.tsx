@@ -11,6 +11,7 @@ import {
   readStoredPaneSidebarWidth,
   shouldShowPaneSidebar,
   usePaneFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
@@ -19,8 +20,7 @@ import { useShortcut } from "../../../react/input";
 import { usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { WorldVenueMap } from "./map";
 import {
   filterWorldVenues,
@@ -79,11 +79,9 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const inputRef = useRef<InputRenderable | null>(null);
   const generationRef = useRef(0);
   const dataRef = useRef<CloudWorldVenueMapPayload | null>(null);
   dataRef.current = data;
@@ -136,11 +134,6 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
     () => venues.find((venue) => venue.mic === selectedMic) ?? null,
     [selectedMic, venues],
   );
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((value) => value + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
   const refresh = useCallback(() => void load(), [load]);
   // The search field only exists once venues have loaded; before that `/` has
   // nothing to focus and must not leave the pane waiting on a missing field.
@@ -149,13 +142,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   useShortcut((event) => {
     if (searchOpen || event.targetEditable) return;
-    if (searchable && isPlainKey(event, "/")) {
-      event.preventDefault();
-      event.stopPropagation();
-      focusSearch();
-    } else {
-      handleRefreshKey(event, refresh, { stopPropagation: true });
-    }
+    handleRefreshKey(event, refresh, { stopPropagation: true });
   }, { allowEditable: true, enabled: focused });
 
   usePaneFooter(WORLD_VENUE_MAP_PANE_ID, () => ({
@@ -225,12 +212,8 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
         onChange: setQuery,
         placeholder: "Filter venues...",
         focused,
-        active: searchFocused,
-        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-        focusToken: searchFocusToken,
-        inputRef,
+        ...searchProps,
         debounceMs: 80,
-        onNavigateDown: blurSearch,
         normalizeValue: (value: string) => value.trim(),
       }}
     />

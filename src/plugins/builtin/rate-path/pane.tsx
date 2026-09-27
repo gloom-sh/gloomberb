@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
+import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
@@ -66,7 +66,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "date", direction: "asc" });
   const [contract, setContract] = useState<string | null>(null);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   const data = resource.data;
   const curves = useMemo(() => data ? ratePathCurves(data, {
     // Ghosts match CTM's look-back colours, so the policy band takes the accent instead of yellow.
@@ -99,7 +99,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       value: data.slope.valueBps == null ? "--" : `${data.slope.valueBps > 0 ? "+" : ""}${data.slope.valueBps.toFixed(1)}bp`,
       detail: [percentileText(data.slope.percentile), ownDate(data.slope.asOf) && timestamp(data.slope.asOf)].filter(Boolean).join(" · ") }] : []),
   ] : [];
-  const bodyHeight = Math.max(1, height - (tabsInHeader ? 0 : 1));
+  const bodyHeight = Math.max(1, height - tabRows);
   // A rank or quote time every meeting shares says nothing per row; the
   // columns stay only while the meetings differ.
   const varies = (text: (row: RateMeeting) => string) => new Set(meetings.map(text)).size > 1;
@@ -139,7 +139,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     label: halfWidth == null ? `${target.toFixed(3)}%` : `${(target - halfWidth).toFixed(2)}-${(target + halfWidth).toFixed(2)}%`,
     width: 13, align: "right" as const }))];
   return <Box width={width} height={height} flexDirection="column">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
+    {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!resource.loading && !resource.error && !data} subject="rate path">
       {data ? tab === "path" ? <DataTableView columns={meetingColumns} items={meetings} selection={selection} focused={focused}
           sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={meetingKey} renderCell={meetingCell}

@@ -89,6 +89,8 @@ export type { StackSortPreference } from "./feed-stack-controller";
 export { PaneFooterScope, usePaneFooter, usePaneMenuItems } from "./layout/pane/footer";
 export { NestedPaneTabs, usePaneHeaderTabs } from "./layout/pane/header-tabs";
 export type { PaneHeaderTabsRegistration } from "./layout/pane/header-tabs";
+export { usePaneTabs } from "./layout/pane/pane-tabs";
+export type { PaneTabs, PaneTabsOptions } from "./layout/pane/pane-tabs";
 // The common footer shapes on top of `usePaneFooter`: a status segment that
 // changes with loading/error state, and one that also carries a link.
 export { usePaneStatusFooter, usePaneStatusLinkFooter } from "./layout/pane/status-footer";
@@ -126,7 +128,7 @@ export {
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, unavailableText,
-  usePaneLinkMenuEntry,
+  usePaneLinkMenuEntry, useQueryBarSearch,
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
@@ -136,7 +138,7 @@ export type {
   KeyValueRowProps, ListRowState, ListViewItem, ListViewProps, MenuItem, MenuPopoverProps,
   MenuProps, MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction,
   NoticeProps, NumberFieldProps, PaneStatusBodyProps, PopoverProps, ProseProps, QueryBarFilter,
-  QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSelectFilter, QueryBarTextFilter,
+  QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
   QueryBarToggleFilter, QueryBarView, SectionHeadingProps, SectionProps, SegmentedControlProps,
   SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, TabsProps,
   TextFieldProps,

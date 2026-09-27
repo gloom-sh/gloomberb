@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
+import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
@@ -84,8 +84,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     { id: "spread", label: "M2-M1", value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
       detail: [data.slope.state, curveRank(data.slope.percentile, data.slope.samples), slopeDate].filter(Boolean).join(" · ") },
   ] : [];
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
-  const bodyHeight = Math.max(1, height - (tabsInHeader ? 0 : 1));
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
+  const bodyHeight = Math.max(1, height - tabRows);
   const columns = curveTab ? CURVE_COLUMNS : COLUMNS;
   const formatValue = useCallback((value: number) => curvePrice(value, root), [root]);
   const formatChange = useCallback((value: number) => curveChangeText(value, root), [root]);
@@ -135,7 +135,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     return { text: curveTimestamp(row.asOf), color: row.stale ? colors.warning : colors.textMuted };
   }, [changes, colors, curveTab, root]);
   return <Box width={width} height={height} flexDirection="column">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
+    {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!!data && !data.contracts.length} subject="futures curve">
       {data ? <DataTableView columns={columns} items={tableRows} focused={focused}

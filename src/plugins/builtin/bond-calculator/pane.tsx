@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox } from "../../../ui";
-import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, type GridField, type SelectControl } from "../../../components";
+import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, usePaneNoticeFooter, usePaneTabs, type GridField, type SelectControl } from "../../../components";
 import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -69,8 +69,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     update({ mode, quote: result ? String(Number((mode === "yield" ? result.analytics.yieldPercent : result.analytics.cleanPrice).toPrecision(13))) : draft.quote });
   }, [result, draft.quote, update]);
   const selectTab = useCallback((value: string) => { setActiveField(null); setTab(value); }, [setTab]);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !activeField });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !activeField, dense: true });
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
@@ -131,7 +130,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     [{ label: "Convexity", value: `${fixed(result.analytics.convexity)} yr²` }, { label: "DV01 / 100", value: fixed(result.analytics.dv01, 6) }],
   ] : [];
   return <Box flexDirection="column" width={width} height={height}>
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={selectTab} focused={focused && !activeField} dense />}
+    {tabStrip}
     {tab === "valuation" ? <>
       <QueryBar width={width} filters={[
         { id: "mode", label: "Mode", inline: true, value: draft.mode, options: MODES, onChange: setMode },

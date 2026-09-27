@@ -3,10 +3,9 @@ import { Box, TextAttributes } from "../../../ui";
 import {
   DataTableView,
   PaneStatusBody,
-  Tabs,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
+  usePaneTabs,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
@@ -182,7 +181,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     setSelectedId(null);
     setVisibleRange({ start: 0, end: INITIAL_STREAM_ROWS });
   };
-  const tabsInHeader = usePaneHeaderTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused });
+  const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 
   usePaneNoticeFooter({
     registrationId: "crypto-board:notices",
@@ -211,11 +210,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
 
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Box height={1} paddingX={1}>
-          <Tabs tabs={tabItems} activeValue={activeTab} onSelect={selectTab} compact variant="bare" focused={focused} />
-        </Box>
-      )}
+      {tabStrip && <Box height={1} paddingX={1}>{tabStrip}</Box>}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}

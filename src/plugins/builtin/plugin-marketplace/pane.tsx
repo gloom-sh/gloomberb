@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Button,
@@ -9,6 +9,7 @@ import {
   PaneStatusBody,
   QueryBar,
   useExternalLinkFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -17,7 +18,7 @@ import {
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
@@ -215,9 +216,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [showBuiltin, setShowBuiltin] = useState(false);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   const [registry, setRegistry] = useState<RegistryPlugin[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -304,12 +303,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   );
 
   const bump = useCallback(() => setLocalRevision((value) => value + 1), []);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((token) => token + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
 
   const confirm = useCallback((options: {
     title: string;
@@ -513,10 +506,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       case "d": openLog(); return true;
       case "r": refresh(true); return true;
       case "b": setShowBuiltin((value) => !value); return true;
-      case "/": focusSearch(); return true;
       default: return false;
     }
-  }, [focusSearch, installSelected, openLog, openSelected, refresh, removeSelected, setupSelected, toggleSelected, updateSelected]);
+  }, [installSelected, openLog, openSelected, refresh, removeSelected, setupSelected, toggleSelected, updateSelected]);
 
   /**
    * Pane keys go through the table's key handler, which runs while the pane
@@ -634,11 +626,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
               onChange: setQuery,
               placeholder: "name",
               focused: focused && !detailOpen,
-              active: searchFocused,
-              onActiveChange: (active) => { if (active) focusSearch(); else blurSearch(); },
-              focusToken: searchFocusToken,
-              inputRef: searchInputRef,
-              onNavigateDown: blurSearch,
+              ...searchProps,
             }}
             filters={[
               ...(categories.length > 1 || category ? [{

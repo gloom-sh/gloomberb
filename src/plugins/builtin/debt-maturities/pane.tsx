@@ -18,11 +18,10 @@ import {
   KeyValueRow,
   PaneStatusBody,
   scalarPoint,
-  Tabs,
   useChartTableSelection,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
+  usePaneTabs,
   type DataTableCell,
   type StatItem,
 } from "../../../components";
@@ -375,12 +374,11 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const detailOpen =
     tab === "maturities" ? !!openBucketRow : tab === "history" && !!openHistoryRow;
   const tabsFocused = focused && !detailOpen;
-  const tabsInHeader = usePaneHeaderTabs(
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(
     latest
-      ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused }
+      ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true }
       : null,
   );
-  const tabRows = tabsInHeader ? 0 : 1;
   // `height` is the pane body: the footer is chrome outside it on both targets.
   const bodyHeight = Math.max(3, height - tabRows);
   // The as-of date is said once; a figure from another date carries its own.
@@ -505,15 +503,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       >
         {latest ? (
           <>
-            {!tabsInHeader && (
-              <Tabs
-                tabs={TABS}
-                activeValue={tab}
-                onSelect={setTab}
-                dense
-                focused={tabsFocused}
-              />
-            )}
+            {tabStrip}
             {tab === "filing" ? (
               <FilingDetail latest={latest} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (

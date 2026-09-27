@@ -4,8 +4,7 @@ import {
   ConfirmDialog,
   DataTableView,
   StatGrid,
-  Tabs,
-  usePaneHeaderTabs,
+  usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
   type StatItem,
@@ -526,14 +525,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   // Signed out, every tab is the same sign-in wall, so the strip stays away.
   // h/l and the arrows switch tabs; the portfolio picker keeps them while it is
   // the active field, and text fields keep them for the cursor.
-  const tabsInHeader = usePaneHeaderTabs(hasSession || apiClient.isSignedIn() ? {
+  const { strip: tabStrip, rows: stripRows } = usePaneTabs(hasSession || apiClient.isSignedIn() ? {
     tabs: accountTabs,
     activeValue: activeTab,
     onSelect: selectTab,
     focused,
+    variant: "pill",
+    compact: true,
   } : null);
   // The strip and the gap the column puts under it.
-  const tabRows = tabsInHeader ? 0 : 2;
+  const tabRows = stripRows * 2;
 
   const openPasswordDialog = useCallback(() => {
     if (busy) return;
@@ -764,16 +765,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height} paddingX={1} gap={1}>
-      {!tabsInHeader && (
-        <Tabs
-          tabs={accountTabs}
-          activeValue={activeTab}
-          onSelect={selectTab}
-          focused={focused}
-          variant="pill"
-          compact
-        />
-      )}
+      {tabStrip}
       <ScrollBox ref={scrollRef} height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
         <Box flexDirection="column" width={contentWidth} gap={1}>
           {activeTab === "profile" ? (

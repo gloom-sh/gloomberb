@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
+import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -300,19 +300,10 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     setActiveCollectionId(nextId);
     setSelectedEtf(null);
   };
-  const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: activeCollection.id, onSelect: selectCollection, focused });
-  const rootBefore = tabsInHeader ? undefined : (
-    <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">
-      <Tabs
-        tabs={tabs}
-        activeValue={activeCollection.id}
-        onSelect={selectCollection}
-        compact
-        variant="bare"
-        focused={focused}
-      />
-    </Box>
-  );
+  const { strip: tabStrip } = usePaneTabs({
+    tabs, activeValue: activeCollection.id, onSelect: selectCollection, focused, compact: true, variant: "bare",
+  });
+  const rootBefore = tabStrip ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">{tabStrip}</Box> : undefined;
 
   return (
     <DataTableView<SectorRow, SectorColumn>

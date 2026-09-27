@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { apiClient, type CloudThesis } from "../../../../api-client";
 import {
   DataTableStackView,
   PaneStatusBody,
   QueryBar,
   usePaneFooter,
+  useQueryBarSearch,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -15,11 +16,10 @@ import { useShortcut } from "../../../../react/input";
 import { useAppSelector, usePaneStateValue } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
-import { Box, TextAttributes, type InputRenderable } from "../../../../ui";
+import { Box, TextAttributes } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { formatCompactAmount } from "../../../../utils/format";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { stopSearchFocusNavigation } from "../../../../utils/search-focus-navigation";
 import { usePluginAppActions } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
@@ -136,14 +136,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const [mode, setMode] = usePaneStateValue<"board" | "weights">("mode", "board");
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
 
   const ctx = useMemo<flows.FlowContext>(() => ({ dialog, notify, hasProAccess: plan.hasProAccess, openUpgrade }), [dialog, notify, openUpgrade, plan.hasProAccess]);
 
@@ -267,11 +260,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     if (isPlainKey(event, "n")) void startFor();
     else if (isPlainKey(event, "w")) setMode(mode === "board" ? "weights" : "board");
     else if (isPlainKey(event, "p")) cycleScope(1);
-    else if (searchable && isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return;
-    } else if (isPlainKey(event, "r")) void thesisStore.refresh();
+    else if (isPlainKey(event, "r")) void thesisStore.refresh();
     else return;
     event.stopPropagation?.();
     event.preventDefault?.();
@@ -419,12 +408,8 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
         onChange: setSearchQuery,
         placeholder: "ticker or company",
         focused: focused && !openThesis,
-        active: searchFocused,
-        onActiveChange: (active) => (active ? focusSearch() : blurSearch()),
-        focusToken: searchFocusToken,
-        inputRef: searchInputRef,
+        ...searchProps,
         debounceMs: 80,
-        onNavigateDown: blurSearch,
       }}
       filters={[{
         id: "scope",

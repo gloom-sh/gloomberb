@@ -9,7 +9,7 @@ import {
   type TeamSummary,
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
-import { QueryBar, Tabs, loadingText, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems, type PaneFooterSegment, type PaneHint } from "../../../../components";
+import { QueryBar, loadingText, usePaneFooter, usePaneMenuItems, usePaneTabs, type PaneFooterSegment, type PaneHint } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { colors } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
@@ -599,7 +599,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     setCreating(true);
     setMessage(null);
   }, []);
-  const tabsInHeader = usePaneHeaderTabs(signedIn ? {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(signedIn ? {
     tabs: teamTabs,
     activeValue: showCreate ? "__create" : team?.id ?? null,
     onSelect: selectTeam,
@@ -607,6 +607,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     keyboardNavigation: false,
     addLabel: showCreate ? undefined : "+",
     onAdd: showCreate ? undefined : startCreate,
+    variant: "pill",
+    compact: true,
   } : null);
 
   if (!signedIn) {
@@ -615,7 +617,6 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
 
   const contentWidth = Math.max(24, width - 2);
   const banners = snapshot.invitations;
-  const tabRows = tabsInHeader ? 0 : 1;
   // The section bar or the teams status line; the create form has neither.
   const sectionRows = showCreate ? 0 : 1;
   const headerRows = sectionRows + tabRows + (banners.length > 0 ? banners.length + 1 : 0);
@@ -637,21 +638,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
         {banners.length > 0 ? <Box height={1} /> : null}
 
         {/* Team switcher: one pill per team in its accent, plus the form. */}
-        {!tabsInHeader && (
-          <Box height={1} flexDirection="row" alignItems="center" paddingX={1}>
-            <Tabs
-              tabs={teamTabs}
-              activeValue={showCreate ? "__create" : team?.id ?? null}
-              onSelect={selectTeam}
-              focused={focused}
-              variant="pill"
-              compact
-              keyboardNavigation={false}
-              addLabel={showCreate ? undefined : "+"}
-              onAdd={showCreate ? undefined : startCreate}
-            />
-          </Box>
-        )}
+        {tabStrip && <Box height={1} flexDirection="row" alignItems="center" paddingX={1}>{tabStrip}</Box>}
 
         {showCreate ? null : team ? (
           <QueryBar

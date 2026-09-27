@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, type InputRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Box } from "../../../ui";
 import {
   EmptyState,
-  Tabs,
-  usePaneHeaderTabs,
+  usePaneTabs,
+  useQueryBarSearch,
 } from "../../../components";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneInstance, usePaneInstanceId } from "../../../state/app/context";
@@ -81,9 +81,7 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     { schemaVersion: TWITTER_FEED_LAUNCH_SCHEMA_VERSION },
   );
   const [activeFeedId, setActiveFeedId] = usePluginPaneState<string | null>("activeFeedId", null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const initializedRef = useRef(false);
   const feeds = useMemo(() => normalizeFeeds(persistedState), [persistedState]);
 
@@ -94,15 +92,6 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     setPanePersistedState({ feeds: legacyFeeds });
     setLegacyPersistedState(EMPTY_FEED_STATE);
   }, [legacyPersistedState, panePersistedState, setLegacyPersistedState, setPanePersistedState]);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-
-  const blurSearch = useCallback(() => {
-    setSearchFocused(false);
-  }, []);
 
   const updateFeeds = useCallback((updater: (feeds: TwitterFeed[]) => TwitterFeed[]) => {
     setPanePersistedState((current) => ({
@@ -287,47 +276,30 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
     onClose: removeFeed,
     onDoubleClick: searchFeed,
   })), [feeds, removeFeed, searchFeed]);
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: feedTabs,
     activeValue: activeFeed?.id ?? null,
     onSelect: setActiveFeedId,
     focused: focused && !searchFocused,
     onAdd: () => addFeed(),
     closeMode: "active",
+    compact: true,
+    variant: "pill",
   });
-  const tabRows = tabsInHeader ? 0 : 1;
 
   const searchBar = activeFeed ? (
     <TwitterFeedSearchBar
       feed={activeFeed}
       focused={focused}
-      active={searchFocused}
       width={width}
-      focusToken={searchFocusToken}
-      inputRef={searchInputRef}
-      onFocus={focusSearch}
-      onBlur={blurSearch}
-      onNavigateDown={blurSearch}
+      searchProps={searchProps}
       onQueryChange={updateFeedQuery}
     />
   ) : null;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {!tabsInHeader && (
-        <Box height={1}>
-          <Tabs
-            tabs={feedTabs}
-            activeValue={activeFeed?.id ?? null}
-            onSelect={setActiveFeedId}
-            compact
-            variant="pill"
-            closeMode="active"
-            onAdd={() => addFeed()}
-            focused={focused && !searchFocused}
-          />
-        </Box>
-      )}
+      {tabStrip && <Box height={1}>{tabStrip}</Box>}
 
       {!activeFeed ? (
         <Box padding={1} flexGrow={1}>

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
-import { ChartTableHeader, CompositeChart, CurveSurface, curveGhostColors, EmptyState, formatPercentAxis, MarketBoardStack, PaneStatusBody, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type MarketBoardRow, type StatItem } from "../../../components";
+import { ChartTableHeader, CompositeChart, CurveSurface, curveGhostColors, EmptyState, formatPercentAxis, MarketBoardStack, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTabs, type ChartTableChart, type MarketBoardRow, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -116,8 +116,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   } : null;
   const figures = billsTab ? billsItems : [];
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
-  const bodyHeight = Math.max(3, height - (tabsInHeader ? 0 : 1));
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
+  const bodyHeight = Math.max(3, height - tabRows);
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
@@ -128,7 +128,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
     stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
-    {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
+    {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!resource.loading && !resource.error && !data} subject="money markets">
       {data ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}

@@ -15,11 +15,10 @@ import {
   PaneStatusBody,
   Prose,
   spanAxisFormatter,
-  Tabs,
   useChartTableSelection,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
+  usePaneTabs,
   type DataTableColumn,
   type DataTableKeyEvent,
   type StatItem,
@@ -375,13 +374,13 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   });
   const signInWall = !data && isCloudSessionRequired(resource.error);
   // Every tab would show the same wall, so the strip waits for data.
-  const tabsInHeader = usePaneHeaderTabs(!symbol || signInWall ? null : {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(!symbol || signInWall ? null : {
     tabs: TABS,
     activeValue: tab,
     onSelect: setTab,
     focused: focused && !detailOpen,
+    dense: true,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
   if (!symbol) return <EmptyState title="Select a ticker." />;
   if (signInWall)
     return (
@@ -397,15 +396,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
   );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={TABS}
-          activeValue={tab}
-          onSelect={setTab}
-          focused={focused && !detailOpen}
-          dense
-        />
-      )}
+      {tabStrip}
       <PaneStatusBody
         loading={resource.loading && !data}
         error={!data ? resource.error : null}

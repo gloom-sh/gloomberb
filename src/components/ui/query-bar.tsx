@@ -181,6 +181,34 @@ function isNarrowing(filter: QueryBarFilter): boolean {
   return filter.defaultValue !== undefined && filter.value !== filter.defaultValue;
 }
 
+export interface QueryBarSearchFocus {
+  /** The search field owns the keyboard; the pane's own keys wait. */
+  active: boolean;
+  /** Hands the keyboard to the field, again if it already has it. */
+  focus: () => void;
+  /** Gives the keyboard back to the pane. */
+  blur: () => void;
+  /** Spread into `QueryBar`'s `search` beside `value`, `onChange`, `placeholder` and `focused`. */
+  searchProps: Pick<QueryBarSearch, "active" | "onActiveChange" | "focusToken" | "inputRef">;
+}
+
+/**
+ * Whether a pane's `QueryBar` search owns the keyboard. `/` already focuses
+ * it through the bar, so a pane binds `/` itself only to add a condition.
+ */
+export function useQueryBarSearch(): QueryBarSearchFocus {
+  const [active, setActive] = useState(false);
+  const [focusToken, setFocusToken] = useState(0);
+  const inputRef = useRef<InputRenderable | null>(null);
+  const focus = useCallback(() => {
+    setActive(true);
+    setFocusToken((token) => token + 1);
+  }, []);
+  const blur = useCallback(() => setActive(false), []);
+  const onActiveChange = useCallback((next: boolean) => (next ? focus() : blur()), [blur, focus]);
+  return { active, focus, blur, searchProps: { active, onActiveChange, focusToken, inputRef } };
+}
+
 /**
  * The one row above a list that narrows or reorders it: search, filters, a view
  * switch. Every pane with query controls uses it, so they read and behave the

@@ -1153,7 +1153,7 @@ Choose the existing control that owns the interaction you need:
 | Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView`, `DetailScrollBody` (the detail's scrolling body) |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
 | Figures, a chart and a table in one pane | `ChartTableHeader` in the table's `rootBefore`, `useChartTableSelection`, `chartTableLayout`, `CurveSurface` with `curveStrip` for curves (see `docs/pane-conventions.md` 5b) |
-| Pane tab strip | `usePaneHeaderTabs` (title-bar tabs on the desktop), `Tabs` |
+| Pane tab strip | `usePaneTabs` (title-bar tabs on the desktop, the body row in the terminal), `Tabs` |
 | Search, filters, sort above a list | `QueryBar` |
 | Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |
 | Calculator and sizer inputs | `FieldGrid` (`GridField`: number, text, wide, action) |
@@ -1176,9 +1176,9 @@ Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book 
 
 `Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` opens the kit menu on the desktop and a choice dialog in the terminal; a `SelectControl` ref can open it without knowing the renderer.
 
-A pane's primary tab strip goes through `usePaneHeaderTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. On the desktop the strip moves into the pane title bar and the hook returns true; the terminal returns false and the pane keeps drawing its own `Tabs`. Subtract the tab row from heights only when it is in the body.
+A pane's primary tab strip goes through `usePaneTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. It takes every `Tabs` prop and returns `{ strip, rows }`: on the desktop the strip moves into the pane title bar and `strip` is null; the terminal gets the `Tabs` row to draw first. Subtract `rows` from heights. `queryBarWidth` turns the strip into a `QueryBar` view on the desktop when the pane sits under another title-bar strip (a Ticker Research tab). `usePaneHeaderTabs` is the lower-level hook underneath, for a pane that lays the body strip out itself.
 
-Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself.
+Everything that narrows or reorders a list sits in one `QueryBar` above it: `search`, `filters` (`select` with an optional `defaultValue` that marks the unfiltered state, `inline` for four or fewer short options, `multi`, `toggle`, `text`) and one `view` for sort, range or interval. It is one row in the terminal, scrolls sideways when the pane is narrow, and gives a changed filter a reset. Do not lay out `SelectButton`s or search fields in a row yourself. `useQueryBarSearch()` holds whether the search owns the keyboard: spread its `searchProps` into `search`, and call `focus` from a footer hint or an up-arrow handoff. The bar already binds `/`, so a pane binds it again only to add a condition.
 
 A pane's summary figures (a VWAP, a spread, a percentile, a range) go in a `StatGrid` directly under the `QueryBar`: one band of label, value and muted detail cells that the desktop draws like the query bar, so the title-bar tab, the bar and the figures read as one surface. Use it at the top of a stack detail too. Do not stack `KeyValueRow`s or text lines above a table for this. `statGridRows(items, width)` gives the rows it takes for terminal height budgeting.
 

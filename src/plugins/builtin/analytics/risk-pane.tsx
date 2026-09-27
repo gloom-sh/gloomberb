@@ -18,11 +18,10 @@ import {
   StatGrid,
   StaticChartSurface,
   QueryBar,
-  Tabs,
   statGridRows,
-  usePaneHeaderTabs,
   usePaneFooter,
   usePaneNoticeFooter,
+  usePaneTabs,
   type ChartTableChart,
   type DataTableColumn,
   type StatItem,
@@ -590,15 +589,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     setOpen(null);
     setSelected(null);
   };
-  const tabsInHeader = usePaneHeaderTabs(portfolio && model ? {
+  // The view strip takes a row when it is not in the title bar; the portfolio
+  // bar, the holdings summary and the chart sit on the root view only.
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolio && model ? {
     tabs,
     activeValue: view,
     onSelect: selectView,
     focused: focused && !openRow,
+    compact: true,
   } : null);
-  // The view strip takes a row when it is not in the title bar; the portfolio
-  // bar, the holdings summary and the chart sit on the root view only.
-  const tabRows = tabsInHeader ? 0 : 1;
   const rootHeight = Math.max(3, height - tabRows);
   const evidenceMissing = EVIDENCE_VIEWS.has(view) && rows.length === 0;
   if (!portfolio)
@@ -619,15 +618,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     );
   return (
     <Box width={width} height={height} flexDirection="column">
-      {!tabsInHeader && (
-        <Tabs
-          tabs={tabs}
-          activeValue={view}
-          onSelect={selectView}
-          focused={focused && !openRow}
-          compact
-        />
-      )}
+      {tabStrip}
       <DataTableStackView<RiskDisplayRow, DataTableColumn>
         focused={focused}
         columns={columns}

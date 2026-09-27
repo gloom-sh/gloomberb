@@ -7,9 +7,8 @@ import {
   PaneStatusBody,
   QueryBar,
   Spinner,
-  Tabs,
   useExternalLinkFooter,
-  usePaneHeaderTabs,
+  usePaneTabs,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -23,7 +22,6 @@ import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
-import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
@@ -414,11 +412,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       focusField("query");
       return true;
     }
-    if (isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusField("query");
-      return true;
-    }
     // Ctrl+S and [t]icker are footer hints: the footer binds them across the
     // pane, Ctrl+S also while a field has focus.
     return false;
@@ -543,13 +536,12 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
 
   const modeTabs = MODE_TABS;
   // Every tab leads to the same wall, so the strip waits until it is gone.
-  const tabsInHeader = usePaneHeaderTabs(signInRequired || verificationRequired ? null : {
+  const { strip: tabs, rows: tabRows } = usePaneTabs(signInRequired || verificationRequired ? null : {
     tabs: modeTabs,
     activeValue: mode,
     onSelect: (value) => setMode(value as PaneMode),
     focused: focused && !openHit && activeField === null && !typePickerOpen,
   });
-  const tabRows = tabsInHeader ? 0 : 1;
 
   if (signInRequired || verificationRequired) {
     return (
@@ -559,15 +551,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       />
     );
   }
-
-  const tabs = tabsInHeader ? null : (
-    <Tabs
-      tabs={modeTabs}
-      activeValue={mode}
-      onSelect={(value) => setMode(value as PaneMode)}
-      focused={focused && !openHit && activeField === null && !typePickerOpen}
-    />
-  );
 
   if (mode === "saved") {
     return (

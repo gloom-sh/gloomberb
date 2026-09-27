@@ -7,7 +7,7 @@ import {
   PaneStatusBody,
   useTableLoadMore,
   usePaneFooter,
-  usePaneHeaderTabs,
+  usePaneTabs,
   type DataTableKeyEvent,
   type PaneHint,
 } from "../../../../components";
@@ -53,7 +53,6 @@ import {
   type BuildoutOpenTarget,
 } from "../table-model";
 import { tickerSearchText, tickerSymbol } from "../format";
-import { BuildoutPaneHeader } from "./header";
 import {
   activeBuildoutPage,
   renderBuildoutPageStatus,
@@ -370,13 +369,14 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     toggleFavorite,
   }), [favoriteBusyKey, toggleFavorite]);
 
-  const tabsInHeader = usePaneHeaderTabs({
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs,
     activeValue: activeTab,
     onSelect: (value) => setActiveTab(value as BuildoutTabId),
     focused: focused && !detailRow,
+    compact: true,
+    variant: "bare",
   });
-  const tabRows = tabsInHeader ? 0 : 1;
 
   if (state.status === "loading") {
     return <PaneStatusBody loading subject={BUILDOUT_NAME} width={width} height={height} />;
@@ -435,13 +435,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   // own detail. The outer stack only listens while the inner detail is closed.
   return (
     <Box flexDirection="column" width={width} height={height} overflow="hidden">
-      {!tabsInHeader && (
-        <BuildoutPaneHeader
-          activeTab={activeTab}
-          focused={focused && !detailRow}
-          onSelectTab={setActiveTab}
-        />
-      )}
+      {tabStrip && <Box height={1}>{tabStrip}</Box>}
       <PageStackView
         focused={focused && !detailRow}
         detailOpen={listOpen}

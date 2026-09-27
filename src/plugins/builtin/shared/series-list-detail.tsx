@@ -1,18 +1,17 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   DataTableView,
   QueryBar,
+  useQueryBarSearch,
   type DataTableColumn,
-  type DataTableKeyEvent,
   type DataTableSelectionChangeReason,
   type QueryBarView,
 } from "../../../components";
 import type { DataTableViewProps } from "../../../components/data-table/view";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 
 /** Below this the detail sits under the table instead of beside it. */
 const SPLIT_MIN_WIDTH = 108;
@@ -65,24 +64,7 @@ export function useSeriesList<Item, R extends string>({
   range: Pick<QueryBarView<R>, "value" | "options" | "onChange">;
 }) {
   const [query, setQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
-
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-  const blurSearch = useCallback(() => setSearchFocused(false), []);
-
-  const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [focusSearch]);
+  const { active: searchFocused, searchProps } = useQueryBarSearch();
 
   // The table leaves `r` to this handler, which also answers with no table focused.
   useShortcut((event) => {
@@ -123,16 +105,12 @@ export function useSeriesList<Item, R extends string>({
     selectedId: selectedItemId,
     choose,
     searchFocused,
-    handlePaneKey,
     range,
     search: {
       value: query,
       onChange: setQuery,
       focused,
-      active: searchFocused,
-      onActiveChange: (active: boolean) => active ? focusSearch() : blurSearch(),
-      focusToken: searchFocusToken,
-      inputRef: searchInputRef,
+      ...searchProps,
       debounceMs: 80,
     },
   };
@@ -211,7 +189,6 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
                 onChange: (id, _item, _index, reason) => list.choose(String(id), reason),
               }}
               isNavigable={isNavigable}
-              onRootKeyDown={list.handlePaneKey}
               getItemKey={getRowId}
               renderCell={renderCell}
               renderSectionHeader={renderSectionHeader}

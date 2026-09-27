@@ -17,7 +17,7 @@ import {
 } from "../../../state/app/context";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getSharedRegistry } from "../../registry";
-import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneMenuItems } from "../../../components";
+import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
@@ -216,7 +216,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // those keys while it is open; Esc gives them back to the strip.
   const researchTabKeys = useResearchTabKeysHost();
   const stripFocused = focused && !pluginCaptured && !researchTabKeys.claimed;
-  const tabsInHeader = usePaneHeaderTabs(!paneSettings.hideTabs && ticker ? {
+  const { strip: tabStrip, rows: tabBarHeight } = usePaneTabs(!paneSettings.hideTabs && ticker ? {
     tabs: tabItems,
     activeValue: resolvedTabId,
     onSelect: setActiveTabId,
@@ -247,7 +247,6 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       },
     }];
   }, [dialog, resolvedTabId, setActiveTabId, showTabs, tabItems]);
-  const tabBarHeight = paneSettings.hideTabs || tabsInHeader ? 0 : 1;
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
   const renderedTabIds = useMemo(() => {
@@ -300,14 +299,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
-      {!paneSettings.hideTabs && !tabsInHeader && (
-        <Tabs
-          tabs={tabItems}
-          activeValue={resolvedTabId}
-          onSelect={setActiveTabId}
-          focused={stripFocused}
-        />
-      )}
+      {tabStrip}
 
       <Box height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
         <ResearchTabKeysProvider value={showTabs ? researchTabKeys.value : null}>

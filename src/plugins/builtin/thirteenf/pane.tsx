@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody, QueryBar, StatGrid, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
+  EmptyState, PaneStatusBody, QueryBar, StatGrid, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
   type DataTableRootKeyContext, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -13,7 +13,6 @@ import type { PaneProps } from "../../../types/plugin";
 import {
   Box,
   useRendererHost,
-  type InputRenderable,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
@@ -137,9 +136,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     onDetailChange(open);
   }, [onDetailChange]);
   const detailOpen = !!detailSeed || tickerFundOpen;
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const searchInputRef = useRef<InputRenderable | null>(null);
+  const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const moreAbortRef = useRef<AbortController | null>(null);
@@ -234,19 +231,13 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       if (isPlainKey(event, "escape")) {
         event.stopPropagation?.();
         event.preventDefault?.();
-        setSearchFocused(false);
+        blurSearch();
       }
       return;
     }
     if (event.targetEditable) return;
     // The ticker holdings view refreshes itself.
-    if (!showTickerHoldings && handleRefreshKey(event, () => load(true), { stopPropagation: true })) return;
-    if (isPlainKey(event, "/")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      setSearchFocused(true);
-      setSearchFocusToken((current) => current + 1);
-    }
+    if (!showTickerHoldings) handleRefreshKey(event, () => load(true), { stopPropagation: true });
   }, { allowEditable: true });
 
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
@@ -265,15 +256,6 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   const loadMoreFromScroll = useTableLoadMore(tableScrollRef, hasMore && !loadingMore && status === "loaded", loadMore, LOAD_MORE_THRESHOLD);
 
   const refresh = useCallback(() => load(true), [load]);
-  const focusSearch = useCallback(() => {
-    setSearchFocused(true);
-    setSearchFocusToken((current) => current + 1);
-  }, []);
-
-  const blurSearch = useCallback(() => {
-    setSearchFocused(false);
-  }, []);
-
   const updateQuery = useCallback((nextQuery: string) => {
     const trimmed = nextQuery.trim();
     setQuery(trimmed);
@@ -281,9 +263,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, [setQuery]);
 
   const openDetail = useCallback((row: FundBrowserRow) => {
-    setSearchFocused(false);
+    blurSearch();
     setDetailSeed({ cik: row.cik, name: row.name });
-  }, []);
+  }, [blurSearch]);
   // Every request behind a fund detail is cached per path, so warming it
   // while the cursor rests on the row makes Enter read from cache.
   const prefetchDetail = useCallback((row: FundBrowserRow) => {
@@ -313,12 +295,8 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         onChange: updateQuery,
         placeholder: "fund, ticker, CIK, or latest",
         focused: focused && !detailOpen,
-        active: searchFocused,
-        onActiveChange: (active) => active ? focusSearch() : blurSearch(),
-        focusToken: searchFocusToken,
-        inputRef: searchInputRef,
+        ...searchProps,
         debounceMs: SEARCH_DEBOUNCE_MS,
-        onNavigateDown: blurSearch,
         normalizeValue: trimSearchValue,
       }}
     />
@@ -344,12 +322,6 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
       refresh();
       return true;
     }
-    if (event.name === "/") {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      focusSearch();
-      return true;
-    }
     return false;
   }, [focusSearch, refresh]);
 
@@ -357,7 +329,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
   ) => {
-    if ((context.selectedIndex <= 0 && isPlainArrowUp(event)) || event.name === "/") {
+    if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
       stopSearchFocusNavigation(event);
       focusSearch();
       return true;
@@ -911,10 +883,9 @@ function FilingDetailView({
 export function ThirteenFPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("browserTab", "funds");
   const [detailOpen, setDetailOpen] = useState(false);
-  const tabsInHeader = usePaneHeaderTabs({ tabs: THIRTEENF_TABS, activeValue: tab, onSelect: setTab, focused: props.focused && !detailOpen });
-  const tabRows = tabsInHeader ? 0 : 1;
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: THIRTEENF_TABS, activeValue: tab, onSelect: setTab, focused: props.focused && !detailOpen, compact: true });
   return <Box flexDirection="column" width={props.width} height={props.height}>
-    {!tabsInHeader && <Tabs tabs={THIRTEENF_TABS} activeValue={tab} onSelect={setTab} focused={props.focused && !detailOpen} compact />}
+    {tabStrip}
     <PaneFooterScope active>
       {tab === "crowding" ? <ThirteenFCrowdingPane {...props} height={Math.max(1, props.height - tabRows)} /> : <ThirteenFBrowserPane {...props} onDetailChange={setDetailOpen} height={Math.max(1, props.height - tabRows)} />}
     </PaneFooterScope>

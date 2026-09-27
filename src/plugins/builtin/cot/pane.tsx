@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ChartTableHeader, CompositeChart, DataTableStackView, spanDigits, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
+import { ChartTableHeader, CompositeChart, DataTableStackView, spanDigits, DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -8,7 +8,7 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
 import { isAccessDenied } from "../../../api-client/errors";
-import { Box, type InputRenderable } from "../../../ui";
+import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -45,10 +45,10 @@ const cotDetailTitle = (name: string | undefined, code: string | null) => name ?
 export function CotPane(props: PaneProps) {
   const pane = usePaneInstance();
   const [family, setFamily] = usePluginPaneState<CotFamily>("report", pane?.settings?.report === "disaggregated" ? "disaggregated" : "legacy");
-  const tabsInHeader = usePaneHeaderTabs({ tabs: FAMILIES, activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused });
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: FAMILIES, activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused, dense: true });
   return <Box width={props.width} height={props.height} flexDirection="column">
-    {!tabsInHeader && <Tabs tabs={FAMILIES} activeValue={family} onSelect={(value) => setFamily(value as CotFamily)} focused={props.focused} dense />}
-    <CotBoard key={family} {...props} height={Math.max(3, props.height - (tabsInHeader ? 0 : 1))} family={family} initialCode={pane?.params?.code ?? null} />
+    {tabStrip}
+    <CotBoard key={family} {...props} height={Math.max(3, props.height - tabRows)} family={family} initialCode={pane?.params?.code ?? null} />
   </Box>;
 }
 function CotBoard({ width, height, focused, family, initialCode }: PaneProps & { family: CotFamily; initialCode: string | null }) {
@@ -64,12 +64,10 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const [storedScope, setScope] = usePluginPaneState<CotScope>("scope", "major");
   const scope = cotScope(storedScope);
   const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const [searchFocus, setSearchFocus] = useState(0);
+  const { active: searching, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "desc" });
   const control = useRef<SelectControl>(null);
   const scopeControl = useRef<SelectControl>(null);
-  const searchInput = useRef<InputRenderable | null>(null);
   const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force), [family, traderClass, session.requestKey]);
   const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
   const data = resource.data?.traderClass === traderClass ? resource.data : null;
@@ -92,13 +90,12 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     if (!boardShown) return;
     if (event.name === "c") { event.preventDefault(); control.current?.open(); }
     if (event.name === "s") { event.preventDefault(); scopeControl.current?.open(); }
-    if (event.name === "/") { event.preventDefault(); setSearching(true); setSearchFocus((value) => value + 1); }
   });
   usePaneFooter("cot:actions", () => ({ hints: boardShown ? [
     { id: "class", key: "c", label: "class", onPress: () => control.current?.open() },
     { id: "scope", key: "s", label: "cope", onPress: () => scopeControl.current?.open() },
-    { id: "search", key: "/", label: "search", onPress: () => { setSearching(true); setSearchFocus((value) => value + 1); } },
-  ] : [] }), [boardShown]);
+    { id: "search", key: "/", label: "search", onPress: focusSearch },
+  ] : [] }), [boardShown, focusSearch]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
     info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
@@ -116,8 +113,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       return { text: row.reportDate, color: colors.textMuted };
     }}
     rootBefore={<QueryBar width={width}
-      search={{ value: query, onChange: setQuery, placeholder: "market or CFTC code", focused, active: searching,
-        onActiveChange: setSearching, focusToken: searchFocus, inputRef: searchInput }}
+      search={{ value: query, onChange: setQuery, placeholder: "market or CFTC code", focused, ...searchProps }}
       filters={[
         { id: "class", label: "Class", value: traderClass, options: COT_CLASSES[family], onChange: setClass, controlRef: control },
         { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },

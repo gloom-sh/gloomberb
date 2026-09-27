@@ -13,9 +13,8 @@ import {
   PaneStatusBody,
   scalarPoint,
   staticSeries,
-  Tabs,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
+  usePaneTabs,
   type ChartTableChart,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -117,13 +116,13 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     setCurrentPortfolioId(portfolioId);
     setSelectedSectorId(null);
   }, [setCurrentPortfolioId]);
-  const tabsInHeader = usePaneHeaderTabs(portfolioTabs.length > 0 ? {
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs(portfolioTabs.length > 0 ? {
     tabs: portfolioTabs,
     activeValue: activePortfolioId,
     onSelect: handlePortfolioSelect,
     focused,
+    compact: true,
   } : null);
-  const tabRows = tabsInHeader ? 0 : 1;
   const bodyHeight = Math.max(3, height - tabRows);
 
   const portfolioTickers = useMemo(() => {
@@ -375,17 +374,9 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
         </Box>
       ) : (
         <>
-          {!tabsInHeader && (
+          {tabStrip && (
             <Box flexDirection="row" height={1}>
-              <Box flexShrink={1} overflow="hidden">
-                <Tabs
-                  tabs={portfolioTabs}
-                  activeValue={activePortfolioId}
-                  onSelect={handlePortfolioSelect}
-                  compact
-                  focused={focused}
-                />
-              </Box>
+              <Box flexShrink={1} overflow="hidden">{tabStrip}</Box>
             </Box>
           )}
 
