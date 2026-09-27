@@ -62,6 +62,18 @@ These rules apply to every symbol. The app keeps no per-company history fixes.
 - **Leading zero-volume bars.** A series can begin with bars that have zero volume and one price (open, high, low and close equal), such as an offer price dated before the first trade. Those leading bars are dropped only when the next priced bar reports volume within a week. Series without volume, such as FX and most indices, and long-running indices whose early decades carry no volume keep every bar. Aggregated weekly or monthly bars that already include such a price are kept as reported.
 - **Cache schema.** Cached quotes and financials carry a schema version, and price history cache keys carry a history version. A record written under another version is ignored and fetched again rather than repaired on read, so a correction reaches cached data after one refresh.
 
+## Statement corrections
+
+These rules apply to every issuer. The app keeps no per-company statement, earnings or operating result fixes.
+
+- **Declared gaps.** A line a source withholds for a period (revenue, operating revenue, pretax income, tax, the net income lines or EPS) stays unavailable through merges, caches and exports. Another source cannot fill it, and charts never recompute it, for example as the full year less the other quarters; a TTM sum that needs it is unavailable too.
+- **Restatement guard.** A US filer's fourth quarter is its 10-K year less the nine months in its Q3 10-Q, and vendors derive it the same way. When an earlier period of that year is re-reported with a different amount (beyond rounding) after the nine-month figure was filed, the year and the nine months sit on different bases. That line's fourth quarter is then a gap, in SEC history and in the vendor's quarters, until a restated nine-month comparative is filed. Revenue, the three net income lines, pretax income and tax are checked; a directly reported fourth quarter needs no guard.
+- **Vendor fourth quarters.** When a vendor's full year is within 0.5% of the SEC figure but its fourth quarter differs by more than 5% from SEC's (reported directly, or the year less nine months), the vendor's quarters use another measure and the fourth quarter absorbed the difference. That fourth quarter is a gap; the SEC amount is not substituted.
+- **EPS consistency.** Basic EPS must agree, within 2% or 0.01, with income to common holders or net income over basic weighted shares. Otherwise it is unavailable, and so is diluted EPS when it also disagrees with income over diluted shares. Diluted EPS is not checked on its own, because as-converted share classes and operating partnership units legitimately change its numerator.
+- **Reported operating income.** Where the provider has an as-reported operating income, it replaces the provider's normalized figure, which leaves out items such as impairments and credit losses that some issuers report inside operating expenses. Operating expenses become gross profit less that operating income, so each row stays consistent and matches the filing.
+
+Revenue concepts for banks are described in [reported bank revenue in SEC history](data-quality/sec-bank-revenue.md).
+
 ## Financial statements and valuation
 
 Statements are the latest available source snapshots and may include restatements. Historical as-of values are not reconstructed. A period end identifies the reporting period, not necessarily when every metric became public.
@@ -116,7 +128,7 @@ Relative valuation retains stale fundamentals for inspection and marks them thro
 
 The current overview and peer table do not provide P/B, P/tangible book, CET1, or FFO/AFFO multiples. Financial-statement common equity and ordinary shares are dated balance-sheet inputs; weighted-average EPS shares belong to an earnings period and cannot replace period-end shares in a book-value calculation. A provider's tangible-book amount may differ from the bank's reported tangible common equity because of its adjustment policy. Compare issuer definitions and periods before combining these values. REIT GAAP P/E and generic cash-flow yield do not establish FFO/AFFO valuation or distribution coverage.
 
-Confirmed quarterly observations that conflict with issuer filings are withdrawn through caches, statement merges and chart completion. Structured reports retain the withdrawal identifiers; a corrected observation can restore the field. See [the source comparison and limits](data-quality/quarterly-statement-revisions.md).
+Statement values that conflict with issuer filings, or with the rest of their row, follow the [statement corrections](#statement-corrections): they are unavailable rather than replaced, and structured reports list them in `unavailableFields` and `unavailableEarnings`.
 
 ### SEC income attribution
 
@@ -124,7 +136,7 @@ SEC `NetIncomeLoss` supplies parent-attributable net income. `ProfitLoss` is sho
 
 Missing income concepts in those periods remain unavailable through provider/cache merges and derived fourth quarters. Consolidated income is not substituted for parent income. When common income is explicitly unavailable, parent income is not used to estimate earnings per common share or P/E; independently reported EPS remains usable. Income revisions use their own filing evidence, separately from other fields on the same row. Undated or generic vendor income does not establish an SEC attribution basis.
 
-This separation does not resolve cross-filing accounting revisions or justify annual-minus-quarter arithmetic for other fields. Latest source data can include restatements; historical publication-time vintages are not reconstructed.
+This separation does not resolve cross-filing accounting revisions; the [restatement guard](#statement-corrections) only keeps a fourth quarter from mixing them. Latest source data can include restatements; historical publication-time vintages are not reconstructed.
 
 ## Insider filings
 
