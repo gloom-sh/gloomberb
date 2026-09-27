@@ -5,8 +5,8 @@ import { Box, Text } from "../../../ui";
 import { useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { t } from "../../../i18n";
-import { truncate } from "./model";
 import { useFieldLabel } from "./form-components";
 
 type PasswordDialogField = "current" | "new" | "confirm";
@@ -109,7 +109,7 @@ export function PasswordChangeDialog({
           onChange={setConfirmPassword}
           onSubmit={() => { void submit(); }}
         />
-        {error ? <Text fg={colors.negative}>{truncate(error, fieldWidth)}</Text> : null}
+        {error ? <Text fg={colors.negative}>{truncateWithEllipsis(error, fieldWidth)}</Text> : null}
         <Box flexDirection="row" justifyContent="flex-end">
           <Button
             label={submitting ? t("Changing...") : t("Update Password")}

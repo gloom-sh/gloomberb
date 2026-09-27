@@ -3,6 +3,7 @@ import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
 } from "../../brokers/account-cache";
+import { findPortfolioHeir } from "../../brokers/broker-portfolio-sync";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -190,18 +191,33 @@ export function bindPluginRegistryRuntimeAccess({
     const broker = pluginRegistry.brokers.get(instance.brokerType);
     await broker?.disconnect?.(instance).catch(() => {});
 
-    const removedPortfolioIds = new Set(
-      stateRef.current.config.portfolios
-        .filter((portfolio) => portfolio.brokerInstanceId === instanceId)
-        .map((portfolio) => portfolio.id),
-    );
+    // A portfolio another profile of the account can keep (the account switched
+    // to or from sign-in) goes to that profile; only this profile's positions go.
+    const syncsAccount = (candidate: BrokerInstanceConfig, accountId: string) =>
+      (stateRef.current.brokerAccounts[candidate.id] ?? []).some((account) => account.accountId === accountId)
+      || [...stateRef.current.tickers.values()].some((ticker) => ticker.metadata.positions.some((position) =>
+        position.brokerInstanceId === candidate.id && position.brokerAccountId === accountId));
+    const heirs = new Map<string, string>();
+    const removedPortfolioIds = new Set<string>();
+    for (const portfolio of stateRef.current.config.portfolios) {
+      if (portfolio.brokerInstanceId !== instanceId) continue;
+      const heir = findPortfolioHeir(stateRef.current.config, instance, portfolio, pluginRegistry.brokers, syncsAccount);
+      if (heir) heirs.set(portfolio.id, heir.id);
+      else removedPortfolioIds.add(portfolio.id);
+    }
 
-    const nextPortfolios = stateRef.current.config.portfolios.filter((portfolio) => !removedPortfolioIds.has(portfolio.id));
+    const nextPortfolios = stateRef.current.config.portfolios.flatMap((portfolio) => {
+      if (removedPortfolioIds.has(portfolio.id)) return [];
+      const heirId = heirs.get(portfolio.id);
+      return [heirId ? { ...portfolio, brokerInstanceId: heirId } : portfolio];
+    });
     const nextTickers = new Map(stateRef.current.tickers);
 
     for (const ticker of stateRef.current.tickers.values()) {
       const nextPositions = ticker.metadata.positions.filter((position) => position.brokerInstanceId !== instanceId);
-      const nextPortfolioRefs = ticker.metadata.portfolios.filter((portfolioId) => !removedPortfolioIds.has(portfolioId));
+      const heldPortfolioIds = new Set(nextPositions.map((position) => position.portfolio));
+      const nextPortfolioRefs = ticker.metadata.portfolios.filter((portfolioId) =>
+        !removedPortfolioIds.has(portfolioId) && (!heirs.has(portfolioId) || heldPortfolioIds.has(portfolioId)));
       const nextBrokerContracts = (ticker.metadata.broker_contracts ?? []).filter((contract) => contract.brokerInstanceId !== instanceId);
 
       const nextTicker: TickerRecord = {
@@ -244,5 +260,9 @@ export function bindPluginRegistryRuntimeAccess({
     dispatch({ type: "SET_TICKERS", tickers: nextTickers });
     await saveConfigImmediately(nextConfig);
     pluginRegistry.events.emit("config:changed", { config: nextConfig });
+    // The profile that kept a portfolio fills in what the removed one held there.
+    for (const heirId of new Set(heirs.values())) {
+      void importBrokerPositions(heirId).catch(() => {});
+    }
   };
 }

@@ -41,7 +41,6 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import {
   createSavedSearch,
   deleteSavedSearch,
-  errorMessage,
   isAbortError,
   loadSavedSearches,
   loadSearchDocument,
@@ -74,6 +73,7 @@ import {
 } from "./model";
 import { parseMarkedSnippet, snippetPlainText, truncateSegments } from "./snippet";
 import { SnippetText } from "./snippet-text";
+import { errorMessage } from "../../../utils/errors";
 
 const QUERY_DEBOUNCE_MS = 300;
 const TICKER_FIELD_WIDTH = 22;

@@ -1,4 +1,5 @@
 import { instrumentIdentityKey } from "../../../../utils/instrument-identity";
+import { instrumentFromQuoteTarget } from "../../../../market-data/selectors";
 import { mergeQuoteSubscriptionTargets } from "../../../../market-data/quote-subscription-target";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
@@ -11,11 +12,7 @@ interface RemoteQuoteSubscriptionEntry {
 }
 
 function quoteTargetKey(target: QuoteSubscriptionTarget): string {
-  return instrumentIdentityKey({
-    symbol: target.symbol, exchange: target.exchange,
-    brokerId: target.context?.brokerId, brokerInstanceId: target.context?.brokerInstanceId,
-    instrument: target.context?.instrument,
-  });
+  return instrumentIdentityKey(instrumentFromQuoteTarget(target));
 }
 
 export class RemoteQuoteSubscriptionRegistry {

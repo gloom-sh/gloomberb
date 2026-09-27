@@ -3,6 +3,7 @@ import {
   validatePosition,
   type ScenarioPosition,
 } from "../options-scenario/model";
+import { isFiniteNumber, isRecord } from "../../../utils/guards";
 /** Explicit local account evidence. Current positions cannot establish this history. */
 export interface PerformanceObservation {
   date: string;
@@ -42,10 +43,6 @@ const DAY = 86_400_000;
 const fail = (message: string): never => {
   throw new Error(`Portfolio evidence: ${message}`);
 };
-const record = (value: unknown): value is Record<string, unknown> =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-const finite = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
 const label = (value: unknown, maximum = 200): value is string =>
   typeof value === "string" &&
   value.trim().length > 0 &&
@@ -73,7 +70,7 @@ export function parsePortfolioRiskEvidence(
   } catch {
     return fail("enter valid JSON");
   }
-  if (!record(data)) return fail("expected an object");
+  if (!isRecord(data)) return fail("expected an object");
   ownKeys(data, [
     "version",
     "portfolioId",
@@ -101,7 +98,7 @@ export function parsePortfolioRiskEvidence(
   };
   if (data.performance !== undefined) {
     const performance = data.performance;
-    if (!record(performance)) return fail("performance must be an object");
+    if (!isRecord(performance)) return fail("performance must be an object");
     ownKeys(performance, [
       "flowTiming",
       "externalFlowsComplete",
@@ -122,14 +119,14 @@ export function parsePortfolioRiskEvidence(
     }
     const observations: PerformanceObservation[] = [];
     for (const [index, row] of performance.observations.entries()) {
-      if (!record(row)) return fail(`valuation ${index + 1} must be an object`);
+      if (!isRecord(row)) return fail(`valuation ${index + 1} must be an object`);
       ownKeys(row, ["date", "value", "externalFlow"]);
       if (
         !evidenceDay(row.date) ||
         row.date > through ||
-        !finite(row.value) ||
+        !isFiniteNumber(row.value) ||
         row.value <= 0 ||
-        !finite(row.externalFlow)
+        !isFiniteNumber(row.externalFlow)
       ) {
         return fail(
           `valuation ${index + 1} needs a valid completed date, positive NAV and explicit externalFlow`,
@@ -163,7 +160,7 @@ export function parsePortfolioRiskEvidence(
   }
   if (data.attribution !== undefined) {
     const attribution = data.attribution;
-    if (!record(attribution)) return fail("attribution must be an object");
+    if (!isRecord(attribution)) return fail("attribution must be an object");
     ownKeys(attribution, [
       "method",
       "startDate",
@@ -192,7 +189,7 @@ export function parsePortfolioRiskEvidence(
     const sectors: AttributionSector[] = [];
     const names = new Set<string>();
     for (const row of attribution.sectors) {
-      if (!record(row)) return fail("each sector must be an object");
+      if (!isRecord(row)) return fail("each sector must be an object");
       ownKeys(row, [
         "sector",
         "portfolioWeight",
@@ -203,11 +200,11 @@ export function parsePortfolioRiskEvidence(
       if (!label(row.sector, 100) || names.has(row.sector.trim().toUpperCase()))
         return fail("sector names must be nonempty and unique");
       for (const field of ["portfolioWeight", "benchmarkWeight"] as const) {
-        if (!finite(row[field]) || row[field] < 0 || row[field] > 1)
+        if (!isFiniteNumber(row[field]) || row[field] < 0 || row[field] > 1)
           return fail(`${row.sector}: ${field} must be a fraction from 0 to 1`);
       }
       for (const field of ["portfolioReturn", "benchmarkReturn"] as const) {
-        if (!finite(row[field]) || row[field] < -1)
+        if (!isFiniteNumber(row[field]) || row[field] < -1)
           return fail(
             `${row.sector}: ${field} must be a fractional return at least -1`,
           );
@@ -239,7 +236,7 @@ export function parsePortfolioRiskEvidence(
   }
   if (data.options !== undefined) {
     const options = data.options;
-    if (!record(options)) return fail("options must be an object");
+    if (!isRecord(options)) return fail("options must be an object");
     ownKeys(options, ["scope", "positions"]);
     if (
       options.scope !== "imported" ||
@@ -252,7 +249,7 @@ export function parsePortfolioRiskEvidence(
       );
     const positions: ScenarioPosition[] = [];
     for (const value of options.positions) {
-      if (!record(value)) return fail("option snapshot must be an object");
+      if (!isRecord(value)) return fail("option snapshot must be an object");
       ownKeys(value, [
         "symbol",
         "exchange",
@@ -471,7 +468,7 @@ export function brokerPerformanceEvidence(
   const points = [...performance.points].sort((left, right) => left.date.localeCompare(right.date));
   const observations: PerformanceObservation[] = [];
   for (const [index, point] of points.entries()) {
-    if (!finite(point.value) || (index > 0 && !finite(point.externalFlow))) return null;
+    if (!isFiniteNumber(point.value) || (index > 0 && !isFiniteNumber(point.externalFlow))) return null;
     observations.push({ date: point.date, value: point.value, externalFlow: index === 0 ? 0 : point.externalFlow! });
   }
   try {

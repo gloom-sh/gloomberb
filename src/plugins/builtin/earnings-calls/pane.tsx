@@ -15,6 +15,7 @@ import {
   type DataTableRootKeyContext,
   type PaneFooterSegment
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -27,6 +28,7 @@ import {
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -107,8 +109,6 @@ function renderCell(call: CloudEarningsCallPayload, column: CallColumn): DataTab
       return { text: "" };
   }
 }
-
-type SortDirection = "asc" | "desc";
 
 interface CallSort {
   columnId: string;
@@ -599,13 +599,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         focusSearch();
         return true;
       }
-      if (isPlainKey(event, "r")) {
-        stopSearchFocusNavigation(event);
+      return handleRefreshKey(event, () => {
         fetchCalls(true);
         if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
-        return true;
-      }
-      return false;
+      }, { stopPropagation: true });
     },
     [fetchCalls, focusSearch, lookupTicker],
   );
@@ -903,11 +900,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(columnId) =>
-        setSort((current) =>
-          current.columnId === columnId
-            ? { columnId, direction: current.direction === "asc" ? "desc" : "asc" }
-            : { columnId, direction: "desc" },
-        )
+        setSort((current) => nextHeaderSort(current, columnId, { firstDirection: "desc" }))
       }
       getItemKey={(call) => call.id}
       renderCell={renderCell}

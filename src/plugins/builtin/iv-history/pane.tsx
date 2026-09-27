@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
@@ -71,10 +72,10 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   const openSurface = () => { if (symbol) createPaneFromTemplate("vol-surface-pane", { symbol, ticker, instrument: instrument?.instrument }); };
   // These answer in every state, including while the history backfills and
   // no table is on screen; the footer hints bind their own keys.
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   useShortcut((event) => {
     if (event.defaultPrevented) return;
-    if (isPlainKey(event, "r")) void resource.reload();
-    else if (isPlainKey(event, "y")) cycleLookback();
+    if (isPlainKey(event, "y")) cycleLookback();
     else if (isPlainKey(event, "w")) toggleHv();
     else return;
     event.preventDefault(); event.stopPropagation();

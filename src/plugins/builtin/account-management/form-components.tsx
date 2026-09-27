@@ -2,9 +2,9 @@ import { type ReactNode, type Ref } from "react";
 import { Checkbox, SelectButton, TextField, type ChoiceDialogChoice } from "../../../components";
 import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { SelectControl } from "../../../components/ui/select-button";
 import type { AccountFieldKey, ProfileAnalyticsPreview } from "./model";
-import { truncate } from "./model";
 import { t } from "../../../i18n";
 
 export function AccountTextField({
@@ -54,7 +54,7 @@ export function AccountTextField({
         fg={active ? colors.textBright : colors.textDim}
         attributes={active ? TextAttributes.BOLD : 0}
       >
-        {truncate(labelText, labelWidth)}
+        {truncateWithEllipsis(labelText, labelWidth)}
       </Text>
       <TextField
         value={value}
@@ -179,7 +179,7 @@ export function PublicAnalyticsGroup({
     >
       <Box height={1} flexDirection="row" gap={1} alignItems="center">
         <Text fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {truncate(labelText, labelWidth)}
+          {truncateWithEllipsis(labelText, labelWidth)}
         </Text>
         <SelectButton
           label={t("Public Stats")}
@@ -198,15 +198,15 @@ export function PublicAnalyticsGroup({
           const valueWidth = Math.max(1, metricWidth - labelTextWidth - 1);
           return (
             <Box key={metric.id} width={metricWidth} height={1} flexDirection="row" gap={1}>
-              <Text fg={colors.textDim}>{truncate(metric.label, labelTextWidth)}</Text>
+              <Text fg={colors.textDim}>{truncateWithEllipsis(metric.label, labelTextWidth)}</Text>
               <Text fg={metricColor(metric.tone)} attributes={TextAttributes.BOLD}>
-                {truncate(metric.value, valueWidth)}
+                {truncateWithEllipsis(metric.value, valueWidth)}
               </Text>
             </Box>
           );
         }) : detail ? (
           <Text fg={colors.textMuted}>
-            {truncate(detail, detailWidth)}
+            {truncateWithEllipsis(detail, detailWidth)}
           </Text>
         ) : null}
       </Box>

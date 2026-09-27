@@ -1,4 +1,5 @@
 import type { CloudExecutiveRowPayload } from "../../../api-client";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { formatPercentRaw } from "../../../utils/format";
 
 /** "$36.3M", "$282K", "$50,000". */
@@ -30,16 +31,8 @@ export function formatChange(
 }
 
 export function formatFiled(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US", {
-    // Filing and meeting dates are calendar labels, not local event times.
-    timeZone: "UTC",
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
+  // Filing and meeting dates are calendar labels, not local event times.
+  return formatShortDate(value, { day: "2-digit", utc: true, fallback: "\u2014" });
 }
 
 /** Share of a row's total that was stock and option awards, as "82%". */

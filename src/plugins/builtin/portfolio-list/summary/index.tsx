@@ -7,6 +7,7 @@ import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
+import { formatShortDate } from "../../../../utils/datetime-format";
 import { displayWidth, formatCompactAmount, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
 import {
@@ -64,10 +65,6 @@ function formatSignedCompact(value: number): string {
   return formatCompactAmount(value, { signed: true });
 }
 
-function formatMonthDay(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 function parseIsoDateAsLocalDate(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -121,7 +118,7 @@ function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { labe
         ? "Synced"
         : today
           ? `Synced ${syncedAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`
-          : `Synced ${formatMonthDay(syncedAt)}`,
+          : `Synced ${formatShortDate(syncedAt, { year: false })}`,
       kind: "cloud",
     };
   }
@@ -129,9 +126,9 @@ function formatSourceBadge(account: BrokerAccount, liveGateway: boolean): { labe
     const asOfDate = account.asOfDate ? parseIsoDateAsLocalDate(account.asOfDate) : null;
     return {
       label: asOfDate
-        ? `Flex ${formatMonthDay(asOfDate)}`
+        ? `Flex ${formatShortDate(asOfDate, { year: false })}`
         : account.updatedAt
-          ? `Flex ${formatMonthDay(new Date(account.updatedAt))}`
+          ? `Flex ${formatShortDate(account.updatedAt, { year: false })}`
         : "Flex",
       kind: "flex",
     };

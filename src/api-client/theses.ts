@@ -1,4 +1,6 @@
-import { ApiRequestError } from "./errors";
+import { ApiRequestError, RevisionConflictError } from "./errors";
+import { scopeQuery } from "./notes";
+import { putWithRevision, type CloudApiRequest } from "./request";
 import type {
   CloudNoteScope,
   CloudThesis,
@@ -9,17 +11,9 @@ import type {
   ThesisStatus,
 } from "./types";
 
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
-
 /** A save refused because the thesis changed since it was loaded. */
-export class ThesisConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly current: CloudThesis | null,
-  ) {
-    super(message);
-    this.name = "ThesisConflictError";
-  }
+export class ThesisConflictError extends RevisionConflictError<CloudThesis> {
+  override name = "ThesisConflictError";
 }
 
 /** A revision the server refused because a fired kill condition was moved without a note. */
@@ -34,12 +28,6 @@ export class ThesisGoalpostError extends Error {
 }
 
 export type ThesisListScope = CloudNoteScope | { scope: "all" };
-
-function scopeQuery(scope: ThesisListScope): string {
-  const params = new URLSearchParams({ scope: scope.scope });
-  if ("teamId" in scope && scope.teamId) params.set("teamId", scope.teamId);
-  return params.toString();
-}
 
 function encode(id: string): string {
   return encodeURIComponent(id);
@@ -93,16 +81,12 @@ export class CloudThesesApi {
    */
   async updateThesis(id: string, patch: ThesisPatch, expectedRevision?: number): Promise<CloudThesis> {
     try {
-      return await this.request<CloudThesis>(`/theses/${encode(id)}`, {
-        method: "PUT",
-        headers: expectedRevision ? { "if-match": String(expectedRevision) } : {},
-        body: JSON.stringify(patch),
+      return await putWithRevision<CloudThesis, CloudThesis>(this.request, `/theses/${encode(id)}`, patch, {
+        expected: expectedRevision,
+        loadCurrent: () => this.getThesis(id),
+        conflict: ThesisConflictError,
       });
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 412) {
-        const current = await this.getThesis(id).catch(() => null);
-        throw new ThesisConflictError(error.message, current);
-      }
       if (error instanceof ApiRequestError && error.status === 400 && /kill condition/i.test(error.message)) {
         throw new ThesisGoalpostError(error.message, []);
       }

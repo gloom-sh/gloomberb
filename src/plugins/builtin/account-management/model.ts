@@ -4,8 +4,6 @@ import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatNumber } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
 
-export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
-
 export type AccountFieldKey =
   | "username"
   | "name"

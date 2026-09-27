@@ -9,6 +9,12 @@ import {
   buildBrokerProfileConfig,
   validateBrokerProfileValues,
 } from "../../../brokers/profile-form";
+import type { SignedInBroker } from "../../../brokers/signed-in/client";
+import {
+  connectSignedInBrokerProfile,
+  disconnectSignedInProfile,
+  signedInBrokerForProfile,
+} from "../../../brokers/signed-in/connect";
 import {
   addTickerToPortfolio,
   createManualPortfolio as createManualPortfolioConfig,
@@ -31,6 +37,8 @@ export type CommandBarNotifyFn = (
 
 export interface CommandBarCollectionWorkflowActions {
   connectBrokerProfile: (brokerId: string, values: WorkflowStringValues) => Promise<void>;
+  /** Opens the connect dialog; rejects with what to tell the user when it is not connected. */
+  connectSignedInBroker: (broker: SignedInBroker) => Promise<void>;
   createManualPortfolio: (name: string, owner?: CollectionOwner) => Promise<void>;
   createWatchlist: (name: string, owner?: CollectionOwner) => Promise<void>;
   deletePortfolio: (portfolioId: string) => Promise<void>;
@@ -73,6 +81,15 @@ export function createCommandBarCollectionWorkflowActions(options: {
     getState,
   });
 
+  /** Lands on the synced profile's portfolio once a broker is connected. */
+  const showConnectedBroker = (instanceId: string) => {
+    const freshConfig = pluginRegistry.getConfigFn();
+    dispatch({ type: "SET_CONFIG", config: freshConfig });
+    const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instanceId);
+    if (brokerTab) setActiveCollection(brokerTab.id);
+    notify("Connected! Positions will sync automatically.", { type: "success" });
+  };
+
   return {
     async connectBrokerProfile(brokerId, values) {
       const adapter = pluginRegistry.brokers.get(brokerId);
@@ -90,11 +107,17 @@ export function createCommandBarCollectionWorkflowActions(options: {
         brokerValues as Record<string, unknown>,
       );
       await pluginRegistry.syncBrokerInstanceFn(instance.id);
-      const freshConfig = pluginRegistry.getConfigFn();
-      dispatch({ type: "SET_CONFIG", config: freshConfig });
-      const brokerTab = freshConfig.portfolios.find((portfolio) => portfolio.brokerInstanceId === instance.id);
-      if (brokerTab) setActiveCollection(brokerTab.id);
-      notify("Connected! Positions will sync automatically.", { type: "success" });
+      showConnectedBroker(instance.id);
+    },
+
+    async connectSignedInBroker(broker) {
+      const connected = await connectSignedInBrokerProfile(broker, {
+        getConfig: () => pluginRegistry.getConfigFn(),
+        createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
+        syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstanceFn(instanceId),
+      });
+      if (!connected) throw new Error(`${broker.name} was not connected.`);
+      showConnectedBroker(connected.instance.id);
     },
 
     async createManualPortfolio(name, owner) {
@@ -278,9 +301,16 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (!instance) {
         throw new Error("Broker profile not found.");
       }
+      const { stillConnected } = await disconnectSignedInProfile(instance);
       await pluginRegistry.removeBrokerInstanceFn(instanceId);
       const freshConfig = pluginRegistry.getConfigFn();
       dispatch({ type: "SET_CONFIG", config: freshConfig });
+      if (stillConnected) {
+        // Signed out of Gloom, so the account keeps the broker for its other devices and agents.
+        const broker = signedInBrokerForProfile(instance, instance.label);
+        notify(`Removed ${instance.label}. Sign in to Gloom to disconnect ${broker.name} from your account.`, { type: "info" });
+        return;
+      }
       notify(`Removed ${instance.label}.`, { type: "success" });
     },
   };

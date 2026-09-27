@@ -6,7 +6,6 @@ import {
   indirectPct,
   isPendingAuction,
   matchesFilter,
-  nextAuctionSort,
   nextFilter,
   rateLabel,
   rateValue,
@@ -175,13 +174,5 @@ describe("visibleAuctions", () => {
     expect(sorted("asc").map((row) => row.highYield)).toEqual([-0.125, 0, 2, null, null]);
     expect(sorted("desc").map((row) => row.highYield)).toEqual([2, 0, -0.125, null, null]);
     expect(sorted("asc").slice(-2).map((row) => row.auctionDate)).toEqual(["2026-09-05", "2026-09-01"]);
-  });
-});
-
-describe("nextAuctionSort", () => {
-  test("toggles direction on the active column and picks a sane default per column", () => {
-    expect(nextAuctionSort(DEFAULT_AUCTION_SORT, "date")).toEqual({ columnId: "date", direction: "asc" });
-    expect(nextAuctionSort(DEFAULT_AUCTION_SORT, "btc")).toEqual({ columnId: "btc", direction: "desc" });
-    expect(nextAuctionSort(DEFAULT_AUCTION_SORT, "term")).toEqual({ columnId: "term", direction: "asc" });
   });
 });

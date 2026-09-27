@@ -4,12 +4,12 @@ import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGrid
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useLiveSessionRefresh } from "../shared/volatility/live-session";
@@ -44,7 +44,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const [lookback, setLookback] = usePaneSettingValue("lookbackYears", "1");
   const [showIv, setShowIv] = usePaneSettingValue("showIv", true);
   const [selected, setSelected] = usePluginPaneState("selectedWindow", 30);
-  const [sort, setSort] = useState<{ id: keyof VolatilityConeStatistics; direction: "asc" | "desc" }>({ id: "window", direction: "asc" });
+  const [sort, setSort] = useState<{ columnId: keyof VolatilityConeStatistics; direction: SortDirection }>({ columnId: "window", direction: "asc" });
   const estimator = ESTIMATOR_OPTIONS.find((option) => option.value === estimatorValue)?.value ?? "close-to-close";
   const windows = useMemo(() => selectedWindows(windowValue), [windowValue]);
   const instrument = instrumentFromTicker(ticker, symbol);
@@ -122,12 +122,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     values: iv.data?.reference ? { expiration: String(iv.data.reference.expiration) } : {} }); };
   // The footer hints bind v, i and s in every view and state; only the reload
   // is the pane's own key.
-  useShortcut((event) => {
-    if (event.defaultPrevented || !isPlainKey(event, "r")) return;
-    event.preventDefault(); event.stopPropagation();
+  usePaneRefreshKey(() => {
     void history.reload();
     if (showIv) void iv.reload();
-  }, { enabled: focused });
+  }, { focused });
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
@@ -159,10 +157,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const coneStats: StatItem[] = view === "cone" && model && reference
     ? [{ id: "atm-iv", label: "ATM IV", value: percent(reference.value), detail: `${Math.round(reference.daysToExpiry)}d` }] : [];
   const contentHeight = Math.max(4, height - 1 - tabRows - statGridRows(coneStats, width));
-  const sortedCone = [...(model?.cone ?? [])].sort((left, right) => {
-    const a = left[sort.id], b = right[sort.id];
-    return a == null ? b == null ? 0 : 1 : b == null ? -1 : (a - b) * (sort.direction === "asc" ? 1 : -1);
-  });
+  const sortedCone = [...(model?.cone ?? [])].sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   const coneTableHeight = Math.min(Math.max(2, sortedCone.length + 1), 10, Math.max(4, Math.floor(contentHeight * 0.42)));
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={view} onSelect={setView} variant="underline" dense focused={focused} />}
@@ -176,8 +171,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
         <StatGrid items={coneStats} width={width} />
         <DataTableView<VolatilityConeStatistics> focused={focused} columns={CONE_COLUMNS} items={sortedCone}
           rootWidth={width} rootHeight={coneTableHeight} getItemKey={(row) => String(row.window)}
-          sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="Volatility cone unavailable."
-          onHeaderClick={(id) => setSort({ id: id as keyof VolatilityConeStatistics, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
+          sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="Volatility cone unavailable."
+          onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as keyof VolatilityConeStatistics))}
           selection={{ kind: "id", selectedId: String(selected), getId: (row) => String(row.window), onChange: (_id, row) => setSelected(row.window) }}
           onActivate={(row) => setSelected(row.window)}
           getExportMetadata={() => [["symbol", model.symbol], ["estimator", model.estimator], ["lookback years", model.lookbackYears],

@@ -1,6 +1,5 @@
 import { matchPrefix, type Command } from "./commands/registry";
 import { t, tf } from "../../i18n";
-import { truncateToDisplayWidth } from "../../utils/format";
 
 export { rankTickerSearchItems } from "../../tickers/search";
 
@@ -171,10 +170,6 @@ export function getRowPresentation(item: CommandBarItemView, selected: boolean, 
     primaryMuted,
     trailingAccent: item.accent === true && trailing.length > 0,
   };
-}
-
-export function truncateText(text: string, width: number): string {
-  return truncateToDisplayWidth(text, width);
 }
 
 /**

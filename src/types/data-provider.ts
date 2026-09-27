@@ -20,6 +20,7 @@ export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystRe
 export type CachedAssetArgs<K extends CachedAssetMethod> = Parameters<NonNullable<AssetDataProvider[K]>>;
 export type CachedAssetValue<K extends CachedAssetMethod> = Awaited<ReturnType<NonNullable<AssetDataProvider[K]>>>;
 
+/** @deprecated Use `NewsArticle`, the article shape news providers return. */
 export interface NewsItem {
   title: string;
   url: string;

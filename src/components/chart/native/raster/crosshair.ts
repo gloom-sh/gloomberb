@@ -1,5 +1,6 @@
 import { drawCircle, drawLine, parseHex } from "./primitives";
 import type { CellRect, NativeChartBitmap } from "./types";
+import { clamp } from "../../../../utils/math";
 
 interface CrosshairMarker {
   pixelY: number;
@@ -28,8 +29,6 @@ export interface CrosshairStrip {
   /** Stable identity for the strip contents. */
   key: string;
 }
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 function bitmap(width: number, height: number): NativeChartBitmap {
   const pixels = new Uint8Array(Math.max(width, 1) * Math.max(height, 1) * 4);

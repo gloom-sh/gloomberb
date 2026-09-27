@@ -8,6 +8,7 @@ import {
   type QueryBarView,
 } from "../../../components";
 import type { DataTableViewProps } from "../../../components/data-table/view";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { Box, ScrollBox, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -80,23 +81,13 @@ export function useSeriesList<Item, R extends string>({
       focusSearch();
       return true;
     }
-    if (isPlainKey(event, "r")) {
-      stopSearchFocusNavigation(event);
-      reload();
-      return true;
-    }
     return false;
-  }, [focusSearch, reload]);
+  }, [focusSearch]);
 
-  // A modified r (Shift+R refresh all, CmdOrCtrl+Shift+R resize) belongs to the app.
+  // The table leaves `r` to this handler, which also answers with no table focused.
   useShortcut((event) => {
     if (!focused || searchFocused || event.targetEditable || event.defaultPrevented) return;
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      reload();
-      return;
-    }
+    if (handleRefreshKey(event, reload, { stopPropagation: true })) return;
     const picked = range.options.find((option) => option.hint && isPlainKey(event, option.hint));
     if (!picked) return;
     event.preventDefault?.();

@@ -2,12 +2,9 @@ import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { TickerMetadata, TickerRecord } from "../types/ticker";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
+import { isRecord } from "../utils/guards";
 
 type StoredTickers = Record<string, TickerMetadata>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();

@@ -20,6 +20,7 @@ const CONGRESS_TABS = [
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useShortcut } from "../../../react/input";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
@@ -41,7 +42,6 @@ import {
   buildMemberColumns,
   buildTradeColumns,
   congressScanNotice,
-  nextSort,
   previousCongressYearPage,
   selectedIndexById,
   sortedMembers,
@@ -55,7 +55,6 @@ import {
   type LoadStatus,
   type MemberColumn,
   type MemberColumnId,
-  type SortDirection,
   type TradeColumn,
   type TradeColumnId,
 } from "./model";
@@ -76,6 +75,7 @@ import { colors } from "../../../theme/colors";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { DataTableKeyEvent } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 
 export { CONGRESS_TRADES_PANE_ID } from "./model";
 
@@ -223,7 +223,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     if (tickerFilter && detailMode && isDetailBackNavigationKey(event)) {
       event.preventDefault?.(); event.stopPropagation?.(); setDetailMode(null); return;
     }
-    if (!payload && isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refresh(); }
+    if (!payload) handleRefreshKey(event, refresh, { stopPropagation: true });
     // Without a table there is no row handler, and a failing filter must stay changeable.
     if (!payload && isPlainKey(event, "f")) { event.preventDefault?.(); event.stopPropagation?.(); void openFiltersRef.current(); }
   }, { phase: "before" });
@@ -311,16 +311,10 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     setDetailMode({ kind: "member", memberId: member.id });
   }, [detailTrade, members, selectedTrade, setSelectedMemberId]);
 
-  const { handleDetailKeyDown, handleRootKeyDown } = useCongressTradesKeyboard({
-    activeTab,
+  const { handleRootKeyDown } = useCongressTradesKeyboard({
     detailMode,
     focused,
     load,
-    loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
-    loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
-    openSelectedTicker,
-    openSelectedTradeMember,
-    openSelectedTradeSource,
     selectTab: tickerFilter ? () => {} : selectTab,
   });
   usePaneMenuItems(`${CONGRESS_TRADES_PANE_ID}:tabs`, () => (tickerFilter || detailMode ? null
@@ -464,7 +458,6 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             setDetailMode({ kind: "trade", tradeId: trade.id });
           }}
           onRootKeyDown={handleFiltersKey}
-          onDetailKeyDown={handleDetailKeyDown}
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
@@ -473,7 +466,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           items={tradeRows}
           sortColumnId={tradeSort.columnId}
           sortDirection={tradeSort.direction}
-          onHeaderClick={(columnId) => setTradeSort((current) => nextSort(current, columnId as TradeColumnId, columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId as TradeColumnId, { firstDirection: columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc" }))}
           getItemKey={(trade) => trade.id}
           renderCell={(trade, column, index, row) => {
             const cell = renderCongressTradeCell(trade, column, index, row);
@@ -491,7 +484,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           rootWidth={width} rootHeight={Math.max(1, height - tabRows - filterHeight)} rootBefore={filterBar}
           onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
           sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
-          onHeaderClick={(columnId) => setTickerSort((current) => nextSort(current, columnId as TickerColumnId, columnId === "ticker" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setTickerSort((current) => nextHeaderSort(current, columnId as TickerColumnId, { firstDirection: columnId === "ticker" ? "asc" : "desc" }))}
           renderCell={(row, column, index, selected) => {
             const cell = renderCongressTickerCell(row, column, index, selected);
             return !selected.selected && mineTickers.has(row.ticker) && column.id === "ticker" ? { ...cell, color: colors.borderFocused } : cell;
@@ -516,7 +509,6 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             setDetailMode({ kind: "member", memberId: member.id });
           }}
           onRootKeyDown={handleFiltersKey}
-          onDetailKeyDown={handleDetailKeyDown}
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
@@ -525,7 +517,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           items={memberRows}
           sortColumnId={memberSort.columnId}
           sortDirection={memberSort.direction}
-          onHeaderClick={(columnId) => setMemberSort((current) => nextSort(current, columnId as MemberColumnId, columnId === "member" || columnId === "district" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setMemberSort((current) => nextHeaderSort(current, columnId as MemberColumnId, { firstDirection: columnId === "member" || columnId === "district" ? "asc" : "desc" }))}
           getItemKey={(member) => member.id}
           renderCell={renderCongressMemberCell}
           emptyStateTitle="No matching members."

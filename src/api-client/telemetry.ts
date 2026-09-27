@@ -1,6 +1,5 @@
 import { withDeadline } from "../utils/async-deadline";
-
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+import type { CloudApiRequest } from "./request";
 
 /** A report is fire-and-forget; a slow uplink must not hold anything open for long. */
 const REPORT_TIMEOUT_MS = 5_000;

@@ -4,7 +4,7 @@ import type {
   CloudTweetQueryType,
   CloudTweetSearchResponse,
 } from "../../../api-client";
-import { formatCompact, formatTimeAgo } from "../../../utils/format";
+import { formatCompact } from "../../../utils/format";
 import { normalizeTweetText } from "../../../utils/tweet-text";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { toTimestampMillis } from "../../../utils/timestamp";
@@ -143,10 +143,6 @@ export function normalizeFeeds(value: unknown): TwitterFeed[] {
       lastSuccessAt: typeof entry.lastSuccessAt === "number" ? entry.lastSuccessAt : null,
       lastError: typeof entry.lastError === "string" ? entry.lastError : null,
     }));
-}
-
-export function formatRelativeShort(value: string): string {
-  return formatTimeAgo(value).replace(" ago", "").replace("just now", "<1m");
 }
 
 export function formatMetric(value: number | null | undefined): string {

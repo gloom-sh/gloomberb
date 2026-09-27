@@ -1,5 +1,6 @@
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { buildScenario, type ScenarioModel } from "./model";
+import { isRecord } from "../../../utils/guards";
 
 export interface ScenarioEvidenceInput {
   scenario: ScenarioModel | null | undefined;
@@ -22,7 +23,6 @@ export interface ScenarioEvidence {
   scenario: ScenarioModel | null;
 }
 
-const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
 function observationCount(scenario: ScenarioModel, view: string): number {
@@ -48,11 +48,11 @@ export function useScenarioEvidence(input: ScenarioEvidenceInput): void {
 
 /** Reprice both curves and every grid cell before accepting numeric screenshot evidence. */
 export function readScenarioEvidence(value: unknown): ScenarioEvidence | null {
-  if (!record(value) || value.kind !== "options-scenario" || value.version !== 1
+  if (!isRecord(value) || value.kind !== "options-scenario" || value.version !== 1
     || typeof value.symbol !== "string" || !["payoff", "grid", "legs"].includes(String(value.view))
     || typeof value.loading !== "boolean" || typeof value.complete !== "boolean"
     || (value.error !== null && typeof value.error !== "string") || !strings(value.notices)
-    || !record(value.scenario) || !strings(value.scenario.warnings)) return null;
+    || !isRecord(value.scenario) || !strings(value.scenario.warnings)) return null;
   const scenario = value.scenario as unknown as ScenarioModel;
   let expected: ScenarioModel;
   try { expected = buildScenario(scenario.position, scenario.controls); } catch { return null; }

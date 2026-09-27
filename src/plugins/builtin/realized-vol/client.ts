@@ -5,6 +5,8 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
 import { projectCurrentAtmIv, type CurrentAtmIvSnapshot } from "./model";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export interface RealizedVolatilityDependencies {
   loadChart(request: ChartRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<PricePoint[]>>;
@@ -34,40 +36,28 @@ export interface RealizedHistorySnapshot {
   fetchedAt: number;
 }
 
-function abortError(): Error { return new DOMException("Volatility history load was cancelled", "AbortError"); }
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-
-/** Cancels this consumer without aborting another pane's shared coordinator request. */
-async function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Volatility history load was cancelled";
 
 export async function loadRealizedVolatilityHistory(
   request: RealizedHistoryRequest,
   dependencies: RealizedVolatilityDependencies = createRealizedVolatilityDependencies(),
 ): Promise<RealizedHistorySnapshot> {
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   const now = dependencies.now?.() ?? Date.now();
   const symbol = request.instrument.symbol.trim().toUpperCase();
   try {
     // 5Y supplies a 2Y cone plus 260-session warmup; range-only 5Y can be weekly.
     const entry = await abortable(dependencies.loadChart({ instrument: request.instrument,
-      bufferRange: "5Y", granularity: "resolution", resolution: "1d" }, { forceRefresh: request.forceRefresh }), request.signal);
-    if (request.signal?.aborted) throw abortError();
+      bufferRange: "5Y", granularity: "resolution", resolution: "1d" }, { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
+    if (request.signal?.aborted) throw abortError(CANCELLED);
     const history = resolveEntryValue(entry) ?? [];
     return { symbol, history, source: entry.source,
       stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
       error: entry.error?.message ?? (history.length === 0 ? "Daily price history unavailable" : null),
       fetchedAt: entry.fetchedAt ?? now };
   } catch (error) {
-    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError();
-    return { symbol, history: [], source: null, stale: false, error: message(error), fetchedAt: now };
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
+    return { symbol, history: [], source: null, stale: false, error: errorMessage(error), fetchedAt: now };
   }
 }
 
@@ -89,13 +79,13 @@ export async function refreshCurrentAtmIv(
 ): Promise<CurrentAtmIvSnapshot> {
   const reference = previous.reference;
   if (!reference || !(request.spot > 0) || !Number.isFinite(request.spot)) return previous;
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   try {
     const next = projectCurrentAtmIv(await loadVolatilitySurface({ ...request, forceRefresh: true, expiries: [reference.expiration],
       settings: { ivSource: reference.ivSource } }, dependencies));
     return next.reference?.expiration === reference.expiration ? { ...previous, reference: next.reference } : previous;
   } catch (error) {
-    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError();
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
     return previous;
   }
 }
@@ -105,14 +95,14 @@ export async function loadCurrentAtmIv(
   request: CurrentAtmIvRequest,
   dependencies: SurfaceLoaderDependencies = createSurfaceDependencies(),
 ): Promise<CurrentAtmIvSnapshot> {
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   if (!(request.spot > 0) || !Number.isFinite(request.spot)) {
     return { reference: null, error: "Current ATM IV needs a valid underlying quote", warnings: [] };
   }
   try {
     return projectCurrentAtmIv(await loadVolatilitySurface(request, dependencies));
   } catch (error) {
-    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError();
-    return { reference: null, error: message(error), warnings: [] };
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
+    return { reference: null, error: errorMessage(error), warnings: [] };
   }
 }

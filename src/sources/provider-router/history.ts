@@ -11,6 +11,7 @@ import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import {
   isIntradayResolution,
   normalizeChartResolutionSupport,
+  parseBarInterval,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
@@ -18,7 +19,7 @@ import { subtractTimeRange } from "../../time-series/date-window";
 import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
-import { zonedDateTimeParts } from "../../utils/zoned-date-time";
+import { zonedDateKey } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
@@ -250,11 +251,6 @@ function resultIsStale(value: PriceHistoryResult, exchange: string, intervalMs?:
 // Longer than any intraday break (lunch, futures maintenance), shorter than a night.
 const SESSION_BREAK_MS = 3 * 3_600_000;
 
-function localDate(time: number, timeZone: string): string {
-  const { year, month, day } = zonedDateTimeParts(time, timeZone);
-  return `${year}-${month}-${day}`;
-}
-
 /**
  * 1D is the latest session. A broader cached range clipped to the trailing
  * 24 hours would otherwise also keep the previous session's afternoon, so cut
@@ -267,7 +263,7 @@ function clipHistoryToRange(value: PriceHistoryResult, range: TimeRange, exchang
   const timeZone = value.session?.timeZone ?? resolveExchangeTimeZone(exchange);
   const times = points.map(getPricePointTimestamp);
   const breakIndex = times.findLastIndex((time, index) => index > 0 && time - times[index - 1]! >= SESSION_BREAK_MS
-    && (!timeZone || localDate(time, timeZone) !== localDate(times[index - 1]!, timeZone)));
+    && (!timeZone || zonedDateKey(time, timeZone) !== zonedDateKey(times[index - 1]!, timeZone)));
   return { ...value, points: breakIndex > 0 ? points.slice(breakIndex) : points };
 }
 
@@ -484,8 +480,8 @@ export class ProviderRouterHistoryRoutes {
     context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
     const intervalMs = priceHistoryIntervalMs(barSize);
-    const calendarBounds = intervalMs !== null
-      && /^\d+\s*(d|day|days|w|wk|week|weeks|mo|month|months)$/i.test(barSize.trim());
+    const barUnit = parseBarInterval(barSize)?.unit;
+    const calendarBounds = barUnit === "day" || barUnit === "week" || barUnit === "month";
     // Intraday requests forward exact times. Date-only keys could reuse another
     // window or suppress its refresh; ISO bounds also bypass those legacy keys.
     const primaryParts: Array<[string, string | number | undefined | null]> = [

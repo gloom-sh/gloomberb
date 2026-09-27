@@ -19,6 +19,7 @@ import {
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
@@ -26,6 +27,7 @@ import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
 import {
   DEFAULT_BROWSER_SORT,
@@ -45,7 +47,6 @@ import {
   buildTimelineColumns,
   buildTimelineRows,
   inferBrowserTabFromQuery,
-  nextSortPreference,
   selectedIndexById,
   sortBrowserRows,
   sortFilingPositionRows,
@@ -239,12 +240,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     }
     if (event.targetEditable) return;
     // The ticker holdings view refreshes itself.
-    if (isPlainKey(event, "r") && !showTickerHoldings) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      load(true);
-      return;
-    }
+    if (!showTickerHoldings && handleRefreshKey(event, () => load(true), { stopPropagation: true })) return;
     if (isPlainKey(event, "/")) {
       event.stopPropagation?.();
       event.preventDefault?.();
@@ -422,11 +418,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
         sortColumnId={browserSort.columnId}
         sortDirection={browserSort.direction}
         onHeaderClick={(columnId) => {
-          setSortPreference(nextSortPreference(
-            browserSort,
-            columnId as FundBrowserColumnId,
-            columnId === "fund" || columnId === "cik" ? "asc" : "desc",
-          ));
+          setSortPreference(nextHeaderSort(browserSort, columnId as FundBrowserColumnId, {
+            firstDirection: columnId === "fund" || columnId === "cik" ? "asc" : "desc",
+          }));
         }}
         getItemKey={(row) => row.id}
         renderCell={renderBrowserCell}
@@ -587,12 +581,7 @@ export function FundDetailView({
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
     if (!focused || event.targetEditable || activeTab === "overlap") return;
-    if (isPlainKey(event, "r") && !openFiling) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return;
-    }
+    if (!openFiling && handleRefreshKey(event, refresh, { stopPropagation: true })) return;
     if (isPlainKey(event, "m") && activeTab === "holdings") {
       event.preventDefault?.(); event.stopPropagation?.(); setMineOnly(value => !value); return;
     }
@@ -702,11 +691,9 @@ export function FundDetailView({
           items={filingRows}
           sortColumnId={filingSort.columnId}
           sortDirection={filingSort.direction}
-          onHeaderClick={(columnId) => setFilingSort((current) => nextSortPreference(
-            current,
-            columnId as FundTimelineColumnId,
-            columnId === "period" || columnId === "filed" ? "desc" : "desc",
-          ))}
+          onHeaderClick={(columnId) => setFilingSort((current) => nextHeaderSort(current, columnId as FundTimelineColumnId, {
+            firstDirection: "desc",
+          }))}
           getItemKey={(row) => row.id}
           renderCell={renderTimelineCell}
           emptyStateTitle="No 13F filings."
@@ -727,11 +714,9 @@ export function FundDetailView({
           sortColumnId={holdingSort.columnId}
           sortDirection={holdingSort.direction}
           onHeaderClick={(columnId) => {
-            setHoldingSort((current) => nextSortPreference(
-              current,
-              columnId as FundHoldingColumnId,
-              columnId === "ticker" || columnId === "type" || columnId === "issuer" || columnId === "action" ? "asc" : "desc",
-            ));
+            setHoldingSort((current) => nextHeaderSort(current, columnId as FundHoldingColumnId, {
+              firstDirection: columnId === "ticker" || columnId === "type" || columnId === "issuer" || columnId === "action" ? "asc" : "desc",
+            }));
           }}
           getItemKey={(row) => row.id}
           onActivate={(row) => {
@@ -911,11 +896,9 @@ function FilingDetailView({
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => {
-          setSortPreference((current) => nextSortPreference(
-            current,
-            columnId as FilingPositionColumnId,
-            columnId === "ticker" || columnId === "type" || columnId === "issuer" || columnId === "cusip" || columnId === "discretion" ? "asc" : "desc",
-          ));
+          setSortPreference((current) => nextHeaderSort(current, columnId as FilingPositionColumnId, {
+            firstDirection: columnId === "ticker" || columnId === "type" || columnId === "issuer" || columnId === "cusip" || columnId === "discretion" ? "asc" : "desc",
+          }));
         }}
         getItemKey={(row) => row.id}
         renderCell={renderFilingPositionCell}

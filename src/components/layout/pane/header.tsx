@@ -72,10 +72,6 @@ export interface PaneHeaderQuickSetting {
   onMouseDown?: (event: any) => void;
 }
 
-function truncateTitle(title: string, maxWidth: number): string {
-  return truncateToDisplayWidth(title, maxWidth);
-}
-
 
 function TerminalPaneButton({
   text,
@@ -295,7 +291,7 @@ export function PaneHeader({
     const innerWidth = Math.max(0, width - 4);
     const contentWidth = PANE_HEADER_GRIP.length + terminalQuickSettingsWidth + closeText.length + actionText.length;
     const titleWidth = Math.max(0, innerWidth - contentWidth);
-    const clippedTitle = truncateTitle(title, titleWidth);
+    const clippedTitle = truncateToDisplayWidth(title, titleWidth);
     const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - displayWidth(clippedTitle) - terminalQuickSettingsWidth - actionText.length - closeText.length);
     const fill = "─".repeat(fillLen);
 
@@ -346,7 +342,7 @@ export function PaneHeader({
   }
 
   const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - terminalQuickSettingsWidth - actionText.length - closeText.length);
-  const clippedTitle = truncateTitle(title, titleWidth);
+  const clippedTitle = truncateToDisplayWidth(title, titleWidth);
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
 
   return (

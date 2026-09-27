@@ -1,6 +1,6 @@
 import type { HolderData } from "../../../types/financials";
 import { compareSortValues } from "../../../utils/sort-values";
-import type { HolderColumn, HolderColumnId, HolderRow, SortDirection, SortPreference, ViewMode } from "./types";
+import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { resolveHolderOwnershipPercent } from "./format";
 
 export const DEFAULT_SORT: SortPreference = {
@@ -67,18 +67,4 @@ export function sortRows(rows: HolderRow[], preference: SortPreference, marketCa
     sortValue(right, preference.columnId, marketCap),
     preference.direction,
   ));
-}
-
-export function nextSortPreference(current: SortPreference, columnId: string): SortPreference {
-  const typedColumnId = columnId as HolderColumnId;
-  if (current.columnId !== typedColumnId) {
-    return {
-      columnId: typedColumnId,
-      direction: typedColumnId === "holder" || typedColumnId === "reportDate" ? "asc" : "desc",
-    };
-  }
-  return {
-    columnId: typedColumnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
 }

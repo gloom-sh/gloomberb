@@ -14,7 +14,6 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { AnalystResearchData } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -22,6 +21,7 @@ import { useTickerFinancials } from "../../../market-data/hooks";
 import { useLiveTickerFinancials } from "../../../state/hooks/live-ticker-financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { formatPercent } from "../../../utils/format";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -37,20 +37,20 @@ import {
   buildAnalystFooterInfo,
   buildMeanTargetHistory,
   buildRatingColumns,
+  firstRatingSortDirection,
   formatRatingTarget,
-  nextRatingSortPreference,
   ratingTargetDelta,
   sortRatingRows,
   targetUpside,
   type AnalystTargetHistoryPoint,
   type RatingColumn,
+  type RatingColumnId,
   type RatingSortPreference,
 } from "./analyst-model";
 
 export {
   buildRatingColumns,
   formatRatingTarget,
-  nextRatingSortPreference,
   sortRatingRows,
   type RatingSortPreference,
 } from "./analyst-model";
@@ -247,7 +247,9 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     return handleRefreshKey(event, reload, { stopPropagation: true });
   }, [reload]);
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextRatingSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as RatingColumnId, {
+      firstDirection: firstRatingSortDirection,
+    }));
   }, []);
 
   const footer = (

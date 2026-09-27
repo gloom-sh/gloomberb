@@ -16,23 +16,24 @@ import {
   type StatItem,
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { RemoteImage, PaneLinkMenu } from "../../../components/ui";
 import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/inline-tickers";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
-import { formatTimeAgo } from "../../../utils/format";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
 import { SignInWall } from "../cloud/auth-actions";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import {
   appendNewTweets,
   mergeLatestTweets,
   buildTweetColumns,
   formatMetric,
-  formatRelativeShort,
   isTweetSortColumnId,
   normalizeTwitterUsername,
   normalizeTweetCellText,
@@ -414,11 +415,7 @@ export function TweetSearchTable({
 
   const handleHeaderClick = useCallback((columnId: string) => {
     if (!isTweetSortColumnId(columnId)) return;
-    setSort((current) => (
-      current.columnId === columnId
-        ? { columnId, direction: current.direction === "desc" ? "asc" : "desc" }
-        : { columnId, direction: "desc" }
-    ));
+    setSort((current) => nextHeaderSort(current, columnId, { firstDirection: "desc" }));
   }, []);
 
   const handleRootKeyDown = useCallback((
@@ -434,11 +431,7 @@ export function TweetSearchTable({
       void openTweetLinks();
       return true;
     }
-    if (!isPlainKey(event, "r")) return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    reload(true);
-    return true;
+    return handleRefreshKey(event, () => reload(true), { stopPropagation: true });
   }, [onFocusSearch, openTweetLinks, reload, selectedLinks.length]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
@@ -462,7 +455,7 @@ export function TweetSearchTable({
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "time":
-        return { text: formatRelativeShort(tweet.createdAt), color: selectedColor ?? colors.textDim };
+        return { text: formatTimeAgo(tweet.createdAt, { short: true }), color: selectedColor ?? colors.textDim };
       case "author":
         return {
           text: `@${tweet.author.userName || tweet.author.name}`,

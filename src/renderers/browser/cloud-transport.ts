@@ -1,4 +1,5 @@
 import { apiClient, setCloudApiFetchTransport } from "../../api-client";
+import { settleWithin } from "../../utils/async-deadline";
 import { setHttpFetchTransport } from "../../utils/http-transport";
 import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
 
@@ -42,13 +43,5 @@ export function installBrowserFetchTransports(): void {
 }
 
 export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), budgetMs);
-  });
-  try {
-    await Promise.race([apiClient.getSession().catch(() => null), deadline]);
-  } finally {
-    clearTimeout(timer);
-  }
+  await settleWithin(apiClient.getSession(), budgetMs);
 }

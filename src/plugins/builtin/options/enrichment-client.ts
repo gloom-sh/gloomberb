@@ -5,6 +5,8 @@ import type { YieldPoint } from "../yield-curve/treasury-data";
 import { optionsEnrichmentNeighbour, optionsEnrichmentSelectionIssue, projectOptionsEnrichment,
   type OptionsEnrichmentCache, type OptionsEnrichmentProjection, type OptionsEnrichmentSelection,
   type OptionsEnrichmentSnapshot } from "./enrichment-model";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export interface OptionsEnrichmentRequest extends OptionsEnrichmentSelection {
   signal?: AbortSignal;
@@ -18,25 +20,14 @@ export interface OptionsEnrichmentRequest extends OptionsEnrichmentSelection {
   onProjection?: (projection: OptionsEnrichmentProjection) => void;
 }
 
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function abortError(): Error { return new DOMException("Options enrichment was cancelled", "AbortError"); }
-
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Options enrichment was cancelled";
 
 /** OMON supplies its selected cached slice. Only the adjacent slice can need another chain request. */
 export async function loadOptionsEnrichment(
   request: OptionsEnrichmentRequest,
   dependencies: SurfaceLoaderDependencies = createSurfaceDependencies(),
 ): Promise<OptionsEnrichmentSnapshot> {
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   const now = dependencies.now?.() ?? Date.now();
   const neighbourExpiration = optionsEnrichmentNeighbour(request.catalogue, request.expiration, now);
   let curve: YieldPoint[] = request.curve ?? [];
@@ -61,19 +52,19 @@ export async function loadOptionsEnrichment(
   // The first snapshot already has the quoted straddle even while rates are pending.
   publish();
   const treasury = request.curve ? Promise.resolve() : Promise.resolve().then(() => {
-    if (request.signal?.aborted) throw abortError();
+    if (request.signal?.aborted) throw abortError(CANCELLED);
     return dependencies.loadYieldCurve();
   }).then((value) => { curve = value; })
-    .catch((error) => { treasuryError = message(error); }).finally(() => { curveLoading = false; publish(); });
+    .catch((error) => { treasuryError = errorMessage(error); }).finally(() => { curveLoading = false; publish(); });
   const adjacent = neighbourExpiration == null ? Promise.resolve() : Promise.resolve()
     .then(() => {
-      if (request.signal?.aborted) throw abortError();
+      if (request.signal?.aborted) throw abortError(CANCELLED);
       return dependencies.loadOptions({ instrument: request.instrument, expirationDate: neighbourExpiration },
         { forceRefresh: request.forceRefresh });
     })
     .then((entry) => { neighbourEntry = entry; })
-    .catch((error) => { neighbourError = message(error); }).finally(() => { neighbourLoading = false; publish(); });
-  await abortable(Promise.all([treasury, adjacent]), request.signal);
-  if (request.signal?.aborted) throw abortError();
+    .catch((error) => { neighbourError = errorMessage(error); }).finally(() => { neighbourLoading = false; publish(); });
+  await abortable(Promise.all([treasury, adjacent]), request.signal, CANCELLED);
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   return snapshot();
 }

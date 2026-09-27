@@ -10,6 +10,7 @@ import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
+import { asRecord, finiteOrNull } from "../../../utils/guards";
 
 const FORMS_13F_BASE_URL = "https://forms13f.com/api/v1";
 const FORM_PAGE_LIMIT = 100;
@@ -59,10 +60,6 @@ export function normalizeCik(value: string): string {
   return padCik(value.trim());
 }
 
-function numberOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function stringOrEmpty(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -73,12 +70,6 @@ function boolOrFalse(value: unknown): boolean {
 
 function arrayResponse(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
-}
-
-function objectResponse(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
 }
 
 function normalizeAccessionNumber(rawValue: unknown, rawUrl: unknown): string {
@@ -184,8 +175,8 @@ export function mapForm(raw: any): ThirteenFFormSummary | null {
     filedAsOfDate: stringOrEmpty(raw.filed_as_of_date),
     cik,
     companyName: stringOrEmpty(raw.company_name),
-    tableValueTotal: numberOrNull(raw.table_value_total),
-    tableEntryTotal: numberOrNull(raw.table_entry_total),
+    tableValueTotal: finiteOrNull(raw.table_value_total),
+    tableEntryTotal: finiteOrNull(raw.table_entry_total),
     isAmendment: boolOrFalse(raw.is_amendment) || submissionType.includes("/A"),
     amendmentType: stringOrEmpty(raw.amendment_type) || undefined,
   };
@@ -203,13 +194,13 @@ function mapHolding(raw: any): ThirteenFHoldingRecord | null {
     titleOfClass: stringOrEmpty(raw.title_of_class),
     cusip,
     ticker: stringOrEmpty(raw.ticker).toUpperCase(),
-    value: numberOrNull(raw.value),
-    shares: numberOrNull(raw.ssh_prnamt),
+    value: finiteOrNull(raw.value),
+    shares: finiteOrNull(raw.ssh_prnamt),
     shareType: stringOrEmpty(raw.ssh_prnamt_type),
     investmentDiscretion: stringOrEmpty(raw.investment_discretion),
-    votingAuthoritySole: numberOrNull(raw.voting_authority_sole),
-    votingAuthorityShared: numberOrNull(raw.voting_authority_shared),
-    votingAuthorityNone: numberOrNull(raw.voting_authority_none),
+    votingAuthoritySole: finiteOrNull(raw.voting_authority_sole),
+    votingAuthorityShared: finiteOrNull(raw.voting_authority_shared),
+    votingAuthorityNone: finiteOrNull(raw.voting_authority_none),
     putCall: stringOrEmpty(raw.put_call).toUpperCase(),
   };
 }
@@ -223,7 +214,7 @@ function mapTopFund(raw: any): ThirteenFTopFund | null {
     cik,
     name,
     periodOfReport,
-    pnl: numberOrNull(raw.pnl),
+    pnl: finiteOrNull(raw.pnl),
   };
 }
 
@@ -360,7 +351,7 @@ export async function lookupThirteenFHoldersByCusip(
   signal?: AbortSignal,
   options: Forms13FReadOptions = {},
 ): Promise<ThirteenFTickerHolders> {
-  const raw = objectResponse(await fetchForms13F<unknown>("/holders", {
+  const raw = asRecord(await fetchForms13F<unknown>("/holders", {
     cusip,
     period_of_report: periodOfReport,
   }, { ...options, signal }));

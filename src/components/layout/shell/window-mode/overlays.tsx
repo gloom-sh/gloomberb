@@ -19,7 +19,8 @@ import {
   NativeWindowEditStatus,
   resolveNativeFloatingResizeCornerRect,
 } from "../../window-edit/status";
-import { MENU_Z_INDEX, truncateMenuText } from "../menu";
+import { MENU_Z_INDEX } from "../menu";
+import { truncateToDisplayWidth } from "../../../../utils/format";
 
 interface ShellWindowModeOverlaysProps {
   bounds: LayoutBounds;
@@ -160,7 +161,7 @@ export function ShellWindowModeOverlays({
         const pending = windowEditHasPendingCommit(windowMode, bounds, dockGeometryOptions);
         const text = `${windowEditStatusLine(windowMode, title, bounds, dockGeometryOptions, targetTitle)} · ${windowEditHelpText(windowMode, pending)}`;
         const bannerWidth = Math.max(1, width);
-        const bannerText = truncateMenuText(text, bannerWidth).padEnd(bannerWidth, " ");
+        const bannerText = truncateToDisplayWidth(text, bannerWidth).padEnd(bannerWidth, " ");
         return (
           <Box
             key={windowModeBannerKey(windowMode)}

@@ -3,6 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { CryptoMarketAsset, CryptoMarketsPayload } from "../../../api-client/crypto-markets";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { isFiniteNumber } from "../../../utils/guards";
 
 export const cryptoMarketsCache = createPluginCache<CryptoMarketsPayload>({
   kind: "crypto-markets",
@@ -12,8 +13,7 @@ export const cryptoMarketsCache = createPluginCache<CryptoMarketsPayload>({
   policy: { staleMs: 10_000, expireMs: 86_400_000 },
 });
 
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const nullableNumber = (value: unknown) => value === null || finite(value);
+const nullableNumber = (value: unknown) => value === null || isFiniteNumber(value);
 const instant = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 const nullableInstant = (value: unknown) => value === null || instant(value);
 const date = (value: unknown): value is string =>
@@ -32,7 +32,7 @@ function validAsset(asset: CryptoMarketAsset): boolean {
     && (asset.kind === "coin" || asset.kind === "stablecoin")
     && Number.isInteger(asset.rank)
     && asset.rank > 0
-    && finite(asset.price)
+    && isFiniteNumber(asset.price)
     && asset.price > 0
     && [
       asset.previousClose,
@@ -54,7 +54,7 @@ function validAsset(asset: CryptoMarketAsset): boolean {
         && date(asset.history.start)
         && Array.isArray(asset.history.closes)
         && asset.history.closes.length <= 400
-        && asset.history.closes.every((close) => close === null || (finite(close) && close > 0))))
+        && asset.history.closes.every((close) => close === null || (isFiniteNumber(close) && close > 0))))
   );
 }
 

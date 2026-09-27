@@ -19,7 +19,8 @@ const luminanceCache = new Map<string, number>();
 const contrastBlendCache = new Map<string, string>();
 const separationBlendCache = new Map<string, string>();
 
-function parseHex(hex: string): readonly [number, number, number] {
+/** The 0-255 channels of a six-digit `#rrggbb` colour. */
+export function parseHex(hex: string): readonly [number, number, number] {
   const h = hex.replace("#", "");
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)] as const;
 }

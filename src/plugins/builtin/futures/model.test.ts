@@ -8,7 +8,6 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   futuresContractName,
-  nextFuturesSort,
   type FuturesColumnId,
   type FuturesTableRow,
 } from "./model";
@@ -113,15 +112,6 @@ describe("futures sorting", () => {
       { query: "e-mini" },
     );
     expect(rowIds(rows)).toEqual(["header:equity-index", "YM=F", "NQ=F", "ES=F", "RTY=F"]);
-  });
-
-  test("header clicks walk ascending, descending, then back to catalog order", () => {
-    const ascending = nextFuturesSort(DEFAULT_FUTURES_SORT, "code");
-    const descending = nextFuturesSort(ascending, "code");
-    expect(ascending).toEqual({ columnId: "code", direction: "asc" });
-    expect(descending).toEqual({ columnId: "code", direction: "desc" });
-    expect(nextFuturesSort(descending, "code")).toEqual(DEFAULT_FUTURES_SORT);
-    expect(nextFuturesSort(descending, "price")).toEqual({ columnId: "price", direction: "asc" });
   });
 
   test("the keyboard cycle reaches every state a header click can, and wraps", () => {

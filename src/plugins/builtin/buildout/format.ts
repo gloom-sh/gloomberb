@@ -2,8 +2,6 @@ import { colors, priceColor } from "../../../theme/colors";
 import { formatDetailDate as sharedFormatDetailDate, parseDisplayDate } from "../../../utils/datetime-format";
 import type { BuildoutSource, BuildoutUpdate } from "./model/types";
 
-export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
-
 export function text(value: unknown, fallback = "-") {
   if (value == null) return fallback;
   const stringValue = String(value).trim();

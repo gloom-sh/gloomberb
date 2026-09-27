@@ -1,9 +1,9 @@
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, US_LISTING_EXCHANGES } from "../../utils/exchanges";
 import type { BrokerCandidate } from "./brokers";
 
 /** US listings the cloud streams from the consolidated tape. OTC is not on it. */
-const US_TAPE_LISTINGS = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "IEX"]);
+const US_TAPE_LISTINGS = new Set([...US_LISTING_EXCHANGES, "IEX"]);
 const EQUITY_SECURITY_TYPES = new Set(["", "STK", "ETF", "EQUITY", "ADR", "COMMONSTOCK", "DEPOSITARYRECEIPT"]);
 /** The cloud identifies listed options by their compact OCC symbol only. */
 const OCC_OPTION_SYMBOL = /^[A-Z][A-Z0-9.]{0,5}\d{6}[CP]\d{8}$/;

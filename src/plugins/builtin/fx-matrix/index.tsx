@@ -7,6 +7,7 @@ import {
   type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
@@ -14,7 +15,6 @@ import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { useAssetData } from "../../runtime";
 import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
@@ -157,12 +157,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     return { text: formatRate(base / quote, quoteCurrency, reference), color: selectedColor ?? colors.text };
   }, [rates, referenceRates, status.loading]);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (!isPlainKey(event, "r")) return false;
-    event.preventDefault?.();
-    refresh();
-    return true;
-  }, [refresh]);
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh), [refresh]);
 
   const updatedAgo = useUpdatedAgo(status.latestFetchedAt || null);
 

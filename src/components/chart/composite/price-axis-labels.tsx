@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
+import { clamp } from "../../../utils/math";
 
 function formatAxisCell(label: string | null, width: number): string {
   if (width <= 0) return "";
@@ -38,10 +39,6 @@ interface PriceAxisLabelsProps {
 interface CursorPriceAxisOverlay {
   labelText: string | null;
   topPercent: number | null;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 export function buildCursorPriceAxisOverlay({

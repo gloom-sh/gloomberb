@@ -9,24 +9,25 @@ import {
   type DataTableVisibleRange,
   type PaneFooterSegment,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstance } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { cycleSortPreference } from "../../../utils/sort-values";
+import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import {
+  boardErrorMessage,
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
   useVisibleBoardSymbols,
   type BoardQuoteMap,
 } from "../shared/use-quote-board";
-import { boardErrorMessage } from "../world-indices/footer";
 import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
@@ -38,7 +39,6 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   futuresRowId,
-  nextFuturesSort,
   type FuturesColumnId,
   type FuturesSortPreference,
   type FuturesTableRow,
@@ -172,24 +172,16 @@ function FuturesPane({ focused, width, height }: PaneProps) {
     setSelectedId(firstNavigable ? futuresRowId(firstNavigable) : null);
   }, [rows, selectedId]);
 
+  // The footer binds the `/` search hint.
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "r")) {
-      stopSearchFocusNavigation(event);
-      refresh();
-      return true;
-    }
-    if (isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
+    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return true;
     if (isPlainKey(event, "]") || isPlainKey(event, "[")) {
       stopSearchFocusNavigation(event);
       cycleSort(event.name === "]" ? 1 : -1);
       return true;
     }
     return false;
-  }, [cycleSort, focusSearch, refresh]);
+  }, [cycleSort, refresh]);
 
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
@@ -245,7 +237,9 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       sortable
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference((current) => nextFuturesSort(current, columnId))}
+      onHeaderClick={(columnId) => setSortPreference((current) => nextHeaderSort(current, columnId as FuturesColumnId, {
+        resetTo: DEFAULT_FUTURES_SORT,
+      }))}
       onSortChange={(columnId, direction) => setSortPreference((current) => ({ ...current, columnId: columnId as FuturesSortPreference["columnId"], direction }))}
       getItemKey={futuresRowId}
       visibleRangeKey={windowSymbols.join(",")}

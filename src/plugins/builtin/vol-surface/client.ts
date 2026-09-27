@@ -10,6 +10,8 @@ import {
   buildSurfaceExpiry, normalizeSurfaceSettings, pendingSurfaceExpiry, surfaceCalendarWarnings, withSurfaceTermSlopes,
   type SurfaceExpiry, type SurfaceFailure, type SurfaceSettings, type SurfaceSnapshot,
 } from "./model";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 export const SURFACE_LOAD_CONCURRENCY = 4;
@@ -102,23 +104,7 @@ export interface SurfaceLoadRequest {
   forceRefresh?: boolean;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function abortError(): Error {
-  return new DOMException("Surface load was cancelled", "AbortError");
-}
-
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Surface load was cancelled";
 
 /**
  * Publishes immutable partial snapshots as each expiry completes. Cancellation
@@ -147,7 +133,7 @@ export async function loadVolatilitySurface(
   let catalogueExpiration: number | null = null;
   let treasuryError: string | null = null;
   let finished = false;
-  const checkAbort = () => { if (request.signal?.aborted) throw abortError(); };
+  const checkAbort = () => { if (request.signal?.aborted) throw abortError(CANCELLED); };
   const snapshot = (): SurfaceSnapshot => {
     const failures: SurfaceFailure[] = [];
     if (catalogueError) failures.push({ expiration: null, message: catalogueError, ...catalogueReason ? { reasonCode: catalogueReason } : {} });
@@ -200,7 +186,7 @@ export async function loadVolatilitySurface(
 
   try {
     const initial = await abortable(dependencies.loadOptions({ instrument: request.instrument },
-      { forceRefresh: request.expiries ? false : request.forceRefresh }), request.signal);
+      { forceRefresh: request.expiries ? false : request.forceRefresh }), request.signal, CANCELLED);
     checkAbort();
     const chain = resolveEntryValue(initial);
     const initialContracts = chain ? [...chain.calls, ...chain.puts] : [];
@@ -222,7 +208,7 @@ export async function loadVolatilitySurface(
     }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {
-    if (request.signal?.aborted) throw abortError();
+    if (request.signal?.aborted) throw abortError(CANCELLED);
     catalogueError = errorMessage(error);
     catalogueReason = undefined;
   } finally {
@@ -248,7 +234,7 @@ export async function loadVolatilitySurface(
       publish();
     }
   };
-  await abortable(Promise.all([treasury, ...Array.from({ length: Math.min(SURFACE_LOAD_CONCURRENCY, selected.length) }, worker)]), request.signal);
+  await abortable(Promise.all([treasury, ...Array.from({ length: Math.min(SURFACE_LOAD_CONCURRENCY, selected.length) }, worker)]), request.signal, CANCELLED);
   checkAbort();
   finished = true;
   const result = snapshot();

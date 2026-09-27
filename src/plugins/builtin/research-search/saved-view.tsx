@@ -8,6 +8,7 @@ import {
 } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import type { CloudSavedSearch } from "../../../api-client";
 import { describeFilters, formatHitDate } from "./model";
 
@@ -161,11 +162,9 @@ export function SavedSearchesView({
       onRootKeyDown={handleKeyDown}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
-      onHeaderClick={(columnId) => setSort((current) => (
-        current.columnId === columnId
-          ? { columnId, direction: current.direction === "asc" ? "desc" : "asc" }
-          : { columnId: columnId as SavedColumnId, direction: columnId === "name" ? "asc" : "desc" }
-      ))}
+      onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as SavedColumnId, {
+        firstDirection: columnId === "name" ? "asc" : "desc",
+      }))}
       getItemKey={(search) => search.id}
       renderCell={renderCell}
       showHorizontalScrollbar={false}

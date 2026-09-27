@@ -1,19 +1,15 @@
+import { recordOrNull } from "../../../../utils/guards";
+
 export interface ContextMenuSelectionMessage {
   requestId: string;
   itemId: string;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function contextMenuClickPayload(event: unknown): Record<string, unknown> | null {
-  const eventRecord = record(event);
+  const eventRecord = recordOrNull(event);
   if (!eventRecord) return null;
 
-  const wrappedPayload = record(eventRecord.data);
+  const wrappedPayload = recordOrNull(eventRecord.data);
   if (typeof wrappedPayload?.action === "string") {
     return wrappedPayload;
   }
@@ -49,7 +45,7 @@ export function contextMenuSelectionMessage(
 
   if (payload.action !== expectedAction) return null;
 
-  const data = record(payload.data);
+  const data = recordOrNull(payload.data);
   if (typeof data?.requestId !== "string" || typeof data.itemId !== "string") {
     return null;
   }

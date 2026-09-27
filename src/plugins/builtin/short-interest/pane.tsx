@@ -12,13 +12,12 @@ import {
   usePaneFooter,
   type DataTableCell,
 } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, TextAttributes } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { loadShortInterest } from "./client";
 import {
@@ -27,10 +26,10 @@ import {
   buildRows,
   formatMaybeCompact,
   formatSharesAxis,
-  nextSortPreference,
   shortInterestFigures,
   sortRows,
   type ShortInterestColumn,
+  type ShortInterestColumnId,
   type ShortInterestRow,
   type SortPreference,
 } from "./model";
@@ -80,17 +79,10 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   });
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as ShortInterestColumnId, { firstDirection: "desc" }));
   }, [setSortPreference]);
 
-  useShortcut((event) => {
-    if (!focused) return;
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-    }
-  });
+  usePaneRefreshKey(refresh, { focused });
 
   const renderCell = useCallback((
     row: ShortInterestRow,
@@ -115,8 +107,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   usePaneFooter("short-interest", () => ({
     info: [
-      ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(status === "error" && error ? [{ id: "error", parts: [{ text: error.slice(0, 60), tone: "warning" as const }] }] : []),
+      ...loadingErrorFooterInfo(status === "loading", status === "error" ? error?.slice(0, 60) : null),
       ...(yahooFallback ? [{
         id: "source",
         parts: [{

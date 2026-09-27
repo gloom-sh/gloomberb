@@ -237,6 +237,16 @@ export function canonicalExchange(value?: string): string {
   return CANONICAL_EXCHANGE_ALIASES[normalized] ?? normalized;
 }
 
+/**
+ * The US primary listing venues, as canonical exchanges. All of them trade the
+ * US regular and extended-hours sessions.
+ */
+export const US_LISTING_EXCHANGES: ReadonlySet<string> = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
+
+export function isUsListingExchange(value?: string): boolean {
+  return US_LISTING_EXCHANGES.has(canonicalExchange(value));
+}
+
 export function resolveExchangeTimeZone(value?: string): string | null {
   const canonical = canonicalExchange(value);
   return canonical ? EXCHANGE_TIME_ZONES[canonical] ?? null : null;

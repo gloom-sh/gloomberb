@@ -1,13 +1,14 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
+import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { CompositeChart, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
+import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
 import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
@@ -35,14 +36,10 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
     { id: "source", label: "Source", value: row.source?.toUpperCase() ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];
-  const summaryHeight = statGridRows(items, width);
-  return <Box flexDirection="column" width={width} height={height}>
-    <StatGrid items={items} width={width} />
-    <PaneStatusBody empty={!history.some((point) => point.value != null)} subject="policy history" emptyTitle="No policy history available.">
-      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - summaryHeight)} showLegend={false}
-        focused={focused} navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />
-    </PaneStatusBody>
-  </Box>;
+  return <StatChartDetail items={items} width={width} height={height} empty={!history.some((point) => point.value != null)}
+    emptySubject="policy history" emptyTitle="No policy history available."
+    renderChart={(chartHeight) => <CompositeChart series={series} panels={PANELS} width={width} height={chartHeight} showLegend={false}
+      focused={focused} navigable={false} showTimeAxis formatAxisValue={policyRate} remoteKind="central-bank-policy-history" />} />;
 }
 
 export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
@@ -56,15 +53,13 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data ? [
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
-      ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}

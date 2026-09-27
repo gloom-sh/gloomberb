@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
-import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange, type PaneFooterSegment } from "../../../components";
+import { DataTableView, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -229,14 +229,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     setSortPreference((current) => nextSortPreference(current, columnId));
   }, [setSortPreference]);
 
-  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      fetchAll();
-      return true;
-    }
-    return false;
-  }, [fetchAll]);
+  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, fetchAll), [fetchAll]);
 
   const renderCell = useCallback((
     row: SectorRow,
@@ -292,9 +285,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   usePaneNoticeFooter({ registrationId: "sectors:row-issues", notices: rowIssueNotices, focused });
 
   usePaneFooter("sectors", () => {
-    const info: PaneFooterSegment[] = [];
-    if (loading) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (loadError) info.push({ id: "error", parts: [{ text: loadError, tone: "warning" }] });
+    const info = loadingErrorFooterInfo(loading, loadError);
     if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
     if (updatedAgo) info.push({ id: "updated", parts: [{ text: `checked ${updatedAgo}`, tone: "muted" }] });
     // Keep the leading current failure readable when the pane is narrow; separate

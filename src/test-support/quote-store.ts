@@ -2,7 +2,7 @@ import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { InstrumentRef } from "../market-data/request-types";
 import { createIdleEntry, type QueryEntry } from "../market-data/result-types";
-import { buildQuoteKey } from "../market-data/selectors";
+import { buildQuoteKey, instrumentFromQuoteTarget } from "../market-data/selectors";
 import type { ChartQuoteStore } from "../time-series/live-quotes";
 
 /** An in-memory quote store with the coordinator's key subscription contract. */
@@ -12,15 +12,9 @@ export function createQuoteStoreFixture(): ChartQuoteStore & {
 } {
   const quotes = new Map<string, Quote>();
   const listeners = new Set<{ keys: ReadonlySet<string>; listener: () => void }>();
-  const keyOf = (target: QuoteSubscriptionTarget | InstrumentRef) => buildQuoteKey("context" in target
-    ? {
-        symbol: target.symbol,
-        exchange: target.exchange,
-        brokerId: target.context?.brokerId,
-        brokerInstanceId: target.context?.brokerInstanceId,
-        instrument: target.context?.instrument ?? null,
-      }
-    : target);
+  const keyOf = (target: QuoteSubscriptionTarget | InstrumentRef) => buildQuoteKey(
+    "context" in target ? instrumentFromQuoteTarget(target) : target,
+  );
   return {
     subscribeKeys(keys, listener) {
       const entry = { keys: new Set(keys), listener };

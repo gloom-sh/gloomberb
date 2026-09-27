@@ -2,6 +2,7 @@ import type { OptionContract } from "../../../types/financials";
 import { logForwardMoneyness, type ExpectedMove, type SkewMetrics, type SmileFit } from "../shared/volatility";
 import type { StoredSurfacePayload } from "../iv-history/client";
 import { evaluateSurfaceSmile, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceFilterCounts, type SurfaceSnapshot } from "./model";
+import { isFiniteNumber } from "../../../utils/guards";
 
 /** The platform's compact expiry: fit, forward, rate and the quoted OTM points of one close capture. */
 interface StoredExpiry {
@@ -37,8 +38,6 @@ interface StoredSurface {
 export interface StoredSurfaceInfo { sessionDate: string; capturedAt: string }
 export type DatedSurfaceSnapshot = SurfaceSnapshot & { stored?: StoredSurfaceInfo };
 
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-
 function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, source: string | null): SurfaceExpiry {
   const expiry: SurfaceExpiry = {
     expiration: entry.expiration, years: entry.years, state: "ready", asOf: entry.asOf, source: source ?? "stored close capture",
@@ -50,12 +49,12 @@ function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, sou
     warnings: entry.warnings ?? [], error: null, termSlope: entry.termSlope,
   };
   for (const [strike, sideCode, iv, mid, bid, ask, openInterest, contractSymbol] of entry.points ?? []) {
-    if (!finite(strike) || !finite(iv) || !finite(mid) || !(mid > 0) || !finite(entry.forward)) continue;
+    if (!isFiniteNumber(strike) || !isFiniteNumber(iv) || !isFiniteNumber(mid) || !(mid > 0) || !isFiniteNumber(entry.forward)) continue;
     const side = sideCode === 1 ? "call" as const : "put" as const;
     const contract: OptionContract = { contractSymbol, strike, currency: "USD", lastPrice: mid, change: 0, percentChange: 0,
       openInterest: openInterest ?? undefined, bid: bid ?? 0, ask: ask ?? 0, impliedVolatility: iv,
       inTheMoney: side === "call" ? strike < spot : strike > spot, expiration: entry.expiration, lastTradeDate: Math.floor(capturedAt / 1000) };
-    const spread = finite(bid) && finite(ask) ? ask - bid : 0;
+    const spread = isFiniteNumber(bid) && isFiniteNumber(ask) ? ask - bid : 0;
     expiry.points.push({ contract, side, strike, moneyness: strike / spot, logMoneyness: logForwardMoneyness(strike, entry.forward)!,
       mid, price: mid, spread, spreadRatio: spread / mid, openInterest: openInterest ?? 0, providerIV: null, volatility: iv, fitResidual: null });
   }

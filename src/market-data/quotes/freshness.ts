@@ -1,13 +1,11 @@
 import type { Quote } from "../../types/financials";
-import { canonicalExchange } from "../../utils/exchanges";
+import { isUsListingExchange } from "../../utils/exchanges";
 import { quoteFutureToleranceMs } from "./clock";
 import {
   activeUsExtendedHoursSession,
   isTimestampStaleForExchangeSession,
   isUsPriorSessionPremarketQuote,
 } from "../market/freshness";
-
-const EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 
 /**
  * Receipt time cannot establish when the source observed a quoted price. A
@@ -21,7 +19,7 @@ export function hasValidQuoteObservationTime(quote: Pick<Quote, "lastUpdated">, 
 }
 
 export function isExtendedHoursExchange(quote: Quote): boolean {
-  return EXTENDED_HOURS_EXCHANGES.has(canonicalExchange(quote.listingExchangeName || quote.exchangeName));
+  return isUsListingExchange(quote.listingExchangeName || quote.exchangeName);
 }
 
 function isQuoteMissingActiveSessionPrice(quote: Quote, now: number): boolean {

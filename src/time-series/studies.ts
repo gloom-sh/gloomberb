@@ -13,6 +13,7 @@ import type {
   SeriesStyle,
   TimeSeriesPoint,
 } from "./types";
+import { isFiniteNumber } from "../utils/guards";
 
 export interface StudyResolutionResult {
   series: ResolvedSeries[];
@@ -32,12 +33,8 @@ export interface IndexedValue {
 
 const STUDY_COLORS = ["#f6c85f", "#4dabf7", "#b197fc", "#63e6be", "#ffa94d", "#ff6b6b"];
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function positiveInteger(value: unknown, fallback: number): number {
-  return finiteNumber(value) && value > 0 ? Math.max(1, Math.floor(value)) : fallback;
+  return isFiniteNumber(value) && value > 0 ? Math.max(1, Math.floor(value)) : fallback;
 }
 
 function samplesFor(series: ResolvedSeries): NumericSample[] {
@@ -252,7 +249,7 @@ function resolveBollinger(
   color: string,
 ): ResolvedSeries[] {
   const period = studyPeriod(spec, 20);
-  const deviations = finiteNumber(spec.parameters.stdDev) && spec.parameters.stdDev > 0
+  const deviations = isFiniteNumber(spec.parameters.stdDev) && spec.parameters.stdDev > 0
     ? spec.parameters.stdDev
     : 2;
   const samples = samplesFor(input);
@@ -355,7 +352,7 @@ function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: strin
   if (input.points.some((point) => point.volume === 0) && input.points.every((point) => !point.volume)) return [];
   const points = [...input.points]
     .sort((left, right) => left.date.getTime() - right.date.getTime())
-    .flatMap((point) => finiteNumber(point.volume)
+    .flatMap((point) => isFiniteNumber(point.volume)
       ? [derivedPoint({ point, value: point.volume }, point.volume)]
       : []);
   return [outputSeries(spec, input, {
@@ -470,7 +467,7 @@ function pairedSamples(left: ResolvedSeries, right: ResolvedSeries, carryForward
   }).flatMap((row) => {
     const leftValue = row.values[left.id];
     const rightValue = row.values[right.id];
-    if (!finiteNumber(leftValue?.value) || !finiteNumber(rightValue?.value)) return [];
+    if (!isFiniteNumber(leftValue?.value) || !isFiniteNumber(rightValue?.value)) return [];
     const availability = Math.max(
       leftValue.point.availableAt?.getTime() ?? leftValue.point.date.getTime(),
       rightValue.point.availableAt?.getTime() ?? rightValue.point.date.getTime(),
@@ -505,7 +502,7 @@ function resolvePairStudy(
 ): ResolvedSeries[] {
   const paired = pairedSamples(left, right, spec.kind !== "correlation");
   if (spec.kind === "ratio" || spec.kind === "spread") {
-    const multiplier = finiteNumber(spec.parameters.multiplier) ? spec.parameters.multiplier : 1;
+    const multiplier = isFiniteNumber(spec.parameters.multiplier) ? spec.parameters.multiplier : 1;
     const points = paired.map((sample) => derivedPoint(
       { point: sample.point, value: sample.left },
       spec.kind === "ratio"

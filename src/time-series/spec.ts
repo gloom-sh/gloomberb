@@ -31,6 +31,7 @@ import {
   isValidChartCapabilityId,
   isValidChartSeriesId,
 } from "../capabilities/chart-series";
+import { recordOrNull } from "../utils/guards";
 
 const RANGE_SET = new Set<TimeRange>(TIME_RANGES);
 const RESOLUTIONS = new Set<ChartResolution>(CHART_RESOLUTIONS);
@@ -92,12 +93,6 @@ export interface ChartSpecValidationResult {
   warnings: ChartSpecIssue[];
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -134,7 +129,7 @@ function cloneSpec(spec: ChartSpec): ChartSpec {
 }
 
 function normalizeSource(value: unknown): ChartSeriesSource | null {
-  const source = record(value);
+  const source = recordOrNull(value);
   if (!source) return null;
   if (source.kind === "economic") {
     const seriesId = nonEmptyString(source.seriesId);
@@ -150,7 +145,7 @@ function normalizeSource(value: unknown): ChartSeriesSource | null {
     return { kind: "capability", capabilityId, seriesId };
   }
   if (source.kind !== "security") return null;
-  const instrument = record(source.instrument);
+  const instrument = recordOrNull(source.instrument);
   const symbol = nonEmptyString(instrument?.symbol);
   const fieldId = nonEmptyString(source.fieldId);
   if (!instrument || !symbol || !fieldId) return null;
@@ -171,7 +166,7 @@ function normalizeSource(value: unknown): ChartSeriesSource | null {
 }
 
 function normalizedDateWindow(value: unknown): { start: string; end: string } | undefined {
-  const window = record(value);
+  const window = recordOrNull(value);
   const start = nonEmptyString(window?.start);
   const end = nonEmptyString(window?.end);
   if (!start || !end) return undefined;
@@ -182,7 +177,7 @@ function normalizedDateWindow(value: unknown): { start: string; end: string } | 
 }
 
 function normalizePanel(value: unknown, index: number, seen: Set<string>): ChartPanelSpec | null {
-  const panel = record(value);
+  const panel = recordOrNull(value);
   if (!panel) return null;
   const id = uniqueId(panel.id, "panel", index, seen);
   const height = typeof panel.height === "number" && Number.isFinite(panel.height) && panel.height > 0
@@ -202,7 +197,7 @@ function normalizeSeries(
   seen: Set<string>,
   defaultPanelId: string,
 ): ChartSeriesSpec | null {
-  const entry = record(value);
+  const entry = recordOrNull(value);
   if (!entry) return null;
   const source = normalizeSource(entry.source);
   if (!source) return null;
@@ -253,10 +248,10 @@ function normalizeStudy(
   seen: Set<string>,
   defaultPanelId: string,
 ): ChartStudySpec | null {
-  const study = record(value);
+  const study = recordOrNull(value);
   if (!study || !STUDIES.has(study.kind as ChartStudyKind)) return null;
   const parameters: ChartStudySpec["parameters"] = {};
-  const rawParameters = record(study.parameters);
+  const rawParameters = recordOrNull(study.parameters);
   for (const [key, parameter] of Object.entries(rawParameters ?? {})) {
     if (typeof parameter === "number" && Number.isFinite(parameter)) parameters[key] = parameter;
     else if (study.kind === "realized-vol" && key === "estimator" && typeof parameter === "string") parameters[key] = parameter;
@@ -277,10 +272,10 @@ function normalizeStudy(
 
 /** Normalizes persisted or user-authored data into the current versioned chart spec. */
 export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT_CHART_SPEC): ChartSpec {
-  const input = record(value);
+  const input = recordOrNull(value);
   if (!input) return cloneSpec(fallback);
   const fallbackCopy = cloneSpec(fallback);
-  const viewport = record(input.viewport);
+  const viewport = recordOrNull(input.viewport);
   const panelIds = new Set<string>();
   let panels = (Array.isArray(input.panels) ? input.panels : fallbackCopy.panels)
     .map((panel, index) => normalizePanel(panel, index, panelIds))

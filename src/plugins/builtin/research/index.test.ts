@@ -3,7 +3,6 @@ import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/fi
 import {
   buildRatingColumns,
   formatRatingTarget,
-  nextRatingSortPreference,
   sortRatingRows,
   type RatingSortPreference,
 } from "./analyst-pane";
@@ -89,21 +88,6 @@ describe("analyst rating sorting", () => {
       "No Target",
       "Zenith",
     ]);
-  });
-
-  test("uses sensible first-click directions per column", () => {
-    expect(nextRatingSortPreference({ columnId: "date", direction: "desc" }, "date")).toEqual({
-      columnId: "date",
-      direction: "asc",
-    });
-    expect(nextRatingSortPreference({ columnId: "date", direction: "desc" }, "target")).toEqual({
-      columnId: "target",
-      direction: "desc",
-    });
-    expect(nextRatingSortPreference({ columnId: "target", direction: "desc" }, "firm")).toEqual({
-      columnId: "firm",
-      direction: "asc",
-    });
   });
 });
 

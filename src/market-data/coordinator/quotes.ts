@@ -5,7 +5,7 @@ import { marketDataFrames, type DataFrameScheduler } from "../frame-scheduler";
 import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
-import { buildQuoteKey, toMarketDataContext } from "../selectors";
+import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from "../selectors";
 import { measurePerf } from "../../utils/perf-marks";
 import {
   EXPECTED_EMPTY,
@@ -347,14 +347,7 @@ export class QuoteSubscriptionManager {
     const targets = activeEntries.map(([, entry]) => entry.target);
     const nextDispose = targets.length > 0
       ? this.dataProvider.subscribeQuotes(targets, (target, quote) => {
-          const instrument: InstrumentRef = {
-            symbol: target.symbol,
-            exchange: target.exchange ?? "",
-            brokerId: target.context?.brokerId,
-            brokerInstanceId: target.context?.brokerInstanceId,
-            instrument: target.context?.instrument ?? null,
-          };
-          this.enqueueStreamQuote(instrument, quote);
+          this.enqueueStreamQuote({ ...instrumentFromQuoteTarget(target), exchange: target.exchange ?? "" }, quote);
         })
       : null;
     // Register first so the cloud socket and desktop registries can merge the

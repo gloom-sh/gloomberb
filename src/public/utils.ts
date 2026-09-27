@@ -20,7 +20,7 @@ export type {
 
 export { normalizedHttpUrl } from "../utils/url";
 
-export { formatRelativeAge } from "../utils/relative-time";
+export { formatRelativeAge, formatTimeAgo } from "../utils/datetime-format";
 
 export { decodeHtmlEntities } from "../utils/html-entities";
 
@@ -36,7 +36,6 @@ export {
   formatNumber,
   formatPercent,
   formatPercentRaw,
-  formatTimeAgo,
   formatWithDivisor,
   padTo,
   pickUnit,
@@ -85,8 +84,8 @@ export type { PluginCacheResult } from "../data/plugin-cache";
 
 // Table sorting, so a plugin table cycles its sort the same way built-in ones
 // do and orders mixed null/number/string columns identically.
-export { compareSortValues, cycleSortPreference } from "../utils/sort-values";
-export type { SortDirection, SortPreference } from "../utils/sort-values";
+export { compareSortValues, cycleSortPreference, nextHeaderSort } from "../utils/sort-values";
+export type { HeaderSortOptions, SortDirection, SortPreference } from "../utils/sort-values";
 
 // Exchange schedules are published as wall-clock times in a named zone.
 export { zonedDateTimeParts, zonedWallClockToUtcMs } from "../utils/zoned-date-time";

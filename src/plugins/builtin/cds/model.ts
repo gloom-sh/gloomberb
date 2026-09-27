@@ -401,18 +401,7 @@ export function sortTrades(rows: readonly CdsTrade[], sort: TradeSortPreference)
   });
 }
 
-export function nextSort<Id extends string>(
-  current: SortPreference<Id>,
-  columnId: Id,
-  fallback: SortPreference<Id>,
-): SortPreference<Id> {
-  if (current.columnId !== columnId) return { columnId, direction: "asc" };
-  if (current.direction === "asc") return { columnId, direction: "desc" };
-  return fallback;
-}
-
 const DAY_MS = 86_400_000;
-
 
 /** Three weeks without a level breaks the line instead of drawing one nobody traded. */
 const CHART_GAP_MS = 21 * DAY_MS;

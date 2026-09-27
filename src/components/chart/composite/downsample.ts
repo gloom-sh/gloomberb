@@ -6,10 +6,7 @@ import type {
   CompositeProjectedPoint,
   CompositeProjectedSeries,
 } from "./types";
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
+import { isFiniteNumber } from "../../../utils/guards";
 
 function splitConnectedSegments(
   points: readonly CompositeProjectedPoint[],
@@ -107,7 +104,7 @@ function downsampleLineProjectedPoints(
 
 function sourceValue(point: CompositeProjectedPoint, key: "open" | "high" | "low" | "close"): number {
   const candidate = point.point[key];
-  return finiteNumber(candidate) ? candidate : point.value;
+  return isFiniteNumber(candidate) ? candidate : point.value;
 }
 
 function aggregateOhlcProjectedBucket(
@@ -117,14 +114,14 @@ function aggregateOhlcProjectedBucket(
   const last = bucket[bucket.length - 1]!;
   let high = sourceValue(first, "high");
   let low = sourceValue(first, "low");
-  let volume = finiteNumber(first.point.volume) ? first.point.volume : 0;
+  let volume = isFiniteNumber(first.point.volume) ? first.point.volume : 0;
   let breakBefore = first.breakBefore;
 
   for (let index = 1; index < bucket.length; index += 1) {
     const point = bucket[index]!;
     high = Math.max(high, sourceValue(point, "high"));
     low = Math.min(low, sourceValue(point, "low"));
-    if (finiteNumber(point.point.volume)) volume += point.point.volume;
+    if (isFiniteNumber(point.point.volume)) volume += point.point.volume;
     if (point.breakBefore) breakBefore = true;
   }
 

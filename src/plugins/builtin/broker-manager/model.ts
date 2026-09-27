@@ -2,7 +2,6 @@ import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broke
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
-import { formatRelativeAge } from "../../../utils/relative-time";
 import { t } from "../../../i18n";
 
 export type BrokerDisplayState =
@@ -40,10 +39,6 @@ function titleCase(value: string): string {
 function formatBrokerMode(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   return text ? titleCase(text) : t("Configured");
-}
-
-export function formatBrokerUpdatedAt(updatedAt: number | undefined, now = Date.now()): string {
-  return formatRelativeAge(updatedAt, now);
 }
 
 function summarizeBrokerAccounts(accounts: BrokerAccount[]): string {
@@ -116,7 +111,9 @@ export function buildBrokerProfileRows(
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
     const status = adapter?.getStatus?.(instance) ?? null;
-    const mode = resolveMode(adapter, instance, status);
+    // An adapter that fronts several brokers names the broker and how it connects.
+    const described = adapter?.describeInstance?.(instance) ?? null;
+    const mode = described?.method ?? resolveMode(adapter, instance, status);
     const state = resolveState(instance, adapter, mode, status);
     const accounts = brokerAccounts[instance.id] ?? [];
     const portfolioLastSyncedAt = Math.max(
@@ -132,7 +129,7 @@ export function buildBrokerProfileRows(
       id: instance.id,
       label: instance.label,
       brokerType: instance.brokerType,
-      brokerName: adapter?.name ?? instance.brokerType.toUpperCase(),
+      brokerName: described?.brokerName ?? adapter?.name ?? instance.brokerType.toUpperCase(),
       mode,
       state: state.state,
       stateLabel: state.label,

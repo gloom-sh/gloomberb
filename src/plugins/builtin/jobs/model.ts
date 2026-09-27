@@ -216,12 +216,6 @@ export function sortPostingRows(rows: PostingRow[], sort: PostingSort): PostingR
   );
 }
 
-export function nextPostingSort(current: PostingSort, columnId: string): PostingSort {
-  const id = columnId as PostingColumnId;
-  if (current.columnId === id) return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
-  return { columnId: id, direction: id === "title" || id === "location" || id === "function" ? "asc" : "desc" };
-}
-
 // Share bars ----------------------------------------------------------------
 
 export interface ShareBarRow {
@@ -345,10 +339,4 @@ export function sortMoverRows(rows: MoverRow[], sort: MoverSort): MoverRow[] {
   return [...rows].sort((a, b) =>
     compareSortValues(moverSortValue(a, sort.columnId), moverSortValue(b, sort.columnId), sort.direction),
   );
-}
-
-export function nextMoverSort(current: MoverSort, columnId: string): MoverSort {
-  const id = columnId as MoverColumnId;
-  if (current.columnId === id) return { columnId: id, direction: current.direction === "asc" ? "desc" : "asc" };
-  return { columnId: id, direction: id === "ticker" || id === "company" || id === "function" ? "asc" : "desc" };
 }

@@ -14,6 +14,7 @@ import { getPublishedUsEquitySession } from "../../market-data/published-us-sess
 import { CANONICAL_EXCHANGE_ALIASES, canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { canonicalHistoryInterval } from "../history-retention";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { zonedDateKey } from "../../utils/zoned-date-time";
 import { getYahooSymbol, getYahooSymbolsToTry, withYahooSymbols } from "./symbols";
 import type { ChartResult } from "./types";
 import { matchesYahooChartInterval } from "./yahoo-chart-interval";
@@ -43,15 +44,6 @@ type YahooChartFetcher = (
   regularHoursOnly?: boolean;
 }>;
 
-const sessionDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-});
-
-function sessionDate(time: number): string {
-  const parts = new Map(sessionDateFormatter.formatToParts(time).map(part => [part.type, part.value]));
-  return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
-}
-
 function yahooHistorySession(
   ticker: string, exchange: string, symbol: string, resolution: ManualChartResolution,
   result: Awaited<ReturnType<YahooChartFetcher>>,
@@ -70,7 +62,7 @@ function yahooHistorySession(
   const fullVenue = canonicalExchange(meta.fullExchangeName);
   if (meta.fullExchangeName && CANONICAL_EXCHANGE_ALIASES[meta.fullExchangeName.trim().toUpperCase()]
     && fullVenue !== venue) return undefined;
-  if (!getPublishedUsEquitySession(venue, sessionDate(observedAt))) return undefined;
+  if (!getPublishedUsEquitySession(venue, zonedDateKey(observedAt, "America/New_York"))) return undefined;
   const step = CHART_RESOLUTION_STEP_MS[resolution];
   let hasFinalObservation = false;
   let previousTime = 0;
@@ -78,7 +70,7 @@ function yahooHistorySession(
     const time = point.date.getTime();
     if (!Number.isFinite(time) || time > observedAt || time <= previousTime) return undefined;
     previousTime = time;
-    const session = getPublishedUsEquitySession(venue, sessionDate(time));
+    const session = getPublishedUsEquitySession(venue, zonedDateKey(time, "America/New_York"));
     if (!session || session.kind !== "session" || time < session.open || time > session.close) return undefined;
     if (time === session.close || (time - session.open) % step !== 0) {
       // The chart can append the current/final regular-market observation.

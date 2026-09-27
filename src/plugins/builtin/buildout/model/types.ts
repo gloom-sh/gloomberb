@@ -2,7 +2,6 @@ import type { DataTableColumn } from "../../../../components";
 
 export type BuildoutTabId = "companies" | "sites" | "intel";
 export type BuildoutAccess = "free" | "pro";
-export type SortDirection = "asc" | "desc";
 
 export type RawObject = Record<string, unknown>;
 

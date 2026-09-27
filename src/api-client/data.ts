@@ -111,8 +111,7 @@ import type {
   CloudYieldPointPayload,
   ScannerFlowHistoryPage,
 } from "./types";
-
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+import type { CloudApiRequest } from "./request";
 
 export class CloudDataApi {
   constructor(private readonly request: CloudApiRequest) {}

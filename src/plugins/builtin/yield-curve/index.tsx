@@ -4,14 +4,13 @@ import {
   useChartTableSelection, usePaneNoticeFooter, type DataTableColumn, type PaneFooterSegment,
 } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -100,12 +99,11 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   // The [d]ate and [c]urrent hints bind their own keys; Esc in the date field
   // is the query bar's.
-  useShortcut((ev) => {
-    if (!focused || dateActive || !isPlainKey(ev, "r")) return;
+  usePaneRefreshKey(() => {
     void load();
     // A manual refresh also retries look-backs that failed; good ones are kept.
     if (session && (lookbackResource.error || lookbacks?.some((lookback) => !lookback.points))) void lookbackResource.load();
-  });
+  }, { focused, enabled: !dateActive });
 
   const bp = spreadBasisPoints(points);
   // Treasury series are daily closes, so which session the curve represents is

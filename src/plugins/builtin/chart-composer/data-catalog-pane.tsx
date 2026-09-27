@@ -12,9 +12,7 @@ import {
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
-import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { useShortcut } from "../../../react/input";
-import { isPlainKey } from "../../../utils/keyboard";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -46,16 +44,6 @@ interface CatalogSortPreference {
 }
 
 const DEFAULT_SORT: CatalogSortPreference = { columnId: "publisher", direction: "asc" };
-
-function nextSortPreference(
-  current: CatalogSortPreference,
-  columnId: string,
-): CatalogSortPreference {
-  const typed = columnId as CatalogColumnId;
-  if (current.columnId !== typed) return { columnId: typed, direction: "asc" };
-  if (current.direction === "asc") return { columnId: typed, direction: "desc" };
-  return DEFAULT_SORT;
-}
 
 function sortValue(columnId: CatalogColumnId, row: CatalogSeriesRow): string | null {
   switch (columnId) {
@@ -172,25 +160,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     createPaneFromTemplate(CHART_COMPOSER_TEMPLATE_ID, { arg: row.expression });
   }, [createPaneFromTemplate, dialog]);
 
-  useShortcut((event) => {
-    if (!focused || searchFocused || event.targetEditable) return;
-    if (isPlainKey(event, "/")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      focusSearch();
-    }
-  }, { enabled: focused && !searchFocused });
-
-  useShortcut((event) => {
-    if (!focused || searchFocused || event.targetEditable) return;
-    if (isPlainKey(event, "g") && selectedRow) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      chartSelected(selectedRow);
-    }
-  }, { enabled: focused && !searchFocused && !!selectedRow });
-
-  // `/` and `g` are the pane's own plain-key shortcuts above; the table only
+  // `/` and `g` are footer hints, which bind their own keys; the table only
   // hands the cursor up into the search from its first row.
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
@@ -293,7 +263,9 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       items={rows}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference((current) => nextSortPreference(current, columnId))}
+      onHeaderClick={(columnId) => setSortPreference((current) => nextHeaderSort(current, columnId as CatalogColumnId, {
+        resetTo: DEFAULT_SORT,
+      }))}
       getItemKey={(row) => row.id}
       onActivate={chartSelected}
       renderCell={renderCell}

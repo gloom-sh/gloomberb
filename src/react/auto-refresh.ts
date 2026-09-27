@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePaneVisible } from "../state/app/activity";
 import { useAppSelector } from "../state/app/context";
-import { formatRelativeAge } from "../utils/relative-time";
+import { formatRelativeAge } from "../utils/datetime-format";
 
 /** The label only changes once a minute, so a coarse tick is enough. */
 export const AGE_TICK_MS = 30_000;

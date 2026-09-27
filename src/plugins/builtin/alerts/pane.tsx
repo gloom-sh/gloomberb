@@ -275,29 +275,12 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     setSelectedIdx((prev) => (rows.length === 0 ? 0 : Math.min(prev, rows.length - 1)));
   }, [rows.length]);
 
+  // The footer hints bind a, e, d and m; `n` is a second key for adding.
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "d")) {
-      event.preventDefault?.();
-      deleteSelectedAlert();
-      return true;
-    }
-    if (isPlainKey(event, "a", "n")) {
-      event.preventDefault?.();
-      startAddAlert();
-      return true;
-    }
-    if (isPlainKey(event, "e")) {
-      event.preventDefault?.();
-      editSelectedAlert();
-      return true;
-    }
-    if (isPlainKey(event, "m")) {
-      event.preventDefault?.();
-      rearmSelectedAlert();
-      return true;
-    }
-    return false;
-  }, [deleteSelectedAlert, editSelectedAlert, rearmSelectedAlert, startAddAlert]);
+    if (!isPlainKey(event, "n")) return false;
+    startAddAlert();
+    return true;
+  }, [startAddAlert]);
 
   const renderCell = useCallback((
     alert: AlertRule,

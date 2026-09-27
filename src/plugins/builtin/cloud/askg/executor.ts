@@ -5,7 +5,7 @@ import {
   serializeHeadlessPaneResult,
 } from "../../../../cli/pane-functions/headless";
 import { resolvePaneFunction } from "../../../../cli/pane-functions/resolver";
-import { stableStringify } from "../../../../remote/revision";
+import { stableStringify } from "../../../../utils/hash";
 import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,

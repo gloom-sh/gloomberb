@@ -1,11 +1,12 @@
+import { parseHex as parseRgbHex } from "../../../../theme/color-utils";
+import { clamp } from "../../../../utils/math";
+
 export interface RgbaColor {
   r: number;
   g: number;
   b: number;
   a: number;
 }
-
-export const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const range = edge1 - edge0;
@@ -15,13 +16,8 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
 }
 
 export function parseHex(hex: string, alpha = 1): RgbaColor {
-  const normalized = hex.replace("#", "");
-  return {
-    r: parseInt(normalized.slice(0, 2), 16),
-    g: parseInt(normalized.slice(2, 4), 16),
-    b: parseInt(normalized.slice(4, 6), 16),
-    a: Math.round(clamp(alpha, 0, 1) * 255),
-  };
+  const [r, g, b] = parseRgbHex(hex);
+  return { r, g, b, a: Math.round(clamp(alpha, 0, 1) * 255) };
 }
 
 export function blendPixel(

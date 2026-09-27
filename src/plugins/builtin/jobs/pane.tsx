@@ -27,13 +27,14 @@ import {
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { ResolvedSeries } from "../../../time-series/types";
-import { getTableWidth } from "../../../components/ui/table-layout";
+import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -54,14 +55,14 @@ import {
   formatShare,
   historyChartPoints,
   moversHaveWeekHistory,
-  nextMoverSort,
-  nextPostingSort,
   sortMoverRows,
   sortPostingRows,
   type MoverColumn,
+  type MoverColumnId,
   type MoverRow,
   type MoverSort,
   type PostingColumn,
+  type PostingColumnId,
   type PostingRow,
   type PostingSort,
   type ShareBarRow,
@@ -475,7 +476,9 @@ function CompanyView({
             items={rows}
             sortColumnId={sort.columnId}
             sortDirection={sort.direction}
-            onHeaderClick={(columnId) => setSort((current) => nextPostingSort(current, columnId))}
+            onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as PostingColumnId, {
+              firstDirection: columnId === "title" || columnId === "location" || columnId === "function" ? "asc" : "desc",
+            }))}
             getItemKey={(row) => row.key}
             renderCell={renderCell}
             emptyStateTitle="No open roles"
@@ -534,12 +537,7 @@ function CompanyPanel({
   const { data, status, error, reload } = resource;
 
   // `r` asks again in every state, including a failed or uncovered company.
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r")) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    reload();
-  });
+  usePaneRefreshKey(reload, { focused });
 
   // While the server is looking for the company, ask again on a timer.
   useEffect(() => {
@@ -637,11 +635,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   useShortcut((event) => {
     if (!focused) return;
     // With a company open, `r` belongs to that company's panel, once it is on screen.
-    if (isPlainKey(event, "r") && !(open && data)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      reload();
-    } else if (isPlainKey(event, "t")) {
+    if (!(open && data) && handleRefreshKey(event, reload, { stopPropagation: true })) return;
+    if (isPlainKey(event, "t")) {
       const ticker = open ?? selected?.ticker;
       if (!ticker) return;
       event.preventDefault?.();
@@ -719,7 +714,9 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
         items={rows}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}
-        onHeaderClick={(columnId) => setSort((current) => nextMoverSort(current, columnId))}
+        onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as MoverColumnId, {
+          firstDirection: columnId === "ticker" || columnId === "company" || columnId === "function" ? "asc" : "desc",
+        }))}
         getItemKey={(row) => row.key}
         renderCell={renderCell}
         emptyStateTitle={status === "loading" ? "Loading..." : "No companies covered yet"}

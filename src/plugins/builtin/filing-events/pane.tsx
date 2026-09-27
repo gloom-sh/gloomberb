@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import {
+  BulletList,
   EmptyState,
   ExternalLinkText,
   PaneStatusBody,
   Prose,
+  READING_WIDTH,
   SectionHeading,
   usePaneFooter,
-  type PaneFooterSegment,
 } from "../../../components";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { colors, hoverBg } from "../../../theme/colors";
 import {
@@ -30,7 +32,6 @@ import {
 
 export const FILING_EVENTS_PANE_ID = "filing-events";
 
-const MAX_PROSE_WIDTH = 100;
 const loadFilingEvents = (symbol: string) => apiClient.getFilingEvents(symbol, 100);
 
 /** One filing: when it was filed, what it was about, and what it said. */
@@ -78,15 +79,7 @@ function FilingEntry({
       {entry.headline ? (
         <Prose text={entry.headline} width={proseWidth} color={colors.textBright} />
       ) : null}
-      {entry.points.map((point) => (
-        <Prose
-          key={point}
-          text={point}
-          width={proseWidth}
-          color={colors.text}
-          prefix="• "
-        />
-      ))}
+      <BulletList items={entry.points} width={proseWidth} color={colors.text} />
       {entry.people.map((person) => (
         <Prose
           key={`${person.name}-${person.detail}`}
@@ -126,7 +119,7 @@ export function FilingEventsPane({
   }, [ticker]);
 
   const bodyWidth = Math.max(12, width - 2);
-  const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
+  const proseWidth = Math.min(bodyWidth, READING_WIDTH);
   // Desktop chrome wraps the paragraphs itself, across the whole pane; the
   // terminal wraps at the reading width. Measuring against whichever is in use
   // keeps the entry offsets on the lines the reader actually sees.
@@ -183,10 +176,7 @@ export function FilingEventsPane({
 
   useShortcut(
     (event) => {
-      if (isPlainKey(event, "r")) {
-        void reload();
-        return;
-      }
+      if (handleRefreshKey(event, () => void reload())) return;
       if (isPlainKey(event, "o", "enter", "return")) {
         event.preventDefault();
         openFiling();
@@ -212,11 +202,7 @@ export function FilingEventsPane({
   );
 
   usePaneFooter(FILING_EVENTS_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
-    if (loading) {
-      info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    }
-    if (error && ticker) info.push({ id: "error", parts: [{ text: error, tone: "warning" }] });
+    const info = loadingErrorFooterInfo(loading, ticker ? error : null);
     const hints = selected
       ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }]
       : [];

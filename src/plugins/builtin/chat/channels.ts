@@ -5,8 +5,6 @@ import { t } from "../../../i18n";
 import { chatController } from "./controller";
 import { formatChannelLabel } from "./channel-labels";
 
-export { formatChannelLabel, formatChatPaneTitle } from "./channel-labels";
-
 export const DEFAULT_CHAT_CHANNEL_ID = "everyone";
 export const LAST_VISITED_CHAT_CHANNEL_KEY = "lastChatChannelId";
 

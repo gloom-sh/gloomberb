@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { comparableMarketCap, relativeValuationValues } from "./relative-valuation-model";
+import { convertMarketCapitalization } from "../../../utils/market-capitalization";
+import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 
 test("fresh quotes do not hide stale fundamentals in a peer research report", async () => {
@@ -71,9 +72,9 @@ test("relative valuation does not divide unconverted foreign cash flows by a USD
 
 test("peer market caps convert before ranking and missing FX never becomes a 1:1 conversion", () => {
   const rates = new Map([["JPY", 0.0065], ["GBP", 1.3]]);
-  expect(comparableMarketCap(1e12, "JPY", "USD", rates)).toBe(6.5e9);
-  expect(comparableMarketCap(1e9, "GBP", "USD", rates)).toBe(1.3e9);
-  expect(comparableMarketCap(1e9, "EUR", "USD", rates)).toBeNull();
+  expect(convertMarketCapitalization(1e12, "JPY", "USD", rates)).toBe(6.5e9);
+  expect(convertMarketCapitalization(1e9, "GBP", "USD", rates)).toBe(1.3e9);
+  expect(convertMarketCapitalization(1e9, "EUR", "USD", rates)).toBeNull();
 });
 
 
@@ -138,8 +139,8 @@ test("a foreign fundamental capitalization converts in its own currency, indepen
     fundamentals: { marketCap: 1000, marketCapCurrency: "TWD", financialCurrency: "TWD", freeCashFlow: 100 } };
   const row = relativeValuationValues(financials);
   expect(row).toMatchObject({ price: 200, currency: "USD", marketCap: 1000, marketCapCurrency: "TWD", fcfYield: 0.1 });
-  expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map([["TWD", 0.03]]))).toBe(30);
-  expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map())).toBeNull();
+  expect(convertMarketCapitalization(row.marketCap, row.marketCapCurrency, "USD", new Map([["TWD", 0.03]]))).toBe(30);
+  expect(convertMarketCapitalization(row.marketCap, row.marketCapCurrency, "USD", new Map())).toBeNull();
 });
 
 test("stale quotes cannot rank as current prices or seed quote-based cash-flow yields", async () => {

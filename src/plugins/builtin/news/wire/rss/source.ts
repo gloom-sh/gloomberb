@@ -1,6 +1,7 @@
 import { createThrottledFetch } from "../../../../../utils/throttled-fetch";
 import { newsProvider, type NewsCapability } from "../../../../../capabilities";
 import type { NewsQuery, MarketNewsItem } from "../../../../../types/news-source";
+import { normalizeNewsFeed } from "../../../../../news/news-model";
 import type { PluginPersistence } from "../../../../../types/plugin";
 import { parseRssFeedDocument, type RssFeedConfig } from "./parser";
 import { enrichNewsItem } from "../categories";
@@ -37,8 +38,7 @@ export interface RssNewsCapabilityOptions {
 }
 
 function supportsQuery(query: NewsQuery): boolean {
-  const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
-  return feed === "latest" && !query.cursor;
+  return normalizeNewsFeed(query) === "latest" && !query.cursor;
 }
 
 function serializeItem(item: MarketNewsItem): CachedNewsItem {

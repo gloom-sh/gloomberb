@@ -5,7 +5,6 @@ import {
   useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
-  useShortcut,
 } from "../../../public/react";
 import {
   DataTableView,
@@ -26,7 +25,7 @@ import { blendHex, priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -143,12 +142,7 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     clearOnError: (error) => error instanceof Error && error.message === NO_BREAKDOWN,
   });
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) {
-      event.preventDefault();
-      void resource.reload();
-    }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
 
   const payload = useMemo(
     () => (resource.data ? reportedSpan(resource.data.payload) : null),
@@ -161,12 +155,8 @@ function RevenueBreakdownView({ width, height, focused }: { width: number; heigh
     registrationId: "revenue-breakdown",
     loading: resource.loading,
     error: payload ? resource.error : null,
-    info: payload
-      ? [
-        ...(payload.filed ? [{ id: "filed", parts: [{ text: `filed ${payload.filed}`, tone: "muted" as const }] }] : []),
-        ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-      ]
-      : [],
+    info: payload?.filed ? [{ id: "filed", parts: [{ text: `filed ${payload.filed}`, tone: "muted" as const }] }] : [],
+    stale: !!payload && resource.data?.stale,
     hints: preview
       ? [{ id: "revenue-upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }]
       : undefined,

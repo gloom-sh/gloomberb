@@ -51,7 +51,10 @@ export function createRemoteBrokerAdapter(adapter: BrokerAdapter): BrokerAdapter
     disconnect: (instance) => invoke<void>(instance, "disconnect"),
     getStatus: (instance) => getBrokerRemoteClient()?.getStatus(instance.id) ?? adapter.getStatus?.(instance) ?? disconnectedStatus(),
     subscribeStatus: (instance, listener) => getBrokerRemoteClient()?.subscribeStatus(instance.id, listener) ?? (() => {}),
-    getPersistedConfigUpdate: (instance) => invoke<Record<string, unknown> | null>(instance, "getPersistedConfigUpdate"),
+    // The Bun process refuses an operation its adapter lacks, so only offer what the adapter has.
+    getPersistedConfigUpdate: adapter.getPersistedConfigUpdate
+      ? (instance) => invoke<Record<string, unknown> | null>(instance, "getPersistedConfigUpdate")
+      : undefined,
     listAccounts: (instance) => invoke(instance, "listAccounts"),
     getPortfolioPerformance: (instance, accountId: string) => invoke(instance, "getPortfolioPerformance", [accountId]),
     searchInstruments: (query, instance) => invoke(instance, "searchInstruments", [query]),

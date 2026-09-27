@@ -11,11 +11,12 @@ import {
 import { t } from "../../i18n";
 import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
 import { Box, Text, TextAttributes } from "../../ui";
+import { truncateToDisplayWidth } from "../../utils/format";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
 import type { ListJump } from "./list/model";
 import { useCommandBarPalette } from "./panel/palette";
-import { truncateText } from "./view-model";
+import { clampIndex } from "../../utils/math";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
 /**
@@ -76,10 +77,6 @@ export interface ThemePickerHandle {
   jump: (target: ListJump) => boolean;
   commit: () => boolean;
   cancelPreview: () => void;
-}
-
-function clampIndex(index: number, length: number): number {
-  return Math.max(0, Math.min(index, Math.max(0, length - 1)));
 }
 
 export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(function ThemePicker({
@@ -228,7 +225,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
 
   const nameWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH);
   const renderRow = useCallback((item: ListViewItem, state: ListRowState) => {
-    const label = truncateText(item.label, nameWidth);
+    const label = truncateToDisplayWidth(item.label, nameWidth);
     const trailing = item.current ? "current" : "";
     return (
       <Box
@@ -254,7 +251,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         </Box>
         <Box width={trailingWidth}>
           <Text fg={state.selected ? palette.selectedText : palette.subtle}>
-            {truncateText(trailing, trailingWidth)}
+            {truncateToDisplayWidth(trailing, trailingWidth)}
           </Text>
         </Box>
       </Box>
@@ -279,7 +276,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       bgColor={nativePaneChrome ? palette.panelBg : palette.bg}
       selectedBgColor={palette.selectedBg}
       hoverBgColor={palette.hoverBg}
-      emptyMessage={truncateText(t("No themes match"), queryDisplayWidth)}
+      emptyMessage={truncateToDisplayWidth(t("No themes match"), queryDisplayWidth)}
       showSelectedDescription={false}
       onSelect={handleSelect}
       onActivate={handleActivate}

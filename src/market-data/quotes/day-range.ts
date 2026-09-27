@@ -2,8 +2,7 @@ import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "../market/price-basis";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalExchange, resolveExchangeTimeZone } from "../../utils/exchanges";
-
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+import { zonedDateKey } from "../../utils/zoned-date-time";
 
 // Intl.DateTimeFormat.format costs about 15us and every quote merge asks for
 // the incoming and the retained quote's date, so the retained one repeats on
@@ -19,12 +18,7 @@ function zoneDate(zone: string, timestamp: number): string | null {
   if (cached !== undefined) return cached;
   const observedAt = new Date(minute * 60_000);
   if (!Number.isFinite(observedAt.getTime())) return null;
-  let formatter = dateFormatters.get(zone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" });
-    dateFormatters.set(zone, formatter);
-  }
-  const date = formatter.format(observedAt);
+  const date = zonedDateKey(observedAt.getTime(), zone);
   if (zoneDateCache.size >= ZONE_DATE_CACHE_LIMIT) zoneDateCache.clear();
   zoneDateCache.set(key, date);
   return date;

@@ -1,14 +1,11 @@
 import type { ResolvedSeries, SeriesTransform, TimeSeriesPoint } from "./types";
 import { calendarMonthsBefore } from "../utils/calendar-date";
+import { isFiniteNumber } from "../utils/guards";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 // Volume is separate supporting data, not another price. A volume series has
 // its primary measurement in `value`, which still receives the transform.
 const NUMERIC_POINT_FIELDS = ["value", "open", "high", "low", "close"] as const;
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
 
 function clonePoint(point: TimeSeriesPoint): TimeSeriesPoint {
   return {
@@ -21,20 +18,20 @@ function clonePoint(point: TimeSeriesPoint): TimeSeriesPoint {
 }
 
 function primaryValue(point: TimeSeriesPoint): number | null {
-  return finiteNumber(point.value)
+  return isFiniteNumber(point.value)
     ? point.value
-    : finiteNumber(point.close)
+    : isFiniteNumber(point.close)
       ? point.close
       : null;
 }
 
 function relativeValue(value: number | null | undefined, baseline: number, index100: boolean): number | null {
-  if (!finiteNumber(value) || baseline === 0) return null;
+  if (!isFiniteNumber(value) || baseline === 0) return null;
   return index100 ? (value / baseline) * 100 : ((value - baseline) / Math.abs(baseline)) * 100;
 }
 
 function growthValue(value: number | null | undefined, previous: number | null | undefined): number | null {
-  if (!finiteNumber(value) || !finiteNumber(previous) || previous === 0) return null;
+  if (!isFiniteNumber(value) || !isFiniteNumber(previous) || previous === 0) return null;
   return ((value - previous) / Math.abs(previous)) * 100;
 }
 
@@ -136,7 +133,7 @@ export function applySeriesTransform(
   if (transform === "log") {
     return points.map((point) => mapNumericFields(
       point,
-      (value) => finiteNumber(value) && value > 0 ? Math.log(value) : null,
+      (value) => isFiniteNumber(value) && value > 0 ? Math.log(value) : null,
     ));
   }
 

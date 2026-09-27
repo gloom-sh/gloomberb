@@ -2,17 +2,16 @@ import { Box } from "../../../../ui";
 import { useEffect, useMemo } from "react";
 import type { PaneProps } from "../../../../types/plugin";
 import type { MarketNewsItem } from "../../../../types/news-source";
-import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
-import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../runtime";
+import { useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
+import { usePluginPaneState } from "../../../runtime";
 import { Tabs, usePaneHeaderTabs } from "../../../../components";
-import { NewsDetailView, useNewsArticleDetail } from "./news/detail-view";
+import { useNewsArticleStack } from "./news/preset-pane";
 import {
   NewsArticleStackView,
   newsTableStatusContent,
+  type NewsColumnId,
   type NewsSortPreference,
 } from "./news/table";
-import { useNewsArticleFooter } from "./news/footer";
-import { useNewsReadState } from "./read-state";
 import { usePersistedNewsArticles } from "./persisted-articles";
 import {
   NEWS_QUERY_PRESETS,
@@ -24,6 +23,7 @@ import {
 const SECTOR_TABS = ["all", ...SECTOR_NEWS_SECTORS] as const;
 
 const DEFAULT_SORT: NewsSortPreference = { columnId: "time", direction: "desc" };
+const COLUMNS: NewsColumnId[] = ["time", "source", "title", "tickers", "categories", "sentiment"];
 
 /**
  * Every sector tab filters the one all-sector response instead of issuing a
@@ -57,17 +57,19 @@ function useIndustryArticles(sector: SectorNewsSelection): {
 
 export function IndustryPane({ focused, width, height }: PaneProps) {
   const [category, setCategory] = usePluginPaneState<SectorNewsSelection>("industry:category", "all");
-  const [selectedArticleId, setSelectedArticleId] = useDebouncedPluginPaneState<string | null>("industry:selectedArticleId", null);
-  const [sortPreference, setSortPreference] = usePluginPaneState<NewsSortPreference>("industry:sort", DEFAULT_SORT);
   const { articles, allArticles, loading, error, newsState } = useIndustryArticles(category);
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(NEWS_QUERY_PRESETS.sectorAll, newsState);
-  const loadNewsStory = useLoadNewsStory();
-  const { detailArticle, detailLoading, detailError, openArticle, closeDetail } = useNewsArticleDetail(
+  const stack = useNewsArticleStack({
+    paneKey: "industry",
     articles,
-    loadNewsStory,
-    "industry:openArticleId",
-  );
-  const { readArticleIds, markArticleRead } = useNewsReadState();
+    focused,
+    width,
+    columns: COLUMNS,
+    defaultSort: DEFAULT_SORT,
+    refreshing: loading && allArticles.length > 0,
+    error,
+  });
+  const { setSelectedArticleId, detailOpen } = stack;
   const tabs = useMemo(() => SECTOR_TABS.map((cat) => ({
     value: cat,
     label: sectorNewsLabel(cat),
@@ -77,17 +79,9 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     setSelectedArticleId(null);
   }, [category, setSelectedArticleId]);
 
-  useNewsArticleFooter({
-    registrationId: "news-wire:industry",
-    focused,
-    article: detailArticle,
-    loading: detailLoading || (loading && allArticles.length > 0),
-    error: [error, detailError].filter(Boolean).join(" ") || null,
-  });
-
   const selectCategory = (value: string) => setCategory(value as SectorNewsSelection);
   // An open story owns h/l and the arrows; the sector strip must not switch under it.
-  const tabsFocused = focused && !detailArticle;
+  const tabsFocused = focused && !detailOpen;
   const tabsInHeader = usePaneHeaderTabs({ tabs, activeValue: category, onSelect: selectCategory, focused: tabsFocused });
   const rootBefore = tabsInHeader ? undefined : (
     <Box height={1} flexShrink={0} overflow="hidden">
@@ -102,36 +96,11 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     </Box>
   );
 
-  const detailContent = detailArticle ? (
-    <NewsDetailView
-      item={detailArticle}
-      focused={focused}
-      width={width}
-      showTitle={false}
-    />
-  ) : (
-    <Box flexGrow={1} />
-  );
-
   return (
     <NewsArticleStackView
-      articles={articles}
-      focused={focused}
-      width={width}
+      {...stack}
       rootHeight={height}
-      readArticleIds={readArticleIds}
-      selectedArticleId={selectedArticleId}
-      setSelectedArticleId={setSelectedArticleId}
-      sortPreference={sortPreference}
-      setSortPreference={setSortPreference}
-      onOpenArticle={openArticle}
-      onArticleRead={markArticleRead}
-      detailOpen={!!detailArticle}
-      onBack={closeDetail}
-      detailContent={detailContent}
-      detailTitle={detailArticle?.title}
       rootBefore={rootBefore}
-      columns={["time", "source", "title", "tickers", "categories", "sentiment"]}
       emptyContent={newsTableStatusContent({
         loading,
         error,

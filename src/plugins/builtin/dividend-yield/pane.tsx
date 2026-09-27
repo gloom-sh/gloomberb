@@ -16,27 +16,24 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
+import { buildTrailingCashChartPoints, formatDividendYield, toDividendRows, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
-  nextSortPreference,
   sortRows,
-  toDividendRows,
   type DividendColumn,
-  type DividendRow,
+  type DividendColumnId,
   type DividendSortPreference,
 } from "./model";
 import type { DividendMetrics } from "./types";
@@ -234,12 +231,15 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
     ? buildMetricItems(metrics, currency, sortedRows.length > 0, true) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {
+      firstDirection: "desc",
+      resetTo: DEFAULT_SORT_PREFERENCE,
+    }));
   }, []);
 
   // Only a bare r refreshes; Cmd/Ctrl+Shift+R belongs to the window.
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
-    isPlainKey(event, "r") && handleRefreshKey(event, refresh, { stopPropagation: true })
+    handleRefreshKey(event, refresh, { stopPropagation: true })
   ), [refresh]);
 
   const emptyTitle = !symbol

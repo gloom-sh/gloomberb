@@ -1,10 +1,18 @@
 import { useMemo, type RefObject } from "react";
 import type {
   CloudEarningsTranscriptPayload,
-  CloudTranscriptKeyFigurePayload,
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
-import { PaneStatusBody, Prose, QueryBar, SectionHeading, type QueryBarSearch } from "../../../components";
+import {
+  BulletList,
+  FigureList,
+  PaneStatusBody,
+  Prose,
+  QueryBar,
+  READING_WIDTH,
+  SectionHeading,
+  type QueryBarSearch,
+} from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import {
@@ -34,11 +42,6 @@ export const READER_TABS: Array<{ label: string; value: ReaderTab; hint: string 
   { label: "Q&A", value: "qa", hint: "q" },
 ];
 
-/**
- * Prose is capped at a comfortable measure. On a wide pane a full-width line
- * is over two hundred characters, which the eye loses on the way back.
- */
-const MAX_PROSE_WIDTH = 100;
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
 
 function speakerColor(turn: CloudTranscriptTurnPayload): string {
@@ -67,55 +70,7 @@ function Section({
   return (
     <Box flexDirection="column">
       <SectionHeading marginTop={1} title={title} />
-      {splitSentences(body).map((sentence, index) => (
-        <Prose
-          key={index}
-          text={sentence}
-          width={width}
-          color={colors.text}
-          prefix="• "
-        />
-      ))}
-    </Box>
-  );
-}
-
-/**
- * The numbers management gave, one per line with the value first so the
- * column of figures is what the eye lands on.
- */
-function KeyFigures({
-  figures,
-  width,
-}: {
-  figures: CloudTranscriptKeyFigurePayload[];
-  width: number;
-}) {
-  if (figures.length === 0) return null;
-  const valueWidth = Math.min(
-    18,
-    Math.max(...figures.map((figure) => figure.value.length)),
-  );
-  return (
-    <Box flexDirection="column">
-      <SectionHeading marginTop={1} title="KEY FIGURES" />
-      {figures.map((figure) => {
-        const value =
-          figure.value.length > valueWidth
-            ? figure.value
-            : figure.value.padEnd(valueWidth);
-        const rest = [figure.label, figure.note].filter(Boolean).join(", ");
-        return (
-          <Prose
-            key={`${figure.label}-${figure.value}`}
-            text={rest}
-            width={width}
-            color={colors.textDim}
-            prefix={`${value}  `}
-            prefixColor={colors.textBright}
-          />
-        );
-      })}
+      <BulletList items={splitSentences(body)} width={width} color={colors.text} />
     </Box>
   );
 }
@@ -253,7 +208,7 @@ export function TranscriptView({
 
   // One column of padding each side inside the scroll box.
   const bodyWidth = Math.max(12, width - 2);
-  const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
+  const proseWidth = Math.min(bodyWidth, READING_WIDTH);
   const contentWidth = isNative ? "100%" : bodyWidth;
   const contentStyle = isNative ? NATIVE_STRETCH_STYLE : undefined;
 
@@ -296,10 +251,12 @@ export function TranscriptView({
                 width={proseWidth}
                 color={colors.textDim}
               />
-              <KeyFigures
-                figures={transcript.keyFigures ?? []}
-                width={proseWidth}
-              />
+              {transcript.keyFigures?.length ? (
+                <Box flexDirection="column">
+                  <SectionHeading marginTop={1} title="KEY FIGURES" />
+                  <FigureList figures={transcript.keyFigures} width={proseWidth} />
+                </Box>
+              ) : null}
               <Section
                 title="SUMMARY"
                 body={transcript.summary ?? ""}

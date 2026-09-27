@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 
 import type { CommandBarRoute } from "../workflow/types";
 import type { ListScreenState, ResultItem } from "./model";
 import type { CommandBarListScrollEvent } from "./view";
+import { clampIndex } from "../../../utils/math";
 
 interface CommandBarListNavigationOptions {
   activateListSelectionRef: RefObject<(options?: { secondary?: boolean; item?: ResultItem }) => void>;
@@ -11,10 +12,6 @@ interface CommandBarListNavigationOptions {
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   visibleListStateRef: RefObject<ListScreenState | null>;
-}
-
-function clampListIndex(index: number, length: number): number {
-  return Math.max(0, Math.min(index, Math.max(0, length - 1)));
 }
 
 export function useCommandBarListNavigation({
@@ -29,7 +26,7 @@ export function useCommandBarListNavigation({
   const moveListSelection = useCallback((delta: number) => {
     const listState = visibleListStateRef.current;
     if (!listState || listState.results.length === 0 || delta === 0) return;
-    const nextIndex = clampListIndex(listState.selectedIdx + delta, listState.results.length);
+    const nextIndex = clampIndex(listState.selectedIdx + delta, listState.results.length);
     const selectionChanged = nextIndex !== listState.selectedIdx;
     const hoverChanged = listState.hoveredIdx !== null;
     if (!selectionChanged && !hoverChanged) return;

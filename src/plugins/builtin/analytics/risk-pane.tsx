@@ -29,7 +29,6 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
-import { getTableWidth } from "../../../components/ui/table-layout";
 import {
   useAsyncResource,
   useAutoRefresh,

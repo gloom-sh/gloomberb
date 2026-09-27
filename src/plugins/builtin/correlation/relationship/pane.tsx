@@ -5,8 +5,8 @@ import {
   QueryBar,
   StatGrid,
   statGridRows,
-  usePaneFooter,
   usePaneNoticeFooter,
+  usePaneStatusFooter,
   type CompositeAxisDomain,
 } from "../../../../components";
 import { StaticScatterChartSurface } from "../../../../components/chart/static";
@@ -275,9 +275,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
 
   // The legend reads the values at the cursor and the axis carries its date,
   // so the footer only reports loading.
-  usePaneFooter("relationship-graph", () => ({
-    info: loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : [],
-  }), [loading]);
+  usePaneStatusFooter({ registrationId: "relationship-graph", loading });
 
   if (!pair) {
     return (

@@ -1,17 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type {
   CloudRiskNotePayload,
 } from "../../../api-client";
 import {
-  EmptyState, PaneStatusBody, Prose, QueryBar, SectionHeading, Spinner, StatGrid,
-  Tabs,
+  BulletList, EmptyState, PaneStatusBody, Prose, QueryBar, READING_WIDTH, SectionHeading, Spinner, StatGrid,
   usePaneFooter,
-  usePaneHeaderTabs,
   type PaneFooterSegment,
   type PaneHint,
-  type QueryBarFilter,
 } from "../../../components";
-import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import {
@@ -20,17 +16,14 @@ import {
   Text,
   useRendererHost,
   useUiCapabilities,
-  type ScrollBoxRenderable,
 } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { isPermanentClientError } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../runtime";
+import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useBoundTicker } from "../shared/ticker-request";
 import { loadRiskReport, loadRiskReports } from "./data";
 
 export const RISK_FACTORS_PANE_ID = "risk-factors";
-
-const MAX_PROSE_WIDTH = 100;
 
 function noteFor(
   notes: CloudRiskNotePayload[],
@@ -102,10 +95,10 @@ export function RiskFactorsPane({
   const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
   const listLoader = useCallback((force: boolean) => loadRiskReports(ticker!, { force }), [ticker]);
   const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: isPermanentClientError });
-  const years = useMemo(() => [...(list.data?.reports ?? [])].sort((a, b) => b.reportYear - a.reportYear), [list.data]);
+  const years = useMemo(() => (list.data?.reports ?? []).map((entry) => entry.reportYear).sort((a, b) => b - a), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
   const year = selectedTicker === ticker && selectedYear !== null
-    ? selectedYear : years[0]?.reportYear ?? null;
+    ? selectedYear : years[0] ?? null;
   const reportLoader = useCallback((force: boolean) => loadRiskReport(ticker!, year!, { force }), [ticker, year]);
   const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
   const report = detail.data;
@@ -115,52 +108,25 @@ export function RiskFactorsPane({
     void list.reload();
     if (year !== null) void detail.reload();
   }, [list.reload, detail.reload, year]);
-  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  useEffect(() => {
-    const scrollBox = scrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [ticker, year]);
-
   const openFiling = useCallback(() => {
     if (report?.docUrl) void rendererHost.openExternal(report.docUrl);
   }, [rendererHost, report]);
-
-  const nextYear = useCallback(() => {
-    if (years.length < 2) return;
-    const index = years.findIndex((entry) => entry.reportYear === year);
+  const selectYear = useCallback((next: number) => {
     setSelectedTicker(ticker);
-    setSelectedYear(years[(index + 1) % years.length]!.reportYear);
-  }, [setSelectedYear, ticker, year, years]);
-
-  const scrollBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const max = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(
-      0,
-      Math.min(max, scrollBox.scrollTop + delta),
-    );
-  }, []);
-
-  useShortcut(
-    (event) => {
-      if (isPlainKey(event, "r")) refresh();
-      else if (isPlainKey(event, "o")) {
-        event.preventDefault();
-        openFiling();
-      }
-      // One line per press; marked handled so the pane scroll keys, which
-      // page this report, do not scroll it again.
-      else if (isPlainKey(event, "j", "down")) {
-        event.preventDefault();
-        scrollBy(1);
-      } else if (isPlainKey(event, "k", "up")) {
-        event.preventDefault();
-        scrollBy(-1);
-      }
-    },
-    { enabled: focused, scope: "risk-factors" },
-  );
+    setSelectedYear(next);
+  }, [setSelectedYear, ticker]);
+  const { scrollRef, yearStrip, yearFilters, yearHint } = useFilingYearReader({
+    years,
+    year,
+    onSelectYear: selectYear,
+    tabForm: "10-K",
+    filterLabel: "10-K",
+    focused,
+    nested,
+    scope: "risk-factors",
+    documentKey: `${ticker}:${year}`,
+    refresh,
+  });
 
   usePaneFooter(RISK_FACTORS_PANE_ID, () => {
     const info: PaneFooterSegment[] = [];
@@ -177,37 +143,12 @@ export function RiskFactorsPane({
     const hints: PaneHint[] = report?.docUrl
       ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }]
       : [];
-    // The year strip answers h/l only where it is the pane's own strip; `y`
-    // steps it everywhere, including under Ticker Research's strip.
-    if (ticker && years.length > 1) hints.push({ id: "year", key: "y", label: "ear", onPress: nextYear });
+    if (ticker && yearHint) hints.push(yearHint);
     return { info, hints };
-  }, [list.loading, detail.loading, listError, reportError, list.data, report, year, openFiling, ticker, years.length, nextYear]);
+  }, [list.loading, detail.loading, listError, reportError, list.data, report, year, openFiling, ticker, yearHint]);
 
   const bodyWidth = Math.max(12, width - 2);
-  const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
-  const yearTabs = useMemo(() => years.map((entry) => ({
-    label: `${entry.reportYear} 10-K`,
-    value: String(entry.reportYear),
-  })), [years]);
-  const selectYear = (value: string) => { setSelectedTicker(ticker); setSelectedYear(Number(value)); };
-  const tabsInHeader = usePaneHeaderTabs(years.length > 1 ? {
-    tabs: yearTabs,
-    activeValue: year === null ? "" : String(year),
-    onSelect: selectYear,
-    focused,
-  } : null);
-
-  // Nested in Ticker Research the years stay in the body: the terminal keeps
-  // its tab row, the desktop picks the year from the query bar.
-  const yearStrip = years.length > 1 && !tabsInHeader;
-  const yearFilters: QueryBarFilter[] = yearStrip && nativePaneChrome ? [{
-    id: "year",
-    label: "10-K",
-    inline: years.length <= 4,
-    value: year === null ? "" : String(year),
-    options: years.map((entry) => ({ label: String(entry.reportYear), value: String(entry.reportYear) })),
-    onChange: selectYear,
-  }] : [];
+  const proseWidth = Math.min(bodyWidth, READING_WIDTH);
 
   if (!ticker) return <EmptyState title="Pick a ticker to see its risk factors." />;
   if (!list.data && list.loading) return <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />;
@@ -235,19 +176,7 @@ export function RiskFactorsPane({
       minHeight={0}
       overflow="hidden"
     >
-      {yearStrip && !nativePaneChrome && (
-        <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
-          <Tabs
-            tabs={yearTabs}
-            activeValue={year === null ? "" : String(year)}
-            onSelect={selectYear}
-            compact
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={!nested}
-          />
-        </Box>
-      )}
+      {yearStrip}
       {(yearFilters.length > 0 || meta) && <QueryBar width={width} filters={yearFilters} meta={meta || undefined} />}
       {report && diff ? (
         <StatGrid width={width} items={[
@@ -275,15 +204,7 @@ export function RiskFactorsPane({
                 <SectionHeading
                   title={diff ? "WHAT THE CHANGES SAY" : "WHAT DOMINATES"}
                 />
-                {report.overview.split("\n").map((point) => (
-                  <Prose
-                    key={point}
-                    text={point}
-                    width={proseWidth}
-                    color={colors.text}
-                    prefix="• "
-                  />
-                ))}
+                <BulletList items={report.overview.split("\n")} width={proseWidth} color={colors.text} />
               </Box>
             ) : null}
             {diff ? (

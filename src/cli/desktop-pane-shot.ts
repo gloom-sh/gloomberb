@@ -20,6 +20,7 @@ import {
   electrobunViewPath,
   writeElectrobunViewPage,
 } from "../renderers/electrobun/view/build-assets";
+import { errorMessage } from "../utils/errors";
 
 export interface DesktopPaneShotIntradayHistory {
   target?: InstrumentRef;
@@ -275,10 +276,6 @@ async function runShotHttpBridge(
   } catch (error) {
     return Response.json({ ok: false, error: errorMessage(error) });
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 async function serveShotAsset(url: URL, staticRoot: string): Promise<Response> {

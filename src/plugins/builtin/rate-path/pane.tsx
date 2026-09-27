@@ -3,11 +3,12 @@ import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors,
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
-import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
+import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -63,7 +64,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const resource = useAsyncResource(loader, { initialData: getCachedRatePath, clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "path");
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
-  const [sort, setSort] = useState({ id: "date", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "date", direction: "asc" });
   const [contract, setContract] = useState<string | null>(null);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const data = resource.data;
@@ -72,7 +73,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     path: colors.positive, ghosts: curveGhostColors(colors), band: colors.borderFocused, projection: colors.negative,
   }) : [], [data]);
   const meetings = useMemo(() => [...(data?.meetings ?? [])].sort((a, b) => {
-    const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.id] as keyof RateMeeting | undefined;
+    const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.columnId] as keyof RateMeeting | undefined;
     const left = key ? a[key] : null, right = key ? b[key] : null;
     if (left == null) return right == null ? 0 : 1;
     if (right == null) return -1;
@@ -122,20 +123,16 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise.
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "rate-path:notices", focused, notices: [
     ...(data?.gaps ?? []), ...(selectedMeeting?.reason ? [selectedMeeting.reason] : []),
   ] });
   usePaneStatusFooter({ registrationId: "rate-path", loading: resource.loading, error: resource.error,
-    info: data ? [
-      { id: "as-of", parts: [{ text: `as of ${timestamp(data.asOf)} UTC`, tone: "muted" }] },
-      ...(data.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data ? [{ id: "as-of", parts: [{ text: `as of ${timestamp(data.asOf)} UTC`, tone: "muted" }] }] : [],
+    stale: data?.stale,
   });
   const selection = { kind: "id" as const, selectedId, getId: meetingKey, onChange: setSelected };
-  const onHeaderClick = (id: string) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }));
+  const onHeaderClick = (id: string) => setSort((current) => nextHeaderSort(current, id));
   const halfWidth = data?.current.targetLower.value != null && data.current.targetUpper.value != null
     ? (data.current.targetUpper.value - data.current.targetLower.value) / 2 : null;
   const probabilityColumns: DataTableColumn[] = [MEETING_COLUMNS[0]!, ...targets.map((target) => ({ id: String(target),
@@ -145,7 +142,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!resource.loading && !resource.error && !data} subject="rate path">
       {data ? tab === "path" ? <DataTableView columns={meetingColumns} items={meetings} selection={selection} focused={focused}
-          sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={meetingKey} renderCell={meetingCell}
+          sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={meetingKey} renderCell={meetingCell}
           rootWidth={width} rootHeight={bodyHeight} emptyStateTitle="No scheduled FOMC meetings"
           // A column left out because every meeting shares it still belongs in the export.
           getExportMetadata={() => meetings[0] ? [

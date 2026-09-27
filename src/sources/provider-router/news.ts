@@ -1,3 +1,4 @@
+import { normalizeNewsFeed } from "../../news/news-model";
 import type { NewsArticle, NewsQuery } from "../../news/types";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
 import { shouldLogProviderError } from "../provider-errors";
@@ -13,7 +14,7 @@ export class ProviderRouterNewsRoutes {
   async getNews(query: NewsQuery): Promise<NewsArticle[]> {
     const sources = this.options.newsSourcesInPriorityOrder()
       .filter((source) => source.news?.supports?.(query) ?? true);
-    const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
+    const feed = normalizeNewsFeed(query);
     if (feed === "ticker") {
       let firstEmpty: NewsArticle[] | null = null;
       let lastError: unknown = null;

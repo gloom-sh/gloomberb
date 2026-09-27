@@ -90,17 +90,3 @@ export function buildFlatRows(
   }
   return rows;
 }
-
-export function nextSortPreference(
-  current: WorldIndexSortPreference,
-  columnId: string,
-): WorldIndexSortPreference {
-  const typedColumnId = columnId as WorldIndexColumnId;
-  if (current.columnId !== typedColumnId) {
-    return { columnId: typedColumnId, direction: "asc" };
-  }
-  if (current.direction === "asc") {
-    return { columnId: typedColumnId, direction: "desc" };
-  }
-  return DEFAULT_SORT_PREFERENCE;
-}

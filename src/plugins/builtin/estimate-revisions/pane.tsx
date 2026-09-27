@@ -5,7 +5,6 @@ import {
   useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
-  useShortcut,
 } from "../../../public/react";
 import {
   ChartTableHeader,
@@ -37,6 +36,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import {
   isCloudSessionRequired,
@@ -341,12 +341,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     pinnedTarget.notice,
   ]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) {
-      event.preventDefault();
-      void resource.reload();
-    }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "estimates:notices",
     focused,
@@ -374,16 +369,9 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
               },
             ],
           },
-          ...(resource.data?.stale
-            ? [
-                {
-                  id: "stale",
-                  parts: [{ text: "stale", tone: "warning" as const }],
-                },
-              ]
-            : []),
         ]
       : [],
+    stale: !!data && resource.data?.stale,
   });
   const signInWall = !data && isCloudSessionRequired(resource.error);
   // Every tab would show the same wall, so the strip waits for data.

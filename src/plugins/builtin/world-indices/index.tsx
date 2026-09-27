@@ -6,6 +6,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { useQuoteBoard, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
@@ -14,7 +15,7 @@ import { worldIndicesHeadless } from "./headless";
 import {
   buildFlatRows,
   DEFAULT_SORT_PREFERENCE,
-  nextSortPreference,
+  type WorldIndexColumnId,
   type WorldIndexSortPreference,
   type WorldIndexTableRow,
 } from "./model";
@@ -92,7 +93,9 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
   }, [flatRows]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as WorldIndexColumnId, {
+      resetTo: DEFAULT_SORT_PREFERENCE,
+    }));
   }, []);
 
   const columns = useMemo<WorldIndexColumn[]>(() => createWorldIndexColumns(width), [width]);

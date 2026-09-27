@@ -11,6 +11,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { isAccessDenied } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -24,7 +25,6 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { PaneProps } from "../../../types/plugin";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -205,13 +205,9 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     ],
   }), [data, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (!isPlainKey(event, "r")) return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    void resource.reload();
-    return true;
-  }, [resource.reload]);
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
+    handleRefreshKey(event, () => void resource.reload(), { stopPropagation: true })
+  ), [resource.reload]);
 
   return (
     <Box width={width} height={height} flexDirection="column">

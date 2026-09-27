@@ -16,7 +16,7 @@ import {
 } from "../../../utils/shortcut-labels";
 import { PANE_MANAGEMENT_ACCELERATORS, type PaneManagementAccelerators } from "./shortcuts";
 import { t } from "../../../i18n";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
 
 const MENU_MIN_WIDTH = 18;
 const MENU_MAX_WIDTH = 44;
@@ -251,8 +251,4 @@ export function actionMenuWidth(
     )),
   );
   return Math.max(MENU_MIN_WIDTH, Math.min(MENU_MAX_WIDTH, availableWidth, requested));
-}
-
-export function truncateMenuText(text: string, width: number): string {
-  return truncateToDisplayWidth(text, width);
 }

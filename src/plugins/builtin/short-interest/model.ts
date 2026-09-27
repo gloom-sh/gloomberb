@@ -86,19 +86,6 @@ export function sortRows(rows: ShortInterestRow[], preference: SortPreference): 
   );
 }
 
-export function nextSortPreference(
-  current: SortPreference,
-  columnId: string,
-): SortPreference {
-  if (current.columnId === columnId) {
-    return {
-      columnId: columnId as ShortInterestColumnId,
-      direction: current.direction === "asc" ? "desc" : "asc",
-    };
-  }
-  return { columnId: columnId as ShortInterestColumnId, direction: "desc" };
-}
-
 /**
  * The columns sit together rather than spread across the pane, so the figures
  * of one settlement read as a row, and fit a 60-column pane without a

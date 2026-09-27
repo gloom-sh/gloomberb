@@ -1,5 +1,5 @@
 import { usePaneFooter } from "../../../components";
-import { formatTimeAgo } from "../../../utils/format";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import type {
   CloudCongressHousePayload,
   CloudCongressTradePayload,

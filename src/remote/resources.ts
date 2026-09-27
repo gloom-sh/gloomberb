@@ -15,16 +15,13 @@ import {
   paneSnapshot,
   type PatchTarget,
 } from "./controller-utils";
+import { finiteOrNull } from "../utils/guards";
 
 interface RemoteResourceContext {
   dispatch: Dispatch<AppAction>;
   getState: () => AppState;
   pluginRegistry: PluginRegistry;
   uiRegistry: RemoteUiRegistry | null;
-}
-
-function finite(value: number | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -42,9 +39,9 @@ function brokerAccountsResource(state: AppState) {
       .filter((portfolio) => portfolio.brokerInstanceId === instance.id)
       .map((portfolio) => portfolio.id),
     accounts: (state.brokerAccounts[instance.id] ?? []).map((account) => {
-      const netLiquidation = finite(account.netLiquidation);
-      const grossPositionValue = finite(account.grossPositionValue);
-      const totalCashValue = finite(account.totalCashValue);
+      const netLiquidation = finiteOrNull(account.netLiquidation);
+      const grossPositionValue = finiteOrNull(account.grossPositionValue);
+      const totalCashValue = finiteOrNull(account.totalCashValue);
       return {
         ...account,
         updatedAt: account.updatedAt ? new Date(account.updatedAt).toISOString() : null,
@@ -53,7 +50,7 @@ function brokerAccountsResource(state: AppState) {
         marginLoan: totalCashValue != null && totalCashValue < 0 ? -totalCashValue : 0,
         leverage: netLiquidation && grossPositionValue != null ? grossPositionValue / netLiquidation : null,
         /** "broker": the broker's own day P&L. "quotes": none reported; the app estimates it from quotes. */
-        dailyPnlBasis: finite(account.dailyPnl) != null ? "broker" : "quotes",
+        dailyPnlBasis: finiteOrNull(account.dailyPnl) != null ? "broker" : "quotes",
       };
     }),
   }));

@@ -1,4 +1,5 @@
 import type { CloudWorldVenuePayload } from "../../../api-client";
+import { clamp } from "../../../utils/math";
 
 export interface WorldMapPoint {
   x: number;
@@ -27,10 +28,6 @@ export const DEFAULT_WORLD_MAP_VIEWPORT: WorldMapViewport = {
   centerLongitude: 0,
   centerLatitude: (MAX_LATITUDE + MIN_LATITUDE) / 2,
 };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function mapExtent(width: number, height: number, yUnitAspect = 1) {
   const availableWidth = Math.max(width - 1, 0);

@@ -5,7 +5,8 @@ import { ExternalLinkText } from "../../../../components/ui/external-link";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
-import { sourceDetailEntries, text, textOrNull, tickerSymbol, truncate } from "../format";
+import { truncateWithEllipsis } from "../../../../utils/text-wrap";
+import { sourceDetailEntries, text, textOrNull, tickerSymbol } from "../format";
 import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
 
 export type InlineTickerCatalog = Record<string, InlineTickerCatalogEntry>;
@@ -34,11 +35,11 @@ export function DetailSpecGrid({ items, width, marginTop = 1 }: { items: DetailS
           {row.map((item) => {
             const labelWidth = Math.min(Math.max(item.label.length + 2, 8), Math.max(8, Math.floor(columnWidth * 0.45)));
             const valueWidth = Math.max(0, columnWidth - labelWidth);
-            const labelText = truncate(`${item.label}:`, Math.max(0, labelWidth - 1)).padEnd(labelWidth);
+            const labelText = truncateWithEllipsis(`${item.label}:`, Math.max(0, labelWidth - 1)).padEnd(labelWidth);
             return (
               <Box key={item.label} flexDirection="row" width={columnWidth} height={1} overflow="hidden">
                 <Text fg={colors.textMuted}>{labelText}</Text>
-                <Text fg={item.color ?? colors.text}>{truncate(text(item.value, ""), valueWidth)}</Text>
+                <Text fg={item.color ?? colors.text}>{truncateWithEllipsis(text(item.value, ""), valueWidth)}</Text>
               </Box>
             );
           })}
@@ -54,7 +55,7 @@ export function InlineSources({ domains, width }: { domains: readonly string[]; 
   return (
     <Box marginTop={1} flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{label}</Text>
-      <Text fg={colors.textDim}>{truncate(domains.join(", "), Math.max(0, width - label.length))}</Text>
+      <Text fg={colors.textDim}>{truncateWithEllipsis(domains.join(", "), Math.max(0, width - label.length))}</Text>
     </Box>
   );
 }
@@ -73,7 +74,7 @@ export function DetailListLine({
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{prefix}</Text>
-      <Text fg={colors.textDim}>{truncate(values.join(", "), Math.max(0, width - prefix.length))}</Text>
+      <Text fg={colors.textDim}>{truncateWithEllipsis(values.join(", "), Math.max(0, width - prefix.length))}</Text>
     </Box>
   );
 }
@@ -112,7 +113,7 @@ export function RelatedCompaniesLine({
         />
       ) : null}
       <Text fg={colors.textDim}>
-        {truncate(`${names.length > 0 ? names.join(", ") : ""}${overflow}`, Math.max(0, width - prefix.length - badgeWidth))}
+        {truncateWithEllipsis(`${names.length > 0 ? names.join(", ") : ""}${overflow}`, Math.max(0, width - prefix.length - badgeWidth))}
       </Text>
     </Box>
   );
@@ -134,7 +135,7 @@ export function SourceDetailLines({
       {entries.map((entry, index) => {
         const prefix = entry.domain ? `${entry.domain}${entry.tier ? ` T${entry.tier}` : ""}` : "";
         const body = entry.title ?? entry.note ?? "";
-        const bodyText = truncate(prefix ? `: ${body}` : body, Math.max(0, width - prefix.length));
+        const bodyText = truncateWithEllipsis(prefix ? `: ${body}` : body, Math.max(0, width - prefix.length));
         return (
           <Box key={`${entry.domain ?? "source"}:${index}`} flexDirection="row" height={1} width={width} overflow="hidden">
             {prefix ? (
@@ -235,7 +236,7 @@ export function CompanyCell({
 }) {
   const symbol = tickerSymbol(company.ticker);
   if (!symbol) {
-    return <Text fg={selected ? colors.selectedText : colors.text}>{truncate(company.name, width)}</Text>;
+    return <Text fg={selected ? colors.selectedText : colors.text}>{truncateWithEllipsis(company.name, width)}</Text>;
   }
   const badgeWidth = Math.min(11, width);
   return (
@@ -246,7 +247,7 @@ export function CompanyCell({
         fallbackColor={selected ? colors.selectedText : colors.textBright}
       />
       <Text fg={selected ? colors.selectedText : colors.text}>
-        {truncate(company.name, Math.max(0, width - badgeWidth))}
+        {truncateWithEllipsis(company.name, Math.max(0, width - badgeWidth))}
       </Text>
     </Box>
   );

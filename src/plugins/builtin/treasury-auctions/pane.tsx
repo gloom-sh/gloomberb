@@ -10,18 +10,17 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type PaneFooterSegment
 } from "../../../components";
-import { useShortcut } from "../../../react/input";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { cycleSortPreference } from "../../../utils/sort-values";
+import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
@@ -32,10 +31,10 @@ import {
   auctionHistoryDays,
   auctionSize,
   buildAuctionColumns,
+  firstAuctionSortDirection,
   formatAuctionRate,
   indirectPct,
   isPendingAuction,
-  nextAuctionSort,
   nextFilter,
   rateLabel,
   rateValue,
@@ -50,17 +49,6 @@ import {
   type LoadStatus,
   type TreasuryAuction,
 } from "./types";
-
-function formatAuctionDate(value: string, withYear = false): string {
-  const timestamp = Date.parse(`${value}T00:00:00Z`);
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: withYear ? "numeric" : undefined,
-    timeZone: "UTC",
-  });
-}
 
 function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;
@@ -117,7 +105,7 @@ function renderAuctionCell(
       // Announced auctions have no results yet; every metric cell reads "—",
       // so the date carries the distinction instead of a second placeholder.
       return {
-        text: formatAuctionDate(auction.auctionDate),
+        text: formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":
@@ -149,7 +137,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
     <ScrollBox flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
-          <Text fg={colors.textDim}>{formatAuctionDate(auction.auctionDate, true)}</Text>
+          <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: "\u2014" })}</Text>
           {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
         </Box>
         <Box height={1} />
@@ -257,12 +245,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     });
   }, []);
 
-  // Refresh answers in every state, including the failed load that mounts no table.
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
-    load(true);
-  }, { enabled: focused && !searchFocused });
+  usePaneRefreshKey(() => load(true), { focused, enabled: !searchFocused });
 
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
     if (isPlainKey(event, "f")) {
@@ -298,9 +281,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const columns = useMemo(() => buildAuctionColumns(), []);
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
-    if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (error) info.push({ id: "error", parts: [{ text: error, tone: "warning" }] });
+    const info = loadingErrorFooterInfo(status === "loading", error);
     if (stale) info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
     if (fetchedAt) {
       info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
@@ -419,7 +400,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => setSortPreference((current) => (
-          nextAuctionSort(current, columnId as AuctionColumnId)
+          nextHeaderSort(current, columnId as AuctionColumnId, { firstDirection: firstAuctionSortDirection })
         ))}
         getItemKey={auctionKey}
         renderCell={renderAuctionRow}

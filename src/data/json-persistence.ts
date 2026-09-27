@@ -3,13 +3,10 @@ import type { PluginStateRecord } from "./plugin-state-store";
 import type { SessionSnapshotRecord } from "./session-store";
 import { MemoryResourceStore } from "./memory-resource-store";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
+import { isRecord } from "../utils/guards";
 
 type PluginState = Record<string, Record<string, PluginStateRecord>>;
 type Sessions = Record<string, SessionSnapshotRecord>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 export class JsonPersistence implements AppPersistencePort {
   readonly resources = new MemoryResourceStore();

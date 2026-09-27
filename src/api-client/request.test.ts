@@ -3,8 +3,10 @@ import {
   ConnectionHealthRegistry,
   registerGloomCloudConnectionSources,
 } from "../core/connection-health";
+import { ApiRequestError, RevisionConflictError } from "./errors";
 import {
   CloudApiRequestTransport,
+  putWithRevision,
   setCloudApiFetchTransport,
 } from "./request";
 
@@ -149,5 +151,54 @@ describe("CloudApiRequestTransport market deadlines", () => {
       }),
     ).rejects.toThrow("cancelled by caller");
     expect(fetchCalls).toBe(0);
+  });
+});
+
+describe("putWithRevision", () => {
+  class ItemConflictError extends RevisionConflictError<{ revision: number }> {}
+  const refuse = async (_path: string, init?: RequestInit): Promise<never> => {
+    expect(init?.headers).toEqual({ "if-match": "3" });
+    throw new ApiRequestError("Edited since you opened it.", 412);
+  };
+
+  test("a 412 throws the caller's conflict with what the server holds now", async () => {
+    const conflict = await putWithRevision(refuse, "/items/1", { value: 1 }, {
+      expected: 3,
+      loadCurrent: async () => ({ revision: 5 }),
+      conflict: ItemConflictError,
+    }).catch((error: unknown) => error);
+    expect(conflict).toBeInstanceOf(ItemConflictError);
+    expect(conflict).toMatchObject({ message: "Edited since you opened it.", current: { revision: 5 }, currentRevision: 5 });
+  });
+
+  test("an unreadable current version still reports the next revision", async () => {
+    const conflict = await putWithRevision(refuse, "/items/1", { value: 1 }, {
+      expected: 3,
+      loadCurrent: async () => { throw new Error("offline"); },
+      conflict: ItemConflictError,
+    }).catch((error: unknown) => error);
+    expect(conflict).toMatchObject({ current: null, currentRevision: 4 });
+  });
+});
+
+describe("CloudApiRequestTransport errors", () => {
+  test("a failure carries the body's error code next to its message", async () => {
+    const answer = (status: number, body: string) => new CloudApiRequestTransport({
+      fetchTransport: async () => ({ ok: false, status, headers: new Headers(), text: async () => body }) as Response,
+    });
+
+    const unsupported = await answer(422, JSON.stringify({ error: "unsupported", message: "Robinhood does not support this in Gloom." }))
+      .request("/brokers/robinhood/orders")
+      .catch((error: unknown) => error);
+    expect(unsupported).toBeInstanceOf(ApiRequestError);
+    expect(unsupported).toMatchObject({ status: 422, code: "unsupported" });
+
+    const toolError = await answer(422, JSON.stringify({ error: "tool_error", message: "IBKR could not complete the request." }))
+      .request("/brokers/ibkr/orders")
+      .catch((error: unknown) => error);
+    expect(toolError).toMatchObject({ status: 422, code: "tool_error" });
+
+    const plain = await answer(502, "Bad gateway").request("/brokers/ibkr/orders").catch((error: unknown) => error);
+    expect(plain).toMatchObject({ status: 502, code: undefined });
   });
 });

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { useShortcut } from "../../../react/input";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
@@ -9,14 +8,15 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
 } from "../../../components";
 import { MarkdownText } from "../../../components/markdown-text";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { fetchChangelogReleases, type ChangelogRelease } from "../../../updater/github-releases";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePluginPaneState } from "../../runtime";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { isPlainKey } from "../../../utils/keyboard";
 import {
   DEFAULT_CHANGELOG_SORT,
@@ -37,16 +37,6 @@ let cachedReleases: { releases: ChangelogRelease[]; fetchedAt: number } | null =
 
 type ChangelogColumn = DataTableColumn & { id: ChangelogColumnId };
 type LoadStatus = "loading" | "loaded" | "error";
-
-function formatReleaseDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function buildColumns(releases: ChangelogRelease[]): ChangelogColumn[] {
   const dateWidth = 12;
@@ -98,7 +88,7 @@ function ChangelogDetail({
       >
         <Box flexDirection="column" width={lineWidth}>
           {/* The stack title already carries the version. */}
-          <Text fg={colors.textMuted}>{formatReleaseDate(release.publishedAt)}</Text>
+          <Text fg={colors.textMuted}>{formatShortDate(release.publishedAt, { fallback: "" })}</Text>
           <MarkdownText text={release.body} lineWidth={lineWidth} />
         </Box>
       </ScrollBox>
@@ -213,12 +203,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     if (scrollBox) scrollBox.scrollTop = 0;
   }, [openReleaseId]);
 
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r")) return;
-    event.stopPropagation?.();
-    event.preventDefault?.();
-    void loadReleases(true);
-  });
+  usePaneRefreshKey(() => void loadReleases(true), { focused });
 
   const columns = useMemo(() => buildColumns(releases), [releases]);
 
@@ -261,7 +246,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "date":
         return {
-          text: formatReleaseDate(release.publishedAt),
+          text: formatShortDate(release.publishedAt, { fallback: "" }),
           color: selectedColor ?? colors.textDim,
         };
       case "version":
@@ -286,22 +271,10 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     setSelectedReleaseId(release.id);
   }, []);
 
-  const footerInfo = useMemo<PaneFooterSegment[]>(() => {
-    const segments: PaneFooterSegment[] = [];
-    if (status === "loading") {
-      segments.push({
-        id: "loading",
-        parts: [{ text: "loading", tone: "muted" }],
-      });
-    }
-    if (status === "error") {
-      segments.push({
-        id: "error",
-        parts: [{ text: "error", tone: "warning" }],
-      });
-    }
-    return segments;
-  }, [status]);
+  const footerInfo = useMemo(
+    () => loadingErrorFooterInfo(status === "loading", status === "error" ? "error" : null),
+    [status],
+  );
 
   // The stack title names the release, so the footer offers only [o]pen.
   useExternalLinkFooter({

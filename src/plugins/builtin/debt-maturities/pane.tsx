@@ -6,7 +6,6 @@ import {
   useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
-  useShortcut,
   useUpdatedAgo,
 } from "../../../public/react";
 import {
@@ -36,7 +35,7 @@ import type {
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import {
   isCloudSessionRequired,
@@ -410,12 +409,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     ? `${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`
     : "";
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) {
-      event.preventDefault();
-      void resource.reload();
-    }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "debt-maturities:notices",
     focused,
@@ -434,26 +428,8 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         ? debtFilingUrl(data.cik, selectedHistoryRow.accession)
         : (latest?.filingUrl ?? data?.source.url ?? null),
     showOpenHint: true,
-    info: data
-      ? [
-          ...(updatedAgo
-            ? [
-                {
-                  id: "updated",
-                  parts: [{ text: updatedAgo, tone: "muted" as const }],
-                },
-              ]
-            : []),
-          ...(resource.data?.stale
-            ? [
-                {
-                  id: "stale",
-                  parts: [{ text: "stale", tone: "warning" as const }],
-                },
-              ]
-            : []),
-        ]
-      : [],
+    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    stale: !!data && resource.data?.stale,
   });
   const renderBucket = (
     row: DebtBucket,

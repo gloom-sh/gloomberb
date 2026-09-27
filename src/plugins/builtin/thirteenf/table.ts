@@ -3,6 +3,7 @@ import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
+import { formatShortDate } from "../../../utils/datetime-format";
 import {
   actionLabel,
   formatChangeShares,
@@ -11,7 +12,7 @@ import {
   formatWeightMaybe,
   formatRawPercentMaybe,
   formatShares,
-  formatShortDate,
+  FILING_DAY_FORMAT,
 } from "./format";
 import { amendmentKind, positionType } from "./model";
 import type {
@@ -48,7 +49,7 @@ export function renderBrowserCell(
     case "period":
       return { text: row.periodOfReport ?? "--", color: selectedColor ?? colors.textDim };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: selectedColor ?? colors.text };
     case "rows":
@@ -178,7 +179,7 @@ export function renderTimelineCell(
         attributes: TextAttributes.BOLD,
       };
     case "filed":
-      return { text: formatShortDate(row.filedAsOfDate), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(row.filedAsOfDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
     case "value":
       return { text: formatMoneyCompact(row.tableValueTotal), color: selectedColor ?? colors.text };
     case "rows":

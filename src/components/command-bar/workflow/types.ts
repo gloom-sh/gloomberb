@@ -97,6 +97,8 @@ export interface CommandBarWorkflowRoute extends CommandBarRouteBase {
   values: Record<string, CommandBarFieldValue>;
   activeFieldId: string | null;
   submitLabel: string;
+  /** Replaces `submitLabel` while the values match, e.g. a choice with nothing to fill in. */
+  submitLabels?: Array<{ dependsOn: CommandBarFieldDependency[]; label: string }>;
   cancelLabel?: string;
   pendingLabel?: string;
   successLabel?: string;

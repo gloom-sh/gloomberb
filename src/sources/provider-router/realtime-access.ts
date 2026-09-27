@@ -1,4 +1,5 @@
-import { apiClient, type AuthUser } from "../../api-client";
+import { apiClient } from "../../api-client";
+import { hasProAccess, resolveTrialEndsAt, type PlanAccessUser } from "../../api-client/plan-rules";
 
 /** Whether the account receives real-time cloud quotes, and when that changes. */
 export interface RealtimeCloudAccess {
@@ -6,39 +7,19 @@ export interface RealtimeCloudAccess {
   subscribe?(listener: () => void): () => void;
 }
 
-type EntitledUser = Pick<AuthUser, "emailVerified" | "plan" | "effectivePlan" | "trialEndsAt">;
-
 interface CurrentUserSource {
-  getCurrentUser(): EntitledUser | null;
+  getCurrentUser(): PlanAccessUser | null;
   subscribeCurrentUser(listener: () => void): () => void;
 }
 
 /** Timers past this many milliseconds fire at once. */
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
-function trialEndTime(user: EntitledUser | null | undefined): number | null {
-  if (!user?.trialEndsAt) return null;
-  const endsAt = new Date(user.trialEndsAt).getTime();
-  return Number.isFinite(endsAt) ? endsAt : null;
-}
-
 /**
- * Real-time cloud entitlement: a verified account on the paid plan or in a
- * running trial. Same rule as the panes' plan helpers, kept free of UI code
- * so the router can use it in every build. The server enforces the real
- * entitlement; this only decides when a delayed broker yields to the cloud.
- */
-export function hasRealtimeCloudEntitlement(user: EntitledUser | null | undefined, now = Date.now()): boolean {
-  if (user?.emailVerified !== true) return false;
-  if (user.plan === "pro") return true;
-  const trialEndsAt = trialEndTime(user);
-  if (trialEndsAt !== null && trialEndsAt > now) return true;
-  return user.effectivePlan === "pro" && !user.trialEndsAt;
-}
-
-/**
- * The signed-in account's entitlement. Listeners hear about session changes
- * and about a trial running out, which the session itself never reports.
+ * The signed-in account's real-time cloud entitlement, by the same plan rule
+ * the panes show. The server enforces the real entitlement; this only decides
+ * when a delayed broker yields to the cloud. Listeners hear about session
+ * changes and about a trial running out, which the session itself never reports.
  */
 export function createSignedInRealtimeCloudAccess(source: CurrentUserSource = apiClient): RealtimeCloudAccess {
   const listeners = new Set<() => void>();
@@ -51,9 +32,9 @@ export function createSignedInRealtimeCloudAccess(source: CurrentUserSource = ap
   };
   const scheduleTrialEnd = () => {
     clearTrialTimer();
-    const trialEndsAt = trialEndTime(source.getCurrentUser());
+    const trialEndsAt = resolveTrialEndsAt(source.getCurrentUser());
     if (trialEndsAt === null) return;
-    const delay = trialEndsAt - Date.now();
+    const delay = trialEndsAt.getTime() - Date.now();
     if (delay <= 0) return;
     trialTimer = setTimeout(notify, Math.min(delay + 1_000, MAX_TIMER_DELAY_MS));
     (trialTimer as { unref?: () => void }).unref?.();
@@ -64,7 +45,7 @@ export function createSignedInRealtimeCloudAccess(source: CurrentUserSource = ap
   }
 
   return {
-    has: () => hasRealtimeCloudEntitlement(source.getCurrentUser()),
+    has: () => hasProAccess(source.getCurrentUser()),
     subscribe(listener) {
       listeners.add(listener);
       if (!unsubscribeUser) {

@@ -14,15 +14,15 @@ import {
 } from "../../../components";
 import type { CloudCdsHistoryPointPayload } from "../../../api-client";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { cycleSortPreference } from "../../../utils/sort-values";
+import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import {
   loadCdsActivity,
   loadCdsSpreadHistory,
@@ -42,7 +42,6 @@ import {
   formatMaturity,
   formatNotional,
   formatUpfront,
-  nextSort,
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
@@ -321,13 +320,10 @@ export function CdsPane({
     });
   }, []);
 
-  // Refresh answers in every state, including the failed load that mounts no table.
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
+  usePaneRefreshKey(() => {
     load();
     if (historyIssuer) history.load();
-  }, { enabled: focused });
+  }, { focused });
 
   const handleKey = useCallback((event: DataTableKeyEvent, cycle: (step: 1 | -1) => void): boolean => {
     if (isPlainKey(event, "]", "[")) {
@@ -394,7 +390,7 @@ export function CdsPane({
         width={width}
         height={height}
         sort={tradeSort}
-        onSort={(columnId) => setTradeSort((current) => nextSort(current, columnId, DEFAULT_TRADE_SORT))}
+        onSort={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId, { resetTo: DEFAULT_TRADE_SORT }))}
         selectedId={selectedTradeId}
         onSelect={setSelectedTradeId}
         onKeyDown={handleTradeKey}
@@ -422,7 +418,7 @@ export function CdsPane({
               selectedId={selectedTradeId} onSelect={setSelectedTradeId} />
           ) : undefined}
           sort={tradeSort}
-          onSort={(columnId) => setTradeSort((current) => nextSort(current, columnId, DEFAULT_TRADE_SORT))}
+          onSort={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId, { resetTo: DEFAULT_TRADE_SORT }))}
           selectedId={selectedTradeId}
           onSelect={setSelectedTradeId}
           onKeyDown={handleTradeKey}
@@ -449,7 +445,7 @@ export function CdsPane({
       sortColumnId={issuerSort.columnId}
       sortDirection={issuerSort.direction}
       onHeaderClick={(columnId) => setIssuerSort((current) => (
-        nextSort(current, columnId as IssuerColumnId, DEFAULT_ISSUER_SORT)
+        nextHeaderSort(current, columnId as IssuerColumnId, { resetTo: DEFAULT_ISSUER_SORT })
       ))}
       getItemKey={issuerKey}
       renderCell={renderIssuerRow}

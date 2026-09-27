@@ -4,6 +4,7 @@ import { DEFAULT_BINOMIAL_STEPS, MAX_BINOMIAL_STEPS, effectiveBinomialSteps, sol
 import { solveImpliedVolatility, valueOption, type ImpliedVolatilityResult, type OptionCalcDraft,
   type OptionValuation } from "./model";
 import type { CalculatorSurfaceVol } from "./surface";
+import { isFiniteNumber, isRecord } from "../../../utils/guards";
 
 export const CALCULATOR_IGNORED_DIVIDENDS_NOTICE = "Cash dividend schedule is ignored by the European model; continuous yield applies.";
 
@@ -43,11 +44,9 @@ export interface CalculatorEvidence {
   plottedValueCount: number;
 }
 
-const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((entry) => typeof entry === "string");
 const nullableText = (value: unknown): value is string | null => value === null || typeof value === "string";
-const nullableNumber = (value: unknown): value is number | null => value === null || finite(value);
+const nullableNumber = (value: unknown): value is number | null => value === null || isFiniteNumber(value);
 const metrics = ["price", "delta", "gamma", "thetaPerDay", "vegaPerPoint", "rhoPerPoint"] as const;
 const sameNumber = (actual: number, expected: number): boolean => Math.abs(actual - expected) <= 1e-9 * Math.max(1, Math.abs(expected));
 
@@ -68,26 +67,26 @@ export function normalizeCalculatorEvidenceDraft(draft: OptionCalcDraft): Calcul
 }
 
 function validDraft(value: unknown): value is CalculatorEvidenceDraft {
-  if (!record(value) || typeof value.symbol !== "string" || !["call", "put"].includes(String(value.side))
+  if (!isRecord(value) || typeof value.symbol !== "string" || !["call", "put"].includes(String(value.side))
     || !["european", "american"].includes(String(value.pricingModel)) || !["input", "surface"].includes(String(value.volSource))
-    || !["spot", "strike", "daysToExpiry", "rate", "volatility", "dividendYield", "marketPrice"].every((key) => finite(value[key]))
-    || !finite(value.marketPrice) || value.marketPrice < 0 || !finite(value.steps) || !Number.isInteger(value.steps)
+    || !["spot", "strike", "daysToExpiry", "rate", "volatility", "dividendYield", "marketPrice"].every((key) => isFiniteNumber(value[key]))
+    || !isFiniteNumber(value.marketPrice) || value.marketPrice < 0 || !isFiniteNumber(value.steps) || !Number.isInteger(value.steps)
     || value.steps < 1 || value.steps > MAX_BINOMIAL_STEPS || !Array.isArray(value.dividends)) return false;
   const draft = value as unknown as CalculatorEvidenceDraft;
   return validateBinomialInputs(draft, { exercise: draft.pricingModel, steps: draft.steps, dividends: draft.dividends }) === null;
 }
 
 function validValuation(value: unknown): value is OptionValuation {
-  return record(value) && metrics.every((key) => finite(value[key])) && (value.price as number) >= 0;
+  return isRecord(value) && metrics.every((key) => isFiniteNumber(value[key])) && (value.price as number) >= 0;
 }
 
 function validImplied(value: unknown): value is ImpliedVolatilityResult {
-  return record(value) && nullableNumber(value.volatility) && (value.volatility === null || value.volatility >= 0)
+  return isRecord(value) && nullableNumber(value.volatility) && (value.volatility === null || value.volatility >= 0)
     && nullableText(value.note);
 }
 
 function validSurface(value: unknown): value is CalculatorSurfaceVol {
-  return record(value) && nullableNumber(value.volatility) && nullableNumber(value.rate) && nullableNumber(value.dividendYield)
+  return isRecord(value) && nullableNumber(value.volatility) && nullableNumber(value.rate) && nullableNumber(value.dividendYield)
     && nullableNumber(value.sourceSpot) && nullableNumber(value.spotAsOf) && nullableText(value.asOf)
     && (value.asOf === null || Number.isFinite(Date.parse(value.asOf)))
     && strings(value.rateAsOf) && typeof value.source === "string" && value.source.length > 0
@@ -96,9 +95,9 @@ function validSurface(value: unknown): value is CalculatorSurfaceVol {
 
 function sourceReady(draft: CalculatorEvidenceDraft, surface: CalculatorSurfaceVol | null): boolean {
   return draft.volSource === "input" || (!!draft.symbol.trim() && !!surface && validSurface(surface)
-    && surface.error === null && finite(surface.volatility) && surface.volatility > 0
-    && surface.volatility === draft.volatility && finite(surface.sourceSpot) && surface.sourceSpot > 0
-    && finite(surface.rate) && finite(surface.dividendYield));
+    && surface.error === null && isFiniteNumber(surface.volatility) && surface.volatility > 0
+    && surface.volatility === draft.volatility && isFiniteNumber(surface.sourceSpot) && surface.sourceSpot > 0
+    && isFiniteNumber(surface.rate) && isFiniteNumber(surface.dividendYield));
 }
 
 function noticesPreserved(draft: CalculatorEvidenceDraft, surface: CalculatorSurfaceVol | null, notices: string[]): boolean {
@@ -113,10 +112,10 @@ export function calculatorSemanticEvidence(input: CalculatorEvidenceInput): Calc
   const surface = draft.volSource === "surface" ? input.surface ?? null : null;
   const notices = [...(input.notices ?? [])];
   const stepsReady = draft.pricingModel === "american"
-    ? finite(input.effectiveSteps) && Number.isInteger(input.effectiveSteps) && input.effectiveSteps >= draft.steps
+    ? isFiniteNumber(input.effectiveSteps) && Number.isInteger(input.effectiveSteps) && input.effectiveSteps >= draft.steps
     : input.effectiveSteps == null;
-  const plottedValueCount = (valuation ? metrics.filter((key) => finite(valuation[key])).length : 0)
-    + (finite(input.implied.volatility) ? 1 : 0);
+  const plottedValueCount = (valuation ? metrics.filter((key) => isFiniteNumber(valuation[key])).length : 0)
+    + (isFiniteNumber(input.implied.volatility) ? 1 : 0);
   return { kind: "options-calculator", version: 1, symbol: draft.symbol, draft, valuation, implied: { ...input.implied },
     surface, effectiveSteps: input.effectiveSteps ?? null, loading: input.loading, error: input.error ?? null, notices,
     complete: !input.loading && input.error == null && validDraft(draft) && validValuation(valuation)
@@ -131,7 +130,7 @@ export function useCalculatorEvidence(input: CalculatorEvidenceInput): void {
 
 /** Reprice the selected exercise model, schedule, Greeks and IV before accepting rendered observations. */
 export function readCalculatorEvidence(value: unknown): CalculatorEvidence | null {
-  if (!record(value) || value.kind !== "options-calculator" || value.version !== 1 || typeof value.symbol !== "string"
+  if (!isRecord(value) || value.kind !== "options-calculator" || value.version !== 1 || typeof value.symbol !== "string"
     || !validDraft(value.draft) || value.symbol !== value.draft.symbol || !validValuation(value.valuation)
     || !validImplied(value.implied) || !nullableText(value.error) || !strings(value.notices)
     || typeof value.loading !== "boolean" || typeof value.complete !== "boolean"

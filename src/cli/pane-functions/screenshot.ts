@@ -19,6 +19,7 @@ import {
   type HttpProxyResponseEnvelope,
 } from "../../utils/http-proxy-response";
 import { getTheme, getThemeIds } from "../../theme/themes";
+import { isRecord } from "../../utils/guards";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
 import {
@@ -1378,10 +1379,6 @@ function shotExpectedChart(
     };
   }
   return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function readStringArray(value: unknown): string[] | null {

@@ -5,6 +5,7 @@ import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { parseHex } from "../../../theme/color-utils";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
 import { apiClient, type AccountProfile, type ChatChannel, type ChatMessage } from "../../../api-client";
@@ -258,11 +259,5 @@ export function lineText(line: { spans: Array<{ text: string }> }) {
 }
 
 export function hexToRgbaInts(hex: string) {
-  const normalized = hex.replace("#", "");
-  return [
-    parseInt(normalized.slice(0, 2), 16),
-    parseInt(normalized.slice(2, 4), 16),
-    parseInt(normalized.slice(4, 6), 16),
-    255,
-  ].join(",");
+  return [...parseHex(hex), 255].join(",");
 }

@@ -2,6 +2,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import type { BrokerAdapter } from "../../types/broker";
 import type { AppConfig } from "../../types/config";
 import type { CachedFinancialsTarget, MarketDataRequestContext } from "../../types/data-provider";
+import { settleWithin } from "../../utils/async-deadline";
 
 const BROKER_ATTEMPT_TIMEOUT = 10_000;
 
@@ -14,19 +15,7 @@ export interface BrokerCandidate {
 }
 
 export function withBrokerTimeout<T>(promise: Promise<T>): Promise<T | null> {
-  return new Promise<T | null>((resolve) => {
-    const timer = setTimeout(() => resolve(null), BROKER_ATTEMPT_TIMEOUT);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(null);
-      },
-    );
-  });
+  return settleWithin(promise, BROKER_ATTEMPT_TIMEOUT);
 }
 
 export function getBrokerCandidates(

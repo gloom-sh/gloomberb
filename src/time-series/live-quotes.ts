@@ -7,7 +7,7 @@ import { valuationSeriesUsesLiveQuote } from "./fundamentals";
 import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import type { InstrumentRef } from "../market-data/request-types";
 import type { QueryEntry } from "../market-data/result-types";
-import { buildQuoteKey, resolveEntryData } from "../market-data/selectors";
+import { buildQuoteKey, instrumentFromQuoteTarget, resolveEntryData } from "../market-data/selectors";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 
 /**
@@ -17,23 +17,11 @@ import { instrumentIdentityKey } from "../utils/instrument-identity";
 export const LIVE_CHART_TERMINAL_FRAME_MS = 250;
 
 export function chartQuoteOverrideKeyForSource(source: SecuritySeriesSource): string {
-  return instrumentIdentityKey({
-    symbol: source.instrument.symbol,
-    exchange: source.instrument.exchange,
-    brokerId: source.instrument.brokerId,
-    brokerInstanceId: source.instrument.brokerInstanceId,
-    instrument: source.instrument.instrument,
-  });
+  return instrumentIdentityKey(source.instrument);
 }
 
 export function chartQuoteOverrideKeyForTarget(target: QuoteSubscriptionTarget): string {
-  return instrumentIdentityKey({
-    symbol: target.symbol,
-    exchange: target.exchange,
-    brokerId: target.context?.brokerId,
-    brokerInstanceId: target.context?.brokerInstanceId,
-    instrument: target.context?.instrument,
-  });
+  return instrumentIdentityKey(instrumentFromQuoteTarget(target));
 }
 
 function supportsLiveQuote(
@@ -151,16 +139,6 @@ export interface LiveChartQuoteObserverOptions {
   onChange: (quoteOverrides: ReadonlyMap<string, Quote>) => void;
 }
 
-function targetInstrument(target: QuoteSubscriptionTarget): InstrumentRef {
-  return {
-    symbol: target.symbol,
-    exchange: target.exchange,
-    brokerId: target.context?.brokerId,
-    brokerInstanceId: target.context?.brokerInstanceId,
-    instrument: target.context?.instrument ?? null,
-  };
-}
-
 /**
  * Follows the chart's instruments in the shared quote store. The store is fed
  * by the one deduplicated stream every pane shares, so a chart opens no
@@ -171,7 +149,7 @@ function targetInstrument(target: QuoteSubscriptionTarget): InstrumentRef {
 export function observeLiveChartQuotes({ spec, store, onChange }: LiveChartQuoteObserverOptions): () => void {
   const entries = getLiveChartQuoteTargets(spec).map((target) => ({
     key: chartQuoteOverrideKeyForTarget(target),
-    instrument: targetInstrument(target),
+    instrument: instrumentFromQuoteTarget(target),
   }));
   if (entries.length === 0) return () => {};
   const quoteOverrides = new Map<string, Quote>();

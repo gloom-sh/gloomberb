@@ -1149,7 +1149,7 @@ Choose the existing control that owns the interaction you need:
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
-| Paragraphs and separators | `Prose`, `Divider` |
+| Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
 | External links | `ExternalLink`, `ExternalLinkText` |
 | Sidebar | `PaneSidebar`, `PaneSidebarRow`, `PaneSidebarAction` |
@@ -1203,7 +1203,7 @@ const updatedAgo = useUpdatedAgo(updatedAt);
 usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 ```
 
-The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves.
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
 
 `useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
 
@@ -1222,7 +1222,7 @@ const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
 
 `usePaneTickerIdentity()` returns the pane's symbol, ticker and contract without its financials; `usePaneTicker()` also re-renders on every quote tick of the symbol, so a pane that only needs the symbol (news, filings, holders) uses the identity hook.
 
-`createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues` and `cycleSortPreference` from `gloomberb/utils` so mixed columns sort like the host's.
+`createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues`, `nextHeaderSort` (header clicks) and `cycleSortPreference` (the keyboard equivalent) from `gloomberb/utils` so mixed columns sort like the host's.
 
 ### Live quotes
 

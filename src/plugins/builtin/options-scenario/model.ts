@@ -1,4 +1,5 @@
 import { daysToExpiryFrom, valueOption, type OptionValuation } from "../options-calculator/model";
+import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 86_400_000;
 const MAX_DATE_MS = Date.UTC(9999, 11, 31);
@@ -73,8 +74,7 @@ export interface ScenarioModel {
   warnings: string[];
 }
 
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const validDate = (value: unknown): value is number => finite(value) && value >= 0 && value <= MAX_DATE_MS;
+const validDate = (value: unknown): value is number => isFiniteNumber(value) && value >= 0 && value <= MAX_DATE_MS;
 
 /** Match the shared pricer's expiration-session close, including daylight saving. */
 export function optionExpirationClose(expiration: number): number {
@@ -88,13 +88,13 @@ function legProblem(input: unknown): string | null {
   if (typeof leg.id !== "string" || !leg.id.trim()) return "Leg needs an id.";
   if (leg.side !== "call" && leg.side !== "put") return "Side must be call or put.";
   if (!Number.isSafeInteger(leg.quantity) || leg.quantity === 0) return "Quantity must be a nonzero integer.";
-  if (!finite(leg.strike) || leg.strike <= 0) return "Strike must be positive.";
-  if (!finite(leg.expiration) || !Number.isSafeInteger(leg.expiration) || !validDate(leg.expiration * 1000)) {
+  if (!isFiniteNumber(leg.strike) || leg.strike <= 0) return "Strike must be positive.";
+  if (!isFiniteNumber(leg.expiration) || !Number.isSafeInteger(leg.expiration) || !validDate(leg.expiration * 1000)) {
     return "Expiration must be a valid Unix timestamp in seconds.";
   }
-  if (!finite(leg.price) || leg.price < 0) return "Entry price must be nonnegative.";
-  if (!finite(leg.volatility) || leg.volatility < 0) return "Volatility must be nonnegative.";
-  if (!finite(leg.multiplier) || leg.multiplier <= 0) return "Multiplier must be positive.";
+  if (!isFiniteNumber(leg.price) || leg.price < 0) return "Entry price must be nonnegative.";
+  if (!isFiniteNumber(leg.volatility) || leg.volatility < 0) return "Volatility must be nonnegative.";
+  if (!isFiniteNumber(leg.multiplier) || leg.multiplier <= 0) return "Multiplier must be positive.";
   if (![leg.volatility * 100, leg.quantity * leg.multiplier, leg.price * leg.quantity * leg.multiplier,
     leg.strike * leg.quantity * leg.multiplier].every(Number.isFinite)) return "Leg exceeds model precision.";
   return null;
@@ -108,8 +108,8 @@ export function validateScenarioInputs(position: ScenarioPosition): string | nul
     return "Position exchange must be a nonempty string when supplied.";
   }
   if (typeof position.currency !== "string" || !position.currency.trim()) return "Position needs a currency.";
-  if (!finite(position.spot) || position.spot < 0) return "Spot must be nonnegative.";
-  if (!finite(position.rate) || !finite(position.dividendYield)) return "Rate and dividend yield must be finite.";
+  if (!isFiniteNumber(position.spot) || position.spot < 0) return "Spot must be nonnegative.";
+  if (!isFiniteNumber(position.rate) || !isFiniteNumber(position.dividendYield)) return "Rate and dividend yield must be finite.";
   if (!validDate(position.asOf)) return "As-of date is invalid.";
   if (!Array.isArray(position.legs)) return "Option legs must be an array.";
   if (position.legs.length > MAX_SCENARIO_LEGS) return `A position supports up to ${MAX_SCENARIO_LEGS} legs.`;
@@ -199,11 +199,11 @@ function aggregate(prepared: PreparedPosition, spot: number, date: number, volSh
 /** Aggregate currency P&L and Greeks in signed underlying units. */
 export function scenarioValue(position: ScenarioPosition, spot: number, date: number, volShift = 0): ScenarioValuation {
   const prepared = prepare(position);
-  if (!finite(spot) || spot < 0) throw new Error("Scenario spot must be nonnegative.");
+  if (!isFiniteNumber(spot) || spot < 0) throw new Error("Scenario spot must be nonnegative.");
   if (!validDate(date) || date < position.asOf || date > prepared.expiryDate) {
     throw new Error("Scenario date must lie between the as-of date and first expiration close.");
   }
-  if (!finite(volShift)) throw new Error("Volatility shift must be finite.");
+  if (!isFiniteNumber(volShift)) throw new Error("Volatility shift must be finite.");
   return aggregate(prepared, spot, date, volShift);
 }
 
@@ -265,8 +265,8 @@ export function buildScenario(position: ScenarioPosition, input: Partial<Scenari
   const volShift = input.volShift ?? 0;
   const spotRange = input.spotRange ?? 0.2;
   if (!validDate(date)) throw new Error("Scenario date is invalid.");
-  if (!finite(volShift)) throw new Error("Volatility shift must be finite.");
-  if (!finite(spotRange) || spotRange <= 0) throw new Error("Spot range must be positive.");
+  if (!isFiniteNumber(volShift)) throw new Error("Volatility shift must be finite.");
+  if (!isFiniteNumber(spotRange) || spotRange <= 0) throw new Error("Spot range must be positive.");
   const controls = { date: Math.max(position.asOf, Math.min(prepared.expiryDate, date)), volShift, spotRange };
   const warnings: string[] = [];
   if (controls.date !== date) warnings.push("Scenario date was limited to the as-of date through first expiration close.");
@@ -279,7 +279,7 @@ export function buildScenario(position: ScenarioPosition, input: Partial<Scenari
   const anchor = position.spot || Math.max(...position.legs.map((leg) => leg.strike));
   const low = Math.max(0, position.spot * (1 - spotRange));
   const high = anchor * (1 + spotRange);
-  if (!finite(high)) throw new Error("Spot range exceeds model precision.");
+  if (!isFiniteNumber(high)) throw new Error("Spot range exceeds model precision.");
   // Even steps put spot on its own row; strikes and breakevens inside the range
   // are rows too, so the profit zone of a spread is never hidden between steps.
   const row = (spot: number, landmark?: ScenarioGridRow["landmark"]): ScenarioGridRow => ({
@@ -298,7 +298,7 @@ export function buildScenario(position: ScenarioPosition, input: Partial<Scenari
   const landmarks = [...position.legs.map((leg) => leg.strike), ...risk.breakevens];
   const chartLow = Math.max(0, Math.min(low, ...landmarks.map((spot) => spot * 0.95)));
   const chartHigh = Math.max(high, ...landmarks.map((spot) => spot * 1.05));
-  if (!finite(chartHigh)) throw new Error("Payoff range exceeds model precision.");
+  if (!isFiniteNumber(chartHigh)) throw new Error("Payoff range exceeds model precision.");
   const chartSpots = [...new Set([...landmarks, position.spot,
     ...Array.from({ length: 81 }, (_, index) => chartLow + (chartHigh - chartLow) * index / 80)])].sort((a, b) => a - b);
   const payoff = chartSpots.map((spot) => ({ spot,

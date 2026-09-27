@@ -12,6 +12,7 @@ import type {
   PaneSharePrivateFields,
 } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
+import { isRecord } from "../utils/guards";
 
 const MAX_LAYOUT_BYTES = 128 * 1024;
 // Pane runtime state doubles as a cache (news panes keep six figures of bytes of
@@ -117,10 +118,6 @@ export interface LayoutMarketplaceEntry extends LayoutMarketplacePayload {
   publishedAt: string;
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function exactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []): boolean {
   const allowed = new Set([...required, ...optional]);
   return required.every((key) => Object.prototype.hasOwnProperty.call(value, key))
@@ -181,7 +178,7 @@ function parseJson(value: unknown, depth = 0): JsonValue | undefined {
     const parsed = value.map((entry) => parseJson(entry, depth + 1));
     return parsed.some((entry) => entry === undefined) ? undefined : parsed as JsonValue[];
   }
-  if (!record(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const entries = Object.entries(value);
   if (entries.length > MAX_JSON_KEYS) return undefined;
   const parsed: Record<string, JsonValue> = {};
@@ -204,7 +201,7 @@ function sanitizeJson(value: unknown, depth = 0): JsonValue | undefined {
     const sanitized = value.map((entry) => sanitizeJson(entry, depth + 1));
     return sanitized.some((entry) => entry === undefined) ? undefined : sanitized as JsonValue[];
   }
-  if (!record(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const entries = Object.entries(value);
   if (entries.length > MAX_JSON_KEYS) return undefined;
   const sanitized: Record<string, JsonValue> = {};
@@ -217,7 +214,7 @@ function sanitizeJson(value: unknown, depth = 0): JsonValue | undefined {
 }
 
 function parseRecord(value: unknown): Record<string, JsonValue> | null {
-  if (!record(value)) return null;
+  if (!isRecord(value)) return null;
   const parsed = parseJson(value);
   return parsed && !Array.isArray(parsed) && typeof parsed === "object"
     ? parsed as Record<string, JsonValue>
@@ -240,7 +237,7 @@ function sanitizeRecord(
 }
 
 function parseBinding(value: unknown): PaneBinding | null {
-  if (!record(value) || !boundedString(value.kind, 16)) return null;
+  if (!isRecord(value) || !boundedString(value.kind, 16)) return null;
   if (value.kind === "none" && exactKeys(value, ["kind"])) return { kind: "none" };
   if (value.kind === "fixed" && exactKeys(value, ["kind", "symbol"]) && boundedString(value.symbol, MAX_SYMBOL_LENGTH)) {
     const symbol = value.symbol.trim().toUpperCase();
@@ -262,7 +259,7 @@ function parseDockNode(
   depth = 0,
 ): DockLayoutNode | null | undefined {
   if (value === null) return null;
-  if (depth > MAX_DOCK_DEPTH || !record(value) || !boundedString(value.kind, 16)) return undefined;
+  if (depth > MAX_DOCK_DEPTH || !isRecord(value) || !boundedString(value.kind, 16)) return undefined;
   if (
     value.kind === "pane"
     && exactKeys(value, ["kind", "instanceId"])
@@ -320,7 +317,7 @@ function hasFollowCycle(instances: LayoutConfig["instances"]): boolean {
 }
 
 function parseLayout(value: unknown, schemaVersion: LayoutMarketplaceSchemaVersion): LayoutConfig | null {
-  if (!record(value) || !exactKeys(value, ["dockRoot", "instances", "floating", "detached"])) return null;
+  if (!isRecord(value) || !exactKeys(value, ["dockRoot", "instances", "floating", "detached"])) return null;
   if (!Array.isArray(value.instances) || value.instances.length === 0 || value.instances.length > MAX_INSTANCES) return null;
   if (!Array.isArray(value.floating) || !Array.isArray(value.detached)) return null;
 
@@ -334,7 +331,7 @@ function parseLayout(value: unknown, schemaVersion: LayoutMarketplaceSchemaVersi
       ? ["binding"]
       : ["title", "binding", "params", "settings"];
     if (
-      !record(raw)
+      !isRecord(raw)
       || !exactKeys(raw, ["instanceId", "paneId"], optional)
       || !boundedString(raw.instanceId, MAX_ID_LENGTH)
       || (schemaVersion === 2 && !WIRE_ID.test(raw.instanceId))
@@ -364,7 +361,7 @@ function parseLayout(value: unknown, schemaVersion: LayoutMarketplaceSchemaVersi
     raw: unknown,
     detached: boolean,
   ): LayoutConfig["floating"][number] | LayoutConfig["detached"][number] | null => {
-    if (!record(raw)) return null;
+    if (!isRecord(raw)) return null;
     const optional = detached ? [] : ["zIndex"];
     if (!exactKeys(raw, ["instanceId", "x", "y", "width", "height"], optional)) return null;
     if (
@@ -416,7 +413,7 @@ function parsePaneState(
   value: unknown,
   instanceIds: Set<string>,
 ): Record<string, PaneRuntimeState> | null {
-  if (!record(value) || Object.keys(value).some((id) => !instanceIds.has(id))) return null;
+  if (!isRecord(value) || Object.keys(value).some((id) => !instanceIds.has(id))) return null;
   const parsed: Record<string, PaneRuntimeState> = {};
   for (const [id, state] of Object.entries(value)) {
     const next = parseRecord(state);
@@ -427,7 +424,7 @@ function parsePaneState(
 }
 
 export function parseMarketplaceLayoutPayload(value: unknown): LayoutMarketplacePayload | null {
-  if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) return null;
+  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) return null;
   const schemaVersion = value.schemaVersion;
   const required = schemaVersion === 2
     ? ["schemaVersion", "sourceConfigVersion", "layout", "paneState"]
@@ -578,9 +575,9 @@ function withoutOversizedEntries(value: Record<string, unknown>): Record<string,
 function withoutCacheFields(state: PaneRuntimeState): PaneRuntimeState {
   const trimmed = withoutOversizedEntries(state);
   const pluginState = state.pluginState;
-  if (record(pluginState) && !("pluginState" in trimmed)) {
+  if (isRecord(pluginState) && !("pluginState" in trimmed)) {
     const plugins = Object.fromEntries(Object.entries(pluginState).flatMap(([pluginId, keys]) => {
-      if (!record(keys)) return [];
+      if (!isRecord(keys)) return [];
       const kept = withoutOversizedEntries(keys);
       return Object.keys(kept).length > 0 ? [[pluginId, kept] as const] : [];
     }));
@@ -675,7 +672,7 @@ export function materializeMarketplaceLayout(
 }
 
 export function parseMarketplaceLayoutEntry(value: unknown): LayoutMarketplaceEntry | null {
-  if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) return null;
+  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) return null;
   const required = ["id", "name", "schemaVersion", "sourceConfigVersion", "layout", "author", "publishedAt"];
   const optional = value.schemaVersion === 2 ? ["paneState"] : [];
   if (
@@ -683,7 +680,7 @@ export function parseMarketplaceLayoutEntry(value: unknown): LayoutMarketplaceEn
     || typeof value.id !== "string"
     || !MARKETPLACE_ID.test(value.id)
     || !boundedString(value.name, MAX_NAME_LENGTH)
-    || !record(value.author)
+    || !isRecord(value.author)
     || !exactKeys(value.author, ["username", "displayName"])
     || !(value.author.username === null || boundedString(value.author.username, MAX_AUTHOR_LENGTH))
     || !boundedString(value.author.displayName, MAX_AUTHOR_LENGTH)
@@ -710,7 +707,7 @@ export function parseMarketplaceLayoutEntry(value: unknown): LayoutMarketplaceEn
 }
 
 export function parseMarketplaceLayoutList(value: unknown): LayoutMarketplaceEntry[] | null {
-  if (!record(value) || !exactKeys(value, ["items"]) || !Array.isArray(value.items) || value.items.length > 50) return null;
+  if (!isRecord(value) || !exactKeys(value, ["items"]) || !Array.isArray(value.items) || value.items.length > 50) return null;
   const items = value.items.map(parseMarketplaceLayoutEntry);
   return items.every((item): item is LayoutMarketplaceEntry => item !== null) ? items : null;
 }

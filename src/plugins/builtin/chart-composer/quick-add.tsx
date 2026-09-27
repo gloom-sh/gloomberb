@@ -22,6 +22,7 @@ import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
 import { appendChartSeries } from "./presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "./series-catalog";
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
+import { clampIndex } from "../../../utils/math";
 
 const MAX_VISIBLE_SUGGESTIONS = 4;
 const CHART_TOOLBAR_HEIGHT = 1;
@@ -58,11 +59,6 @@ export function isChartQuickAddMouseTarget(target: unknown, quickAddId: string):
   if (!element || typeof element.closest !== "function") return false;
   const root = element.closest("[data-gloom-chart-quick-add]");
   return root?.getAttribute("data-gloom-chart-quick-add") === quickAddId;
-}
-
-function clampSelection(index: number, length: number): number {
-  if (length <= 0) return -1;
-  return Math.max(0, Math.min(index, length - 1));
 }
 
 function defaultCatalogInstrument(spec: ChartSpec): SeriesCatalogInstrument {
@@ -210,7 +206,7 @@ export function ChartSeriesQuickAdd({
   // Plugin catalogs land after the securities: only pull a stranded cursor
   // back into range, so a row the user already moved to stays selected.
   useEffect(() => {
-    setSelectedIndex((current) => clampSelection(current, suggestions.length));
+    setSelectedIndex((current) => clampIndex(current, suggestions.length, -1));
   }, [suggestions.length]);
 
   useEffect(() => {
@@ -287,7 +283,7 @@ export function ChartSeriesQuickAdd({
   }, [cancelPendingBlur, clearInput, onActiveChange, setSpec, spec]);
 
   const submit = useCallback(() => {
-    commitSuggestion(suggestions[clampSelection(selectedIndex, suggestions.length)]);
+    commitSuggestion(suggestions[clampIndex(selectedIndex, suggestions.length, -1)]);
   }, [commitSuggestion, selectedIndex, suggestions]);
   const cancel = useCallback(() => {
     cancelPendingBlur();
@@ -316,11 +312,11 @@ export function ChartSeriesQuickAdd({
     } else if (event.name === "up") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => clampSelection(current - 1, suggestions.length));
+      setSelectedIndex((current) => clampIndex(current - 1, suggestions.length, -1));
     } else if (event.name === "down") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => clampSelection(current + 1, suggestions.length));
+      setSelectedIndex((current) => clampIndex(current + 1, suggestions.length, -1));
     }
   }, {
     phase: "before",
@@ -407,7 +403,7 @@ export function ChartSeriesQuickAdd({
           label="Chart series suggestions"
           minWidth={controlWidth * 8}
           closeOnSelect={false}
-          highlightedId={suggestions[clampSelection(selectedIndex, suggestions.length)]?.id ?? null}
+          highlightedId={suggestions[clampIndex(selectedIndex, suggestions.length, -1)]?.id ?? null}
           onHighlight={(id) => setSelectedIndex(Math.max(0, suggestions.findIndex((suggestion) => suggestion.id === id)))}
           items={drawerStatus
             ? [{ id: "\u0000status", kind: "heading", label: drawerStatus }]
@@ -453,7 +449,7 @@ export function ChartSeriesQuickAdd({
           ) : (
             <ListView
               items={items}
-              selectedIndex={clampSelection(selectedIndex, items.length)}
+              selectedIndex={clampIndex(selectedIndex, items.length, -1)}
               height={drawerHeight}
               surface="plain"
               bgColor={colors.panel}

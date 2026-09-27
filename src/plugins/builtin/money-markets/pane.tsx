@@ -1,15 +1,16 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { ChartTableHeader, CompositeChart, CurveSurface, curveGhostColors, EmptyState, formatPercentAxis, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type MarketBoardRow, type StatItem } from "../../../components";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { ChartTableHeader, CompositeChart, CurveSurface, curveGhostColors, EmptyState, formatPercentAxis, MarketBoardStack, PaneStatusBody, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type ChartTableChart, type MarketBoardRow, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
+import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
 import { moneyMarketAxis, moneyMarketChange, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketRateChange, moneyMarketRows, moneyMarketValue } from "./model";
@@ -51,13 +52,9 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
     { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
   ];
-  const statRows = statGridRows(items, width);
-  return <Box flexDirection="column" width={width} height={height}>
-    <StatGrid items={items} width={width} />
-    <PaneStatusBody empty={row.history.every((point) => point.value == null)} subject="history" emptyTitle="No history available.">
-      <ObservationChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
-    </PaneStatusBody>
-  </Box>;
+  return <StatChartDetail items={items} width={width} height={height} empty={row.history.every((point) => point.value == null)}
+    emptySubject="history" emptyTitle="No history available."
+    renderChart={(chartHeight) => <ObservationChart row={row} width={width} height={chartHeight} focused={focused} />} />;
 }
 
 export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
@@ -122,15 +119,13 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const bodyHeight = Math.max(3, height - (tabsInHeader ? 0 : 1));
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
     notices: [...(data ? moneyMarketNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data ? [
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
-      ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}

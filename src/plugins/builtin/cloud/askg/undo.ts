@@ -1,4 +1,4 @@
-import { stableStringify } from "../../../../remote/revision";
+import { stableStringify } from "../../../../utils/hash";
 import type {
   RemoteControlRequest,
   RemoteControlResponse,

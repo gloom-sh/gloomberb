@@ -8,6 +8,7 @@ import type {
 } from "../../../api-client";
 import type { CloudSearchParams } from "../../../api-client/paths";
 import type { DataTableColumn } from "../../../components";
+import { formatShortDate } from "../../../utils/datetime-format";
 
 export const RESEARCH_SEARCH_PANE_ID = "research-search";
 export const RESEARCH_SEARCH_TEMPLATE_ID = "research-search-pane";
@@ -161,10 +162,7 @@ export function hitTypeLabel(hit: CloudSearchHit): string {
 }
 
 export function formatHitDate(value: string | null | undefined): string {
-  if (!value) return "\u2014";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "\u2014";
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "2-digit" });
+  return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
 }
 
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -184,7 +182,7 @@ export function formatHitDateShort(value: string | null | undefined, now = Date.
   if (age >= 0 && age < MS_PER_HOUR) return `${Math.max(1, Math.floor(age / 60_000))}m`;
   if (age >= 0 && age < 24 * MS_PER_HOUR) return `${Math.floor(age / MS_PER_HOUR)}h`;
   if (date.getFullYear() === new Date(now).getFullYear()) {
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return formatShortDate(date, { year: false });
   }
   return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }

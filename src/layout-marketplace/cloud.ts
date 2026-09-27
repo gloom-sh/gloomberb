@@ -5,6 +5,9 @@ import {
   type LayoutMarketplacePayload,
   parseMarketplaceLayoutPayload,
 } from "./payload";
+import { isRecord } from "../utils/guards";
+import { fnv1aHex } from "../utils/hash";
+import { RevisionConflictError } from "../api-client/errors";
 
 export type CloudLayoutVisibility = "private" | "team" | "public";
 
@@ -31,22 +34,12 @@ export interface CloudLayoutEntry extends LayoutMarketplacePayload {
 }
 
 /** A publish refused because someone published in between. */
-export class LayoutRevisionConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly currentRevision: number,
-  ) {
-    super(message);
-    this.name = "LayoutRevisionConflictError";
-  }
-}
-
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+export class LayoutRevisionConflictError extends RevisionConflictError<CloudLayoutEntry> {
+  override name = "LayoutRevisionConflictError";
 }
 
 function parseAuthor(value: unknown): LayoutMarketplaceAuthor | null {
-  if (!record(value)) return null;
+  if (!isRecord(value)) return null;
   if (value.username !== null && typeof value.username !== "string") return null;
   if (typeof value.displayName !== "string" || !value.displayName) return null;
   return { username: value.username as string | null, displayName: value.displayName };
@@ -56,7 +49,7 @@ export function parseLayoutRequirements(value: unknown): LayoutRequirement[] {
   if (!Array.isArray(value)) return [];
   const requires: LayoutRequirement[] = [];
   for (const entry of value) {
-    if (!record(entry) || typeof entry.pluginId !== "string" || !entry.pluginId) continue;
+    if (!isRecord(entry) || typeof entry.pluginId !== "string" || !entry.pluginId) continue;
     requires.push({
       pluginId: entry.pluginId,
       ...(typeof entry.repo === "string" && entry.repo ? { repo: entry.repo } : {}),
@@ -72,10 +65,10 @@ export function parseLayoutRequirements(value: unknown): LayoutRequirement[] {
  * server learned a new field.
  */
 export function parseCloudLayoutEntry(value: unknown): CloudLayoutEntry | null {
-  if (!record(value)) return null;
+  if (!isRecord(value)) return null;
   if (typeof value.id !== "string" || !isMarketplaceLayoutId(value.id)) return null;
   if (typeof value.name !== "string" || !value.name) return null;
-  if (!record(value.owner) || (value.owner.kind !== "user" && value.owner.kind !== "team") || typeof value.owner.id !== "string") return null;
+  if (!isRecord(value.owner) || (value.owner.kind !== "user" && value.owner.kind !== "team") || typeof value.owner.id !== "string") return null;
   if (value.visibility !== "private" && value.visibility !== "team" && value.visibility !== "public") return null;
   if (typeof value.revision !== "number" || !Number.isInteger(value.revision) || value.revision < 1) return null;
   const author = parseAuthor(value.author);
@@ -106,7 +99,7 @@ export function parseCloudLayoutEntry(value: unknown): CloudLayoutEntry | null {
 }
 
 export function parseCloudLayoutList(value: unknown): CloudLayoutEntry[] | null {
-  if (!record(value) || !Array.isArray(value.items)) return null;
+  if (!isRecord(value) || !Array.isArray(value.items)) return null;
   const items = value.items.map(parseCloudLayoutEntry);
   return items.every((item): item is CloudLayoutEntry => item !== null) ? items : null;
 }
@@ -122,16 +115,6 @@ function canonicalJson(value: unknown): string {
     return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
   }
   return JSON.stringify(value ?? null);
-}
-
-/** FNV-1a over UTF-16 code units; stable, fast, and good enough to spot drift. */
-function fnv1a(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
 }
 
 /**
@@ -157,7 +140,7 @@ export function layoutContentFingerprint(payload: Pick<LayoutMarketplacePayload,
     settings: instance.settings ?? null,
     state: payload.paneState[instance.instanceId] ?? null,
   })).sort();
-  return `${items.length.toString(16)}-${fnv1a(items.join("\n"))}`;
+  return `${items.length.toString(16)}-${fnv1aHex(items.join("\n"))}`;
 }
 
 

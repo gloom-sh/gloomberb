@@ -12,6 +12,7 @@ import { useOptionalDialog, type PromptContext } from "../../../../../ui/dialog"
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
+import { truncateToDisplayWidth } from "../../../../../utils/format";
 import { isPlainKey } from "../../../../../utils/keyboard";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate } from "../../../../../utils/datetime-format";
@@ -148,12 +149,6 @@ function sortStoryItems(items: readonly NewsStoryItem[] | undefined): NewsStoryI
   ));
 }
 
-function truncateText(text: string, maxWidth: number): string {
-  if (text.length <= maxWidth) return text;
-  if (maxWidth <= 3) return text.slice(0, Math.max(0, maxWidth));
-  return `${text.slice(0, maxWidth - 3)}...`;
-}
-
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
 const NATIVE_TEXT_STYLE = { display: "block" };
 
@@ -199,7 +194,7 @@ function NewsStoryTimelineItemView({
   const summary = item.summary && item.summary.trim() !== item.title.trim() ? item.summary : "";
   const source = item.sourceName || item.sourceKey;
   const contentWidth = Math.max(10, width - 2);
-  const sourceLabel = nativePaneChrome ? source : truncateText(source, Math.max(4, width - time.length - 4));
+  const sourceLabel = nativePaneChrome ? source : truncateToDisplayWidth(source, Math.max(4, width - time.length - 4));
 
   return (
     <Box flexDirection="column" width={nativePaneChrome ? "100%" : width} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>

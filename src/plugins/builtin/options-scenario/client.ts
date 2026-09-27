@@ -10,6 +10,8 @@ import { surfaceTreasuryRate } from "../vol-surface/model";
 import { optionMid } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export interface ScenarioMarketSnapshot {
   symbol: string;
@@ -58,28 +60,16 @@ export interface ScenarioMarketRequest {
   signal?: AbortSignal;
 }
 
-const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
 const symbolMatches = (actual: string | undefined, expected: string) => actual?.trim().toUpperCase() === expected;
-const abortError = () => new DOMException("Scenario load was cancelled", "AbortError");
-
-/** Stop this consumer without cancelling a chain request shared with OMON. */
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Scenario load was cancelled";
 
 /** Quotes, fundamentals and the selected chain fail independently. Missing inputs remain missing. */
 export async function loadScenarioMarket(
   request: ScenarioMarketRequest,
   dependencies: ScenarioLoaderDependencies = createScenarioDependencies(),
 ): Promise<ScenarioMarketSnapshot> {
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   const now = dependencies.now?.() ?? Date.now();
   const symbol = request.instrument.symbol.trim().toUpperCase();
   const options = { forceRefresh: request.forceRefresh };
@@ -89,11 +79,11 @@ export async function loadScenarioMarket(
     dependencies.loadSnapshot(request.instrument, options),
     dependencies.loadOptions({ instrument: request.instrument, expirationDate: request.expiration }, options),
     dependencies.loadYieldCurve(),
-  ]), request.signal);
-  if (request.signal?.aborted) throw abortError();
+  ]), request.signal, CANCELLED);
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   const [quoteResult, financialsResult, chainResult, curveResult] = settled;
   const entry = <T>(result: PromiseSettledResult<QueryEntry<T>>, label: string): QueryEntry<T> | null => {
-    if (result.status === "rejected") { warnings.push(`${label}: ${message(result.reason)}`); return null; }
+    if (result.status === "rejected") { warnings.push(`${label}: ${errorMessage(result.reason)}`); return null; }
     if (result.value.error) warnings.push(`${label}: ${result.value.error.message}`);
     return result.value;
   };
@@ -125,7 +115,7 @@ export async function loadScenarioMarket(
   else if (chainEntry?.error || (chainEntry?.staleAt != null && chainEntry.staleAt <= now)) warnings.push("Options chain is stale");
   const rateExpiration = request.rateExpiration ?? request.expiration ?? expirationDates[0];
   const curve = curveResult.status === "fulfilled" ? curveResult.value : [];
-  if (curveResult.status === "rejected") warnings.push(`Treasury: ${message(curveResult.reason)}`);
+  if (curveResult.status === "rejected") warnings.push(`Treasury: ${errorMessage(curveResult.reason)}`);
   const rate = surfaceTreasuryRate(curve, rateExpiration == null ? NaN : daysToExpiryFrom(rateExpiration, now) / 365);
   warnings.push(...rate.warnings);
   return {

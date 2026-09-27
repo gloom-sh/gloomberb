@@ -2,6 +2,7 @@ import type { EarningsField, FinancialStatement, PricePoint } from "../../types/
 import { computePriceReturnForHorizon } from "../../market-data/performance";
 import { isFinancialPeriodDate, latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { withStatementGaps } from "../../utils/statement-gaps";
+import { isFiniteNumber } from "../../utils/guards";
 
 export const YAHOO_TIMESERIES_TYPES = {
   annual: [
@@ -182,10 +183,6 @@ export function computeYahooReturn(history: PricePoint[], years: 1 | 3): number 
   }) ?? undefined;
 }
 
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 /**
  * Reported EPS must agree with the row's own income and weighted shares: a
  * row can pair EPS from one accounting basis with income from another. Basic
@@ -196,8 +193,8 @@ function finite(value: unknown): value is number {
  * is checked against diluted shares only once basic EPS has failed.
  */
 function withConsistentEps(row: FinancialStatement): FinancialStatement {
-  const incomes = [row.netIncomeCommonStockholders, row.netIncome].filter(finite);
-  const consistent = (eps: number | undefined, shares: number | undefined) => !finite(eps) || !finite(shares) || shares <= 0
+  const incomes = [row.netIncomeCommonStockholders, row.netIncome].filter(isFiniteNumber);
+  const consistent = (eps: number | undefined, shares: number | undefined) => !isFiniteNumber(eps) || !isFiniteNumber(shares) || shares <= 0
     || incomes.length === 0 || incomes.some((income) => Math.abs(eps - income / shares) <= Math.max(0.02 * Math.abs(eps), 0.01));
   if (consistent(row.basicEps, row.basicShares)) return row;
   const fields: EarningsField[] = consistent(row.eps, row.dilutedShares) ? ["basicEps"] : ["basicEps", "eps"];
@@ -364,9 +361,9 @@ export function buildYahooStatements(
   // it is the operating income, and expenses are what gross profit leaves.
   for (const point of metrics[`${prefix}TotalOperatingIncomeAsReported`] || []) {
     const row = byDate.get(point.asOfDate);
-    if (!row || !finite(point.value) || (row.currency && point.currency && row.currency !== point.currency)) continue;
+    if (!row || !isFiniteNumber(point.value) || (row.currency && point.currency && row.currency !== point.currency)) continue;
     row.operatingIncome = point.value;
-    if (finite(row.grossProfit)) row.operatingExpense = row.grossProfit - point.value;
+    if (isFiniteNumber(row.grossProfit)) row.operatingExpense = row.grossProfit - point.value;
   }
 
   return Array.from(byDate.values()).map(withConsistentEps).sort((left, right) => left.date.localeCompare(right.date));

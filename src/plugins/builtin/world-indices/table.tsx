@@ -1,9 +1,9 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { marketStateColor, marketStateLabel } from "../../../market-data/market/status";
-import { colors, priceColor } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
+import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
-import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
+import { formatNumber } from "../../../utils/format";
+import { renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import type {
   WorldIndexColumnId,
   WorldIndexTableRow,
@@ -62,23 +62,9 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
   ];
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/**
- * 24-hour UTC, like the other panes' TIME UTC columns, so the cell stays 5 wide
- * and never clips. A quote from an earlier UTC day shows its date instead, so a
- * closed market's last print is not read as a time today.
- */
-export function formatQuoteTime(lastUpdated: number | undefined, now = Date.now()): string {
-  if (!lastUpdated) return "—";
-  const date = new Date(lastUpdated);
-  const today = new Date(now);
-  if (date.getUTCFullYear() !== today.getUTCFullYear() || date.getUTCMonth() !== today.getUTCMonth()
-    || date.getUTCDate() !== today.getUTCDate()) {
-    return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
-  }
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
-}
+const formatIndexPrice = (quote: Quote) => formatNumber(quote.price, 2);
+const formatIndexChange = (quote: Quote) =>
+  `${quote.change >= 0 ? "+" : "-"}${formatNumber(Math.abs(quote.change), 2)}`;
 
 export function renderWorldIndexCell(
   row: WorldIndexTableRow,
@@ -90,28 +76,8 @@ export function renderWorldIndexCell(
   if (row.type === "header") return { text: "" };
 
   const { entry } = row;
-  const state = quotes.get(entry.symbol);
-  const quote = state?.quote;
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
-  const dimmed = rowState.selected ? colors.selectedText : colors.textDim;
-  // One row must not mix a loading marker with a no-data marker.
-  const loadingCell = !quote && (state?.loading ?? true);
-
   switch (column.id) {
-    case "status": {
-      if (loadingCell) return { text: "", color: dimmed };
-      if (options?.sessionText) {
-        const marketState = quote?.marketState;
-        return {
-          text: marketState ? marketStateLabel(marketState) : "—",
-          color: rowState.selected
-            ? colors.selectedText
-            : marketState ? marketStateColor(marketState) : colors.textDim,
-        };
-      }
-      const dot = marketStatusDot(quote?.marketState);
-      return { text: dot.char, color: rowState.selected ? colors.selectedText : dot.color };
-    }
     case "symbol":
       return {
         text: entry.shortName,
@@ -123,30 +89,11 @@ export function renderWorldIndexCell(
         text: entry.name,
         color: selectedColor,
       };
-    case "price":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: dimmed };
-      // A retained quote still beats a dash; dim it so stale is visible.
-      return {
-        text: formatNumber(quote.price, 2),
-        color: state?.stale ? dimmed : selectedColor,
-      };
-    case "change":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
-      return {
-        text: `${quote.change >= 0 ? "+" : "-"}${formatNumber(Math.abs(quote.change), 2)}`,
-        color: selectedColor ?? priceColor(quote.change),
-      };
-    case "changePercent":
-      if (loadingCell) return { text: "…", color: dimmed };
-      if (!quote || quote.changePercent === undefined) return { text: "—", color: dimmed };
-      return {
-        text: formatPercentRaw(quote.changePercent),
-        color: selectedColor ?? priceColor(quote.changePercent),
-      };
-    case "time":
-      if (loadingCell) return { text: "…", color: dimmed };
-      return { text: formatQuoteTime(quote?.lastUpdated), color: dimmed };
+    default:
+      return renderQuoteBoardCell(column.id, quotes.get(entry.symbol), rowState.selected, {
+        sessionText: options?.sessionText,
+        formatPrice: formatIndexPrice,
+        formatChange: formatIndexChange,
+      });
   }
 }

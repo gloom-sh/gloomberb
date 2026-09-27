@@ -16,6 +16,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { optionMid } from "../shared/volatility";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { daysToExpiryFrom } from "../options-calculator/model";
@@ -171,9 +172,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     setSaved((entries) => [...restoreSavedStrategies(entries).strategies, { id: crypto.randomUUID(), name, position: scenario.position, controls: scenario.controls }]);
     setDetail(null); notify({ body: `Saved ${name}`, type: "success" });
   };
-  const [sort, setSort] = useState({ id: "strike", direction: "asc" as "asc" | "desc" });
-  const [gridSort, setGridSort] = useState({ id: "spot", direction: "asc" as "asc" | "desc" });
-  const [chainSort, setChainSort] = useState({ id: "strike", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "strike", direction: "asc" });
+  const [gridSort, setGridSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "spot", direction: "asc" });
+  const [chainSort, setChainSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "strike", direction: "asc" });
   const [volText, setVolText] = useState(String((controls?.volShift ?? 0) * 100));
   const dateControl = useRef<SelectControl>(null);
   const chainExpiryControl = useRef<SelectControl>(null);
@@ -252,11 +253,11 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
-      rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.id === "spot" ? row.spot : gridSort.id === "move" ? row.move ?? 0 : row.values[Number(gridSort.id)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
-      sortColumnId={gridSort.id} sortDirection={gridSort.direction} onHeaderClick={(id) => {
+      rootHeight={bodyHeight} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.columnId === "spot" ? row.spot : gridSort.columnId === "move" ? row.move ?? 0 : row.values[Number(gridSort.columnId)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
+      sortColumnId={gridSort.columnId} sortDirection={gridSort.direction} onHeaderClick={(id) => {
         // The landmark column has no label and no order of its own.
         if (id === "mark") return;
-        setGridSort({ id, direction: gridSort.id === id && gridSort.direction === "asc" ? "desc" : "asc" });
+        setGridSort((current) => nextHeaderSort(current, id));
       }}
       emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
@@ -274,8 +275,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
           backgroundColor: blendHex(colors.bg, value >= 0 ? colors.positive : colors.negative, 0.06 + 0.3 * Math.min(1, Math.abs(value) / peak)) };
       }} selection={{ kind: "index", selectedIndex: gridIndex, onChange: setGridIndex }} />
     : <DataTableView<ScenarioLeg> focused={focused && !volActive} rootWidth={width} rootHeight={bodyHeight}
-      items={(position?.legs ?? []).toSorted((a, b) => { const x = a[sort.id as keyof ScenarioLeg], y = b[sort.id as keyof ScenarioLeg]; return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (sort.direction === "asc" ? 1 : -1); })}
-      sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
+      items={(position?.legs ?? []).toSorted((a, b) => { const x = a[sort.columnId as keyof ScenarioLeg], y = b[sort.columnId as keyof ScenarioLeg]; return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (sort.direction === "asc" ? 1 : -1); })}
+      sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
       emptyStateTitle="No position legs." columns={legColumns} getItemKey={(leg) => leg.id}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (leg) => leg.id, onChange: (id) => setSelectedId(id) }}
       onActivate={edit} renderCell={(leg, column) => ({ text: column.id === "expiration" ? dateLabel(leg.expiration * 1000)
@@ -316,8 +317,8 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
       onChange: (value: string) => setExpiration(Number(value)) }]} />
     <PaneStatusBody loading={!!resource.loading && !chainRows.length} error={!chainRows.length ? resource.error : null}
       empty={!resource.loading && !chainRows.length} subject="option chain">
-      <DataTableView focused={focused} rootWidth={width} rootHeight={Math.max(3, height - 2)} items={chainRows.toSorted((a, b) => { const value = (row: typeof a) => chainSort.id === "iv" ? row.impliedVolatility : chainSort.id === "oi" ? row.openInterest ?? 0 : row[chainSort.id as "side" | "strike" | "bid" | "ask"]; const x = value(a), y = value(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (chainSort.direction === "asc" ? 1 : -1); })}
-        sortColumnId={chainSort.id} sortDirection={chainSort.direction} onHeaderClick={(id) => setChainSort({ id, direction: chainSort.id === id && chainSort.direction === "asc" ? "desc" : "asc" })}
+      <DataTableView focused={focused} rootWidth={width} rootHeight={Math.max(3, height - 2)} items={chainRows.toSorted((a, b) => { const value = (row: typeof a) => chainSort.columnId === "iv" ? row.impliedVolatility : chainSort.columnId === "oi" ? row.openInterest ?? 0 : row[chainSort.columnId as "side" | "strike" | "bid" | "ask"]; const x = value(a), y = value(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (chainSort.direction === "asc" ? 1 : -1); })}
+        sortColumnId={chainSort.columnId} sortDirection={chainSort.direction} onHeaderClick={(id) => setChainSort((current) => nextHeaderSort(current, id))}
         emptyStateTitle="No quoted contracts."
         columns={[{ id: "side", label: "Option", width: 8, align: "right" }, { id: "strike", label: "Strike", width: 12, align: "right" },
           { id: "bid", label: "Bid", width: 12, align: "right" }, { id: "ask", label: "Ask", width: 12, align: "right" },

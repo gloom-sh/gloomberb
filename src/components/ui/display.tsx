@@ -6,8 +6,8 @@ import { Box, Text, TextAttributes } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { headerCase } from "./header-case";
 
-export { Prose } from "./prose";
-export type { ProseProps } from "./prose";
+export { BulletList, FigureList, Prose, READING_WIDTH } from "./prose";
+export type { BulletListProps, FigureListItem, FigureListProps, ProseProps } from "./prose";
 
 export interface SectionHeadingProps {
   title: string;

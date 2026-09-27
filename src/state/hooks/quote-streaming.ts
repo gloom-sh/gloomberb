@@ -6,9 +6,8 @@ import { debugLog } from "../../utils/debug-log";
 import { normalizeSymbol } from "../../utils/exchanges";
 import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../market-data/coordinator";
 import { useQuoteEntries } from "../../market-data/hooks";
-import type { InstrumentRef } from "../../market-data/request-types";
 import type { QueryEntry } from "../../market-data/result-types";
-import { buildQuoteKey } from "../../market-data/selectors";
+import { buildQuoteKey, instrumentFromQuoteTarget, uniqueQuoteInstruments } from "../../market-data/selectors";
 import { instrumentIdentityKey } from "../../utils/instrument-identity";
 
 const quoteStreamLog = debugLog.createLogger("quote-stream");
@@ -41,6 +40,13 @@ export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscription
   };
 }
 
+function normalizeQuoteStreamSubscriptionTargets(targets: QuoteSubscriptionTarget[]): QuoteSubscriptionTarget[] {
+  return targets.flatMap((target) => {
+    const normalized = normalizeQuoteStreamSubscriptionTarget(target);
+    return normalized ? [normalized] : [];
+  });
+}
+
 /** The same target, ranked as off screen: not visible, not selected, low weight. */
 function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget {
   const weight = Number.isFinite(target.weight)
@@ -51,11 +57,7 @@ function downgradeOffscreenQuoteTarget(target: QuoteSubscriptionTarget): QuoteSu
 }
 
 export function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
-  return `${instrumentIdentityKey({
-    symbol: target.symbol, exchange: target.exchange,
-    brokerId: target.context?.brokerId, brokerInstanceId: target.context?.brokerInstanceId,
-    instrument: target.context?.instrument,
-  })}|${target.route ?? "auto"}`;
+  return `${instrumentIdentityKey(instrumentFromQuoteTarget(target))}|${target.route ?? "auto"}`;
 }
 
 export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget): string {
@@ -83,13 +85,7 @@ interface ActiveQuoteSubscription {
 
 function toCoordinatorQuoteTargets(targets: QuoteSubscriptionTarget[]): CoordinatorQuoteTargets {
   return targets.map((target) => ({
-    instrument: {
-      symbol: target.symbol,
-      exchange: target.exchange,
-      brokerId: target.context?.brokerId,
-      brokerInstanceId: target.context?.brokerInstanceId,
-      instrument: target.context?.instrument ?? null,
-    },
+    instrument: instrumentFromQuoteTarget(target),
     priority: {
       route: target.route,
       surface: target.surface,
@@ -212,34 +208,12 @@ export function useQuoteUpdates(
 ): void {
   const appActive = useAppVisible();
   const coordinator = getSharedMarketDataCoordinator();
-  const normalizedTargets = targets.flatMap((target) => {
-    const normalized = normalizeQuoteStreamSubscriptionTarget(target);
-    return normalized ? [normalized] : [];
-  });
+  const normalizedTargets = normalizeQuoteStreamSubscriptionTargets(targets);
   const instrumentKey = normalizedTargets
-    .map((target) => buildQuoteKey({
-      symbol: target.symbol,
-      exchange: target.exchange,
-      brokerId: target.context?.brokerId,
-      brokerInstanceId: target.context?.brokerInstanceId,
-      instrument: target.context?.instrument ?? null,
-    }))
+    .map((target) => buildQuoteKey(instrumentFromQuoteTarget(target)))
     .sort()
     .join("\u001f");
-  const instruments = useMemo(() => {
-    const unique = new Map<string, InstrumentRef>();
-    for (const target of normalizedTargets) {
-      const instrument: InstrumentRef = {
-        symbol: target.symbol,
-        exchange: target.exchange,
-        brokerId: target.context?.brokerId,
-        brokerInstanceId: target.context?.brokerInstanceId,
-        instrument: target.context?.instrument ?? null,
-      };
-      unique.set(buildQuoteKey(instrument), instrument);
-    }
-    return [...unique.values()];
-  }, [instrumentKey]);
+  const instruments = useMemo(() => uniqueQuoteInstruments(normalizedTargets), [instrumentKey]);
 
   useQuoteStreaming(targets, { enabled: liveStreaming });
 
@@ -296,10 +270,7 @@ export function useLiveQuoteEntries(
   subscriptionStartedAt: number;
 } {
   const appActive = useAppVisible();
-  const normalizedTargets = targets.flatMap((target) => {
-    const normalized = normalizeQuoteStreamSubscriptionTarget(target);
-    return normalized ? [normalized] : [];
-  });
+  const normalizedTargets = normalizeQuoteStreamSubscriptionTargets(targets);
   const targetKey = [...new Set(
     normalizedTargets.map((target) => buildQuoteStreamSubscriptionIdentityKey(target)),
   )]
@@ -319,20 +290,7 @@ export function useLiveQuoteEntries(
     };
   }
   const [freshnessNow, setFreshnessNow] = useState(() => Date.now());
-  const instruments = useMemo(() => {
-    const unique = new Map<string, InstrumentRef>();
-    for (const target of normalizedTargets) {
-      const instrument: InstrumentRef = {
-        symbol: target.symbol,
-        exchange: target.exchange,
-        brokerId: target.context?.brokerId,
-        brokerInstanceId: target.context?.brokerInstanceId,
-        instrument: target.context?.instrument ?? null,
-      };
-      unique.set(buildQuoteKey(instrument), instrument);
-    }
-    return [...unique.values()];
-  }, [targetKey]);
+  const instruments = useMemo(() => uniqueQuoteInstruments(normalizedTargets), [targetKey]);
 
   // The freshness clock only drives labels, so it stops while the pane is covered.
   const paneInView = usePaneInView();

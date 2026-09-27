@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
   DataTableView,
   PaneStatusBody,
@@ -7,6 +6,7 @@ import {
   useTableLoadMore,
   type DataTableColumn,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -124,12 +124,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
             onChange: setSelected,
           }}
           getItemKey={(item) => item.id}
-          onRootKeyDown={(event) => {
-            if (!isPlainKey(event, "r")) return false;
-            event.preventDefault?.();
-            void history.reload();
-            return true;
-          }}
+          onRootKeyDown={(event) => handleRefreshKey(event, () => void history.reload())}
           sortColumnId={null}
           sortDirection="desc"
           renderCell={(item, column, _index, row) => ({

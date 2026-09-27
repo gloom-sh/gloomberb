@@ -1,22 +1,10 @@
-import { ApiRequestError } from "./errors";
+import { ApiRequestError, RevisionConflictError } from "./errors";
+import { putWithRevision, type CloudApiRequest } from "./request";
 import type { TeamPluginStateEntry, TeamView } from "./types";
 
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
-
 /** A write refused because the server holds a newer revision. */
-export class TeamRevisionConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly currentRevision: number,
-    public readonly current: unknown = null,
-  ) {
-    super(message);
-    this.name = "TeamRevisionConflictError";
-  }
-}
-
-function ifMatch(revision: number | undefined): Record<string, string> {
-  return revision ? { "if-match": String(revision) } : {};
+export class TeamRevisionConflictError<T = unknown> extends RevisionConflictError<T> {
+  override name = "TeamRevisionConflictError";
 }
 
 export class CloudViewsApi {
@@ -47,19 +35,14 @@ export class CloudViewsApi {
     viewId: string,
     input: { spec: Record<string, unknown>; name?: string; expectedRevision: number },
   ): Promise<TeamView> {
-    try {
-      return await this.request<TeamView>(`/views/${encodeURIComponent(viewId)}`, {
-        method: "PUT",
-        headers: ifMatch(input.expectedRevision),
-        body: JSON.stringify({ spec: input.spec, ...(input.name ? { name: input.name } : {}) }),
-      });
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 412) {
-        const current = await this.getTeamView(viewId).catch(() => null);
-        throw new TeamRevisionConflictError(error.message, current?.revision ?? input.expectedRevision + 1, current);
-      }
-      throw error;
-    }
+    return putWithRevision<TeamView, TeamView>(this.request, `/views/${encodeURIComponent(viewId)}`, {
+      spec: input.spec,
+      ...(input.name ? { name: input.name } : {}),
+    }, {
+      expected: input.expectedRevision,
+      loadCurrent: () => this.getTeamView(viewId),
+      conflict: TeamRevisionConflictError,
+    });
   }
 
   // Plugin state
@@ -89,18 +72,16 @@ export class CloudViewsApi {
     value: unknown,
     expectedRevision?: number,
   ): Promise<TeamPluginStateEntry> {
-    try {
-      return await this.request<TeamPluginStateEntry>(
-        `/teams/${encodeURIComponent(teamId)}/plugin-state/${encodeURIComponent(pluginId)}/${encodeURIComponent(key)}`,
-        { method: "PUT", headers: ifMatch(expectedRevision), body: JSON.stringify({ value }) },
-      );
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 412) {
-        const current = await this.getTeamPluginState(teamId, pluginId, key).catch(() => null);
-        throw new TeamRevisionConflictError(error.message, current?.revision ?? (expectedRevision ?? 0) + 1, current);
-      }
-      throw error;
-    }
+    return putWithRevision<TeamPluginStateEntry, TeamPluginStateEntry>(
+      this.request,
+      `/teams/${encodeURIComponent(teamId)}/plugin-state/${encodeURIComponent(pluginId)}/${encodeURIComponent(key)}`,
+      { value },
+      {
+        expected: expectedRevision,
+        loadCurrent: () => this.getTeamPluginState(teamId, pluginId, key),
+        conflict: TeamRevisionConflictError,
+      },
+    );
   }
 
   async deleteTeamPluginState(teamId: string, pluginId: string, key: string): Promise<void> {

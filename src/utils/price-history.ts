@@ -4,6 +4,7 @@ import { hasPublishedSessionCalendar, isTimestampStaleForExchangeSession, latest
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
+import { BAR_INTERVAL_UNIT_MS, parseBarInterval } from "../time-series/resolution";
 
 const MAX_CURRENT_INTRADAY_HISTORY_LAG_MS = 18 * 60 * 60 * 1000;
 const MAX_SAME_SESSION_HISTORY_LAG_MS = 30 * 60 * 1000;
@@ -17,16 +18,8 @@ interface PriceHistoryFreshnessOptions {
 }
 
 export function priceHistoryIntervalMs(interval: string): number | null {
-  const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months)$/i.exec(interval.trim());
-  if (!match) return null;
-  const count = Number(match[1]);
-  const unit = match[2]!.toLowerCase();
-  const step = /^(mo|month)/.test(unit) ? 30 * DAY_MS
-    : /^(w|wk|week)/.test(unit) ? 7 * DAY_MS
-    : /^(d|day)/.test(unit) ? DAY_MS
-    : /^(h|hr|hour)/.test(unit) ? 60 * 60 * 1000
-    : 60 * 1000;
-  return count > 0 && Number.isFinite(count * step) ? count * step : null;
+  const parsed = parseBarInterval(interval);
+  return parsed ? parsed.count * BAR_INTERVAL_UNIT_MS[parsed.unit] : null;
 }
 
 function inferredHistoryIntervalMs(points: PricePoint[]): number | null {

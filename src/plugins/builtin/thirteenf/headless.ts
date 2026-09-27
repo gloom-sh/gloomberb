@@ -4,6 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { normalizeCik } from "./api";
 import { buildFundOverlap, overlapPeriod } from "./overlap";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type TickerHoldings } from "./signals";
@@ -35,20 +36,20 @@ import {
   formatPercentMaybe,
   formatRawPercentMaybe,
   formatShares,
-  formatShortDate,
+  FILING_DAY_FORMAT,
   formatWeightMaybe,
 } from "./format";
 import type {
   FundDetailData,
   ThirteenFBrowserTab,
 } from "./types";
+import { finiteOrNull } from "../../../utils/guards";
 
-const numberOrNull = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
-const money = (value: unknown) => formatMoneyCompact(numberOrNull(value));
-const weight = (value: unknown) => formatWeightMaybe(numberOrNull(value));
-const shares = (value: unknown) => formatShares(numberOrNull(value));
+const money = (value: unknown) => formatMoneyCompact(finiteOrNull(value));
+const weight = (value: unknown) => formatWeightMaybe(finiteOrNull(value));
+const shares = (value: unknown) => formatShares(finiteOrNull(value));
 const weightPoints = (value: unknown) => {
-  const change = numberOrNull(value);
+  const change = finiteOrNull(value);
   return change == null ? "--" : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
 };
 
@@ -72,7 +73,7 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filedAsOfDate",
     header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null),
+    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
   },
 ];
 
@@ -119,7 +120,7 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filedAsOfDate",
     header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null),
+    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
   },
   {
     key: "tableValueTotal",

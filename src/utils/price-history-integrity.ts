@@ -1,4 +1,5 @@
 import type { PricePoint } from "../types/financials";
+import { isFiniteNumber } from "./guards";
 
 type ReportedPricePoint = Readonly<Omit<PricePoint, "date" | "historySource"> & {
   date: string;
@@ -22,10 +23,6 @@ export function mergePriceHistoryIntegrity(...entries: readonly PriceHistoryInte
   });
 }
 
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function above(left: number, right: number): boolean {
   return left - right > 8 * Number.EPSILON * Math.max(Math.abs(left), Math.abs(right));
 }
@@ -33,9 +30,9 @@ function above(left: number, right: number): boolean {
 /** Missing OHLC fields are not contradictory: close-only histories remain usable. */
 export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | undefined {
   const { open, high, low, close } = point;
-  const invalid = (finite(high) && finite(low) && above(low, high))
-    || [open, close].some((value) => finite(value)
-      && ((finite(high) && above(value, high)) || (finite(low) && above(low, value))));
+  const invalid = (isFiniteNumber(high) && isFiniteNumber(low) && above(low, high))
+    || [open, close].some((value) => isFiniteNumber(value)
+      && ((isFiniteNumber(high) && above(value, high)) || (isFiniteNumber(low) && above(low, value))));
   if (!invalid) return undefined;
   const date = new Date(point.date);
   return Object.freeze({
@@ -46,7 +43,7 @@ export function pricePointIntegrity(point: PricePoint): PriceHistoryIntegrity | 
 
 /** Calculation/display fields deliberately exclude the contradictory source row. */
 export function pricePointValues(point: PricePoint, integrity = pricePointIntegrity(point)) {
-  const value = (number: number | undefined) => !integrity && finite(number) ? number : null;
+  const value = (number: number | undefined) => !integrity && isFiniteNumber(number) ? number : null;
   return {
     open: value(point.open), high: value(point.high), low: value(point.low),
     close: value(point.close), volume: value(point.volume),

@@ -82,8 +82,10 @@ function updateExistingTicker(
   positionEntry: TickerPosition,
   brokerContract?: BrokerContractRef,
 ): TickerRecord {
+  // A broker portfolio holds one account, so this entry replaces whatever any
+  // profile of that account (Flex, Gateway, signed in) imported there before.
   const otherPositions = ticker.metadata.positions.filter(
-    (entry) => !(entry.portfolio === portfolioId && entry.broker === instance.brokerType),
+    (entry) => !(entry.portfolio === portfolioId && (entry.broker === instance.brokerType || entry.brokerInstanceId)),
   );
   const brokerContracts = mergeBrokerContracts(
     ticker.metadata.broker_contracts ?? [],

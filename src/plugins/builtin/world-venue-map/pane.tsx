@@ -13,8 +13,8 @@ import {
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
@@ -28,6 +28,7 @@ import {
   formatVenueLocalTime,
   venueRemainingSeconds,
 } from "./model";
+import { errorMessage } from "../../../utils/errors";
 
 export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
 
@@ -43,10 +44,6 @@ function venueColumns(width: number): VenueColumn[] {
     { id: "name", label: "VENUE", width: Math.max(10, width - fixed - 6), flexGrow: 1, align: "left" },
     ...(timeWidth ? [{ id: "time" as const, label: "LOCAL", width: timeWidth, align: "left" as const }] : []),
   ];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function SelectedVenueHeader({
@@ -156,28 +153,10 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       event.preventDefault();
       event.stopPropagation();
       focusSearch();
-    } else if (isPlainKey(event, "r")) {
-      event.preventDefault();
-      event.stopPropagation();
-      refresh();
+    } else {
+      handleRefreshKey(event, refresh, { stopPropagation: true });
     }
   }, { allowEditable: true, enabled: focused });
-
-  const handleTableKey = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "/")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      focusSearch();
-      return true;
-    }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
-    return false;
-  }, [focusSearch, refresh]);
 
   usePaneFooter(WORLD_VENUE_MAP_PANE_ID, () => ({
     info: [
@@ -277,7 +256,6 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       emptyStateTitle={query.trim() ? "No matching venues." : "No venue data."}
       emptyStateHint={query.trim() ? "Clear search." : undefined}
-      onRootKeyDown={handleTableKey}
     />
   );
 

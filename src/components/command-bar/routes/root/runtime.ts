@@ -16,10 +16,7 @@ import { buildRootResultModel, type RootResultModel } from "./results";
 import { useRootProviderSearch } from "./provider-search";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import type { ShortcutIntent } from "./shortcuts";
-
-function clampSelectedIdx(index: number, length: number): number {
-  return Math.max(0, Math.min(index, length - 1));
-}
+import { clampIndex } from "../../../../utils/math";
 
 /** A row plain Enter can run, so the untouched selection may rest on it. */
 function isDefaultSelectable(item: ResultItem): boolean {
@@ -298,11 +295,11 @@ export function useCommandBarRootRuntime({
         const selectedId = previousResultIds[current];
         const shiftedIdx = selectedId ? resultIds.indexOf(selectedId) : -1;
         if (shiftedIdx >= 0) return shiftedIdx;
-        return clampSelectedIdx(current, resultIds.length);
+        return clampIndex(current, resultIds.length);
       }
       // Untouched, the selection follows the best row on offer.
       const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
-      return clampSelectedIdx(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+      return clampIndex(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
     });
   }, [
     activeMatch?.command.id,

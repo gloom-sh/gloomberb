@@ -11,9 +11,11 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
-import { isPlainKey } from "../../../utils/keyboard";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
   CloudCongressMemberPayload,
@@ -31,9 +33,7 @@ import {
   buildMemberTradeColumns,
   formatCongressReturn,
   formatLag,
-  nextSort,
   sortedTrades,
-  truncate,
   type LoadStatus,
   type TradeColumn,
   type TradeColumnId,
@@ -81,7 +81,7 @@ export function TradeDetail({
         <DetailLine label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <DetailLine label="party" value={trade.party ?? "--"} />
         <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
+        <DetailLine label="asset" value={truncateWithEllipsis(trade.assetName, Math.max(10, lineWidth - 16))} />
         <DetailLine label="amount" value={trade.amount} tone="value" />
         <DetailLine label="owner" value={trade.owner} />
         <DetailLine label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
@@ -92,12 +92,12 @@ export function TradeDetail({
         <DetailLine label="filed" value={trade.filingDate} />
         <DetailLine label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <DetailLine label="status" value={trade.filingStatus} /> : null}
-        {trade.subholdingOf ? <DetailLine label="subholding" value={truncate(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
+        {trade.subholdingOf ? <DetailLine label="subholding" value={truncateWithEllipsis(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
         {trade.description ? (
           <>
             <Text>{" "}</Text>
             <Text fg={colors.textDim}>description</Text>
-            <Text fg={colors.text}>{truncate(trade.description, lineWidth)}</Text>
+            <Text fg={colors.text}>{truncateWithEllipsis(trade.description, lineWidth)}</Text>
           </>
         ) : null}
       </Box>
@@ -258,39 +258,10 @@ export function MemberTradesDetail({
     if (selectedTrade?.sourceUrl) void rendererHost.openExternal(selectedTrade.sourceUrl);
   }, [rendererHost, selectedTrade?.sourceUrl]);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "n") && detailPayload && canLoadMoreCongress(detailPayload)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      loadMore();
-      return true;
-    }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
-    if (isPlainKey(event, "t") && selectedTrade?.ticker) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openSelectedTicker();
-      return true;
-    }
-    if (isPlainKey(event, "o") && selectedTrade?.sourceUrl) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openSelectedSource();
-      return true;
-    }
-    if (isPlainKey(event, "p") && previousYearRequest) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      loadPreviousYear();
-      return true;
-    }
-    return false;
-  }, [detailPayload, loadMore, loadPreviousYear, openSelectedSource, openSelectedTicker, previousYearRequest, refresh, selectedTrade?.sourceUrl, selectedTrade?.ticker]);
+  // n, t, o and p are the footer hints below, which bind their own keys.
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
+    handleRefreshKey(event, refresh, { stopPropagation: true })
+  ), [refresh]);
 
   usePaneNoticeFooter({
     registrationId: `${CONGRESS_TRADES_PANE_ID}:member-notices`,
@@ -368,11 +339,9 @@ export function MemberTradesDetail({
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => {
-          setSortPreference((current) => nextSort(
-            current,
-            columnId as TradeColumnId,
-            columnId === "ticker" || columnId === "asset" || columnId === "side" || columnId === "owner" ? "asc" : "desc",
-          ));
+          setSortPreference((current) => nextHeaderSort(current, columnId as TradeColumnId, {
+            firstDirection: columnId === "ticker" || columnId === "asset" || columnId === "side" || columnId === "owner" ? "asc" : "desc",
+          }));
         }}
         getItemKey={(trade) => trade.id}
         renderCell={renderCongressTradeCell}

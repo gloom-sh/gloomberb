@@ -1,4 +1,6 @@
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { isRecord } from "../utils/guards";
+import { parseBarInterval } from "../time-series/resolution";
 
 export const HISTORY_RETENTION_MAX_AGE_MS = 5 * 60_000;
 // The record carries the server's clock; the server revalidates it on retry.
@@ -44,21 +46,17 @@ export interface HistorySourceOutcome {
 
 const outcomes = new Set<HistorySourceOutcomeKind>(["success", "retention", "auth", "rate-limit", "transient", "failure", "empty",
   "missing-method", "stale", "malformed", "reported-gaps", "timeout", "coverage"]);
-const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown, max = 256): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\r\n\0]/.test(value);
 const instant = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= 8_640_000_000_000_000;
 const yahooRetentionIntervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
 
 export function canonicalHistoryInterval(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months)$/i.exec(value.trim());
-  if (!match || !Number.isSafeInteger(Number(match[1])) || Number(match[1]) <= 0) return null;
-  const unit = match[2]!.toLowerCase();
-  return `${Number(match[1])}${/^(mo|month)/.test(unit) ? "month" : /^(w|wk|week)/.test(unit) ? "week" : /^(d|day)/.test(unit) ? "day" : /^(h|hr|hour)/.test(unit) ? "h" : "min"}`;
+  const interval = parseBarInterval(value);
+  return interval ? `${interval.count}${interval.unit}` : null;
 }
 
 export function parseHistoryRetention(value: unknown, now = Date.now()): HistoryRetention | null {
-  if (!object(value) || value.version !== 1 || value.source !== "yahoo"
+  if (!isRecord(value) || value.version !== 1 || value.source !== "yahoo"
     || !text(value.symbol) || typeof value.exchange !== "string" || value.exchange.length > 256
     || !instant(value.requestedStart) || !instant(value.requestedEnd)
     || !instant(value.observedAt) || !instant(value.availableStart)) return null;
@@ -78,8 +76,8 @@ export function parseHistoryRetention(value: unknown, now = Date.now()): History
 }
 
 export function parseHistoryRecoveryCandidate(value: unknown, now = Date.now()): HistoryRecoveryCandidate | null {
-  if (!object(value) || !text(value.sourceKey) || !value.sourceKey.startsWith("provider:")
-    || value.sourceKey.length <= "provider:".length || !object(value.request)) return null;
+  if (!isRecord(value) || !text(value.sourceKey) || !value.sourceKey.startsWith("provider:")
+    || value.sourceKey.length <= "provider:".length || !isRecord(value.request)) return null;
   const retention = parseHistoryRetention(value.retention, now), request = value.request;
   if (!retention || retention.availableStart >= retention.requestedEnd || !text(request.entityKey, 8192)
     || request.symbol !== retention.symbol || request.exchange !== retention.exchange
@@ -95,7 +93,7 @@ export function parseHistoryRecoveryCandidate(value: unknown, now = Date.now()):
 }
 
 function parseOutcome(value: unknown): HistorySourceOutcome | null {
-  if (!object(value) || !text(value.sourceKey) || !/^(provider|broker):.+/.test(value.sourceKey)
+  if (!isRecord(value) || !text(value.sourceKey) || !/^(provider|broker):.+/.test(value.sourceKey)
     || !outcomes.has(value.outcome as HistorySourceOutcomeKind)
     || (value.status !== undefined && (!Number.isInteger(value.status) || Number(value.status) < 100 || Number(value.status) > 599))) return null;
   return Object.freeze({ sourceKey: value.sourceKey, outcome: value.outcome as HistorySourceOutcomeKind,
@@ -140,7 +138,7 @@ export function isHistoryRetentionError(value: unknown): value is HistoryRetenti
 
 /** Validate again after crossing the desktop JSON boundary. */
 export function parseHistoryRetentionError(value: unknown): HistoryRetentionError | null {
-  if (!object(value) || !Array.isArray(value.candidates) || value.candidates.length > 100
+  if (!isRecord(value) || !Array.isArray(value.candidates) || value.candidates.length > 100
     || !Array.isArray(value.outcomes) || value.outcomes.length > 200) return null;
   const retention = parseHistoryRetention(value.retention);
   if (!retention) return null;

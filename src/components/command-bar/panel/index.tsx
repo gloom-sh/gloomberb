@@ -2,12 +2,12 @@ import { useLayoutEffect } from "react";
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { Button, Spinner } from "../../ui";
 import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
 import { CommandBarMultiSelectBody, isMultiSelectPickerRoute } from "../multi-select-picker";
 import { ThemePicker } from "../theme-picker";
-import { truncateText } from "../view-model";
 import { CommandBarWorkflowBody } from "../workflow/body";
 import type { CommandBarConfirmRoute, CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
@@ -197,12 +197,12 @@ export function CommandBarPanel({
                     />
                     <Box width={2} />
                     <Text fg={palette.text} attributes={TextAttributes.BOLD}>
-                      {truncateText(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
+                      {truncateToDisplayWidth(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
                     </Text>
                   </>
                 ) : rootShortcutFeedback ? (
                   <Text fg={palette.subtle}>
-                    {truncateText(rootShortcutFeedback, queryDisplayWidth)}
+                    {truncateToDisplayWidth(rootShortcutFeedback, queryDisplayWidth)}
                   </Text>
                 ) : null}
               </Box>
@@ -319,13 +319,13 @@ function CommandBarConfirmBody({
     <Box flexDirection="column" height={bodyHeight} paddingX={contentPadding}>
       {route.body.map((line, index) => (
         <Box key={`confirm:${index}`} height={1}>
-          <Text fg={palette.text}>{truncateText(t(line), queryDisplayWidth)}</Text>
+          <Text fg={palette.text}>{truncateToDisplayWidth(t(line), queryDisplayWidth)}</Text>
         </Box>
       ))}
       <Box height={1} />
       {route.error && (
         <Box height={1}>
-          <Text fg={themeColors.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
+          <Text fg={themeColors.negative}>{truncateToDisplayWidth(route.error, queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.pending && (

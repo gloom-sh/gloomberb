@@ -47,6 +47,7 @@ export interface NewsArticle {
 
 export interface NewsQuery {
   feed?: NewsFeed;
+  /** @deprecated Set `feed: "ticker"` instead. */
   scope?: NewsQueryScope;
   ticker?: string;
   exchange?: string;

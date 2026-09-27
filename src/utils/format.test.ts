@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, formatTimeAgo, padTo, truncateToDisplayWidth } from "./format";
+import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, padTo, truncateToDisplayWidth } from "./format";
 import { normalizeTimestamp } from "./timestamp";
 
 test("currency conversion never presents a missing or invalid FX leg as parity", () => {
@@ -20,18 +20,6 @@ test("currency conversion never presents a missing or invalid FX leg as parity",
       expect(format(value)).toBe("—");
     }
   }
-});
-
-describe("formatTimeAgo", () => {
-  test("handles UTC ISO timestamps with explicit offsets", () => {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString().replace("Z", "+00:00");
-    expect(formatTimeAgo(fiveMinutesAgo)).toBe("5m ago");
-  });
-
-  test("treats space-separated chat timestamps without a timezone as UTC", () => {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString().replace("T", " ").replace("Z", "");
-    expect(formatTimeAgo(fiveMinutesAgo)).toBe("5m ago");
-  });
 });
 
 describe("normalizeTimestamp", () => {

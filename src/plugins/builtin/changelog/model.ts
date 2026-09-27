@@ -1,5 +1,5 @@
 import type { ChangelogRelease } from "../../../updater/github-releases";
-import type { SortDirection } from "../../../utils/sort-values";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 
 export type ChangelogColumnId = "date" | "version" | "title";
 
@@ -73,17 +73,7 @@ export function nextChangelogSortPreference(
   columnId: string,
 ): ChangelogSortPreference {
   if (!isChangelogColumnId(columnId)) return current;
-  const nextColumnId = columnId;
-  if (current.columnId !== nextColumnId) {
-    return {
-      columnId: nextColumnId,
-      direction: defaultDirection(nextColumnId),
-    };
-  }
-  return {
-    columnId: nextColumnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
+  return nextHeaderSort(current, columnId, { firstDirection: defaultDirection });
 }
 
 export function resolveSelectedReleaseIndex(

@@ -17,6 +17,7 @@ import {
 } from "../../api-client";
 import { normalizePriceValueByDivisor, resolveCurrencyUnit } from "../../utils/currency-units";
 import { resolveExchangeTimeZone } from "../../utils/exchanges";
+import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
@@ -134,54 +135,6 @@ const LOCAL_DATE_TIME_PATTERN =
   /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?)?$/;
 const EXPLICIT_TIME_ZONE_PATTERN = /(?:Z|[+-]\d{2}:?\d{2})$/i;
 
-function getZonedDateParts(date: Date, timeZone: string): Map<string, string> {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const parts = new Map<string, string>();
-  for (const part of formatter.formatToParts(date)) {
-    if (part.type !== "literal") parts.set(part.type, part.value);
-  }
-  return parts;
-}
-
-function getTimeZoneOffsetMs(utcMs: number, timeZone: string): number {
-  const parts = getZonedDateParts(new Date(utcMs), timeZone);
-  const zonedAsUtcMs = Date.UTC(
-    Number(parts.get("year")),
-    Number(parts.get("month")) - 1,
-    Number(parts.get("day")),
-    Number(parts.get("hour")),
-    Number(parts.get("minute")),
-    Number(parts.get("second")),
-  );
-  return zonedAsUtcMs - utcMs;
-}
-
-function exchangeLocalDateTimeToUtc(
-  match: RegExpMatchArray,
-  timeZone: string,
-): Date {
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4] ?? "0");
-  const minute = Number(match[5] ?? "0");
-  const second = Number(match[6] ?? "0");
-  const localAsUtcMs = Date.UTC(year, month - 1, day, hour, minute, second);
-  const firstOffset = getTimeZoneOffsetMs(localAsUtcMs, timeZone);
-  const firstUtcMs = localAsUtcMs - firstOffset;
-  const verifiedOffset = getTimeZoneOffsetMs(firstUtcMs, timeZone);
-  return new Date(localAsUtcMs - verifiedOffset);
-}
-
 function parseCloudPricePointDate(
   value: Date | string | number,
   exchange: string,
@@ -198,7 +151,17 @@ function parseCloudPricePointDate(
   }
 
   const timeZone = resolveExchangeTimeZone(exchange);
-  return timeZone ? exchangeLocalDateTimeToUtc(match, timeZone) : new Date(value);
+  return timeZone
+    ? new Date(zonedWallClockToUtcMs(
+      timeZone,
+      Number(match[1]),
+      Number(match[2]),
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6] ?? "0"),
+    ))
+    : new Date(value);
 }
 
 export function mapPricePoint(
@@ -342,10 +305,8 @@ export function formatCloudDateTime(
   if (includeTime) {
     const timeZone = resolveExchangeTimeZone(exchange);
     if (timeZone) {
-      const parts = getZonedDateParts(date, timeZone);
-      return `${parts.get("year")}-${parts.get("month")}-${parts.get(
-        "day",
-      )} ${parts.get("hour")}:${parts.get("minute")}:${parts.get("second")}`;
+      const { year, month, day, hour, minute, second } = zonedDateTimeParts(date.getTime(), timeZone);
+      return `${year}-${padTimePart(month)}-${padTimePart(day)} ${padTimePart(hour)}:${padTimePart(minute)}:${padTimePart(second)}`;
     }
     // Without a venue timezone, an explicit offset keeps host and server clocks
     // from interpreting the same intraday boundary as different instants.

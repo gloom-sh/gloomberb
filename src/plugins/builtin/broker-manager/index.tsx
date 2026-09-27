@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { signedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
+import {
+  attachSignedInBrokerPersistence,
+  getSignedInBrokers,
+  refreshSignedInBrokers,
+  resetSignedInBrokerCatalog,
+  subscribeSignedInBrokers,
+} from "../../../brokers/signed-in/catalog";
 import { Button, DataTableStackView, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
@@ -15,6 +23,7 @@ import {
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
+import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { BrokerDetailContent, type BrokerEditKey } from "./detail";
@@ -64,9 +73,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     };
   }, [config.brokerInstances, getBrokerAdapter]);
 
+  // Signed-in profiles take their broker's name from the connector list.
+  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const rows = useMemo(
     () => buildBrokerProfileRows(config, adapters, brokerAccounts),
-    [adapters, brokerAccounts, config, language, statusVersion],
+    [adapters, brokerAccounts, config, language, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
@@ -306,6 +317,12 @@ export const brokerManagerModule: PluginModule = {
   ],
 
   setup(ctx) {
+    // Brokers whose connection the Gloom account holds; the backend lists them.
+    ctx.registerBroker(signedInBrokerAdapter);
+    attachSignedInBrokerPersistence(ctx.persistence);
+    // The app fetches the connector list; a CLI run and the desktop's Bun half read the saved one.
+    if (getCurrentPluginTarget() !== "cli") void refreshSignedInBrokers();
+
     ctx.registerCommand({
       id: "open-brokers",
       label: "Open Brokers",
@@ -316,5 +333,9 @@ export const brokerManagerModule: PluginModule = {
         ctx.showPane("brokers");
       },
     });
+  },
+
+  dispose() {
+    resetSignedInBrokerCatalog();
   },
 };

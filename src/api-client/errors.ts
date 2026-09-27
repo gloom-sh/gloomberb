@@ -10,9 +10,27 @@ export class ApiRequestError extends Error {
     readonly status?: number,
     /** `Retry-After` in milliseconds when the server sent one. */
     readonly retryAfterMs?: number,
+    /** The body's `error` field, e.g. a broker route's "unsupported" or "tool_error". */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiRequestError";
+  }
+}
+
+/**
+ * A write refused with 412 because the server holds a newer revision than the
+ * one the write was based on. `current` is what the server holds now, or null
+ * when it could not be read back.
+ */
+export class RevisionConflictError<T = unknown> extends Error {
+  constructor(
+    message: string,
+    readonly current: T | null,
+    readonly currentRevision: number,
+  ) {
+    super(message);
+    this.name = "RevisionConflictError";
   }
 }
 
@@ -58,6 +76,16 @@ export function parseApiErrorMessage(body: string): string {
     return parts.join(" ") || body;
   } catch {
     return htmlErrorTitle(body) ?? body;
+  }
+}
+
+/** The JSON body's `error` field, which routes that name their failures set to a code. */
+export function parseApiErrorCode(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown> | null;
+    return typeof parsed?.error === "string" && parsed.error ? parsed.error : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -9,6 +9,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { formatPercentRaw } from "../../../utils/format";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -56,7 +57,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const resource = useAsyncResource(loader, { initialData: () => getCachedFuturesCurve(root), clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "curve");
   const [selected, setSelected] = usePluginPaneState<string | null>("contract", null);
-  const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "expiry", direction: "asc" });
   const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
@@ -64,7 +65,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const newest = data ? newestQuote(data.contracts) : null;
   const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon) : [], [data, colors, horizon]);
   const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
-  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction, changes), [data, sort, changes]);
+  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.columnId, sort.direction, changes), [data, sort, changes]);
   const curveTab = tab === "curve";
   // The curve tab lists the contracts the chart plots; Contracts keeps every one.
   const curveRows = useMemo(() => {
@@ -141,8 +142,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
         rootWidth={width} rootHeight={bodyHeight}
         selection={{ kind: "id", selectedId, getId: contractKey, onChange: setSelected }}
         onActivate={(row) => setSelected(row.symbol)} getItemKey={contractKey} renderCell={renderCell}
-        sortColumnId={sort.id} sortDirection={sort.direction}
-        onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }))}
+        sortColumnId={sort.columnId} sortDirection={sort.direction}
+        onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
         emptyStateTitle="No listed contracts available."
         // The Curve tab leaves the quote time to the footer; the export keeps it.
         getExportMetadata={() => curveTab && newest ? [[`as of${newest.includes("T") ? " UTC" : ""}`, curveTimestamp(newest)]] : []}

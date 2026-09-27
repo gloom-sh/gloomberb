@@ -1,14 +1,9 @@
 import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../../shared/protocol";
 import { contextMenuSelectionMessage } from "./click";
+import { recordOrNull } from "../../../../utils/guards";
 
 function normalizeText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }
 
 export function normalizeContextMenuItems(value: unknown, depth = 0): unknown[] {
@@ -16,7 +11,7 @@ export function normalizeContextMenuItems(value: unknown, depth = 0): unknown[] 
 
   const items: unknown[] = [];
   for (const rawItem of value) {
-    const item = record(rawItem);
+    const item = recordOrNull(rawItem);
     if (!item) continue;
     if (item.type === "divider" || item.type === "separator") {
       items.push({ type: "divider" });
@@ -26,7 +21,7 @@ export function normalizeContextMenuItems(value: unknown, depth = 0): unknown[] 
     const submenu = normalizeContextMenuItems(item.submenu, depth + 1);
     const role = normalizeText(item.role);
     const action = normalizeText(item.action);
-    const data = record(item.data);
+    const data = recordOrNull(item.data);
     const customAction = contextMenuSelectionMessage({ action, data }, ELECTROBUN_CONTEXT_MENU_ACTION) !== null;
 
     if (!role && !customAction && submenu.length === 0 && !normalizeText(item.label)) continue;
@@ -52,7 +47,7 @@ export function normalizeContextMenuItems(value: unknown, depth = 0): unknown[] 
 
 export function getContextMenuRequestId(items: unknown[]): string | null {
   for (const item of items) {
-    const recordItem = record(item);
+    const recordItem = recordOrNull(item);
     if (!recordItem) continue;
     const message = contextMenuSelectionMessage(recordItem, ELECTROBUN_CONTEXT_MENU_ACTION);
     if (message) {

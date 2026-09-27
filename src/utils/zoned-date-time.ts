@@ -42,6 +42,18 @@ export function zonedDateTimeParts(utcMs: number, timeZone: string): ZonedDateTi
   };
 }
 
+const dateKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** The calendar day an instant falls on in an IANA timezone, as "YYYY-MM-DD". */
+export function zonedDateKey(utcMs: number, timeZone: string): string {
+  let value = dateKeyFormatters.get(timeZone);
+  if (!value) {
+    value = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    dateKeyFormatters.set(timeZone, value);
+  }
+  return value.format(utcMs);
+}
+
 function zonedOffsetMs(utcMs: number, timeZone: string): number {
   const parts = zonedDateTimeParts(utcMs, timeZone);
   const wallMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);

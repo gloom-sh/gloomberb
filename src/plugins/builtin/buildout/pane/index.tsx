@@ -12,9 +12,11 @@ import {
   type PaneHint,
 } from "../../../../components";
 import { ChoiceDialog } from "../../../../components/ui";
+import { handleRefreshKey } from "../../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../../types/plugin";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
+import { nextHeaderSort, type SortPreference } from "../../../../utils/sort-values";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickerQuoteFact, useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { collectUniqueTickerSymbols } from "../../../../tickers/tokenizer";
@@ -26,7 +28,6 @@ import type {
   BuildoutList,
   BuildoutRow,
   BuildoutTabId,
-  SortDirection,
 } from "../model/types";
 import {
   BUILDOUT_NAME,
@@ -89,8 +90,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const [selectedList, setSelectedList] = useState<BuildoutList | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailRow, setDetailRow] = useState<BuildoutRow | null>(null);
-  const [sortColumnId, setSortColumnId] = useState<BuildoutColumnId | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [sort, setSort] = useState<SortPreference<BuildoutColumnId>>({ columnId: null, direction: "asc" });
   const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [favoriteBusyKey, setFavoriteBusyKey] = useState<string | null>(null);
@@ -140,13 +140,12 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     const nextColumn: BuildoutColumnId | null = activeTab === "companies"
       ? selectedList ? "marketCap" : null
       : activeTab === "sites" ? "capture" : "time";
-    setSortColumnId(nextColumn);
-    setSortDirection(defaultSortDirection(nextColumn));
+    setSort({ columnId: nextColumn, direction: defaultSortDirection(nextColumn) });
   }, [activeTab, selectedList?.slug]);
 
   const rows = useMemo(
-    () => sortRows(activeRows(state, activeTab, selectedList), sortColumnId, sortDirection),
-    [activeTab, selectedList, sortColumnId, sortDirection, state],
+    () => sortRows(activeRows(state, activeTab, selectedList), sort.columnId, sort.direction),
+    [activeTab, selectedList, sort, state],
   );
   const columns = useMemo(() => columnsForTab(activeTab, selectedList, canFavorite), [activeTab, canFavorite, selectedList]);
   const selectedRow = rows[selectedIndex] ?? rows[0] ?? null;
@@ -219,15 +218,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     && state.companies.blurredCompanyCount > 0;
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    const nextColumnId = columnId as BuildoutColumnId;
-    setSortColumnId((current) => {
-      if (current === nextColumnId) {
-        setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
-        return current;
-      }
-      setSortDirection(defaultSortDirection(nextColumnId));
-      return nextColumnId;
-    });
+    setSort((current) => nextHeaderSort(current, columnId as BuildoutColumnId, { firstDirection: defaultSortDirection }));
   }, []);
 
   const openCompanyList = useCallback((list: BuildoutList) => {
@@ -236,8 +227,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     setDetailRow(null);
     setUpgradeMessage(null);
     setFavoriteMessage(null);
-    setSortColumnId("marketCap");
-    setSortDirection("desc");
+    setSort({ columnId: "marketCap", direction: "desc" });
     resetCompanies();
   }, [resetCompanies]);
 
@@ -247,8 +237,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     setDetailRow(null);
     setUpgradeMessage(null);
     setFavoriteMessage(null);
-    setSortColumnId(null);
-    setSortDirection("asc");
+    setSort({ columnId: null, direction: "asc" });
   }, []);
 
   const activateRow = useCallback((row: BuildoutRow) => {
@@ -360,14 +349,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       event.stopPropagation?.();
       return true;
     }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
     // Esc and Backspace close an open list through the stack below.
-    return false;
+    return handleRefreshKey(event, refresh, { stopPropagation: true });
   }, [refresh, selectedRow, toggleFavoriteRow]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
@@ -432,8 +415,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       onActivate={activateRow}
       // The lists start unsorted, and every table sorts by its headers.
       sortable
-      sortColumnId={sortColumnId}
-      sortDirection={sortDirection}
+      sortColumnId={sort.columnId}
+      sortDirection={sort.direction}
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       renderCell={renderCell}

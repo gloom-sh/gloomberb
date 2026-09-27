@@ -1,9 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
+import { Box } from "../../ui";
+import { compareSortValues, nextHeaderSort, type SortPreference } from "../../utils/sort-values";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
-import type { DataTableColumn, DataTableCell } from "../ui";
+import { PaneStatusBody, StatGrid, statGridRows, type DataTableColumn, type DataTableCell, type StatItem } from "../ui";
 import { getTableWidth } from "../ui/table-layout";
 
 export interface MarketBoardRow {
@@ -109,15 +111,12 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
-  const [sort, setSort] = useState({ id: "", direction: "asc" as "asc" | "desc" });
-  const items = useMemo(() => sort.id ? [...rows].sort((a, b) => {
-    const key = sort.id as "label" | "labelDetail" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
-    const extra = extraColumns?.find((item) => item.column.id === sort.id);
+  const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "asc" });
+  const items = useMemo(() => sort.columnId ? [...rows].sort((a, b) => {
+    const key = sort.columnId as "label" | "labelDetail" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
+    const extra = extraColumns?.find((item) => item.column.id === sort.columnId);
     const left = extra ? extra.sortValue(a) : a[key], right = extra ? extra.sortValue(b) : b[key];
-    if (left == null) return right == null ? 0 : 1;
-    if (right == null) return -1;
-    const comparison = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
-    return sort.direction === "asc" ? comparison : -comparison;
+    return compareSortValues(left, right, sort.direction);
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
   const { columns, shortAsOf } = fitBoardColumns([
@@ -152,8 +151,32 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     onActivate={(row) => onOpenIdChange(row.id)} detailOpen={!!open} onBack={() => onOpenIdChange(null)}
     detailTitle={open?.label} detailContent={open ? renderDetail(open) : null}
     sortable isColumnSortable={(column) => column.id !== "history"}
-    sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => {
-      if (id !== "history") setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }));
+    sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => {
+      if (id !== "history") setSort((current) => nextHeaderSort(current, id));
     }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={typeof rootBefore === "function" ? rootBefore({ columns }) : rootBefore}
     freezeFirstColumn emptyStateTitle={emptyTitle} />;
+}
+
+export interface StatChartDetailProps {
+  items: StatItem[];
+  width: number;
+  height: number;
+  /** Nothing to chart; the body says so under the figures instead. */
+  empty: boolean;
+  emptySubject: string;
+  emptyTitle: string;
+  /** The history chart, given the rows the figures leave it. */
+  renderChart: (height: number) => ReactNode;
+}
+
+/** An opened board row: its figures over a chart of its history. */
+export function StatChartDetail({ items, width, height, empty, emptySubject, emptyTitle, renderChart }: StatChartDetailProps) {
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <StatGrid items={items} width={width} />
+      <PaneStatusBody empty={empty} subject={emptySubject} emptyTitle={emptyTitle}>
+        {renderChart(Math.max(3, height - statGridRows(items, width)))}
+      </PaneStatusBody>
+    </Box>
+  );
 }

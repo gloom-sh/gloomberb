@@ -5,8 +5,6 @@ import {
   formatBpAxis,
   MarketBoardStack,
   PaneStatusBody,
-  StatGrid,
-  statGridRows,
   usePaneFooter,
   usePaneNoticeFooter,
   type MarketBoardRow,
@@ -14,12 +12,11 @@ import {
   type StatItem,
 } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -79,14 +76,10 @@ function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow
     { id: "range", label: "1Y range", value: `${formatBp(row.rangeLowBp)} to ${formatBp(row.rangeHighBp)}` },
     { id: "series", label: "FRED", value: row.seriesId, detail: row.frequency },
   ];
-  const statRows = statGridRows(items, width);
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      <StatGrid items={items} width={width} />
-      <PaneStatusBody empty={row.history.length < 2} subject="spread history" emptyTitle="No spread history available.">
-        <SpreadChart row={row} width={width} height={Math.max(3, height - statRows)} focused={focused} />
-      </PaneStatusBody>
-    </Box>
+    <StatChartDetail items={items} width={width} height={height} empty={row.history.length < 2}
+      emptySubject="spread history" emptyTitle="No spread history available."
+      renderChart={(chartHeight) => <SpreadChart row={row} width={width} height={chartHeight} focused={focused} />} />
   );
 }
 
@@ -105,12 +98,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   // the pane can follow the global cadence without refetching daily data.
   useAutoRefresh(lastUpdated, refresh);
 
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r") || loading) return;
-    reload();
-    event.preventDefault?.();
-    event.stopPropagation?.();
-  });
+  usePaneRefreshKey(reload, { focused, enabled: !loading });
   const partial = rows.length > 0 && rows.length < CREDIT_SERIES.length;
   // Each row carries its own date in the AS OF column; a spread between
   // indexes from different sessions is a limitation behind the warning.
@@ -123,8 +111,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     ...(rows.length > 0 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
     ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${CREDIT_SERIES.length}`, tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-    ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+    ...loadingErrorFooterInfo(loading, error),
   ], [error, loading, partial, rows.length, stale]);
   usePaneFooter(paneId, () => ({ info: footerInfo }), [footerInfo, paneId]);
 

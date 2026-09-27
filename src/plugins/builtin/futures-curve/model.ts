@@ -4,6 +4,7 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
+import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 export const CURVE_ROOTS = [...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })), { value: "VX", label: "VX VIX Futures" }];
 
@@ -147,17 +148,13 @@ export function curveContractChanges(data: FuturesCurvePayload): CurveContractCh
 
 const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
 
-export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: "asc" | "desc",
+type CurveSortKey = "symbol" | "expiration" | "price" | "openInterest" | "volume" | "percentile" | "asOf";
+
+export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
   changes?: CurveContractChanges): FuturesContract[] {
-  const keys: Record<string, keyof FuturesContract> = { symbol: "symbol", expiry: "expiration", price: "price", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
+  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
   const lookback = CHANGE_COLUMNS[id];
   const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key];
-  return [...rows].sort((a, b) => {
-    const left = value(a), right = value(b);
-    if (left == null) return right == null ? 0 : 1;
-    if (right == null) return -1;
-    const order = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
-    return direction === "asc" ? order : -order;
-  });
+  return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction));
 }

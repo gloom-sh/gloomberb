@@ -1,5 +1,6 @@
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import type { SurfaceExpiry, SurfaceGrid, SurfaceSnapshot } from "./model";
+import { isFiniteNumber, isRecord } from "../../../utils/guards";
 
 export interface VolSurfaceEvidenceInput {
   snapshot: SurfaceSnapshot | null | undefined;
@@ -56,9 +57,7 @@ export interface VolSurfaceEvidence {
   failures: Array<{ expiration: number | null; message: string }>;
 }
 
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const iv = (value: unknown): value is number => finite(value) && value > 0;
-const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const iv = (value: unknown): value is number => isFiniteNumber(value) && value > 0;
 
 function gridCounts(values: (number | null)[][]): { values: number; quads: number } {
   let count = 0, quads = 0;
@@ -94,7 +93,7 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
   })) : [];
   const counts = grid ? gridCounts(grid.values) : { values: 0, quads: 0 };
   const plottedValueCount = grid ? counts.values : smile ? smile.points.length : term.length
-    || table.reduce((total, row) => total + row.values.filter(finite).length, 0);
+    || table.reduce((total, row) => total + row.values.filter(isFiniteNumber).length, 0);
   const loading = input.loading || snapshot?.phase === "loading" || (snapshot != null && snapshot.loaded < snapshot.requested);
   const relevantExpiries = view === "smile" ? selectedExpiry ? [selectedExpiry] : [] : snapshot?.expiries ?? [];
   return {
@@ -126,22 +125,22 @@ export function useVolSurfaceEvidence(input: VolSurfaceEvidenceInput): void {
 
 /** Verify values and recompute counts so asserted readiness alone cannot certify a chart. */
 export function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | null {
-  if (!record(value) || value.kind !== "volatility-surface" || value.version !== 1
+  if (!isRecord(value) || value.kind !== "volatility-surface" || value.version !== 1
     || typeof value.symbol !== "string" || !iv(value.spot) || !Array.isArray(value.expiries)
-    || !Array.isArray(value.failures) || !finite(value.sourcePointCount) || value.sourcePointCount <= 0
+    || !Array.isArray(value.failures) || !isFiniteNumber(value.sourcePointCount) || value.sourcePointCount <= 0
     || typeof value.complete !== "boolean" || typeof value.loading !== "boolean") return null;
-  if (!value.expiries.every((expiry) => record(expiry) && iv(expiry.expiration) && iv(expiry.years)
-    && finite(expiry.sourcePointCount) && expiry.sourcePointCount >= 0
+  if (!value.expiries.every((expiry) => isRecord(expiry) && iv(expiry.expiration) && iv(expiry.years)
+    && isFiniteNumber(expiry.sourcePointCount) && expiry.sourcePointCount >= 0
     && ["loading", "ready", "empty", "error"].includes(String(expiry.state)))) return null;
   if (value.complete && (value.loading || !iv(value.requestedExpiries)
     || value.loadedExpiries !== value.requestedExpiries || value.expiries.length !== value.requestedExpiries
-    || value.failedExpiries !== 0 || value.failures.length > 0 || !value.expiries.every((expiry) => record(expiry)
+    || value.failedExpiries !== 0 || value.failures.length > 0 || !value.expiries.every((expiry) => isRecord(expiry)
       && expiry.state === "ready" && expiry.stale === false && expiry.error === null && iv(expiry.sourcePointCount)))) return null;
   let count = 0, quads = 0;
   if (value.view === "surface" || value.view === "table") {
     const grid = value.grid;
-    if (!record(grid) || !Array.isArray(grid.tenors) || !grid.tenors.every(iv)
-      || !Array.isArray(grid.coordinates) || !grid.coordinates.every(finite)
+    if (!isRecord(grid) || !Array.isArray(grid.tenors) || !grid.tenors.every(iv)
+      || !Array.isArray(grid.coordinates) || !grid.coordinates.every(isFiniteNumber)
       || !Array.isArray(grid.values) || grid.values.length !== grid.tenors.length
       || !grid.values.every((row) => Array.isArray(row) && row.length === (grid.coordinates as unknown[]).length
         && row.every((cell) => cell === null || iv(cell)))) return null;
@@ -150,18 +149,18 @@ export function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | nul
     if (value.renderer === "bitmap" && quads === 0) return null;
   } else if (value.view === "smile") {
     const smile = value.smile;
-    if (!record(smile) || !iv(smile.expiration) || !Array.isArray(smile.points)
-      || !smile.points.every((point) => record(point) && iv(point.strike) && iv(point.volatility))) return null;
+    if (!isRecord(smile) || !iv(smile.expiration) || !Array.isArray(smile.points)
+      || !smile.points.every((point) => isRecord(point) && iv(point.strike) && iv(point.volatility))) return null;
     count = smile.points.length;
     if (count < 2 || smile.expiration !== value.selectedExpiration) return null;
   } else if (value.view === "term") {
-    if (!Array.isArray(value.term) || !value.term.every((point) => record(point)
+    if (!Array.isArray(value.term) || !value.term.every((point) => isRecord(point)
       && iv(point.expiration) && iv(point.years) && iv(point.atm))) return null;
     count = value.term.length;
   } else if (value.view === "skew" || value.view === "forwards") {
-    if (!Array.isArray(value.table) || !value.table.every((row) => record(row) && iv(row.expiration)
-      && Array.isArray(row.values) && row.values.every((cell) => cell === null || finite(cell)))) return null;
-    count = value.table.reduce((total: number, row) => total + (row as { values: unknown[] }).values.filter(finite).length, 0);
+    if (!Array.isArray(value.table) || !value.table.every((row) => isRecord(row) && iv(row.expiration)
+      && Array.isArray(row.values) && row.values.every((cell) => cell === null || isFiniteNumber(cell)))) return null;
+    count = value.table.reduce((total: number, row) => total + (row as { values: unknown[] }).values.filter(isFiniteNumber).length, 0);
   } else return null;
   if (count === 0 || value.plottedValueCount !== count || value.validQuadCount !== quads) return null;
   return value as unknown as VolSurfaceEvidence;

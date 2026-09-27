@@ -1,7 +1,8 @@
 import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, Tabs, usePaneFooter, usePaneHeaderTabs, type DataTableKeyEvent } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -26,7 +27,6 @@ import {
   TABS,
   createRows,
   overlayMarketMoverQuotes,
-  nextSortPreference,
   resolveSummarySymbols,
   resolveTabs,
   sortRows,
@@ -182,18 +182,14 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   }, [pinTicker]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as MarketMoverColumn["id"], {
+      resetTo: DEFAULT_SORT_PREFERENCE,
+    }));
   }, []);
 
-  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      loadTab(activeTab, { forceRefresh: true });
-      return true;
-    }
-    return false;
-  }, [activeTab, loadTab]);
+  const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => (
+    handleRefreshKey(event, () => loadTab(activeTab, { forceRefresh: true }), { stopPropagation: true })
+  ), [activeTab, loadTab]);
 
   usePaneFooter("market-movers", () => ({
     info: [

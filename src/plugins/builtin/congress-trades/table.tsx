@@ -1,6 +1,7 @@
 import { TextAttributes } from "../../../ui";
 import { TickerBadgeList, type DataTableCell } from "../../../components";
 import { colors } from "../../../theme/colors";
+import { formatShortDate } from "../../../utils/datetime-format";
 import type {
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
@@ -10,7 +11,7 @@ import {
   formatAmountRange,
   formatCongressReturn,
   formatLag,
-  formatShortDate,
+  FILING_DAY_FORMAT,
   tradeAssetLabel,
   type MemberColumn,
   type TradeColumn,
@@ -35,9 +36,9 @@ export function renderCongressTradeCell(
   switch (column.id) {
     case "returnSinceTx": case "returnSinceFiling": return { text: formatCongressReturn(trade[column.id]), color: selectedColor ?? (trade[column.id] == null ? colors.textDim : trade[column.id]! >= 0 ? colors.positive : colors.negative) };
     case "filed":
-      return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
     case "tx":
-      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
     case "lag":
       return { text: `${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? "!" : ""}`, color: selectedColor ?? ((trade.lagDays ?? 0) > 45 ? colors.warning : colors.textDim) };
     case "member":
@@ -100,7 +101,7 @@ export function renderCongressMemberCell(
     case "range":
       return { text: formatAmountRange(member.estimatedLow, member.estimatedHigh), color: selectedColor ?? colors.textBright };
     case "last":
-      return { text: formatShortDate(member.lastFilingDate), color: selectedColor ?? colors.textDim };
+      return { text: formatShortDate(member.lastFilingDate, FILING_DAY_FORMAT), color: selectedColor ?? colors.textDim };
     case "lag":
       return { text: formatLag(member.avgLagDays), color: selectedColor ?? colors.textDim };
   }

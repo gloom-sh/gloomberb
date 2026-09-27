@@ -174,14 +174,3 @@ export function sortSectorRows(rows: SectorTableRow[], sort: SectorSortPreferenc
     return compareSortValues(leftValue, rightValue, sort.direction);
   });
 }
-
-export function nextSectorSortPreference(current: SectorSortPreference, columnId: string): SectorSortPreference {
-  const nextColumnId = columnId as SectorColumnId;
-  if (current.columnId !== nextColumnId) {
-    return { columnId: nextColumnId, direction: "asc" };
-  }
-  if (current.direction === "asc") {
-    return { columnId: nextColumnId, direction: "desc" };
-  }
-  return { columnId: null, direction: "asc" };
-}

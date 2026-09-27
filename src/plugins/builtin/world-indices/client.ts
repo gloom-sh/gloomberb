@@ -1,14 +1,11 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import type { IndexEntry } from "./indices";
+import { errorMessage } from "../../../utils/errors";
 
 export interface WorldIndexQuoteResult {
   quotes: Map<string, Quote | null>;
   errors: string[];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export async function loadWorldIndexQuotes(

@@ -1,4 +1,5 @@
 import type { CloudFilingEventPayload } from "../../../api-client";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 
 /** Every 8-K carries exhibits, so the label says nothing beside another one. */
@@ -39,27 +40,16 @@ export interface FilingEventsFeed {
   entries: FilingEventEntry[];
 }
 
-function formatInstant(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "2-digit",
-  });
-}
-
 function formatCalendarDate(value: string | null | undefined): string | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00Z`);
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
-  return date.toLocaleDateString("en-US", {
-    month: "short", day: "2-digit", year: "2-digit", timeZone: "UTC",
-  });
+  return formatShortDate(date, { day: "2-digit", year: "2-digit", utc: true });
 }
 
 function formatFiled(event: CloudFilingEventPayload): string {
-  return formatCalendarDate(event.filingDate) ?? formatInstant(event.filedAt);
+  return formatCalendarDate(event.filingDate)
+    ?? formatShortDate(event.filedAt, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
 }
 
 function itemsLabel(event: CloudFilingEventPayload): string {

@@ -34,6 +34,7 @@ import {
   type CloudPricePointPayload,
 } from "../../api-client";
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
+import { normalizeNewsFeed } from "../../news/news-model";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory } from "../../utils/price-history";
@@ -678,8 +679,7 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
       priority: 10,
       provider: {
         supports(query: NewsQuery): boolean {
-          const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
-          return feed === "ticker" ? !!query.ticker : true;
+          return normalizeNewsFeed(query) === "ticker" ? !!query.ticker : true;
         },
         async fetchNewsPage(query: NewsQuery) {
           const response = await withCloudFallback(

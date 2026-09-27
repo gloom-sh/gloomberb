@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
+import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { formatCompact } from "../../../utils/format";
-
-export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
+import type { SortDirection } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
   CloudCongressMemberPayload,
@@ -19,7 +19,6 @@ export const CONGRESS_EARLIEST_YEAR = 2008;
 
 export type CongressTab = "trades" | "members" | "tickers";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";
-export type SortDirection = "asc" | "desc";
 export type DetailMode =
   | { kind: "trade"; tradeId: string }
   | { kind: "member"; memberId: string }
@@ -81,16 +80,8 @@ export function sortedTickers(tickers: CloudCongressTickerPayload[], sort: { col
   });
 }
 
-export function formatShortDate(value: string | null): string {
-  if (!value) return "--";
-  const timestamp = Date.parse(`${value}T00:00:00Z`);
-  if (!Number.isFinite(timestamp)) return "--";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
+/** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
+export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: "--" };
 
 function dateValue(value: string | null): number {
   if (!value) return 0;
@@ -210,20 +201,6 @@ function compareMember(
     case "lag":
       return (left.avgLagDays ?? -1) - (right.avgLagDays ?? -1);
   }
-}
-
-export function nextSort<TColumn extends string>(
-  current: { columnId: TColumn; direction: SortDirection },
-  columnId: TColumn,
-  defaultDirection: SortDirection,
-): { columnId: TColumn; direction: SortDirection } {
-  if (current.columnId !== columnId) {
-    return { columnId, direction: defaultDirection };
-  }
-  return {
-    columnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
 }
 
 export function buildTradeColumns(width: number, tickerView = false): TradeColumn[] {
