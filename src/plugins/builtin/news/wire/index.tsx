@@ -1,7 +1,4 @@
-import type { NewsQuery } from "../../../../news/types";
-import type { PaneProps } from "../../../../types/plugin";
 import type { PluginModule } from "../../plugin-module";
-import { BreakingPane } from "./breaking/pane";
 import {
   BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,
   breakingNewsSnoozeCommand,
@@ -20,28 +17,11 @@ import {
   saveNewsFeedSettings,
 } from "./feed-config";
 import { IndustryPane } from "./industry-pane";
-import { NewsPresetPane } from "./news/preset-pane";
+import { createNewsPresetPane } from "./news/preset-pane";
 import { NEWS_QUERY_PRESETS } from "./news/query-presets";
-import type { NewsColumnId, NewsSortPreference } from "./news/table";
 import { createRssNewsCapability } from "./rss/source";
 import { rssCliCommand } from "./rss/cli";
 import { newsFeedHeadless } from "../headless";
-
-interface NewsPresetPaneConfig {
-  paneKey: string;
-  title: string;
-  query: NewsQuery;
-  columns: NewsColumnId[];
-  defaultSort: NewsSortPreference;
-  emptyStateTitle: string;
-  emptyStateHint: string;
-}
-
-function createNewsPresetPane(config: NewsPresetPaneConfig) {
-  return function PresetNewsPane(props: PaneProps) {
-    return <NewsPresetPane {...props} {...config} />;
-  };
-}
 
 const TopPane = createNewsPresetPane({
   paneKey: "top:curated",
@@ -62,6 +42,17 @@ const FeedPane = createNewsPresetPane({
   defaultSort: { columnId: "time", direction: "desc" },
   emptyStateTitle: "No feed stories yet",
   emptyStateHint: "Run the Add News Feed command to wire up another source.",
+});
+
+export const BreakingPane = createNewsPresetPane({
+  paneKey: "breaking",
+  title: "Breaking news",
+  query: NEWS_QUERY_PRESETS.breaking,
+  // A story can merge several outlets, so one source name would misattribute it.
+  columns: ["time", "title", "tickers", "categories", "importance"],
+  defaultSort: { columnId: "importance", direction: "desc" },
+  emptyStateTitle: "No breaking news",
+  emptyStateHint: "Breaking stories appear when high-priority headlines arrive.",
 });
 
 let disposeBreakingNewsNotifications: (() => void) | null = null;

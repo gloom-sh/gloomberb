@@ -9,7 +9,7 @@ import { createInitialState } from "../../../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../../../types/config";
 import { Box } from "../../../../../ui";
-import { BreakingPane } from "./pane";
+import { BreakingPane } from "../index";
 import { TestPaneProvider } from "../../../../../test-support/pane";
 
 const PANE_ID = "news-breaking:test";
