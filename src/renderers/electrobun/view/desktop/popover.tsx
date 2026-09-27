@@ -8,6 +8,8 @@ import { useThemeColors } from "../../../../theme/theme-context";
 
 const VIEWPORT_MARGIN = 10;
 const POPOVER_GAP = 6;
+/** `.gloom-popover` in styles.css: above dialogs and toasts. */
+const POPOVER_Z_INDEX = 10_001;
 
 interface PopoverPosition {
   left: number;
@@ -17,6 +19,24 @@ interface PopoverPosition {
 
 function cssSize(value: number | string | undefined): number | string | undefined {
   return typeof value === "number" ? `${value}px` : value;
+}
+
+/**
+ * The popover is portalled to <body>, so its z-index only competes in the root
+ * stacking context. A trigger inside a surface stacked above the popover layer
+ * (the desktop command bar sits at the top of the z-index range) would open
+ * its menu underneath that surface. Lift the popover to the highest z-index on
+ * the trigger's ancestor chain instead; the portal comes later in the
+ * document, so it still paints on top when the two are equal. Returns
+ * undefined when the stylesheet layer is already high enough.
+ */
+function resolvePopoverZIndex(anchor: Element | null): number | undefined {
+  let highest = POPOVER_Z_INDEX;
+  for (let element = anchor; element; element = element.parentElement) {
+    const zIndex = Number.parseInt(window.getComputedStyle(element).zIndex, 10);
+    if (zIndex > highest) highest = zIndex;
+  }
+  return highest > POPOVER_Z_INDEX ? highest : undefined;
 }
 
 export function WebPopover({
@@ -36,6 +56,7 @@ export function WebPopover({
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PopoverPosition>({ left: 0, top: 0, visible: false });
+  const [zIndex, setZIndex] = useState<number | undefined>(undefined);
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
@@ -97,6 +118,7 @@ export function WebPopover({
       setPosition((current) => current.visible ? { ...current, visible: false } : current);
       return;
     }
+    setZIndex(resolvePopoverZIndex(anchorRef.current));
     updatePosition();
     const frame = window.requestAnimationFrame(updatePosition);
     window.addEventListener("resize", updatePosition);
@@ -162,6 +184,7 @@ export function WebPopover({
           style={{
             left: position.left,
             top: position.top,
+            zIndex,
             visibility: position.visible ? "visible" : "hidden",
             minWidth: cssSize(minWidth),
             maxWidth: cssSize(maxWidth),
