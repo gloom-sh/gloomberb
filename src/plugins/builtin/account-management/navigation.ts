@@ -1,24 +1,9 @@
+import { createPaneRequestChannel } from "../shared/pane-request";
+
 export type AccountManagementTab = "profile" | "emails" | "pro" | "teams" | "advanced";
 
-let pendingTab: AccountManagementTab | null = null;
-const listeners = new Set<(tab: AccountManagementTab) => void>();
+const tabRequests = createPaneRequestChannel<AccountManagementTab>();
 
-export function requestAccountManagementTab(tab: AccountManagementTab): void {
-  pendingTab = tab;
-  if (listeners.size === 0) return;
-  for (const listener of listeners) listener(tab);
-  pendingTab = null;
-}
-
-export function consumeRequestedAccountManagementTab(): AccountManagementTab | null {
-  const tab = pendingTab;
-  pendingTab = null;
-  return tab;
-}
-
-export function subscribeRequestedAccountManagementTab(
-  listener: (tab: AccountManagementTab) => void,
-): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+/** The tab the account pane should show: an open pane switches, the next one to open starts there. */
+export const requestAccountManagementTab = tabRequests.request;
+export const subscribeRequestedAccountManagementTab = tabRequests.subscribe;

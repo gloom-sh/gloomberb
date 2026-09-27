@@ -51,7 +51,7 @@ import {
   type UntrackedRow,
 } from "./model";
 import { promptChoice, promptText } from "./prompts";
-import { consumeRequestedThesis, subscribeRequestedThesis, type ThesisPaneRequest } from "./pane-request";
+import { subscribeRequestedThesis, type ThesisPaneRequest } from "./pane-request";
 import { thesisStore } from "./store";
 
 export const THESIS_PANE_ID = "thesis-board";
@@ -237,11 +237,7 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
       else setSelectedId(`untracked:${symbols[0] ?? ""}`);
     }
   }, [setOpenId, startFor]);
-  useEffect(() => {
-    const pending = consumeRequestedThesis();
-    if (pending) applyRequest(pending);
-    return subscribeRequestedThesis(applyRequest);
-  }, [applyRequest]);
+  useEffect(() => subscribeRequestedThesis(applyRequest), [applyRequest]);
 
   const cycleScope = useCallback((delta: number) => {
     const index = exposure.scopes.findIndex((entry) => entry.collectionId === exposure.scope.collectionId);

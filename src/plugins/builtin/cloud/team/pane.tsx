@@ -59,7 +59,6 @@ import {
 } from "./pane-model";
 import {
   TEAM_PANE_ID,
-  consumeRequestedTeamPaneView,
   subscribeRequestedTeamPaneView,
   type TeamPaneSection,
   type TeamPaneView,
@@ -226,11 +225,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (view.section) setSection(view.section);
     setMessage(null);
   }, []);
-  useEffect(() => {
-    const pending = consumeRequestedTeamPaneView();
-    if (pending) applyView(pending);
-    return subscribeRequestedTeamPaneView(applyView);
-  }, [applyView]);
+  useEffect(() => subscribeRequestedTeamPaneView(applyView), [applyView]);
 
   // The settings draft follows the team until the person starts editing.
   const draftTeamId = useRef<string | null>(null);

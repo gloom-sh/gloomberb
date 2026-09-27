@@ -1,3 +1,5 @@
+import { createPaneRequestChannel } from "../../shared/pane-request";
+
 /**
  * What the board should open when it appears or is brought back: a thesis by
  * id, or whichever thesis covers a symbol (falling back to starting one).
@@ -12,28 +14,9 @@ export interface ThesisPaneRequest {
   start?: boolean;
 }
 
-let pending: ThesisPaneRequest | null = null;
-const listeners = new Set<(request: ThesisPaneRequest) => void>();
-
-export function requestThesisPane(request: ThesisPaneRequest): void {
-  pending = request;
-  if (listeners.size === 0) return;
-  for (const listener of listeners) listener(request);
-  pending = null;
-}
-
-export function consumeRequestedThesis(): ThesisPaneRequest | null {
-  const request = pending;
-  pending = null;
-  return request;
-}
-
-export function subscribeRequestedThesis(listener: (request: ThesisPaneRequest) => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const thesisRequests = createPaneRequestChannel<ThesisPaneRequest>();
+export const requestThesisPane = thesisRequests.request;
+export const subscribeRequestedThesis = thesisRequests.subscribe;
 
 export const THESIS_PANE_TEMPLATE_ID = "thesis-board-pane";
 

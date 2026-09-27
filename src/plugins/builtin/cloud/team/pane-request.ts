@@ -1,3 +1,5 @@
+import { createPaneRequestChannel } from "../../shared/pane-request";
+
 export type TeamPaneSection = "members" | "invites" | "channels" | "settings";
 
 /**
@@ -11,28 +13,9 @@ export interface TeamPaneView {
   mode?: "team" | "create";
 }
 
-let pending: TeamPaneView | null = null;
-const listeners = new Set<(view: TeamPaneView) => void>();
-
-export function requestTeamPaneView(view: TeamPaneView): void {
-  pending = view;
-  if (listeners.size === 0) return;
-  for (const listener of listeners) listener(view);
-  pending = null;
-}
-
-export function consumeRequestedTeamPaneView(): TeamPaneView | null {
-  const view = pending;
-  pending = null;
-  return view;
-}
-
-export function subscribeRequestedTeamPaneView(listener: (view: TeamPaneView) => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const viewRequests = createPaneRequestChannel<TeamPaneView>();
+export const requestTeamPaneView = viewRequests.request;
+export const subscribeRequestedTeamPaneView = viewRequests.subscribe;
 
 export const TEAM_PANE_ID = "team";
 export const TEAM_PANE_TEMPLATE_ID = "team-pane";

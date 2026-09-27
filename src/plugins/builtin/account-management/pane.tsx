@@ -62,13 +62,13 @@ import {
 import { PasswordChangeDialog } from "./password-dialog";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
-import { buildTrackedCurrencies } from "../analytics/sector-model";
 import {
   buildBenchmarkReturnSeries,
   buildPortfolioChartTargets,
   buildPortfolioReturnSeries,
 } from "../analytics/pane-model";
-import { computeDatedBeta } from "../analytics/metrics";
+import { computeDatedBeta, hasPortfolioPosition } from "../analytics/metrics";
+import { buildTrackedCurrencies } from "../portfolio-list/pane/data";
 import { accountDailyReturns } from "../analytics/account-returns";
 import { useBrokerPortfolioPerformance } from "../analytics/broker-performance";
 import { useCloudSyncStatus } from "../../../sync/react";
@@ -218,13 +218,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const [message, setMessage] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState<AccountBusy>(null);
 
-  // A tab requested before the pane mounted wins over the restored one, but only once.
-  useEffect(() => {
-    const requested = consumeRequestedAccountManagementTab();
-    if (!requested) return;
-    setActiveTab(requested);
-    setActiveField(ACCOUNT_TAB_FIELD_ORDER[requested][0] ?? "username");
-  }, []);
+  // A requested tab switches the open pane; one requested before it mounted wins over the restored tab once.
   useEffect(() => subscribeRequestedAccountManagementTab((tab) => {
     setActiveTab(tab);
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[tab][0] ?? "username");
