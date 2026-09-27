@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
+  DetailScrollBody,
   PaneStatusBody,
   useExternalLinkFooter,
   type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
 } from "../../../components";
 import { MarkdownText } from "../../../components/markdown-text";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -17,7 +17,6 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePluginPaneState } from "../../runtime";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
   DEFAULT_CHANGELOG_SORT,
   nextChangelogSortPreference,
@@ -69,30 +68,13 @@ function ChangelogDetail({
   const lineWidth = Math.max(width - 2, 12);
 
   return (
-    <Box
-      flexDirection="column"
-      flexGrow={1}
-      flexBasis={0}
-      minHeight={0}
-      overflow="hidden"
-      paddingX={1}
-      paddingY={1}
-    >
-      <ScrollBox
-        ref={scrollRef}
-        flexGrow={1}
-        flexBasis={0}
-        minHeight={0}
-        scrollY
-        focusable={false}
-      >
-        <Box flexDirection="column" width={lineWidth}>
-          {/* The stack title already carries the version. */}
-          <Text fg={colors.textMuted}>{formatShortDate(release.publishedAt, { fallback: "" })}</Text>
-          <MarkdownText text={release.body} lineWidth={lineWidth} />
-        </Box>
-      </ScrollBox>
-    </Box>
+    <DetailScrollBody ref={scrollRef} resetScrollKey={release.id}>
+      <Box flexDirection="column" width={lineWidth}>
+        {/* The stack title already carries the version. */}
+        <Text fg={colors.textMuted}>{formatShortDate(release.publishedAt, { fallback: "" })}</Text>
+        <MarkdownText text={release.body} lineWidth={lineWidth} />
+      </Box>
+    </DetailScrollBody>
   );
 }
 
@@ -197,44 +179,9 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     setOpenReleaseId(match.id);
   }, [releases, requestedVersion]);
 
-  useEffect(() => {
-    if (!openReleaseId) return;
-    const scrollBox = detailScrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [openReleaseId]);
-
   usePaneRefreshKey(() => void loadReleases(true), { focused });
 
   const columns = useMemo(() => buildColumns(releases), [releases]);
-
-  const scrollDetailBy = useCallback((delta: number) => {
-    const scrollBox = detailScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const maxScrollTop = Math.max(
-      0,
-      scrollBox.scrollHeight - scrollBox.viewport.height,
-    );
-    scrollBox.scrollTop = Math.max(
-      0,
-      Math.min(maxScrollTop, scrollBox.scrollTop + delta),
-    );
-  }, []);
-
-  const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "j", "down")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(1);
-      return true;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      scrollDetailBy(-1);
-      return true;
-    }
-    return false;
-  }, [scrollDetailBy]);
 
   const renderCell = useCallback((
     release: ChangelogRelease,
@@ -316,7 +263,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
         onChange: (_id, release) => selectRelease(release),
       }}
       onActivate={(release) => setOpenReleaseId(release.id)}
-      onDetailKeyDown={handleDetailKeyDown}
+      detailScrollRef={detailScrollRef}
       rootWidth={width}
       rootHeight={height}
       columns={columns}

@@ -62,5 +62,7 @@ export { ExternalLink, ExternalLinkText, openUrl, PaneLinkMenu, usePaneLinkMenuE
 export { ButtonActionScope } from "./action-scope";
 export { RemoteImage } from "./remote-image";
 export { PageStackView } from "./page-stack-view";
+export { DetailScrollBody } from "./detail-scroll-body";
+export type { DetailScrollBodyProps } from "./detail-scroll-body";
 
 export { Spinner } from "./loading";

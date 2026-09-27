@@ -1134,7 +1134,7 @@ Choose the existing control that owns the interaction you need:
 | Need | Components |
 |------|------------|
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
-| Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
+| Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView`, `DetailScrollBody` (the detail's scrolling body) |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
 | Pane tab strip | `usePaneHeaderTabs` (title-bar tabs on the desktop), `Tabs` |
 | Search, filters, sort above a list | `QueryBar` |
@@ -1447,6 +1447,7 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), and moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
 - An inline action that has to stay a body button (a Retry beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
 - `onRootKeyDown` and `onDetailKeyDown` return `true` for a key they handled; the table marks it handled.
+- A stack detail that reads like a document goes in a `DetailScrollBody` (`resetScrollKey` is the open item's id, so the next item starts at the top). Pass its ref to `DataTableStackView` as `detailScrollRef` and j/k and the arrows step it a line at a time instead of a quarter page.
 - **Dialogs**: `useDialogKeyboard` for keys, Enter submits, Esc closes. Dialogs stack on both hosts, so a field editor opened from a dialog returns to it. On the desktop, Tab and Shift+Tab walk a dialog's controls unless the dialog handles Tab itself (a settings list or form ring moves its own cursor), and a focused control shows a ring.
 - `useActionShortcut("pane-menu")` from `gloomberb/ui` returns the key the host advertises for an action (or `plugin:<id>`), for a tooltip or a `Button`/`IconButton` `shortcut`. Desktop `IconButton` tooltips show the shortcut.
 - Pane keys are single unmodified letters that the app has not reserved. The reserved keys are listed in [pane conventions](docs/pane-conventions.md#8-sidebars-loading-input).

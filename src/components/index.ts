@@ -108,7 +108,7 @@ export { MarkdownText } from "./markdown-text";
 // reaches plugins only once it is added here.
 export {
   ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, DataTable,
-  DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
+  DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
   fieldGridColumns, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
@@ -119,7 +119,7 @@ export {
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
-  DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DialogFrameProps,
+  DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,
   KeyValueRowProps, ListRowState, ListViewItem, ListViewProps, MenuItem, MenuPopoverProps,
