@@ -26,6 +26,7 @@ import type { BrokerContractRef, InstrumentSearchResult } from "../../types/inst
 import type { TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
+import { errorMessage } from "../../utils/errors";
 import { ProviderRouterBatchRoutes } from "./batches";
 import { createSignedInRealtimeCloudAccess, type RealtimeCloudAccess } from "./realtime-access";
 import { mapListingTargets, publicListingExchange } from "../listing-target";
@@ -196,12 +197,17 @@ export class AssetDataRouter implements DataProvider {
   ): Promise<QuoteBatchResult[]> {
     const mapped = mapListingTargets(targets, (target) => this.resolvePublicExchange(target.symbol, target.exchange, target.context));
     const results = await this.batchRoutes.getQuotesBatch(mapped.valid, options);
-    const restored = new Map(results.map((result) => {
+    const restored = new Map<QuoteSubscriptionTarget, QuoteBatchResult>(results.map((result) => {
       const target = mapped.original(result.target);
       return [target, { ...result, target }] as const;
     }));
     for (const failure of mapped.invalid) restored.set(failure.target, { ...failure, quote: null });
-    return targets.map((target) => restored.get(target) ?? { target, quote: null });
+    // Batches cross the desktop and screenshot bridges as JSON, which turns an
+    // Error into {} and its reason into "[object Object]" on the board.
+    return targets.map((target) => {
+      const result = restored.get(target) ?? { target, quote: null };
+      return result.error == null ? result : { ...result, error: errorMessage(result.error) };
+    });
   }
 
   async getTickerFinancialsBatch(

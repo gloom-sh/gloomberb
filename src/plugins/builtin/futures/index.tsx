@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Button,
   DataTableView,
+  PaneStatusBody,
   QueryBar,
   usePaneFooter,
   usePaneMenuItems,
@@ -187,7 +189,11 @@ function FuturesPane({ focused, width, height }: PaneProps) {
 
   const status = quoteBoardStatus(quotes);
   const errorMessage = boardErrorMessage(quotes);
+  // Every load came back empty: a board of dashes reads as broken, so the
+  // body says so once and offers a retry. One quote is enough to keep rows.
+  const noQuotes = !!dataProvider && quotes.size > 0 && status.unavailable === quotes.size;
   usePaneFooter(FUTURES_PANE_ID, () => {
+    if (noQuotes) return { info: [], hints: [] };
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
     if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
     return {
@@ -197,11 +203,24 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   }, [
     errorMessage,
     focusSearch,
+    noQuotes,
     status.latestTs,
     status.loading,
     status.stale,
     status.unavailable,
   ]);
+
+  if (noQuotes) {
+    return (
+      <PaneStatusBody
+        width={width}
+        height={height}
+        error={errorMessage ?? "No quotes returned."}
+        subject="Futures quotes"
+        actions={<Button label="Retry" variant="secondary" compact onPress={refresh} />}
+      />
+    );
+  }
 
   return (
     <DataTableView<FuturesTableRow, FuturesColumn>

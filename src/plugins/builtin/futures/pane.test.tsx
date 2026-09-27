@@ -28,8 +28,13 @@ afterEach(async () => {
   testSetup = undefined;
 });
 
-function makeRuntime(): PluginRuntimeAccess {
-  const marketData = {
+function makeRuntime(quoteError?: string): PluginRuntimeAccess {
+  const marketData = quoteError ? {
+    getQuote: async () => { throw new Error(quoteError); },
+    getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => (
+      targets.map((target) => ({ target: { symbol: target.symbol, exchange: "" }, quote: null, error: new Error(quoteError) })) as QuoteBatchResult[]
+    ),
+  } : {
     getQuote: async (symbol: string) => ({
       symbol,
       price: 100,
@@ -87,10 +92,10 @@ function makeRuntime(): PluginRuntimeAccess {
   } as unknown as PluginRuntimeAccess;
 }
 
-function Harness() {
+function Harness({ quoteError }: { quoteError?: string }) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-futures-pane-test"));
   return (
-    <TestPaneProvider state={state} paneId="futures" runtime={makeRuntime()} pluginId="market-overview">
+    <TestPaneProvider state={state} paneId="futures" runtime={makeRuntime(quoteError)} pluginId="market-overview">
       <FuturesPane paneId="futures" paneType="futures" focused width={80} height={24} />
     </TestPaneProvider>
   );
@@ -195,6 +200,18 @@ describe("FuturesPane", () => {
     expect(pinned).toHaveLength(1);
     expect(pinned[0]!.symbol).toBe("ES=F");
     expect(pinned[0]!.options).toMatchObject({ floating: true });
+  });
+
+  test("a board where no quote arrived says so instead of drawing dashes", async () => {
+    testSetup = await testRender(<Harness quoteError="Quotes are offline" />, { width: 80, height: 24 });
+    await renderSettled();
+    await renderSettled();
+
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("Futures quotes unavailable.");
+    expect(frame).toContain("Quotes are offline");
+    expect(frame).toContain("Retry");
+    expect(frame).not.toContain("E-Mini S&P 500");
   });
 
   test("search narrows the board to matching contracts", async () => {

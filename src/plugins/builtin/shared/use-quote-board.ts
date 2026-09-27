@@ -383,7 +383,8 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
 /**
  * Board session indicator: one glyph whose color carries the whole signal.
  * `marketStateDot` in `src/market-data/market/status.ts` encodes the state in
- * the glyph instead, which reads poorly in a one-cell column.
+ * the glyph instead, which reads poorly in a one-cell column. A closed market
+ * is muted, not red: on a weekend every row is closed and nothing is wrong.
  */
 export function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
   switch (state) {
@@ -395,22 +396,28 @@ export function marketStatusDot(state: MarketState | undefined): { char: string;
     case "POSTPOST":
       return { char: "●", color: colors.warning };
     default:
-      return { char: "●", color: colors.negative };
+      return { char: "●", color: colors.textMuted };
   }
 }
 
 const ERROR_MESSAGE_MAX_LENGTH = 48;
 
-/** The reason a board is empty, taken from the per-symbol errors the board records. */
+/**
+ * The reason a board is empty, taken from the per-symbol errors the board
+ * records. It speaks for the whole board, so a trailing "for ES=F" goes.
+ */
 export function boardErrorMessage(quotes: BoardQuoteMap): string | null {
   let total = 0;
   let unavailable = 0;
   let message: string | null = null;
-  for (const state of quotes.values()) {
+  for (const [symbol, state] of quotes) {
     total += 1;
     if (state.quote || state.loading) continue;
     unavailable += 1;
-    message ??= state.error;
+    if (!message && state.error) {
+      const suffix = ` for ${symbol}`;
+      message = state.error.endsWith(suffix) ? state.error.slice(0, -suffix.length) : state.error;
+    }
   }
   if (total === 0 || unavailable < total || !message) return null;
   return message.length > ERROR_MESSAGE_MAX_LENGTH

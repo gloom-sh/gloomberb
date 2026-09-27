@@ -23,6 +23,13 @@ afterEach(() => {
 });
 
 describe("AssetDataRouter", () => {
+  test("a failed batch quote carries its reason as text, which survives a JSON bridge", async () => {
+    const router = new AssetDataRouter(null, []);
+    const [result] = await router.getQuotesBatch([{ symbol: "ES=F", exchange: "" }]);
+    expect(result!.quote).toBeNull();
+    expect(JSON.parse(JSON.stringify(result)).error).toBe("No quote provider available for ES=F");
+  });
+
   test("falls through to Yahoo quotes and history when Cloud market requests never settle", async () => {
     const cloudCalls = { quote: 0, history: 0 };
     const yahooCalls = { quote: 0, history: 0 };
