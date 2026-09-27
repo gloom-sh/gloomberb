@@ -148,13 +148,13 @@ export function curveContractChanges(data: FuturesCurvePayload): CurveContractCh
 
 const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
 
-type CurveSortKey = "symbol" | "expiration" | "price" | "openInterest" | "volume" | "percentile" | "asOf";
+type CurveSortKey = "symbol" | "expiration" | "price" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
 
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
   changes?: CurveContractChanges): FuturesContract[] {
-  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
+  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
   const lookback = CHANGE_COLUMNS[id];
-  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key];
+  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key] ?? null;
   return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction));
 }

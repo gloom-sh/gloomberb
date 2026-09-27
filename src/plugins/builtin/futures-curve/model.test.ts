@@ -40,6 +40,10 @@ test("rejects cross-root responses, invalid expiries, nonfinite prices and misma
   expect(() => validateFuturesCurve(badDate, "CL")).toThrow("invalid futures contract");
   const badPrice = payload(); badPrice.contracts = [{ ...first, price: Infinity }];
   expect(() => validateFuturesCurve(badPrice, "CL")).toThrow("invalid futures contract");
+  const badChange = payload(); badChange.contracts = [{ ...first, change: Number.NaN }];
+  expect(() => validateFuturesCurve(badChange, "CL")).toThrow("invalid futures contract");
+  // A curve cached before the server kept the session change still loads.
+  expect(validateFuturesCurve(payload(), "CL").contracts[0]!.change).toBeUndefined();
   const badGhost = payload(); badGhost.ghosts[0]!.points[0]!.symbol = "ESZ26.CME";
   expect(() => validateFuturesCurve(badGhost, "CL")).toThrow("invalid futures history");
 });

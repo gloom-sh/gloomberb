@@ -25,7 +25,8 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
   for (const row of data.contracts) {
     if (!row || typeof row.symbol !== "string" || !row.symbol || symbols.has(row.symbol)
       || typeof row.quoteUnit !== "string" || !row.quoteUnit
-      || !date(row.expiration) || !finiteOrNull(row.price) || typeof row.currency !== "string"
+      || !date(row.expiration) || !finiteOrNull(row.price) || row.change !== undefined && !finiteOrNull(row.change)
+      || typeof row.currency !== "string"
       || !rank(row.percentile) || !Number.isInteger(row.samples) || row.samples < 0
       || row.asOf !== null && !timestamp(row.asOf)
       || ![row.volume, row.openInterest, row.delayMinutes].every((value) => finiteOrNull(value) && (value === null || value >= 0))) {

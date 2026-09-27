@@ -4,6 +4,8 @@ export interface FuturesContract {
   label: string
   expiration: string
   price: number | null
+  /** Session change of `price`; absent from payloads cached before the server kept it. */
+  change?: number | null
   asOf: string | null
   currency: string
   quoteUnit: string

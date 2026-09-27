@@ -22,18 +22,21 @@ const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "CONTRACT", width: 11, align: "left" },
   { id: "expiry", label: "EXPIRY", width: 10, align: "left" },
   { id: "price", label: "PRICE", width: 12, align: "right" },
+  // A Treasury change keeps its 1/256 tick: +0.11718750.
+  { id: "change", label: "CHG", width: 11, align: "right" },
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
   { id: "oi", label: "OPEN INT", width: 10, align: "right" },
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
 // The curve's rows move with the look-back curves drawn above them; the
-// footer carries the quote time every row would otherwise repeat.
+// footer carries the quote time every row would otherwise repeat. The session
+// change stays on Contracts, where the full table has the width for it.
 const CURVE_COLUMNS: DataTableColumn[] = [
   ...COLUMNS.slice(0, 3),
   { id: "change1w", label: "VS 1W", width: 10, align: "right" },
   { id: "change1m", label: "VS 1M", width: 10, align: "right" },
-  ...COLUMNS.slice(3, -1),
+  ...COLUMNS.slice(4, -1),
 ];
 const signedPercent = (value: number | null) => value == null ? "--" : formatPercentRaw(value);
 const integer = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US");
@@ -125,6 +128,10 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     if (column.id === "expiry") return { text: row.expiration, color: colors.textMuted };
     // Without the AS OF column, a stale quote shows on its price.
     if (column.id === "price") return { text: curvePrice(row.price, root), color: curveTab && row.stale ? colors.warning : undefined };
+    if (column.id === "change") {
+      const text = curveChangeText(row.change ?? null, root);
+      return { text, color: text.startsWith("+") ? colors.positive : text.startsWith("-") && /[1-9]/.test(text) ? colors.negative : colors.textMuted };
+    }
     if (column.id === "change1w" || column.id === "change1m") {
       const change = changes.get(row.symbol)?.[column.id === "change1w" ? "1W" : "1M"] ?? null;
       return { text: curveChangeText(change, root), color: colors.textMuted };
