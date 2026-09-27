@@ -27,6 +27,7 @@ import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
 import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
 import {
   DEFAULT_BROWSER_SORT,
@@ -239,12 +240,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     }
     if (event.targetEditable) return;
     // The ticker holdings view refreshes itself.
-    if (isPlainKey(event, "r") && !showTickerHoldings) {
-      event.stopPropagation?.();
-      event.preventDefault?.();
-      load(true);
-      return;
-    }
+    if (!showTickerHoldings && handleRefreshKey(event, () => load(true), { stopPropagation: true })) return;
     if (isPlainKey(event, "/")) {
       event.stopPropagation?.();
       event.preventDefault?.();
@@ -585,12 +581,7 @@ export function FundDetailView({
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
     if (!focused || event.targetEditable || activeTab === "overlap") return;
-    if (isPlainKey(event, "r") && !openFiling) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return;
-    }
+    if (!openFiling && handleRefreshKey(event, refresh, { stopPropagation: true })) return;
     if (isPlainKey(event, "m") && activeTab === "holdings") {
       event.preventDefault?.(); event.stopPropagation?.(); setMineOnly(value => !value); return;
     }

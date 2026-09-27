@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, usePaneNoticeFooter, usePaneStatusLinkFooter, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
 import { hasNoPolicyRate, policyBoardRow, policyChange, policyHistory, policyLevel, policyNotices, policyRate } from "./model";
@@ -56,15 +56,13 @@ export function CentralBankRatesPane({ width, height, focused }: PaneProps) {
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "central-bank-rates:notices", focused,
     notices: [...(data ? policyNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "central-bank-rates", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data ? [
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
-      ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}

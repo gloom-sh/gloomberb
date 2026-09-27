@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import {
   DataTableStackView,
@@ -13,6 +12,7 @@ import {
   usePaneStatusFooter,
   type DataTableColumn,
 } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -20,7 +20,6 @@ import {
   usePaneSettingValue,
   usePaneTitle,
   usePluginPaneState,
-  useShortcut,
   useTickers,
 } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -274,12 +273,7 @@ function RotationView({
   const chartHeight = Math.max(6, height - tableHeight);
   usePaneTitle(`RRG vs ${benchmark.symbol}`);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r") && !event.targetEditable) {
-      event.preventDefault();
-      void resource.reload();
-    }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "relative-rotation:notices",
     focused,
@@ -306,16 +300,9 @@ function RotationView({
               },
             ],
           },
-          ...(resource.data?.stale
-            ? [
-                {
-                  id: "stale",
-                  parts: [{ text: "stale", tone: "warning" as const }],
-                },
-              ]
-            : []),
         ]
       : [],
+    stale: !!data && resource.data?.stale,
   });
   return (
     <Box width={width} height={height} flexDirection="column">

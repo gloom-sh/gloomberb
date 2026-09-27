@@ -234,15 +234,10 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
   }, [focusSearch, setTweetOpen]);
 
   useTwitterFeedKeyboard({
-    activeFeed,
-    addFeed,
     blurSearch,
     cycleFeeds,
-    focusSearch: searchFeed,
     focused,
-    removeFeed,
     searchFocused,
-    tweetOpen,
   });
 
   const activeFeedIdValue = activeFeed?.id ?? null;

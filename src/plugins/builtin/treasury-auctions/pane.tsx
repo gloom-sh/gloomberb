@@ -10,9 +10,8 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type PaneFooterSegment
 } from "../../../components";
-import { useShortcut } from "../../../react/input";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -257,12 +256,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     });
   }, []);
 
-  // Refresh answers in every state, including the failed load that mounts no table.
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
-    load(true);
-  }, { enabled: focused && !searchFocused });
+  usePaneRefreshKey(() => load(true), { focused, enabled: !searchFocused });
 
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
     if (isPlainKey(event, "f")) {
@@ -298,9 +292,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const columns = useMemo(() => buildAuctionColumns(), []);
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
-    if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (error) info.push({ id: "error", parts: [{ text: error, tone: "warning" }] });
+    const info = loadingErrorFooterInfo(status === "loading", error);
     if (stale) info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
     if (fetchedAt) {
       info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });

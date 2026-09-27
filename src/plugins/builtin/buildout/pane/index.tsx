@@ -12,6 +12,7 @@ import {
   type PaneHint,
 } from "../../../../components";
 import { ChoiceDialog } from "../../../../components/ui";
+import { handleRefreshKey } from "../../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../../types/plugin";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
@@ -348,14 +349,8 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       event.stopPropagation?.();
       return true;
     }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
     // Esc and Backspace close an open list through the stack below.
-    return false;
+    return handleRefreshKey(event, refresh, { stopPropagation: true });
   }, [refresh, selectedRow, toggleFavoriteRow]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {

@@ -11,6 +11,7 @@ import {
   type PaneHint,
   type QueryBarFilter,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -142,16 +143,13 @@ export function RiskFactorsPane({
     );
   }, []);
 
+  // The footer binds the `o` and `y` hints.
   useShortcut(
     (event) => {
-      if (isPlainKey(event, "r")) refresh();
-      else if (isPlainKey(event, "o")) {
-        event.preventDefault();
-        openFiling();
-      }
+      if (handleRefreshKey(event, refresh)) return;
       // One line per press; marked handled so the pane scroll keys, which
       // page this report, do not scroll it again.
-      else if (isPlainKey(event, "j", "down")) {
+      if (isPlainKey(event, "j", "down")) {
         event.preventDefault();
         scrollBy(1);
       } else if (isPlainKey(event, "k", "up")) {

@@ -1,6 +1,5 @@
 import { usePaneFooter, type PaneFooterSegment } from "../../../components";
-import { isPlainKey } from "../../../utils/keyboard";
-import { useShortcut } from "../../../react/input";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import {
   quoteBoardFooterInfo,
   quoteBoardStatus,
@@ -30,11 +29,7 @@ export function useWorldIndicesFooter(quotes: BoardQuoteMap, onRefresh: () => vo
   const status = quoteBoardStatus(quotes);
   const errorMessage = boardErrorMessage(quotes);
 
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r")) return;
-    event.preventDefault?.();
-    onRefresh();
-  }, { enabled: focused });
+  usePaneRefreshKey(onRefresh, { focused });
 
   usePaneFooter(
     "world-indices",

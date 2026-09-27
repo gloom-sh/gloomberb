@@ -8,6 +8,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHoldings, type TickerHolderRow } from "./signals";
@@ -71,7 +72,7 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
     return () => { controller.current?.abort(); controller.current = null; };
   }, [symbol]);
   const more = useTableLoadMore(scrollRef, !!data?.hasMore && !loading && !fund, () => load(true));
-  useShortcut(event => { if (focused && !fund && isPlainKey(event, "r")) { event.preventDefault?.(); load(); } });
+  usePaneRefreshKey(() => load(), { focused, enabled: !fund });
   usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints });
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
@@ -140,7 +141,8 @@ export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps
     void loadCrowding(request.signal).then(result => { if (!request.signal.aborted) setData(result); }).catch(cause => { if (!request.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (!request.signal.aborted) setLoading(false); });
   }, []);
   useEffect(() => { load(); return () => { controller.current?.abort(); }; }, [load]);
-  useShortcut(event => { if (!focused) return; if (isPlainKey(event, "r")) { event.preventDefault?.(); load(); } if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
+  usePaneRefreshKey(load, { focused });
+  useShortcut(event => { if (!focused) return; if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
   // Mine and the ranking sit in the query bar; m and c stay as their keys.
   usePaneStatusFooter({ registrationId: "13f-crowding", loading, error });
   usePaneNoticeFooter({ registrationId: "13f-crowding-notice", focused, notices: [

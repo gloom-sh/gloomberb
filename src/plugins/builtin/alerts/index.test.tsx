@@ -85,7 +85,7 @@ function AlertsHarness({
   harnessDispatch = dispatch;
 
   return (
-    <TestPaneFrame state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="alerts" runtime={runtime} width={width} height={height}>
+    <TestPaneFrame state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="alerts" runtime={runtime} width={width} height={height} footerKeys>
       {(body) => <AlertsPane paneId={TEST_PANE_ID} paneType="alerts" focused {...body} />}
     </TestPaneFrame>
   );

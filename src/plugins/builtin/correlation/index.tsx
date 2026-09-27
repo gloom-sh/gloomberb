@@ -1,6 +1,7 @@
 import { Box, ScrollBox, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -145,11 +146,8 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
 
   useShortcut((event) => {
     if (!focused || symbolsEditing || event.defaultPrevented) return;
-    if (isPlainKey(event, "r")) {
-      event.preventDefault();
-      event.stopPropagation();
-      refresh();
-    } else if (isPlainKey(event, "j", "down", "k", "up")) {
+    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return;
+    if (isPlainKey(event, "j", "down", "k", "up")) {
       event.preventDefault();
       event.stopPropagation();
       moveSymbolCursor(event.name === "j" || event.name === "down" ? 1 : -1);

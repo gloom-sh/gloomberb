@@ -75,6 +75,7 @@ import { colors } from "../../../theme/colors";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { DataTableKeyEvent } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 
 export { CONGRESS_TRADES_PANE_ID } from "./model";
 
@@ -222,7 +223,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     if (tickerFilter && detailMode && isDetailBackNavigationKey(event)) {
       event.preventDefault?.(); event.stopPropagation?.(); setDetailMode(null); return;
     }
-    if (!payload && isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refresh(); }
+    if (!payload) handleRefreshKey(event, refresh, { stopPropagation: true });
     // Without a table there is no row handler, and a failing filter must stay changeable.
     if (!payload && isPlainKey(event, "f")) { event.preventDefault?.(); event.stopPropagation?.(); void openFiltersRef.current(); }
   }, { phase: "before" });
@@ -310,16 +311,10 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     setDetailMode({ kind: "member", memberId: member.id });
   }, [detailTrade, members, selectedTrade, setSelectedMemberId]);
 
-  const { handleDetailKeyDown, handleRootKeyDown } = useCongressTradesKeyboard({
-    activeTab,
+  const { handleRootKeyDown } = useCongressTradesKeyboard({
     detailMode,
     focused,
     load,
-    loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
-    loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
-    openSelectedTicker,
-    openSelectedTradeMember,
-    openSelectedTradeSource,
     selectTab: tickerFilter ? () => {} : selectTab,
   });
   usePaneMenuItems(`${CONGRESS_TRADES_PANE_ID}:tabs`, () => (tickerFilter || detailMode ? null
@@ -463,7 +458,6 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             setDetailMode({ kind: "trade", tradeId: trade.id });
           }}
           onRootKeyDown={handleFiltersKey}
-          onDetailKeyDown={handleDetailKeyDown}
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
@@ -515,7 +509,6 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             setDetailMode({ kind: "member", memberId: member.id });
           }}
           onRootKeyDown={handleFiltersKey}
-          onDetailKeyDown={handleDetailKeyDown}
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}

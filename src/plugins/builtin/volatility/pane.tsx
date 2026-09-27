@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter,
   type DataTableColumn, type StatItem } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -124,11 +123,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const cycleTab = () => setTab(TABS[(TABS.findIndex((entry) => entry.value === tab) + 1) % TABS.length]!.value);
   // One binding for every tab and for the loading and failed bodies, where no
   // table is mounted; the footer binds the `v` hint.
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
+  usePaneRefreshKey(() => {
     if (!resource.loading) void resource.reload();
-  }, { enabled: focused });
+  }, { focused });
   const asOf = tab === "history" ? data?.fred.termDate : tab === "board" ? selected?.date : data?.curve.date;
   // A level from the stream is labelled intraday with its time; closes keep their date.
   const intraday = (id: VolatilityIndexId | undefined, date: string | null | undefined) => {

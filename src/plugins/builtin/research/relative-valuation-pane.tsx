@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
-  usePaneFooter,
+  usePaneStatusFooter,
   usePaneNoticeFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -23,7 +23,7 @@ import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { usePluginTickerActions } from "../../runtime";
-import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../../../components/data-table/table-pane";
+import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { comparableMarketCap, RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
@@ -255,9 +255,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     }));
   }, []);
 
-  usePaneFooter("relative-valuation", () => ({
-    info: loadingErrorFooterInfo(loading, status),
-  }), [status, loading]);
+  usePaneStatusFooter({ registrationId: "relative-valuation", loading, error: status });
 
   return (
     <DataTableView<RelativeRow, RelativeColumn>

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { CompositeChart, CurveSurface, EmptyState, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -8,7 +8,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
 import { moneyMarketChange, moneyMarketCurves, moneyMarketHistory, moneyMarketNotices, moneyMarketRows, moneyMarketValue } from "./model";
@@ -77,15 +77,13 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const boardHeight = Math.max(3, Math.min(rows.length + 2, Math.floor((height - tabRows) * 0.45)));
   const curveHeight = Math.max(8, height - tabRows - boardHeight);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,
     notices: [...(data ? moneyMarketNotices(data) : []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "money-markets", focused, loading: resource.loading, error: resource.error,
     url: selected?.observation.sourceUrl ?? null, showOpenHint: true,
-    info: data ? [
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
-      ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    stale: !!data && resource.data?.stale,
   });
   return <Box width={width} height={height} flexDirection="column">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}

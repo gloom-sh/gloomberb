@@ -76,7 +76,7 @@ the origin of a number. The one count the kit draws is the
 
 - `usePaneFooter(registrationId, factory, deps)` returns `{ order?, info?, hints? }`;
   several registrations in one pane merge by `order`, then id. Wrappers:
-  `usePaneStatusFooter` (loading/error), `usePaneStatusLinkFooter` (plus an
+  `usePaneStatusFooter` (loading, error, stale), `usePaneStatusLinkFooter` (plus an
   `o` hint opening the current item's URL), `usePaneNoticeFooter` (warnings).
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.

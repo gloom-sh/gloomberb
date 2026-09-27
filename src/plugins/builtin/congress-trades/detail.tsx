@@ -11,9 +11,9 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
-import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
@@ -258,39 +258,10 @@ export function MemberTradesDetail({
     if (selectedTrade?.sourceUrl) void rendererHost.openExternal(selectedTrade.sourceUrl);
   }, [rendererHost, selectedTrade?.sourceUrl]);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKey(event, "n") && detailPayload && canLoadMoreCongress(detailPayload)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      loadMore();
-      return true;
-    }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return true;
-    }
-    if (isPlainKey(event, "t") && selectedTrade?.ticker) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openSelectedTicker();
-      return true;
-    }
-    if (isPlainKey(event, "o") && selectedTrade?.sourceUrl) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      openSelectedSource();
-      return true;
-    }
-    if (isPlainKey(event, "p") && previousYearRequest) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      loadPreviousYear();
-      return true;
-    }
-    return false;
-  }, [detailPayload, loadMore, loadPreviousYear, openSelectedSource, openSelectedTicker, previousYearRequest, refresh, selectedTrade?.sourceUrl, selectedTrade?.ticker]);
+  // n, t, o and p are the footer hints below, which bind their own keys.
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
+    handleRefreshKey(event, refresh, { stopPropagation: true })
+  ), [refresh]);
 
   usePaneNoticeFooter({
     registrationId: `${CONGRESS_TRADES_PANE_ID}:member-notices`,

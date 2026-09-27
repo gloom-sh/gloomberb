@@ -19,7 +19,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -278,7 +278,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
       }
     }
     // Only a bare r refreshes; Cmd/Ctrl+Shift+R belongs to the window.
-    return isPlainKey(event, "r") && handleRefreshKey(event, refresh, { stopPropagation: true });
+    return handleRefreshKey(event, refresh, { stopPropagation: true });
   }, [refresh]);
 
   const emptyTitle = !symbol

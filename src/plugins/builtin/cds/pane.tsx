@@ -9,7 +9,6 @@ import {
   type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
@@ -18,6 +17,7 @@ import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values"
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { loadCdsActivity, type CdsActivityLoader } from "./client";
 import {
   DEFAULT_ISSUER_SORT,
@@ -228,12 +228,7 @@ export function CdsPane({
     });
   }, []);
 
-  // Refresh answers in every state, including the failed load that mounts no table.
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
-    load();
-  }, { enabled: focused });
+  usePaneRefreshKey(load, { focused });
 
   const handleKey = useCallback((event: DataTableKeyEvent, cycle: (step: 1 | -1) => void): boolean => {
     if (isPlainKey(event, "]", "[")) {

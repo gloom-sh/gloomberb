@@ -7,8 +7,8 @@ import {
   Prose,
   SectionHeading,
   usePaneFooter,
-  type PaneFooterSegment,
 } from "../../../components";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { colors, hoverBg } from "../../../theme/colors";
 import {
@@ -183,10 +183,7 @@ export function FilingEventsPane({
 
   useShortcut(
     (event) => {
-      if (isPlainKey(event, "r")) {
-        void reload();
-        return;
-      }
+      if (handleRefreshKey(event, () => void reload())) return;
       if (isPlainKey(event, "o", "enter", "return")) {
         event.preventDefault();
         openFiling();
@@ -212,11 +209,7 @@ export function FilingEventsPane({
   );
 
   usePaneFooter(FILING_EVENTS_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
-    if (loading) {
-      info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    }
-    if (error && ticker) info.push({ id: "error", parts: [{ text: error, tone: "warning" }] });
+    const info = loadingErrorFooterInfo(loading, ticker ? error : null);
     const hints = selected
       ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }]
       : [];

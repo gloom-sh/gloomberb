@@ -15,6 +15,7 @@ import {
   type DataTableRootKeyContext,
   type PaneFooterSegment
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -598,13 +599,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         focusSearch();
         return true;
       }
-      if (isPlainKey(event, "r")) {
-        stopSearchFocusNavigation(event);
+      return handleRefreshKey(event, () => {
         fetchCalls(true);
         if (lookupTicker) setLookupRefresh((current) => ({ ticker: lookupTicker, request: (current?.request ?? 0) + 1 }));
-        return true;
-      }
-      return false;
+      }, { stopPropagation: true });
     },
     [fetchCalls, focusSearch, lookupTicker],
   );

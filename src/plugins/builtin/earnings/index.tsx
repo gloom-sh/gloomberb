@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableStackView, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -7,7 +8,6 @@ import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../s
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { useAssetData, usePluginAppActions, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useUiCapabilities } from "../../../ui";
-import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { EarningsDetailView } from "./detail-view";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import type {
@@ -153,23 +153,8 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   const openCalls = useCallback((symbol: string) => createPaneFromTemplate("earnings-calls-pane", { symbol }), [createPaneFromTemplate]);
   const openAnalysts = useCallback((symbol: string) => createPaneFromTemplate("analyst-research-pane", { symbol }), [createPaneFromTemplate]);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    // Plain letters only: Cmd+C must still copy and Ctrl+A select, Shift+R refreshes everything.
-    if (!isPlainKeyboardEvent(event)) return false;
-    const symbol = openEvent?.symbol ?? selectedEvent?.symbol ?? null;
-    if (event.name === "r") {
-      event.preventDefault?.();
-      reload(true);
-      return true;
-    }
-    if (!symbol) return false;
-    const actions: Record<string, (symbol: string) => void> = { t: openTicker, e: openEstimates, c: openCalls, a: openAnalysts };
-    const action = event.name ? actions[event.name] : undefined;
-    if (!action) return false;
-    event.preventDefault?.();
-    action(symbol);
-    return true;
-  }, [openAnalysts, openCalls, openEstimates, openEvent, openTicker, reload, selectedEvent]);
+  // t, e, c and a are footer hints, which bind their own keys.
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, () => reload(true)), [reload]);
 
   const renderCell = useCallback((
     row: EarningsDisplayRow,
@@ -185,8 +170,7 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
     return {
       info: [
         ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-        ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-        ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+        ...loadingErrorFooterInfo(loading, error),
       ],
       hints: symbol
         ? [

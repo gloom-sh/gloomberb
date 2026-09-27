@@ -9,6 +9,7 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { normalizeCik, searchThirteenFFunds } from "./api";
 import { loadFundDetail } from "./data";
 import { formatWeightMaybe } from "./format";
@@ -77,7 +78,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   }, { phase: "before" });
   useShortcut(event => {
     if (!focused || event.targetEditable) return;
-    if (isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refreshData(); }
+    handleRefreshKey(event, refreshData, { stopPropagation: true });
     if (isPlainKey(event, "/") && !target) { event.preventDefault?.(); focusSearch(); }
     if (isPlainKey(event, "m") && target) { event.preventDefault?.(); setMineOnly(value => !value); }
   });

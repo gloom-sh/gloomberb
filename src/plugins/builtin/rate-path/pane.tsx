@@ -3,12 +3,12 @@ import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid
 import { isAccessDenied } from "../../../api-client/errors";
 import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
-import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
+import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -102,17 +102,13 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise.
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
-  useShortcut((event) => {
-    if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); }
-  });
+  usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "rate-path:notices", focused, notices: [
     ...(data?.gaps ?? []), ...(selectedMeeting?.reason ? [selectedMeeting.reason] : []),
   ] });
   usePaneStatusFooter({ registrationId: "rate-path", loading: resource.loading, error: resource.error,
-    info: data ? [
-      { id: "as-of", parts: [{ text: `as of ${timestamp(data.asOf)} UTC`, tone: "muted" }] },
-      ...(data.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ] : [],
+    info: data ? [{ id: "as-of", parts: [{ text: `as of ${timestamp(data.asOf)} UTC`, tone: "muted" }] }] : [],
+    stale: data?.stale,
   });
   const selection = { kind: "id" as const, selectedId: selected, getId: (row: RateMeeting) => row.date, onChange: setSelected };
   const onHeaderClick = (id: string) => setSort((current) => nextHeaderSort(current, id));

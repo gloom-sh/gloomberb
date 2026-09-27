@@ -9,7 +9,6 @@ import {
   type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
-import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
@@ -40,6 +39,7 @@ import {
   type ImpactFilter,
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",
@@ -197,12 +197,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
 
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (!isPlainKey(event, "r")) return false;
-    event.stopPropagation?.();
-    load(true);
-    return true;
-  }, [load]);
+  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
+    handleRefreshKey(event, () => load(true), { stopPropagation: true })
+  ), [load]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
     const timeWidth = 6;

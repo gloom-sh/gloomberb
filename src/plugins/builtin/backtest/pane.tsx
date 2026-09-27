@@ -17,12 +17,11 @@ import {
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -124,12 +123,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const chooseStrategy = () => strategyControl.current?.open();
   // The footer hints bind e, v and s in both views and every load state; only
   // the reload is the pane's own key.
-  useShortcut((event) => {
-    if (event.defaultPrevented || !isPlainKey(event, "r")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void history.reload();
-  }, { enabled: focused });
+  usePaneRefreshKey(() => void history.reload(), { focused });
 
   const notices = [identityError, history.error, rules.error, run.error, ...(result?.warnings ?? [])]
     .filter((value): value is string => !!value);

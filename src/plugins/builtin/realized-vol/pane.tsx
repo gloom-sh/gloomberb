@@ -4,12 +4,11 @@ import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGrid
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -123,12 +122,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     values: iv.data?.reference ? { expiration: String(iv.data.reference.expiration) } : {} }); };
   // The footer hints bind v, i and s in every view and state; only the reload
   // is the pane's own key.
-  useShortcut((event) => {
-    if (event.defaultPrevented || !isPlainKey(event, "r")) return;
-    event.preventDefault(); event.stopPropagation();
+  usePaneRefreshKey(() => {
     void history.reload();
     if (showIv) void iv.reload();
-  }, { enabled: focused });
+  }, { focused });
   usePaneFooter("realized-vol", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
     ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),

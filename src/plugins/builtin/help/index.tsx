@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
 import { Notice, Section, SectionHeading, Tabs, usePaneFooter, usePaneHeaderTabs, type PaneHint, type TableSection } from "../../../components";
 import { t, tf } from "../../../i18n";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
@@ -104,17 +103,8 @@ function HelpPane({ focused, width, height }: PaneProps) {
     return [];
   }, [activeTabId, openDebugLog, openIssues, openLayoutActions, openPluginManager]);
 
+  // The footer binds each hint's key; a search field keeps its typing.
   usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
-
-  useShortcut((event) => {
-    if (!focused || event.targetEditable || event.ctrl || event.meta || event.shift) return;
-    if (activeTabId === "functions" && functionsSearching) return;
-    const hint = tabHints.find((candidate) => candidate.key === event.name);
-    if (!hint) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    hint.onPress?.();
-  });
 
   const commandBarSections = useMemo<Array<TableSection<ShortcutTableEntry>>>(() => [{
     label: "Command Bar",

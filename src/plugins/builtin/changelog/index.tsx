@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { useShortcut } from "../../../react/input";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
@@ -9,9 +8,9 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
 } from "../../../components";
 import { MarkdownText } from "../../../components/markdown-text";
+import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { fetchChangelogReleases, type ChangelogRelease } from "../../../updater/github-releases";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -213,12 +212,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     if (scrollBox) scrollBox.scrollTop = 0;
   }, [openReleaseId]);
 
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r")) return;
-    event.stopPropagation?.();
-    event.preventDefault?.();
-    void loadReleases(true);
-  });
+  usePaneRefreshKey(() => void loadReleases(true), { focused });
 
   const columns = useMemo(() => buildColumns(releases), [releases]);
 
@@ -286,22 +280,10 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     setSelectedReleaseId(release.id);
   }, []);
 
-  const footerInfo = useMemo<PaneFooterSegment[]>(() => {
-    const segments: PaneFooterSegment[] = [];
-    if (status === "loading") {
-      segments.push({
-        id: "loading",
-        parts: [{ text: "loading", tone: "muted" }],
-      });
-    }
-    if (status === "error") {
-      segments.push({
-        id: "error",
-        parts: [{ text: "error", tone: "warning" }],
-      });
-    }
-    return segments;
-  }, [status]);
+  const footerInfo = useMemo(
+    () => loadingErrorFooterInfo(status === "loading", status === "error" ? "error" : null),
+    [status],
+  );
 
   // The stack title names the release, so the footer offers only [o]pen.
   useExternalLinkFooter({

@@ -16,6 +16,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { RemoteImage, PaneLinkMenu } from "../../../components/ui";
 import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/inline-tickers";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
@@ -431,11 +432,7 @@ export function TweetSearchTable({
       void openTweetLinks();
       return true;
     }
-    if (!isPlainKey(event, "r")) return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    reload(true);
-    return true;
+    return handleRefreshKey(event, () => reload(true), { stopPropagation: true });
   }, [onFocusSearch, openTweetLinks, reload, selectedLinks.length]);
 
   const handleDetailKeyDown = useCallback((event: DataTableKeyEvent) => {

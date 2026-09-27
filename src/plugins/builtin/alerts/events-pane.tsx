@@ -1,4 +1,3 @@
-import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
@@ -9,7 +8,6 @@ import {
   EmptyState,
   usePaneFooter,
   type DataTableColumn,
-  type DataTableKeyEvent,
 } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -155,17 +153,6 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     }),
     [status, error, selectedRule, add, toggle, remove],
   );
-  const onKey = useCallback(
-    (event: DataTableKeyEvent) => {
-      if (isPlainKey(event, "a") && !error) add();
-      else if (isPlainKey(event, "p")) toggle(selectedRule);
-      else if (isPlainKey(event, "d")) void remove();
-      else return false;
-      event.preventDefault?.();
-      return true;
-    },
-    [add, error, remove, selectedRule, toggle],
-  );
   return (
     <DataTableView<EventAlertRule, DataTableColumn>
       focused={focused}
@@ -180,7 +167,6 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       }}
       getItemKey={(rule) => rule.id}
       onActivate={toggle}
-      onRootKeyDown={onKey}
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}

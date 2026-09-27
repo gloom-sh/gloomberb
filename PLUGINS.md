@@ -1202,7 +1202,7 @@ const updatedAgo = useUpdatedAgo(updatedAt);
 usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 ```
 
-The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves.
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
 
 `useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
 

@@ -12,9 +12,9 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
@@ -581,9 +581,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (detailOpen && searchFocused) blurSearch();
   }, [blurSearch, detailOpen, searchFocused]);
 
-  const info: PaneFooterSegment[] = [];
-  if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-  if (status === "error") info.push({ id: "error", parts: [{ text: "catalog unavailable", tone: "warning" }] });
+  const info = loadingErrorFooterInfo(status === "loading", status === "error" ? "catalog unavailable" : null);
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
   if (checkingRemotes) info.push({ id: "remote-check", parts: [{ text: "checking unlisted plugins", tone: "muted" }] });
   if (busy) {

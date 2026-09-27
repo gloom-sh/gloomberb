@@ -6,7 +6,7 @@ import {
   usePaneNoticeFooter,
   loadingText,
   unavailableText,
-  usePaneFooter,
+  usePaneStatusFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -26,7 +26,7 @@ import {
   usePluginPaneState,
 } from "../../../runtime";
 import { usePaneTicker } from "../../../../state/app/context";
-import { loadingErrorFooterInfo, useClampSelectedIndex } from "../../../../components/data-table/table-pane";
+import { useClampSelectedIndex } from "../../../../components/data-table/table-pane";
 import { formatDateTime, useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
@@ -229,9 +229,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   }, [priceDecimals]);
 
   // The range is picked in the query bar; t still steps through it.
-  usePaneFooter("historical-prices", () => ({
-    info: loadingErrorFooterInfo(loading, error),
-  }), [error, loading]);
+  usePaneStatusFooter({ registrationId: "historical-prices", loading, error });
 
   usePaneNoticeFooter({
     registrationId: "historical-prices:integrity",

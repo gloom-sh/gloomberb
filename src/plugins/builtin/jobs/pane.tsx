@@ -20,6 +20,7 @@ import {
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { blendHex, colors } from "../../../theme/colors";
@@ -507,12 +508,7 @@ function CompanyPanel({
   const { data, status, error, reload } = resource;
 
   // `r` asks again in every state, including a failed or uncovered company.
-  useShortcut((event) => {
-    if (!focused || !isPlainKey(event, "r")) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    reload();
-  });
+  usePaneRefreshKey(reload, { focused });
 
   // While the server is looking for the company, ask again on a timer.
   useEffect(() => {
@@ -610,11 +606,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   useShortcut((event) => {
     if (!focused) return;
     // With a company open, `r` belongs to that company's panel, once it is on screen.
-    if (isPlainKey(event, "r") && !(open && data)) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      reload();
-    } else if (isPlainKey(event, "t")) {
+    if (!(open && data) && handleRefreshKey(event, reload, { stopPropagation: true })) return;
+    if (isPlainKey(event, "t")) {
       const ticker = open ?? selected?.ticker;
       if (!ticker) return;
       event.preventDefault?.();

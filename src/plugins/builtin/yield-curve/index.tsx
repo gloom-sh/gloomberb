@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CurveSurface, Notice, PaneStatusBody, QueryBar, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
-import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -69,10 +68,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   // The [d]ate and [c]urrent hints bind their own keys; Esc in the date field
   // is the query bar's.
-  useShortcut((ev) => {
-    if (!focused || dateActive || !isPlainKey(ev, "r")) return;
-    void load();
-  });
+  usePaneRefreshKey(() => void load(), { focused, enabled: !dateActive });
 
   const bp = spreadBasisPoints(points);
   // Treasury series are daily closes, so which session the curve represents is

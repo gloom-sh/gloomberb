@@ -11,6 +11,7 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
+import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
@@ -221,12 +222,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       if (nextRow) setSelectedId(nextRow.id);
       return;
     }
-    if (isPlainKey(event, "r")) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      refresh();
-      return;
-    }
+    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return;
     if (isPlainKey(event, "s")) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -293,8 +289,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     return {
       info: [
         ...(data?.asOf ? [{ id: "as-of", parts: [{ text: data.asOf, tone: "value" as const }] }] : []),
-        ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-        ...(error && data ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+        ...loadingErrorFooterInfo(loading, data ? error : null),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
       // The title-bar tabs (or the query bar inside Ticker Research) switch

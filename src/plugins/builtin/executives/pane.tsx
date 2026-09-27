@@ -16,6 +16,7 @@ import {
   type PaneHint,
   type QueryBarFilter,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneStateValue } from "../../../state/app/context";
@@ -371,14 +372,11 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
     );
   }, []);
 
+  // The footer binds the `o` and `y` hints.
   useShortcut(
     (event) => {
-      if (isPlainKey(event, "o")) {
-        event.preventDefault();
-        openFiling();
-      } else if (isPlainKey(event, "r")) {
-        refresh();
-      } else if (isPlainKey(event, "j", "down")) {
+      if (handleRefreshKey(event, refresh)) return;
+      if (isPlainKey(event, "j", "down")) {
         // One line per press; marked handled so the pane scroll keys, which
         // page this statement, do not scroll it again.
         event.preventDefault();

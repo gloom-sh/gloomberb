@@ -9,6 +9,7 @@ import {
   type DataTableVisibleRange,
   type PaneFooterSegment,
 } from "../../../components";
+import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstance } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
@@ -171,24 +172,16 @@ function FuturesPane({ focused, width, height }: PaneProps) {
     setSelectedId(firstNavigable ? futuresRowId(firstNavigable) : null);
   }, [rows, selectedId]);
 
+  // The footer binds the `/` search hint.
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
-    if (isPlainKey(event, "r")) {
-      stopSearchFocusNavigation(event);
-      refresh();
-      return true;
-    }
-    if (isPlainKey(event, "/")) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
+    if (handleRefreshKey(event, refresh, { stopPropagation: true })) return true;
     if (isPlainKey(event, "]") || isPlainKey(event, "[")) {
       stopSearchFocusNavigation(event);
       cycleSort(event.name === "]" ? 1 : -1);
       return true;
     }
     return false;
-  }, [cycleSort, focusSearch, refresh]);
+  }, [cycleSort, refresh]);
 
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
