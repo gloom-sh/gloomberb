@@ -56,7 +56,7 @@ export function validateAlertHistory(value: unknown): AlertHistory {
     data.items.some((item) => !item || typeof item.title !== "string" || typeof item.kind !== "string" || !dated(item.deliveredAt)) ||
     data.states.some((state) => !state || typeof state.ruleId !== "string" || (state.asOf !== null && !dated(state.asOf)))
   )
-    throw new Error("Invalid alert history from Gloom Cloud.");
+    throw new Error("Invalid alert history.");
   return data;
 }
 export async function fetchAlertHistory(offset = 0) {

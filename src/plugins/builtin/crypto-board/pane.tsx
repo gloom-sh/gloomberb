@@ -57,7 +57,6 @@ const INITIAL_STREAM_ROWS = 40;
 
 const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
 
-
 const cryptoTickerKey = (row: CryptoRow) => publicTickerKey(row.asset.symbol, "CCC");
 
 function quoteTargets(
