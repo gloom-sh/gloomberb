@@ -3,7 +3,7 @@ import type {
   CloudSearchSort,
   CloudTweetQueryType,
 } from "./types";
-import { normalizeSymbol, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
+import { isUsListingExchange, normalizeSymbol, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
 import type { HistoryRetention } from "../sources/history-retention";
 
 export type CloudHistoryParams = {
@@ -240,13 +240,10 @@ export function cloudCongressHousePath(
   return appendQuery(`/cloud/congress/${params.chamber ?? "house"}`, search);
 }
 
-const US_ISSUER_LISTINGS = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
-
 /** Issuer endpoints accept US ticker symbols, not the pane's listing key. */
 export function normalizeIssuerResearchTicker(ticker: string): string {
   const parsed = parsePublicTickerKey(ticker);
-  return parsed.exchange && US_ISSUER_LISTINGS.has(parsed.exchange)
-    ? parsed.symbol : normalizeSymbol(ticker);
+  return isUsListingExchange(parsed.exchange) ? parsed.symbol : normalizeSymbol(ticker);
 }
 
 export function cloudJobsPath(ticker: string, name?: string | null): string {

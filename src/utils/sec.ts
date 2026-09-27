@@ -1,16 +1,11 @@
 import type { TickerRecord } from "../types/ticker";
-import { canonicalExchange } from "./exchanges";
+import { canonicalExchange, US_LISTING_EXCHANGES } from "./exchanges";
 
+/** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES = new Set([
-  "AMEX",
-  "ARCA",
-  "BATS",
+  ...US_LISTING_EXCHANGES,
   "BYX",
   "IEX",
-  "NASDAQ",
-  "NMS",
-  "NYSE",
-  "NYSEARCA",
   "OTC",
   "PINK",
   // Yahoo's codes for Cboe BZX and the OTC Markets tiers.

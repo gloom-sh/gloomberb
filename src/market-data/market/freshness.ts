@@ -1,11 +1,10 @@
 import type { MarketState } from "../../types/financials";
-import { canonicalExchange, EXCHANGE_TIME_ZONES } from "../../utils/exchanges";
+import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 
-const US_EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const OVERNIGHT_CLOSE_MAX_AGE_MS = 20 * 60 * 60 * 1000;
@@ -76,10 +75,6 @@ function perMinute<K, V>(cache: Map<K, V>, key: K, compute: () => V): V {
   if (cache.size >= MINUTE_CACHE_LIMIT) cache.clear();
   cache.set(key, value);
   return value;
-}
-
-function isUsExtendedHoursExchange(exchange?: string): boolean {
-  return US_EXTENDED_HOURS_EXCHANGES.has(canonicalExchange(exchange));
 }
 
 function getExchangeLocalTimeFormatter(timeZone: string): Intl.DateTimeFormat {
@@ -260,7 +255,7 @@ export function isUsPriorSessionPremarketQuote(
   now = Date.now(),
 ): boolean {
   const canonical = canonicalExchange(exchange);
-  if (marketState !== "PRE" || !isUsExtendedHoursExchange(canonical)) return false;
+  if (marketState !== "PRE" || !isUsListingExchange(canonical)) return false;
   if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
   if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "PRE") return false;
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
@@ -304,7 +299,7 @@ function isTimestampStaleForExchangeSessionUnsafe(
   if (marketState === "REGULAR" && !isBeforeKnownRegularOpen(canonical, now)) return true;
 
   if (isUsPriorSessionPremarketQuote(timestampMs, canonical, marketState, now)) return false;
-  if (isUsExtendedHoursExchange(canonical)) {
+  if (isUsListingExchange(canonical)) {
     const session = usSessionState(now);
     if (session === "PRE" || session === "REGULAR" || session === "POST" || session === "POSTPOST") {
       return true;

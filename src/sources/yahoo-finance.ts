@@ -14,7 +14,7 @@ import { parseOptionSymbol } from "../utils/options";
 import { SecEdgarClient } from "./sec-edgar";
 import { withCheckedFourthQuarters } from "./sec-edgar/fourth-quarter";
 import { mergeFinancialStatementRows } from "../utils/financial-statements";
-import { canonicalExchange } from "../utils/exchanges";
+import { canonicalExchange, US_LISTING_EXCHANGES } from "../utils/exchanges";
 import { YahooHttpClient } from "./yahoo-finance/http";
 import { resolveCurrencyUnit } from "../utils/currency-units";
 import { getYahooSymbol, getYahooSymbolsToTry, withYahooSymbols } from "./yahoo-finance/symbols";
@@ -51,18 +51,7 @@ import {
 } from "./yahoo-finance/snapshots";
 
 /** US listings, as canonical exchanges, whose issuers file statements with the SEC. */
-const SEC_STATEMENT_SUPPLEMENT_EXCHANGES = new Set([
-  "",
-  "AMEX",
-  "ARCA",
-  "BATS",
-  "BYX",
-  "IEX",
-  "NASDAQ",
-  "NYSE",
-  "OTC",
-  "PINK",
-]);
+const SEC_STATEMENT_SUPPLEMENT_EXCHANGES = new Set(["", ...US_LISTING_EXCHANGES, "BYX", "IEX", "OTC", "PINK"]);
 
 export class YahooFinanceClient implements DataProvider {
   readonly id = "yahoo";
