@@ -512,9 +512,11 @@ metrics, dated trails, rank sample counts and data limitations.
 
 ## Portfolio risk depth: PORT and MARS
 
-`PORT` opens portfolio market risk; `MARS` is its alias. Add a local portfolio ID to select it, for example `PORT main`. Views cover Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history; Escape returns. Click portfolio tabs or press `p` to switch portfolios. Press `i` to import local account evidence from the clipboard, and `r` to refresh Cloud observations. Tables support sorting and CSV export.
+`PORT` opens portfolio market risk; `MARS` is its alias. Add a local portfolio ID to select it, for example `PORT main`. Views cover Risk, Factors, Holdings, Sectors, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history; Escape returns. Pick the portfolio in the query bar or press `p` to switch portfolios. Press `i` to import local account evidence from the clipboard, and `r` to refresh Cloud observations. Tables support sorting and CSV export.
 
-Use pane settings for independent index-percent, 10Y-basis-point and VIX-point stress shifts. Existing saved Analytics panes keep Overview until their View setting changes to Risk depth. Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence); the pane does not derive account cashflows from current holdings. Evidence remains private and must match the portfolio ID and currency.
+Risk adds a one-year (252-session) basket return and Sharpe to the 60-session figures, and Factors adds a one-year SPY beta. Sectors groups the current holdings by sector with weight, value, P&L and P&L %, at live prices converted to your base currency, so foreign holdings count. For a broker portfolio, Performance leads with the account's Net Liq, Cash, Margin Lev, buying power and excess liquidity, and adds the account's own Sharpe, beta against SPY and volatility when the broker reports daily time-weighted history. Analytics panes saved with the former Overview open on Performance.
+
+Use pane settings for independent index-percent, 10Y-basis-point and VIX-point stress shifts. Performance uses the broker's account history when it has one; otherwise Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence). The pane does not derive account cashflows from current holdings. Evidence remains private and must match the portfolio ID and currency.
 
 ```sh
 gloomberb fn PORT main --json
@@ -523,7 +525,7 @@ gloomberb fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-s
 gloomberb shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
-`--evidence` accepts the same JSON text as the clipboard import. Account-return and attribution examples in the methodology are illustrative inputs, not sample market data. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings; screenshots freeze that same local model.
+`--evidence` accepts the same JSON text as the clipboard import. Account-return and attribution examples in the methodology are illustrative inputs, not sample market data. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings; screenshots freeze that same local model. Sectors and the broker account figures are computed in the pane, so reports and screenshots do not include them.
 
 ## Equity criteria screener
 
