@@ -14,6 +14,7 @@ import {
   type DesktopThemePreviewMessage,
   type ElectrobunBackendInit,
   type HttpStreamChunkMessage,
+  type PluginsUpdatedMessage,
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
   type UpdateProgressMessage,
@@ -28,6 +29,7 @@ type DesktopStateListener = (message: DesktopStateMessage) => void;
 type DesktopDockPreviewListener = (message: DesktopDockPreviewMessage) => void;
 type DesktopThemePreviewListener = (message: DesktopThemePreviewMessage) => void;
 type UpdateProgressListener = (message: UpdateProgressMessage) => void;
+type PluginsUpdatedListener = (message: PluginsUpdatedMessage) => void;
 type CapabilityEventListener = (message: CapabilityEventMessage) => void;
 type HttpStreamChunkListener = (message: HttpStreamChunkMessage) => void;
 type RemoteControlRequestHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
@@ -42,6 +44,7 @@ const desktopStateListeners = new Set<DesktopStateListener>();
 const desktopDockPreviewListeners = new Set<DesktopDockPreviewListener>();
 const desktopThemePreviewListeners = new Set<DesktopThemePreviewListener>();
 const updateProgressListeners = new Set<UpdateProgressListener>();
+const pluginsUpdatedListeners = new Set<PluginsUpdatedListener>();
 const capabilityEventListeners = new Map<string, Set<CapabilityEventListener>>();
 const httpStreamChunkListeners = new Map<string, Set<HttpStreamChunkListener>>();
 
@@ -136,6 +139,13 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
         const decoded = { progress: decodeRpcValue<UpdateProgressMessage["progress"]>(message.progress) };
         for (const listener of updateProgressListeners) {
           listener(decoded);
+        }
+      },
+      "plugins.updated": (message) => {
+        if (!Array.isArray(message?.directories)) return;
+        const directories = message.directories.filter((directory): directory is string => typeof directory === "string");
+        for (const listener of pluginsUpdatedListeners) {
+          listener({ directories });
         }
       },
       "capability.event": (message) => {
@@ -285,5 +295,12 @@ export function onUpdateProgress(listener: UpdateProgressListener): () => void {
   updateProgressListeners.add(listener);
   return () => {
     updateProgressListeners.delete(listener);
+  };
+}
+
+export function onPluginsUpdated(listener: PluginsUpdatedListener): () => void {
+  pluginsUpdatedListeners.add(listener);
+  return () => {
+    pluginsUpdatedListeners.delete(listener);
   };
 }

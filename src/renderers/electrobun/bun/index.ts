@@ -46,6 +46,8 @@ import {
   desktopPluginManager,
 } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
+import { pluginAutoUpdateEnabled } from "../../../plugins/auto-update";
+import { startNodePluginAutoUpdates } from "../../../plugins/auto-update-node";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import {
   applyWindowMoveEvent,
@@ -475,8 +477,29 @@ async function initialize(
     void ensureDesktopRemoteControlServer().catch((error) => {
       console.error("[remote] desktop control endpoint failed", summarizeError(error));
     });
+    ensurePluginAutoUpdates();
   }
   return init;
+}
+
+let pluginAutoUpdatesStarted = false;
+
+/**
+ * Official plugins update here, in the process that owns the plugins folder
+ * for every window. The main window then brings what moved into its session
+ * the way its Plugins pane does after an update.
+ */
+function ensurePluginAutoUpdates(): void {
+  if (pluginAutoUpdatesStarted) return;
+  pluginAutoUpdatesStarted = true;
+  startNodePluginAutoUpdates({
+    manager: desktopPluginManager,
+    isEnabled: () => pluginAutoUpdateEnabled(currentConfig),
+    onUpdated: (directories) => {
+      const rpc = getWindowRpc(MAIN_WINDOW_RPC_KEY);
+      if (rpc && isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) rpc.send["plugins.updated"]({ directories });
+    },
+  });
 }
 
 async function handleBackendRequest(

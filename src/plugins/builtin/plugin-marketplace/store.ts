@@ -30,6 +30,8 @@ export interface MarketplaceHost {
   deactivate(pluginId: string, directory?: string): Promise<void>;
   /** What a registered plugin actually added, for "open what it added" and the detail view. */
   contributions(pluginId: string): PluginContributions;
+  /** Shows a toast, for work that finishes with no pane open, such as a background update. */
+  notify(notification: { body: string; type: "info" | "success" | "error" }): void;
 }
 
 export interface PluginContributions {
@@ -68,6 +70,8 @@ export type PluginOperationResult =
     directory: string;
     /** Why an update left the checkout where it was: the registry's commit is older. */
     kept?: string;
+    /** Whether an update moved the checkout to another commit. */
+    changed?: boolean;
   }
   | { ok: false; error: string };
 

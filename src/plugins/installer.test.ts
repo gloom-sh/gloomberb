@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { describeOlderCommit, parseRemoteHead } from "./installer";
+import { describeOlderCommit, hasLocalChanges, parseRemoteHead } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -93,5 +93,21 @@ describe("describeOlderCommit", () => {
   test("lets a newer commit through", () => {
     const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "v1", "main");
     expect(describeOlderCommit(dir, head, fetched)).toBeNull();
+  });
+});
+
+/**
+ * `update` checks commits out with --force, so a checkout with edits never
+ * updates on its own. A lockfile `bun install` wrote beside the tracked files
+ * is not an edit, or no plugin with dependencies would ever update.
+ */
+describe("hasLocalChanges", () => {
+  test("counts edits to tracked files, not untracked ones", async () => {
+    const dir = remote(["1.0.0", "1.1.0"]);
+    expect(await hasLocalChanges(dir)).toBe(false);
+    writeFileSync(join(dir, "bun.lock"), "{}");
+    expect(await hasLocalChanges(dir)).toBe(false);
+    writeFileSync(join(dir, "package.json"), "{}");
+    expect(await hasLocalChanges(dir)).toBe(true);
   });
 });

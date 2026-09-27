@@ -426,6 +426,9 @@ export function bindAppPanePluginRegistry({
       const broker = [...pluginRegistry.brokers.keys()].some((type) => pluginRegistry.getBrokerPluginId(type) === pluginId);
       return { panes, templates, commands, capabilities, broker };
     },
+    notify: (notification) => {
+      pluginRegistry.notify(notification);
+    },
     setPluginEnabled: (pluginId, enabled) => {
       const current = stateRef.current.config;
       if (!enabled) {

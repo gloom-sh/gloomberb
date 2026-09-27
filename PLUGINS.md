@@ -41,6 +41,20 @@ answers the same question from the terminal. The check needs whatever
 credentials the clone needs: a private repository without them is reported as
 nothing new rather than as an error, and it never blocks on a prompt.
 
+Official plugins, the registry entries published under
+[github.com/gloom-sh](https://github.com/gloom-sh), update themselves: once
+shortly after Gloomberb starts on a new version, then at most once a day, and
+at startup for one that failed to load because it uses something this
+Gloomberb does not have. They take the same steps as `update`, forward only
+and never to code this Gloomberb is too old for, peers first. A linked
+checkout, one with local edits, and one whose dependencies need `bun` when it
+is not on `PATH` are left alone, and the debug log says why. A plugin split
+across several files finishes updating at the next launch, and a single toast
+says "Plugins updated. Restart to finish." Third-party plugins, and anything
+installed from a repository the registry does not list, update only when you
+ask. Turn this off with **Update official plugins automatically** in the
+Plugins pane's settings.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under
@@ -66,8 +80,10 @@ sit in CI.
 
 ## Plugin compatibility
 
-Gloomberb updates itself; a plugin moves only when its user updates it, so a
-checkout can be older or newer than the Gloomberb loading it. Declare the
+Gloomberb updates itself and its official plugins; any other plugin moves only
+when its user updates it, and an automatic update can be turned off or held
+back by local edits, so a checkout can be older or newer than the Gloomberb
+loading it. Declare the
 oldest Gloomberb the plugin runs on in its `gloom.json`, and raise it whenever
 the plugin starts using something a release added:
 

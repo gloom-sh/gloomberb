@@ -47,7 +47,8 @@ import {
   type MarketplaceStatusKind,
   type RegistryPlugin,
 } from "./model";
-import { getMarketplaceHost, getPluginManager, type MarketplaceHost, type PluginManager } from "./store";
+import { activateInstalledPlugin } from "./activation";
+import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./store";
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
 
@@ -331,45 +332,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     ),
   }).catch(() => false), [dialog, width]);
 
-  /**
-   * Brings a freshly installed or updated checkout into this session. What
-   * cannot be activated is still recorded, with its error, so the row says
-   * `failed` and the detail says why rather than the plugin simply not
-   * appearing until a restart.
-   */
-  const activate = useCallback(async (
-    directory: string,
-    activeHost: MarketplaceHost,
-    activeManager: PluginManager,
-  ): Promise<{ ok: true; pluginId: string; name: string; restart?: boolean } | { ok: false; error: string }> => {
-    const loaded = await activeManager.load(directory);
-    if (!loaded) return { ok: false, error: "The plugin has no entry file." };
-    // Registering it here, or where data calls run, would mix the new files
-    // with modules this process already imported; the host keeps what runs.
-    if (loaded.needsRestart) {
-      await activeHost.activate(loaded).catch(() => {});
-      return { ok: true, pluginId: loaded.plugin.id, name: loaded.plugin.name, restart: true };
-    }
-    if (loaded.error) {
-      await activeHost.activate(loaded).catch(() => {});
-      return { ok: false, error: loaded.error };
-    }
-    // Where data calls execute first, so a pane that renders can also fetch.
-    if (activeManager.activate && !loaded.unsupportedTarget) {
-      const backend = await activeManager.activate(directory);
-      if (!backend.ok) {
-        await activeHost.activate({ ...loaded, error: backend.error }).catch(() => {});
-        return { ok: false, error: backend.error };
-      }
-    }
-    try {
-      await activeHost.activate(loaded);
-      return { ok: true, pluginId: loaded.plugin.id, name: loaded.plugin.name };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  }, []);
-
   const announceAdded = useCallback((pluginId: string, name: string, verb: string, activeHost: MarketplaceHost) => {
     const added = activeHost.contributions(pluginId);
     const parts: string[] = [];
@@ -437,13 +399,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Could not install ${entry.name}: ${result.error}`, type: "error" });
       return;
     }
-    const activated = await activate(result.directory, host, manager);
+    const activated = await activateInstalledPlugin(result.directory, host, manager);
     setBusy(null);
     bump();
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
     else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
     else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [activate, announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
@@ -465,7 +427,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
       return;
     }
-    const activated = await activate(directory, host, manager);
+    const activated = await activateInstalledPlugin(directory, host, manager);
     setBusy(null);
     bump();
     if (activated.ok && activated.restart) {
@@ -475,7 +437,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     } else {
       notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
     }
-  }, [activate, announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
 
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;

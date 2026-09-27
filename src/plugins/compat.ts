@@ -9,7 +9,8 @@ import { hostPublicModules } from "./host-link";
  * Whether a plugin checkout can run on this Gloomberb, decided before any of
  * its code is imported, and a precise reason when it cannot.
  *
- * The host updates itself; plugins only move when the user updates them. A
+ * The host updates itself; official plugins follow on their own schedule
+ * (auto-update.ts) and the rest move only when the user updates them. A
  * checkout can therefore be older than the host (it imports something the
  * host has since removed) or newer (it needs something this host does not
  * have yet). Either way the plugin fails at import with Bun's generic

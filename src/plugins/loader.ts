@@ -5,7 +5,7 @@ import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
-import { checkPluginCompatibility, explainPluginLoadError, pluginSourceFiles } from "./compat";
+import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles } from "./compat";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -152,6 +152,18 @@ export interface LoadExternalPluginOptions {
  */
 const importedCommits = new Map<string, string | null>();
 
+/**
+ * Folders whose last import in this process failed on a host export the
+ * running Gloomberb does not have: a checkout older (or newer) than the host.
+ * The automatic updater looks for a newer compatible version of these first.
+ */
+const missingHostExportFailures = new Set<string>();
+
+/** Plugin folders, by name, whose last load failed on a missing host export. */
+export function pluginsMissingHostExports(): string[] {
+  return [...missingHostExportFailures].sort();
+}
+
 /** Imported at another commit earlier in this process, with files besides the entry that Bun keeps. */
 function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   if (!importedCommits.has(pluginDir) || importedCommits.get(pluginDir) === commit) return false;
@@ -169,6 +181,7 @@ export async function loadExternalPlugin(
   options: LoadExternalPluginOptions = {},
 ): Promise<LoadedExternalPlugin | null> {
   const directory = basename(pluginDir);
+  missingHostExportFailures.delete(directory);
   const entryFile = await resolvePluginEntry(pluginDir);
   if (!entryFile) return null;
 
@@ -225,11 +238,13 @@ export async function loadExternalPlugin(
   } catch (err) {
     loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
     reportCrash(err, { kind: "plugin", plugin: directory });
+    const message = err instanceof Error ? err.message : String(err);
+    if (findMissingHostExport(message)) missingHostExportFailures.add(directory);
     return {
       ...base,
       ...restart,
       plugin: placeholder,
-      error: explainPluginLoadError(err instanceof Error ? err.message : String(err)),
+      error: explainPluginLoadError(message),
     };
   }
 }

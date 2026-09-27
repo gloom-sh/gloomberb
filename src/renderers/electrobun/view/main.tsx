@@ -8,6 +8,7 @@ import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
   initElectrobunBackend,
+  onPluginsUpdated,
   replaceElectrobunCapabilityManifests,
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
@@ -37,7 +38,8 @@ import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
 import { getRendererPlugins } from "../../../plugins/catalog-ui";
 import { loadDesktopExternalPlugin, loadDesktopExternalPlugins } from "./external-plugins";
-import { setPluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
+import { activateUpdatedPlugins } from "../../../plugins/builtin/plugin-marketplace/activation";
+import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 import { installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
@@ -154,7 +156,7 @@ async function boot() {
   // it, and `load` is that process compiling the result for this renderer.
   // `activate` registers the plugin over there too, where its capabilities and
   // brokers actually run, and adopts the manifests that come back.
-  setPluginManager({
+  const pluginManager: PluginManager = {
     install: (repo, pin) => backendRequest("plugins.install", { ref: repo, ...(pin ? { pin } : {}) }),
     update: (directory, pin) => backendRequest("plugins.update", { directory, ...(pin ? { pin } : {}) }),
     remove: (directory) => backendRequest("plugins.remove", { directory }),
@@ -173,6 +175,13 @@ async function boot() {
       const result = await backendRequest("plugins.deactivate", { pluginId });
       replaceElectrobunCapabilityManifests(result.capabilityManifests);
     },
+  };
+  setPluginManager(pluginManager);
+  // Official plugins the Bun process updated in the background, brought into
+  // this session the way the Plugins pane does after an update.
+  onPluginsUpdated(({ directories }) => {
+    const marketplace = getMarketplaceHost();
+    if (marketplace) void activateUpdatedPlugins(directories, marketplace, pluginManager);
   });
 
   const remoteControlAdapter = init.windowKind === "main"

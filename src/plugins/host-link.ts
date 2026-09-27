@@ -116,9 +116,32 @@ function ensureDirLink(linkPath: string, target: string): void {
 }
 
 /**
+ * The sibling plugins a plugin declares as peer dependencies and that are
+ * installed, by package name, with the folder each one is installed in. The
+ * automatic updater orders updates by the same answer the links are made from.
+ */
+export function installedPeerPlugins(pluginDir: string, pluginsDir: string = dirname(pluginDir)): Array<{ peer: string; directory: string }> {
+  let peers: string[] = [];
+  try {
+    const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
+    peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
+  } catch {
+    return [];
+  }
+  const installed: Array<{ peer: string; directory: string }> = [];
+  for (const peer of peers) {
+    // Declared by package name, installed under a directory named for the repo:
+    // the two disagree while the plugin is mid-rename.
+    const directory = pluginDirectoryNames(peer).find((name) => existsSync(join(pluginsDir, name)));
+    if (directory) installed.push({ peer, directory });
+  }
+  return installed;
+}
+
+/**
  * Links sibling plugins a plugin declares as peer dependencies.
  *
- * A plugin can legitimately extend another — IBKR Gateway builds on the Flex
+ * A plugin can legitimately extend another: IBKR Gateway builds on the Flex
  * plugin, which owns the broker id and the shared bridge. Those live in separate
  * install directories with no path between them, so the peer is linked the same
  * way the host is. A missing sibling is not an error here: the plugin reports it
@@ -126,23 +149,9 @@ function ensureDirLink(linkPath: string, target: string): void {
  */
 function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
   const linked: string[] = [];
-  let peers: string[] = [];
-  try {
-    const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8"));
-    peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
-  } catch {
-    return linked;
-  }
-
-  for (const peer of peers) {
-    // Declared by package name, installed under a directory named for the repo:
-    // the two disagree while the plugin is mid-rename.
-    const target = pluginDirectoryNames(peer)
-      .map((name) => join(pluginsDir, name))
-      .find((candidate) => existsSync(candidate));
-    if (!target) continue;
+  for (const { peer, directory } of installedPeerPlugins(pluginDir, pluginsDir)) {
     try {
-      ensureDirLink(join(pluginDir, "node_modules", peer), target);
+      ensureDirLink(join(pluginDir, "node_modules", peer), join(pluginsDir, directory));
       linked.push(peer);
     } catch {
       // Reported by the plugin's own load failure if it actually needed it.

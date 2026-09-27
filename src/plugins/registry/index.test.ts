@@ -447,9 +447,15 @@ describe("PluginRegistry pane settings", () => {
         defaultPosition: "right",
         component: () => null,
         settings: {
+          values: { autoUpdate: true },
           fields: [{
             key: "breakingNewsNotificationsEnabled",
             label: "Notifications",
+            type: "toggle",
+            storage: "plugin",
+          }, {
+            key: "autoUpdate",
+            label: "Auto-update",
             type: "toggle",
             storage: "plugin",
           }],
@@ -461,6 +467,8 @@ describe("PluginRegistry pane settings", () => {
 
     expect(descriptor?.pluginId).toBe("news");
     expect(descriptor?.context.settings.breakingNewsNotificationsEnabled).toBe(true);
+    // Never set: the declared default, so a setting can be on until turned off.
+    expect(descriptor?.context.settings.autoUpdate).toBe(true);
   });
 
   test("resolves and applies toggle-backed pane quick settings", async () => {

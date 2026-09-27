@@ -1,11 +1,14 @@
 import { getGloomberbHome } from "../../data/config/home";
 import { existsSync, mkdirSync } from "fs";
 import { App } from "../../app";
-import { getDataDir, initDataDir, setConfigStoreHost } from "../../data/config/store";
+import { getDataDir, initDataDir, loadConfig, setConfigStoreHost } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
-import { setPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
+import { pluginAutoUpdateEnabled } from "../../plugins/auto-update";
+import { startNodePluginAutoUpdates } from "../../plugins/auto-update-node";
+import { activateUpdatedPlugins } from "../../plugins/builtin/plugin-marketplace/activation";
+import { getMarketplaceHost, setPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
 import { createNodePluginManager } from "../../plugins/manager-node";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
@@ -76,7 +79,8 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
     },
   };
 
-  setPluginManager(createNodePluginManager("tui"));
+  const pluginManager = createNodePluginManager("tui");
+  setPluginManager(pluginManager);
 
   let host: Awaited<ReturnType<typeof createOpenTuiHost>> | null = null;
   let exitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,6 +129,19 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
         </OpenTuiInputHostProvider>
       </UiHostProvider>,
     );
+
+    // After render: the first pass waits well past startup, and git and bun
+    // run without blocking the event loop.
+    const stopPluginAutoUpdates = startNodePluginAutoUpdates({
+      manager: pluginManager,
+      // Read from disk each pass: the setting can change while the app runs.
+      isEnabled: async () => pluginAutoUpdateEnabled(await loadConfig(config.dataDir)),
+      onUpdated: async (directories) => {
+        const marketplace = getMarketplaceHost();
+        if (marketplace) await activateUpdatedPlugins(directories, marketplace, pluginManager);
+      },
+    });
+    renderer.once("destroy", stopPluginAutoUpdates);
   } catch (error) {
     if (exitTimer) clearTimeout(exitTimer);
     host?.renderer.off("destroy", finishProcessExit);

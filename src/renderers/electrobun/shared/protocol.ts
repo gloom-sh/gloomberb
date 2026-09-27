@@ -287,6 +287,11 @@ export interface DesktopDeepLinkMessage {
   url: string;
 }
 
+/** Plugin folders the Bun process updated in the background, for the main window to bring into its session. */
+export interface PluginsUpdatedMessage {
+  directories: string[];
+}
+
 export interface RemoteControlRequestMessage {
   request: RemoteControlRequest;
 }
@@ -317,6 +322,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.dockPreview": DesktopDockPreviewMessage;
       "desktop.themePreview": DesktopThemePreviewMessage;
       "desktop.deepLink": DesktopDeepLinkMessage;
+      "plugins.updated": PluginsUpdatedMessage;
       "update.progress": UpdateProgressMessage;
       "capability.event": CapabilityEventMessage;
       "http.stream.chunk": HttpStreamChunkMessage;
