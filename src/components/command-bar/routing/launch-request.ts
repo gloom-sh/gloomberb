@@ -7,6 +7,7 @@ interface UseCommandBarLaunchRequestOptions {
   activeTickerSymbol: string | null;
   commandBarLaunchRequest: AppState["commandBarLaunchRequest"];
   commandBarOpen: boolean;
+  openBuiltInWorkflow: (actionId: string) => void;
   openModeRoute: (
     screen: "ticker-search" | "layout",
     initialQuery?: string,
@@ -23,6 +24,7 @@ export function useCommandBarLaunchRequest({
   activeTickerSymbol,
   commandBarLaunchRequest,
   commandBarOpen,
+  openBuiltInWorkflow,
   openModeRoute,
   openPluginCommandWorkflow,
   pluginRegistry,
@@ -41,6 +43,10 @@ export function useCommandBarLaunchRequest({
 
     if (launch.kind === "ticker-search") {
       openModeRoute("ticker-search", launch.query ?? "");
+      return;
+    }
+    if (launch.kind === "builtin-workflow") {
+      openBuiltInWorkflow(launch.actionId);
       return;
     }
     // Submitting text needs the selection runtime, which the surface wires up
@@ -62,6 +68,7 @@ export function useCommandBarLaunchRequest({
     activeTickerSymbol,
     commandBarLaunchRequest,
     commandBarOpen,
+    openBuiltInWorkflow,
     openModeRoute,
     openPluginCommandWorkflow,
     pluginRegistry,

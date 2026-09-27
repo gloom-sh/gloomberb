@@ -80,7 +80,6 @@ export function useCommandBarActionRuntime({
   const {
     duplicatePane,
     focusTicker,
-    notifyGridlockRevert,
     persistLayoutChange,
     setActiveCollection,
   } = useCommandBarPaneActions({
@@ -192,7 +191,6 @@ export function useCommandBarActionRuntime({
     dispatch,
     duplicatePane,
     notify,
-    notifyGridlockRevert,
     openAddToPortfolioWorkflow,
     openBuiltInWorkflow,
     openInlineConfirm,
@@ -228,6 +226,7 @@ export function useCommandBarActionRuntime({
     activeTickerSymbol,
     commandBarLaunchRequest: state.commandBarLaunchRequest,
     commandBarOpen: state.commandBarOpen,
+    openBuiltInWorkflow,
     openModeRoute,
     openPluginCommandWorkflow,
     pluginRegistry,

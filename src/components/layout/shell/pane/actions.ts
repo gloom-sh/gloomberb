@@ -3,14 +3,13 @@ import type { DesktopWindowBridge } from "../../../../types/desktop-window";
 import {
   applyDrop,
   floatPane,
-  gridlockAllPanes,
   isPaneInLayout,
   removeFloatingPanes,
   removePane,
+  tidyWindows,
   type ResolvedPane,
 } from "../../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../../plugins/registry";
-import { notifyGridlockComplete } from "../../../../plugins/gridlock-notification";
 import type { LayoutConfig } from "../../../../types/config";
 import { isPaneLockedInLayout } from "../../../../pane-settings";
 import type { RendererHost } from "../../../../ui";
@@ -165,14 +164,14 @@ export function useShellPaneActions({
     return true;
   }, [desktopWindowBridge, focusedPaneId, visibleLayout]);
 
-  // The key does what the status bar button does: a layout that is already
-  // tidy stays put, and a change offers Revert.
   const gridlockVisiblePanes = useCallback(() => {
-    const nextLayout = gridlockAllPanes(visibleLayout, { x: 0, y: 0, width, height: contentHeight }, pluginRegistry.panes);
-    if (nextLayout === visibleLayout) return true;
-    persistLayout(nextLayout);
-    notifyGridlockComplete(pluginRegistry.notify.bind(pluginRegistry), () => {
-      pluginRegistry.updateLayoutFn(visibleLayout);
+    tidyWindows({
+      layout: visibleLayout,
+      size: { width, height: contentHeight },
+      paneTypes: pluginRegistry.panes,
+      apply: persistLayout,
+      notify: pluginRegistry.notify,
+      onRevert: () => pluginRegistry.updateLayoutFn(visibleLayout),
     });
     return true;
   }, [contentHeight, persistLayout, pluginRegistry, visibleLayout, width]);

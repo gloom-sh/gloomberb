@@ -15,7 +15,6 @@ export interface LayoutItemsContext {
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
   focusedPaneId: string | null;
-  notifyGridlockRevert: () => void;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   persistLayoutChange: (layout: LayoutConfig) => void;

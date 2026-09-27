@@ -30,10 +30,9 @@ import {
 import { getCurrentPluginTarget } from "../../plugins/current-target";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
-  gridlockAllPanes,
   shouldShowTidyWindows,
+  tidyWindows,
 } from "../../plugins/pane-manager";
-import { notifyGridlockComplete } from "../../plugins/gridlock-notification";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import type { LayoutConfig } from "../../types/config";
@@ -251,19 +250,13 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (!registry) return;
-
-    const currentLayout = registry.getLayoutFn();
-    const { width, height } = registry.getTermSizeFn();
-    const nextLayout = gridlockAllPanes(
-      currentLayout,
-      { x: 0, y: 0, width, height },
-      registry.panes,
-    );
-    if (nextLayout === currentLayout) return;
-
-    registry.updateLayoutFn(nextLayout);
-    notifyGridlockComplete(registry.notify.bind(registry), () => {
-      dispatch({ type: "UNDO_LAYOUT" });
+    tidyWindows({
+      layout: registry.getLayoutFn(),
+      size: registry.getTermSizeFn(),
+      paneTypes: registry.panes,
+      apply: registry.updateLayoutFn,
+      notify: registry.notify,
+      onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
     });
   };
 
@@ -303,9 +296,8 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
         dispatch({ type: "SWITCH_LAYOUT", index });
       }
     };
-    const openWorkflowForLayout = (commandId: string) => {
-      switchToLayout();
-      registry?.openPluginCommandWorkflow(commandId);
+    const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
+      dispatch({ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "builtin-workflow", actionId } });
     };
     const items: ContextMenuItem[] = [];
 
@@ -322,7 +314,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       {
         id: "layout:rename",
         label: "Rename Layout...",
-        onSelect: () => openWorkflowForLayout("rename-layout"),
+        onSelect: () => {
+          switchToLayout();
+          openLayoutWorkflow("rename-layout");
+        },
       },
       {
         id: "layout:duplicate",
@@ -332,7 +327,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       {
         id: "layout:new",
         label: "New Layout...",
-        onSelect: () => registry?.openPluginCommandWorkflow("new-layout"),
+        onSelect: () => openLayoutWorkflow("new-layout"),
       },
       {
         id: "layout:delete",

@@ -59,6 +59,7 @@ export {
   analyzeFloatingPaneVisibility,
   gridlockAllPanes,
   shouldShowTidyWindows,
+  tidyWindows,
   type FloatingPaneVisibility,
 } from "./pane-manager/gridlock";
 export type {

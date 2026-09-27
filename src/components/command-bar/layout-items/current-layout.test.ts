@@ -49,7 +49,6 @@ function createLayoutItemsContext(
     dispatch: (_action: AppAction) => {},
     duplicatePane: () => {},
     focusedPaneId: state.focusedPaneId,
-    notifyGridlockRevert: () => {},
     openBuiltInWorkflow: () => {},
     openInlineConfirm: (confirmOptions) => {
       options.confirmations.push(confirmOptions);

@@ -1,4 +1,5 @@
 import type { FloatingPaneEntry, LayoutConfig } from "../../types/config";
+import type { AppNotificationRequest } from "../../types/plugin";
 import {
   boundsForRects,
   inferDockTreeFromRects,
@@ -90,9 +91,9 @@ export function shouldShowTidyWindows(layout: LayoutConfig): boolean {
     || analyzeFloatingPaneVisibility(layout).some((pane) => pane.buried);
 }
 
-function gridlockPanes(
+export function gridlockAllPanes(
   layout: LayoutConfig,
-  bounds: LayoutBounds,
+  bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
   paneTypes?: PaneTypeAvailability,
 ): LayoutConfig {
   const visibleLayout = paneTypes
@@ -117,10 +118,26 @@ function gridlockPanes(
   });
 }
 
-export function gridlockAllPanes(
-  layout: LayoutConfig,
-  bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
-  paneTypes?: PaneTypeAvailability,
-): LayoutConfig {
-  return gridlockPanes(layout, bounds, paneTypes);
+/**
+ * Tidy Windows, for every surface that offers it: retile `layout` into a
+ * `size` viewport and hand the result to `apply`. A layout with no panes to
+ * tidy stays put, with no toast. Given `notify`, the user is told, and
+ * `onRevert` backs the toast's Revert action.
+ */
+export function tidyWindows({ layout, size, paneTypes, apply, notify, onRevert }: {
+  layout: LayoutConfig;
+  size: { width: number; height: number };
+  paneTypes?: PaneTypeAvailability;
+  apply: (layout: LayoutConfig) => void;
+  notify?: (notification: AppNotificationRequest) => void;
+  onRevert?: () => void;
+}): void {
+  const nextLayout = gridlockAllPanes(layout, { x: 0, y: 0, width: size.width, height: size.height }, paneTypes);
+  if (nextLayout === layout) return;
+  apply(nextLayout);
+  notify?.({
+    body: "Windows tidied",
+    type: "success",
+    ...(onRevert ? { action: { label: "Revert", onClick: onRevert } } : {}),
+  });
 }

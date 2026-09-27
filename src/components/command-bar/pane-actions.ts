@@ -7,7 +7,6 @@ import {
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
 } from "../../types/config";
-import { notifyGridlockComplete } from "../../plugins/gridlock-notification";
 import {
   addPaneFloating,
   addPaneToLayout,
@@ -92,12 +91,6 @@ export function useCommandBarPaneActions({
     pluginRegistry.updateLayoutFn(nextLayout);
   }, [pluginRegistry]);
 
-  const notifyGridlockRevert = useCallback(() => {
-    notifyGridlockComplete(pluginRegistry.notify.bind(pluginRegistry), () => {
-      dispatch({ type: "UNDO_LAYOUT" });
-    });
-  }, [dispatch, pluginRegistry]);
-
   const duplicatePane = useCallback((paneId: string) => {
     const currentState = stateRef.current;
     const pane = findPaneInstance(currentState.config.layout, paneId);
@@ -123,7 +116,6 @@ export function useCommandBarPaneActions({
   return {
     duplicatePane,
     focusTicker,
-    notifyGridlockRevert,
     persistLayoutChange,
     setActiveCollection,
   };

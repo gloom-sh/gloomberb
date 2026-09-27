@@ -1,18 +1,17 @@
 import { findPaneInstance, type LayoutConfig } from "../../../types/config";
-import type { AppNotificationRequest, GloomPluginContext } from "../../../types/plugin";
+import type { AppNotificationRequest } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import type { AppAction } from "../../../state/app/context";
 import { LayoutMarketplacePane } from "../../../layout-marketplace/pane";
-import { notifyGridlockComplete } from "../../gridlock-notification";
 import {
   dockPane,
   floatPane,
   getDockedPaneIds,
-  gridlockAllPanes,
   isPaneInLayout,
   isPaneDocked,
   removePane,
   swapPanes,
+  tidyWindows,
 } from "../../pane-manager";
 
 let dispatchRef: ((action: AppAction) => void) | null = null;
@@ -31,7 +30,7 @@ function clearLayoutManagerDispatch() {
   getStateRef = null;
 }
 
-function persistLayout(_ctx: Pick<GloomPluginContext, "getConfig">, layout: LayoutConfig) {
+function persistLayout(layout: LayoutConfig) {
   if (!dispatchRef) return;
   dispatchRef({ type: "PUSH_LAYOUT_HISTORY" });
   dispatchRef({ type: "UPDATE_LAYOUT", layout });
@@ -77,7 +76,7 @@ export const layoutManagerModule: PluginModule = {
 
         const def = ctx.getPaneDef(focusedPane.paneId);
         const nextLayout = floatPane(layout, focusedPane.instanceId, termWidth, termHeight, def);
-        persistLayout(ctx, nextLayout);
+        persistLayout(nextLayout);
         dispatchRef?.({ type: "FOCUS_PANE", paneId: focusedPane.instanceId });
       },
     });
@@ -99,7 +98,7 @@ export const layoutManagerModule: PluginModule = {
         }
 
         const nextLayout = dockPane(layout, focusedPane.instanceId);
-        persistLayout(ctx, nextLayout);
+        persistLayout(nextLayout);
         dispatchRef?.({ type: "FOCUS_PANE", paneId: focusedPane.instanceId });
       },
     });
@@ -114,13 +113,13 @@ export const layoutManagerModule: PluginModule = {
       execute: async () => {
         if (!getStateRef) return;
         const { layout, termWidth, termHeight } = getStateRef();
-        persistLayout(ctx, gridlockAllPanes(
+        tidyWindows({
           layout,
-          { x: 0, y: 0, width: termWidth, height: termHeight },
-          ctx.getPaneDef,
-        ));
-        notifyGridlockComplete(ctx.notify, () => {
-          dispatchRef?.({ type: "UNDO_LAYOUT" });
+          size: { width: termWidth, height: termHeight },
+          paneTypes: ctx.getPaneDef,
+          apply: persistLayout,
+          notify: ctx.notify,
+          onRevert: () => dispatchRef?.({ type: "UNDO_LAYOUT" }),
         });
       },
     });
@@ -139,25 +138,7 @@ export const layoutManagerModule: PluginModule = {
           notify("Focus a pane to remove it", { type: "info" });
           return;
         }
-        persistLayout(ctx, removePane(layout, focusedPane.instanceId));
-      },
-    });
-
-    ctx.registerCommand({
-      id: "new-layout",
-      label: "New Layout",
-      description: "Create a new layout",
-      keywords: ["new", "create", "add", "layout", "workspace"],
-      category: "config",
-      wizard: [{ key: "name", label: "Layout name", placeholder: "e.g. Trading, Research, Overview" }],
-      execute: async (values) => {
-        const name = values?.name?.trim();
-        if (!name) {
-          notify("Layout name is required", { type: "error" });
-          return;
-        }
-        dispatchRef?.({ type: "NEW_LAYOUT", name });
-        notify(`Layout "${name}" created`, { type: "success" });
+        persistLayout(removePane(layout, focusedPane.instanceId));
       },
     });
 
@@ -189,24 +170,6 @@ export const layoutManagerModule: PluginModule = {
         const name = config.layouts[index]!.name;
         dispatchRef?.({ type: "DELETE_LAYOUT", index });
         notify(`Layout "${name}" deleted`, { type: "success" });
-      },
-    });
-
-    ctx.registerCommand({
-      id: "rename-layout",
-      label: "Rename Layout",
-      description: "Rename the current layout preset",
-      keywords: ["rename", "layout", "preset"],
-      category: "config",
-      wizard: [{ key: "name", label: "New name", placeholder: "Layout name" }],
-      execute: async (values) => {
-        const name = values?.name?.trim();
-        if (!name) {
-          notify("Name is required", { type: "error" });
-          return;
-        }
-        dispatchRef?.({ type: "RENAME_LAYOUT", index: ctx.getConfig().activeLayoutIndex, name });
-        notify(`Layout renamed to "${name}"`, { type: "success" });
       },
     });
 
@@ -244,7 +207,7 @@ export const layoutManagerModule: PluginModule = {
 
         const others = dockedPaneIds.filter((instanceId) => instanceId !== focusedPane.instanceId);
         if (others.length === 1) {
-          persistLayout(ctx, swapPanes(layout, focusedPane.instanceId, others[0]!));
+          persistLayout(swapPanes(layout, focusedPane.instanceId, others[0]!));
           return;
         }
 

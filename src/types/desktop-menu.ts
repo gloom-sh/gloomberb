@@ -1,6 +1,7 @@
 export type DesktopApplicationMenuCommand =
   | { type: "open-command-bar"; query?: string }
   | { type: "open-plugin-workflow"; commandId: string }
+  | { type: "open-builtin-workflow"; actionId: string }
   | { type: "open-url"; url: string }
   | { type: "check-for-updates" }
   | { type: "toggle-status-bar" }

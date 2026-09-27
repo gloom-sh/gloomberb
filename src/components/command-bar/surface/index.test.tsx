@@ -452,6 +452,28 @@ describe("CommandBar", () => {
     expect(frame).toContain("AMD");
   });
 
+  // The status bar tab menu and the desktop Layout menu open New and Rename
+  // Layout this way; a launch the bar ignores leaves them on an empty bar.
+  test("opens a built-in workflow from a launch request", async () => {
+    testSetup = await testRender(<CommandBarHarness
+      query=""
+      configureState={(state) => ({
+        ...state,
+        commandBarLaunchRequest: {
+          kind: "builtin-workflow",
+          actionId: "new-layout",
+          sequence: 1,
+        },
+      })}
+    />, {
+      width: 80,
+      height: 24,
+    });
+
+    const frame = await waitForFrameToContain("Layout Name");
+    expect(frame).toContain("Create Layout");
+  });
+
   test("opens ticker search from a launch request with saved ticker metadata", async () => {
     testSetup = await testRender(<CommandBarHarness
       query=""

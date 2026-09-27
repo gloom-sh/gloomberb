@@ -35,6 +35,12 @@ interface CommandBarPluginLaunchRequest extends CommandBarLaunchRequestBase {
   commandId: string;
 }
 
+/** Open one of the command bar's own workflows, such as `new-layout`. */
+interface CommandBarBuiltInWorkflowLaunchRequest extends CommandBarLaunchRequestBase {
+  kind: "builtin-workflow";
+  actionId: string;
+}
+
 interface CommandBarTickerSearchLaunchRequest extends CommandBarLaunchRequestBase {
   kind: "ticker-search";
   query?: string;
@@ -52,6 +58,7 @@ interface CommandBarRunQueryLaunchRequest extends CommandBarLaunchRequestBase {
 
 export type CommandBarLaunch =
   | { kind: "plugin-command"; commandId: string }
+  | { kind: "builtin-workflow"; actionId: string }
   | { kind: "ticker-search"; query?: string }
   | { kind: "run-query"; query: string };
 
@@ -74,6 +81,7 @@ export interface AppState {
   commandBarQuery: string;
   commandBarLaunchRequest:
     | CommandBarPluginLaunchRequest
+    | CommandBarBuiltInWorkflowLaunchRequest
     | CommandBarTickerSearchLaunchRequest
     | CommandBarRunQueryLaunchRequest
     | null;

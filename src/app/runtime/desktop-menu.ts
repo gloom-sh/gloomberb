@@ -1,6 +1,5 @@
 import { useEffect, type Dispatch } from "react";
-import { notifyGridlockComplete } from "../../plugins/gridlock-notification";
-import { gridlockAllPanes } from "../../plugins/pane-manager";
+import { tidyWindows } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";
@@ -34,6 +33,14 @@ export function useDesktopApplicationMenuRuntime({
         case "open-plugin-workflow":
           pluginRegistry.openPluginCommandWorkflowFn(command.commandId);
           break;
+        case "open-builtin-workflow":
+          dispatch({
+            type: "SET_COMMAND_BAR",
+            open: true,
+            query: "",
+            launch: { kind: "builtin-workflow", actionId: command.actionId },
+          });
+          break;
         case "open-url":
           void rendererHost.openExternal(command.url).catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
@@ -55,18 +62,16 @@ export function useDesktopApplicationMenuRuntime({
         case "layout-redo":
           dispatch({ type: "REDO_LAYOUT" });
           break;
-        case "layout-gridlock": {
-          const { width, height } = pluginRegistry.getTermSizeFn();
-          pluginRegistry.updateLayoutFn(gridlockAllPanes(
-            stateRef.current.config.layout,
-            { x: 0, y: 0, width, height },
-            pluginRegistry.panes,
-          ));
-          notifyGridlockComplete(pluginRegistry.notify.bind(pluginRegistry), () => {
-            dispatch({ type: "UNDO_LAYOUT" });
+        case "layout-gridlock":
+          tidyWindows({
+            layout: stateRef.current.config.layout,
+            size: pluginRegistry.getTermSizeFn(),
+            paneTypes: pluginRegistry.panes,
+            apply: pluginRegistry.updateLayoutFn,
+            notify: pluginRegistry.notify,
+            onRevert: () => dispatch({ type: "UNDO_LAYOUT" }),
           });
           break;
-        }
       }
     });
   }, [

@@ -35,6 +35,10 @@ function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationM
       return typeof command.commandId === "string" && command.commandId.length > 0
         ? { type: "open-plugin-workflow", commandId: command.commandId }
         : null;
+    case "open-builtin-workflow":
+      return typeof command.actionId === "string" && command.actionId.length > 0
+        ? { type: "open-builtin-workflow", actionId: command.actionId }
+        : null;
     case "open-url":
       return typeof command.url === "string" && command.url.length > 0
         ? { type: "open-url", url: command.url }

@@ -39,7 +39,6 @@ interface UseCommandBarRouteActionsOptions {
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
   notify: Notify;
-  notifyGridlockRevert: () => void;
   openAddToPortfolioWorkflow: (ticker: TickerRecord, preferredPortfolioId?: string | null) => void;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
@@ -64,7 +63,6 @@ export function useCommandBarRouteActions({
   dispatch,
   duplicatePane,
   notify,
-  notifyGridlockRevert,
   openAddToPortfolioWorkflow,
   openBuiltInWorkflow,
   openInlineConfirm,
@@ -93,7 +91,6 @@ export function useCommandBarRouteActions({
     confirmDangerousActions: options?.confirmDangerousActions,
     dispatch,
     duplicatePane,
-    notifyGridlockRevert,
     openBuiltInWorkflow,
     openInlineConfirm,
     persistLayoutChange,
@@ -105,7 +102,6 @@ export function useCommandBarRouteActions({
     closeAll,
     dispatch,
     duplicatePane,
-    notifyGridlockRevert,
     openBuiltInWorkflow,
     openInlineConfirm,
     persistLayoutChange,

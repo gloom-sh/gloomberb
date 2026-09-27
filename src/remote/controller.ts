@@ -3,9 +3,9 @@ import {
   dockPane,
   floatPane,
   getDockLeafLayouts,
-  gridlockAllPanes,
   insertAtRootEdge,
   removeFloatingPanes,
+  tidyWindows,
 } from "../plugins/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
@@ -425,15 +425,14 @@ export function createAppRemoteController({
       case "layout.redo":
         dispatch({ type: "REDO_LAYOUT" });
         return getAfterMutationSummary();
-      case "layout.gridlock": {
-        const { width, height } = pluginRegistry.getTermSizeFn();
-        pluginRegistry.updateLayoutFn(gridlockAllPanes(
-          getState().config.layout,
-          { x: 0, y: 0, width, height },
-          pluginRegistry.panes,
-        ));
+      case "layout.gridlock":
+        tidyWindows({
+          layout: getState().config.layout,
+          size: pluginRegistry.getTermSizeFn(),
+          paneTypes: pluginRegistry.panes,
+          apply: pluginRegistry.updateLayoutFn,
+        });
         return getAfterMutationSummary();
-      }
       case "layout.closeFloating": {
         const floatingPaneIds = getState().config.layout.floating.map((entry) => entry.instanceId);
         pluginRegistry.updateLayoutFn(removeFloatingPanes(getState().config.layout));
