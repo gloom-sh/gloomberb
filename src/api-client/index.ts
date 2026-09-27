@@ -333,6 +333,7 @@ class GloomApiClient {
     event: import("./research-activity").ResearchActivity; eventId: string;
     surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
     attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
+    tab?: string;
   }): Promise<void> {
     await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }

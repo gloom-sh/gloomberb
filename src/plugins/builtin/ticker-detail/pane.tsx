@@ -1,6 +1,7 @@
 import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
-import { recordResearchActivity } from "../../../api-client/research-activity";
+import { recordResearchActivity, recordResearchTabView } from "../../../api-client/research-activity";
+import { listExternalPlugins } from "../../external-runtime";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { PaneProps, TickerResearchTabDef } from "../../../types/plugin";
 import { t, tf } from "../../../i18n";
@@ -36,6 +37,8 @@ import { tickerQuoteFooterInfo } from "./quote-footer";
 import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-keys";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
+/** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
+const TICKER_RESEARCH_TAB_VIEW_DWELL_MS = 2_000;
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {
   if (left.size !== right.size) return false;
@@ -247,6 +250,15 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       },
     }];
   }, [dialog, resolvedTabId, setActiveTabId, showTabs, tabItems]);
+  // Which tabs people stay on. A pane pinned to one tab has no strip; opening
+  // it is a function open, counted with those.
+  useEffect(() => {
+    if (!focused || !showTabs) return;
+    const ownerId = registry?.getTickerResearchTabPluginId?.(resolvedTabId);
+    const fromExternalPlugin = !!ownerId && listExternalPlugins().some((entry) => entry.plugin.id === ownerId);
+    const timer = setTimeout(() => recordResearchTabView(resolvedTabId, fromExternalPlugin), TICKER_RESEARCH_TAB_VIEW_DWELL_MS);
+    return () => clearTimeout(timer);
+  }, [focused, registry, resolvedTabId, showTabs]);
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
   const renderedTabIds = useMemo(() => {
