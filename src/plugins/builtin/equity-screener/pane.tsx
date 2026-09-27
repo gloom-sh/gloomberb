@@ -44,7 +44,9 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
@@ -72,11 +74,6 @@ import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { getTableWidth } from "../../../components/ui/table-layout";
-
-/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
-const STREAM_OVERSCAN = 8;
-/** Before the table reports its window, stream what a full-height pane shows. */
-const INITIAL_STREAM_ROWS = 40;
 
 const TABS = [
   { value: "results", label: "Results" },
@@ -164,7 +161,7 @@ function ScreenDetail({
                 metric.value === null
                   ? (metric.reason ?? "unavailable")
                   : [
-                      metric.percentile.value == null ? null : `${rank(metric.percentile.value)} pctl`,
+                      metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
                       stamp.collected ? `collected ${stamp.text}` : stamp.text,
                       metric.state === "available" ? null : metric.state,
                     ].filter(Boolean).join(" \u00b7 ")
@@ -253,13 +250,10 @@ function EquityScreenView({
   // Price, change, volume and market cap stream for the rows on screen; the
   // screen itself (membership, order, percentiles) stays the snapshot's.
   const liveStreaming = useLiveStreamingSetting();
-  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange>({ start: 0, end: INITIAL_STREAM_ROWS });
+  const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange>(INITIAL_STREAM_RANGE);
   const streamTargets = useMemo(() => {
-    const onScreen = snapshotRows.slice(Math.max(0, visibleRange.start - STREAM_OVERSCAN), visibleRange.end + STREAM_OVERSCAN);
     const selectedRow = snapshotRows.find((row) => screenRowId(row) === selectedId);
-    const streamed = selectedRow && !onScreen.includes(selectedRow) ? [...onScreen, selectedRow] : onScreen;
-    const selectedTarget = selectedRow ? selectedRow.symbol : null;
-    return buildScreenerQuoteTargets(streamed, selectedTarget);
+    return buildScreenerQuoteTargets(streamWindowRows(snapshotRows, visibleRange, selectedRow), selectedRow?.symbol ?? null);
   }, [selectedId, snapshotRows, visibleRange]);
   const { entries: liveEntries } = useLiveQuoteEntries(streamTargets, {
     freshnessScopeKey: `equity-screener:${JSON.stringify(definition)}`,

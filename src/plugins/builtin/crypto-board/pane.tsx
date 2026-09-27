@@ -27,6 +27,7 @@ import { formatCompact } from "../../../utils/format";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
 import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {
   buildCryptoColumns,
@@ -49,10 +50,6 @@ import {
 export const CRYPTO_BOARD_REFRESH_MS = 15_000;
 /** Once every streamed row is live, the board only carries the rest of the tab. */
 const CRYPTO_BOARD_STREAMING_REFRESH_MS = 60_000;
-/** Rows streamed beyond the visible window so a short scroll lands on live prices. */
-const STREAM_OVERSCAN = 8;
-/** Before the table reports its window, stream what a full-height pane shows. */
-const INITIAL_STREAM_ROWS = 40;
 
 const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
 
@@ -116,7 +113,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const [activeTab, setActiveTab] = usePluginPaneState<CryptoAssetKind>("activeTab", "coin");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [sort, setSort] = useState<CryptoSortPreference>(DEFAULT_CRYPTO_SORT);
-  const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_STREAM_ROWS });
+  const [visibleRange, setVisibleRange] = useState(INITIAL_STREAM_RANGE);
   const paneVisible = usePaneVisible();
   const reloadBoard = resource.load;
 
@@ -128,12 +125,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   // live ticks from reshuffling the subscription; the overscan covers the drift.
   const streamedAssets = useMemo(() => {
     const ordered = sortCryptoRows(buildCryptoRows(tabAssets, activeTab, NO_QUOTES), sort).map((row) => row.asset);
-    const window = ordered.slice(
-      Math.max(0, visibleRange.start - STREAM_OVERSCAN),
-      visibleRange.end + STREAM_OVERSCAN,
-    );
-    const selected = ordered.find((asset) => asset.symbol === selectedId);
-    return selected && !window.includes(selected) ? [...window, selected] : window;
+    return streamWindowRows(ordered, visibleRange, ordered.find((asset) => asset.symbol === selectedId));
   }, [activeTab, selectedId, sort, tabAssets, visibleRange]);
   const targets = useMemo(() => quoteTargets(streamedAssets, selectedId), [selectedId, streamedAssets]);
   const { entries, freshnessNow } = useLiveQuoteEntries(targets, {
@@ -172,7 +164,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const selectTab = (value: string) => {
     setActiveTab(value as CryptoAssetKind);
     setSelectedId(null);
-    setVisibleRange({ start: 0, end: INITIAL_STREAM_ROWS });
+    setVisibleRange(INITIAL_STREAM_RANGE);
   };
   const { strip: tabStrip } = usePaneTabs({ tabs: tabItems, activeValue: activeTab, onSelect: selectTab, focused, compact: true, variant: "bare" });
 

@@ -314,6 +314,23 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
 
 /** Rows streamed beyond the visible window so a short scroll lands on live prices. */
 const BOARD_STREAM_OVERSCAN = 4;
+/** The same margin for the long scrolling tables that stream by window. */
+const TABLE_STREAM_OVERSCAN = 8;
+/** Before the table reports its window, stream what a full-height pane shows. */
+export const INITIAL_STREAM_RANGE: DataTableVisibleRange = { start: 0, end: 40 };
+
+/**
+ * The rows a long table streams: those on screen plus overscan, and the
+ * selected row wherever it is, so its detail stays live after a scroll.
+ */
+export function streamWindowRows<T>(
+  rows: readonly T[],
+  range: DataTableVisibleRange,
+  selected: T | undefined,
+): T[] {
+  const window = rows.slice(Math.max(0, range.start - TABLE_STREAM_OVERSCAN), range.end + TABLE_STREAM_OVERSCAN);
+  return selected && !window.includes(selected) ? [...window, selected] : window;
+}
 
 /**
  * The symbols of the rows on screen plus overscan, as a set that keeps its
