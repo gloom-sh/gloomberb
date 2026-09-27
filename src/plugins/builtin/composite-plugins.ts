@@ -37,6 +37,7 @@ import { moneyMarketsModule } from "./money-markets";
 import { ratePathModule } from "./rate-path";
 import { debtMaturitiesModule } from "./debt-maturities";
 import { revenueBreakdownModule } from "./revenue-breakdown";
+import { mnaModule } from "./mna";
 import { shortVolumeModule } from "./short-volume";
 import { timeSalesModule } from "./time-sales";
 import { estimateRevisionsModule } from "./estimate-revisions";
@@ -98,6 +99,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     shortVolumeModule,
     debtMaturitiesModule,
     revenueBreakdownModule,
+    mnaModule,
     dividendYieldModule,
     holdersModule,
     shortInterestModule,
