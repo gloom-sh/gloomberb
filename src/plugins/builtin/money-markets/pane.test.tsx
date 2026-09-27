@@ -125,10 +125,11 @@ test("the bills curve names what it plots, and the selected bill is its point", 
   expect(band(lines).some((line) => line.includes("3M 4.08%  1W ago +3.0bp"))).toBe(true);
 });
 
-test("a short pane keeps the board: the chart becomes a strip, then goes", async () => {
+test("a short pane keeps the board: the chart shrinks into the rows it leaves, becomes a strip, then goes", async () => {
   let lines = await render(40, 10);
   const header = lines.findIndex((line) => line.includes("INSTRUMENT"));
-  expect(lines[header - 1]).toContain("● SOFR");
+  // Two rates fit whole, so a compact chart takes the rows they leave.
+  expect(lines.slice(0, header).some((line) => line.includes("● SOFR"))).toBe(true);
   expect(lines.slice(header + 1).filter((line) => /SOFR|EFFR/.test(line))).toHaveLength(2);
   lines = await render(40, 10, "bills");
   expect(band(lines).some((line) => line.includes("● Discount yield") && line.includes("4W 3.86%"))).toBe(true);

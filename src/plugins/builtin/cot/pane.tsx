@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ChartTableHeader, CompositeChart, DataTableStackView, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
+import { ChartTableHeader, CompositeChart, DataTableStackView, spanDigits, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { ResolvedSeries } from "../../../time-series/types";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
 import { isAccessDenied } from "../../../api-client/errors";
 import { Box, type InputRenderable } from "../../../ui";
@@ -137,11 +138,21 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
  * below it when the band has rows for both. The legend formats each series in
  * its own units, which the kit's value-only formatter cannot.
  */
+/**
+ * Each panel's ticks in its own units, with decimals from its own range: whole
+ * contracts in thousands for the net, the price at the precision its span needs
+ * (so 116 / 84.1 / 51.8 reads 120 / 80 / 50).
+ */
+const cotAxisValue = (value: number, domain: CompositeAxisDomain) => domain.unitGroup === "positions"
+  ? `${(value / 1_000).toFixed(spanDigits({ min: domain.min / 1_000, max: domain.max / 1_000 }))}K`
+  : value.toFixed(spanDigits(domain));
+
 function CotChart({ series, width, height }: { series: ResolvedSeries[]; width: number; height: number }) {
   const withPrice = series.length > 1 && height >= PRICE_PANEL_MIN_ROWS;
   const shown = useMemo(() => withPrice ? series : series.filter((entry) => entry.id === "net"), [series, withPrice]);
   return <CompositeChart series={shown} panels={withPrice ? NET_PRICE_PANELS : NET_PANEL} width={width} height={height}
-    focused={false} navigable={false} showLegend showTimeAxis formatValue={cotLegendValue} remoteKind="cot-history" />;
+    focused={false} navigable={false} showLegend showTimeAxis formatValue={cotLegendValue} formatAxisValue={cotAxisValue}
+    remoteKind="cot-history" />;
 }
 
 function CotDetail({ width, height, focused, code, family, traderClass, onClassChange }: Pick<PaneProps, "width" | "height" | "focused"> & { code: string; family: CotFamily; traderClass: CotClass; onClassChange: (value: CotClass) => void }) {

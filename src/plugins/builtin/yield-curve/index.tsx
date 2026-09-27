@@ -103,6 +103,8 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   useShortcut((ev) => {
     if (!focused || dateActive || !isPlainKey(ev, "r")) return;
     void load();
+    // A manual refresh also retries look-backs that failed; good ones are kept.
+    if (session && (lookbackResource.error || lookbacks?.some((lookback) => !lookback.points))) void lookbackResource.load();
   });
 
   const bp = spreadBasisPoints(points);

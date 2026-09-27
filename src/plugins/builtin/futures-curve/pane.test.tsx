@@ -116,7 +116,9 @@ test("a short pane keeps the contracts and shrinks the curve to a strip, then dr
   // Sixteen rows: tabs, figures, a curve that still reads, then the header and four contracts.
   let lines = await render(60, 17);
   let header = lines.findIndex((line) => line.includes("CONTRACT"));
-  expect(lines.slice(0, header).some((line) => line.includes("Index points by contract month"))).toBe(true);
+  // Too narrow for the caption and all three names, so the caption gives way:
+  // every line drawn keeps its name.
+  expect(lines.slice(0, header).some((line) => /● Latest +● 1W ago +● 1M ago/.test(line))).toBe(true);
   expect(lines.slice(header + 1).filter((line) => /ES[HMUZ]\d\d\.CME/.test(line)).length).toBeGreaterThanOrEqual(4);
   // Ten rows: the curve becomes one strip line and the table keeps its rows.
   lines = await render(40, 11);

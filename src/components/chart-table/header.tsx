@@ -9,7 +9,7 @@ import type { CompositeAxisDomain, CompositeChartProps } from "../chart/composit
 import { PriceSparkline } from "../price-sparkline/view";
 import { StatGrid, type StatItem } from "../ui/stat-grid";
 import type { TableWidthColumn } from "../ui/table-layout";
-import { chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
+import { CHART_COMPACT_ROWS, chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
 
 const DAY_MS = 86_400_000;
 /** Daily series shorter than this still span two weeks, so the axis reads days, not hours. */
@@ -34,6 +34,8 @@ export interface ChartTableChart {
   render?: (size: { width: number; height: number }) => ReactNode;
   /** Rows a custom chart needs to be readable; below them the band drops to the strip. */
   minRows?: number;
+  /** Content with a natural height (a few bars): the band never takes more, the table gets the rest. */
+  maxRows?: number;
   /** The strip for a custom chart; kit series derive their own. Null keeps no strip. */
   strip?: ChartStripSpec | null;
   /** The legend value, in the table's units; the series is passed when several share the chart. */
@@ -52,6 +54,12 @@ export interface ChartTableChart {
   remoteKind?: string;
   /** The history is still loading: the band keeps its rows so the table does not jump. */
   loading?: boolean;
+  /**
+   * Shown in the band when the series have nothing to draw, so a chart that
+   * follows the selected row keeps its rows on a row without history instead
+   * of the table jumping up and back.
+   */
+  empty?: string;
 }
 
 export interface ChartTableHeaderProps {
@@ -70,11 +78,16 @@ export interface ChartTableHeaderProps {
   chart?: ChartTableChart | null;
 }
 
-function plottedValues(series: readonly ResolvedSeries[] | undefined): number[] {
-  const first = series?.find((entry) => !entry.hidden);
-  return (first?.points ?? []).flatMap((point) => (
-    point.value != null && Number.isFinite(point.value) ? [point.value] : []
-  ));
+/** The first shown series with a line to draw, and its values. */
+function plottable(series: readonly ResolvedSeries[] | undefined): { entry: ResolvedSeries; values: number[] } | null {
+  for (const entry of series ?? []) {
+    if (entry.hidden) continue;
+    const values = entry.points.flatMap((point) => (
+      point.value != null && Number.isFinite(point.value) ? [point.value] : []
+    ));
+    if (values.length >= 2) return { entry, values };
+  }
+  return null;
 }
 
 function seriesSpan(series: readonly ResolvedSeries[]): { first: number; last: number } | null {
@@ -92,16 +105,20 @@ function seriesSpan(series: readonly ResolvedSeries[]): { first: number; last: n
 }
 
 function stripFromSeries(chart: ChartTableChart): ChartStripSpec | null {
-  const first = chart.series?.find((entry) => !entry.hidden);
-  const values = plottedValues(chart.series);
-  const latest = values.at(-1);
-  if (!first || latest == null || values.length < 2) return null;
+  const line = plottable(chart.series);
+  const latest = line?.values.at(-1);
+  if (!line || latest == null) return null;
   return {
-    label: first.label,
-    values,
-    value: chart.formatValue ? chart.formatValue(latest, first) : String(latest),
-    color: first.color,
+    label: line.entry.label,
+    values: line.values,
+    value: chart.formatValue ? chart.formatValue(latest, line.entry) : String(latest),
+    color: line.entry.color,
   };
+}
+
+/** A figure says the same value when it reads the same, with or without a unit after it. */
+function sameValue(figure: string, value: string): boolean {
+  return figure === value || figure.startsWith(`${value} `);
 }
 
 /**
@@ -116,11 +133,16 @@ export function ChartStrip({ strip, width, figures = [] }: {
 }) {
   const colors = useThemeColors();
   const inner = Math.max(0, width - 2);
-  const shownValue = figures.some((item) => item.value === strip.value) ? "" : strip.value;
+  const shownValue = figures.some((item) => sameValue(item.value, strip.value)) ? "" : strip.value;
   const shownLabel = figures.some((item) => item.label === strip.label) ? "" : strip.label;
   const valueWidth = shownValue ? displayWidth(shownValue) + 1 : 0;
-  const labelRoom = Math.max(0, inner - valueWidth - STRIP_MIN_SPARKLINE - 3);
-  const label = truncateToDisplayWidth(shownLabel, Math.min(displayWidth(shownLabel), labelRoom));
+  const labelWidth = displayWidth(shownLabel);
+  // A label cut to a stub no longer says what is plotted: keep a readable
+  // part of it, and give up the sparkline before the label.
+  const readable = Math.min(labelWidth, 7);
+  let labelRoom = Math.max(0, inner - valueWidth - STRIP_MIN_SPARKLINE - 3);
+  if (labelRoom < readable) labelRoom = Math.max(0, inner - valueWidth - 2);
+  const label = labelRoom >= readable ? truncateToDisplayWidth(shownLabel, Math.min(labelWidth, labelRoom)) : "";
   const sparkWidth = Math.max(0, inner - (label ? displayWidth(label) + 1 : 0) - valueWidth - 2);
   const history = useMemo<PricePoint[]>(
     () => strip.values.map((close, index) => ({ date: new Date(index * DAY_MS), close })),
@@ -130,11 +152,11 @@ export function ChartStrip({ strip, width, figures = [] }: {
     <Box flexDirection="row" height={1} flexShrink={0} paddingX={1} gap={1} overflow="hidden">
       <Text fg={strip.color ?? colors.text}>●</Text>
       {label ? <Text fg={colors.text}>{label}</Text> : null}
-      <Box width={sparkWidth} height={1} flexShrink={0}>
-        {sparkWidth >= STRIP_MIN_SPARKLINE
-          ? <PriceSparkline priceHistory={history} width={sparkWidth} period="all" color={strip.color} />
-          : null}
-      </Box>
+      {sparkWidth >= STRIP_MIN_SPARKLINE ? (
+        <Box width={sparkWidth} height={1} flexShrink={0}>
+          <PriceSparkline priceHistory={history} width={sparkWidth} period="all" color={strip.color} />
+        </Box>
+      ) : null}
       {shownValue ? <Text fg={colors.textBright}>{shownValue}</Text> : null}
     </Box>
   );
@@ -143,7 +165,7 @@ export function ChartStrip({ strip, width, figures = [] }: {
 /** Where a pane puts its chart when it wants the kit's layout without the kit's header. */
 export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLayout {
   const { chart } = props;
-  const hasChart = !!chart && (!!chart.render || plottedValues(chart.series).length >= 2 || !!chart.loading);
+  const hasChart = !!chart && (!!chart.render || !!plottable(chart.series) || !!chart.loading || !!chart.empty);
   return chartTableLayout({
     width: props.width,
     height: props.height,
@@ -153,7 +175,13 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
     tableChromeRows: props.tableChromeRows
       ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined),
     chart: hasChart
-      ? { minRows: chart.minRows, strip: chart.strip !== null && !chart.loading }
+      ? {
+        minRows: chart.minRows,
+        // Kit charts can draw in fewer rows under a short table; custom ones say their own least.
+        compactRows: chart.render ? undefined : CHART_COMPACT_ROWS,
+        maxRows: chart.maxRows,
+        strip: chart.strip !== null,
+      }
       : null,
   });
 }
@@ -183,12 +211,12 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   if (chart && layout.mode === "full") {
     // No padding: the legend's own one-cell inset lines it up with the figures and the table.
     const size = { width: Math.max(1, width), height: layout.chartRows };
-    const ready = !!chart.render || plottedValues(series).length >= 2;
+    const ready = !!chart.render || !!plottable(series);
     band = (
       <Box height={layout.chartRows} flexShrink={0} overflow="hidden">
         {!ready ? (
           <Box width={size.width} height={size.height} justifyContent="center" alignItems="center">
-            <Text fg={colors.textMuted}>Loading history...</Text>
+            <Text fg={colors.textMuted}>{chart.loading ? "Loading history..." : chart.empty ?? ""}</Text>
           </Box>
         ) : chart.render ? chart.render(size) : (
           <CompositeChart
@@ -216,6 +244,13 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
     );
   } else if (layout.mode === "strip" && strip) {
     band = <ChartStrip strip={strip} width={width} figures={layout.figures} />;
+  } else if (layout.mode === "strip" && chart && (chart.loading || chart.empty)) {
+    // The strip's row is held while the history loads, and on a row without one.
+    band = (
+      <Box height={1} flexShrink={0} paddingX={1}>
+        <Text fg={colors.textMuted}>{chart.loading ? "Loading history..." : chart.empty}</Text>
+      </Box>
+    );
   }
 
   if (!query && !layout.figureRows && !band) return null;

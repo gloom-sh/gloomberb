@@ -39,6 +39,19 @@ test("head labels sit beside their heads, a cell apart, never on a head", () => 
   }
 });
 
+test("heads in one cell share a label, the selected name first", () => {
+  const { labels } = layoutTrailOverlay({
+    marks: blank(40, 9),
+    heads: [
+      { id: "XLB", text: "XLB", x: 16, y: 5, color: "#f00", bold: true },
+      { id: "XLF", text: "XLF", x: 16, y: 5, color: "#0f0" },
+    ],
+    centerX: 20, centerY: 4, yName: "Momentum", quadrants: [],
+  });
+  const names = labels.filter((label) => label.id !== "y-name");
+  expect(names).toEqual([{ id: "XLB", text: "XLB/XLF", x: 17, y: 5, color: "#f00", bold: true }]);
+});
+
 test("the crosshair is box lines in the cells the trails leave blank", () => {
   const marks = blank(21, 7);
   // A trail crosses the center row at column 4 and the center column at row 1.

@@ -604,7 +604,7 @@ for (const scenario of ["unknown currency", "dated correction", "empty observati
   });
 }
 
-test("the overview draws the account history between its figures and the sector rows, and folds it in a short pane", async () => {
+test("the overview draws the account history between its figures and the sector rows, and compacts it in a short pane", async () => {
   const performance: BrokerPortfolioPerformance = {
     accountId: "DU12345", source: "flex", period: "YTD", currency: "USD", fetchedAt: 1,
     points: Array.from({ length: 30 }, (_, index) => ({
@@ -632,9 +632,10 @@ test("the overview draws the account history between its figures and the sector 
     const header = lines.findIndex((line) => line.includes("SECTOR"));
     expect(legend).toBeGreaterThan(0);
     expect(lines[legend]).toContain(width === 78 ? "● Value (USD) 14.4k" : "● Value (USD) ");
-    // The chart takes rows at the default size; a short pane keeps a one-row strip and the sector rows.
+    // The chart takes rows at the default size; in a short pane whose sector
+    // rows fit whole it keeps a compact four rows instead of a strip over blank rows.
     expect(header - legend).toBeGreaterThan(width === 78 ? 6 : 0);
-    if (width === 60) expect(header - legend).toBe(1);
+    if (width === 60) expect(header - legend).toBe(4);
     expect(lines.slice(header + 1).some((line) => line.includes("Technology"))).toBe(true);
     await act(async () => {
       testSetup!.renderer.destroy();

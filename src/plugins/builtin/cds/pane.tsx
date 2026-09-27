@@ -185,7 +185,13 @@ function CdsTradeTable({
 
 const NO_TRADES: CdsTrade[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
-const tradeDate = (trade: CdsTrade) => new Date(trade.eventAt);
+/**
+ * The 5Y line has one point per New York trade date, dated at UTC midnight, so
+ * a trade's cursor is its New York day, not its time: an afternoon print would
+ * otherwise snap to the next day's point.
+ */
+const tradeDate = (trade: CdsTrade) =>
+  new Date(`${new Date(trade.eventAt).toLocaleDateString("en-CA", { timeZone: "America/New_York" })}T00:00:00Z`);
 
 /**
  * The issuer's figures, then its 5Y line over the trades, sized by the chart
@@ -203,10 +209,16 @@ function IssuerHeader({ issuer, points, trades, width, height, focused, loading,
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  // The level first: in a short pane the figures at the end give way.
+  // The level, then whose spread it is: in a short pane the figures at the end
+  // give way. While the history loads the level holds its place, so the trades
+  // do not move when it lands.
+  const [level, ...rest] = loading && !points.length
+    ? [{ id: "spread", label: "5Y spread", value: "--" }]
+    : spreadFigures(points);
   const figures: StatItem[] = [
-    ...spreadFigures(points),
+    ...(level ? [level] : []),
     ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
+    ...rest,
   ];
   const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
     id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
@@ -218,6 +230,7 @@ function IssuerHeader({ issuer, points, trades, width, height, focused, loading,
   });
   return (
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
+      tableColumns={buildTradeColumns(width)}
       chart={points.length >= 2 || loading ? {
         series, formatValue: formatBp, formatAxisValue: formatBpAxis, remoteKind: "cds-spread-history", loading, ...link,
       } : null} />

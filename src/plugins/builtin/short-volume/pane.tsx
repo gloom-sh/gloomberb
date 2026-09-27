@@ -100,7 +100,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
         detailTitle={openRow?.date} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as VolumeSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
-        rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={figures} chart={{
+        rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={VOLUME_COLUMNS} figures={figures} chart={{
           series, formatValue: volumePercent, formatAxisValue: formatPercentAxis, remoteKind: "short-volume-history", ...link,
         }} />}
       /> : null}

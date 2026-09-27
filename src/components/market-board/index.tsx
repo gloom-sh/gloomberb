@@ -50,7 +50,11 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   /** Colour the change by sign. Off by default: a rate moving up is not good news. */
   signedChange?: boolean;
   extraColumns?: Array<{ column: DataTableColumn; sortValue: (row: T) => string | number | null; renderCell: (row: T) => DataTableCell }>;
-  rootBefore?: ReactNode;
+  /**
+   * Content above the board. A function gets the columns the board fitted to
+   * the width, so a header zone can count the scrollbar row they need.
+   */
+  rootBefore?: ReactNode | ((board: { columns: readonly DataTableColumn[] }) => ReactNode);
   emptyTitle?: string;
 }
 
@@ -150,6 +154,6 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     sortable isColumnSortable={(column) => column.id !== "history"}
     sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => {
       if (id !== "history") setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }));
-    }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={rootBefore}
+    }} rootWidth={width} rootHeight={Math.max(3, height)} rootBefore={typeof rootBefore === "function" ? rootBefore({ columns }) : rootBefore}
     freezeFirstColumn emptyStateTitle={emptyTitle} />;
 }

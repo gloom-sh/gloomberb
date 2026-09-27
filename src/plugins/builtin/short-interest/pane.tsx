@@ -159,9 +159,11 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         rootWidth={width}
         rootHeight={height}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
-          figures={figures} chart={{
+          // Two settlements (the signed-out fallback) are a line between numbers the
+          // figures and rows already give, so the chart waits for a real history.
+          figures={figures} chart={records.length >= 3 ? {
           series, formatValue: formatMaybeCompact, formatAxisValue: formatSharesAxis, remoteKind: "short-interest-history", ...link,
-        }} />}
+        } : null} />}
         columns={columns}
         freezeFirstColumn
         items={sortedRows}

@@ -59,6 +59,8 @@ function spreadChart(row: CreditConditionRow) {
   return {
     series: spreadHistorySeries(row), formatValue: (value: number) => formatBp(value),
     formatAxisValue: formatBpAxis, remoteKind: "credit-spread-history",
+    // An index without a history keeps the band, so the board does not jump under the cursor.
+    empty: `No history for ${row.label}`,
   };
 }
 
@@ -138,8 +140,8 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   const selected = boardRows.find((row) => row.id === selectedId) ?? boardRows[0];
   return (
     <MarketBoardStack rows={boardRows} width={width} height={height} focused={focused}
-      rootBefore={<ChartTableHeader width={width} height={height} tableRows={boardRows.length}
-        chart={selected ? spreadChart(selected.spread) : null} />}
+      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={boardRows.length}
+        tableColumns={columns} chart={selected ? spreadChart(selected.spread) : null} />}
       selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={10} valueLabel="OAS" valueWidth={10}
       renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} focused={focused} />} />

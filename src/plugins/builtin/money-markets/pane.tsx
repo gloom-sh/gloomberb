@@ -114,6 +114,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   } : null : selectedRow ? {
     series: boardSeries, formatValue: (value) => moneyMarketValue(value, selectedRow.observation.unit),
     formatAxisValue: moneyMarketAxis(selectedRow.observation.unit), remoteKind: "money-market-history",
+    // A rate without a history keeps the band, so the board does not jump as the cursor passes it.
+    empty: `No history for ${selectedRow.label}`,
   } : null;
   const figures = billsTab ? billsItems : [];
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
@@ -137,8 +139,8 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
       {data ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}
         selectedId={selectedRow?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
         changeLabel="Δ OBS" renderDetail={(row) => <ObservationDetail row={row.observation} width={width} height={Math.max(5, bodyHeight - 2)} focused={focused} />}
-        rootBefore={<ChartTableHeader width={width} height={bodyHeight} figures={figures} chart={chart}
-          tableRows={rows.length} />} /> : null}
+        rootBefore={({ columns }) => <ChartTableHeader width={width} height={bodyHeight} figures={figures} chart={chart}
+          tableRows={rows.length} tableColumns={columns} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

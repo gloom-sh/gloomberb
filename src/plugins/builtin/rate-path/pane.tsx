@@ -147,6 +147,11 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       {data ? tab === "path" ? <DataTableView columns={meetingColumns} items={meetings} selection={selection} focused={focused}
           sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={meetingKey} renderCell={meetingCell}
           rootWidth={width} rootHeight={bodyHeight} emptyStateTitle="No scheduled FOMC meetings"
+          // A column left out because every meeting shares it still belongs in the export.
+          getExportMetadata={() => meetings[0] ? [
+            ...(meetingColumns.some((column) => column.id === "percentile") ? [] : [["percentile 1Y", percentile(meetings[0].percentile)]]),
+            ...(meetingColumns.some((column) => column.id === "asOf") ? [] : [["as of UTC", timestamp(meetings[0].asOf)]]),
+          ] : []}
           rootBefore={header(meetingColumns, meetings.length, pathChart)} />
         : tab === "probabilities" ? <DataTableView
           columns={probabilityColumns}

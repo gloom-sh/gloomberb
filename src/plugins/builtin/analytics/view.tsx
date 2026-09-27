@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { DataTableView, type StatItem } from "../../../components";
+import { statGridColumns } from "../../../components/ui/stat-grid";
 import type { DataTableCell } from "../../../components/ui/data-table/types";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompactAmount, formatPercentRaw } from "../../../utils/format";
@@ -20,8 +21,9 @@ export interface AnalyticsMetricRow {
 
 /**
  * Most important first: in a short pane the figures at the end give way. The
- * account's level and its moves lead, the basket estimates follow, and the
- * margin detail, as-of and source close the list.
+ * account's level and its moves lead, with how old they are and where they
+ * come from right after; the basket estimates follow and the margin detail
+ * closes the list.
  */
 const FIGURE_ORDER = [
   "fx-unavailable",
@@ -30,6 +32,8 @@ const FIGURE_ORDER = [
   "day-pnl",
   "pnl",
   "historical-return",
+  "account-freshness",
+  "account-source",
   "cash",
   "sharpe",
   "beta",
@@ -41,8 +45,6 @@ const FIGURE_ORDER = [
   "buying-power",
   "excess-liquidity",
   "settled-cash",
-  "account-freshness",
-  "account-source",
 ];
 const RISK_FIGURE_IDS: ReadonlySet<string> = new Set(["sharpe", "beta", "volatility", "max-drawdown"]);
 
@@ -54,16 +56,33 @@ function figureRank(id: string): number {
 /**
  * The overview's summary and risk rows as one set of figures. A figure's
  * detail stays short so the grid keeps its columns: the P&L percent loses its
- * brackets, and the risk rows' sample window and reasons are left to the
- * footer (`riskFigureNotices`).
+ * brackets, a risk row's sample window shows only when the grid has the room
+ * for it at `width`, and why a risk row reads "—" goes to the footer
+ * (`riskFigureNotices`).
  */
-export function analyticsFigures(summaryRows: readonly AnalyticsMetricRow[], riskRows: readonly AnalyticsMetricRow[]): StatItem[] {
+export function analyticsFigures(
+  summaryRows: readonly AnalyticsMetricRow[],
+  riskRows: readonly AnalyticsMetricRow[],
+  width = 0,
+): StatItem[] {
+  const short = figuresFrom(summaryRows, riskRows, false);
+  if (!riskRows.some((row) => row.value !== "—" && row.detail)) return short;
+  const windowed = figuresFrom(summaryRows, riskRows, true);
+  return statGridColumns(windowed, width) >= statGridColumns(short, width) ? windowed : short;
+}
+
+function figuresFrom(
+  summaryRows: readonly AnalyticsMetricRow[],
+  riskRows: readonly AnalyticsMetricRow[],
+  riskWindows: boolean,
+): StatItem[] {
   return [...summaryRows, ...riskRows]
     .map((row, index) => ({ row, index }))
     .sort((left, right) => figureRank(left.row.id) - figureRank(right.row.id) || left.index - right.index)
     .map(({ row }) => {
       const percent = row.id === "day-pnl" || row.id === "pnl" ? row.detail?.replace(/^\((.*)\)$/, "$1") : row.detail;
-      const detail = RISK_FIGURE_IDS.has(row.id) || percent === "—" ? undefined : percent;
+      const risk = RISK_FIGURE_IDS.has(row.id);
+      const detail = percent === "—" || (risk && (!riskWindows || row.value === "—")) ? undefined : percent;
       return {
         id: row.id,
         label: row.label,

@@ -110,10 +110,10 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
           {row.map((item, index) => {
             const label = t(item.label);
             const width = item.wide ? innerWidth : cellWidth;
-            // The label takes what the grid's widest value leaves, so values
-            // stay aligned down the column and a label is cut only when the
-            // cell has no room for it.
-            const labelWidth = Math.min(labels + 1, Math.max(4, width - widestValue - 1));
+            // The label grows into what the grid's widest value leaves, and
+            // never gets less than half the cell, so one long value cannot cut
+            // every label in a grid with a fixed column count.
+            const labelWidth = Math.min(labels + 1, Math.max(4, Math.floor(width * 0.5), width - widestValue - 1));
             const valueWidth = Math.max(1, width - labelWidth);
             const value = nativePaneChrome ? item.value : truncateToDisplayWidth(item.value, valueWidth);
             const detailWidth = valueWidth - displayWidth(value) - 2;

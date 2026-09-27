@@ -144,6 +144,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
         sortColumnId={sort.id} sortDirection={sort.direction}
         onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }))}
         emptyStateTitle="No listed contracts available."
+        // The Curve tab leaves the quote time to the footer; the export keeps it.
+        getExportMetadata={() => curveTab && newest ? [[`as of${newest.includes("T") ? " UTC" : ""}`, curveTimestamp(newest)]] : []}
         rootBefore={<ChartTableHeader width={width} height={bodyHeight} figures={statItems} tableChromeRows={tableChromeRows}
           tableRows={tableRows.length}
           chart={chart} />} /> : null}

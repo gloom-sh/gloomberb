@@ -96,7 +96,15 @@ export function layoutTrailOverlay({ marks, heads, centerX, centerY, cursorX = n
     labels.push(label);
   };
 
+  // Heads that land in one cell share one label, the first (the selected) head's
+  // name leading, so no name sits beside a cell another head is drawn in.
+  const byCell = new Map<string, HeadLabel[]>();
   for (const head of heads) {
+    const key = `${head.x}:${head.y}`;
+    byCell.set(key, [...(byCell.get(key) ?? []), head]);
+  }
+  for (const group of byCell.values()) {
+    const head = group.length === 1 ? group[0]! : { ...group[0]!, text: group.map((entry) => entry.text).join("/") };
     const length = displayWidth(head.text);
     const half = Math.floor(length / 2);
     const candidates = [

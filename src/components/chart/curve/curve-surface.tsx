@@ -84,26 +84,51 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const colorOf = (id: string) => chart.series.find((row) => row.id === id)?.color;
   const visible = series.filter((entry) => entry.chartVisible !== false);
   const legendRows: LegendItem[][] = [];
+  // With a caption, the series named in its row are the ones drawn: a line the
+  // legend has no room to name is left off rather than drawn unnamed.
+  let named: Set<string> | null = null;
   if (caption) {
     // One row: the caption, then the series it draws when there is more than
-    // one to tell apart, the primary first, dropping those that do not fit.
-    const row: LegendItem[] = [{ id: "caption", text: caption, color: undefined }];
-    let used = displayWidth(caption);
+    // one to tell apart, the primary first. The caption gives way before a
+    // series name does, then the last series go.
     const ordered = primary ? [primary, ...visible.filter((entry) => entry !== primary)] : visible;
-    for (const entry of visible.length > 1 ? ordered : []) {
-      const text = curveLookbackLabel(entry.label);
-      // Two lines that draw one band (a target floor and ceiling) share a label and one entry.
-      if (entry.chartVisible === false || row.some((item) => item.text === text)) continue;
-      if (used + 3 + displayWidth(text) + 2 > totalWidth - 2) break;
-      row.push({ id: entry.id, text, color: colorOf(entry.id) });
-      used += 3 + displayWidth(text) + 2;
-    }
-    legendRows.push(row);
+    const pack = (withCaption: boolean) => {
+      const row: LegendItem[] = withCaption ? [{ id: "caption", text: caption, color: undefined }] : [];
+      const ids = new Set<string>();
+      let used = withCaption ? displayWidth(caption) : -3;
+      let complete = true;
+      for (const entry of visible.length > 1 ? ordered : []) {
+        const text = curveLookbackLabel(entry.label);
+        // Two lines that draw one band (a target floor and ceiling) share a label and one entry.
+        if (row.some((item) => item.text === text)) {
+          ids.add(entry.id);
+          continue;
+        }
+        if (used + 3 + displayWidth(text) + 2 > totalWidth - 2) {
+          complete = false;
+          break;
+        }
+        row.push({ id: entry.id, text, color: colorOf(entry.id) });
+        ids.add(entry.id);
+        used += 3 + displayWidth(text) + 2;
+      }
+      return { row, ids, complete };
+    };
+    let packed = pack(true);
+    if (!packed.complete) packed = pack(false);
+    legendRows.push(packed.row);
+    if (visible.length > 1) named = packed.ids;
   } else {
     for (const row of curveLegendLayout(series, totalWidth)) {
       legendRows.push(row.map((entry) => ({ id: entry.id, text: curveLegendText(entry), color: colorOf(entry.id) })));
     }
   }
+  const unnamedKey = named ? visible.filter((entry) => !named!.has(entry.id)).map((entry) => entry.id).join("|") : "";
+  const unnamed = useMemo(() => new Set(unnamedKey ? unnamedKey.split("|") : []), [unnamedKey]);
+  const drawnSeries = useMemo(
+    () => unnamed.size ? chart.series.filter((entry) => !unnamed.has(entry.id)) : chart.series,
+    [chart.series, unnamed],
+  );
   const showChart = display !== "table" && totalWidth >= 24 && totalHeight >= Math.max(1, legendRows.length) + 6 && plottedCount >= 2;
   const showTable = display === "table" || display === "both" || (display === "auto" && !showChart);
   const legendHeight = showChart ? legendRows.length : 0;
@@ -115,8 +140,8 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const axisFormat = formatAxisValue ?? formatValue;
   // Axis labels are culled at the plot's width, not the surface's: the value
   // gutter takes its labels' width off the right.
-  const plotWidth = useMemo(() => showChart ? curvePlotWidth(chart.series, totalWidth, chartHeight - 1, axisFormat) : totalWidth,
-    [axisFormat, chart.series, chartHeight, showChart, totalWidth]);
+  const plotWidth = useMemo(() => showChart ? curvePlotWidth(drawnSeries, totalWidth, chartHeight - 1, axisFormat) : totalWidth,
+    [axisFormat, drawnSeries, chartHeight, showChart, totalWidth]);
   const select = useCallback((row: CurveTableRow) => {
     setLocalSelection(row.id);
     hoverRef.current = null;
@@ -196,12 +221,14 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     // the same everywhere, so it is drawn and named but never read out.
     for (const entry of series) {
       if (entry === primary || !isCurveRowSeries(entry) || entry.role === "primary" || isConstant(entry)) continue;
+      // A line the legend could not name is not drawn, so it is not read out either.
+      if (unnamed.has(entry.id)) continue;
       const past = cursorRow.points[entry.id]?.value;
       if (value == null || past == null || !Number.isFinite(value) || !Number.isFinite(past)) continue;
       parts.push({ label: curveLookbackLabel(entry.label), value: change(value - past) });
     }
     return parts;
-  }, [cursorRow, formatChange, formatValue, primary, series]);
+  }, [cursorRow, formatChange, formatValue, primary, series, unnamed]);
   if (!rows.length) return <EmptyState title="No curve observations." />;
   if (!showChart && !showTable) return null;
   // The readout keeps the row and its value, then as many look-backs as fit.
@@ -234,7 +261,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
         {slope.asOf ? ` · ${sourceTime(slope.asOf)}` : ""}</Text>
     </Box> : null}
     {/* Left/Right step the rows above, so the chart takes no keys of its own. */}
-    {showChart ? <CompositeChart series={chart.series} panels={PANELS} width={totalWidth} height={chartHeight}
+    {showChart ? <CompositeChart series={drawnSeries} panels={PANELS} width={totalWidth} height={chartHeight}
       navigable={false} showLegend={false} showTimeAxis xAxis={xAxis}
       formatAxisValue={axisFormat} cursorDate={cursorDate} onCursorDateChange={onCursorDateChange}
       onActivate={onActivate} remoteKind="curve-chart" /> : null}

@@ -306,7 +306,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     }),
     [accountReturns, beta, betaResult, hasPositions, returnSeriesResult, spyReturnSeries, sharpe],
   );
-  const figures = useMemo(() => analyticsFigures(summaryRows, riskRows), [riskRows, summaryRows]);
+  const figures = useMemo(() => analyticsFigures(summaryRows, riskRows, width), [riskRows, summaryRows, width]);
   const historyNote = performanceHistoryNote(brokerPerformance.performance);
   const performance = brokerPerformance.performance;
   const historyValues = performanceChartPoints.filter((point) => Number.isFinite(point.close)).length;

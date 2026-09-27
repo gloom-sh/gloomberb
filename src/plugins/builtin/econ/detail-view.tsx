@@ -50,16 +50,18 @@ interface HistoryRow {
 
 /**
  * The value column is named like the chart's series, so the legend and the
- * table read the same. The change column goes where it would run off a narrow
- * pane, since a clipped "-0.10pp" would read "-0".
+ * table read the same, but it is never wider than the pane leaves: a long
+ * event name truncates in the header rather than pushing the right-aligned
+ * values off the edge ("162" read "16"). The change column goes next, since a
+ * clipped "-0.10pp" would read "-0".
  */
 function historyColumns(label: string, width: number): DataTableColumn[] {
-  const columns: DataTableColumn[] = [
-    { id: "date", label: "Period", width: 12, align: "left" },
-    { id: "value", label, width: Math.max(10, Math.min(26, displayWidth(label) + 2)), align: "right" },
-    { id: "change", label: "Chg", width: 10, align: "right" },
-  ];
-  return hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1) ? columns.slice(0, 2) : columns;
+  const overflows = (columns: DataTableColumn[]) => hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1);
+  const date: DataTableColumn = { id: "date", label: "Period", width: 12, align: "left" };
+  const value: DataTableColumn = { id: "value", label, width: Math.max(10, Math.min(26, displayWidth(label) + 2)), align: "right" };
+  while (value.width > 10 && overflows([date, value])) value.width -= 1;
+  const columns: DataTableColumn[] = [date, value, { id: "change", label: "Chg", width: 10, align: "right" }];
+  return overflows(columns) ? columns.slice(0, 2) : columns;
 }
 
 function isPercent(units: string): boolean {
@@ -274,7 +276,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       selection={{ kind: "id", selectedId, getId: historyKey, onChange: (id) => setSelectedDate(id) }}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} figures={statItems}
+      rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} figures={statItems}
         chart={projected.length >= 2 ? {
           series,
           formatValue: (value) => formatHistoryValue(value, units),

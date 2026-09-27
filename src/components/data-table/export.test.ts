@@ -19,3 +19,19 @@ test("exports displayed table cells and skips section headers", () => {
 
   expect(csv).toBe(`${EXCEL_CSV_BOM}Name,Change\nS&P 500,'+1.25%`);
 });
+
+test("leaves out a column drawn only as graphics", () => {
+  const csv = createDataTableCsv({
+    columns: [
+      { id: "name", label: "Name", width: 20, align: "left" },
+      { id: "bar", label: "Wall", width: 10, align: "left" },
+      { id: "value", label: "Share", width: 10, align: "right" },
+    ],
+    items: [{ name: "2027", value: "12.5%" }],
+    renderCell: (item, column) => column.id === "bar"
+      ? { text: "", content: "bar" }
+      : { text: item[column.id as "name" | "value"] },
+  });
+
+  expect(csv).toBe(`${EXCEL_CSV_BOM}Name,Share\n2027,12.5%`);
+});

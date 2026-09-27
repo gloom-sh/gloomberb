@@ -198,14 +198,18 @@ describe("CdsPane", () => {
     expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(12 - 4);
     expect(lines.some((line) => line.includes("● 5Y spread"))).toBe(true);
     await act(async () => setup?.renderer.destroy());
-    // Nine rows: the figures, the strip, then every trade. The rows the
-    // three trades leave go to figures rather than to a blank band.
+    // Nine rows: the figures, then a compact chart in the rows the three trades leave.
     await renderPane({ symbol: "ORCL", height: 9, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
     lines = setup!.captureCharFrame().split("\n");
-    const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
     expect(lines[0]).toContain("235bp");
+    expect(lines.some((line) => line.includes("● 5Y spread"))).toBe(true);
+    expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(9 - 4);
+    await act(async () => setup?.renderer.destroy());
+    // Seven rows: too short for any chart, so a one-row strip, then every trade.
+    await renderPane({ symbol: "ORCL", height: 7, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
+    lines = setup!.captureCharFrame().split("\n");
+    const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
     expect(lines[tableHeader - 1]).toContain("●");
-    expect(tableHeader).toBeLessThanOrEqual(9 - 4);
     expect(lines.filter((line) => /\d{2}\/\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
   });
 

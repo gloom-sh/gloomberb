@@ -210,8 +210,13 @@ function OpenRolesBand({ summary, series, functionRows, width, height, wide }: {
   );
 }
 
+/** The tags worth a badge: at least two roles and 2% of the open ones. */
+function signalTags(summary: CloudJobsSummaryPayload) {
+  return summary.tags.filter((tag) => tag.count >= Math.max(2, summary.openCount * 0.02)).slice(0, 6);
+}
+
 function Signals({ summary }: { summary: CloudJobsSummaryPayload }) {
-  const tags = summary.tags.filter((tag) => tag.count >= Math.max(2, summary.openCount * 0.02)).slice(0, 6);
+  const tags = signalTags(summary);
   if (tags.length === 0) return null;
   return (
     <Box flexDirection="row" paddingX={1} height={1} gap={1} overflow="hidden">
@@ -405,6 +410,10 @@ function CompanyView({
       id: "open-roles", label: "Open roles", color: openRolesColor(summary), calendarSpaced: true,
     })] : null;
   }, [summary]);
+  // Before a week of reads the band is a few posting-age bars, not a chart:
+  // it takes the rows they need and the roles list gets the rest.
+  const ageRowCount = useMemo(() => buildAgeBars(summary).length, [summary]);
+  const barsRows = series ? undefined : 1 + Math.max(1, ageRowCount, wide ? functionRows.length : 0);
   // The kit sizes the band over the roles list, so a short pane keeps the
   // roles and the band gives way to the strip, then to nothing. The other
   // tabs share the same band so it does not jump between them.
@@ -417,6 +426,8 @@ function CompanyView({
       render: (size) => (
         <OpenRolesBand summary={summary} series={series} functionRows={functionRows} width={size.width} height={size.height} wide={wide} />
       ),
+      maxRows: barsRows,
+      minRows: barsRows ? Math.min(barsRows, 3) : undefined,
       strip: series ? {
         label: "Open roles",
         values: series[0]!.points.map((point) => point.value ?? 0),
@@ -428,7 +439,7 @@ function CompanyView({
   // The tag badges are a row of their own, kept while the band has its full chart.
   const tabRows = 1;
   const withSignals = useChartTableLayout({ ...header, height: height - tabRows - 1 });
-  const signalsHeight = summary.tags.length > 0 && withSignals.mode === "full" ? 1 : 0;
+  const signalsHeight = signalTags(summary).length > 0 && withSignals.mode === "full" ? 1 : 0;
   const bodyHeight = Math.max(1, height - tabRows - signalsHeight);
   const layout = useChartTableLayout({ ...header, height: bodyHeight });
   const bandRows = layout.mode === "full" ? layout.chartRows : layout.mode === "strip" ? 1 : 0;

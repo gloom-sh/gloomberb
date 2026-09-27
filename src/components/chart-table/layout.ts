@@ -3,6 +3,9 @@ import { getTableWidth, hasMeaningfulTableHorizontalOverflow, type TableWidthCol
 
 /** A readable kit chart: legend row, four plot rows, time axis. */
 export const CHART_MIN_ROWS = 6;
+/** The least a kit chart draws in: legend, two plot rows, time axis. Only
+ * used for rows a short table leaves, which would otherwise stay blank. */
+export const CHART_COMPACT_ROWS = 4;
 /** Narrower than this the axis labels no longer fit beside the plot. */
 export const CHART_MIN_WIDTH = 24;
 /** The table keeps its header and this many rows before the chart gives way. */
@@ -41,8 +44,12 @@ export interface ChartTableLayoutInput {
   tableRows: number;
   /** Rows the table spends on its header, plus one when a horizontal scrollbar shows. */
   tableChromeRows?: number;
-  /** Null when there is nothing to chart. */
-  chart: { minRows?: number; strip?: boolean } | null;
+  /**
+   * Null when there is nothing to chart. `compactRows` is the least it can
+   * draw in below a short table; `maxRows` caps content with a natural
+   * height (a few bars), whose rows beyond it go to the table.
+   */
+  chart: { minRows?: number; compactRows?: number; maxRows?: number; strip?: boolean } | null;
 }
 
 export interface ChartTableLayout {
@@ -111,14 +118,20 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   if (!input.chart || width < CHART_MIN_WIDTH) return none;
 
   const minRows = input.chart.minRows ?? CHART_MIN_ROWS;
+  const compactRows = Math.min(minRows, input.chart.compactRows ?? minRows);
+  const maxRows = input.chart.maxRows ?? Number.POSITIVE_INFINITY;
   const room = rest - tableMin;
+  const spare = rest - tableFit;
+  const full = (rows: number): ChartTableLayout => ({ figures, figureRows, mode: "full", chartRows: Math.min(rows, maxRows) });
   if (room >= minRows) {
+    // With every table row in view beside a readable chart, the chart takes
+    // exactly the rest; otherwise its 40% share, never below what it draws in.
     const share = Math.round(rest * CHART_SHARE);
-    const spare = rest - tableFit;
-    // Every row a short table leaves, but never fewer than the chart can draw in.
-    const chartRows = spare >= Math.max(share, minRows) ? spare : Math.min(room, Math.max(minRows, share));
-    return { figures, figureRows, mode: "full", chartRows };
+    return full(spare >= minRows ? spare : Math.min(room, Math.max(minRows, share)));
   }
+  // A short table that fits whole: a compact chart fills the rows it leaves
+  // instead of a strip over a blank band.
+  if (spare >= compactRows) return full(spare);
   if (input.chart.strip !== false && room >= 1) {
     return { figures, figureRows, mode: "strip", chartRows: 1 };
   }

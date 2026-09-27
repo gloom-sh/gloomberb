@@ -95,6 +95,8 @@ test("the period detail charts recorded and lookback EPS over its observations, 
 test("a short detail keeps the observations and draws the chart as a strip", async () => {
   const lines = await renderDetail(60, 11);
   const header = lines.findIndex((line) => line.includes("OBSERVED"));
-  expect(lines[header - 1]).toMatch(/^ ● Recorded [⠀-⣿]+ 1\.71/);
+  // The EPS figure above already reads 1.71, so the strip does not repeat it.
+  expect(lines[header - 2]).toContain("EPS  1.71 USD");
+  expect(lines[header - 1]).toMatch(/^ ● Recorded [⠀-⣿]+\s*$/);
   expect(lines.slice(header + 1).filter((line) => /\d{4}-\d{2}-\d{2}/.test(line)).length).toBeGreaterThanOrEqual(4);
 });
