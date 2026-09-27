@@ -133,6 +133,11 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       return true;
     },
 
+    // Nothing to save: the profile only names the broker. Onboarding asks every adapter.
+    getPersistedConfigUpdate() {
+      return null;
+    },
+
     async importPortfolioSnapshot(instance) {
       const { accounts, positions } = await snapshot(instance);
       return { accounts, positions };
