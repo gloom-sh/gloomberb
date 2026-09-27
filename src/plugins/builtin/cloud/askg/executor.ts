@@ -1,6 +1,5 @@
 import type { MarketContext } from "../../../../cli/types";
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
-import { withPersistedCloudSession } from "../../../../cli/pane-functions/cloud-session";
 import {
   loadResolvedHeadlessPaneModel,
   serializeHeadlessPaneResult,
@@ -284,6 +283,11 @@ async function runWithDeadline<T>(
   }
 }
 
+/**
+ * Tools run inside the app, whose API client already holds the signed-in
+ * session. The CLI's `withPersistedCloudSession` is for processes that start
+ * signed out, and it reads `process.env`, which the desktop and web views lack.
+ */
 function defaultHeadlessExecutor(
   registry: PaneFunctionCatalog,
   context: MarketContext,
@@ -302,10 +306,7 @@ function defaultHeadlessExecutor(
       watermark: null,
       requireBotSafe: false,
     }, { strictHeadlessOptions: true });
-    const loaded = await withPersistedCloudSession(
-      context,
-      () => loadResolvedHeadlessPaneModel(resolved, context, rawArgument, signal),
-    );
+    const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument, signal);
     return {
       result: serializeHeadlessPaneResult(loaded.definition, loaded.result),
       rowCount: headlessRowCount(loaded.definition, loaded.result),

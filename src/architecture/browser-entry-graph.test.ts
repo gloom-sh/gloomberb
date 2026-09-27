@@ -3,8 +3,8 @@ import { existsSync } from "fs";
 import { dirname, join, relative, resolve } from "path";
 
 const SOURCE_ROOT = process.cwd();
-const IMPORT_PATTERN = /\b(?:import|export)\s+(?:[^'"]*?\s+from\s+)?["']([^"']+)["']|import\(["']([^"']+)["']\)/g;
-const TYPE_ONLY_PATTERN = /\b(?:import|export)\s+type\s/;
+/** Matches across lines, so a multi-line `import { … } from` is not missed. Group 1 marks `import type`. */
+const IMPORT_PATTERN = /\b(?:import|export)\s+(type\s+)?(?:[^'";]*?\s+from\s+)?["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
 
 /**
  * Entry points that run in a browser context: the Electrobun desktop view and
@@ -24,6 +24,9 @@ const BROWSER_ENTRIES = [
  * `plugins/loader` reaching the desktop view through `plugins/bundle` shipped a
  * broken desktop build: the view crashed with "Can't find variable: process"
  * before rendering anything, while `desktop:view:build` reported success.
+ * `cli/pane-functions/cloud-session` reads `process.env` when called rather
+ * than on load; reaching it from Ask Gloom's tool executor failed every pane
+ * tool in the app with the same error.
  */
 const BUN_ONLY_MODULES = [
   "src/plugins/loader.ts",
@@ -32,6 +35,7 @@ const BUN_ONLY_MODULES = [
   "src/plugins/host-link.ts",
   "src/plugins/host-resolver.ts",
   "src/cli/restore-plugins.ts",
+  "src/cli/pane-functions/cloud-session.ts",
 ];
 
 const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
@@ -69,13 +73,11 @@ async function reachableFrom(entry: string): Promise<Map<string, string[]>> {
       continue;
     }
 
-    for (const line of source.split("\n")) {
-      if (TYPE_ONLY_PATTERN.test(line)) continue;
-      for (const match of line.matchAll(IMPORT_PATTERN)) {
-        const specifier = match[1] ?? match[2] ?? "";
-        const resolved = resolveSpecifier(current.file, specifier);
-        if (resolved) queue.push({ file: resolved, path: [...current.path, relative(SOURCE_ROOT, resolved)] });
-      }
+    for (const match of source.matchAll(IMPORT_PATTERN)) {
+      if (match[1]) continue;
+      const specifier = match[2] ?? match[3] ?? "";
+      const resolved = resolveSpecifier(current.file, specifier);
+      if (resolved) queue.push({ file: resolved, path: [...current.path, relative(SOURCE_ROOT, resolved)] });
     }
   }
 
