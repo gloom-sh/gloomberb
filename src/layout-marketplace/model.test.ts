@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cloneLayout, createDefaultConfig } from "../types/config";
-import type { PaneDef } from "../types/plugin";
+import { cloneLayout } from "../types/config";
 import {
   buildOwnedEntries,
   describeArrangement,
@@ -9,35 +8,7 @@ import {
   summarizeLayoutPanes,
 } from "./model";
 import { paneImagery } from "./pane-imagery";
-
-function paneDef(id: string, name: string, icon: string): PaneDef {
-  return {
-    id,
-    name,
-    icon,
-    component: () => null,
-    defaultPosition: "left",
-  };
-}
-
-const panes = new Map<string, PaneDef>([
-  ["ticker-research", paneDef("ticker-research", "Ticker Research", "T")],
-  ["portfolio-list", paneDef("portfolio-list", "Portfolio", "P")],
-  ["chat", paneDef("chat", "Chat", "M")],
-  ["ticker-chart", paneDef("ticker-chart", "Chart", "C")],
-]);
-
-function testLayout() {
-  const layout = cloneLayout(createDefaultConfig("/tmp/gloomberb-gallery-model-test").layout);
-  layout.instances = [
-    ...layout.instances,
-    { instanceId: "ticker-chart:1", paneId: "ticker-chart", binding: { kind: "fixed", symbol: "NVDA" } },
-    { instanceId: "mystery:1", paneId: "mystery-pane" },
-  ];
-  layout.floating = [{ instanceId: "ticker-chart:1", x: 10, y: 4, width: 30, height: 12 }];
-  layout.detached = [{ instanceId: "mystery:1", x: 60, y: 2, width: 24, height: 10 }];
-  return layout;
-}
+import { testLayout, testPanes as panes } from "./test-fixture";
 
 describe("gallery layout summaries", () => {
   test("labels every pane, including uninstalled types, and keeps only public bindings", () => {

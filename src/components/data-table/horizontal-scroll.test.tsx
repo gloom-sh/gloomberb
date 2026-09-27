@@ -6,18 +6,52 @@ import { AppContext, PaneInstanceProvider, createInitialState } from "../../stat
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Input } from "../../ui";
+import type { DataTableColumn } from "../ui/data-table/types";
 import { Tabs } from "../ui/tabs";
 import { DataTableView } from "./view";
 
+/** The identifier column is wide enough that one scroll step hides it. */
+const WIDE_ID_COLUMNS: DataTableColumn[] = [
+  { id: "id", label: "TICKER", width: 30 },
+  { id: "value", label: "VALUE", width: 16 },
+  { id: "weight", label: "WEIGHT", width: 12 },
+];
+/** A narrow identifier column ahead of wide values, the shape a frozen first column pins. */
+const NARROW_ID_COLUMNS: DataTableColumn[] = [
+  { id: "id", label: "TICKER", width: 6 },
+  { id: "value", label: "VALUE", width: 30 },
+  { id: "weight", label: "WEIGHT", width: 30 },
+];
+
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let update: (options: Partial<Options>) => void;
-interface Options { focused: boolean; keyboardNavigation: boolean; scroll: boolean; compact: boolean; editing: boolean; manyRows: boolean; tabs: boolean }
+interface Options {
+  focused: boolean;
+  keyboardNavigation: boolean;
+  scroll: boolean;
+  compact: boolean;
+  editing: boolean;
+  manyRows: boolean;
+  frozen: boolean;
+  tabs: boolean;
+  columns: DataTableColumn[];
+}
+const DEFAULT_OPTIONS: Options = {
+  focused: true,
+  keyboardNavigation: true,
+  scroll: true,
+  compact: false,
+  editing: false,
+  manyRows: false,
+  frozen: false,
+  tabs: false,
+  columns: WIDE_ID_COLUMNS,
+};
 const rows = [{ id: "ALPH", value: "$100M", weight: "66.7%" }];
 let selectedTab = "a";
-let withTabs = false;
 
-function Harness() {
-  const [options, setOptions] = useState<Options>({ focused: true, keyboardNavigation: true, scroll: true, compact: false, editing: false, manyRows: false, tabs: withTabs });
+function Harness({ initial }: { initial: Partial<Options> }) {
+  const [options, setOptions] = useState<Options>({ ...DEFAULT_OPTIONS, ...initial });
   update = (next) => setOptions((current) => ({ ...current, ...next }));
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-horizontal"));
   return <AppContext value={createStaticAppStore(state)}>
@@ -26,17 +60,14 @@ function Harness() {
         focused={options.focused}
         keyboardNavigation={options.keyboardNavigation}
         showHorizontalScrollbar={options.scroll}
+        freezeFirstColumn={options.frozen}
         rootBefore={options.editing
           ? <Input focused value="alpha beta gamma" />
           : options.tabs
             ? <Tabs focused tabs={[{ label: "A", value: "a" }, { label: "B", value: "b" }]} activeValue={selectedTab} onSelect={(value) => { selectedTab = value; }} />
             : undefined}
         selection={{ kind: "index", selectedIndex: 0, onChange: () => {} }}
-        columns={options.compact ? [{ id: "id", label: "TICKER", width: 8 }] : [
-          { id: "id", label: "TICKER", width: 30 },
-          { id: "value", label: "VALUE", width: 16 },
-          { id: "weight", label: "WEIGHT", width: 12 },
-        ]}
+        columns={options.compact ? [{ id: "id", label: "TICKER", width: 8 }] : options.columns}
         items={options.manyRows ? Array.from({ length: 50 }, (_, index) => ({ ...rows[0]!, id: `ALPH${index}` })) : rows}
         sortColumnId={null}
         sortDirection="asc"
@@ -55,9 +86,11 @@ afterEach(async () => {
   if (setup) await act(async () => setup!.renderer.destroy());
   setup = undefined;
   selectedTab = "a";
-  withTabs = false;
 });
 
+async function mount(initial: Partial<Options> = {}) {
+  await act(async () => { setup = await testRender(<Harness initial={initial} />, { width: 40, height: 8 }); });
+}
 async function settle() {
   for (let i = 0; i < 4; i++) await act(async () => { await setup!.renderOnce(); });
 }
@@ -71,7 +104,7 @@ async function key(event: TestKeyEvent) {
 }
 
 test("horizontal keys, body wheel, header wheel and scrollbar drag keep labels with values", async () => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 40, height: 8 }); });
+  await mount();
   await settle();
   const body = table("body");
   const header = table("header");
@@ -100,7 +133,7 @@ test("horizontal keys, body wheel, header wheel and scrollbar drag keep labels w
 });
 
 test("horizontal shortcuts preserve editing, other modifiers, disabled focus and fitting tables", async () => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 40, height: 8 }); });
+  await mount();
   await settle();
   for (const event of [
     { name: "right" },
@@ -136,8 +169,7 @@ test("horizontal shortcuts preserve editing, other modifiers, disabled focus and
 
 test("Shift+arrows scroll a wide table ahead of a focused tab strip, which keeps plain arrows", async () => {
   // Mounted with the table, the strip's key handler registers first.
-  withTabs = true;
-  await act(async () => { setup = await testRender(<Harness />, { width: 40, height: 8 }); });
+  await mount({ tabs: true });
   await settle();
   // macOS keeps Ctrl+arrows for Spaces, so Shift+arrows are the columns key everywhere.
   expect((await key({ name: "right", shift: true })).defaultPrevented).toBe(true);
@@ -153,7 +185,7 @@ test("Shift+arrows scroll a wide table ahead of a focused tab strip, which keeps
 });
 
 test("the last columns stay aligned when vertical overflow changes the body viewport", async () => {
-  await act(async () => { setup = await testRender(<Harness />, { width: 40, height: 8 }); });
+  await mount();
   await act(async () => update({ manyRows: true }));
   await settle();
   expect(table("body").verticalScrollBar.visible).toBe(true);
@@ -179,4 +211,56 @@ test("the last columns stay aligned when vertical overflow changes the body view
   await settle();
   expect(table("body").scrollLeft).toBe(0);
   expect(table("header").scrollLeft).toBe(0);
+});
+
+test("frozen identifiers survive keyboard, wheel, scrollbar and vertical resize without corrupting partial text", async () => {
+  await mount({ frozen: true, columns: NARROW_ID_COLUMNS });
+  await settle();
+  for (let i = 0; i < 4; i++) await key({ name: "right", ctrl: true });
+  expect(setup!.captureCharFrame()).toContain("ALPH");
+  expect(setup!.captureCharFrame()).toContain("66.7%");
+  expect(table("header").scrollLeft).toBe(table("body").scrollLeft);
+  await act(async () => { await setup!.mockMouse.click(2, 1); });
+  await settle();
+  expect(setup!.captureCharFrame()).toContain("ALPH");
+  await act(async () => { await setup!.mockMouse.scroll(10, 1, "left"); });
+  await settle();
+  expect(setup!.captureCharFrame()).toContain("ALPH");
+  const before = table("body").scrollLeft;
+  await act(async () => { await setup!.mockMouse.scroll(10, 0, "left"); });
+  await settle();
+  expect(table("body").scrollLeft).toBeLessThan(before);
+  expect(setup!.captureCharFrame()).toContain("ALPH");
+  const bar = table("body").horizontalScrollBar;
+  await act(async () => { await setup!.mockMouse.drag(bar.x + 18, bar.y, bar.x, bar.y); });
+  await settle();
+  expect(table("body").scrollLeft).toBe(0);
+  expect(setup!.captureCharFrame()).toContain("ALPH");
+  await act(async () => update({ manyRows: true }));
+  await settle();
+  for (let i = 0; i < 4; i++) await key({ name: "right", ctrl: true });
+  expect(setup!.captureCharFrame()).toContain("ALPH0");
+  expect(table("body").verticalScrollBar.visible).toBe(true);
+  await act(async () => setup!.resize(40, 64));
+  await settle();
+  expect(table("body").verticalScrollBar.visible).toBe(false);
+  expect(setup!.captureCharFrame()).toContain("ALPH0");
+  await act(async () => update({ compact: true }));
+  await settle();
+  expect(table("body").scrollLeft).toBe(0);
+  expect(table("header").scrollLeft).toBe(0);
+  expect(setup!.captureCharFrame()).toContain("ALPH0");
+});
+
+test("an ordinary table still scrolls its first column normally", async () => {
+  await mount({ frozen: true, columns: NARROW_ID_COLUMNS });
+  await act(async () => update({ frozen: false }));
+  await settle();
+  await key({ name: "right", ctrl: true });
+  expect(table("body").scrollLeft).toBe(20);
+  expect(setup!.captureCharFrame()).not.toContain("ALPH");
+  expect(setup!.captureCharFrame()).toContain("66.7%");
+  await act(async () => update({ frozen: true }));
+  await settle();
+  expect(setup!.captureCharFrame()).toContain("ALPH");
 });

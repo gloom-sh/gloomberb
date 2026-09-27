@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import {
   buildCompositeNavigationFrame,
   compositeViewportPositions,
@@ -15,27 +16,12 @@ import {
 } from "./interactions";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function point(day: number): TimeSeriesPoint {
-  const date = new Date(Date.UTC(2025, 0, day));
-  return { date, observedAt: date, value: day };
-}
-
 function series(days: number[]): ResolvedSeries {
-  return {
+  return createTestResolvedSeries({
     id: "price",
     label: "Price",
-    color: "#00ff66",
-    unit: "USD",
-    unitGroup: "currency",
-    nativeFrequency: "daily",
-    dataShape: "scalar",
-    style: "line",
-    transform: "raw",
-    axis: "left",
-    panelId: "main",
-    interpolation: "none",
-    points: days.map(point),
-  };
+    points: days.map((day) => createTestSeriesPoint(new Date(Date.UTC(2025, 0, day)), day)),
+  });
 }
 
 function viewport(startDay: number, endDay: number): CompositeViewportRange {

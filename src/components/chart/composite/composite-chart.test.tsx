@@ -28,6 +28,7 @@ import { CompositeChart } from "./composite-chart";
 import { createDefaultConfig } from "../../../types/config";
 import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
+import { createTestResolvedSeries, createTestSeriesPoint as point } from "../../../test-support/time-series";
 import {
   buildCompositeNavigationFrame,
   zoomCompositeViewport,
@@ -156,27 +157,20 @@ afterEach(async () => {
   syncTheme(DEFAULT_THEME);
 });
 
-function point(date: string, value: number): TimeSeriesPoint {
-  const observedAt = new Date(`${date}T00:00:00.000Z`);
-  return { date: observedAt, observedAt, value };
-}
-
 function series(id: string, panelId: string, axis: ResolvedSeries["axis"], unit: string, values: number[]): ResolvedSeries {
-  return {
+  return createTestResolvedSeries({
     id,
     label: id === "price" ? "ACME Price" : "OTHER Revenue",
     color: id === "price" ? "#00ff66" : "#ffaa00",
     unit,
     unitGroup: unit === "USD" ? "currency" : "percent",
     nativeFrequency: id === "price" ? "daily" : "quarterly",
-    dataShape: "scalar",
     style: id === "price" ? "line" : "step",
-    transform: "raw",
     axis,
     panelId,
     interpolation: id === "price" ? "none" : "step-after",
     points: values.map((value, index) => point(`2025-01-0${index + 1}`, value)),
-  };
+  });
 }
 
 function twoSessionCandles(): ResolvedSeries {

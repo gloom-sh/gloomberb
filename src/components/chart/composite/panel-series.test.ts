@@ -1,28 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import { reuseResolvedSeriesIdentity, reuseResolvedSeriesList } from "./panel-series";
 
-function point(): TimeSeriesPoint {
-  const date = new Date("2024-01-01T00:00:00.000Z");
-  return { date, observedAt: date, value: 1 };
-}
-
 function series(id: string, panelId: string): ResolvedSeries {
-  return {
-    id,
-    label: id,
-    color: "#0f0",
-    unit: "USD",
-    unitGroup: "currency",
-    nativeFrequency: "daily",
-    dataShape: "scalar",
-    style: "line",
-    transform: "raw",
-    axis: "left",
-    panelId,
-    interpolation: "none",
-    points: [point()],
-  };
+  return createTestResolvedSeries({ id, panelId, color: "#0f0", points: [createTestSeriesPoint("2024-01-01")] });
 }
 
 describe("reuseResolvedSeriesIdentity", () => {

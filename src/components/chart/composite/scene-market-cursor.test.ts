@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { CHART_SPEC_VERSION, type ChartSpec, type ResolvedSeries, type TimeSeriesPoint } from "../../../time-series/types";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestResolvedSeries } from "../../../test-support/time-series";
 import { resolveChartSpecData } from "../../../time-series/resolve";
 import { applyCompositeChartCursor, buildCompositeChartScene, resolveAdjacentCompositeCursorDate, resolveCompositeCursorDate } from "./scene";
 import { countMeasureBars } from "./tools";
@@ -8,12 +9,11 @@ import { pricePointIntegrity } from "../../../utils/price-history-integrity";
 import { reuseResolvedSeriesIdentity } from "./panel-series";
 
 function market(id: string, zone: string, dates: string[], values: number[]): ResolvedSeries {
-  return {
-    id, label: id, color: "#ffffff", unit: "%", unitGroup: "percent", nativeFrequency: "daily",
-    dataShape: "scalar", style: "line", transform: "percent", axis: "left", panelId: "main", interpolation: "none",
+  return createTestResolvedSeries({
+    id, color: "#ffffff", unit: "%", unitGroup: "percent", transform: "percent",
     timeBasis: { kind: "market", timeZone: zone, cadenceMs: 86_400_000 },
     points: dates.map((date, index) => ({ date: new Date(date), value: values[index]! })),
-  };
+  });
 }
 const asx = () => market("ASX", "Australia/Sydney", ["2026-01-07T23:00:00Z", "2026-01-08T23:00:00Z"], [0, 10]);
 const us = () => market("US", "America/New_York", ["2026-01-08T14:30:00Z", "2026-01-09T14:30:00Z"], [0, 20]);

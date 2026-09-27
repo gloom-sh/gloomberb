@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { ResolvedSeries } from "../../../time-series/types";
+import { createTestResolvedSeries, createTestSeriesPoint as point } from "../../../test-support/time-series";
 import type { CompositePanelScene } from "./types";
 import {
   renderCompositePanelBitmap,
@@ -12,11 +13,6 @@ import {
   resolveCompositeTextOhlcWidth,
 } from "./text-renderer";
 
-function point(date: string, value: number): TimeSeriesPoint {
-  const observedAt = new Date(`${date}T00:00:00.000Z`);
-  return { date: observedAt, observedAt, value };
-}
-
 function series(
   id: string,
   style: ResolvedSeries["style"],
@@ -24,21 +20,16 @@ function series(
   axis: ResolvedSeries["axis"],
   color = axis === "left" ? "#00ff66" : "#ffaa00",
 ): ResolvedSeries {
-  return {
+  return createTestResolvedSeries({
     id,
-    label: id,
     color,
     unit: axis === "left" ? "USD" : "%",
     unitGroup: axis === "left" ? "currency" : "percent",
-    nativeFrequency: "daily",
-    dataShape: "scalar",
     style,
-    transform: "raw",
     axis,
-    panelId: "main",
     interpolation: style === "step" ? "step-after" : "none",
     points: values.map((value, index) => point(`2025-01-0${index + 1}`, value)),
-  };
+  });
 }
 
 function periodSeries(

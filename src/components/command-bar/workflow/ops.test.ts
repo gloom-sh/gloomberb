@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
-import { createInitialState } from "../../../state/app/context";
+import { createInitialState, type AppState } from "../../../state/app/context";
+import type { PluginRegistry } from "../../../plugins/registry";
 import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
@@ -9,17 +10,38 @@ import { bringToFront } from "../../../plugins/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 import { createTestTicker } from "../../../test-support/ticker";
 
-function makeDataProvider() {
-  return createTestDataProvider({ id: "test" });
+type TemplateDeps = Parameters<typeof createPaneTemplateOrThrow>[2];
+
+/** The deps every workflow op takes, with just the registry members a test needs. */
+function workflowDeps(state: AppState, registry: Record<string, unknown>) {
+  return {
+    dataProvider: createTestDataProvider({ id: "test" }),
+    tickerRepository: new JsonTickerRepository(),
+    dispatch: () => {},
+    getState: () => state,
+    pluginRegistry: registry as unknown as PluginRegistry,
+  };
 }
 
-function makeTickerRepository() {
+/** Deps for opening `template`, whose pane type is `pane`. */
+function templateDeps(
+  state: AppState,
+  { template, pane, registry, ...deps }: {
+    template: { id: string } & Record<string, unknown>;
+    pane: { id: string } & Record<string, unknown>;
+    registry?: Record<string, unknown>;
+  } & Pick<TemplateDeps, "buildPaneInstance"> & Partial<TemplateDeps>,
+): TemplateDeps {
   return {
-    getTicker: async () => null,
-    saveTicker: async () => {},
-    createTicker: async () => { throw new Error("unused"); },
-    deleteTicker: async () => {},
-    getAllTickers: async () => [],
+    ...workflowDeps(state, {
+      paneTemplates: new Map([[template.id, template]]),
+      panes: new Map([[pane.id, pane]]),
+      getPaneTemplatePluginId: () => undefined,
+      events: { emit: () => {} },
+      ...registry,
+    }),
+    placePaneInstance: () => {},
+    ...deps,
   };
 }
 
@@ -96,44 +118,23 @@ describe("createPaneTemplateOrThrow", () => {
     const buildCalls: unknown[] = [];
     const placeCalls: unknown[] = [];
 
-    await createPaneTemplateOrThrow("cancelled-pane", undefined, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      pluginRegistry: {
-        paneTemplates: new Map([
-          ["cancelled-pane", {
-            id: "cancelled-pane",
-            paneId: "test-pane",
-            label: "Cancelled Pane",
-            description: "Should cancel cleanly",
-            createInstance: async () => null,
-          }],
-        ]),
-        panes: new Map([
-          ["test-pane", {
-            id: "test-pane",
-            name: "Test Pane",
-            component: () => null,
-            defaultPosition: "right",
-          }],
-        ]),
-        getPaneTemplatePluginId: () => undefined,
-        events: { emit: () => {} },
-      } as any,
+    await createPaneTemplateOrThrow("cancelled-pane", undefined, templateDeps(state, {
+      template: {
+        id: "cancelled-pane",
+        paneId: "test-pane",
+        label: "Cancelled Pane",
+        description: "Should cancel cleanly",
+        createInstance: async () => null,
+      },
+      pane: { id: "test-pane", name: "Test Pane", component: () => null, defaultPosition: "right" },
       buildPaneInstance: (...args) => {
         buildCalls.push(args);
-        return {
-          instanceId: "test-pane:1",
-          paneId: "test-pane",
-          title: "Broken Pane",
-        } as any;
+        return { instanceId: "test-pane:1", paneId: "test-pane", title: "Broken Pane" };
       },
       placePaneInstance: (...args) => {
         placeCalls.push(args);
       },
-    });
+    }));
 
     expect(buildCalls).toHaveLength(0);
     expect(placeCalls).toHaveLength(0);
@@ -146,35 +147,21 @@ describe("createPaneTemplateOrThrow", () => {
     state.tickers.set("MSFT", msft);
     let createdSymbol: string | null | undefined;
 
-    await createPaneTemplateOrThrow("ticker-pane", { symbol: "MSFT" }, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      pluginRegistry: {
-        paneTemplates: new Map([["ticker-pane", {
-          id: "ticker-pane",
-          paneId: "ticker-view",
-          label: "Ticker View",
-          description: "Ticker View",
-          shortcut: { prefix: "TV", argPlaceholder: "ticker", argKind: "ticker" },
-          createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
-            createdSymbol = options?.symbol;
-            return { binding: { kind: "fixed", symbol: options?.symbol ?? "" } };
-          },
-        }]]),
-        panes: new Map([["ticker-view", {
-          id: "ticker-view",
-          name: "Ticker View",
-          component: () => null,
-          defaultPosition: "right",
-        }]]),
-        getPaneTemplatePluginId: () => undefined,
-        events: { emit: () => {} },
-      } as any,
-      buildPaneInstance: () => ({ instanceId: "ticker-view:1", paneId: "ticker-view" }) as any,
-      placePaneInstance: () => {},
-    });
+    await createPaneTemplateOrThrow("ticker-pane", { symbol: "MSFT" }, templateDeps(state, {
+      template: {
+        id: "ticker-pane",
+        paneId: "ticker-view",
+        label: "Ticker View",
+        description: "Ticker View",
+        shortcut: { prefix: "TV", argPlaceholder: "ticker", argKind: "ticker" },
+        createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
+          createdSymbol = options?.symbol;
+          return { binding: { kind: "fixed", symbol: options?.symbol ?? "" } };
+        },
+      },
+      pane: { id: "ticker-view", name: "Ticker View", component: () => null, defaultPosition: "right" },
+      buildPaneInstance: () => ({ instanceId: "ticker-view:1", paneId: "ticker-view" }),
+    }));
 
     expect(createdSymbol).toBe("MSFT");
   });
@@ -196,38 +183,24 @@ describe("createPaneTemplateOrThrow", () => {
     let createdOptions: { symbol?: string } | undefined | null = null;
     let createdBinding: unknown = "unset";
 
-    await createPaneTemplateOrThrow("jobs-pane", undefined, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      pluginRegistry: {
-        paneTemplates: new Map([["jobs-pane", {
-          id: "jobs-pane",
-          paneId: "jobs",
-          label: "Hiring",
-          description: "Hiring",
-          shortcut: { prefix: "JOBS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
-          createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
-            createdOptions = options;
-            return { instanceId: "jobs:home", title: "Hiring", placement: "floating" };
-          },
-        }]]),
-        panes: new Map([["jobs", {
-          id: "jobs",
-          name: "Hiring",
-          component: () => null,
-          defaultPosition: "right",
-        }]]),
-        getPaneTemplatePluginId: () => undefined,
-        events: { emit: () => {} },
-      } as any,
+    await createPaneTemplateOrThrow("jobs-pane", undefined, templateDeps(state, {
+      template: {
+        id: "jobs-pane",
+        paneId: "jobs",
+        label: "Hiring",
+        description: "Hiring",
+        shortcut: { prefix: "JOBS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+        createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
+          createdOptions = options;
+          return { instanceId: "jobs:home", title: "Hiring", placement: "floating" };
+        },
+      },
+      pane: { id: "jobs", name: "Hiring", component: () => null, defaultPosition: "right" },
       buildPaneInstance: (_paneType: string, options?: { binding?: unknown }) => {
         createdBinding = options?.binding;
-        return { instanceId: "jobs:home", paneId: "jobs" } as any;
+        return { instanceId: "jobs:home", paneId: "jobs" };
       },
-      placePaneInstance: () => {},
-    });
+    }));
 
     expect(createdOptions?.symbol).toBeUndefined();
     expect(createdBinding).toBeUndefined();
@@ -238,47 +211,25 @@ describe("createPaneTemplateOrThrow", () => {
     const state = createInitialState(config);
     const buildCalls: unknown[] = [];
 
-    await createPaneTemplateOrThrow("financial-analysis-pane", undefined, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      pluginRegistry: {
-        paneTemplates: new Map([
-          ["financial-analysis-pane", {
-            id: "financial-analysis-pane",
-            paneId: "financial-analysis",
-            label: "Financial Analysis",
-            description: "Open financial statements",
-            createInstance: () => ({
-              instanceId: "financial-analysis:AAPL",
-              title: "FA AAPL",
-              binding: { kind: "fixed", symbol: "AAPL" },
-              placement: "floating",
-            }),
-          }],
-        ]),
-        panes: new Map([
-          ["financial-analysis", {
-            id: "financial-analysis",
-            name: "Financials",
-            component: () => null,
-            defaultPosition: "right",
-          }],
-        ]),
-        getPaneTemplatePluginId: () => undefined,
-        events: { emit: () => {} },
-      } as any,
+    await createPaneTemplateOrThrow("financial-analysis-pane", undefined, templateDeps(state, {
+      template: {
+        id: "financial-analysis-pane",
+        paneId: "financial-analysis",
+        label: "Financial Analysis",
+        description: "Open financial statements",
+        createInstance: () => ({
+          instanceId: "financial-analysis:AAPL",
+          title: "FA AAPL",
+          binding: { kind: "fixed", symbol: "AAPL" },
+          placement: "floating",
+        }),
+      },
+      pane: { id: "financial-analysis", name: "Financials", component: () => null, defaultPosition: "right" },
       buildPaneInstance: (...args) => {
         buildCalls.push(args);
-        return {
-          instanceId: "financial-analysis:AAPL",
-          paneId: "financial-analysis",
-          title: "FA AAPL",
-        } as any;
+        return { instanceId: "financial-analysis:AAPL", paneId: "financial-analysis", title: "FA AAPL" };
       },
-      placePaneInstance: () => {},
-    });
+    }));
 
     expect(buildCalls[0]).toEqual([
       "financial-analysis",
@@ -310,23 +261,10 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
     let created = 0;
     let createdWith: Record<string, unknown> | null = null;
 
-    await createPaneTemplateOrThrow("template", undefined, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      pluginRegistry: {
-        paneTemplates: new Map([
-          ["template", {
-            id: "template",
-            paneId: "chat",
-            label: "Chat",
-            description: "Chat",
-            createInstance: () => spec,
-          }],
-        ]),
-        panes: new Map([["chat", { id: "chat", name: "Chat", component: () => null }]]),
-        getPaneTemplatePluginId: () => undefined,
+    await createPaneTemplateOrThrow("template", undefined, templateDeps(state, {
+      template: { id: "template", paneId: "chat", label: "Chat", description: "Chat", createInstance: () => spec },
+      pane: { id: "chat", name: "Chat", component: () => null },
+      registry: {
         focusPaneFn: (paneId: string, nextLayout?: LayoutConfig) => {
           focused.push(paneId);
           if (batchedFloating) layouts.push(bringToFront(nextLayout ?? state.config.layout, paneId));
@@ -335,15 +273,13 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
           layouts.push(next);
           if (!batchedFloating) state.config.layout = next;
         },
-        events: { emit: () => {} },
-      } as any,
+      },
       buildPaneInstance: (_paneType: string, options?: Record<string, unknown>) => {
         created += 1;
         createdWith = options ?? null;
-        return { instanceId: "chat:new", paneId: "chat" } as any;
+        return { instanceId: "chat:new", paneId: "chat" };
       },
-      placePaneInstance: () => {},
-    });
+    }));
 
     return { focused, created, createdWith, layouts };
   }
@@ -463,12 +399,7 @@ describe("applyPaneSettingFieldValue", () => {
       type: "select",
       options: [],
     }, "area", {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
-      pluginRegistry: {
+      ...workflowDeps(state, {
         resolvePaneSettings: () => ({
           paneId: pane.instanceId,
           pane,
@@ -499,7 +430,8 @@ describe("applyPaneSettingFieldValue", () => {
             activeCollectionId: null,
           },
         }),
-      } as any,
+      }),
+      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
     });
 
     expect(applied).toHaveLength(1);
@@ -523,12 +455,7 @@ describe("applyPaneSettingFieldValue", () => {
       label: "Lock Pane",
       type: "toggle",
     }, true, {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
-      pluginRegistry: {
+      ...workflowDeps(state, {
         resolvePaneSettings: () => ({
           paneId: pane.instanceId,
           pane,
@@ -558,7 +485,8 @@ describe("applyPaneSettingFieldValue", () => {
             activeCollectionId: null,
           },
         }),
-      } as any,
+      }),
+      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
     });
 
     expect(applied).toHaveLength(0);
@@ -582,12 +510,7 @@ describe("applyPaneSettingFieldValue", () => {
       clearOnChange: ["defaultModelId"],
       options: [],
     }, "codex", {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      persistLayout: () => {},
-      pluginRegistry: {
+      ...workflowDeps(state, {
         resolvePaneSettings: () => ({
           paneId: "chat:main",
           pluginId: "ai",
@@ -610,7 +533,8 @@ describe("applyPaneSettingFieldValue", () => {
         setConfigStates: async (pluginId: string, values: Record<string, unknown>) => {
           updates.push({ pluginId, values });
         },
-      } as any,
+      }),
+      persistLayout: () => {},
     });
 
     expect(updates).toEqual([{
@@ -633,12 +557,7 @@ describe("applyPaneSettingFieldValue", () => {
       clearOnChange: ["modelId"],
       options: [],
     }, "codex", {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: () => {},
-      getState: () => state,
-      persistLayout: (layout) => { persisted.push(layout); },
-      pluginRegistry: {
+      ...workflowDeps(state, {
         resolvePaneSettings: () => ({
           paneId: "chat:main",
           pane,
@@ -657,7 +576,8 @@ describe("applyPaneSettingFieldValue", () => {
             activeCollectionId: null,
           },
         }),
-      } as any,
+      }),
+      persistLayout: (layout) => { persisted.push(layout); },
     });
 
     expect(findPaneInstance(persisted[0]!, "chat:main")?.settings).toMatchObject({
@@ -694,12 +614,7 @@ describe("applyPaneSettingFieldValue", () => {
       type: "select",
       options: [],
     }, "all", {
-      dataProvider: makeDataProvider() as any,
-      tickerRepository: makeTickerRepository() as any,
-      dispatch: (action) => { actions.push(action); },
-      getState: () => state,
-      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
-      pluginRegistry: {
+      ...workflowDeps(state, {
         resolvePaneSettings: () => ({
           paneId: "portfolio-list:main",
           pane: portfolioPane,
@@ -722,7 +637,9 @@ describe("applyPaneSettingFieldValue", () => {
             activeCollectionId: "main",
           },
         }),
-      } as any,
+      }),
+      dispatch: (action) => { actions.push(action); },
+      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
     });
 
     const nextPane = findPaneInstance(persisted[0]!, "portfolio-list:main");
