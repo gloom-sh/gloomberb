@@ -95,6 +95,39 @@ export function dayLabel(d: Date, today: Date): string {
 }
 
 /**
+ * Events (already in time order; `eventIdx` indexes them) under a header per
+ * local day, with NOW before the first event still to come. When that event is
+ * on a later day, NOW sits above that day's header, since the present is still
+ * on the earlier day.
+ */
+export function calendarDisplayRows(sorted: readonly EconEvent[], now: number): DisplayRow[] {
+  const today = new Date(now);
+  const todayKey = dateKey(today);
+  const hasPast = sorted.some((event) => event.date.getTime() <= now);
+  let nowPending = hasPast && sorted.some((event) => event.date.getTime() > now);
+  const rows: DisplayRow[] = [];
+  let lastDateKey = "";
+  sorted.forEach((event, eventIdx) => {
+    const key = dateKey(event.date);
+    const upcoming = nowPending && event.date.getTime() > now;
+    if (upcoming && key !== todayKey) {
+      rows.push({ kind: "now", key: "now" });
+      nowPending = false;
+    }
+    if (key !== lastDateKey) {
+      lastDateKey = key;
+      rows.push({ kind: "separator", key: `separator-${key}`, label: dayLabel(event.date, today) });
+    }
+    if (upcoming && nowPending) {
+      rows.push({ kind: "now", key: "now" });
+      nowPending = false;
+    }
+    rows.push({ kind: "event", key: `event-${event.id}-${eventIdx}`, event, eventIdx });
+  });
+  return rows;
+}
+
+/**
  * Each level selects exactly its own events. "At least this impact" made the
  * lowest level identical to "all", which read as a broken filter.
  */

@@ -102,7 +102,9 @@ describe("EconCalendarPane", () => {
 
     expect(frame).toContain("TODAY");
     expect(frame).toContain("YESTERDAY");
-    expect(frame).toContain("NOW");
+    // Oldest first: yesterday's release, the present, then what is still to come.
+    const order = ["YESTERDAY", "Retail Sales", "NOW", "CPI m/m"].map((text) => frame.indexOf(text));
+    expect(order.every((index, i) => index >= 0 && (i === 0 || index > order[i - 1]!))).toBe(true);
   });
 
   // The payload's `time` is the UTC clock; rows group by local day. The test

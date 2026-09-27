@@ -23,7 +23,7 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
-  dateKey,
+  calendarDisplayRows,
   dayLabel,
   formatCountdown,
   formatStaleness,
@@ -90,7 +90,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   const filtered = useMemo(() => events
     .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))
-    .sort((a, b) => b.date.getTime() - a.date.getTime()),
+    .sort((a, b) => a.date.getTime() - b.date.getTime()),
   [countryFilter, events, impactFilter]);
   const selectedIdx = Math.max(0, filtered.findIndex((ev) => ev.id === selectedKey));
   const detailEvent = useMemo(
@@ -98,32 +98,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     [events, openKey],
   );
 
-  // Build display rows with separator headers and NOW marker
+  // Day headers and the NOW marker between the past and the upcoming events.
   const today = new Date(now);
-  const rows: DisplayRow[] = [];
-  let lastDateKey = "";
-  let nowInserted = false;
-  const hasPastEvents = filtered.some((ev) => ev.date.getTime() <= now);
-  const hasFutureEvents = filtered.some((ev) => ev.date.getTime() > now);
-
-  for (let i = 0; i < filtered.length; i++) {
-    const ev = filtered[i]!;
-    const dk = dateKey(ev.date);
-
-    // Insert date separator if new day
-    if (dk !== lastDateKey) {
-      lastDateKey = dk;
-      rows.push({ kind: "separator", key: `separator-${dk}`, label: dayLabel(ev.date, today) });
-    }
-
-    // Reverse chronological order puts upcoming events above the present marker.
-    if (hasPastEvents && hasFutureEvents && !nowInserted && ev.date.getTime() <= now) {
-      nowInserted = true;
-      rows.push({ kind: "now", key: "now" });
-    }
-
-    rows.push({ kind: "event", key: `event-${ev.id}-${i}`, event: ev, eventIdx: i });
-  }
+  const rows = calendarDisplayRows(filtered, now);
 
   // Map from eventIdx to flat row index (for scroll tracking)
   const eventIdxToRowIdx = new Map<number, number>();
