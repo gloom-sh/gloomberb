@@ -1,8 +1,8 @@
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { DEFAULT_BINOMIAL_STEPS, MAX_BINOMIAL_STEPS, effectiveBinomialSteps, solveBinomialImpliedVolatility,
   validateBinomialInputs, valueBinomialOption } from "./binomial";
-import { solveImpliedVolatility, valueOption, type ImpliedVolatilityResult, type OptionCalcDraft,
-  type OptionValuation } from "./model";
+import type { OptionCalcDraft } from "./model";
+import { solveImpliedVolatility, valueOption, type ImpliedVolatilityResult, type OptionValuation } from "../shared/volatility";
 import type { CalculatorSurfaceVol } from "./surface";
 import { isFiniteNumber, isRecord } from "../../../utils/guards";
 

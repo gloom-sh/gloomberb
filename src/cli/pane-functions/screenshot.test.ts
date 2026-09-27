@@ -40,7 +40,7 @@ import { optionsScenarioHeadless } from "../../plugins/builtin/options-scenario/
 import { calculatorSemanticEvidence } from "../../plugins/builtin/options-calculator/evidence";
 import { draftFromCalculatorInputs } from "../../plugins/builtin/options-calculator/inputs";
 import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calculator/headless";
-import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/options-calculator/model";
+import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 
 test("calculator screenshots freeze percent inputs without market requests, including an inactive cash schedule", async () => {
   const request = { pane: { id: "options-calculator" }, capability: { id: "options-calculator-pane", options: optionsCalculatorHeadless.options },

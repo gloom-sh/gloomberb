@@ -10,7 +10,8 @@ import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { VolSurfacePane } from "./pane";
 import { selectSurfaceExpiries } from "./client";
 import { buildSurfaceExpiry } from "./model";

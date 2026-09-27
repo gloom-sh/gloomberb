@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { buildSurfaceExpiry, buildSurfaceGrid, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { storedSurfaceSnapshot } from "./stored";
 

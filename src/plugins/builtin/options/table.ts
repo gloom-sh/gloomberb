@@ -10,7 +10,7 @@ import type {
   OptionFieldId,
   OptionTableRow,
 } from "./types";
-import type { OptionSide, OptionValuation } from "../options-calculator/model";
+import type { OptionSide, OptionValuation } from "../shared/volatility";
 
 type OptionColorRole = "call" | "put" | "price" | "activity" | "iv" | "strike";
 

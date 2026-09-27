@@ -1,5 +1,6 @@
 import type { OptionContract } from "../../../types/financials";
-import { buildOptionCalcParams, type OptionSide } from "../options-calculator/model";
+import { buildOptionCalcParams } from "../options-calculator/model";
+import type { OptionSide } from "../shared/volatility";
 import type { OptionTableRow } from "./types";
 import { optionMarketReference } from "./market-reference";
 

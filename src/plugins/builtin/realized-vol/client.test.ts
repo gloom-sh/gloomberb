@@ -4,7 +4,8 @@ import type { ChartRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, PricePoint } from "../../../types/financials";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
+import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { createSurfaceDependencies } from "../vol-surface/client";
 import { createRealizedVolatilityDependencies, loadCurrentAtmIv, loadRealizedVolatilityHistory, refreshCurrentAtmIv } from "./client";
 

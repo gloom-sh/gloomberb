@@ -1,20 +1,18 @@
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
 import {
+  daysToExpiryFrom,
   extractImpliedForward,
   forwardFromCarry,
   optionMid,
   realizedVolatilityCadenceIssue,
   realizedVolatilityResult,
-} from "../shared/volatility";
-import {
-  DEFAULT_OPTION_CALC_DRAFT,
-  daysToExpiryFrom,
   solveImpliedVolatility,
   valueOption,
   type OptionSide,
   type OptionValuation,
-} from "../options-calculator/model";
+} from "../shared/volatility";
+import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { optionQuoteValuationTime } from "../vol-surface/model";
 
 const HISTORICAL_VOLATILITY_SESSIONS = 30;
@@ -96,7 +94,7 @@ export function solveChainVolatilities(
     const solve = (side: OptionSide, contract: OptionContract | undefined): number | null => {
       const mid = contract ? optionMid(contract) : null;
       if (mid == null) return null;
-      const solved = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side, spot: forward, strike: contract!.strike,
+      const solved = solveImpliedVolatility({ side, spot: forward, strike: contract!.strike,
         daysToExpiry: years * 365, rate, dividendYield: rate }, mid).volatility;
       return solved != null && Number.isFinite(solved) && solved > 0 ? solved : null;
     };
@@ -201,11 +199,11 @@ export function calculateOptionGreeks(
     return undefined;
   }
   return valueOption({
-    ...DEFAULT_OPTION_CALC_DRAFT,
     side,
     spot,
     strike: contract.strike,
     daysToExpiry: daysToExpiryFrom(contract.expiration, volatilities.valuationTime),
+    rate: DEFAULT_OPTION_CALC_DRAFT.rate,
     volatility,
     dividendYield: Number.isFinite(dividendYield) ? dividendYield! : 0,
   });

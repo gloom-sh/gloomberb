@@ -1,11 +1,10 @@
 import type { OptionContract, OptionsChain } from "../../../types/financials";
-import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, solveImpliedVolatility, valueOption, type OptionSide } from "../options-calculator/model";
 import {
-  detectButterflyArbitrage, detectCalendarArbitrage, evaluateSmile, expectedMove,
+  daysToExpiryFrom, detectButterflyArbitrage, detectCalendarArbitrage, evaluateSmile, expectedMove,
   extractImpliedForward, fitVolatilitySmile, FIXED_VOLATILITY_TENORS,
   interpolateTotalVariance, logForwardMoneyness, optionDelta, optionMid,
-  smileSkew, volatilityTermSlope,
-  type ExpectedMove, type ImpliedForward, type SkewMetrics, type SmileFit,
+  smileSkew, solveImpliedVolatility, valueOption, volatilityTermSlope,
+  type ExpectedMove, type ImpliedForward, type OptionSide, type SkewMetrics, type SmileFit,
 } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 
@@ -331,7 +330,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
       const providerIV = positive(contract.impliedVolatility) ? contract.impliedVolatility : null;
       // q=r turns the shared spot pricer into discounted forward pricing.
       const solved = settings.ivSource === "provider" ? providerIV : solveImpliedVolatility({
-        ...DEFAULT_OPTION_CALC_DRAFT, side, spot: forward, strike: contract.strike,
+        side, spot: forward, strike: contract.strike,
         daysToExpiry: result.years * 365, rate: rate.rate, dividendYield: rate.rate,
       }, price).volatility;
       if (!positive(solved)) { result.filterCounts["iv-unavailable"] += 1; continue; }
@@ -367,7 +366,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
     moneynessSkew: moneynessCovered ? skew.moneynessSkew : null };
   result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, result.atmIV);
   const calls = result.points.map((point) => ({ strike: point.strike, callPrice: valueOption({
-    ...DEFAULT_OPTION_CALC_DRAFT, side: "call", spot: forward, strike: point.strike,
+    side: "call", spot: forward, strike: point.strike,
     daysToExpiry: result.years * 365, rate: rate.rate!, dividendYield: rate.rate!, volatility: smile(point.strike)!,
   }).price }));
   const butterfly = detectButterflyArbitrage(calls);

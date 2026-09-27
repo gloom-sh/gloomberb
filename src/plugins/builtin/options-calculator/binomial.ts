@@ -1,4 +1,5 @@
-import { valueOption, type ImpliedVolatilityResult, type OptionCalcDraft, type OptionValuation } from "./model";
+import type { OptionCalcDraft } from "./model";
+import { valueOption, type ImpliedVolatilityResult, type OptionValuation } from "../shared/volatility";
 import { isFiniteNumber } from "../../../utils/guards";
 
 const DAYS_PER_YEAR = 365;

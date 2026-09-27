@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_OPTION_CALC_DRAFT, valueOption, type OptionCalcDraft } from "./model";
+import { DEFAULT_OPTION_CALC_DRAFT, type OptionCalcDraft } from "./model";
+import { valueOption } from "../shared/volatility";
 import { effectiveBinomialSteps, priceBinomialOption, solveBinomialImpliedVolatility, validateBinomialInputs,
   valueBinomialOption, type BinomialInputs, type CashDividend } from "./binomial";
 

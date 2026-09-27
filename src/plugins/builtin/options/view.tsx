@@ -30,10 +30,7 @@ import { buildChartKey } from "../../../market-data/selectors";
 import type { ChartRequest } from "../../../market-data/request-types";
 import { quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { usePluginAppActions } from "../../runtime";
-import {
-  OPTIONS_CALCULATOR_TEMPLATE_ID,
-  type OptionSide,
-} from "../options-calculator/model";
+import { OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
 import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
 import { useOptionsCatalogue } from "./expiry-catalogue";
 import { calculateOptionGreeks, calculateOptionsSummary, solveChainVolatilities, type OptionsSummary } from "./analytics";
@@ -64,7 +61,7 @@ import { signedPositionDirection } from "../portfolio-list/position-metrics";
 import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
-import { optionMid } from "../shared/volatility";
+import { optionMid, type OptionSide } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
 import type { TickerFinancials } from "../../../types/financials";
 import type { IvStats } from "../iv-history/client";

@@ -19,7 +19,6 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from "../options/live-quotes";
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
-import { daysToExpiryFrom } from "../options-calculator/model";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioControlsFromSettings, type ScenarioMarketSnapshot } from "./client";

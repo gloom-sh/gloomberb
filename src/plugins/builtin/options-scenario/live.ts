@@ -1,5 +1,5 @@
 import type { OptionsChain } from "../../../types/financials";
-import { DEFAULT_OPTION_CALC_DRAFT, solveImpliedVolatility } from "../options-calculator/model";
+import { solveImpliedVolatility } from "../shared/volatility";
 import { optionExpirationClose, validatePosition, type ScenarioLeg, type ScenarioPosition } from "./model";
 
 const DAY_MS = 86_400_000;
@@ -37,7 +37,7 @@ export function liveScenarioPosition(
   const at = (asOf: number): ScenarioPosition => ({ ...position, spot, asOf, legs: position.legs.map((leg) => {
     const mid = legMids.get(leg.id);
     if (mid == null || !(mid > 0)) return leg;
-    const volatility = solveImpliedVolatility({ ...DEFAULT_OPTION_CALC_DRAFT, side: leg.side, spot, strike: leg.strike,
+    const volatility = solveImpliedVolatility({ side: leg.side, spot, strike: leg.strike,
       daysToExpiry: Math.max(0, (optionExpirationClose(leg.expiration) - asOf) / DAY_MS),
       rate: position.rate, dividendYield: position.dividendYield }, mid).volatility;
     return volatility != null && Number.isFinite(volatility) && volatility >= 0 ? { ...leg, volatility } : leg;
