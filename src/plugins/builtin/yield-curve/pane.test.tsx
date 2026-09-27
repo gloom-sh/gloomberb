@@ -44,11 +44,13 @@ async function settle() {
 const lines = () => setup!.captureCharFrame().split("\n");
 const readout = () => lines().find((line) => /^ \d+[MY] \d+\.\d\d%/.test(line)) ?? "";
 
-// The latest session on Sep 24, a week back on Sep 17 and a month back on Aug 24.
+// The latest session on Sep 24, the session before on Sep 23 (a flatter curve),
+// a week back on Sep 17 and a month back on Aug 24.
 const LATEST = TREASURY_MATURITIES.map(({ maturity, years }, index) => ({ maturity, maturityYears: years, yield: 4 + index / 10, asOf: "2026-09-24" }));
 function fredPayload(seriesId: string, options: { startDate?: string; endDate?: string } = {}): CloudFredSeriesPayload {
   const index = TREASURY_MATURITIES.findIndex((entry) => entry.seriesId === seriesId);
   const observations = [
+    { date: "2026-09-23", value: 3.95 + index / 12 },
     { date: "2026-09-17", value: 3.9 + index / 10 },
     { date: "2026-08-24", value: 4.2 + index / 10 },
   ].filter((point) => (!options.startDate || point.date >= options.startDate) && (!options.endDate || point.date <= options.endDate));
@@ -75,14 +77,16 @@ afterEach(async () => {
 test("the chart names the curve and its look-backs, and the tenors show how far each moved", async () => {
   await renderLatest(78, 27);
   const frameText = setup!.captureCharFrame();
-  expect(lines()[1]).toMatch(/Yield % by maturity {3}● Yield {3}● 1W ago {3}● 1M ago/);
+  // The spreads lead, with their move since the session before: 2s10s is 40bp, 33bp the day before.
+  expect(lines()[1]).toMatch(/2s10s \+40bp +\+7bp 1D +3m10y \+70bp +\+12bp 1D +5s30s \+40bp +\+7bp 1D/);
+  expect(lines()[2]).toMatch(/Yield % by maturity {3}● Yield {3}● 1W ago {3}● 1M ago/);
   // A log axis gives the short end room to label its tenors.
   expect(frameText).toMatch(/\n1M +3M +6M +1Y .*10Y +30Y +\n/);
-  expect(frameText).toMatch(/TENOR +YIELD +1W CHG +1M CHG/);
-  // 1M is 4.00% against 3.90% a week back and 4.20% a month back.
-  expect(frameText).toMatch(/1M +4\.00% +\+10bp +-20bp/);
+  expect(frameText).toMatch(/TENOR +YIELD +1D CHG +1W CHG +1M CHG/);
+  // 1M is 4.00% against 3.95% the day before, 3.90% a week back and 4.20% a month back.
+  expect(frameText).toMatch(/1M +4\.00% +\+5bp +\+10bp +-20bp/);
   expect(readout().trim()).toBe("1M 4.00%  1W ago +10bp  1M ago -20bp");
-  // Both look-backs came from one request per tenor.
+  // Every look-back came from one request per tenor.
   expect(historySpy).toHaveBeenCalledTimes(TREASURY_MATURITIES.length);
 });
 
@@ -115,16 +119,20 @@ test("the selected tenor is the curve's point, from the table and from the chart
 test("a short pane keeps the tenors and turns the chart into a strip, then drops it", async () => {
   await renderLatest(40, 11);
   let rows = lines();
-  expect(rows[1]).toMatch(/^ ● Yield % .*1M 4\.00%/);
-  expect(rows[2]).toMatch(/TENOR/);
+  // The first spread keeps its row above the strip.
+  expect(rows[1]).toMatch(/^ 2s10s \+40bp/);
+  expect(rows[2]).toMatch(/^ ● Yield % .*1M 4\.00%/);
+  expect(rows[3]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line)).length).toBeGreaterThanOrEqual(4);
   await act(async () => { setup!.renderer.destroy(); });
   latestSpy?.mockRestore(); historySpy?.mockRestore();
   await renderLatest(40, 7);
   rows = lines();
+  // The chart goes first; the lead spread keeps its one row.
   expect(rows.some((line) => line.includes("●"))).toBe(false);
-  expect(rows[1]).toMatch(/TENOR/);
-  expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line))).toHaveLength(4);
+  expect(rows[1]).toMatch(/^ 2s10s \+40bp/);
+  expect(rows[2]).toMatch(/TENOR/);
+  expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line))).toHaveLength(3);
 });
 
 test("date submission hides the previous curve while pending and keeps controls available after failure", async () => {
@@ -198,5 +206,6 @@ test("historical partial source failure reaches the existing footer and a valid 
   await frame(); await frame();
   expect(setup!.captureCharFrame()).not.toContain("503");
   expect(setup!.captureCharFrame()).toContain("0.00%");
-  expect(setup!.captureCharFrame()).toContain("10Y−2Y -20bp");
+  // The inverted 2s10s is a figure now, not a footer segment.
+  expect(setup!.captureCharFrame()).toContain("2s10s -20bp");
 });

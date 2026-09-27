@@ -123,14 +123,15 @@ test("missing metadata compatibility preserves values while a failed tenor carri
   expect(curveAsOf(points)).toBe("2024-03-01");
 });
 
-test("look-backs are a week and a calendar month before the curve's session", () => {
+test("look-backs are a day, a week and a calendar month before the curve's session", () => {
+  expect(yieldCurveLookbackDate("2026-09-24", "1D")).toBe("2026-09-23");
   expect(yieldCurveLookbackDate("2026-09-24", "1W")).toBe("2026-09-17");
   expect(yieldCurveLookbackDate("2026-09-24", "1M")).toBe("2026-08-24");
   expect(yieldCurveLookbackDate("2026-03-31", "1M")).toBe("2026-02-28");
   expect(yieldCurveLookbackDate("2026-01-15", "1M")).toBe("2025-12-15");
 });
 
-test("both look-back curves come from one request per tenor and keep the session rule", async () => {
+test("every look-back curve comes from one request per tenor and keeps the session rule", async () => {
   const requests: Array<{ id: string; startDate: string; endDate: string; limit: number }> = [];
   const lookbacks = await loadYieldCurveLookbacks("2026-09-24", async (id, options) => {
     requests.push({ id, ...options });
@@ -145,8 +146,11 @@ test("both look-back curves come from one request per tenor and keep the session
     ]);
   });
   expect(requests).toHaveLength(TREASURY_MATURITIES.length);
-  expect(requests[0]).toMatchObject({ startDate: "2026-08-14", endDate: "2026-09-17", limit: 40 });
-  const [week, month] = lookbacks;
+  expect(requests[0]).toMatchObject({ startDate: "2026-08-14", endDate: "2026-09-23", limit: 45 });
+  const [day, week, month] = lookbacks;
+  // Nothing was published between Sep 18 and Sep 23, so the session before is Sep 17.
+  expect(day).toMatchObject({ id: "1D", requestedDate: "2026-09-23", error: null });
+  expect(curveAsOf(day!.points!)).toBe("2026-09-17");
   expect(week).toMatchObject({ id: "1W", requestedDate: "2026-09-17", error: null });
   expect(curveAsOf(week!.points!)).toBe("2026-09-17");
   expect(week!.points!.find((point) => point.maturity === "10Y")).toMatchObject({ yield: 5, asOf: "2026-09-17" });
@@ -155,6 +159,6 @@ test("both look-back curves come from one request per tenor and keep the session
   expect(month).toMatchObject({ id: "1M", requestedDate: "2026-08-24" });
   expect(month!.points!.find((point) => point.maturity === "2Y")).toMatchObject({ yield: 4.5, asOf: "2026-08-24" });
   const failed = await loadYieldCurveLookbacks("2026-09-24", async () => { throw new Error("offline"); });
-  expect(failed.map((lookback) => lookback.points)).toEqual([null, null]);
+  expect(failed.map((lookback) => lookback.points)).toEqual([null, null, null]);
   expect(failed[0]!.error).toContain("offline");
 });

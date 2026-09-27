@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { buildCurveChart } from "../../../components/chart/curve/model";
 import { buildCompositeChartScene } from "../../../components/chart/composite/scene";
-import { buildYieldCurveSeries, formatYieldChange, yieldCurveChartSeries, yieldTenorRows } from "./chart";
+import { buildYieldCurveSeries, formatYieldChange, yieldCurveChartSeries, yieldSpreads, yieldTenorRows } from "./chart";
 
 test("Treasury migration retains missing tenors as gaps and every node's observation date", () => {
   const points = [
@@ -46,4 +46,21 @@ test("the chart names the curve in the table's words and keeps only look-backs t
   expect(series.map((entry) => [entry.id, entry.label, entry.role, entry.color])).toEqual([
     ["yield", "Yield", "primary", "green"], ["1W", "1W", "ghost", "gray"]]);
   expect(series[0]!.asOf).toBeUndefined();
+});
+
+test("curve spreads need both tenors from one session, and their day move reads against the session before", () => {
+  const curve = (asOf: string, yields: Record<string, number | null>) => Object.entries(yields)
+    .map(([maturity, value]) => ({ maturity, maturityYears: 1, yield: value, asOf }));
+  const today = curve("2026-09-24", { "3M": 4.2, "2Y": 4.5, "5Y": 4.6, "10Y": 4.4, "30Y": 4.9 });
+  const before = [...curve("2026-09-23", { "3M": 4.2, "2Y": 4.45, "10Y": 4.4, "30Y": 4.85 }),
+    { maturity: "5Y", maturityYears: 5, yield: 4.5, asOf: "2026-09-22" }];
+  const spreads = yieldSpreads(today, { "1D": before });
+  // 2s10s is inverted by 10bp, 5bp more than the day before.
+  expect(spreads.map((entry) => [entry.id, formatYieldChange(entry.spread!)])).toEqual([["2s10s", "-10bp"], ["3m10y", "+20bp"], ["5s30s", "+30bp"]]);
+  expect(formatYieldChange(spreads[0]!.change1d!)).toBe("-5bp");
+  expect(formatYieldChange(spreads[1]!.change1d!)).toBe("0bp");
+  // The day before's 5Y is from another session, so 5s30s has no day move rather than a mixed one.
+  expect(spreads[2]!.change1d).toBeNull();
+  expect(yieldSpreads(today.map((point) => point.maturity === "10Y" ? { ...point, asOf: "2026-09-23" } : point))
+    .map((entry) => entry.spread)).toEqual([null, null, expect.any(Number)]);
 });

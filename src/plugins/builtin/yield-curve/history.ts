@@ -113,7 +113,7 @@ export async function loadHistoricalYieldCurve(
   return curveOnOrBefore(await loadTreasurySeries(daysBefore(endDate, 10), endDate, 10, loader), endDate);
 }
 
-export type YieldCurveLookbackId = "1W" | "1M";
+export type YieldCurveLookbackId = "1D" | "1W" | "1M";
 
 export interface YieldCurveLookback {
   id: YieldCurveLookbackId;
@@ -123,8 +123,13 @@ export interface YieldCurveLookback {
   error: string | null;
 }
 
-/** A week back is seven calendar days; a month back is the same day of the previous month, or its last day. */
+/**
+ * A day back is the day before, so the curve is the previous session; a week
+ * back is seven calendar days; a month back is the same day of the previous
+ * month, or its last day.
+ */
 export function yieldCurveLookbackDate(asOf: string, id: YieldCurveLookbackId): string {
+  if (id === "1D") return daysBefore(asOf, 1);
   if (id === "1W") return daysBefore(asOf, 7);
   const date = new Date(`${asOf}T00:00:00.000Z`);
   const day = date.getUTCDate();
@@ -136,18 +141,18 @@ export function yieldCurveLookbackDate(asOf: string, id: YieldCurveLookbackId): 
 }
 
 /**
- * The curve a week and a month before `asOf`, by the same session rule as a
- * historical curve. Both come from one request per tenor that spans the two
- * windows, so the look-backs cost what one historical curve does.
+ * The curve a session, a week and a month before `asOf`, by the same session
+ * rule as a historical curve. All three come from one request per tenor that
+ * spans the windows, so the look-backs cost what one historical curve does.
  */
 export async function loadYieldCurveLookbacks(
   asOf: string,
   loader: TreasurySeriesLoader = (id, options) => apiClient.getCloudFredSeries(id, options),
 ): Promise<YieldCurveLookback[]> {
-  const targets = (["1W", "1M"] as const).map((id) => ({ id, requestedDate: yieldCurveLookbackDate(asOf, id) }));
+  const targets = (["1D", "1W", "1M"] as const).map((id) => ({ id, requestedDate: yieldCurveLookbackDate(asOf, id) }));
   const endDate = targets[0]!.requestedDate;
-  // About 25 sessions from ten days before the month back to the week back.
-  const results = await loadTreasurySeries(daysBefore(targets[1]!.requestedDate, 10), endDate, 40, loader);
+  // About 30 sessions from ten days before the month back to the day before.
+  const results = await loadTreasurySeries(daysBefore(targets[2]!.requestedDate, 10), endDate, 45, loader);
   return targets.map((target) => {
     try {
       return { ...target, points: curveOnOrBefore(results, target.requestedDate), error: null };

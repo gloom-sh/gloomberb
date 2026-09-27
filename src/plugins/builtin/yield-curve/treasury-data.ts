@@ -51,12 +51,18 @@ export function curveAsOf(points: readonly YieldPoint[]): string | null {
   return isYieldObservationDate(date) && available.every((point) => point.asOf === date) ? date : null;
 }
 
-export function spreadBasisPoints(points: readonly YieldPoint[]): number | null {
-  const y2 = points.find((point) => point.maturity === "2Y");
-  const y10 = points.find((point) => point.maturity === "10Y");
-  if (y2?.yield == null || y10?.yield == null || !Number.isFinite(y2.yield) || !Number.isFinite(y10.yield)
-    || !isYieldObservationDate(y2.asOf) || y2.asOf !== y10.asOf) return null;
-  return Math.round((y10.yield - y2.yield) * 100);
+/** The long tenor's yield minus the short one's, in percentage points, only when both come from one session. */
+export function curveSpread(points: readonly YieldPoint[] | null | undefined, short: string, long: string): number | null {
+  const near = points?.find((point) => point.maturity === short);
+  const far = points?.find((point) => point.maturity === long);
+  if (near?.yield == null || far?.yield == null || !Number.isFinite(near.yield) || !Number.isFinite(far.yield)
+    || !isYieldObservationDate(near.asOf) || near.asOf !== far.asOf) return null;
+  return far.yield - near.yield;
+}
+
+export function spreadBasisPoints(points: readonly YieldPoint[], short = "2Y", long = "10Y"): number | null {
+  const spread = curveSpread(points, short, long);
+  return spread == null ? null : Math.round(spread * 100);
 }
 
 export function isInverted(points: readonly YieldPoint[]): boolean | null {
