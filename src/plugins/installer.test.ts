@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { execFileSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { describeOlderCommit, hasLocalChanges, parseRemoteHead } from "./installer";
+import { describeOlderCommit, hasLocalChanges, installPlugin, linkPlugin, parseRemoteHead } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -109,5 +109,31 @@ describe("hasLocalChanges", () => {
     expect(await hasLocalChanges(dir)).toBe(false);
     writeFileSync(join(dir, "package.json"), "{}");
     expect(await hasLocalChanges(dir)).toBe(true);
+  });
+});
+
+/**
+ * Market Heatmap and Market Halts are built in again. A copy of either only
+ * fetches code the loader skips, so it is refused before anything is cloned
+ * or linked: under either product name, from a fork, or from a checkout whose
+ * gloom.json says what it is under a folder name of its own.
+ */
+describe("plugins that are built in now", () => {
+  test.each([
+    "gloom-sh/gloom-market-heatmap",
+    "https://github.com/someone/gloomberb-market-halts",
+  ])("refuses to install %s", async (ref) => {
+    await expect(installPlugin(ref, { quiet: true })).rejects.toThrow(/is built into Gloomberb now\./);
+  });
+
+  test("refuses to link a checkout whose gloom.json names one", async () => {
+    const parent = mkdtempSync(join(tmpdir(), "gloom-dev-"));
+    scratch.push(parent);
+    const dir = join(parent, "halts-dev");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "gloom.json"), JSON.stringify({ id: "market-halts" }));
+    writeFileSync(join(dir, "index.ts"), `export default { id: "market-halts", name: "Market Halts" };\n`);
+
+    await expect(linkPlugin(dir, { quiet: true })).rejects.toThrow("Market Halts is built into Gloomberb now.");
   });
 });

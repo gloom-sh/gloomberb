@@ -90,13 +90,13 @@ describe("seedExtractedPlugins", () => {
   });
 
   /**
-   * Fear & Greed, Market Halts, Market Heatmap, the IPO calendar and TV were
-   * modules inside Market Overview and Macro, so turning that plugin off was
-   * the only way to turn them off. Restoring them as their own plugins would
-   * put panes back that the user had removed.
+   * Fear & Greed, the IPO calendar and TV were modules inside Market Overview
+   * and Macro, so turning that plugin off was the only way to turn them off.
+   * Restoring them as their own plugins would put panes back that the user
+   * had removed.
    */
   test.each([
-    ["market-overview", ["fear-greed", "market-halts", "market-heatmap"]],
+    ["market-overview", ["fear-greed"]],
     ["macro", ["ipo-calendar", "tv"]],
     ["macro-tv", ["tv"]],
     ["tv", ["tv"]],

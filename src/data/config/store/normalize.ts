@@ -19,13 +19,17 @@ import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
-import { migrateSavedConfig } from "./migrations";
+import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 
-export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: string): { config: AppConfig; needsSave: boolean } {
+export function normalizeLoadedConfig(
+  saved: Record<string, unknown>,
+  dataDir: string,
+  host?: ConfigMigrationHost,
+): { config: AppConfig; needsSave: boolean } {
   const defaults = createDefaultConfig(dataDir);
-  const migration = migrateSavedConfig(saved, dataDir);
+  const migration = migrateSavedConfig(saved, dataDir, host);
   const candidate = migration.config;
   const directLayout = sanitizeLayout(candidate.layout, defaults.layout);
   const layouts = sanitizeSavedLayouts(candidate.layouts, directLayout);

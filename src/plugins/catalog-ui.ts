@@ -6,6 +6,8 @@ import { customViewPlugin } from "./builtin/custom-view";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
 import { alertsPlugin } from "./builtin/alerts";
 import { researchSearchPlugin } from "./builtin/research-search";
+import { marketHeatmapPlugin } from "./builtin/market-heatmap";
+import { marketHaltsPlugin } from "./builtin/market-halts";
 import {
   applicationPlugin,
   brokerPlugin,
@@ -25,6 +27,8 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   notesPlugin,
   customViewPlugin,
   marketOverviewPlugin,
+  marketHeatmapPlugin,
+  marketHaltsPlugin,
   macroPlugin,
   alertsPlugin,
   researchSearchPlugin,

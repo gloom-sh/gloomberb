@@ -182,7 +182,10 @@ export function mergeCatalog(options: {
       // A bundled plugin is present whether or not the local catalog reports it,
       // which matters when the feed is newer than the running build.
       installed: plugin.bundled || !!local,
-      bundled: plugin.bundled,
+      // And a plugin this build ships is bundled whatever the feed says: one
+      // that is built in again can still be listed under its old repository,
+      // and Update or Remove would then act on a leftover checkout.
+      bundled: plugin.bundled || local?.source === "builtin",
     };
     entries.push({
       id: plugin.id,

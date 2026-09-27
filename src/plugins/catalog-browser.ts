@@ -14,6 +14,8 @@ import { filingEventsModule } from "./builtin/filing-events";
 import { riskFactorsModule } from "./builtin/risk-factors";
 import { researchSearchPlugin } from "./builtin/research-search";
 import { alertsPlugin } from "./builtin/alerts";
+import { marketHeatmapPlugin } from "./builtin/market-heatmap";
+import { marketHaltsPlugin } from "./builtin/market-halts";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
@@ -167,6 +169,8 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserApplicationPlugin,
   browserNewsPlugin,
   browserMarketOverviewPlugin,
+  marketHeatmapPlugin,
+  marketHaltsPlugin,
   browserMacroPlugin,
   alertsPlugin,
   researchSearchPlugin,

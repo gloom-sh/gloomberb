@@ -1296,7 +1296,7 @@ It reads the endpoint file from the data directory, so it is native only: a rend
 
 ### Network access
 
-List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that bundled plugins declare. A host left out works on the desktop and fails on the web.
+List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that the plugins in its build, built-in or bundled, declare. A host left out works on the desktop and fails on the web.
 
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Preserve existing pane-specific action shortcuts instead of duplicating them in body toolbars. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 

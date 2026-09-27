@@ -29,8 +29,6 @@
     // Loaded by package name through WEB_BUNDLED_PLUGIN_PACKAGES in src/plugins/web-bundled.ts.
     "gloom-fear-greed",
     "gloom-ipo-calendar",
-    "gloom-market-halts",
-    "gloom-market-heatmap",
     "gloom-polls",
     "gloom-prediction-markets"
   ]

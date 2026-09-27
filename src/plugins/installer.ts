@@ -2,9 +2,17 @@ import { basename, join, resolve } from "path";
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkSync } from "fs";
 import { execFile as execFileCallback, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
+import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./builtin/plugin-marketplace/store";
 import { linkHostPackages } from "./host-link";
-import { getPluginsDir, isDirectoryOrLink, isPluginDirectory, readPluginCommit, resolvePluginEntry } from "./loader";
+import {
+  findAbsorbedCheckout,
+  getPluginsDir,
+  isDirectoryOrLink,
+  isPluginDirectory,
+  readPluginCommit,
+  resolvePluginEntry,
+} from "./loader";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -254,6 +262,15 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
   return { id: plugin.id, name: plugin.name, version: plugin.version || "0.0.0" };
 }
 
+/**
+ * Refuses a plugin that is built into Gloomberb now (see absorbed.ts): the
+ * loader would skip it, so installing or updating it only fetches code that
+ * never runs.
+ */
+function refuseAbsorbed(absorbed: AbsorbedPlugin | null): void {
+  if (absorbed) fail(`${absorbed.name} is built into Gloomberb now.`);
+}
+
 function describe(targetDir: string, directory: string, plugin: PluginDirectoryInfo["plugin"]): PluginDirectoryInfo {
   return { directory, path: targetDir, commit: readPluginCommit(targetDir), plugin };
 }
@@ -263,8 +280,9 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const say = (message: string) => {
     if (!quiet) console.log(message);
   };
-  ensurePluginsDir();
   const { url, name } = parseGitHubRef(ref);
+  refuseAbsorbed(findAbsorbedPlugin({ directory: name }));
+  ensurePluginsDir();
   const targetDir = join(PLUGINS_DIR, name);
 
   if (existsSync(targetDir)) {
@@ -288,6 +306,8 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
     } else if (pin.commit) {
       await checkoutPin(targetDir, pin, quiet);
     }
+    // A fork under another name says what it is in its gloom.json.
+    refuseAbsorbed(findAbsorbedCheckout(targetDir));
   } catch (error) {
     rmSync(targetDir, { recursive: true, force: true });
     fail(error instanceof Error ? error.message : String(error));
@@ -409,6 +429,7 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
   const quiet = options.quiet === true;
   const targetDir = join(PLUGINS_DIR, validatePluginDirectoryName(name));
   if (!existsSync(targetDir)) fail(`Plugin "${name}" was not found.`, PLUGINS_DIR);
+  refuseAbsorbed(findAbsorbedCheckout(targetDir));
   if (lstatSync(targetDir).isSymbolicLink()) {
     fail(`"${name}" is linked to a local checkout; pull it there instead.`);
   }
@@ -521,11 +542,12 @@ export function installedPluginDirectories(): string[] {
  * what the loader sees, so edits are live on the next reload or restart.
  */
 export async function linkPlugin(sourcePath: string, options: PluginInstallOptions = {}): Promise<PluginDirectoryInfo> {
-  ensurePluginsDir();
   const source = resolve(sourcePath);
   if (!existsSync(source)) fail(`No such directory: ${source}`);
   const entry = await resolvePluginEntry(source);
   if (!entry) fail(`${source} has no plugin entry (index.ts or package.json "main").`);
+  refuseAbsorbed(findAbsorbedCheckout(source));
+  ensurePluginsDir();
   const name = validatePluginDirectoryName(basename(source));
   const targetDir = join(PLUGINS_DIR, name);
   const existing = lstatSync(targetDir, { throwIfNoEntry: false });

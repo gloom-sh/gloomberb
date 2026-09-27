@@ -5,7 +5,8 @@ import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { reportCrash } from "../telemetry/crash-reports";
-import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles } from "./compat";
+import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
+import { checkPluginCompatibility, explainPluginLoadError, findMissingHostExport, pluginSourceFiles, readPluginManifest } from "./compat";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -133,6 +134,21 @@ export function readPluginCommit(pluginDir: string): string | null {
   }
 }
 
+/**
+ * The built-in a plugin folder is a leftover copy of, by its folder name or
+ * the id its gloom.json declares, or null. Reads gloom.json only, so it is
+ * safe to ask before anything in the folder is linked or imported.
+ */
+export function findAbsorbedCheckout(pluginDir: string): AbsorbedPlugin | null {
+  return findAbsorbedPlugin({ directory: basename(pluginDir), id: readPluginManifest(pluginDir).id });
+}
+
+function skipsAbsorbedCheckout(pluginDir: string, absorbed: AbsorbedPlugin | null = findAbsorbedCheckout(pluginDir)): boolean {
+  if (!absorbed) return false;
+  loaderLog.debug(`Skipped ${basename(pluginDir)}: ${absorbed.name} is built into Gloomberb now`);
+  return true;
+}
+
 export interface LoadExternalPluginOptions {
   /**
    * Import the entry as a fresh module. Bun caches `import()` by URL, so a
@@ -174,7 +190,12 @@ function hasStaleModules(pluginDir: string, commit: string | null): boolean {
   }
 }
 
-/** Loads one plugin directory. Never throws: a broken plugin comes back with `error` set. */
+/**
+ * Loads one plugin directory. Never throws: a broken plugin comes back with
+ * `error` set. Null for a folder that is not a plugin, and for a leftover
+ * checkout of a plugin that is built in now, which would only fail on the
+ * built-in's id.
+ */
 export async function loadExternalPlugin(
   pluginDir: string,
   target: PluginTarget = "cli",
@@ -182,6 +203,7 @@ export async function loadExternalPlugin(
 ): Promise<LoadedExternalPlugin | null> {
   const directory = basename(pluginDir);
   missingHostExportFailures.delete(directory);
+  if (skipsAbsorbedCheckout(pluginDir)) return null;
   const entryFile = await resolvePluginEntry(pluginDir);
   if (!entryFile) return null;
 
@@ -229,6 +251,8 @@ export async function loadExternalPlugin(
         error,
       };
     }
+    // A copy without a gloom.json, in a folder of another name.
+    if (skipsAbsorbedCheckout(pluginDir, findAbsorbedPlugin({ id: plugin.id }))) return null;
     if (!pluginSupportsTarget(plugin, target)) {
       loaderLog.info(`Skipped ${plugin.id}: does not support "${target}"`);
       return { ...base, ...restart, plugin, unsupportedTarget: target };
@@ -250,7 +274,9 @@ export async function loadExternalPlugin(
 }
 
 /**
- * Every plugin folder under the plugins directory, linked to the host.
+ * Every plugin folder under the plugins directory, linked to the host. A
+ * leftover checkout of a plugin that is built in now is left out, and left
+ * as it is.
  *
  * Linking has to finish for all of them before any is imported. A plugin
  * that imports a sibling (Gateway imports Flex) pulls the sibling's files in
@@ -266,7 +292,7 @@ export async function listPluginDirectories(pluginsDir: string = PLUGINS_DIR): P
   for (const entry of entries) {
     if (!isPluginDirectory(entry.name)) continue;
     const pluginDir = join(pluginsDir, entry.name);
-    if (isDirectoryOrLink(entry, pluginDir)) dirs.push(pluginDir);
+    if (isDirectoryOrLink(entry, pluginDir) && !skipsAbsorbedCheckout(pluginDir)) dirs.push(pluginDir);
   }
   dirs.sort();
   for (const pluginDir of dirs) linkHostPackages(pluginDir);

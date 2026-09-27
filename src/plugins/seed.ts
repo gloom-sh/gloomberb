@@ -29,8 +29,6 @@ export const EXTRACTED_PLUGINS = [
   // keeps that choice: the seeder does not restore what someone disabled.
   { id: "polls", repo: "gloom-sh/gloom-polls", directory: "gloom-polls" },
   { id: "fear-greed", repo: "gloom-sh/gloom-fear-greed", directory: "gloom-fear-greed", previousOwnerIds: ["market-overview"] },
-  { id: "market-halts", repo: "gloom-sh/gloom-market-halts", directory: "gloom-market-halts", previousOwnerIds: ["market-overview"] },
-  { id: "market-heatmap", repo: "gloom-sh/gloom-market-heatmap", directory: "gloom-market-heatmap", previousOwnerIds: ["market-overview"] },
   { id: "ipo-calendar", repo: "gloom-sh/gloom-ipo-calendar", directory: "gloom-ipo-calendar", previousOwnerIds: ["macro"] },
   { id: "prediction-markets", repo: "gloom-sh/gloom-prediction-markets", directory: "gloom-prediction-markets" },
   // Bring-your-own-key AI left under a new id, so the choice to switch the old

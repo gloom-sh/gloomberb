@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { exportConfig, importConfig, loadConfig, sanitizeLayout, saveConfig } from "./index";
+import { normalizeLoadedConfig } from "./normalize";
 import {
   CURRENT_CONFIG_VERSION,
   DEFAULT_LAYOUT,
@@ -13,8 +14,11 @@ import { getDockedPaneIds } from "../../../plugins/pane-manager";
 import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
 
 const tempDirs: string[] = [];
+const originalGloomberbHome = process.env.GLOOMBERB_HOME;
 
 afterEach(async () => {
+  if (originalGloomberbHome === undefined) delete process.env.GLOOMBERB_HOME;
+  else process.env.GLOOMBERB_HOME = originalGloomberbHome;
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -22,6 +26,13 @@ async function createTempConfigDir(): Promise<string> {
   const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-config-"));
   tempDirs.push(dataDir);
   return dataDir;
+}
+
+/** A migration can look for plugin checkouts: give it these rather than the real ones. */
+async function usePluginCheckouts(...directories: string[]): Promise<void> {
+  const home = await createTempConfigDir();
+  for (const directory of directories) await mkdir(join(home, "plugins", directory), { recursive: true });
+  process.env.GLOOMBERB_HOME = home;
 }
 
 function createSavedConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -732,6 +743,7 @@ describe("loadConfig", () => {
   });
 
   test("migrates disabled built-in modules to their owning plugin ids", async () => {
+    await usePluginCheckouts();
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
       configVersion: 19,
@@ -763,15 +775,35 @@ describe("loadConfig", () => {
     expect(config.disabledPlugins).toEqual([
       "ticker-research",
       "market-overview",
-      // Extracted into their own plugins, so a legacy id now means the plugin
-      // of that name rather than the built-in that used to contain it.
+      // Their own plugins now (Market Heatmap built in, Fear & Greed
+      // external), so a legacy id means the plugin of that name rather than
+      // the built-in that used to contain it.
       "market-heatmap",
       "fear-greed",
       "macro",
       "ibkr",
       "broker",
       "portfolio",
+      // Built in again, and off like the rest of Market Overview.
+      "market-halts",
     ]);
+  });
+
+  /**
+   * Market Heatmap and Market Halts were Market Overview modules, then
+   * plugins the seeder did not install while Market Overview was off. Built
+   * in again, they would come back on under their own ids.
+   */
+  test("keeps the absorbed Market Overview modules off where Market Overview was off", async () => {
+    // Installed by hand since, so wanted, and loaded as the built-in now.
+    await usePluginCheckouts("gloom-market-heatmap");
+    const dataDir = await createTempConfigDir();
+    const saved = createSavedConfig({ configVersion: 22, disabledPlugins: ["market-overview"] });
+    await writeConfigJson(dataDir, saved);
+
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview", "market-halts"]);
+    // The web bundled both whatever Market Overview said.
+    expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(["market-overview"]);
   });
 
   test("migrates grouped built-in plugin config keys", async () => {

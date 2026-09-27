@@ -1,11 +1,13 @@
-import { existsSync } from "fs";
+import { existsSync, readdirSync, type Dirent } from "fs";
 import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { dirname, join } from "path";
 import { expandUserHome, getGloomberbHome, isGloomberbHomeOverridden } from "../home";
 import type { AppConfig } from "../../../types/config";
 import { createDefaultConfig } from "../../../types/config";
 import { debugLog } from "../../../utils/debug-log";
+import { findAbsorbedCheckout, isDirectoryOrLink, isPluginDirectory } from "../../../plugins/loader";
 import { EXTRACTED_PLUGINS } from "../../../plugins/seed";
+import type { ConfigMigrationHost } from "./migrations";
 import {
   normalizeConfigForSave,
   normalizeLoadedConfig,
@@ -39,6 +41,30 @@ export async function getDataDir(): Promise<string | null> {
   }
 }
 
+/**
+ * Whether the plugins folder holds a copy of a plugin that is built in now,
+ * under its own folder name or another whose gloom.json claims the id. Only a
+ * one-time migration asks, so no ordinary load reads the folder. The home is
+ * resolved per call, so a test can point it away from the real plugins.
+ */
+function hasAbsorbedPluginCheckout(pluginId: string): boolean {
+  const pluginsDir = join(getGloomberbHome(), "plugins");
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(pluginsDir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  return entries.some((entry) => {
+    const pluginDir = join(pluginsDir, entry.name);
+    return isPluginDirectory(entry.name)
+      && isDirectoryOrLink(entry, pluginDir)
+      && findAbsorbedCheckout(pluginDir)?.id === pluginId;
+  });
+}
+
+const migrationHost: ConfigMigrationHost = { hasPluginCheckout: hasAbsorbedPluginCheckout };
+
 export async function loadConfig(dataDir: string): Promise<AppConfig> {
   const { config } = await loadConfigState(dataDir);
   return config;
@@ -50,7 +76,7 @@ async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; ne
   try {
     const raw = await readFile(configPath, "utf-8");
     const saved = JSON.parse(raw) as Record<string, unknown>;
-    const state = normalizeLoadedConfig(saved, dataDir);
+    const state = normalizeLoadedConfig(saved, dataDir, migrationHost);
     // A config.json that names a different directory than the one it sits in
     // came along with a moved folder. Record where it lives now, so the next
     // launch reads it directly instead of through the missing-path fallback.
@@ -103,7 +129,7 @@ export async function exportConfig(config: AppConfig, destPath: string): Promise
 export async function importConfig(dataDir: string, srcPath: string): Promise<AppConfig> {
   const raw = await readFile(expandHomePath(srcPath), "utf-8");
   const saved = JSON.parse(raw) as Record<string, unknown>;
-  const { config } = normalizeLoadedConfig(saved, dataDir);
+  const { config } = normalizeLoadedConfig(saved, dataDir, migrationHost);
   await saveConfig(config);
   return config;
 }

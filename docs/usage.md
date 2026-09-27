@@ -168,7 +168,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | Shortcut | Function |
 |----------|----------|
 | `TOP` | Ranked market stories |
-| `HM` | Market heatmap for large US stocks and ETFs ([Market Heatmap plugin](https://github.com/gloom-sh/gloom-market-heatmap)) |
+| `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `FLOW` | Unusual options activity: sweeps, blocks, and large premium; Vol/OI divides the contract's day volume by its latest reported open interest. Cloud records every print, for options flow alerts and the assistant |
@@ -209,7 +209,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's 5Y spread history and trades |
 | `ERN` | Earnings calendar |
 | `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
-| `HALT` | US trading halts with reason and resumption times ([Market Halts plugin](https://github.com/gloom-sh/gloom-market-halts)) |
+| `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
@@ -446,13 +446,15 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-Fear & Greed, Market Halts, Market Heatmap, the IPO Calendar, and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
+Fear & Greed, the IPO Calendar, and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
 
-Existing installations restore all five once after upgrading, keeping their saved panes: the pane and template ids are unchanged. A plugin whose Market Overview or Macro owner was switched off stays off, and a deliberate removal is respected. To install one by hand:
+Existing installations restore all three once after upgrading, keeping their saved panes: the pane and template ids are unchanged. A plugin whose Market Overview or Macro owner was switched off stays off, and a deliberate removal is respected. To install one by hand:
 
 ```bash
 gloomberb install gloom-sh/gloom-fear-greed
 ```
+
+Market Heatmap and Market Halts are built in again, with the same panes, shortcuts and settings. Where Market Overview was switched off, each starts switched off too unless its plugin was installed; `PL` turns them on. A copy installed while they were plugins is no longer loaded; `gloomberb plugins` lists it, and `gloomberb remove gloom-market-heatmap` (or `gloom-market-halts`) deletes it.
 
 ## Live TV
 

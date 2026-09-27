@@ -1,6 +1,7 @@
 import type { AppConfig } from "../types/config";
 import { requiredGloomberb } from "../utils/semver";
 import { VERSION } from "../version";
+import { findAbsorbedPlugin } from "./absorbed";
 import { applicationPluginMeta } from "./builtin/builtin-plugin-meta";
 import { hasUpdate, type RegistryPlugin } from "./builtin/plugin-marketplace/model";
 import type { PluginOperationResult, PluginPin } from "./builtin/plugin-marketplace/store";
@@ -19,7 +20,8 @@ import type { PluginOperationResult, PluginPin } from "./builtin/plugin-marketpl
  * moves forward, never to code this Gloomberb is too old for, never over a
  * linked or locally edited checkout, and peers first. Third-party plugins,
  * and anything installed from a repository the registry does not list, are
- * left to their users.
+ * left to their users. A leftover checkout of a plugin that is built in now
+ * (absorbed.ts) is never pulled, however stale the registry.
  */
 
 export const OFFICIAL_PLUGIN_OWNER = "gloom-sh";
@@ -42,6 +44,8 @@ export function isOfficialPluginRepo(repo: string | null | undefined): boolean {
 /** An installed plugin folder, as it is on disk. */
 export interface PluginCheckout {
   directory: string;
+  /** The id its gloom.json declares, if it has one. */
+  id: string | null;
   /** `owner/repo` of its origin remote; null for anything that is not a GitHub clone. */
   repo: string | null;
   commit: string | null;
@@ -129,6 +133,11 @@ export async function runPluginAutoUpdate(
   for (const checkout of await deps.checkouts()) {
     const { directory } = checkout;
     if (only && !only.includes(directory)) continue;
+    const absorbed = findAbsorbedPlugin(checkout);
+    if (absorbed) {
+      deps.log(`Not updating ${directory}: ${absorbed.name} is built into Gloomberb now.`);
+      continue;
+    }
     const listing = checkout.repo ? listings.get(checkout.repo.toLowerCase()) : undefined;
     // Third-party and unlisted plugins are their users' to update.
     if (!listing || !isOfficialPluginRepo(listing.repo)) continue;

@@ -24,11 +24,21 @@ const CLOUD_DEFAULT_CONFIG_VERSION = 13;
 const BUILTIN_OWNERSHIP_AND_CHART_CONFIG_VERSION = 20;
 const ONBOARDING_BACKFILL_CONFIG_VERSION = 21;
 const UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION = 22;
+const MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION = 23;
+
+/** What a migration may ask of the machine the config is loaded on. */
+export interface ConfigMigrationHost {
+  /**
+   * Whether the plugins folder holds a separately installed copy of this
+   * plugin. Absent where there is no plugins folder, as on the web.
+   */
+  hasPluginCheckout?(pluginId: string): boolean;
+}
 
 interface ConfigMigration {
   name: string;
   toVersion: number;
-  migrate(saved: Record<string, unknown>, dataDir: string): Record<string, unknown>;
+  migrate(saved: Record<string, unknown>, dataDir: string, host: ConfigMigrationHost): Record<string, unknown>;
 }
 
 export interface ConfigMigrationResult {
@@ -58,9 +68,18 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     toVersion: UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION,
     migrate: migrateUnreachablePaneInstances,
   },
+  {
+    name: "keep-market-overview-modules-off",
+    toVersion: MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION,
+    migrate: migrateAbsorbedMarketOverviewModules,
+  },
 ];
 
-export function migrateSavedConfig(saved: Record<string, unknown>, dataDir: string): ConfigMigrationResult {
+export function migrateSavedConfig(
+  saved: Record<string, unknown>,
+  dataDir: string,
+  host: ConfigMigrationHost = {},
+): ConfigMigrationResult {
   let version = savedConfigVersion(saved.configVersion);
   let config = { ...saved };
   const applied: string[] = [];
@@ -68,7 +87,7 @@ export function migrateSavedConfig(saved: Record<string, unknown>, dataDir: stri
   for (const migration of CONFIG_MIGRATIONS) {
     if (migration.toVersion > CURRENT_CONFIG_VERSION || version >= migration.toVersion) continue;
     config = {
-      ...migration.migrate(config, dataDir),
+      ...migration.migrate(config, dataDir, host),
       configVersion: migration.toVersion,
     };
     version = migration.toVersion;
@@ -139,6 +158,29 @@ function migrateUnreachablePaneInstances(
     ...saved,
     layout,
     layouts,
+  };
+}
+
+// Market Heatmap and Market Halts were Market Overview modules, so switching
+// Market Overview off switched them off, and the seeder kept them off when
+// they moved out by not installing them. Built in again under their own ids,
+// they would come back on. A copy installed since means the user wants it.
+// Removing a restored copy is not taken as switching it off: that config looks
+// the same as a fresh install that never had one, which should get the
+// built-in. The web bundled them whatever Market Overview said, so without a
+// plugins folder there is nothing to keep.
+function migrateAbsorbedMarketOverviewModules(
+  saved: Record<string, unknown>,
+  _dataDir: string,
+  host: ConfigMigrationHost,
+): Record<string, unknown> {
+  const disabledPlugins = stringList(saved.disabledPlugins);
+  const hasCheckout = host.hasPluginCheckout;
+  if (!hasCheckout || !disabledPlugins.includes("market-overview")) return saved;
+  const keptOff = ["market-heatmap", "market-halts"].filter((pluginId) => !hasCheckout(pluginId));
+  return {
+    ...saved,
+    disabledPlugins: [...new Set([...disabledPlugins, ...keptOff])],
   };
 }
 

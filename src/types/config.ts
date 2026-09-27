@@ -2,7 +2,7 @@ import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
 
-export const CURRENT_CONFIG_VERSION = 22;
+export const CURRENT_CONFIG_VERSION = 23;
 
 type ChartRendererPreference = "auto" | "kitty" | "braille";
 

@@ -475,6 +475,21 @@ describe("isInstallable and isManaged", () => {
     expect(isManaged(bundled!)).toBe(false);
   });
 
+  test("never offers update or remove for a plugin this build ships, whatever the feed says", () => {
+    // Built in again after living in its own repository; a feed from before
+    // that still lists the repository and a newer tag.
+    const [entry] = mergeCatalog({
+      registry: [registryPlugin({ id: "market-heatmap", repo: "gloom-sh/gloom-market-heatmap", ref: "v2.0.0" })],
+      installed: [installedPlugin({ id: "market-heatmap", source: "builtin", directory: undefined })],
+      target: "tui",
+    });
+
+    expect(entry?.section).toBe("builtin");
+    expect(hasUpdate(entry!)).toBe(false);
+    expect(isManaged(entry!)).toBe(false);
+    expect(isInstallable(entry!)).toBe(false);
+  });
+
   test("does not offer an install without a repository to clone", () => {
     const [entry] = mergeCatalog({
       registry: [],

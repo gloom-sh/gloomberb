@@ -10,7 +10,7 @@ import {
   type PluginCheckout,
 } from "./auto-update";
 import type { PluginManager } from "./builtin/plugin-marketplace/store";
-import { checkPluginCompatibility } from "./compat";
+import { checkPluginCompatibility, readPluginManifest } from "./compat";
 import { installedPeerPlugins } from "./host-link";
 import { getPluginCacheDir, getPluginsDir, pluginsMissingHostExports, readPluginCommit } from "./loader";
 
@@ -43,6 +43,7 @@ async function readCheckouts(): Promise<PluginCheckout[]> {
     const dependencies = pkg?.dependencies;
     return {
       directory,
+      id: readPluginManifest(dir).id,
       repo: existsSync(join(dir, ".git")) ? readPluginRemote(dir) : null,
       commit: readPluginCommit(dir),
       version: typeof pkg?.version === "string" ? pkg.version : null,

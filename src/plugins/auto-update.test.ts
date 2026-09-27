@@ -36,6 +36,7 @@ function listing(repo: string, extra: Partial<RegistryPlugin> = {}): RegistryPlu
 function checkout(directory: string, extra: Partial<PluginCheckout> = {}): PluginCheckout {
   return {
     directory,
+    id: null,
     repo: `gloom-sh/${directory}`,
     commit: OLD,
     version: "1.0.0",
@@ -114,6 +115,27 @@ describe("runPluginAutoUpdate", () => {
         checkout("copied", { repo: null }),
       ],
       remoteHeads: { "gloom-private": NEW },
+    });
+
+    expect(await runPluginAutoUpdate(deps)).toEqual({ checked: true, updated: [] });
+    expect(updates).toEqual([]);
+  });
+
+  test("never pulls a leftover checkout of a plugin that is built in now", async () => {
+    const { deps, updates } = fakeDeps({
+      // A feed from before the move back still lists the old repositories.
+      registry: [
+        listing("gloom-sh/gloom-market-heatmap", { ref: "v2.0.0" }),
+        listing("gloom-sh/gloom-market-halts"),
+        listing("gloom-sh/heatmap-fork", { ref: "v2.0.0" }),
+      ],
+      checkouts: [
+        checkout("gloom-market-heatmap"),
+        // Installed before the repository was renamed.
+        checkout("gloomberb-market-halts", { repo: "gloom-sh/gloom-market-halts" }),
+        checkout("heatmap-fork", { id: "market-heatmap" }),
+      ],
+      remoteHeads: { "gloomberb-market-halts": NEW },
     });
 
     expect(await runPluginAutoUpdate(deps)).toEqual({ checked: true, updated: [] });
