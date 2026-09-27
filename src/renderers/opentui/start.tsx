@@ -23,6 +23,12 @@ import type { RemoteControlAdapter } from "../../remote/app-host";
 import { startRemoteControlServer, type RemoteControlServer } from "../../remote/server";
 import { createAppServices } from "../../core/app-services";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
+import { flushCrashReports, installCrashReporter } from "../../telemetry/crash-reports";
+import {
+  CRASH_REPORT_EXIT_FLUSH_MS,
+  createNodeCrashReporterHost,
+  installProcessCrashListeners,
+} from "../../telemetry/crash-reports-node";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -77,7 +83,10 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
   const finishProcessExit = () => {
     if (exitTimer) return;
     exitTimer = setTimeout(() => {
-      void flushPendingPersistence().finally(() => process.exit(process.exitCode ?? 0));
+      void Promise.allSettled([
+        flushPendingPersistence(),
+        flushCrashReports({ timeoutMs: CRASH_REPORT_EXIT_FLUSH_MS }),
+      ]).finally(() => process.exit(process.exitCode ?? 0));
     }, 0);
   };
   try {
@@ -89,8 +98,13 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
 
     const config = await measurePerfAsync("startup.opentui.init-data-dir", () => initDataDir(dataDir));
     applyLanguageFromConfig(config);
+    installCrashReporter(createNodeCrashReporterHost({ surface: "terminal", getConfig: () => config }));
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     const renderer = host.renderer;
+    // The renderer already listens for uncaught errors and keeps the process
+    // running; these listeners live exactly as long as it does, so nothing
+    // changes about when the process exits.
+    renderer.once("destroy", installProcessCrashListeners());
     renderer.once("destroy", finishProcessExit);
 
     host.render(

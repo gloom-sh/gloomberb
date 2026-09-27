@@ -7,6 +7,7 @@ import type {
   OnboardingProgress,
   LayoutOrigin,
   SavedLayout,
+  TelemetryConfig,
 } from "../../../types/config";
 import {
   cloneLayout,
@@ -67,6 +68,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     onboardingProgress,
     lastLaunchedVersion: typeof candidate.lastLaunchedVersion === "string" ? candidate.lastLaunchedVersion : undefined,
     ...withKeybindings(sanitizeKeybindings(candidate.keybindings)),
+    ...withTelemetry(sanitizeTelemetry(candidate.telemetry)),
   };
 
   const needsSave =
@@ -124,12 +126,25 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
   };
   delete persisted.keybindings;
   Object.assign(persisted, withKeybindings(sanitizeKeybindings(config.keybindings)));
+  delete persisted.telemetry;
+  Object.assign(persisted, withTelemetry(sanitizeTelemetry(config.telemetry)));
 
   return persisted;
 }
 
 function withKeybindings(keybindings: KeybindingsConfig | undefined): Pick<AppConfig, "keybindings"> {
   return keybindings ? { keybindings } : {};
+}
+
+function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, "telemetry"> {
+  return telemetry ? { telemetry } : {};
+}
+
+/** Only the switches that are set survive; an empty object is the same as none. */
+function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  if (typeof value.crashReports !== "boolean") return undefined;
+  return { crashReports: value.crashReports };
 }
 
 /**

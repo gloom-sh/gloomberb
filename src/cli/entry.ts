@@ -4,6 +4,8 @@ import { isCliHelpFlag } from "./options";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
 import { measurePerfAsync } from "../utils/perf-marks";
+import { flushCrashReports, reportCrash } from "../telemetry/crash-reports";
+import { CRASH_REPORT_EXIT_FLUSH_MS } from "../telemetry/crash-reports-node";
 import type { CliLaunchRequest } from "../types/plugin";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -20,7 +22,15 @@ async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null
   // available in the same session rather than only after a restart.
   await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
   const externalPlugins = await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
-  await startOpenTuiApp({ externalPlugins, cliLaunchRequest });
+  try {
+    await startOpenTuiApp({ externalPlugins, cliLaunchRequest });
+  } catch (error) {
+    // A failed launch still prints and exits as before; the report is only
+    // sent when the config was read far enough to install the reporter.
+    reportCrash(error, { kind: "uncaught" });
+    await flushCrashReports({ timeoutMs: CRASH_REPORT_EXIT_FLUSH_MS });
+    throw error;
+  }
 }
 
 export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise<void> {

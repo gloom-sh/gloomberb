@@ -22,6 +22,18 @@ export interface ElectrobunBackendInit {
   desktopPlatform: string;
   windowKind: "main" | "detached";
   paneId?: string;
+  /** What the view needs to send crash reports the same way the Bun process does. */
+  telemetry: ElectrobunTelemetryInit;
+}
+
+export interface ElectrobunTelemetryInit {
+  /** Random per-install id from `<dataDir>/install-id`; null when the file could not be written. */
+  installId: string | null;
+  os: string;
+  /** Replaced by `~` in reports; paths from the Bun process reach the view in plugin errors. */
+  homeDir: string;
+  /** The config switch and environment, read where both exist. */
+  crashReports: boolean;
 }
 
 export interface DesktopRestartMessage {

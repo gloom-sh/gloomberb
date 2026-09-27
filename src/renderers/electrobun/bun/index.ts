@@ -73,6 +73,8 @@ import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./de
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
+import { installCrashReporter } from "../../../telemetry/crash-reports";
+import { createNodeCrashReporterHost, installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
 
 type DesktopRpc = ReturnType<typeof BrowserView.defineRPC<ElectrobunDesktopRpcSchema>>;
 
@@ -87,7 +89,13 @@ debugLog.mirrorToConsole({ minLevel: "error" });
 
 setConfigStoreHost(nodeConfigStoreHost);
 
+// Electrobun exits this process on an uncaught exception; the listener goes
+// ahead of it and spools the report for the next launch. Nothing is sent
+// before the config, and its off switch, has been read.
+installProcessCrashListeners();
+
 let currentConfig: AppConfig | null = null;
+let crashReporterInstalled = false;
 let services: AppServices | null = null;
 let mainWindow: BrowserWindow | null = null;
 let desktopWorkspace: DesktopWorkspace | null = null;
@@ -252,6 +260,10 @@ function setCurrentConfig(nextConfig: AppConfig): void {
   const previousKeybindings = JSON.stringify(currentConfig?.keybindings ?? null);
   currentConfig = syncActiveLayout(nextConfig);
   syncConfigAccessors();
+  if (!crashReporterInstalled) {
+    crashReporterInstalled = true;
+    installCrashReporter(createNodeCrashReporterHost({ surface: "desktop", getConfig: () => currentConfig }));
+  }
   // The native menu shows the same accelerators the keys use, so a rebind
   // rebuilds it.
   if (JSON.stringify(currentConfig.keybindings ?? null) !== previousKeybindings) installApplicationMenu();

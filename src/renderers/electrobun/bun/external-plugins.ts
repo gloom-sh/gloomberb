@@ -16,6 +16,7 @@ import {
 import { createNodePluginManager } from "../../../plugins/manager-node";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { desktopRendererCapabilityManifests } from "./desktop/initialization";
+import { reportCrash } from "../../../telemetry/crash-reports";
 import { debugLog } from "../../../utils/debug-log";
 
 const log = debugLog.createLogger("desktop-plugins");
@@ -115,6 +116,7 @@ async function bundlePluginDirectory(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error(`Bundling ${plugin.id} failed: ${message}`);
+    reportCrash(error, { kind: "plugin", plugin: plugin.id });
     return { ...base, error: message };
   }
 }
@@ -194,6 +196,7 @@ export async function activateExternalPlugin(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error(`Activating ${pluginId} failed: ${message}`);
+    reportCrash(error, { kind: "plugin", plugin: pluginId });
     return { ok: false, error: message };
   }
 }

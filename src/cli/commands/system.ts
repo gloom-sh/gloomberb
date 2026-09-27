@@ -14,7 +14,9 @@ import {
 } from "./keybindings";
 
 const DOCTOR_COUNT_UNITS: Record<string, string> = { plugins: "loaded", capabilities: "registered" };
-const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled"];
+/** Automatic crash reports; the app reads the switch at launch. */
+const CRASH_REPORTS_CONFIG_KEY = "telemetry.crashReports";
+const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled", CRASH_REPORTS_CONFIG_KEY];
 
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
@@ -148,6 +150,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config list",
         "config get <key>",
         "config set <key> <value>",
+        "config set telemetry.crashReports false",
         "config get keybindings",
         "config set keybindings.actions.<action> <keys>|null|default",
         "config set keybindings.commands.<keys> <command>|null",
@@ -180,6 +183,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           [KEYBINDINGS_CONFIG_KEY]: describeKeybindingsForCli(context.config),
           // Last, so CSV readers that go by position keep their columns.
           valueFlashingEnabled: context.config.valueFlashingEnabled,
+          [CRASH_REPORTS_CONFIG_KEY]: context.config.telemetry?.crashReports !== false,
         };
 
         if (action === "list") {
@@ -227,12 +231,17 @@ export function createSystemCliCommands(): CliCommandDef[] {
           if (!EDITABLE_CONFIG_KEYS.includes(key)) {
             ctx.fail(`Config key "${key}" is not editable from the CLI.`, `Editable keys: ${EDITABLE_CONFIG_KEYS.join(", ")}, keybindings.*`);
           }
+          if (key === CRASH_REPORTS_CONFIG_KEY && value !== "true" && value !== "false") {
+            ctx.fail(`Usage: gloomberb config set ${CRASH_REPORTS_CONFIG_KEY} true|false`);
+          }
           const parsedValue = key === "refreshIntervalMinutes"
             ? Number(value)
-            : key === "valueFlashingEnabled"
+            : key === "valueFlashingEnabled" || key === CRASH_REPORTS_CONFIG_KEY
               ? value === "true"
               : value;
-          const nextConfig = { ...context.config, [key]: parsedValue };
+          const nextConfig = key === CRASH_REPORTS_CONFIG_KEY
+            ? { ...context.config, telemetry: { ...context.config.telemetry, crashReports: parsedValue as boolean } }
+            : { ...context.config, [key]: parsedValue };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, key, value: parsedValue } }, {
             text: (data) => `Set ${key} to ${describeConfigValue(data.value)}.${dryRunNote(data.dryRun)}`,

@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportCrash } from "../../../telemetry/crash-reports";
 import { UiHostProvider, type RendererHost, type UiHost } from "../../../ui/host";
 import { WebDialogHostProvider } from "./dialog-host";
 import { WebInputHostProvider } from "./input-host";
@@ -51,6 +52,7 @@ export class DomErrorBoundary extends Component<DomErrorBoundaryProps, DomErrorB
 
   override componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
     console.error(this.props.label, error, errorInfo.componentStack);
+    reportCrash(error, { kind: "render", componentStack: errorInfo.componentStack });
     this.setState({ details: errorInfo.componentStack ?? undefined });
   }
 

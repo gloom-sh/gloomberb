@@ -20,10 +20,19 @@ import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
+import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../telemetry/crash-reports";
+import {
+  browserDoNotTrack,
+  describeBrowserOs,
+  installWindowCrashListeners,
+  readOrCreateBrowserInstallId,
+} from "../../telemetry/crash-reports-dom";
+import type { AppConfig } from "../../types/config";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
 setCurrentPluginTarget("web");
+installWindowCrashListeners();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing root element");
@@ -34,6 +43,13 @@ root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
 
 async function boot(): Promise<void> {
   installBrowserConfigStore();
+  let loadedConfig: AppConfig | null = null;
+  installCrashReporter({
+    surface: "web",
+    os: describeBrowserOs(),
+    isEnabled: () => !browserDoNotTrack() && crashReportsEnabled(loadedConfig),
+    getInstallId: () => readOrCreateBrowserInstallId(),
+  });
   // A document reload does not unmount React. Flush both config and session
   // timers while localStorage is still available, including background tabs.
   window.addEventListener("pagehide", () => { void flushPendingPersistence(); });
@@ -53,6 +69,7 @@ async function boot(): Promise<void> {
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
   const config = await loadConfig(BROWSER_DATA_DIR);
+  loadedConfig = config;
   applyLanguageFromConfig(config);
   const externalPlugins = await bundledPlugins;
   const deepLinkBridge = createBrowserDeepLinkBridge();
@@ -80,6 +97,7 @@ async function boot(): Promise<void> {
 }
 
 void boot().catch((error) => {
+  reportCrash(error, { kind: "uncaught" });
   const message = error instanceof Error ? error.message : String(error);
   root.render(<div className="gloom-fatal"><h1>Gloomberb failed to start</h1><pre>{message}</pre></div>);
 });

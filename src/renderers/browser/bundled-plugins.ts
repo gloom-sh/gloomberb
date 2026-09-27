@@ -3,6 +3,7 @@ import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { pluginFromModule } from "../../plugins/plugin-export";
 import type { WebBundledPluginDescriptor } from "../../plugins/web-bundled";
 import type { GloomPlugin } from "../../types/plugin";
+import { reportCrash } from "../../telemetry/crash-reports";
 import { debugLog } from "../../utils/debug-log";
 
 const log = debugLog.createLogger("web-plugins");
@@ -42,13 +43,16 @@ export async function loadWebBundledPlugins(
     try {
       const plugin = pluginFromModule(await import(/* @vite-ignore */ descriptor.url));
       if (!plugin) {
-        return { ...fallback, error: "Bundle did not export a valid GloomPlugin." };
+        const error = "Bundle did not export a valid GloomPlugin.";
+        reportCrash(error, { kind: "plugin", plugin: descriptor.id });
+        return { ...fallback, error };
       }
       log.info(`Loaded bundled plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);
       return { plugin, path: descriptor.url };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log.error(`Loading ${descriptor.id} failed: ${message}`);
+      reportCrash(error, { kind: "plugin", plugin: descriptor.id });
       return { ...fallback, error: message };
     }
   }));

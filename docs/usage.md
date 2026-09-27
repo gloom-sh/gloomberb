@@ -377,6 +377,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
+`gloomberb config set telemetry.crashReports false` turns off automatic crash reports; see [Crash reports](../README.md#crash-reports) for what a report contains.
+
 ## Plugins pane
 
 Open it with `PL` in the command bar. It lists what you have installed, what the registry offers, and, behind `b`, the built-in modules that can be switched off. Every row has a version and a status: `enabled`, `disabled`, `update` when the registry has something newer, `needs setup` when the plugin is missing a required setting, `errors (n)` when it has logged failures this session, and `failed` when it did not load at all, with the reason in the detail view.

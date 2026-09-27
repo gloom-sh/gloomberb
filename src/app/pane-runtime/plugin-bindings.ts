@@ -21,6 +21,7 @@ import {
   removePane,
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { reportCrash } from "../../telemetry/crash-reports";
 import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
@@ -390,6 +391,7 @@ export function bindAppPanePluginRegistry({
         upsertExternalPlugin(entry);
       } catch (error) {
         upsertExternalPlugin({ ...entry, error: error instanceof Error ? error.message : String(error) });
+        reportCrash(error, { kind: "plugin", plugin: pluginId });
         throw error;
       }
     },

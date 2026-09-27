@@ -3,6 +3,7 @@ import { installPluginHostModules } from "../../../plugins/host-modules";
 import type { LoadedExternalPlugin } from "../../../plugins/loader";
 import { pluginFromModule } from "../../../plugins/plugin-export";
 import type { GloomPlugin } from "../../../types/plugin";
+import { reportCrash } from "../../../telemetry/crash-reports";
 import { debugLog } from "../../../utils/debug-log";
 
 const log = debugLog.createLogger("desktop-plugins");
@@ -54,13 +55,18 @@ export async function loadDesktopExternalPlugin(bundle: DesktopExternalPluginBun
     objectUrl = URL.createObjectURL(new Blob([bundle.code], { type: "text/javascript" }));
     const plugin = pluginFromModule(await import(/* @vite-ignore */ objectUrl));
     if (!plugin) {
-      return { ...fallback, error: "Bundle did not export a valid GloomPlugin." };
+      const error = "Bundle did not export a valid GloomPlugin.";
+      reportCrash(error, { kind: "plugin", plugin: bundle.id });
+      return { ...fallback, error };
     }
     log.info(`Loaded external plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);
     return { ...base, plugin };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log.error(`Evaluating ${bundle.id} failed: ${message}`);
+    // A compile failure was already reported by the Bun process; this is the
+    // view's own evaluation of a bundle that compiled.
+    reportCrash(error, { kind: "plugin", plugin: bundle.id });
     return { ...fallback, error: message };
   } finally {
     // The module graph keeps its own reference once imported, so the URL can

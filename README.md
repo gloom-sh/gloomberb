@@ -109,6 +109,18 @@ Available in English, Spanish, Simplified Chinese, Traditional Chinese, Japanese
 
 [MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/).
 
+## Crash reports
+
+When the app hits an uncaught error, a render crash, or a plugin that fails to load, it sends a crash report to Gloom's API (`api.gloom.sh`), which forwards it to error tracking. A report contains the error type, message and stack trace, the app version, the operating system, and which surface it came from (terminal, desktop or web); when a plugin failed, its id. Your home directory is replaced with `~` before sending. Nothing from your workspace goes along: no portfolios, watchlists, layouts, settings or queries. Reports are tied to your account only when you are signed in; otherwise they carry a random install id stored in `~/.gloomberb/install-id`.
+
+To turn them off:
+
+```bash
+gloomberb config set telemetry.crashReports false
+```
+
+Setting `GLOOMBERB_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` in the environment does the same. The browser app also honours Do Not Track.
+
 ## Sponsors
 
 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>

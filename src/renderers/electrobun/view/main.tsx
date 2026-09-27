@@ -40,10 +40,16 @@ import { loadDesktopExternalPlugin, loadDesktopExternalPlugins } from "./externa
 import { setPluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
+import { installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
+import { installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
 setCurrentPluginTarget("desktop");
+// Errors are held until the Bun process has answered `init` with the install
+// id and the off switch; the reports themselves go out over the same RPC
+// transport as every other Cloud call.
+installWindowCrashListeners();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -107,6 +113,13 @@ async function boot() {
     backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
   )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
+  installCrashReporter({
+    surface: "desktop",
+    os: init.telemetry.os,
+    homeDir: init.telemetry.homeDir,
+    isEnabled: () => init.telemetry.crashReports,
+    getInstallId: () => init.telemetry.installId,
+  });
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();
@@ -201,5 +214,6 @@ async function boot() {
 }
 
 boot().catch((error) => {
+  reportCrash(error, { kind: "uncaught" });
   renderFatalError(error);
 });

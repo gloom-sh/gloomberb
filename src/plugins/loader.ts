@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, statSync } from "fs";
 import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
+import { reportCrash } from "../telemetry/crash-reports";
 import { checkPluginCompatibility, explainPluginLoadError, pluginSourceFiles } from "./compat";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
@@ -206,11 +207,13 @@ export async function loadExternalPlugin(
     const specifier = options.fresh ? `${entryFile}?reload=${Date.now()}` : entryFile;
     const plugin = pluginFromModule(await import(specifier));
     if (!plugin) {
+      const error = "Plugin did not export a valid GloomPlugin (missing id or name).";
+      reportCrash(error, { kind: "plugin", plugin: directory });
       return {
         ...base,
         ...restart,
         plugin: placeholder,
-        error: "Plugin did not export a valid GloomPlugin (missing id or name).",
+        error,
       };
     }
     if (!pluginSupportsTarget(plugin, target)) {
@@ -221,6 +224,7 @@ export async function loadExternalPlugin(
     return { ...base, ...restart, plugin };
   } catch (err) {
     loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
+    reportCrash(err, { kind: "plugin", plugin: directory });
     return {
       ...base,
       ...restart,

@@ -5,6 +5,7 @@ import { PluginRegistry } from "../plugins/registry";
 import { releaseSharedRegistry } from "../plugins/registry/shared";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import type { GloomPlugin } from "../types/plugin";
+import { reportCrash } from "../telemetry/crash-reports";
 import { debugLog } from "../utils/debug-log";
 import { measurePerfAsync } from "../utils/perf-marks";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
@@ -43,6 +44,7 @@ function recordExternalPluginFailure(
   const message = error instanceof Error ? error.message : String(error);
   entry.error = `Registration failed: ${message}`;
   runtimeLog.error("external plugin failed to register", { pluginId: plugin.id, path: entry.path, error: message });
+  reportCrash(error, { kind: "plugin", plugin: plugin.id });
   return true;
 }
 

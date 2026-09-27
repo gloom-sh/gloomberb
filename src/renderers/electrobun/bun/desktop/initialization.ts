@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "fs";
+import { homedir } from "os";
 import { getGloomberbHome } from "../../../../data/config/home";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
 import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
@@ -26,6 +27,8 @@ import {
 } from "../window/focus";
 import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../shared/protocol";
 import type { CapabilityRegistry } from "../../../../capabilities";
+import { crashReportsEnabled } from "../../../../telemetry/crash-reports";
+import { describeNodeOs, readOrCreateInstallId } from "../../../../telemetry/crash-reports-node";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
@@ -102,6 +105,12 @@ function buildInitializationPayload(
     desktopPlatform: process.platform,
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
+    telemetry: {
+      installId: readOrCreateInstallId(config.dataDir),
+      os: describeNodeOs(),
+      homeDir: homedir(),
+      crashReports: crashReportsEnabled(config, process.env),
+    },
   };
 }
 

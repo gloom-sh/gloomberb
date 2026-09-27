@@ -178,6 +178,15 @@ export interface KeybindingsConfig {
   commands?: Record<string, string>;
 }
 
+/** What the app sends home on its own. Absent means every default applies. */
+export interface TelemetryConfig {
+  /**
+   * Automatic crash reports (uncaught errors, render crashes, plugin load
+   * failures) to Gloom's API. `false` turns them off; absent means on.
+   */
+  crashReports?: boolean;
+}
+
 export interface AppConfig {
   dataDir: string;
   configVersion: number;
@@ -212,6 +221,7 @@ export interface AppConfig {
   onboardingProgress?: OnboardingProgress;
   /** Key overrides for this machine. Absent means every default applies. */
   keybindings?: KeybindingsConfig;
+  telemetry?: TelemetryConfig;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";

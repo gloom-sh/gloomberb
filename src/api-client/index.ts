@@ -25,6 +25,7 @@ import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
+import { CloudTelemetryApi } from "./telemetry";
 import { CloudThesesApi } from "./theses";
 import { CloudViewsApi } from "./views";
 import type {
@@ -44,6 +45,7 @@ export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
 export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
+export type { CrashReportError, CrashReportKind, CrashReportSurface, CrashReportsPayload } from "./telemetry";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
@@ -107,6 +109,7 @@ class GloomApiClient {
   private readonly data: CloudDataApi = new CloudDataApi((path, options) => this.request(path, options));
   private readonly notes: CloudNotesApi = new CloudNotesApi((path, options) => this.request(path, options));
   private readonly feedback: CloudFeedbackApi = new CloudFeedbackApi((path, options) => this.request(path, options));
+  private readonly telemetry: CloudTelemetryApi = new CloudTelemetryApi((path, options) => this.request(path, options));
   private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
   private readonly views: CloudViewsApi = new CloudViewsApi((path, options) => this.request(path, options));
@@ -588,6 +591,7 @@ class GloomApiClient {
   putCloudNote = this.notes.putNote.bind(this.notes);
   submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
+  reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);
