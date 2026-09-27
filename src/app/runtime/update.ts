@@ -96,7 +96,7 @@ export function useAppUpdateRuntime({
     if (!isUpgrade) return;
     void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
       values: { version: VERSION },
-    }).catch(() => {});
+    }, { automated: true }).catch(() => {});
   }, [dispatch, enabled, isDetachedWindow, pluginRegistry, stateRef]);
 
   useEffect(() => {

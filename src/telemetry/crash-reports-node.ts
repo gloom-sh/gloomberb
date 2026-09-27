@@ -40,8 +40,9 @@ export function describeNodeOs(): string {
 }
 
 /**
- * The random id that identifies this install in crash reports, created on
- * first use and kept in `<dataDir>/install-id`. It is used for nothing else.
+ * The random id that identifies this install in crash reports and usage
+ * counts, created on first use and kept in `<dataDir>/install-id`. It is used
+ * for nothing else.
  */
 export function readOrCreateInstallId(dataDir: string): string | null {
   const cached = installIds.get(dataDir);

@@ -185,6 +185,11 @@ export interface TelemetryConfig {
    * failures) to Gloom's API. `false` turns them off; absent means on.
    */
   crashReports?: boolean;
+  /**
+   * Anonymous counts of which functions are opened and which are on screen
+   * at launch, to Gloom's API. `false` turns them off; absent means on.
+   */
+  usage?: boolean;
 }
 
 export interface AppConfig {

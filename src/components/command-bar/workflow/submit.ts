@@ -13,6 +13,7 @@ import {
 } from "../helpers";
 import { resolveBrokerWorkflowSelection, type WorkflowStringValues } from "./broker";
 import { parseOwnerValue } from "./builtin";
+import { recordPluginCommandOpen } from "../commands/plugin/items";
 import type { PaneSettingField, PaneTemplateCreateOptions } from "../../../types/plugin";
 import type {
   CommandBarCollectionWorkflowActions,
@@ -185,6 +186,7 @@ export async function submitCommandBarWorkflow(options: {
         values: route.values,
       });
       await command.execute(values);
+      recordPluginCommandOpen(pluginRegistry, command);
       if (route.successLabel) {
         notify(route.successLabel, { type: "success" });
       }

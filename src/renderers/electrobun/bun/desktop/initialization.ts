@@ -28,6 +28,7 @@ import {
 import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../shared/protocol";
 import type { CapabilityRegistry } from "../../../../capabilities";
 import { crashReportsEnabled } from "../../../../telemetry/crash-reports";
+import { usageCountsEnabled } from "../../../../telemetry/usage-counts";
 import { describeNodeOs, readOrCreateInstallId } from "../../../../telemetry/crash-reports-node";
 
 interface DesktopWindowTarget {
@@ -110,6 +111,7 @@ function buildInitializationPayload(
       os: describeNodeOs(),
       homeDir: homedir(),
       crashReports: crashReportsEnabled(config, process.env),
+      usage: usageCountsEnabled(config, process.env),
     },
   };
 }

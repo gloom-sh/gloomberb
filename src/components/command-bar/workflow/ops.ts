@@ -19,6 +19,7 @@ import {
 } from "../../../plugins/builtin/correlation/relationship/model";
 import { buildQuoteMonitorPaneTitle } from "../../../plugins/builtin/ticker-detail/settings";
 import { getPaneTemplateDisplayLabel } from "../pane-templates/items";
+import { describeUsageFunction, recordFunctionOpen } from "../../../telemetry/usage-counts";
 import {
   resolveTickerInputOrThrow,
   resolveTickerListInput,
@@ -55,6 +56,8 @@ interface CreatePaneTemplateDeps extends SharedWorkflowDeps {
     paneDef: NonNullable<ReturnType<PluginRegistry["panes"]["get"]>>,
     options?: PaneTemplateInstanceConfig,
   ) => void;
+  /** False for a pane the app or an automation opens: it is not counted as the user opening a function. */
+  countAsOpen?: boolean;
 }
 
 interface ApplyPaneSettingDeps extends SharedWorkflowDeps {
@@ -282,6 +285,7 @@ export async function createPaneTemplateOrThrow(
     // React can batch the layout update and focus. Bringing a floating pane to
     // the front must use its retargeted settings, not the preceding render.
     deps.pluginRegistry.focusPaneFn(existing.instanceId, nextLayout);
+    countTemplateOpen(template, pluginId, deps);
     return;
   }
 
@@ -298,6 +302,13 @@ export async function createPaneTemplateOrThrow(
   }
 
   deps.placePaneInstance(instance, paneDef, spec);
+  countTemplateOpen(template, pluginId, deps);
+}
+
+/** Every pane template the user opens, from the command bar, a menu or another pane, passes here. */
+function countTemplateOpen(template: PaneTemplateDef, pluginId: string | undefined, deps: CreatePaneTemplateDeps): void {
+  if (deps.countAsOpen === false) return;
+  recordFunctionOpen(describeUsageFunction(deps.pluginRegistry, pluginId, template.shortcut?.prefix));
 }
 
 export async function applyPaneSettingFieldValue(

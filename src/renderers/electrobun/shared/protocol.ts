@@ -22,7 +22,7 @@ export interface ElectrobunBackendInit {
   desktopPlatform: string;
   windowKind: "main" | "detached";
   paneId?: string;
-  /** What the view needs to send crash reports the same way the Bun process does. */
+  /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
 }
 
@@ -34,6 +34,8 @@ export interface ElectrobunTelemetryInit {
   homeDir: string;
   /** The config switch and environment, read where both exist. */
   crashReports: boolean;
+  /** The usage counts switch, read the same way. */
+  usage: boolean;
 }
 
 export interface DesktopRestartMessage {

@@ -331,6 +331,7 @@ export function createAppRemoteController({
         await pluginRegistry.createPaneFromTemplateAsyncFn(
           stringInput(input, "templateId"),
           asRecord(input.options),
+          { automated: true },
         );
         return getAfterMutationSummary();
       case "view.create": {
@@ -340,6 +341,7 @@ export function createAppRemoteController({
         await pluginRegistry.createPaneFromTemplateAsyncFn(
           CUSTOM_VIEW_TEMPLATE_ID,
           customViewCreateOptions(parsed.spec, optionalString(input, "name")),
+          { automated: true },
         );
         return getAfterMutationSummary({
           ...(parsed.result.warnings.length ? { warnings: parsed.result.warnings.map((entry) => entry.message) } : {}),

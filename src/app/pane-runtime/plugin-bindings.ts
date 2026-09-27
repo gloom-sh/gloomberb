@@ -149,7 +149,7 @@ export function bindAppPanePluginRegistry({
     if (isDetachedWindow) return;
     showPane(paneId);
   };
-  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
+  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options, origin) => {
     if (isDetachedWindow) return;
     await createPaneTemplateOrThrow(templateId, options, {
       dataProvider,
@@ -159,6 +159,7 @@ export function bindAppPanePluginRegistry({
       getState: () => stateRef.current,
       buildPaneInstance,
       placePaneInstance,
+      countAsOpen: !origin?.automated,
     });
   };
   pluginRegistry.openPortablePaneShareAsyncFn = async (payload) => {

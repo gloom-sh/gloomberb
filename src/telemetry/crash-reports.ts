@@ -87,7 +87,12 @@ export function crashReportsEnabled(
   env: Record<string, string | undefined> = {},
 ): boolean {
   if (config?.telemetry?.crashReports === false) return false;
-  return !isOptOut(env.GLOOMBERB_NO_TELEMETRY) && !isOptOut(env.DO_NOT_TRACK);
+  return !telemetryOptedOut(env);
+}
+
+/** `GLOOMBERB_NO_TELEMETRY` or `DO_NOT_TRACK` turns off everything the app sends on its own. */
+export function telemetryOptedOut(env: Record<string, string | undefined>): boolean {
+  return isOptOut(env.GLOOMBERB_NO_TELEMETRY) || isOptOut(env.DO_NOT_TRACK);
 }
 
 function isOptOut(value: string | undefined): boolean {

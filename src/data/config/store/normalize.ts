@@ -145,8 +145,11 @@ function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, 
 /** Only the switches that are set survive; an empty object is the same as none. */
 function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
   if (!isRecord(value)) return undefined;
-  if (typeof value.crashReports !== "boolean") return undefined;
-  return { crashReports: value.crashReports };
+  const telemetry: TelemetryConfig = {
+    ...(typeof value.crashReports === "boolean" ? { crashReports: value.crashReports } : {}),
+    ...(typeof value.usage === "boolean" ? { usage: value.usage } : {}),
+  };
+  return Object.keys(telemetry).length > 0 ? telemetry : undefined;
 }
 
 /**

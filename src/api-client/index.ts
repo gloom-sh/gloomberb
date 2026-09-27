@@ -45,7 +45,15 @@ export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
 export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
-export type { CrashReportError, CrashReportKind, CrashReportSurface, CrashReportsPayload } from "./telemetry";
+export type {
+  CrashReportError,
+  CrashReportKind,
+  CrashReportSurface,
+  CrashReportsPayload,
+  FunctionUsageCount,
+  UsageCountsPayload,
+  UsageCountsSurface,
+} from "./telemetry";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
@@ -589,6 +597,7 @@ class GloomApiClient {
   submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
   listFeedback = this.feedback.listFeedback.bind(this.feedback);
   reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
+  reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
   listTheses = this.theses.listTheses.bind(this.theses);
   getThesis = this.theses.getThesis.bind(this.theses);

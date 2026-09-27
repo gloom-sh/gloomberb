@@ -25,6 +25,24 @@ export interface CrashReportsPayload {
   errors: CrashReportError[];
 }
 
+export type UsageCountsSurface = "terminal" | "desktop" | "web";
+
+/** One function's counts since the last batch; `fn` is its mnemonic, or `plugin`. */
+export interface FunctionUsageCount {
+  fn: string;
+  opened: number;
+  restored: number;
+}
+
+/** Body of `POST /telemetry/usage`. The server adds the plan and forwards each count to analytics. */
+export interface UsageCountsPayload {
+  installId: string;
+  surface: UsageCountsSurface;
+  appVersion: string;
+  os?: string;
+  counts: FunctionUsageCount[];
+}
+
 export class CloudTelemetryApi {
   constructor(private readonly request: CloudApiRequest) {}
 
@@ -45,6 +63,26 @@ export class CloudTelemetryApi {
       }),
       REPORT_TIMEOUT_MS,
       "Crash report timed out.",
+      (error) => controller.abort(error),
+    );
+  }
+
+  /**
+   * Sends a batch of function usage counts. The server reads the plan from
+   * the session and otherwise keeps the batch anonymous: it is filed under
+   * the install id, never the account.
+   */
+  reportUsageCounts(payload: UsageCountsPayload): Promise<void> {
+    const controller = new AbortController();
+    return withDeadline(
+      this.request<void>("/telemetry/usage", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        keepalive: true,
+        signal: controller.signal,
+      }),
+      REPORT_TIMEOUT_MS,
+      "Usage counts timed out.",
       (error) => controller.abort(error),
     );
   }

@@ -26,12 +26,17 @@ import type { RemoteControlAdapter } from "../../remote/app-host";
 import { startRemoteControlServer, type RemoteControlServer } from "../../remote/server";
 import { createAppServices } from "../../core/app-services";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
+import { loadOfficialPluginIds } from "../../plugins/builtin/plugin-marketplace/feed";
 import { flushCrashReports, installCrashReporter } from "../../telemetry/crash-reports";
 import {
   CRASH_REPORT_EXIT_FLUSH_MS,
   createNodeCrashReporterHost,
+  describeNodeOs,
   installProcessCrashListeners,
+  readOrCreateInstallId,
 } from "../../telemetry/crash-reports-node";
+import { currentTelemetryConfig } from "../../telemetry/live-config";
+import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -90,6 +95,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       void Promise.allSettled([
         flushPendingPersistence(),
         flushCrashReports({ timeoutMs: CRASH_REPORT_EXIT_FLUSH_MS }),
+        flushUsageCounts({ timeoutMs: CRASH_REPORT_EXIT_FLUSH_MS }),
       ]).finally(() => process.exit(process.exitCode ?? 0));
     }, 0);
   };
@@ -102,7 +108,17 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
 
     const config = await measurePerfAsync("startup.opentui.init-data-dir", () => initDataDir(dataDir));
     applyLanguageFromConfig(config);
-    installCrashReporter(createNodeCrashReporterHost({ surface: "terminal", getConfig: () => config }));
+    installCrashReporter(createNodeCrashReporterHost({
+      surface: "terminal",
+      getConfig: () => ({ dataDir: config.dataDir, telemetry: currentTelemetryConfig(config)?.telemetry }),
+    }));
+    installUsageCounter({
+      surface: "terminal",
+      os: describeNodeOs(),
+      isEnabled: () => usageCountsEnabled(currentTelemetryConfig(config), process.env),
+      getInstallId: () => readOrCreateInstallId(config.dataDir),
+      officialPluginIds: loadOfficialPluginIds,
+    });
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     const renderer = host.renderer;
     // The renderer already listens for uncaught errors and keeps the process

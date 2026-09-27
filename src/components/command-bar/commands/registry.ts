@@ -225,6 +225,20 @@ export const commands: Command[] = [
     description: "Check GitHub releases for a newer version",
     category: "Config",
   },
+  {
+    id: "toggle-crash-reports",
+    prefix: "",
+    label: "Crash Reports",
+    description: "Turn automatic crash reports on or off",
+    category: "Config",
+  },
+  {
+    id: "toggle-usage-counts",
+    prefix: "",
+    label: "Usage Counts",
+    description: "Turn anonymous function usage counts on or off",
+    category: "Config",
+  },
 
   // Theme
   {

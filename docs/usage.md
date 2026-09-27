@@ -377,7 +377,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
-`gloomberb config set telemetry.crashReports false` turns off automatic crash reports; see [Crash reports](../README.md#crash-reports) for what a report contains.
+`gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts; see [Crash reports and usage counts](../README.md#crash-reports-and-usage-counts) for what each contains.
 
 ## Plugins pane
 

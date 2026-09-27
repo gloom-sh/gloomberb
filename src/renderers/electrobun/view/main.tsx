@@ -42,8 +42,12 @@ import { activateUpdatedPlugins } from "../../../plugins/builtin/plugin-marketpl
 import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../../plugins/builtin/plugin-marketplace/store";
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
-import { installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
+import { loadOfficialPluginIds } from "../../../plugins/builtin/plugin-marketplace/feed";
+import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
+import { currentTelemetryConfig } from "../../../telemetry/live-config";
+import { installUsageCounter, usageCountsEnabled } from "../../../telemetry/usage-counts";
+import { installWindowUsageFlush } from "../../../telemetry/usage-counts-dom";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -52,6 +56,7 @@ setCurrentPluginTarget("desktop");
 // id and the off switch; the reports themselves go out over the same RPC
 // transport as every other Cloud call.
 installWindowCrashListeners();
+installWindowUsageFlush();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -115,12 +120,21 @@ async function boot() {
     backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
   )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
+  // The Bun process read the switches with the environment at launch; a
+  // switch turned off in the running app applies at once.
   installCrashReporter({
     surface: "desktop",
     os: init.telemetry.os,
     homeDir: init.telemetry.homeDir,
-    isEnabled: () => init.telemetry.crashReports,
+    isEnabled: () => init.telemetry.crashReports && crashReportsEnabled(currentTelemetryConfig(null)),
     getInstallId: () => init.telemetry.installId,
+  });
+  installUsageCounter({
+    surface: "desktop",
+    os: init.telemetry.os,
+    isEnabled: () => init.telemetry.usage && usageCountsEnabled(currentTelemetryConfig(null)),
+    getInstallId: () => init.telemetry.installId,
+    officialPluginIds: loadOfficialPluginIds,
   });
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();

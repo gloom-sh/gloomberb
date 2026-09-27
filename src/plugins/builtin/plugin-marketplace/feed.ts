@@ -1,4 +1,5 @@
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
+import { isOfficialPluginRepo } from "../../auto-update";
 import type { RegistryFeed, RegistryPlugin } from "./model";
 
 /**
@@ -73,6 +74,17 @@ export async function loadRegistry(options: { force?: boolean } = {}): Promise<F
     if (cache) return { plugins: cache.plugins, fetchedAt: cache.fetchedAt, stale: true, error: message };
     return { plugins: [], fetchedAt: null, stale: false, error: message };
   }
+}
+
+/**
+ * The official plugins as the registry lists them: published by gloom-sh or
+ * bundled with the app. Empty when the registry cannot be read.
+ */
+export async function loadOfficialPluginIds(): Promise<ReadonlySet<string>> {
+  const { plugins } = await loadRegistry();
+  return new Set(plugins
+    .filter((plugin) => plugin.tier === "official" && (plugin.bundled || isOfficialPluginRepo(plugin.repo)))
+    .map((plugin) => plugin.id));
 }
 
 export function registryPluginUrl(id: string): string {

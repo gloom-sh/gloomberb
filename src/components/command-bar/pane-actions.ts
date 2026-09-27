@@ -16,6 +16,7 @@ import type { PinTickerOptions } from "../../types/plugin";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { AppAction, AppState } from "../../state/app/context";
+import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 interface CommandBarPaneActionsOptions {
   dispatch: Dispatch<AppAction>;
@@ -70,6 +71,8 @@ export function useCommandBarPaneActions({
   }, [pluginRegistry]);
 
   const focusTicker = useCallback((symbol: string, options?: PinTickerOptions) => {
+    // DES, a ticker typed on its own and a ticker search pick all land here.
+    recordFunctionOpen({ shortcut: "DES", externalPluginId: null });
     const currentState = stateRef.current;
     const focusedPane = currentState.focusedPaneId
       ? findPaneInstance(currentState.config.layout, currentState.focusedPaneId)
