@@ -4,7 +4,7 @@ import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions } from "../../../market-data/request-types";
 import { buildChartKey } from "../../../market-data/selectors";

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { PaneFooterSegment, PaneHint } from "../../../components";
-import { formatTimeAgo } from "../../../utils/format";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import {
   TWITTER_FEED_PANE_ID,
   type TwitterFeed,

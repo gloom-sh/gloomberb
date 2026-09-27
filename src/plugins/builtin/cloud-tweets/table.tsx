@@ -22,7 +22,7 @@ import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/in
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
-import { formatTimeAgo } from "../../../utils/format";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
@@ -34,7 +34,6 @@ import {
   mergeLatestTweets,
   buildTweetColumns,
   formatMetric,
-  formatRelativeShort,
   isTweetSortColumnId,
   normalizeTwitterUsername,
   normalizeTweetCellText,
@@ -456,7 +455,7 @@ export function TweetSearchTable({
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "time":
-        return { text: formatRelativeShort(tweet.createdAt), color: selectedColor ?? colors.textDim };
+        return { text: formatTimeAgo(tweet.createdAt, { short: true }), color: selectedColor ?? colors.textDim };
       case "author":
         return {
           text: `@${tweet.author.userName || tweet.author.name}`,

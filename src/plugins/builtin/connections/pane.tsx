@@ -11,7 +11,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import { formatRelativeAge } from "../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useConnectionHealth, usePluginPaneState } from "../../runtime";
 

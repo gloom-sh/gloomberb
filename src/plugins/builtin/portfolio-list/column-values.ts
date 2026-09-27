@@ -8,6 +8,7 @@ import type { EarningsEvent } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { priceColor } from "../../../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
+import { formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
 import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   formatMarketCost,
@@ -62,26 +63,15 @@ export interface ColumnContext {
   earningsEvents?: Map<string, EarningsEvent | null>;
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-
-function parseDateValue(value: Date | string | number | null | undefined): Date | null {
-  if (value == null) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatShortDate(value: Date | string | number | null | undefined): string {
-  const date = parseDateValue(value);
-  if (!date) return "—";
-  return `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}`;
-}
+/** Position and calendar dates as "Jan 5", read in UTC. */
+const MONTH_DAY: ShortDateOptions = { year: false, utc: true, fallback: "\u2014" };
 
 function startOfUtcDay(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
 function daysSince(value: Date | string | number | null | undefined, now: number): number | null {
-  const date = parseDateValue(value);
+  const date = parseDisplayDate(value);
   if (!date) return null;
   const days = Math.floor((startOfUtcDay(new Date(now)) - startOfUtcDay(date)) / 86_400_000);
   return days >= 0 ? days : null;
@@ -101,7 +91,7 @@ function activePositions(ticker: TickerRecord, activeTab: string | undefined): T
 
 function earliestDateAcquired(ticker: TickerRecord, activeTab: string | undefined): Date | null {
   return activePositions(ticker, activeTab)
-    .map((position) => parseDateValue(position.dateAcquired))
+    .map((position) => parseDisplayDate(position.dateAcquired))
     .filter((date): date is Date => date != null)
     .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
 }
@@ -138,7 +128,7 @@ function futureOrLatestDate<T>(
 ): Date | null {
   const dates = values
     .map(getDate)
-    .map(parseDateValue)
+    .map(parseDisplayDate)
     .filter((date): date is Date => date != null)
     .sort((left, right) => left.getTime() - right.getTime());
   if (dates.length === 0) return null;
@@ -384,7 +374,7 @@ export function getColumnValue(
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
     case "acq_date": {
-      return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab)) };
+      return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab), MONTH_DAY) };
     }
     case "held": {
       return { text: formatHeldDays(daysSince(earliestDateAcquired(ticker, ctx.activeTab), ctx.now)) };
@@ -417,12 +407,12 @@ export function getColumnValue(
     case "ex_div": {
       const result = exDividendDate(ticker.metadata.ticker, ctx);
       if (result.pending) return { text: "…" };
-      return { text: formatShortDate(result.date) };
+      return { text: formatShortDate(result.date, MONTH_DAY) };
     }
     case "next_earn": {
       const result = nextEarningsDate(ticker.metadata.ticker, ctx);
       if (result.pending) return { text: "…" };
-      return { text: formatShortDate(result.date) };
+      return { text: formatShortDate(result.date, MONTH_DAY) };
     }
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };

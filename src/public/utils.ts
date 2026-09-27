@@ -20,7 +20,7 @@ export type {
 
 export { normalizedHttpUrl } from "../utils/url";
 
-export { formatRelativeAge } from "../utils/relative-time";
+export { formatRelativeAge, formatTimeAgo } from "../utils/datetime-format";
 
 export { decodeHtmlEntities } from "../utils/html-entities";
 
@@ -36,7 +36,6 @@ export {
   formatNumber,
   formatPercent,
   formatPercentRaw,
-  formatTimeAgo,
   formatWithDivisor,
   padTo,
   pickUnit,

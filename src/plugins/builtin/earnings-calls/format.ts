@@ -1,4 +1,5 @@
 import type { CloudEarningsCallPayload } from "../../../api-client";
+import { formatShortDate } from "../../../utils/datetime-format";
 
 /** "FQ4 26" — fiscal period, compact enough for a table column. */
 export function formatPeriod(
@@ -12,14 +13,7 @@ export function formatPeriod(
 }
 
 export function formatCallDate(value: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "2-digit",
-  });
+  return formatShortDate(value, { day: "2-digit", year: "2-digit", fallback: "\u2014" });
 }
 
 export function formatDuration(seconds: number | null): string {

@@ -1,8 +1,7 @@
 import type { DataTableColumn } from "../../../components";
+import type { ShortDateOptions } from "../../../utils/datetime-format";
 import { formatCompact } from "../../../utils/format";
 import type { SortDirection } from "../../../utils/sort-values";
-
-export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
 import type {
   CloudCongressHousePayload,
   CloudCongressMemberPayload,
@@ -81,16 +80,8 @@ export function sortedTickers(tickers: CloudCongressTickerPayload[], sort: { col
   });
 }
 
-export function formatShortDate(value: string | null): string {
-  if (!value) return "--";
-  const timestamp = Date.parse(`${value}T00:00:00Z`);
-  if (!Number.isFinite(timestamp)) return "--";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
+/** Filing dates are "YYYY-MM-DD" calendar days, shown as "Jan 5". */
+export const FILING_DAY_FORMAT: ShortDateOptions = { year: false, utc: true, fallback: "--" };
 
 function dateValue(value: string | null): number {
   if (!value) return 0;

@@ -1,3 +1,4 @@
+import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { formatPriceEarnings } from "../../utils/price-earnings";
@@ -97,30 +98,6 @@ function appendTextSection(lines: string[], title: string, content: string | und
   lines.push("");
   lines.push(renderSection(title));
   lines.push(verbatim ? text : wrapProse(text));
-}
-
-function normalizeTimestamp(value: Date | string | number | undefined): number | null {
-  if (value instanceof Date) {
-    const timestamp = value.getTime();
-    return Number.isNaN(timestamp) ? null : timestamp;
-  }
-
-  if (typeof value === "string" || typeof value === "number") {
-    const timestamp = new Date(value).getTime();
-    return Number.isNaN(timestamp) ? null : timestamp;
-  }
-
-  return null;
-}
-
-function formatFeedDate(value: Date | string | number | undefined): string {
-  const timestamp = normalizeTimestamp(value);
-  if (timestamp == null) return "";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 }
 
 function appendFeedSection(
@@ -464,8 +441,8 @@ export async function buildTickerReport({
     meta: [
       item.source,
       (() => {
-        const publishedAt = normalizeTimestamp(item.publishedAt as Date | string | number | undefined);
-        return publishedAt == null ? "" : formatTimestamp(publishedAt);
+        const publishedAt = parseDisplayDate(item.publishedAt as Date | string | number | undefined);
+        return publishedAt ? formatTimestamp(publishedAt.getTime()) : "";
       })(),
     ],
     body: item.summary,
@@ -474,7 +451,7 @@ export async function buildTickerReport({
 
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
-      const filingDate = formatFeedDate(filing.filingDate as Date | string | number | undefined);
+      const filingDate = formatShortDate(filing.filingDate as Date | string | number | undefined, { fallback: "" });
       return filingDate ? `Form ${filing.form}${METADATA_SEPARATOR}${filingDate}` : `Form ${filing.form}`;
     })(),
     meta: [

@@ -20,7 +20,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import { formatRelativeAge } from "../../../utils/datetime-format";
 import { requiredGloomberb } from "../../../utils/semver";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";

@@ -5,6 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import type { CloudCongressHousePayload } from "../../../api-client";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { loadCongressHouse } from "./client";
 import {
   CONGRESS_FILING_LIMIT,
@@ -12,7 +13,7 @@ import {
   formatAmountRange,
   formatCongressReturn,
   formatLag,
-  formatShortDate,
+  FILING_DAY_FORMAT,
   sortedMembers,
   sortedTrades,
   sortedTickers,
@@ -21,8 +22,8 @@ import {
 import type { CloudCongressHouseParams } from "../../../api-client/paths";
 
 const TRADE_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "filingDate", header: "Filed", format: (value) => formatShortDate(typeof value === "string" ? value : null) },
-  { key: "transactionDate", header: "Tx", format: (value) => formatShortDate(typeof value === "string" ? value : null) },
+  { key: "filingDate", header: "Filed", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
+  { key: "transactionDate", header: "Tx", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
   { key: "lagDays", header: "Lag", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
   { key: "memberName", header: "Member" },
   { key: "side", header: "Side" },
@@ -67,7 +68,7 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
       typeof row.estimatedHigh === "number" ? row.estimatedHigh : null,
     ),
   },
-  { key: "lastFilingDate", header: "Last", format: (value) => formatShortDate(typeof value === "string" ? value : null) },
+  { key: "lastFilingDate", header: "Last", format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT) },
   { key: "avgLagDays", header: "Avg", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
   { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
   { key: "pricedTradeCount", header: "Priced trades" },

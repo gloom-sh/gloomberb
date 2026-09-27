@@ -4,6 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { normalizeCik } from "./api";
 import { buildFundOverlap, overlapPeriod } from "./overlap";
 import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type TickerHoldings } from "./signals";
@@ -35,7 +36,7 @@ import {
   formatPercentMaybe,
   formatRawPercentMaybe,
   formatShares,
-  formatShortDate,
+  FILING_DAY_FORMAT,
   formatWeightMaybe,
 } from "./format";
 import type {
@@ -72,7 +73,7 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filedAsOfDate",
     header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null),
+    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
   },
 ];
 
@@ -119,7 +120,7 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
   {
     key: "filedAsOfDate",
     header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null),
+    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
   },
   {
     key: "tableValueTotal",

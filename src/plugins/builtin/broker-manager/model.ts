@@ -2,7 +2,6 @@ import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broke
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
-import { formatRelativeAge } from "../../../utils/relative-time";
 import { t } from "../../../i18n";
 
 export type BrokerDisplayState =
@@ -40,10 +39,6 @@ function titleCase(value: string): string {
 function formatBrokerMode(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   return text ? titleCase(text) : t("Configured");
-}
-
-export function formatBrokerUpdatedAt(updatedAt: number | undefined, now = Date.now()): string {
-  return formatRelativeAge(updatedAt, now);
 }
 
 function summarizeBrokerAccounts(accounts: BrokerAccount[]): string {

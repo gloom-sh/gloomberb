@@ -1,9 +1,9 @@
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { formatBrokerUpdatedAt, type BrokerDisplayState, type BrokerProfileRow } from "./model";
+import { formatRelativeAge } from "../../../utils/datetime-format";
+import type { BrokerDisplayState, BrokerProfileRow } from "./model";
 import { t } from "../../../i18n";
-import { truncateToDisplayWidth } from "../../../utils/format";
 
 type BrokerColumnId = "profile" | "status" | "broker" | "mode" | "accounts" | "updated";
 export type BrokerColumn = DataTableColumn & { id: BrokerColumnId };
@@ -17,10 +17,6 @@ export function stateColor(state: BrokerDisplayState): string {
     case "unavailable": return colors.negative;
     default: return colors.textDim;
   }
-}
-
-export function truncate(value: string, width: number): string {
-  return truncateToDisplayWidth(value, width);
 }
 
 export function isBrokerErrorMessage(message: string | null | undefined): boolean {
@@ -65,6 +61,6 @@ export function renderBrokerCell(row: BrokerProfileRow, column: BrokerColumn): D
     case "accounts":
       return { text: row.accountSummary, color: row.accountCount > 0 ? colors.text : colors.textMuted };
     case "updated":
-      return { text: formatBrokerUpdatedAt(row.lastSyncedAt), color: colors.textMuted };
+      return { text: formatRelativeAge(row.lastSyncedAt), color: colors.textMuted };
   }
 }

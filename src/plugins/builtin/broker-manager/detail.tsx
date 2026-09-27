@@ -9,10 +9,11 @@ import { colors } from "../../../theme/colors";
 import type { BrokerAdapter, BrokerConfigField } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
-import { formatCurrency } from "../../../utils/format";
+import { formatRelativeAge } from "../../../utils/datetime-format";
+import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
-import { formatBrokerUpdatedAt, type BrokerProfileRow } from "./model";
-import { isBrokerErrorMessage, stateColor, truncate } from "./table";
+import type { BrokerProfileRow } from "./model";
+import { isBrokerErrorMessage, stateColor } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | string;
 
@@ -197,10 +198,10 @@ export function BrokerDetailContent({
       <Box ref={topRef} flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
         <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
-          {truncate(row.stateLabel, width)}
+          {truncateToDisplayWidth(row.stateLabel, width)}
         </Text>
         <Text fg={colors.textDim}>
-          {truncate(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
+          {truncateToDisplayWidth(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
         </Text>
         <Text
           fg={isBrokerErrorMessage(detailStatusMessage) ? colors.negative : colors.textDim}
@@ -209,8 +210,8 @@ export function BrokerDetailContent({
         >
           {detailStatusMessage}
         </Text>
-        <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatBrokerUpdatedAt(row.lastSyncedAt) })}</Text>
-        <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatBrokerUpdatedAt(row.updatedAt) })}</Text>
+        <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatRelativeAge(row.lastSyncedAt) })}</Text>
+        <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />
 
         {editDraft && editAdapter ? (
@@ -271,7 +272,7 @@ export function BrokerDetailContent({
               <Text fg={colors.textDim}>{t("No accounts loaded. Test/connect or sync this profile.")}</Text>
             ) : accounts.map((account) => (
               <Text key={account.accountId} fg={colors.textDim}>
-                {truncate(accountDetail(account), width)}
+                {truncateToDisplayWidth(accountDetail(account), width)}
               </Text>
             ))}
           </Box>

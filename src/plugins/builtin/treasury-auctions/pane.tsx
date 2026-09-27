@@ -18,7 +18,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-format";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
@@ -49,17 +49,6 @@ import {
   type LoadStatus,
   type TreasuryAuction,
 } from "./types";
-
-function formatAuctionDate(value: string, withYear = false): string {
-  const timestamp = Date.parse(`${value}T00:00:00Z`);
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: withYear ? "numeric" : undefined,
-    timeZone: "UTC",
-  });
-}
 
 function formatRate(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(3)}%`;
@@ -116,7 +105,7 @@ function renderAuctionCell(
       // Announced auctions have no results yet; every metric cell reads "—",
       // so the date carries the distinction instead of a second placeholder.
       return {
-        text: formatAuctionDate(auction.auctionDate),
+        text: formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":
@@ -148,7 +137,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
     <ScrollBox flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1} width={width}>
         <Box flexDirection="row" height={1} gap={2}>
-          <Text fg={colors.textDim}>{formatAuctionDate(auction.auctionDate, true)}</Text>
+          <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: "\u2014" })}</Text>
           {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
         </Box>
         <Box height={1} />

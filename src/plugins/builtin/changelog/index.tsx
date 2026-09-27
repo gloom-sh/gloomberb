@@ -16,6 +16,7 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePluginPaneState } from "../../runtime";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { isPlainKey } from "../../../utils/keyboard";
 import {
   DEFAULT_CHANGELOG_SORT,
@@ -36,16 +37,6 @@ let cachedReleases: { releases: ChangelogRelease[]; fetchedAt: number } | null =
 
 type ChangelogColumn = DataTableColumn & { id: ChangelogColumnId };
 type LoadStatus = "loading" | "loaded" | "error";
-
-function formatReleaseDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "";
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function buildColumns(releases: ChangelogRelease[]): ChangelogColumn[] {
   const dateWidth = 12;
@@ -97,7 +88,7 @@ function ChangelogDetail({
       >
         <Box flexDirection="column" width={lineWidth}>
           {/* The stack title already carries the version. */}
-          <Text fg={colors.textMuted}>{formatReleaseDate(release.publishedAt)}</Text>
+          <Text fg={colors.textMuted}>{formatShortDate(release.publishedAt, { fallback: "" })}</Text>
           <MarkdownText text={release.body} lineWidth={lineWidth} />
         </Box>
       </ScrollBox>
@@ -255,7 +246,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "date":
         return {
-          text: formatReleaseDate(release.publishedAt),
+          text: formatShortDate(release.publishedAt, { fallback: "" }),
           color: selectedColor ?? colors.textDim,
         };
       case "version":
