@@ -130,6 +130,12 @@ export function formatNumber(value: number | undefined, decimals = 2): string {
   return getNumberFormatter(decimals).format(value);
 }
 
+/** A percentile rank with its window: "73 pctl 1Y", "-- pctl 1Y" when unranked, "73 pctl" without a window. */
+export function formatPercentileRank(value: number | null | undefined, window?: string): string {
+  const rank = value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
+  return window ? `${rank} pctl ${window}` : `${rank} pctl`;
+}
+
 /** Format a growth rate compactly (e.g., +12%, -5%) */
 export function formatGrowthShort(value: number): string {
   const pct = value * 100;

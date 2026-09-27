@@ -4,6 +4,7 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
+import { formatPercentileRank } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 export const CURVE_ROOTS = [
@@ -87,7 +88,7 @@ export function curveTimestamp(value: string | null): string {
 /** The rank against the contract's own history; one observation ranks nothing. */
 export function curveRank(value: number | null, samples: number): string {
   if (value == null || samples < 2) return "pctl unavailable";
-  return `${value.toFixed(0)} pctl`;
+  return formatPercentileRank(value);
 }
 
 export const CURVE_HORIZONS = [

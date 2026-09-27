@@ -33,6 +33,7 @@ import type {
 import { staticSeries } from "../../../components/chart/static/series";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -164,7 +165,7 @@ function EstimateDetail({
       id: "eps",
       label: "EPS",
       value: `${number(current?.average)}${period.currency ? ` ${period.currency}` : ""}`,
-      detail: [pctl == null ? null : `${pctl.toFixed(0)} pctl`, asOf].filter(Boolean).join(" · ") || undefined,
+      detail: [pctl == null ? null : formatPercentileRank(pctl), asOf].filter(Boolean).join(" · ") || undefined,
     },
     {
       id: "change",

@@ -18,10 +18,7 @@ import {
 import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import { buildPerformanceChartPoints, resolvePerformanceMetric } from "./broker-performance";
-import {
-  formatReturn,
-  formatSignedCompact,
-} from "./display";
+import { formatReturn } from "./display";
 import {
   resolveDatedReturns,
   alignedAssetReturns,
@@ -278,7 +275,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "day-pnl",
       label: "Day",
-      value: formatSignedCompact(accountMetrics.dailyPnl),
+      value: formatCompactAmount(accountMetrics.dailyPnl, { signed: true }),
       detail: `(${formatPercentRaw(dailyPnlPct)})`,
       color: priceColor(accountMetrics.dailyPnl),
     });
@@ -287,7 +284,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "pnl",
       label: "P&L",
-      value: formatSignedCompact(accountMetrics.unrealizedPnl),
+      value: formatCompactAmount(accountMetrics.unrealizedPnl, { signed: true }),
       detail: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`,
       color: priceColor(accountMetrics.unrealizedPnl),
     });
@@ -296,7 +293,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "realized-pnl",
       label: "Realized",
-      value: formatSignedCompact(accountMetrics.realizedPnl),
+      value: formatCompactAmount(accountMetrics.realizedPnl, { signed: true }),
       color: priceColor(accountMetrics.realizedPnl),
     });
   }

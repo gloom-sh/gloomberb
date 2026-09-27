@@ -8,6 +8,7 @@ import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";
 import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedCentralBankRates, loadCentralBankRates } from "./client";
@@ -24,7 +25,7 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
   // count; short details keep the figures several to a row.
   const items: StatItem[] = [
     { id: "level", label: row.range ? "Target range" : "Policy rate", value: policyLevel(row),
-      detail: `${p.value == null ? "--" : p.value.toFixed(0)} pctl 1Y` },
+      detail: formatPercentileRank(p.value, "1Y") },
     { id: "move", label: "Last move", value: policyChange(row), detail: row.lastChangeDate ?? undefined },
     // A target range ranks and charts its midpoint, which the band's range would not say.
     { id: "range", label: "1Y range", value: `${policyRate(p.min)} to ${policyRate(p.max)}`, detail: row.range ? "midpoint" : undefined },

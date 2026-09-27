@@ -34,6 +34,7 @@ import type {
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import {
@@ -387,7 +388,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     if (!latest) return [];
     const metric = (id: string, label: string, value: DebtMetric): StatItem => ({
       id, label, value: debtMetricValue(value),
-      detail: `${value.percentile.value === null ? "--" : value.percentile.value.toFixed(0)} pctl 10Y${value.asOf === latest.asOf ? "" : ` · ${value.asOf}`}`,
+      detail: `${formatPercentileRank(value.percentile.value, "10Y")}${value.asOf === latest.asOf ? "" : ` · ${value.asOf}`}`,
     });
     return [
       metric("principal", "Principal total", latest.totalPrincipal),

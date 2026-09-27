@@ -4,7 +4,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useShortcut } from "../../../react/input";
 import { DataTableView } from "../../data-table/view";
 import { EmptyState } from "../../ui";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth, formatPercentileRank, truncateToDisplayWidth } from "../../../utils/format";
 import { CompositeChart } from "../composite/composite-chart";
 import type { CompositeAxisValueFormatter } from "../composite/format";
 import {
@@ -257,7 +257,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     </Box>) : null}
     {slopeHeight && slope ? <Box height={1} paddingX={1} flexShrink={0}>
       <Text fg={colors.text}>{slope.label} {slope.value == null ? "--" : (slope.formatValue ?? formatValue)(slope.value)}
-        {` · ${slope.percentile == null ? "--" : slope.percentile.toFixed(0)} pctl${slope.window ? ` ${slope.window}` : ""}`}
+        {` · ${formatPercentileRank(slope.percentile, slope.window)}`}
         {slope.asOf ? ` · ${sourceTime(slope.asOf)}` : ""}</Text>
     </Box> : null}
     {/* Left/Right step the rows above, so the chart takes no keys of its own. */}

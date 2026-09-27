@@ -4,7 +4,7 @@ import { statGridColumns } from "../../../components/ui/stat-grid";
 import type { DataTableCell } from "../../../components/ui/data-table/types";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompactAmount, formatPercentRaw } from "../../../utils/format";
-import { formatSignedCompact, formatWeight, renderBar } from "./display";
+import { formatWeight, renderBar } from "./display";
 import type {
   SectorSortPreference,
   SectorTableColumn,
@@ -117,7 +117,7 @@ function renderSectorCell(row: SectorTableRow, column: SectorTableColumn): DataT
       return { text: formatCompactAmount(row.value ?? undefined) };
     case "pnl":
       return {
-        text: formatSignedCompact(row.pnl),
+        text: formatCompactAmount(row.pnl ?? undefined, { signed: true }),
         color: row.pnl == null ? colors.textMuted : priceColor(row.pnl),
       };
     case "return":

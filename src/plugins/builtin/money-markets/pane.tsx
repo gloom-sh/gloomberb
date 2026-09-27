@@ -10,6 +10,7 @@ import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
 import { StatChartDetail } from "../../../components/market-board";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedMoneyMarkets, loadMoneyMarkets } from "./client";
@@ -47,7 +48,7 @@ function ObservationDetail({ row, width, height, focused = false }: { row: Money
   // The chart below shows the 1Y window, so the range carries no sample count or window dates.
   const items: StatItem[] = [
     { id: "level", label: row.unit === "percent" ? "Rate" : "USD billions", value: moneyMarketValue(row.value, row.unit),
-      detail: `${p.value == null ? "--" : p.value.toFixed(0)} pctl 1Y · ${row.asOf ?? "--"}` },
+      detail: `${formatPercentileRank(p.value, "1Y")} · ${row.asOf ?? "--"}` },
     { id: "change", label: "Change", value: moneyMarketChange(row.change, row.changeUnit), detail: `since ${row.previousAsOf ?? "--"}` },
     { id: "range", label: "1Y range", value: `${moneyMarketValue(p.min, row.unit)} to ${moneyMarketValue(p.max, row.unit)}` },
     { id: "series", label: "FRED", value: row.sourceSeriesIds.join(", "), detail: row.frequency },
@@ -75,7 +76,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   // The curve's slope is the Bills tab's summary figure.
   const billsItems: StatItem[] = slope ? [{ id: "slope", label: "1Y-4W",
     value: slope.valueBps == null ? "--" : `${slope.valueBps > 0 ? "+" : ""}${slope.valueBps.toFixed(1)}bp`,
-    detail: [`${slope.percentile.value == null ? "--" : slope.percentile.value.toFixed(0)} pctl 1Y`,
+    detail: [formatPercentileRank(slope.percentile.value, "1Y"),
       slope.asOf && slope.asOf !== data?.billsCurve.asOf ? slope.asOf : null].filter(Boolean).join(" · ") }] : [];
   // A bill row and its tenor on the curve are one selection, matched by FRED series.
   const bills = useMemo(() => {

@@ -7,7 +7,7 @@ import type { CompositeAxisDomain, DataTableColumn } from "../../../components";
 import { spanDigits } from "../../../components/chart-table";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, formatPercentileRank } from "../../../utils/format";
 
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
@@ -20,7 +20,7 @@ export const debtMetricValue = (metric: DebtMetric) =>
     ? debtPercent(metric.value)
     : `${debtAmount(metric.value)} ${metric.unit}`;
 export const debtMetricCaption = (metric: DebtMetric) =>
-  `${metric.percentile.value === null ? "--" : metric.percentile.value.toFixed(0)} pctl 10Y · ${metric.asOf}`;
+  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${metric.asOf}`;
 export function bucketShare(
   bucket: DebtBucket,
   latest: DebtLatest,

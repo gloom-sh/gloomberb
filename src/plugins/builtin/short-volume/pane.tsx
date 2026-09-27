@@ -8,6 +8,7 @@ import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -71,7 +72,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   // "Short ratio" reads as days to cover, so the figures name the table's SHORT % column.
   const figures: StatItem[] = [
     { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
-      detail: `${stats?.value == null ? "--" : stats.value.toFixed(0)} pctl ${stats?.completeWindow ? "1Y" : "sample"}` },
+      detail: formatPercentileRank(stats?.value, stats?.completeWindow ? "1Y" : "sample") },
     { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
     { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
       detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },

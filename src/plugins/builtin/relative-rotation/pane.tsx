@@ -27,6 +27,7 @@ import {
 import { useThemeColors } from "../../../theme/theme-context";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { ScatterTrailSurface } from "../../../components/chart/static/trail-chart-surface";
 import {
   staticSeries,
@@ -113,7 +114,7 @@ function RotationDetail({
   );
   // A thin percentile window is flagged in the footer notices, and the footer
   // carries the observation week every row shares, so neither repeats here.
-  const rankDetail = (value: RotationRow["strengthRank"]) => `${rank(value.percentile)} pctl`;
+  const rankDetail = (value: RotationRow["strengthRank"]) => formatPercentileRank(value.percentile);
   const stats: StatItem[] = [
     { id: "strength", label: "Strength", value: number(row.strength), detail: rankDetail(row.strengthRank) },
     { id: "momentum", label: "Momentum", value: number(row.momentum), detail: rankDetail(row.momentumRank) },

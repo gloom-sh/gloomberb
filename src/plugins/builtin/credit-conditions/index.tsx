@@ -17,6 +17,7 @@ import { StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
@@ -71,7 +72,7 @@ function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow
   // The chart shows the year the rank and range come from.
   const items: StatItem[] = [
     { id: "oas", label: "OAS", value: formatBp(row.oasBp),
-      detail: `${row.percentile1Y == null ? "--" : row.percentile1Y.toFixed(0)} pctl 1Y · ${row.date}` },
+      detail: `${formatPercentileRank(row.percentile1Y, "1Y")} · ${row.date}` },
     { id: "change", label: "1D", value: formatBp(row.dailyChangeBp, true) },
     { id: "range", label: "1Y range", value: `${formatBp(row.rangeLowBp)} to ${formatBp(row.rangeHighBp)}` },
     { id: "series", label: "FRED", value: row.seriesId, detail: row.frequency },

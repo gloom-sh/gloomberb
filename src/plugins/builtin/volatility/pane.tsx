@@ -8,6 +8,7 @@ import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
+import { formatPercentileRank } from "../../../utils/format";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -178,7 +179,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     { id: "structure", label: "Structure", value: TERM_STATE_LABELS[curve.termState] ?? curve.termState,
       tone: curve.termState === "inverted" ? "warning" : curve.termState === "normal" ? "positive" : "neutral" },
     { id: "ratio", label: "3M/30D", value: number(curve.ratio),
-      detail: curve.ratio == null ? undefined : `${percentile(curve.ratioPercentile1y)} pctl 1Y` },
+      detail: curve.ratio == null ? undefined : formatPercentileRank(curve.ratioPercentile1y, "1Y") },
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));

@@ -60,11 +60,6 @@ function createSummarySegment(
   };
 }
 
-// Totals move with every streamed price; fixed decimals keep the segments after them still.
-function formatSignedCompact(value: number): string {
-  return formatCompactAmount(value, { signed: true });
-}
-
 function parseIsoDateAsLocalDate(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
@@ -278,7 +273,7 @@ export function buildPortfolioSummarySegments({
 
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
-    { text: formatSignedCompact(accountMetrics.dailyPnl), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
+    { text: formatCompactAmount(accountMetrics.dailyPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.dailyPnlPct) },
   ]));
   candidates.push(createSummarySegment("pnl", [
@@ -286,7 +281,7 @@ export function buildPortfolioSummarySegments({
       && totals.unrealizedPnlBasis === "broker-snapshot" ? "Broker P&L"
       : !Number.isFinite(account?.unrealizedPnl)
         && totals.unrealizedPnlBasis === "mixed" ? "Mixed P&L" : "P&L", tone: "label" },
-    { text: formatSignedCompact(accountMetrics.unrealizedPnl), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
+    { text: formatCompactAmount(accountMetrics.unrealizedPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
     { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.unrealizedPnlPct) },
   ]));
 
@@ -295,7 +290,7 @@ export function buildPortfolioSummarySegments({
   const realized = accountMetrics.realizedPnl != null
     ? createSummarySegment("realized", [
       { text: "Realized", tone: "label" },
-      { text: formatSignedCompact(accountMetrics.realizedPnl), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
+      { text: formatCompactAmount(accountMetrics.realizedPnl, { signed: true }), tone: "value", color: priceColor(accountMetrics.realizedPnl), bold: true },
     ])
     : null;
   return [

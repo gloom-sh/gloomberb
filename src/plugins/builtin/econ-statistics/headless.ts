@@ -9,13 +9,10 @@ import {
   loadStatsBundle,
   type StatsBundle,
 } from "./client";
+import { formatSigma } from "../shared/trend";
 import { STAT_CATEGORIES } from "./defs";
 import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
-
-function signedSigma(value: number): string {
-  return `${value > 0 ? "+" : ""}${formatNumber(value, 1)}σ`;
-}
 
 function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
   const format = view.stat.formatValue;
@@ -40,7 +37,7 @@ function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
     {
       label: "Trend deviation",
       value: view.sigmaVsTrend,
-      formatted: signedSigma(view.sigmaVsTrend),
+      formatted: formatSigma(view.sigmaVsTrend),
     },
     {
       label: "High",
