@@ -8,11 +8,13 @@ import {
   QueryBar,
   Spinner,
   useExternalLinkFooter,
+  usePagedRows,
   usePaneTabs,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
+  type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
@@ -50,7 +52,6 @@ import { useDocumentFocusRequest } from "./focus-handoff";
 import { SearchDocumentView } from "./document-view";
 import { SavedSearchesView } from "./saved-view";
 import {
-  appendUniqueHits,
   buildResultColumns,
   buildSearchParams,
   DEFAULT_FILTERS,
@@ -58,6 +59,7 @@ import {
   filtersFromSaved,
   filtersToSaved,
   formatHitDate,
+  hitDocumentKey,
   hitMatchCountLabel,
   hitTypeLabel,
   parseTickerFilter,
@@ -100,13 +102,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const [query, setQuery] = usePluginPaneState<string>("query", String(seedQuery ?? "").trim());
   const [filters, setFilters] = usePluginPaneState<SearchFilters>("filters", DEFAULT_FILTERS);
 
-  const [hits, setHits] = useState<CloudSearchHit[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("idle");
-  const [failure, setFailure] = useState<RequestFailure | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-
   // The selected row and the open document are kept by hit id, so a reload or
   // a shared layout comes back to the same document.
   const [selectedHitId, setSelectedHitId] = usePluginPaneState<string | null>("selectedHitId", null);
@@ -127,10 +122,24 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const queryInputRef = useRef<InputRenderable | null>(null);
   const tickerInputRef = useRef<InputRenderable | null>(null);
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const moreAbortRef = useRef<AbortController | null>(null);
 
   const trimmedQuery = query.trim();
+  const searchPage = useCallback(async ({ offset, signal }: PageRequest) => {
+    const response = await runDocumentSearch(buildSearchParams(trimmedQuery, filters, { offset }), signal);
+    return { ...response, rows: response.hits ?? [] };
+  }, [filters, trimmedQuery]);
+  // The last results stay up while a refined query loads.
+  const search = usePagedRows(trimmedQuery && access.emailVerified ? searchPage : null, {
+    getId: hitDocumentKey,
+    keepPreviousRows: true,
+  });
+  const { loadingMore, status } = search;
+  const hits = search.rows;
+  // A failed later page keeps the rows, but a 401/402/403 on it still gates the pane.
+  const failedWith = search.error ?? search.moreError;
+  const failure = useMemo<RequestFailure | null>(() => (
+    failedWith ? { message: errorMessage(failedWith), status: statusOf(failedWith) } : null
+  ), [failedWith]);
   const openHit = useMemo(
     () => (openHitId ? hits.find((hit) => hit.id === openHitId) ?? null : null),
     [hits, openHitId],
@@ -142,80 +151,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, []);
   const blurField = useCallback(() => setActiveField(null), []);
 
-  const runSearch = useCallback(() => {
-    searchAbortRef.current?.abort();
-    moreAbortRef.current?.abort();
-    if (!trimmedQuery || !access.emailVerified) {
-      searchAbortRef.current = null;
-      setHits([]);
-      setStatus("idle");
-      setFailure(null);
-      setHasMore(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    searchAbortRef.current = controller;
-    setStatus("loading");
-    setFailure(null);
-    void runDocumentSearch(buildSearchParams(trimmedQuery, filters), controller.signal)
-      .then((response) => {
-        // A newer query already took over; this answer is for text nobody is reading.
-        if (searchAbortRef.current !== controller) return;
-        setHits(response.hits ?? []);
-        setHasMore(response.hasMore === true);
-        setNextOffset(response.nextOffset ?? (response.hits?.length ?? 0));
-        setStatus("loaded");
-      })
-      .catch((error: unknown) => {
-        if (searchAbortRef.current !== controller || isAbortError(error)) return;
-        setHits([]);
-        setHasMore(false);
-        setFailure({ message: errorMessage(error), status: statusOf(error) });
-        setStatus("error");
-      });
-  }, [access.emailVerified, filters, trimmedQuery]);
-
-  useEffect(() => {
-    runSearch();
-    return () => {
-      searchAbortRef.current?.abort();
-      searchAbortRef.current = null;
-      moreAbortRef.current?.abort();
-      moreAbortRef.current = null;
-    };
-  }, [runSearch]);
-
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore || status !== "loaded" || !trimmedQuery) return;
-    moreAbortRef.current?.abort();
-    const controller = new AbortController();
-    moreAbortRef.current = controller;
-    setLoadingMore(true);
-    void runDocumentSearch(
-      buildSearchParams(trimmedQuery, filters, { offset: nextOffset }),
-      controller.signal,
-    )
-      .then((response) => {
-        if (moreAbortRef.current !== controller) return;
-        setHits((current) => appendUniqueHits(current, response.hits ?? []));
-        setHasMore(response.hasMore === true);
-        setNextOffset(response.nextOffset ?? nextOffset + (response.hits?.length ?? 0));
-      })
-      .catch((error: unknown) => {
-        if (moreAbortRef.current !== controller || isAbortError(error)) return;
-        setFailure({ message: errorMessage(error), status: statusOf(error) });
-      })
-      .finally(() => {
-        if (moreAbortRef.current === controller) setLoadingMore(false);
-      });
-  }, [filters, hasMore, loadingMore, nextOffset, status, trimmedQuery]);
-
-  const loadMoreFromScroll = useTableLoadMore(
-    tableScrollRef,
-    hasMore && !loadingMore && status === "loaded",
-    loadMore,
-  );
+  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, search.hasMore, search.loadMore);
 
   useEffect(() => {
     if (!openHit) {

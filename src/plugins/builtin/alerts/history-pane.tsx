@@ -1,77 +1,43 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   DataTableView,
   PaneStatusBody,
+  usePagedRows,
   usePaneFooter,
   useTableLoadMore,
   type DataTableColumn,
+  type PageRequest,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { alertKindLabel, fetchAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
+import { alertKindLabel, fetchAlertHistory, type AlertHistoryItem } from "./history";
 import { relativeTime } from "./format";
 
 const stamp = (value: string) => value.slice(0, 16).replace("T", " ");
-
-/** Later pages, kept against the first page they continue so a reload starts over. */
-interface OlderPages {
-  first: AlertHistory;
-  items: AlertHistoryItem[];
-  hasMore: boolean;
-  nextOffset: number | null;
-}
+const itemId = (item: AlertHistoryItem) => item.id;
 
 /** Alerts the push service accepted for this account over the last 90 days. */
 export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const access = usePlanAccess();
   const session = useResearchCloudSession();
   const [selected, setSelected] = useState(0);
-  const loader = useCallback(() => fetchAlertHistory(0), [session.requestKey]);
-  const history = useAsyncResource(access.signedIn ? loader : null);
-  const data = history.data;
+  // A new session starts the history over. A failed later page leaves what is
+  // loaded, and the next scroll to the end asks again.
+  const loadPage = useCallback(async ({ offset }: PageRequest) => {
+    const page = await fetchAlertHistory(offset);
+    return { ...page, rows: page.items, hasMore: page.hasMore && page.nextOffset != null };
+  }, [session.requestKey]);
+  const history = usePagedRows(access.signedIn ? loadPage : null, { getId: itemId });
+  const data = history.pages[0] ?? null;
+  const items = history.rows;
+  const loadingMore = history.loadingMore;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const [older, setOlder] = useState<OlderPages | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const pageRequest = useRef(0);
-  const pages = data && older?.first === data ? older : null;
-  const items = useMemo(
-    () => (data ? (pages ? [...data.items, ...pages.items] : data.items) : []),
-    [data, pages],
-  );
-  const hasMore = pages ? pages.hasMore : !!data?.hasMore;
-  const nextOffset = pages ? pages.nextOffset : (data?.nextOffset ?? null);
-
-  const loadMore = useCallback(() => {
-    if (!data || !hasMore || nextOffset == null || loadingMore) return;
-    const request = ++pageRequest.current;
-    setLoadingMore(true);
-    void fetchAlertHistory(nextOffset)
-      .then((page) => {
-        if (pageRequest.current !== request) return;
-        setOlder((current) => {
-          const prior = current?.first === data ? current.items : [];
-          const seen = new Set([...data.items, ...prior].map((item) => item.id));
-          return {
-            first: data,
-            items: [...prior, ...page.items.filter((item) => !seen.has(item.id))],
-            hasMore: page.hasMore,
-            nextOffset: page.nextOffset,
-          };
-        });
-      })
-      // A failed page leaves what is loaded; the next scroll to the end tries again.
-      .catch(() => {})
-      .finally(() => {
-        if (pageRequest.current === request) setLoadingMore(false);
-      });
-  }, [data, hasMore, loadingMore, nextOffset]);
-  const loadMoreOnScroll = useTableLoadMore(scrollRef, hasMore && !loadingMore, loadMore);
+  const loadMoreOnScroll = useTableLoadMore(scrollRef, history.hasMore && !loadingMore, history.loadMore);
 
   const columns: DataTableColumn[] = [
     { id: "time", label: "Sent (UTC)", width: 16, align: "left" },
@@ -104,7 +70,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   return (
     <PaneStatusBody
       loading={history.loading && !data}
-      error={!data ? history.error : null}
+      error={!data ? history.error?.message ?? null : null}
       subject="alert history"
     >
       {data?.status === "unavailable" ? (
@@ -124,7 +90,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
             onChange: setSelected,
           }}
           getItemKey={(item) => item.id}
-          onRootKeyDown={(event) => handleRefreshKey(event, () => void history.reload())}
+          onRootKeyDown={(event) => handleRefreshKey(event, history.reload)}
           sortColumnId={null}
           sortDirection="desc"
           renderCell={(item, column, _index, row) => ({

@@ -1219,9 +1219,19 @@ const updatedAgo = useUpdatedAgo(updatedAt);
 usePaneStatusFooter({ registrationId: "my-pane", loading, error });
 ```
 
-The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves. A new loader (another ticker, a new window) starts from no data; `keepPreviousData: true` leaves the last answer up until the new one arrives. Pass `stale` to `usePaneStatusFooter` while the pane shows cached data a refresh could not replace, and the footer carries the shared `stale` warning.
 
 `useAutoRefresh` refreshes one configured interval after the data landed, rests while the pane cannot be seen, and refreshes at once when stale data comes back into view. Data that moves faster than research data passes its own cadence: `useAutoRefresh(updatedAt, load, { intervalMs: 60_000 })`.
+
+A list the source serves a page at a time loads through `usePagedRows` and appends on scroll with `useTableLoadMore`. The loader answers `{ rows, hasMore, nextOffset }` for an offset; anything else a page carries stays on `pages`. The hook aborts superseded requests, drops rows a later page repeats, keeps what is loaded when a page fails, and starts over when the loader changes:
+
+```tsx
+import { usePagedRows, useTableLoadMore, type PageRequest } from "gloomberb/components";
+
+const loadPage = useCallback(({ offset, signal }: PageRequest) => searchThings(query, offset, signal), [query]);
+const { rows, loading, loadingMore, error, hasMore, loadMore, reload } = usePagedRows(query ? loadPage : null, { getId: (row) => row.id });
+const onBodyScrollActivity = useTableLoadMore(scrollRef, hasMore, loadMore);
+```
 
 Gate any other timer, poll or stream on `usePaneVisible()`, not on pane focus: it is true while the app can be seen and the pane is not covered by floating windows. `useAppVisible()` is the app half alone, for work that should continue while the pane is covered.
 

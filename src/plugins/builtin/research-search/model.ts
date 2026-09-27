@@ -259,22 +259,8 @@ export function buildResultColumns(width: number): SearchColumn[] {
  * source document but picks whichever chunk scored best, so the same document
  * can arrive on two pages under two different chunk ids.
  */
-function hitDocumentKey(hit: CloudSearchHit): string {
+export function hitDocumentKey(hit: CloudSearchHit): string {
   return `${hit.docType}:${hit.sourceId}`;
-}
-
-/** Paged responses can overlap when new documents land between requests. */
-export function appendUniqueHits(current: CloudSearchHit[], next: CloudSearchHit[]): CloudSearchHit[] {
-  if (next.length === 0) return current;
-  const seen = new Set(current.map(hitDocumentKey));
-  const merged = [...current];
-  for (const hit of next) {
-    const key = hitDocumentKey(hit);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(hit);
-  }
-  return merged;
 }
 
 /** Chunks behind a collapsed row, so hiding the rest stays visible. */

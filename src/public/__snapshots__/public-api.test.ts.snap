@@ -155,6 +155,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "useChartTableLayout",
     "useChartTableSelection",
     "useExternalLinkFooter",
+    "usePagedRows",
     "usePaneFooter",
     "usePaneHeaderTabs",
     "usePaneLinkMenuEntry",

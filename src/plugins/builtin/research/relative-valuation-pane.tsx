@@ -1,5 +1,5 @@
 import { formatPriceEarnings } from "../../../utils/price-earnings";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
 import {
   DataTableView,
@@ -25,6 +25,7 @@ import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { usePluginTickerActions } from "../../runtime";
 import { handleRefreshKey, useClampSelectedIndex } from "../../../components/data-table/table-pane";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
@@ -108,15 +109,30 @@ function peerQuoteKey(symbol: string): string {
 export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { symbol } = useSymbolBinding();
-  const symbols = useMemo(
-    () => relativeSymbolsFromPane(symbol, pane?.settings),
-    [pane?.settings, symbol],
-  );
+  // Keyed on the list itself, so a settings write that leaves the peers alone
+  // does not start the snapshot over.
+  const symbolList = relativeSymbolsFromPane(symbol, pane?.settings).join(",");
+  const symbols = useMemo(() => (symbolList ? symbolList.split(",") : []), [symbolList]);
   const { navigateTicker } = usePluginTickerActions();
+  const loadPeers = useCallback(async (forceRefresh: boolean): Promise<PeerSnapshot[]> => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator) throw new Error("Market data unavailable");
+    // One batched snapshot request instead of one request per peer.
+    const entries = await coordinator.loadSnapshotsBatch(symbols.map((peer) => ({ symbol: peer })), { forceRefresh });
+    return symbols.map((peer, index) => {
+      const entry = entries[index];
+      return {
+        symbol: peer,
+        financials: entry?.data ?? entry?.lastGoodData ?? null,
+        error: entry?.error?.message,
+      };
+    });
+  }, [symbols]);
   // Fundamentals come from one batched snapshot; prices stream on top of it.
-  const [snapshots, setSnapshots] = useState<{ version: number; peers: PeerSnapshot[] }>({ version: 0, peers: [] });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A changed peer list keeps the last snapshot up until its own answer.
+  const peerSnapshot = useAsyncResource(symbols.length > 0 ? loadPeers : null, { keepPreviousData: true });
+  const { data: peers, loading, updatedAt, reload } = peerSnapshot;
+  const error = symbols.length > 0 ? peerSnapshot.error : "No tickers selected";
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
@@ -128,65 +144,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     weight: 60,
   })), [symbols]);
   const { entries: liveQuotes } = useLiveQuoteEntries(quoteTargets);
-  const rows = useMemo<RelativeRow[]>(() => snapshots.peers.map((peer) => {
+  const rows = useMemo<RelativeRow[]>(() => (peers ?? []).map((peer) => {
     const entry = liveQuotes.get(peerQuoteKey(peer.symbol));
     return {
       symbol: peer.symbol,
       ...relativeValuationValues(withLiveQuote(peer.financials, entry ? resolveEntryValue(entry) : null)),
       error: peer.error,
     };
-  }), [liveQuotes, snapshots]);
+  }), [liveQuotes, peers]);
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   const columns = useMemo(() => buildRelativeColumns(baseCurrency), [baseCurrency]);
-  const fetchGenRef = useRef(0);
-
-  const reload = useCallback((forceRefresh = false) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    if (symbols.length === 0) {
-      setSnapshots((current) => ({ version: current.version + 1, peers: [] }));
-      setLoading(false);
-      setError("No tickers selected");
-      return;
-    }
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator) {
-      setSnapshots((current) => ({ version: current.version + 1, peers: [] }));
-      setLoading(false);
-      setError("Market data unavailable");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    // One batched snapshot request instead of one request per peer.
-    coordinator.loadSnapshotsBatch(symbols.map((peer) => ({ symbol: peer })), { forceRefresh })
-      .then((entries) => {
-        if (fetchGenRef.current !== gen) return;
-        setSnapshots((current) => ({
-          version: current.version + 1,
-          peers: symbols.map((peer, index) => {
-            const entry = entries[index];
-            return {
-              symbol: peer,
-              financials: entry?.data ?? entry?.lastGoodData ?? null,
-              error: entry?.error?.message,
-            };
-          }),
-        }));
-      })
-      .catch((err) => {
-        if (fetchGenRef.current !== gen) return;
-        setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (fetchGenRef.current === gen) setLoading(false);
-      });
-  }, [symbols]);
-
-  useEffect(() => {
-    reload(false);
-    return () => { fetchGenRef.current += 1; };
-  }, [reload]);
 
   const comparableRows = useMemo(() => rows.map((row) => ({
     ...row, marketCap: convertMarketCapitalization(row.marketCap, row.marketCapCurrency, baseCurrency, fxRates),
@@ -198,7 +165,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const orderRows = useSampledValue(
     comparableRows,
     RELATIVE_ORDER_SAMPLE_MS,
-    `${snapshots.version}:${sortPreference.columnId}:${sortPreference.direction}`,
+    `${updatedAt}:${sortPreference.columnId}:${sortPreference.direction}`,
   );
   const order = useMemo(() => sortRelativeRowIndices(orderRows, sortPreference), [orderRows, sortPreference]);
   const sortedRows = useMemo(
@@ -246,7 +213,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    return handleRefreshKey(event, () => reload(true), { stopPropagation: true });
+    return handleRefreshKey(event, () => void reload(), { stopPropagation: true });
   }, [reload]);
 
   const handleHeaderClick = useCallback((columnId: string) => {

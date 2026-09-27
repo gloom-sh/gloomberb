@@ -10,6 +10,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneVisible } from "../../../state/app/activity";
 import type { PaneProps } from "../../../types/plugin";
@@ -36,6 +37,7 @@ import {
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
+  type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -48,14 +50,22 @@ const IMPACT_LABELS: Record<ImpactFilter, string> = {
   low: "Low",
 };
 
+const NO_EVENTS: EconEvent[] = [];
+/** A result says whether a forced reload asked for it, so its answer can reset the cursor. */
+type CalendarResult = EconCalendarLoadResult & { forced?: boolean };
+const loadEvents = async (force: boolean): Promise<CalendarResult> => ({ ...await loadCalendar(force), forced: force });
+const cachedEvents = () => getCalendarCache();
+
 function EconCalendarPane({ focused, width, height }: PaneProps) {
-  const [initialCache] = useState(() => getCalendarCache());
-  const [events, setEvents] = useState<EconEvent[]>(initialCache?.data ?? []);
-  const [loading, setLoading] = useState(true);
-  const [settled, setSettled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(initialCache?.stale ?? false);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(initialCache?.fetchedAt ?? null);
+  // loadCalendar serves a fresh cache without a request, so the pane can always
+  // ask and still follow the global cadence once the cache goes stale.
+  const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
+  const { loading } = calendar;
+  const events = calendar.data?.data ?? NO_EVENTS;
+  const stale = calendar.data?.stale ?? false;
+  const fetchedAt = calendar.data?.fetchedAt ?? null;
+  // A cache that could not be refreshed arrives as a result, not a failure.
+  const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
@@ -64,40 +74,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const [now, setNow] = useState(Date.now());
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
 
-  const fetchGenRef = useRef(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
 
-  const load = useCallback(async (force = false) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await loadCalendar(force);
-      if (fetchGenRef.current !== gen) return;
-      setEvents(result.data);
-      setFetchedAt(result.fetchedAt);
-      setStale(result.stale);
-      setError(result.refreshError ?? null);
-      if (force) setSelectedKey(null);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) {
-        setLoading(false);
-        setSettled(true);
-      }
-    }
-  }, [setSelectedKey]);
-
-  // loadCalendar serves a fresh cache without a request, so the pane can always
-  // ask and still follow the global cadence once the cache goes stale.
-  useEffect(() => { void load(); }, [load]);
-  const refresh = useCallback(() => { void load(false); }, [load]);
-  useAutoRefresh(stale ? null : fetchedAt, refresh);
+  useAutoRefresh(stale ? null : fetchedAt, calendar.load);
 
   // Tick every 30s to update staleness + countdown, only while the pane can be seen.
   const paneVisible = usePaneVisible();
@@ -197,9 +177,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setSelectedKey(null);
   }, [setCountryFilter, setSelectedKey]);
 
+  // A forced reload starts over from the top row once it answers.
+  const forcedResult = calendar.data?.forced ? calendar.data : null;
+  useEffect(() => {
+    if (forcedResult) setSelectedKey(null);
+  }, [forcedResult, setSelectedKey]);
+
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => load(true), { stopPropagation: true })
-  ), [load]);
+    handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
+  ), [calendar.reload]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
     const timeWidth = 6;
@@ -227,7 +213,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
-  const emptyStateHint = settled && !loading && !error
+  const emptyStateHint = !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
         countryFilter !== "all" ? `country: ${countryFilter}` : null,
@@ -240,8 +226,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
   const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
-  // The cached first paint is being replaced; its age only counts once that load settles.
-  const showStale = stale && (settled || !loading);
+  // The cached first paint is being replaced; its age only counts once a load has answered.
+  const showStale = stale && (!loading || calendar.updatedAt !== null);
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
@@ -384,7 +370,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={loading || !settled ? "Loading economic events..." : "No events"}
+      emptyStateTitle={loading ? "Loading economic events..." : "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />

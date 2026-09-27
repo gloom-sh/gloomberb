@@ -61,6 +61,10 @@ export { InlineTickerBadge } from "./ticker/badge";
 export type { InlineTickerBadgeProps } from "./ticker/badge";
 export { InputSearchBar } from "./input-search-bar";
 export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
+// An offset-paged list behind that scroll trigger: first page, appended pages,
+// dedupe, aborts and a failed page that keeps what is loaded.
+export { usePagedRows } from "./paged-rows";
+export type { PageLoader, PageRequest, PagedRows, PagedRowsOptions, RowPage } from "./paged-rows";
 export { DataTableView } from "./data-table/view";
 export type {
   DataTableKeyEvent,

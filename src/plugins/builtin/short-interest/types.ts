@@ -5,5 +5,3 @@ export interface ShortInterestRecord {
   averageDailyVolume: number | null;
   shortPercentFloat: number | null;
 }
-
-export type LoadStatus = "idle" | "loading" | "loaded" | "error";

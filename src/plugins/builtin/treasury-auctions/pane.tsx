@@ -1,5 +1,5 @@
 import { KeyValueRow } from "../../../components";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableStackView,
   EmptyState,
@@ -23,6 +23,7 @@ import { formatRelativeAge, formatShortDate } from "../../../utils/datetime-form
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
@@ -47,7 +48,6 @@ import {
 } from "./model";
 import {
   TREASURY_AUCTIONS_PANE_ID,
-  type LoadStatus,
   type TreasuryAuction,
 } from "./types";
 
@@ -162,46 +162,32 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
   );
 }
 
+const NO_AUCTIONS: TreasuryAuction[] = [];
+
 export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const historyDays = auctionHistoryDays(usePaneInstance()?.settings);
-  const [auctions, setAuctions] = useState<TreasuryAuction[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const loadAuctions = useCallback(
+    (force: boolean) => loadTreasuryAuctions(force, undefined, historyDays),
+    [historyDays],
+  );
+  // A new history window keeps the loaded auctions up until its own answer.
+  const resource = useAsyncResource(loadAuctions, { keepPreviousData: true });
+  const auctions = resource.data?.auctions ?? NO_AUCTIONS;
+  const stale = resource.data?.stale ?? false;
+  const fetchedAt = resource.data?.fetchedAt ?? null;
+  // A cache that could not be refreshed arrives as a result, not a failure.
+  const error = resource.error ?? (resource.loading ? null : resource.data?.refreshError ?? null);
+  // Once auctions have loaded, a refresh runs without a loading state.
+  const loading = resource.loading && !resource.data;
   const [filter, setFilter] = usePluginPaneState<AuctionFilter>("activeTab", "all");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [sortPreference, setSortPreference] = useState<AuctionSortPreference>(DEFAULT_AUCTION_SORT);
   const [searchQuery, setSearchQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
-  const fetchGenRef = useRef(0);
 
-  const load = useCallback((force = false) => {
-    fetchGenRef.current += 1;
-    const generation = fetchGenRef.current;
-    setStatus((current) => (current === "loaded" ? "loaded" : "loading"));
-    setError(null);
-    loadTreasuryAuctions(force, undefined, historyDays)
-      .then((result) => {
-        if (fetchGenRef.current !== generation) return;
-        setAuctions(result.auctions);
-        setFetchedAt(result.fetchedAt);
-        setStale(result.stale);
-        setError(result.refreshError ?? null);
-        setStatus("loaded");
-      })
-      .catch((loadError: unknown) => {
-        if (fetchGenRef.current !== generation) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [historyDays]);
-
-  useEffect(() => { load(false); }, [load]);
   // The cache decides whether a tick becomes a request; only [r] forces it.
-  const refresh = useCallback(() => load(false), [load]);
-  useAutoRefresh(stale ? null : fetchedAt, refresh);
+  useAutoRefresh(stale ? null : fetchedAt, resource.load);
 
   const rows = useMemo(
     () => visibleAuctions(auctions, { filter, query: searchQuery, sort: sortPreference }),
@@ -212,7 +198,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     // Before the first answer there is nothing to match a restored selection
     // against, so leave it alone rather than clear it.
-    if (auctions.length === 0 && (status === "idle" || status === "loading")) return;
+    if (auctions.length === 0 && loading) return;
     if (rows.length === 0) {
       if (selectedId !== null) setSelectedId(null);
       setDetailOpen(false);
@@ -221,7 +207,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     if (!selectedId || !rows.some((auction) => auction.id === selectedId)) {
       setSelectedId(rows[0]!.id);
     }
-  }, [auctions.length, rows, selectedId, status]);
+  }, [auctions.length, loading, rows, selectedId]);
 
   const selectFilter = useCallback((next: AuctionFilter) => {
     setFilter(next);
@@ -238,7 +224,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     });
   }, []);
 
-  usePaneRefreshKey(() => load(true), { focused, enabled: !searchFocused });
+  usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !searchFocused });
 
   const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
     if (isPlainKey(event, "f")) {
@@ -269,7 +255,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const columns = useMemo(() => buildAuctionColumns(), []);
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
-    const info = loadingErrorFooterInfo(status === "loading", error);
+    const info = loadingErrorFooterInfo(loading, error);
     if (stale) info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
     if (fetchedAt) {
       info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
@@ -290,8 +276,8 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     error,
     fetchedAt,
     focusSearch,
+    loading,
     stale,
-    status,
   ]);
 
   // The pane menu names the sort keys; "Sort by…" there picks a column directly.
@@ -314,7 +300,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   });
   const tabs = tabStrip && <Box height={1} flexShrink={0} overflow="hidden">{tabStrip}</Box>;
 
-  if (status === "loading" && auctions.length === 0) {
+  if (loading && auctions.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}

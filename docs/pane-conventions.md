@@ -158,15 +158,17 @@ back button or clicking Back pops it. Rules:
   something kept beside the list.
 
 **Long lists.** A paged or cursored source appends on scroll and never shows
-page numbers or a Load more button. `useTableLoadMore(scrollRef, canLoadMore,
-loadMore)` goes into `onBodyScrollActivity` and fires within 8 rows of the
-end. `loadMore` is guarded by `hasMore && !loadingMore && status === "loaded"
-&& !detailOpen`, keeps an `AbortController` per request and ignores answers
-from a superseded one, appends by id, and updates `hasMore`/`nextOffset`. A
-new query, sort or filter aborts, resets the list and `resetScrollKey`. The
-footer shows `loading more` while a page is in flight. Restoring a persisted
-open item past the first page expands to that page first. Client-side "reveal
-more of what is loaded" uses the same helper.
+page numbers or a Load more button. An offset-paged source loads through
+`usePagedRows(loadPage, { getId })`, whose loader takes `{ offset, signal,
+force }` and returns `{ rows, hasMore, nextOffset }`. It aborts and ignores
+superseded requests, appends by id, keeps what is loaded when a page fails,
+and starts over when the loader changes (a new query, sort or filter); the
+pane changes `resetScrollKey` with it. Its `loadMore` goes to
+`useTableLoadMore(scrollRef, hasMore && !detailOpen, loadMore)` in
+`onBodyScrollActivity`, which fires within 8 rows of the end. The footer
+shows `loading more` while a page is in flight. Restoring a persisted open
+item past the first page expands to that page first. Client-side "reveal
+more of what is loaded" uses the same scroll helper.
 
 ## 5b. A chart over a table
 
@@ -419,7 +421,7 @@ All under `src/plugins/builtin/` unless noted.
 | Sidebar + content | `chat/sidebar.tsx`, `cloud/askg/sidebar.tsx` |
 | Footer model and rendering | `src/components/layout/pane/footer/` |
 | Status, notice, empty state | `src/components/ui/status.tsx` |
-| Load-more helper | `src/components/table-view-shared.tsx` |
+| Load-more helpers | `src/components/table-view-shared.tsx`, `src/components/paged-rows.ts` |
 | Stack | `src/components/data-table/stack-view.tsx`, `ui/page-stack-view.tsx` |
 | Figures, chart and table, selection drives the cursor | `short-volume/pane.tsx` |
 | Board whose chart follows the selected row | `credit-conditions/index.tsx` |

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DataTableStackView, DataTableView, EmptyState, QueryBar, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint, StatGrid, type StatItem } from "../../../components";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { DataTableStackView, DataTableView, EmptyState, QueryBar, usePagedRows, usePaneNoticeFooter, useTableLoadMore, type DataTableColumn, type PageRequest, type DataTableKeyEvent, type DataTableRootKeyContext, type PaneHint, StatGrid, type StatItem } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -9,9 +9,10 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { useAsyncResource } from "../../../react/async-resource";
 import { actionLabel, formatMoneyCompact, formatShares, formatWeightMaybe } from "./format";
 import { FundDetailView } from "./pane";
-import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHoldings, type TickerHolderRow } from "./signals";
+import { appendTickerHoldings, loadCrowding, loadTickerHoldings, type Crowding, type CrowdingRow, type TickerHolderRow } from "./signals";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 export function ThirteenFTickerPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
@@ -36,9 +37,6 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
   onUnavailable?: () => void;
   onDetailChange?: (open: boolean) => void;
 }) {
-  const [data, setData] = useState<TickerHoldings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("13f-ticker:selected", null);
   const [fund, setFund] = usePluginPaneState<{ cik: string; name: string } | null>("13f-ticker:fund", null);
   const unavailableRef = useRef(onUnavailable); unavailableRef.current = onUnavailable;
@@ -47,32 +45,18 @@ export function ThirteenFTickerHoldingsView({ symbol, focused, width, height, qu
     return () => onDetailChange?.(false);
   }, [fund, onDetailChange]);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const controller = useRef<AbortController | null>(null);
-  const load = useCallback((more = false) => {
-    if (!symbol || (more && (loading || !data?.hasMore))) return;
-    controller.current?.abort();
-    const request = new AbortController();
-    controller.current = request;
-    setLoading(true); setError(null);
-    void loadTickerHoldings(symbol, more ? data!.nextOffset : 0, request.signal).then(page => {
-      if (controller.current !== request) return;
-      setData(current => more && current ? appendTickerHoldings(current, page) : page);
-    }).catch(cause => {
-      if (controller.current !== request || request.signal.aborted) return;
-      // A first page always starts from cleared data, so a failure means the
-      // ticker has no positions view (the closure's data may be the last ticker's).
-      if (!more && unavailableRef.current) unavailableRef.current();
-      else setError(cause instanceof Error ? cause.message : String(cause));
-    }).finally(() => { if (controller.current === request) setLoading(false); });
-  }, [symbol, loading, data]);
-  const loadRef = useRef(load); loadRef.current = load;
-  useEffect(() => {
-    setData(null); setFund(null); setSelectedId(null);
-    if (symbol) loadRef.current(); else setLoading(false);
-    return () => { controller.current?.abort(); controller.current = null; };
-  }, [symbol]);
-  const more = useTableLoadMore(scrollRef, !!data?.hasMore && !loading && !fund, () => load(true));
-  usePaneRefreshKey(() => load(), { focused, enabled: !fund });
+  const loadPage = useCallback(({ offset, signal }: PageRequest) => loadTickerHoldings(symbol, offset, signal), [symbol]);
+  const paged = usePagedRows(symbol ? loadPage : null);
+  // Later pages merge into the first the same way the headless command merges them.
+  const data = useMemo(() => (paged.pages.length > 0 ? paged.pages.reduce(appendTickerHoldings) : null), [paged.pages]);
+  const loading = paged.loading || paged.loadingMore;
+  // A failed first page means the ticker has no positions view; a caller
+  // with a fallback takes over instead of showing the failure.
+  const error = (paged.moreError ?? (onUnavailable ? null : paged.error))?.message ?? null;
+  useEffect(() => { if (paged.error) unavailableRef.current?.(); }, [paged.error]);
+  useEffect(() => { setFund(null); setSelectedId(null); }, [symbol]);
+  const more = useTableLoadMore(scrollRef, paged.hasMore && !fund, paged.loadMore);
+  usePaneRefreshKey(paged.reload, { focused, enabled: !fund });
   usePaneStatusFooter({ registrationId: "13f-ticker", enabled: !fund, loading, error, hints });
   usePaneNoticeFooter({ registrationId: "13f-ticker-notice", enabled: !fund, focused, notices: data?.warnings ?? [] });
   const columns: DataTableColumn[] = [
@@ -123,25 +107,18 @@ function crowdingRank(value: string): CrowdingRank {
   return (CROWDING_RANKS as readonly string[]).includes(value) ? value as CrowdingRank : "newCount";
 }
 
+const loadCrowdingResource = () => loadCrowding();
+
 export function ThirteenFCrowdingPane({ focused, width, height }: Pick<PaneProps, "focused" | "width" | "height">) {
-  const [data, setData] = useState<Crowding | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error, reload } = useAsyncResource<Crowding>(loadCrowdingResource);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("13f-crowding:selected", null);
   const mine = useMineTickers();
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("13f-crowding:mine", false);
   const [storedRanking, setRanking] = usePluginPaneState<string>("13f-crowding:ranking", "newCount");
   // Header clicks used to store any column id; only the four views rank.
   const ranking = crowdingRank(storedRanking);
-  const controller = useRef<AbortController | null>(null);
   const { pinTicker } = usePluginTickerActions();
-  const load = useCallback(() => {
-    controller.current?.abort(); const request = new AbortController(); controller.current = request;
-    setLoading(true); setError(null);
-    void loadCrowding(request.signal).then(result => { if (!request.signal.aborted) setData(result); }).catch(cause => { if (!request.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (!request.signal.aborted) setLoading(false); });
-  }, []);
-  useEffect(() => { load(); return () => { controller.current?.abort(); }; }, [load]);
-  usePaneRefreshKey(load, { focused });
+  usePaneRefreshKey(() => void reload(), { focused });
   useShortcut(event => { if (!focused) return; if (isPlainKey(event, "m")) { event.preventDefault?.(); setMineOnly(value => !value); } if (isPlainKey(event, "c")) { event.preventDefault?.(); setRanking(value => CROWDING_RANKS[(CROWDING_RANKS.indexOf(crowdingRank(value)) + 1) % CROWDING_RANKS.length]!); } });
   // Mine and the ranking sit in the query bar; m and c stay as their keys.
   usePaneStatusFooter({ registrationId: "13f-crowding", loading, error });

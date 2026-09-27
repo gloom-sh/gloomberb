@@ -10,6 +10,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
@@ -52,14 +53,19 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const { createPaneFromTemplate } = usePluginAppActions();
   const [viewMode, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "chart");
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
-  const [data, setData] = useState<HolderData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const fetchGenRef = useRef(0);
   const fundMatchAbortRef = useRef<AbortController | null>(null);
+
+  const exchange = ticker?.metadata.exchange ?? "";
+  const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
+    if (!dataProvider) throw new Error("Holder data unavailable");
+    return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
+  } : null, [dataProvider, exchange, symbol]);
+  // Another ticker's holders stay up until its own answer, and a failed
+  // refresh keeps the last holders; the failure goes to the footer.
+  const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
 
   const currency = data?.currency ?? ticker?.metadata.currency ?? "USD";
   // A stake without a reported percentage is the holding's value over the
@@ -69,7 +75,6 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const quoteMarketCap = financials?.quote?.marketCap;
   const liveMarketCap = financials?.quote?.currency && financials.quote.currency !== currency ? undefined : quoteMarketCap;
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
-  const exchange = ticker?.metadata.exchange ?? "";
   const rows = useMemo(() => buildRows(data), [data]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   const columns = useMemo(() => buildColumns(width), [width]);
@@ -78,41 +83,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     : -1;
   const activeIdx = selectedIdx >= 0 ? selectedIdx : (sortedRows.length > 0 ? 0 : -1);
 
-  const loadHolders = useCallback(async (forceRefresh = false) => {
-    if (!symbol || !dataProvider?.getHolders) {
-      setData(null);
-      setLoading(false);
-      setError(dataProvider?.getHolders ? null : "Holder data unavailable");
-      return;
-    }
-
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const nextData = await loadHolderData(
-        dataProvider,
-        symbol,
-        exchange,
-        forceRefresh ? { cacheMode: "refresh" } : undefined,
-      );
-      if (fetchGenRef.current !== gen) return;
-      setData(nextData);
-      setSelectedId(null);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      // A failed refresh keeps the last holders; the failure goes to the footer.
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, [dataProvider, exchange, symbol]);
-
-  useEffect(() => {
-    void loadHolders(false);
-  }, [loadHolders]);
+  // Fresh holders start from the top row.
+  useEffect(() => { setSelectedId(null); }, [data]);
 
   useEffect(() => {
     if (selectedId && sortedRows.some((row) => row.id === selectedId)) return;
@@ -177,8 +149,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [setViewMode]);
 
   const refresh = useCallback(() => {
-    void loadHolders(true);
-  }, [loadHolders]);
+    void reload();
+  }, [reload]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (event.name === "r") {

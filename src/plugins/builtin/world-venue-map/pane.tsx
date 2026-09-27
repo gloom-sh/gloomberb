@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload } from "../../../api-client";
 import {
   DataTableView,
@@ -17,7 +17,7 @@ import {
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useShortcut } from "../../../react/input";
-import { usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
@@ -28,7 +28,6 @@ import {
   formatVenueLocalTime,
   venueRemainingSeconds,
 } from "./model";
-import { errorMessage } from "../../../utils/errors";
 
 export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
 
@@ -74,43 +73,19 @@ function SelectedVenueHeader({
   );
 }
 
+async function loadWorldVenues(): Promise<CloudWorldVenueMapPayload> {
+  const response = await apiClient.getCloudWorldVenues();
+  if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
+  return response.stale ? { ...response.data, stale: true } : response.data;
+}
+
 export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
-  const [data, setData] = useState<CloudWorldVenueMapPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // A background refresh keeps the venues on screen, so loading only shows before the first answer.
+  const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
-  const generationRef = useRef(0);
-  const dataRef = useRef<CloudWorldVenueMapPayload | null>(null);
-  dataRef.current = data;
-
-  const load = useCallback(async () => {
-    const generation = ++generationRef.current;
-    if (!dataRef.current) setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.getCloudWorldVenues();
-      if (generation !== generationRef.current) return;
-      if (!response.data) throw new Error(response.reasonCode ?? "World venue data unavailable");
-      const next = response.stale ? { ...response.data, stale: true } : response.data;
-      dataRef.current = next;
-      setData(next);
-      setLoading(false);
-    } catch (caught) {
-      if (generation !== generationRef.current) return;
-      setError(errorMessage(caught));
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    return () => {
-      generationRef.current += 1;
-    };
-  }, [load]);
 
   useEffect(() => {
     if (!data) return;
