@@ -382,7 +382,7 @@ Plugins should treat Gloomberb's UI APIs as the renderer contract. Official plug
 
 React plugin panes and Ticker Research tabs are wrapped in a plugin render context. Use plugin runtime hooks for app services from render code.
 
-To adjust layout for the renderer, check `useUiCapabilities().nativePaneChrome` from `gloomberb/ui`. It is true where panes are drawn with DOM elements (the desktop app and the web) and false in the terminal. `useUiHost().kind` stays available for code that has to name the host, such as shortcut labels, but prefer the capability for layout.
+To adjust layout for the renderer, check `useUiCapabilities().nativePaneChrome` from `gloomberb/ui`. It is true where panes are drawn with DOM elements (the desktop app and the web) and unset in the terminal, so test it for truthiness rather than comparing it with `false`. `useUiHost().kind` stays available for code that has to name the host, such as shortcut labels, but prefer the capability for layout.
 
 The `setup()` function receives a context object with these capabilities:
 

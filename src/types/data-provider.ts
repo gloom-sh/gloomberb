@@ -229,7 +229,7 @@ export interface AssetDataProvider {
     barSize: string,
     context?: MarketDataRequestContext,
   ): Promise<import("./price-history").PriceHistoryResult>;
-  /** @deprecated Implement `getPriceHistoryForResolutionWithMetadata`; the host still calls this when it is the only one. */
+  /** @deprecated Call or implement `getPriceHistoryForResolutionWithMetadata` instead. The host still calls this on a provider that has only this one. */
   getPriceHistoryForResolution?(
     ticker: string,
     exchange: string,
@@ -239,7 +239,7 @@ export interface AssetDataProvider {
   ): Promise<PricePoint[]>;
   /**
    * Fetch higher-resolution price data for a specific date window (e.g. when zoomed in).
-   * @deprecated Implement `getDetailedPriceHistoryWithMetadata`; the host still calls this when it is the only one.
+   * @deprecated Call or implement `getDetailedPriceHistoryWithMetadata` instead. The host still calls this on a provider that has only this one.
    */
   getDetailedPriceHistory?(ticker: string, exchange: string, startDate: Date, endDate: Date, barSize: string, context?: MarketDataRequestContext): Promise<PricePoint[]>;
   /** Which chart resolutions the source serves, and how far back each one reaches. */
@@ -248,7 +248,7 @@ export interface AssetDataProvider {
     exchange?: string,
     context?: MarketDataRequestContext,
   ): Promise<ChartResolutionSupport[]> | ChartResolutionSupport[];
-  /** @deprecated Implement `getChartResolutionSupport`; the host still calls this when it is the only one. */
+  /** @deprecated Call or implement `getChartResolutionSupport` instead. The host still calls this on a provider that has only this one. */
   getChartResolutionCapabilities?(
     ticker: string,
     exchange?: string,
