@@ -12,8 +12,10 @@ type WebKeyDefaultEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "s
   isComposing?: boolean;
 };
 
-function controlLetterForKey(key: string): string | null {
-  if (key.length !== 1) return null;
+// A keydown can arrive without a key, whatever the DOM types say: browser
+// autofill dispatches a plain Event when a saved entry is picked.
+function controlLetterForKey(key: string | undefined): string | null {
+  if (typeof key !== "string" || key.length !== 1) return null;
   const code = key.charCodeAt(0);
   if (code < 1 || code > 26) return null;
   return String.fromCharCode(96 + code);
@@ -89,7 +91,7 @@ export function shouldConsumeWebAppKeyDown(event: WebKeyDefaultEvent): boolean {
   return true;
 }
 
-export function normalizeWebKeyName(key: string): string {
+export function normalizeWebKeyName(key: string | undefined): string {
   const controlLetter = controlLetterForKey(key);
   if (controlLetter) return controlLetter;
 
@@ -115,7 +117,7 @@ export function normalizeWebKeyName(key: string): string {
     case "Tab":
       return "tab";
     default:
-      return key.toLowerCase();
+      return (key ?? "").toLowerCase();
   }
 }
 
@@ -134,7 +136,7 @@ export function webKeySequence(event: KeyboardEvent): string {
     case "Backspace":
       return "\x7f";
     default:
-      return event.key;
+      return event.key ?? "";
   }
 }
 
