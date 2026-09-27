@@ -30,8 +30,9 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { useBoundTicker } from "../shared/ticker-request";
-import { discardProxyData, loadProxyStatement, loadProxyStatements } from "./data";
+import { loadProxyStatement, loadProxyStatements } from "./data";
 import {
   equityShare,
   formatChange,
@@ -320,12 +321,12 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
   const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
-  const list = useAsyncResource(loadYears, { clearOnError: discardProxyData });
+  const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
   const years = useMemo(() => list.data?.data?.proxies ?? [], [list.data]);
   const year = years.some(entry => entry.proxyYear === selectedYear)
     ? selectedYear : years[0]?.proxyYear ?? null;
   const loadStatement = useCallback((force: boolean) => loadProxyStatement(ticker, year!, { force }), [ticker, year]);
-  const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: discardProxyData });
+  const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
   const loading = list.loading || detail.loading;
   const listError = list.error ?? list.data?.refreshError;

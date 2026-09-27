@@ -23,9 +23,10 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { isPermanentClientError } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../runtime";
 import { useBoundTicker } from "../shared/ticker-request";
-import { discardRiskData, loadRiskReport, loadRiskReports } from "./data";
+import { loadRiskReport, loadRiskReports } from "./data";
 
 export const RISK_FACTORS_PANE_ID = "risk-factors";
 
@@ -100,13 +101,13 @@ export function RiskFactorsPane({
   const [selectedYear, setSelectedYear] = usePluginPaneState<number | null>("filingYear", null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
   const listLoader = useCallback((force: boolean) => loadRiskReports(ticker!, { force }), [ticker]);
-  const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: discardRiskData });
+  const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: isPermanentClientError });
   const years = useMemo(() => [...(list.data?.reports ?? [])].sort((a, b) => b.reportYear - a.reportYear), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
   const year = selectedTicker === ticker && selectedYear !== null
     ? selectedYear : years[0]?.reportYear ?? null;
   const reportLoader = useCallback((force: boolean) => loadRiskReport(ticker!, year!, { force }), [ticker, year]);
-  const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: discardRiskData });
+  const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
   const report = detail.data;
   const listError = list.error ?? list.data?.refreshError ?? null;
   const reportError = detail.error ?? report?.refreshError ?? null;

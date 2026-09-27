@@ -23,7 +23,7 @@ import {
   useTickers,
 } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { PaneProps } from "../../../types/plugin";
 import { ScatterTrailSurface } from "../../../components/chart/static/trail-chart-surface";
 import {
@@ -68,8 +68,6 @@ const COLUMNS: DataTableColumn[] = [
   { id: "momentum", label: "MOMENTUM", width: 10, align: "right" },
   { id: "momentumRank", label: "MOM PCTL", width: 8, align: "right" },
 ];
-const clearDenied = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const number = (value: number | null | undefined) =>
   value == null ? "--" : value.toFixed(2);
 const rank = (value: number | null) =>
@@ -216,7 +214,7 @@ function RotationView({
   );
   const resource = useAsyncResource(loader, {
     initialData: () => cachedRotation(benchmark, instruments, trail),
-    clearOnError: clearDenied,
+    clearOnError: isAccessDenied,
   });
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(
     "selected",

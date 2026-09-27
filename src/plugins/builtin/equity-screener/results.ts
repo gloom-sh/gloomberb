@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type {
   ScreenDefinition,
   ScreenPayload,
@@ -62,9 +62,7 @@ export function useScreenResults(
       });
     } catch (error) {
       if (request.signal.aborted || activeIdentity.current !== identity) return;
-      const denied =
-        error instanceof ApiRequestError &&
-        [401, 403].includes(error.status ?? 0);
+      const denied = isAccessDenied(error);
       setState((current) => ({
         ...current,
         data: denied ? null : current.data,

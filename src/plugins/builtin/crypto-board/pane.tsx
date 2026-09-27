@@ -12,7 +12,7 @@ import {
 } from "../../../components";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneVisible } from "../../../state/app/activity";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
@@ -57,8 +57,6 @@ const INITIAL_STREAM_ROWS = 40;
 
 const NO_QUOTES = new Map<string, QueryEntry<Quote>>();
 
-const clearDenied = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 
 const cryptoTickerKey = (row: CryptoRow) => publicTickerKey(row.asset.symbol, "CCC");
 
@@ -114,7 +112,7 @@ function renderCryptoCell(row: CryptoRow, column: CryptoColumn, selected: boolea
 export function CryptoBoardPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadCryptoMarkets(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: cachedCryptoMarkets, clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { initialData: cachedCryptoMarkets, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();

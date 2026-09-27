@@ -51,7 +51,7 @@ export function validateRevenueBreakdown(data: RevenueBreakdownPayload): Revenue
       && typeof row.label === "string"
       && Array.isArray(row.values) && row.values.length === width && row.values.every(finiteOrNull)
       && finiteOrNull(row.ttm) && finiteOrNull(row.yoy) && finiteOrNull(row.share));
-  if (!valid) throw new Error("Gloom Cloud returned an unreadable revenue breakdown");
+  if (!valid) throw new Error("The server returned an unreadable revenue breakdown");
   return data;
 }
 

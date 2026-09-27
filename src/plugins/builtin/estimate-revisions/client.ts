@@ -1,8 +1,13 @@
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { EstimateRevisionsPayload } from "../../../api-client/estimate-revisions";
 import { createPluginCache } from "../../../data/plugin-cache";
+import {
+  cachedCloudResource,
+  loadCloudResource,
+  unavailableOnServer,
+} from "../shared/cloud-resource";
 import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
 
 export const estimateRevisionsCache =
@@ -30,7 +35,7 @@ export function validateEstimates(
   exchange: string,
 ): EstimateRevisionsPayload {
   const invalid = () => {
-    throw new Error("Gloom Cloud returned invalid estimate revisions");
+    throw new Error("The server returned invalid estimate revisions");
   };
   if (
     !data ||
@@ -242,61 +247,27 @@ export async function fetchEstimates(
       venue,
     );
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404)
-      throw new Error(
-        "Estimate revisions is not available on this Gloom Cloud server yet",
-      );
     // The route answers a missing or unverified session with a bare 401/403; the pane's sign-in wall keys on the shared gate.
-    if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403))
-      throw new Error(CLOUD_SESSION_REQUIRED);
-    throw error;
+    if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED);
+    throw unavailableOnServer(error, "Estimate revisions are not available yet.");
   }
 }
 const key = (symbol: string, exchange: string) =>
   `${canonicalExchange(exchange)}:${normalizeSymbol(symbol)}`;
-// Seeds the first paint while the mount load runs; cache age is not staleness,
-// and a failed refresh reports its own.
 export function cachedEstimates(symbol: string, exchange: string) {
-  const result = estimateRevisionsCache.get(key(symbol, exchange), {
-    allowExpired: true,
-  });
-  if (!result) return null;
-  try {
-    return {
-      payload: validateEstimates(
-        result.data,
-        symbol,
-        exchange || result.data.exchange,
-      ),
-      stale: false,
-      refreshError: null as string | null,
-    };
-  } catch {
-    return null;
-  }
+  return cachedCloudResource(estimateRevisionsCache, key(symbol, exchange), (payload) =>
+    validateEstimates(payload, symbol, exchange || payload.exchange),
+  );
 }
-export async function loadEstimates(
-  symbol: string,
-  exchange: string,
-  force = false,
-) {
-  const result = await estimateRevisionsCache.load(
+export function loadEstimates(symbol: string, exchange: string, force = false) {
+  return loadCloudResource(
+    estimateRevisionsCache,
     key(symbol, exchange),
     () => fetchEstimates(symbol, exchange),
-    { force },
+    {
+      force,
+      validate: (payload) =>
+        validateEstimates(payload, symbol, exchange || payload.exchange),
+    },
   );
-  if (
-    result.error instanceof ApiRequestError &&
-    [401, 403].includes(result.error.status ?? 0)
-  )
-    throw result.error;
-  return {
-    payload: validateEstimates(
-      result.data,
-      symbol,
-      exchange || result.data.exchange,
-    ),
-    stale: result.stale,
-    refreshError: result.refreshError ?? null,
-  };
 }

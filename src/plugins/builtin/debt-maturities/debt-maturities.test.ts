@@ -273,7 +273,7 @@ describe("debt maturity Cloud boundary", () => {
           throw new ApiRequestError("missing", 404);
         },
       }),
-    ).rejects.toThrow("not available on this Gloom Cloud server yet");
+    ).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("Denied", 403);
     await expect(
       fetchDebtMaturities("TEST", {

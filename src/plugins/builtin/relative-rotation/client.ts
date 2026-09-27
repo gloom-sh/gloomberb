@@ -6,7 +6,8 @@ import type {
   CloudQuotePayload,
 } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
+import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 import {
   buildRotation,
   rotationId,
@@ -71,7 +72,7 @@ export function validateRotationHistory(
         row.close <= 0,
     )
   )
-    throw new Error("Invalid daily history from Gloom Cloud.");
+    throw new Error("Invalid daily history.");
   return response.data;
 }
 export async function fetchRotation(
@@ -102,11 +103,7 @@ export async function fetchRotation(
         quotes.set(rotationId(instrument), item.data);
     }
   } catch (error) {
-    if (
-      error instanceof ApiRequestError &&
-      [401, 403].includes(error.status ?? 0)
-    )
-      throw error;
+    if (isAccessDenied(error)) throw error;
     quoteError = "Listing currencies unavailable.";
   }
   const start = new Date(now);
@@ -144,11 +141,7 @@ export async function fetchRotation(
             error: quoteError,
           });
         } catch (error) {
-          if (
-            error instanceof ApiRequestError &&
-            [401, 403].includes(error.status ?? 0)
-          )
-            throw error;
+          if (isAccessDenied(error)) throw error;
           results.set(id, {
             instrument,
             currency,
@@ -180,37 +173,18 @@ export function cachedRotation(
   instruments: RotationInstrument[],
   trail: number,
 ) {
-  const value = rotationCache.get(key(benchmark, instruments, trail), {
-    allowExpired: true,
-  });
-  return value
-    ? {
-        payload: value.data,
-        // The pane revalidates this copy on mount; only a failed refresh makes it stale.
-        stale: false,
-        refreshError: null as string | null,
-      }
-    : null;
+  return cachedCloudResource(rotationCache, key(benchmark, instruments, trail));
 }
-export async function loadRotation(
+export function loadRotation(
   benchmark: RotationInstrument,
   instruments: RotationInstrument[],
   trail: number,
   force = false,
 ) {
-  const result = await rotationCache.load(
+  return loadCloudResource(
+    rotationCache,
     key(benchmark, instruments, trail),
     () => fetchRotation(benchmark, instruments, trail),
     { force },
   );
-  if (
-    result.error instanceof ApiRequestError &&
-    [401, 403].includes(result.error.status ?? 0)
-  )
-    throw result.error;
-  return {
-    payload: result.data,
-    stale: result.stale,
-    refreshError: result.refreshError ?? null,
-  };
 }

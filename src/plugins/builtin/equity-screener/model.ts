@@ -283,7 +283,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
     data.universe.covered < data.universe.matched ||
     (data.nextCursor !== null && typeof data.nextCursor !== "string")
   )
-    throw new Error("Invalid screener response from Gloom Cloud.");
+    throw new Error("Invalid screener response.");
   parseScreenDefinition(data.definition);
   if (
     data.snapshot &&
@@ -328,7 +328,7 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
             metric.percentile.value < 0 ||
             metric.percentile.value > 100))
       )
-        throw new Error(`Invalid ${field} observation from Gloom Cloud.`);
+        throw new Error(`Invalid ${field} observation.`);
     }
   }
   return data;

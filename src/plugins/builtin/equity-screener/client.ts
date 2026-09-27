@@ -71,7 +71,7 @@ export function validateSavedScreen(screen: SavedScreen): SavedScreen {
     !Number.isInteger(screen.revision) ||
     screen.revision < 1
   )
-    throw new Error("Invalid saved screen from Gloom Cloud.");
+    throw new Error("Invalid saved screen.");
   parseScreenDefinition(screen.definition);
   return screen;
 }

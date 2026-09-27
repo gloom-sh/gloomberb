@@ -3,7 +3,7 @@ import {
   type CloudProxyStatementListPayload,
   type CloudProxyStatementPayload,
 } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import type { PluginPersistence } from "../../../types/plugin";
 
 /**
@@ -52,12 +52,6 @@ export function resetExecutivesPersistence(): void {
   failedRefreshes.clear();
 }
 
-/** Removed or denied research must not be replaced by previously cached data. */
-export function discardProxyData(error: unknown): boolean {
-  const status = error instanceof ApiRequestError ? error.status : undefined;
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
-}
-
 function loadCached<T>(
   kind: string,
   key: string,
@@ -87,7 +81,8 @@ function loadCached<T>(
   }).catch((error: unknown) => {
     // A failed forced refresh must be retried on reopen even before the old TTL.
     if (current()) failedRefreshes.add(failedKey);
-    if (discardProxyData(error)) {
+    // Removed or denied research must not be replaced by previously cached data.
+    if (isPermanentClientError(error)) {
       if (current()) store?.deleteResource(kind, key, { sourceKey: CACHE_SOURCE });
       if (error instanceof ApiRequestError && error.status === 404) {
         return { data: null, fetchedAt: null };

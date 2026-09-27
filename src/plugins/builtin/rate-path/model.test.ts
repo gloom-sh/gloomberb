@@ -42,7 +42,7 @@ describe("rate-path integration boundary", () => {
   });
 
   test("absent endpoint reports unsupported deployment while access errors retain their status", async () => {
-    await expect(fetchRatePath({ getCloudRatePath: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
+    await expect(fetchRatePath({ getCloudRatePath: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("Forbidden", 403);
     try { await fetchRatePath({ getCloudRatePath: async () => { throw denied; } }); throw new Error("Expected access rejection"); }
     catch (error) { expect(error).toBe(denied); }

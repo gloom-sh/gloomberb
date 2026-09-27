@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
 import type { MoneyMarketsPayload } from "../../../api-client/money-markets";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const moneyMarketsCache = createPluginCache<MoneyMarketsPayload>({
   kind: "money-markets", source: "gloom-cloud", schemaVersion: 1,
@@ -14,7 +14,7 @@ const dateOrNull = (value: unknown) => value === null || typeof value === "strin
 
 /** Reject incompatible contracts rather than supplying zeros to a board or curve. */
 export function validateMoneyMarkets(payload: MoneyMarketsPayload): MoneyMarketsPayload {
-  const invalid = () => { throw new Error("Gloom Cloud returned invalid money-market observations"); };
+  const invalid = () => { throw new Error("The server returned invalid money-market observations"); };
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || !payload.netLiquidity || !payload.billsCurve || !Array.isArray(payload.billsCurve.comparisons)
     || payload.billsCurve.basis !== "discount" || !["available", "stale", "unavailable"].includes(payload.billsCurve.status)) return invalid();
@@ -47,20 +47,8 @@ export function validateMoneyMarkets(payload: MoneyMarketsPayload): MoneyMarkets
 
 export async function fetchMoneyMarkets(client: Pick<typeof apiClient, "getCloudMoneyMarkets"> = apiClient): Promise<MoneyMarketsPayload> {
   try { return validateMoneyMarkets(await client.getCloudMoneyMarkets()); }
-  catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Money markets are not available on this Gloom Cloud server yet");
-    throw error;
-  }
+  catch (error) { throw unavailableOnServer(error, "Money markets are not available yet."); }
 }
 
-export interface MoneyMarketsResource { payload: MoneyMarketsPayload; stale: boolean; refreshError: string | null }
-export function getCachedMoneyMarkets(): MoneyMarketsResource | null {
-  const cached = moneyMarketsCache.get("usd", { allowExpired: true });
-  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
-  return cached ? { payload: cached.data, stale: false, refreshError: null } : null;
-}
-export async function loadMoneyMarkets(force = false): Promise<MoneyMarketsResource> {
-  const result = await moneyMarketsCache.load("usd", () => fetchMoneyMarkets(), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { payload: result.data, stale: result.stale, refreshError: result.refreshError ?? null };
-}
+export const getCachedMoneyMarkets = () => cachedCloudResource(moneyMarketsCache, "usd");
+export const loadMoneyMarkets = (force = false) => loadCloudResource(moneyMarketsCache, "usd", () => fetchMoneyMarkets(), { force });

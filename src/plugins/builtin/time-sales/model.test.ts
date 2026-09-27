@@ -55,7 +55,7 @@ test("snapshot boundary rejects cross-ticker data, oversize buffers, malformed I
 });
 
 test("absent endpoint is recoverable and access errors remain access errors", async () => {
-  await expect(fetchTape("AAPL", "NASDAQ", undefined, { getCloudTape: async () => { throw new ApiRequestError("missing", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
+  await expect(fetchTape("AAPL", "NASDAQ", undefined, { getCloudTape: async () => { throw new ApiRequestError("missing", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchTape("AAPL", "NASDAQ", undefined, { getCloudTape: async () => { throw denied; } })).rejects.toBe(denied);
 });

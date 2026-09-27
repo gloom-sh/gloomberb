@@ -40,7 +40,7 @@ import {
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPortfolioRiskMarket } from "./risk-client";
 import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
@@ -112,8 +112,6 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
 // No column: rows keep the model order (return, risk, tail), which reads better than A-Z.
 const DEFAULT_SORT = { column: "", direction: "asc" as const };
 const EMPTY_MODEL: PortfolioRiskModel | null = null;
-const clearDenied = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 function RiskDetail({
   row,
   width,
@@ -261,7 +259,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     [instruments, localTickers, portfolio, session.requestKey],
   );
   const resource = useAsyncResource(!frozen && portfolio ? loader : null, {
-    clearOnError: clearDenied,
+    clearOnError: isAccessDenied,
   });
   useAutoRefresh(resource.updatedAt, resource.load);
   const derived = useMemo(() => {

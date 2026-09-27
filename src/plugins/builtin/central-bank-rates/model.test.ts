@@ -77,7 +77,7 @@ describe("central bank policy boundary", () => {
     expect(policyNotices(data)[0]).toContain("2026-09-21");
   });
   test("missing endpoint is distinct from denied access", async () => {
-    await expect(fetchCentralBankRates({ getCloudCentralBankRates: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
+    await expect(fetchCentralBankRates({ getCloudCentralBankRates: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("sign in", 401);
     await expect(fetchCentralBankRates({ getCloudCentralBankRates: async () => { throw denied; } })).rejects.toBe(denied);
   });

@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
 import type { ShortVolumeObservation, ShortVolumePayload, ShortVolumeScope } from "../../../api-client/short-volume";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const shortVolumeCache = createPluginCache<ShortVolumePayload>({
   kind: "short-volume", source: "gloom-cloud", schemaVersion: 1,
@@ -36,7 +36,7 @@ function validObservation(point: ShortVolumeObservation): boolean {
 
 /** Keep exact source quantities and missing observations across the Cloud boundary. */
 export function validateShortVolume(payload: ShortVolumePayload, symbol: string, scope: ShortVolumeScope): ShortVolumePayload {
-  const invalid = () => { throw new Error("Gloom Cloud returned invalid daily short-volume history"); };
+  const invalid = () => { throw new Error("The server returned invalid daily short-volume history"); };
   if (!payload || payload.version !== 1 || payload.symbol !== symbol || payload.scope !== scope
     || typeof payload.finraSymbol !== "string" || !["available", "partial", "unavailable"].includes(payload.status)
     || !instant(payload.fetchedAt) || !dateOrNull(payload.asOf) || !dateOrNull(payload.sourceAsOf)
@@ -74,22 +74,13 @@ export function validateShortVolume(payload: ShortVolumePayload, symbol: string,
 export async function fetchShortVolume(symbol: string, scope: ShortVolumeScope = "nms",
   client: Pick<typeof apiClient, "getCloudShortVolume"> = apiClient): Promise<ShortVolumePayload> {
   try { return validateShortVolume(await client.getCloudShortVolume(symbol, scope), symbol, scope); }
-  catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Daily short volume is not available on this Gloom Cloud server yet");
-    throw error;
-  }
+  catch (error) { throw unavailableOnServer(error, "Daily short volume is not available yet."); }
 }
-export interface ShortVolumeResource { payload: ShortVolumePayload; stale: boolean; refreshError: string | null }
 const cacheKey = (symbol: string, scope: ShortVolumeScope) => `${scope}:${symbol}`;
-export function cachedShortVolume(symbol: string, scope: ShortVolumeScope): ShortVolumeResource | null {
-  const cached = shortVolumeCache.get(cacheKey(symbol, scope), { allowExpired: true });
-  if (!cached) return null;
-  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
-  try { return { payload: validateShortVolume(cached.data, symbol, scope), stale: false, refreshError: null }; }
-  catch { return null; }
+export function cachedShortVolume(symbol: string, scope: ShortVolumeScope) {
+  return cachedCloudResource(shortVolumeCache, cacheKey(symbol, scope), (payload) => validateShortVolume(payload, symbol, scope));
 }
-export async function loadShortVolume(symbol: string, scope: ShortVolumeScope, force = false): Promise<ShortVolumeResource> {
-  const result = await shortVolumeCache.load(cacheKey(symbol, scope), () => fetchShortVolume(symbol, scope), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { payload: validateShortVolume(result.data, symbol, scope), stale: result.stale, refreshError: result.refreshError ?? null };
+export function loadShortVolume(symbol: string, scope: ShortVolumeScope, force = false) {
+  return loadCloudResource(shortVolumeCache, cacheKey(symbol, scope), () => fetchShortVolume(symbol, scope),
+    { force, validate: (payload) => validateShortVolume(payload, symbol, scope) });
 }

@@ -16,6 +16,20 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** The server refused the session: signed out, expired, or not allowed this resource. */
+export function isAccessDenied(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
+
+/**
+ * A client error that retrying will not fix, such as a missing or forbidden
+ * resource. Timeouts (408) and rate limits (429) pass with time.
+ */
+export function isPermanentClientError(error: unknown): boolean {
+  const status = error instanceof ApiRequestError ? error.status : undefined;
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 /** Reads `Retry-After` as milliseconds, accepting seconds or an HTTP date. */
 export function parseRetryAfterMs(
   header: string | null,

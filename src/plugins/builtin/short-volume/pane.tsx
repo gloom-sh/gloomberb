@@ -5,7 +5,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneSta
 import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -17,7 +17,6 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const PANELS = [{ id: "main" }];
 const DETAIL_LABEL_WIDTH = 26;
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
     : column.id === "status" ? volumePointStatus(row) : volumeQuantity(row[column.id]);
@@ -46,7 +45,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadShortVolume(symbol!, scope, force), [symbol, scope, session.requestKey]);
   const resource = useAsyncResource(symbol ? loader : null, {
-    initialData: () => symbol ? cachedShortVolume(symbol, scope) : null, clearOnError: clearDenied,
+    initialData: () => symbol ? cachedShortVolume(symbol, scope) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload;
   const identity = `${scope}:${symbol}`;

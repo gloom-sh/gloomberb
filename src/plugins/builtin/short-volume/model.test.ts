@@ -33,7 +33,7 @@ test("missing files stay chart gaps and decimal share sorting does not round mic
   expect(validateShortVolume(pending,"AAPL","nms").history[0]!.ratioPercent).toBeNull();
 });
 test("missing endpoint is recoverable while authorization failures remain distinct", async()=>{
-  await expect(fetchShortVolume("AAPL","nms",{getCloudShortVolume:async()=>{throw new ApiRequestError("missing",404);}})).rejects.toThrow("not available on this Gloom Cloud server yet");
+  await expect(fetchShortVolume("AAPL","nms",{getCloudShortVolume:async()=>{throw new ApiRequestError("missing",404);}})).rejects.toThrow("not available yet");
   const denied=new ApiRequestError("Forbidden",403);
   await expect(fetchShortVolume("AAPL","nms",{getCloudShortVolume:async()=>{throw denied;}})).rejects.toBe(denied);
 });

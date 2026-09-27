@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
 import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, CotFamily, CotPayloadBase } from "../../../api-client/cot";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
 import { COT_CLASSES, cotPriceMapping } from "./model";
 
@@ -17,29 +17,29 @@ function base(data: CotPayloadBase, family: CotFamily) {
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
     || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
-    || !["available", "partial", "unavailable"].includes(data.status)) throw new Error("Gloom Cloud returned an invalid COT report");
+    || !["available", "partial", "unavailable"].includes(data.status)) throw new Error("The server returned an invalid COT report");
 }
 function summary(row: CotClassSummary, family: CotFamily) {
   if (!row || !COT_CLASSES[family].some((option) => option.value === row.id)
     || ![row.long, row.short, row.spreading].every(count) || ![row.net, row.weeklyChange, row.netPercentOfOpenInterest].every(number)
     || row.net !== (row.long == null || row.short == null ? null : row.long - row.short)
-    || row.previousReportDate !== null && !date(row.previousReportDate)) throw new Error("Gloom Cloud returned invalid COT positions");
+    || row.previousReportDate !== null && !date(row.previousReportDate)) throw new Error("The server returned invalid COT positions");
   for (const rank of [row.percentile1Y, row.percentile3Y]) {
     if (!rank || !Number.isSafeInteger(rank.sampleCount) || rank.sampleCount < 0 || typeof rank.completeWindow !== "boolean"
       || ![rank.min, rank.max, rank.mean, rank.rank].every(number) || !date(rank.windowStart) || !date(rank.windowEnd)
       || rank.value !== null && (!number(rank.value) || rank.value < 0 || rank.value > 100)
       || rank.historyStart !== null && !date(rank.historyStart) || rank.historyEnd !== null && !date(rank.historyEnd)) {
-      throw new Error("Gloom Cloud returned invalid COT percentiles");
+      throw new Error("The server returned invalid COT percentiles");
     }
   }
 }
 export function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass: CotClass) {
   base(data, family);
-  if (!Array.isArray(data.rows) || data.traderClass !== traderClass) throw new Error("Gloom Cloud returned an invalid COT board");
+  if (!Array.isArray(data.rows) || data.traderClass !== traderClass) throw new Error("The server returned an invalid COT board");
   const seen = new Set<string>();
   for (const row of data.rows) {
     if (!code(row.contractCode) || seen.has(row.contractCode) || !date(row.reportDate) || !count(row.openInterest)
-      || row.position?.id !== traderClass) throw new Error("Gloom Cloud returned an invalid COT market");
+      || row.position?.id !== traderClass) throw new Error("The server returned an invalid COT market");
     seen.add(row.contractCode); summary(row.position, family);
   }
   return data;
@@ -47,7 +47,7 @@ export function validateCotBoard(data: CotBoardPayload, family: CotFamily, trade
 export function validateCotContract(data: CotContractPayload, family: CotFamily, contractCode: string) {
   base(data, family);
   if (data.contract !== null && data.contract.contractCode !== contractCode || !Array.isArray(data.positions) || !Array.isArray(data.history)) {
-    throw new Error("Gloom Cloud returned an invalid COT contract");
+    throw new Error("The server returned an invalid COT contract");
   }
   data.positions.forEach((row) => summary(row, family));
   let previous = "";
@@ -56,29 +56,25 @@ export function validateCotContract(data: CotContractPayload, family: CotFamily,
       || row.positions.some((position) => !COT_CLASSES[family].some((option) => option.value === position.id)
         || ![position.long, position.short, position.spreading].every(count)
         || position.net !== (position.long == null || position.short == null ? null : position.long - position.short))) {
-      throw new Error("Gloom Cloud returned invalid COT history");
+      throw new Error("The server returned invalid COT history");
     }
     previous = row.reportDate;
   }
   return data;
 }
-function unavailable(error: unknown): never {
-  if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("COT history is not available on this Gloom Cloud server yet");
-  throw error;
-}
+const unavailable = (error: unknown) => unavailableOnServer(error, "COT history is not available yet.", [404, 503]);
 export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, client: Pick<typeof apiClient, "getCloudCotBoard"> = apiClient) {
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass), family, traderClass); }
-  catch (error) { return unavailable(error); }
+  catch (error) { throw unavailable(error); }
 }
 export async function loadCotBoard(family: CotFamily, traderClass: CotClass, force = false) {
-  const result = await cotBoardCache.load(`${family}:${traderClass}`, () => fetchCotBoard(family, traderClass), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { ...result.data, gaps: [...result.data.gaps, ...(result.refreshError ? [result.refreshError] : [])],
-    status: result.stale && result.data.status === "available" ? "partial" as const : result.data.status };
+  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, `${family}:${traderClass}`, () => fetchCotBoard(family, traderClass), { force });
+  return { ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
+    status: stale && payload.status === "available" ? "partial" as const : payload.status };
 }
 export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient) {
   try { return validateCotContract(await client.getCloudCotContract(contractCode, family), family, contractCode); }
-  catch (error) { return unavailable(error); }
+  catch (error) { throw unavailable(error); }
 }
 export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null }
 export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient): Promise<CotDetailData> {

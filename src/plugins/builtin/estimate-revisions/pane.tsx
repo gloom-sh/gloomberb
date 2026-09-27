@@ -25,7 +25,7 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { listingIdentity } from "../shared/ticker-request";
 import type {
   EstimatePeriod,
@@ -65,8 +65,7 @@ import {
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const clearDeniedEstimates = (error: unknown) =>
-  (error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0))
-  || (error instanceof Error && isCloudSessionRequired(error.message));
+  isAccessDenied(error) || (error instanceof Error && isCloudSessionRequired(error.message));
 
 const TABS = [
   { value: "revisions", label: "Revisions" },

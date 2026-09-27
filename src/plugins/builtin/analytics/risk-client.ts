@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type {
   CloudFredSeriesPayload,
   CloudMarketResponse,
@@ -7,6 +7,7 @@ import type {
   CloudQuotePayload,
 } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { loadCloudResource } from "../shared/cloud-resource";
 import { canonicalExchange, normalizeSymbol } from "../../../utils/exchanges";
 import type { PricePoint } from "../../../types/financials";
 import { resolveDatedReturns, type DatedReturn } from "./metrics";
@@ -52,8 +53,6 @@ export const riskInstrumentId = (instrument: RiskInstrument) =>
   `${canonicalExchange(instrument.exchange)}:${normalizeSymbol(instrument.symbol)}`;
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Cloud source unavailable";
-const sessionError = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 export const portfolioRiskCache = createPluginCache<RiskMarketSnapshot>({
   kind: "portfolio-risk",
   source: "gloom-cloud",
@@ -281,7 +280,7 @@ export async function fetchPortfolioRiskMarket(
         }
       }
     } catch (error) {
-      if (sessionError(error)) throw error;
+      if (isAccessDenied(error)) throw error;
       warnings.push(`Holding marks: ${message(error)}`);
     }
   }
@@ -329,7 +328,7 @@ export async function fetchPortfolioRiskMarket(
             error: null,
           };
         } catch (error) {
-          if (sessionError(error)) throw error;
+          if (isAccessDenied(error)) throw error;
           histories[index] = {
             instrument,
             quote,
@@ -361,7 +360,7 @@ export async function fetchPortfolioRiskMarket(
   ]);
   for (const [index, result] of fred.entries()) {
     if (result.status === "rejected") {
-      if (sessionError(result.reason)) throw result.reason;
+      if (isAccessDenied(result.reason)) throw result.reason;
       warnings.push(
         `${index ? "Volatility" : "Treasury yield"}: ${message(result.reason)}`,
       );
@@ -381,20 +380,18 @@ export async function loadPortfolioRiskMarket(
   instruments: readonly RiskInstrument[],
   force = false,
 ) {
-  const resource = await portfolioRiskCache.load(
+  const { payload, stale, refreshError } = await loadCloudResource(
+    portfolioRiskCache,
     cacheKey(instruments),
     () => fetchPortfolioRiskMarket(instruments),
     { force },
   );
-  if (sessionError(resource.error)) throw resource.error;
   return {
-    ...resource.data,
+    ...payload,
     warnings: [
-      ...resource.data.warnings,
-      ...(resource.stale
-        ? ["Cached portfolio risk market observations are stale."]
-        : []),
-      ...(resource.refreshError ? [resource.refreshError] : []),
+      ...payload.warnings,
+      ...(stale ? ["Cached portfolio risk market observations are stale."] : []),
+      ...(refreshError ? [refreshError] : []),
     ],
   };
 }

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
@@ -24,7 +24,6 @@ const COLUMNS: DataTableColumn[] = [
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const signedPercent = (value: number | null) => value == null ? "--" : formatPercentRaw(value);
 const integer = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US");
 
@@ -40,7 +39,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadFuturesCurve(root, force), [root, session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: () => getCachedFuturesCurve(root), clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { initialData: () => getCachedFuturesCurve(root), clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "curve");
   const [selected, setSelected] = usePluginPaneState<string | null>("contract", null);
   const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });

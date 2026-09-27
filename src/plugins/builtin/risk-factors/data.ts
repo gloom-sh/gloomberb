@@ -3,7 +3,7 @@ import {
   type CloudRiskReportListPayload,
   type CloudRiskReportPayload,
 } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
 
 /** Annual reports are immutable; discovery of newly produced reports is not. */
@@ -35,12 +35,6 @@ export function resetRiskFactorsPersistence(): void {
   activeListFetches.clear();
   activeReportFetches.clear();
   failedRefreshes.clear();
-}
-
-/** A missing/denied resource must not be replaced by previously cached content. */
-export function discardRiskData(error: unknown): boolean {
-  const status = error instanceof ApiRequestError ? error.status : undefined;
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 function loadCached<T extends object>(
@@ -75,7 +69,8 @@ function loadCached<T extends object>(
     // A failed forced refresh must be retried when this pane is reopened, even
     // when the previously cached value has not reached its ordinary TTL yet.
     if (current()) failedRefreshes.set(failedKey, store);
-    if (discardRiskData(error)) {
+    // A missing or denied resource must not be replaced by previously cached content.
+    if (isPermanentClientError(error)) {
       if (current()) store?.deleteResource(kind, key, { sourceKey: CACHE_SOURCE });
       throw error;
     }

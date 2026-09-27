@@ -68,7 +68,7 @@ test("price-source failure leaves report history readable and never substitutes 
 });
 
 test("missing migration gives unavailable state; access failures remain access failures", async () => {
-  await expect(fetchCotBoard("legacy", "noncommercial", { getCloudCotBoard: async () => { throw new ApiRequestError("not ready", 503); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
+  await expect(fetchCotBoard("legacy", "noncommercial", { getCloudCotBoard: async () => { throw new ApiRequestError("not ready", 503); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchCotBoard("legacy", "noncommercial", { getCloudCotBoard: async () => { throw denied; } })).rejects.toBe(denied);
 });

@@ -54,7 +54,7 @@ describe("money-market boundary", () => {
     expect(moneyMarketHistory(observation)).toEqual(observation.history.slice(1));
   });
   test("missing endpoint gives an actionable unavailable state without hiding auth errors", async () => {
-    await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
+    await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("sign in", 401);
     await expect(fetchMoneyMarkets({ getCloudMoneyMarkets: async () => { throw denied; } })).rejects.toBe(denied);
   });

@@ -2,6 +2,7 @@ import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CryptoMarketAsset, CryptoMarketsPayload } from "../../../api-client/crypto-markets";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const cryptoMarketsCache = createPluginCache<CryptoMarketsPayload>({
   kind: "crypto-markets",
@@ -74,7 +75,7 @@ export function validateCryptoMarkets(data: CryptoMarketsPayload): CryptoMarkets
     || !Array.isArray(data.warnings)
     || data.warnings.some((warning) => typeof warning !== "string")
   ) {
-    throw new Error("Gloom Cloud returned an invalid crypto board");
+    throw new Error("The server returned an invalid crypto board");
   }
   return data;
 }
@@ -85,41 +86,17 @@ export async function fetchCryptoMarkets(
   try {
     return validateCryptoMarkets(await client.getCloudCryptoMarkets());
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) {
-      throw new Error("Crypto markets are not available on this Gloom Cloud server yet");
-    }
     if (error instanceof ApiRequestError && error.status === 503) {
       throw new Error("Crypto prices are temporarily unavailable");
     }
-    throw error;
+    throw unavailableOnServer(error, "Crypto markets are not available yet.");
   }
 }
 
-export interface CryptoMarketsResource {
-  payload: CryptoMarketsPayload;
-  stale: boolean;
-  refreshError: string | null;
+export function cachedCryptoMarkets() {
+  return cachedCloudResource(cryptoMarketsCache, "usd", validateCryptoMarkets);
 }
 
-export function cachedCryptoMarkets(): CryptoMarketsResource | null {
-  const cached = cryptoMarketsCache.get("usd", { allowExpired: true });
-  if (!cached) return null;
-  try {
-    // The pane revalidates this copy on mount; only a failed refresh makes it stale.
-    return { payload: validateCryptoMarkets(cached.data), stale: false, refreshError: null };
-  } catch {
-    return null;
-  }
-}
-
-export async function loadCryptoMarkets(force = false): Promise<CryptoMarketsResource> {
-  const result = await cryptoMarketsCache.load("usd", () => fetchCryptoMarkets(), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) {
-    throw result.error;
-  }
-  return {
-    payload: validateCryptoMarkets(result.data),
-    stale: result.stale,
-    refreshError: result.refreshError ?? null,
-  };
+export function loadCryptoMarkets(force = false) {
+  return loadCloudResource(cryptoMarketsCache, "usd", () => fetchCryptoMarkets(), { force, validate: validateCryptoMarkets });
 }

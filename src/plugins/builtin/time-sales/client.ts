@@ -26,7 +26,7 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
     || !data.capacity || !count(data.capacity.trades) || data.capacity.trades > 1000 || !count(data.capacity.quotes) || data.capacity.quotes > 500
     || !Array.isArray(data.trades) || data.trades.length > data.capacity.trades || !Array.isArray(data.quotes) || data.quotes.length > data.capacity.quotes
     || !data.dropped || !count(data.dropped.trades) || !count(data.dropped.quotes) || !count(data.corrections) || !count(data.cancels)) {
-    throw new Error("Gloom Cloud returned an invalid tape snapshot");
+    throw new Error("The server returned an invalid tape snapshot");
   }
   const cutoffDate = new Date(Date.parse(data.generatedAt) - data.delaySeconds * 1000).toISOString();
   const cutoff = `${cutoffDate.slice(0, 19)}.${tapeTimeKey(data.generatedAt).slice(20, 29)}Z`;
@@ -34,14 +34,14 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
   for (const row of data.trades) {
     if (!row || !text(row.id) || !/^\d+$/.test(row.id) || !timestamp(row.timestamp) || tapeTimeKey(row.timestamp) > cutoff
       || !positive(row.price) || !positive(row.size) || !text(row.exchange) || !text(row.tape) || !conditions(row.conditions)
-      || seen.has(tradeKey(row))) throw new Error("Gloom Cloud returned invalid tape trades");
+      || seen.has(tradeKey(row))) throw new Error("The server returned invalid tape trades");
     seen.add(tradeKey(row));
   }
   for (const row of data.quotes) {
     if (!row || !timestamp(row.timestamp) || tapeTimeKey(row.timestamp) > cutoff || row.bid !== null && !positive(row.bid)
       || row.ask !== null && !positive(row.ask) || !quantity(row.bidSize) || !quantity(row.askSize)
       || !text(row.bidExchange) || !text(row.askExchange) || !text(row.tape) || !conditions(row.conditions)) {
-      throw new Error("Gloom Cloud returned invalid NBBO history");
+      throw new Error("The server returned invalid NBBO history");
     }
   }
   if (!data.session || !nullableTime(data.session.asOf)
@@ -51,7 +51,7 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
     || (data.session.low === null) !== (data.session.asOf === null)
     || (data.session.date === null) !== (data.session.asOf === null) || data.session.high !== null && !positive(data.session.high)
     || data.session.low !== null && !positive(data.session.low)
-    || data.session.high != null && data.session.low != null && data.session.low > data.session.high) throw new Error("Gloom Cloud returned invalid session context");
+    || data.session.high != null && data.session.low != null && data.session.low > data.session.high) throw new Error("The server returned invalid session context");
   // Normalize only event ordering. Source prices, identities and nanoseconds survive.
   return { ...data, trades: [...data.trades].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))),
     quotes: [...data.quotes].sort((a, b) => tapeTimeKey(a.timestamp).localeCompare(tapeTimeKey(b.timestamp))) };
@@ -60,7 +60,7 @@ export async function fetchTape(symbol: string, exchange: string, signal?: Abort
   client: Pick<typeof apiClient, "getCloudTape"> = apiClient): Promise<TapeSnapshot> {
   try { return validateTape(await client.getCloudTape(symbol, exchange, signal), symbol, exchange); }
   catch (error) {
-    if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("Time and sales is not available on this Gloom Cloud server yet");
+    if (error instanceof ApiRequestError && [404, 503].includes(error.status ?? 0)) throw new Error("Time and sales is not available yet.");
     // A rejected request answers with an unavailable snapshot; show its reason, not the JSON body.
     if (error instanceof ApiRequestError) {
       const reason = tapeRejection(error.message);

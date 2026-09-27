@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
 import type { CentralBankRatesPayload } from "../../../api-client/central-bank-rates";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const centralBankRatesCache = createPluginCache<CentralBankRatesPayload>({
   kind: "central-bank-rates", source: "gloom-cloud", schemaVersion: 1,
@@ -15,7 +15,7 @@ const urlOrNull = (value: unknown) => value === null || typeof value === "string
 
 /** An incompatible deployment cannot turn missing dates or units into current policy rates. */
 export function validateCentralBankRates(payload: CentralBankRatesPayload): CentralBankRatesPayload {
-  const invalid = () => { throw new Error("Gloom Cloud returned invalid central-bank observations"); };
+  const invalid = () => { throw new Error("The server returned invalid central-bank observations"); };
   if (!payload || !Number.isFinite(Date.parse(payload.generatedAt)) || !["available", "partial", "unavailable"].includes(payload.status)
     || !Array.isArray(payload.rows) || !strings(payload.gaps)) return invalid();
   const ids = new Set<string>();
@@ -51,19 +51,7 @@ export function validateCentralBankRates(payload: CentralBankRatesPayload): Cent
 
 export async function fetchCentralBankRates(client: Pick<typeof apiClient, "getCloudCentralBankRates"> = apiClient) {
   try { return validateCentralBankRates(await client.getCloudCentralBankRates()); }
-  catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Central bank rates are not available on this Gloom Cloud server yet");
-    throw error;
-  }
+  catch (error) { throw unavailableOnServer(error, "Central bank rates are not available yet."); }
 }
-export interface CentralBankRatesResource { payload: CentralBankRatesPayload; stale: boolean; refreshError: string | null }
-export function getCachedCentralBankRates(): CentralBankRatesResource | null {
-  const cached = centralBankRatesCache.get("g20", { allowExpired: true });
-  // The pane revalidates this copy on mount; only a failed refresh makes it stale.
-  return cached ? { payload: cached.data, stale: false, refreshError: null } : null;
-}
-export async function loadCentralBankRates(force = false): Promise<CentralBankRatesResource> {
-  const result = await centralBankRatesCache.load("g20", () => fetchCentralBankRates(), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { payload: result.data, stale: result.stale, refreshError: result.refreshError ?? null };
-}
+export const getCachedCentralBankRates = () => cachedCloudResource(centralBankRatesCache, "g20");
+export const loadCentralBankRates = (force = false) => loadCloudResource(centralBankRatesCache, "g20", () => fetchCentralBankRates(), { force });

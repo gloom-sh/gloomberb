@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { blendHex, colors } from "../../../theme/colors";
@@ -14,7 +14,6 @@ import { getCachedRatePath, loadRatePath } from "./client";
 import { meetingProbability, percentileText, probabilityTargets, ratePathCurves, rateText } from "./model";
 
 const TABS = [{ value: "path", label: "Path" }, { value: "probabilities", label: "Probabilities" }, { value: "contracts", label: "Contracts" }, { value: "projections", label: "Projections" }];
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const MEETING_COLUMNS: DataTableColumn[] = [
   { id: "date", label: "MEETING", width: 12, align: "left" },
   { id: "rate", label: "EFFR", width: 9, align: "right" },
@@ -50,7 +49,7 @@ function contractCell(row: RateContract, column: DataTableColumn): DataTableCell
 export function RatePathPane({ width, height, focused }: PaneProps) {
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadRatePath(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedRatePath, clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { initialData: getCachedRatePath, clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "path");
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
   const [sort, setSort] = useState({ id: "date", direction: "asc" as "asc" | "desc" });

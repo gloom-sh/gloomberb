@@ -31,7 +31,7 @@ import type {
   DebtHistoryPoint,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -74,8 +74,6 @@ const TABS = [
   { value: "filing", label: "Filing" },
 ];
 const BUCKET_AXIS = { ticks: BUCKET_AXIS_TICKS, formatCursor: bucketCursor };
-const clearDenied = (error: unknown) =>
-  error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const amountAxis = (value: number) => debtAmount(value);
 
 function MetricRow({ label, metric }: { label: string; metric: DebtMetric }) {
@@ -277,7 +275,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   );
   const resource = useAsyncResource(symbol ? loader : null, {
     initialData: () => (symbol ? cachedDebtMaturities(symbol) : null),
-    clearOnError: clearDenied,
+    clearOnError: isAccessDenied,
   });
   const [initialTab] = usePaneSettingValue("tab", "maturities");
   const [savedTab, setTab] = usePluginPaneState<string>("debt:tab", initialTab);

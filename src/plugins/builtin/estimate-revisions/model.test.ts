@@ -146,7 +146,7 @@ test("absent endpoint and denied access remain distinct", async () => {
         throw new ApiRequestError("Missing", 404);
       },
     }),
-  ).rejects.toThrow("not available on this Gloom Cloud server yet");
+  ).rejects.toThrow("not available yet");
   // A signed-out (401) or unverified (403) session becomes the shared Cloud gate the pane walls on.
   for (const status of [401, 403]) {
     await expect(

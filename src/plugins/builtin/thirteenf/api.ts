@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
 import { httpFetch } from "../../../utils/http-transport";
 
 const FORMS_13F_BASE_URL = "https://forms13f.com/api/v1";
@@ -145,8 +145,7 @@ async function fetchForms13F<T>(
   } catch (error) {
     options.signal?.throwIfAborted();
     if (current()) failedRefreshes.add(key);
-    if (error instanceof ApiRequestError && error.status !== undefined && error.status >= 400 && error.status < 500
-      && error.status !== 408 && error.status !== 429) {
+    if (isPermanentClientError(error)) {
       if (current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
       throw error;
     }

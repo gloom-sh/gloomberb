@@ -4,8 +4,12 @@ import type {
   DebtMaturitiesPayload,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
-import { ApiRequestError } from "../../../api-client/errors";
 import { createPluginCache } from "../../../data/plugin-cache";
+import {
+  cachedCloudResource,
+  loadCloudResource,
+  unavailableOnServer,
+} from "../shared/cloud-resource";
 
 export const debtMaturitiesCache = createPluginCache<DebtMaturitiesPayload>({
   kind: "debt-maturities",
@@ -115,7 +119,7 @@ export function validateDebtMaturities(
   symbol: string,
 ): DebtMaturitiesPayload {
   const invalid = (): never => {
-    throw new Error("Gloom Cloud returned an invalid debt maturity schedule");
+    throw new Error("The server returned an invalid debt maturity schedule");
   };
   if (
     !data ||
@@ -335,50 +339,19 @@ export async function fetchDebtMaturities(
       symbol,
     );
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404)
-      throw new Error(
-        "Debt maturities are not available on this Gloom Cloud server yet",
-      );
-    throw error;
+    throw unavailableOnServer(error, "Debt maturities are not available yet.");
   }
 }
-export interface DebtResource {
-  payload: DebtMaturitiesPayload;
-  stale: boolean;
-  refreshError: string | null;
+export function cachedDebtMaturities(symbol: string) {
+  return cachedCloudResource(debtMaturitiesCache, symbol, (payload) =>
+    validateDebtMaturities(payload, symbol),
+  );
 }
-// Seeds the first paint while the mount load runs; cache age is not staleness,
-// and a failed refresh reports its own.
-export function cachedDebtMaturities(symbol: string): DebtResource | null {
-  const cached = debtMaturitiesCache.get(symbol, { allowExpired: true });
-  if (!cached) return null;
-  try {
-    return {
-      payload: validateDebtMaturities(cached.data, symbol),
-      stale: false,
-      refreshError: null,
-    };
-  } catch {
-    return null;
-  }
-}
-export async function loadDebtMaturities(
-  symbol: string,
-  force = false,
-): Promise<DebtResource> {
-  const result = await debtMaturitiesCache.load(
+export function loadDebtMaturities(symbol: string, force = false) {
+  return loadCloudResource(
+    debtMaturitiesCache,
     symbol,
     () => fetchDebtMaturities(symbol),
-    { force },
+    { force, validate: (payload) => validateDebtMaturities(payload, symbol) },
   );
-  if (
-    result.error instanceof ApiRequestError &&
-    [401, 403].includes(result.error.status ?? 0)
-  )
-    throw result.error;
-  return {
-    payload: validateDebtMaturities(result.data, symbol),
-    stale: result.stale,
-    refreshError: result.refreshError ?? null,
-  };
 }

@@ -4,7 +4,7 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneSta
 import { CompositeChart, CurveSurface, EmptyState, MarketBoardStack, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
@@ -15,7 +15,6 @@ import { moneyMarketChange, moneyMarketCurves, moneyMarketHistory, moneyMarketNo
 
 const TABS = [{ value: "rates", label: "Rates" }, { value: "bills", label: "Bills" }, { value: "liquidity", label: "Liquidity" }];
 const PANELS = [{ id: "main" }];
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 interface BoardRow extends MarketBoardRow { observation: MoneyMarketRow }
 function boardRow(row: MoneyMarketRow): BoardRow {
   return { id: row.id, label: row.label, value: row.value, valueText: moneyMarketValue(row.value, row.unit),
@@ -56,7 +55,7 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: getCachedMoneyMarkets, clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { initialData: getCachedMoneyMarkets, clearOnError: isAccessDenied });
   const [tab, setTab] = usePaneSettingValue("tab", "rates");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);

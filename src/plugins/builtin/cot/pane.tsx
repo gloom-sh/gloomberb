@@ -5,7 +5,7 @@ import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
 import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -31,7 +31,6 @@ const POSITION_COLUMNS: DataTableColumn[] = [
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
 ];
-const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const rank = (value: number | null) => value == null ? "--" : value.toFixed(0);
 const cotDetailTitle = (name: string | undefined, code: string | null) => name ? cotMarketName(name) : code ?? undefined;
 
@@ -61,7 +60,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const scopeControl = useRef<SelectControl>(null);
   const searchInput = useRef<InputRenderable | null>(null);
   const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force), [family, traderClass, session.requestKey]);
-  const resource = useAsyncResource(loader, { clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
   const data = resource.data?.traderClass === traderClass ? resource.data : null;
   const rows = useMemo(() => {
     // A typed query searches every market; the scope only shapes the unsearched board.
@@ -128,7 +127,7 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   const colors = useThemeColors();
   const session = useResearchCloudSession();
   const loader = useCallback(() => loadCotDetail(code, family), [code, family, session.requestKey]);
-  const resource = useAsyncResource(loader, { clearOnError: clearDenied });
+  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
   const data = resource.data;
   const payload = data?.payload;
   const current = payload?.positions.find((row) => row.id === traderClass);

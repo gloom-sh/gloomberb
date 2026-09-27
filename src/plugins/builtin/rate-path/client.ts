@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
 import type { RatePathPayload } from "../../../api-client/rates";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export const ratePathCache = createPluginCache<RatePathPayload>({
   kind: "rate-path", source: "gloom-cloud", schemaVersion: 1,
@@ -15,11 +15,11 @@ export function validateRatePath(payload: RatePathPayload): RatePathPayload {
     || !payload.current?.effr || !payload.current.targetLower || !payload.current.targetUpper
     || !payload.dotPlot || !Array.isArray(payload.dotPlot.points) || !payload.schedule
     || !Number.isFinite(Date.parse(payload.fetchedAt))) {
-    throw new Error("Gloom Cloud returned an invalid rate path");
+    throw new Error("The server returned an invalid rate path");
   }
   for (const row of [...payload.meetings, ...payload.fedFunds, ...payload.sofr]) {
     if (!numberOrNull(row.impliedRate) || !numberOrNull(row.percentile) || !Number.isInteger(row.samples)) {
-      throw new Error("Gloom Cloud returned an invalid rate observation");
+      throw new Error("The server returned an invalid rate observation");
     }
   }
   for (const meeting of payload.meetings) {
@@ -29,7 +29,7 @@ export function validateRatePath(payload: RatePathPayload): RatePathPayload {
       || meeting.probabilities.some((point) => !Number.isFinite(point.targetMidpoint)
         || !Number.isFinite(point.probability) || point.probability < 0 || point.probability > 1)
       || meeting.probabilities.length > 0 && Math.abs(meeting.probabilities.reduce((sum, point) => sum + point.probability, 0) - 1) > 1e-6) {
-      throw new Error("Gloom Cloud returned invalid meeting probabilities");
+      throw new Error("The server returned invalid meeting probabilities");
     }
   }
   return payload;
@@ -37,12 +37,7 @@ export function validateRatePath(payload: RatePathPayload): RatePathPayload {
 
 export async function fetchRatePath(client: Pick<typeof apiClient, "getCloudRatePath"> = apiClient): Promise<RatePathPayload> {
   try { return validateRatePath(await client.getCloudRatePath()); }
-  catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) {
-      throw new Error("Rate path is not available on this Gloom Cloud server yet");
-    }
-    throw error;
-  }
+  catch (error) { throw unavailableOnServer(error, "Rate path is not available yet."); }
 }
 
 export function getCachedRatePath(): RatePathPayload | null {
@@ -52,10 +47,6 @@ export function getCachedRatePath(): RatePathPayload | null {
 }
 
 export async function loadRatePath(force = false): Promise<RatePathPayload> {
-  const result = await ratePathCache.load("usd", () => fetchRatePath(), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return {
-    ...result.data, stale: result.stale || result.data.stale,
-    gaps: [...result.data.gaps, ...(result.refreshError ? [result.refreshError] : [])],
-  };
+  const { payload, stale, refreshError } = await loadCloudResource(ratePathCache, "usd", () => fetchRatePath(), { force });
+  return { ...payload, stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
 }
