@@ -347,6 +347,9 @@ export function FormModalContent({
   useDialogKeyboard((event) => {
     // Esc belongs to the dialog host, which closes the form.
     if (event.name === "escape") return;
+    // A desktop field acts on its own keys first (Enter moves on or submits)
+    // and has already moved the focus this handler would read.
+    if (event.defaultPrevented) return;
     const current = routeRef.current;
     if (current.pending) {
       consume(event);
