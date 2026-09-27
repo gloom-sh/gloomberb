@@ -223,7 +223,7 @@ export class CloudAuthApi {
     return result.profile;
   }
 
-  /** Public Cloud Pro pricing, including the founding discount and trial length. */
+  /** Public Cloud Pro pricing and trial length. */
   async getCloudPricing(): Promise<CloudPricing> {
     return this.options.request<CloudPricing>("/pricing", { method: "GET" });
   }

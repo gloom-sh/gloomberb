@@ -654,7 +654,6 @@ export const ja: Record<string, string> = {
   "real-time news": "リアルタイムニュース",
   "AI command bar": "AI コマンドバー",
   "{amount}/mo": "{amount}/月",
-  "Founding price": "ファウンディング価格",
   "{days}-day free trial": "{days}日間の無料トライアル",
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "gloom.sh/cloud で Pro にアップグレードするとリアルタイムデータを 7 日間無料で利用できます。",
   "real-time options": "リアルタイムオプション",
@@ -673,7 +672,7 @@ export const ja: Record<string, string> = {
   "Soon": "近日対応",
   "AI Screener": "AI スクリーナー",
   "Capability": "機能",
-  "$49/mo": "$49/月",
+  "$70/mo": "$70/月",
   "Public Profile": "公開プロフィール",
   "Incoming DMs": "受信 DM",
   "Username": "ユーザー名",
@@ -1122,7 +1121,6 @@ export const ja: Record<string, string> = {
   "signing in...": "サインイン中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "Limited founding offer. Start a free 7-day trial.": "創設記念の期間限定オファー。7日間の無料トライアルを開始できます。",
   "Start 7-day free trial": "7日間の無料トライアルを開始",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "株価、財務情報、オプション、リサーチ、ニュース、チャット、AIコマンドを追加します。",
   "Add one company with the command bar": "コマンドバーで企業を1社追加",
@@ -1302,7 +1300,7 @@ export const ja: Record<string, string> = {
   "Yearly, {months} months free": "年払い、{months} か月無料",
   "{months} months free": "{months} か月無料",
   "{amount}/yr": "{amount}/年",
-  "$490/yr": "$490/年",
+  "$630/yr": "$630/年",
 
   // ── Feedback ─────────────────────────────────────────────────
   "Feedback": "フィードバック",

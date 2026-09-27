@@ -88,14 +88,6 @@ export function formatPlan(plan: AccountProfile["plan"] | null | undefined): str
 
 const DEFAULT_TRIAL_DAYS = 7;
 
-export interface PlanPriceDisplay {
-  /** Charged price, already suffixed with the billing period. */
-  price: string;
-  /** List price to strike through, or null when the list price is the price. */
-  anchor: string | null;
-  note: string | null;
-}
-
 function formatUsdCents(cents: number): string {
   const dollars = cents / 100;
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
@@ -104,29 +96,21 @@ function formatUsdCents(cents: number): string {
 export type CloudBillingInterval = "month" | "year";
 
 /**
- * Pro price for one billing interval. Falls back to the list price when
- * `/pricing` is unreachable so the table never renders a blank cell.
+ * Pro price for one billing interval, suffixed with the period. Falls back to
+ * the current price when `/pricing` is unreachable so the table never renders
+ * a blank cell.
  */
 export function formatCloudPrice(
   pricing: CloudPricing | null | undefined,
   interval: CloudBillingInterval = "month",
-): PlanPriceDisplay {
+): string {
   const yearly = interval === "year";
-  const suffix = (amount: string) => (yearly ? tf("{amount}/yr", { amount }) : tf("{amount}/mo", { amount }));
-  if (!pricing) return { price: yearly ? t("$490/yr") : t("$49/mo"), anchor: null, note: null };
-  const tier = yearly ? pricing.yearly : pricing.monthly;
-  // Without the founding discount the list price is the price, shown plainly.
-  if (!pricing.founding || tier.anchorAmount <= tier.amount) {
-    return { price: suffix(formatUsdCents(tier.anchorAmount)), anchor: null, note: null };
-  }
-  return {
-    price: suffix(formatUsdCents(tier.amount)),
-    anchor: suffix(formatUsdCents(tier.anchorAmount)),
-    note: t("Founding price"),
-  };
+  if (!pricing) return yearly ? t("$630/yr") : t("$70/mo");
+  const amount = formatUsdCents((yearly ? pricing.yearly : pricing.monthly).amount);
+  return yearly ? tf("{amount}/yr", { amount }) : tf("{amount}/mo", { amount });
 }
 
-export function formatCloudMonthlyPrice(pricing: CloudPricing | null | undefined): PlanPriceDisplay {
+export function formatCloudMonthlyPrice(pricing: CloudPricing | null | undefined): string {
   return formatCloudPrice(pricing, "month");
 }
 

@@ -652,7 +652,6 @@ export const ko: Record<string, string> = {
   "real-time news": "실시간 뉴스",
   "AI command bar": "AI 명령 바",
   "{amount}/mo": "{amount}/월",
-  "Founding price": "창립 기념가",
   "{days}-day free trial": "{days}일 무료 체험",
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "gloom.sh/cloud에서 Pro로 업그레이드하면 실시간 데이터를 7일간 무료로 사용할 수 있습니다.",
   "real-time options": "실시간 옵션",
@@ -671,7 +670,7 @@ export const ko: Record<string, string> = {
   "Soon": "출시 예정",
   "AI Screener": "AI 스크리너",
   "Capability": "기능",
-  "$49/mo": "$49/월",
+  "$70/mo": "$70/월",
   "Public Profile": "공개 프로필",
   "Incoming DMs": "받은 DM",
   "Username": "사용자명",
@@ -1120,7 +1119,6 @@ export const ko: Record<string, string> = {
   "signing in...": "로그인 중...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "Limited founding offer. Start a free 7-day trial.": "창립 한정 혜택. 7일 무료 체험을 시작하세요.",
   "Start 7-day free trial": "7일 무료 체험 시작",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "시세, 재무 정보, 옵션, 리서치, 뉴스, 채팅, AI 명령을 추가합니다.",
   "Add one company with the command bar": "명령 모음으로 회사 하나 추가",
@@ -1300,7 +1298,7 @@ export const ko: Record<string, string> = {
   "Yearly, {months} months free": "연간, {months}개월 무료",
   "{months} months free": "{months}개월 무료",
   "{amount}/yr": "{amount}/년",
-  "$490/yr": "$490/년",
+  "$630/yr": "$630/년",
 
   // ── Feedback ─────────────────────────────────────────────────
   "Feedback": "피드백",

@@ -654,7 +654,6 @@ export const zhTW: Record<string, string> = {
   "real-time news": "即時新聞",
   "AI command bar": "AI 命令列",
   "{amount}/mo": "{amount}/月",
-  "Founding price": "創始價",
   "{days}-day free trial": "{days} 天免費試用",
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "在 gloom.sh/cloud 升級 Pro 取得即時資料，免費試用 7 天。",
   "real-time options": "即時選擇權",
@@ -673,7 +672,7 @@ export const zhTW: Record<string, string> = {
   "Soon": "即將推出",
   "AI Screener": "AI 選股器",
   "Capability": "功能",
-  "$49/mo": "$49/月",
+  "$70/mo": "$70/月",
   "Public Profile": "公開個人檔案",
   "Incoming DMs": "接收私訊",
   "Username": "使用者名稱",
@@ -1122,7 +1121,6 @@ export const zhTW: Record<string, string> = {
   "signing in...": "登入中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "Limited founding offer. Start a free 7-day trial.": "限時創始優惠。開始 7 天免費試用。",
   "Start 7-day free trial": "開始 7 天免費試用",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "增加報價、財務資料、選擇權、研究、新聞、聊天與 AI 指令。",
   "Add one company with the command bar": "使用命令列新增一家公司",
@@ -1302,7 +1300,7 @@ export const zhTW: Record<string, string> = {
   "Yearly, {months} months free": "按年，免費 {months} 個月",
   "{months} months free": "免費 {months} 個月",
   "{amount}/yr": "{amount}/年",
-  "$490/yr": "$490/年",
+  "$630/yr": "$630/年",
 
   // ── Feedback ─────────────────────────────────────────────────
   "Feedback": "意見回饋",

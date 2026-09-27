@@ -658,7 +658,7 @@ export const es: Record<string, string> = {
   "Soon": "Próximamente",
   "AI Screener": "Screener de IA",
   "Capability": "Función",
-  "$49/mo": "$49/mes",
+  "$70/mo": "$70/mes",
   "Public Profile": "Perfil público",
   "Incoming DMs": "DM entrantes",
   "Username": "Nombre de usuario",
@@ -1056,7 +1056,6 @@ export const es: Record<string, string> = {
   "Pro trial {days}d": "Prueba Pro {days} d",
   "Pro trial — ends {date}": "Prueba Pro: termina el {date}",
   "{amount}/mo": "{amount}/mes",
-  "Founding price": "Precio fundador",
   "{days}-day free trial": "Prueba gratis de {days} días",
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.":
     "Hazte Pro para datos en tiempo real en gloom.sh/cloud, gratis 7 días.",
@@ -1134,7 +1133,6 @@ export const es: Record<string, string> = {
     "Revisa tu bandeja de entrada para verificar tu correo. Después puedes empezar tu prueba Pro gratis de 7 días cuando quieras: escribe UPGRADE.",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "Limited founding offer. Start a free 7-day trial.": "Oferta limitada de lanzamiento. Empieza una prueba gratuita de 7 días.",
   "Start 7-day free trial": "Iniciar prueba gratuita de 7 días",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "Añade cotizaciones, datos financieros, opciones, análisis, noticias, chat y comandos de IA.",
   "Add one company with the command bar": "Añade una empresa con la barra de comandos",
@@ -1306,7 +1304,7 @@ export const es: Record<string, string> = {
   "Yearly, {months} months free": "Anual, {months} meses gratis",
   "{months} months free": "{months} meses gratis",
   "{amount}/yr": "{amount}/año",
-  "$490/yr": "$490/año",
+  "$630/yr": "$630/año",
 
   // ── Feedback ─────────────────────────────────────────────────
   "Feedback": "Comentarios",

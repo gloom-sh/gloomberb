@@ -760,7 +760,7 @@ describe("OnboardingWizard", () => {
     }
   });
 
-  test("shows the founding price with its anchor on the Pro step", async () => {
+  test("shows the Pro price on the Pro step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-pro-price-"));
     const getCloudPricing = apiClient.getCloudPricing;
     let resolvePricing!: (pricing: Awaited<ReturnType<typeof apiClient.getCloudPricing>>) => void;
@@ -787,18 +787,18 @@ describe("OnboardingWizard", () => {
         resolvePricing({
           currency: "usd",
           trialDays: 7,
-          founding: true,
-          monthly: { amount: 3900, anchorAmount: 4900 },
-          yearly: { amount: 39000, anchorAmount: 49000 },
+          monthly: { amount: 7000 },
+          yearly: { amount: 63000 },
         });
         await Bun.sleep(0);
         await testSetup!.renderOnce();
       });
 
-      const frame = await waitForFrame("$39/mo");
-      expect(frame).toContain("$49/mo");
-      expect(frame).toContain("Founding price");
-      expect(frame).toContain("Yearly, 2 months free");
+      // The offline fallback is also $70/mo, so wait on what only the
+      // fetched pricing can say.
+      const frame = await waitForFrame("Yearly, 3 months free");
+      expect(frame).toContain("$70/mo");
+      expect(frame).not.toContain("ounding");
       expect(frame).toContain("MCP server");
       expect(frame).toContain("Ask Gloom");
       expect(frame).not.toContain("Gloomberb AI");
@@ -806,10 +806,9 @@ describe("OnboardingWizard", () => {
 
       // Right arrow moves the billing toggle to yearly; the price follows.
       await emitKeypress({ name: "right", sequence: "\u001b[C" });
-      const yearly = await waitForFrame("$390/yr");
-      expect(yearly).toContain("$490/yr");
-      expect(yearly).toContain("2 months free");
-      expect(yearly).not.toContain("$39/mo");
+      const yearly = await waitForFrame("$630/yr");
+      expect(yearly).toContain("3 months free");
+      expect(yearly).not.toContain("$70/mo");
     } finally {
       apiClient.getCloudPricing = getCloudPricing;
     }

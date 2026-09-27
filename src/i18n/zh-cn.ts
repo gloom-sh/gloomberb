@@ -654,7 +654,6 @@ export const zhCN: Record<string, string> = {
   "real-time news": "实时新闻",
   "AI command bar": "AI 命令栏",
   "{amount}/mo": "{amount}/月",
-  "Founding price": "创始价",
   "{days}-day free trial": "{days} 天免费试用",
   "Go Pro for real-time data at gloom.sh/cloud, free for 7 days.": "在 gloom.sh/cloud 升级 Pro 获取实时数据，免费试用 7 天。",
   "real-time options": "实时期权",
@@ -673,7 +672,7 @@ export const zhCN: Record<string, string> = {
   "Soon": "即将推出",
   "AI Screener": "AI 选股器",
   "Capability": "功能",
-  "$49/mo": "$49/月",
+  "$70/mo": "$70/月",
   "Public Profile": "公开资料",
   "Incoming DMs": "接收私信",
   "Username": "用户名",
@@ -1122,7 +1121,6 @@ export const zhCN: Record<string, string> = {
   "signing in...": "登录中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "Limited founding offer. Start a free 7-day trial.": "限时创始优惠。开始 7 天免费试用。",
   "Start 7-day free trial": "开始 7 天免费试用",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "增加行情、财务数据、期权、研报、新闻、聊天和 AI 命令。",
   "Add one company with the command bar": "使用命令栏添加一家公司",
@@ -1302,7 +1300,7 @@ export const zhCN: Record<string, string> = {
   "Yearly, {months} months free": "按年，免费 {months} 个月",
   "{months} months free": "免费 {months} 个月",
   "{amount}/yr": "{amount}/年",
-  "$490/yr": "$490/年",
+  "$630/yr": "$630/年",
 
   // ── Feedback ─────────────────────────────────────────────────
   "Feedback": "反馈",

@@ -33,7 +33,6 @@ import { useAppActive } from "../../state/app/activity";
 import {
   Box,
   Text,
-  TextAttributes,
   useActionShortcut,
   useCommandBarShortcut,
   useRendererHost,
@@ -1118,9 +1117,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     const price = formatCloudPrice(pricing, billingInterval);
     const monthsFree = monthsFreeYearly(pricing);
     const yearlyLabel = monthsFree > 0 ? tf("Yearly, {months} months free", { months: monthsFree }) : t("Yearly");
-    const priceNote = [price.note, billingInterval === "year" && monthsFree > 0 ? tf("{months} months free", { months: monthsFree }) : null]
-      .filter((part): part is string => !!part)
-      .join(" \u00b7 ");
+    const priceNote = billingInterval === "year" && monthsFree > 0 ? tf("{months} months free", { months: monthsFree }) : null;
     return (
       <OnboardingModal width={70} height={28}>
         <OnboardingHeader
@@ -1133,12 +1130,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         />
         <OnboardingTitle
           step={desktop ? undefined : t("GLOOM CLOUD PRO")}
-          title={planAccess.hasProAccess ? t("Pro is active") : price.price}
-          titlePrefix={!planAccess.hasProAccess && price.anchor ? (
-            <Text fg={colors.textMuted} attributes={TextAttributes.STRIKETHROUGH}>
-              {price.anchor}
-            </Text>
-          ) : undefined}
+          title={planAccess.hasProAccess ? t("Pro is active") : price}
           titleSuffix={!planAccess.hasProAccess && priceNote ? priceNote : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")

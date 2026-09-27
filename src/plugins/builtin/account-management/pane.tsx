@@ -59,7 +59,6 @@ import {
   profileToDraft,
   type AccountDraft,
   type AccountFieldKey,
-  type PlanPriceDisplay,
 } from "./model";
 import { PasswordChangeDialog } from "./password-dialog";
 import { useAccountManagementFooter } from "./footer";
@@ -256,9 +255,6 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, [language, planAccess.isTrialActive, planAccess.trialEndsAt, profile?.plan]);
 
   const planStats = useMemo<StatItem[]>(() => {
-    const priceDetail = planPrice.anchor
-      ? [planPrice.note, tf("list {price}", { price: planPrice.anchor })].filter(Boolean).join(", ")
-      : planPrice.note ?? undefined;
     return [
       {
         id: "plan",
@@ -267,7 +263,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
         tone: planAccess.hasProAccess ? "positive" : "neutral",
         detail: profile?.email ?? undefined,
       },
-      { id: "price", label: "Price", value: planPrice.price, detail: priceDetail },
+      { id: "price", label: "Price", value: planPrice },
       ...(planAccess.hasProAccess ? [] : [{ id: "trial", label: "Trial", value: trialOffer }]),
     ];
   }, [planAccess.hasProAccess, planPrice, planStatusLabel, profile?.email, trialOffer]);

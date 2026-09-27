@@ -213,14 +213,12 @@ export function OnboardingCoach({
 export function OnboardingTitle({
   step,
   title,
-  titlePrefix,
   titleSuffix,
   description,
 }: {
   step?: string;
   title: string;
-  titlePrefix?: ReactNode;
-  /** Short qualifier after the title, e.g. why a struck-through anchor price differs. */
+  /** Short qualifier after the title, e.g. how many months yearly saves. */
   titleSuffix?: string;
   description?: string;
 }) {
@@ -245,7 +243,6 @@ export function OnboardingTitle({
           minWidth={0}
           style={{ marginTop: step ? 6 : 0, gap: 8 }}
         >
-          {titlePrefix}
           <Text
             fg={colors.textBright}
             attributes={TextAttributes.BOLD}
@@ -276,8 +273,7 @@ export function OnboardingTitle({
           <Text fg={colors.borderFocused} attributes={TextAttributes.BOLD}>{step}</Text>
         </Box>
       ) : null}
-      <Box height={1} flexDirection="row" gap={titlePrefix || titleSuffix ? 1 : 0}>
-        {titlePrefix}
+      <Box height={1} flexDirection="row" gap={titleSuffix ? 1 : 0}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
         {titleSuffix ? <Text fg={colors.textMuted}>{titleSuffix}</Text> : null}
       </Box>

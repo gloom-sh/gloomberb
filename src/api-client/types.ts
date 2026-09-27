@@ -174,16 +174,12 @@ export interface BuildoutTokenResponse {
 export interface CloudPricingTier {
   /** Charged amount, in integer cents. */
   amount: number;
-  /** List price the charged amount is discounted from, in integer cents. */
-  anchorAmount: number;
 }
 
 /** Public `/pricing` payload; no session required. */
 export interface CloudPricing {
   currency: "usd";
   trialDays: number;
-  /** When false the anchor amount is the price, so it is shown without a strikethrough. */
-  founding: boolean;
   monthly: CloudPricingTier;
   yearly: CloudPricingTier;
 }
