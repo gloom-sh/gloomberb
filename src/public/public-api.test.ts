@@ -1,14 +1,22 @@
 import { expect, test } from "bun:test";
 
-test("every exports subpath in package.json resolves", async () => {
+/**
+ * Every runtime name a plugin can import, which also proves each subpath in
+ * package.json resolves. Removing or renaming a name breaks every installed
+ * plugin that imports it the moment it loads, while a type never does, so a
+ * change here has to be deliberate: deprecate first, then list the removal
+ * in REMOVED_HOST_EXPORTS (src/plugins/compat.ts), as PLUGINS.md describes.
+ * Update with `bun test --update-snapshots src/public/public-api.test.ts`.
+ */
+test("the runtime exports of every public subpath are the reviewed ones", async () => {
   const pkg = JSON.parse(await Bun.file(new URL("../../package.json", import.meta.url)).text());
-  const subpaths = Object.entries(pkg.exports as Record<string, string>);
-  expect(subpaths.length).toBeGreaterThan(0);
-  for (const [subpath, target] of subpaths) {
+  const exported: Record<string, string[]> = {};
+  for (const [subpath, target] of Object.entries(pkg.exports as Record<string, string>)) {
     if (subpath === "./package.json") continue;
-    const file = Bun.file(new URL(`../../${target.replace(/^\.\//, "")}`, import.meta.url));
-    expect(await file.exists(), `${subpath} -> ${target}`).toBe(true);
+    const mod = await import(new URL(`../../${target.replace(/^\.\//, "")}`, import.meta.url).href);
+    exported[subpath] = Object.keys(mod).sort();
   }
+  expect(exported).toMatchSnapshot();
 });
 
 test("a bundled external plugin uses the host's React and public hooks", async () => {

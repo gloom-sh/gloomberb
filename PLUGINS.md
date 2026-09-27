@@ -56,11 +56,60 @@ pane, is never reported as behind the registry, and is skipped by `update`.
 Removing it removes the link and leaves the checkout alone.
 
 `doctor` runs the checks that otherwise surface as a `failed` row in the pane
-or as a broken pane on the desktop: the entry file resolves, the module
-evaluates, the export is a `GloomPlugin`, the id is not reserved, the targets
-are real, the hosts the source reaches are declared, and the browser build the
-desktop view and the web app need actually compiles. Run it before publishing;
-it exits non-zero on a failure so it can sit in CI.
+or as a broken pane on the desktop: the entry file resolves, the Gloomberb the
+plugin declares is not newer than this one, it imports nothing the host has
+removed or deprecated, the module evaluates, the export is a `GloomPlugin`,
+the id is not reserved, the targets are real, the hosts the source reaches are
+declared, and the browser build the desktop view and the web app need actually
+compiles. Run it before publishing; it exits non-zero on a failure so it can
+sit in CI.
+
+## Plugin compatibility
+
+Gloomberb updates itself; a plugin moves only when its user updates it, so a
+checkout can be older or newer than the Gloomberb loading it. Declare the
+oldest Gloomberb the plugin runs on in its `gloom.json`, and raise it whenever
+the plugin starts using something a release added:
+
+```json
+{ "id": "my-plugin", "minGloom": "0.15.0" }
+```
+
+A `>=0.15.0` range on `gloomberb` in `peerDependencies` works too; `gloom.json`
+wins when both are set, and anything else is ignored. An older Gloomberb does
+not import the plugin at all: the Plugins pane shows `needs 0.15.0` on its row,
+and `gloomberb plugins` says why it is not loaded. A linked checkout is loaded
+anyway, since its author is usually running Gloomberb from source, and
+`plugin doctor` reports the range instead.
+
+The plugin API changes by these rules:
+
+- A runtime export (anything in the `gloomberb/*` modules that is not a type)
+  is deprecated before it is removed: `@deprecated` in its JSDoc, pointing at
+  the replacement, and an entry in `DEPRECATED_HOST_EXPORTS` in
+  `src/plugins/compat.ts`, which `plugin doctor` reports. It keeps working for
+  at least one release after the official plugins have migrated off it.
+- A removed export is listed in `REMOVED_HOST_EXPORTS`. A stale checkout that
+  still imports it fails with "Uses X from gloomberb/y, removed in Gloomberb
+  Z. Update the plugin." rather than a bare import error, and `plugin doctor`
+  fails on it.
+- Types can change in any release: a removed type never breaks a plugin at
+  load.
+- A host change that breaks a published plugin without an import error, such
+  as a field it reads that is no longer set, is listed in
+  `KNOWN_BROKEN_PLUGINS` against the plugin's id and the `minGloom` it
+  declared, so an old checkout is refused with a reason instead of
+  misbehaving.
+- CI compares every runtime export with a reviewed snapshot, and compiles each
+  plugin the registry lists, at the ref it would install, against every pull
+  request.
+
+`update` only moves a plugin forward. When the registry's reviewed tag is older
+than what is checked out (an install from the default branch can be ahead of
+the newest tag), the plugin is kept as it is and the reason is shown. After an
+update of a plugin split across several files, the pane asks for a restart
+instead of reporting it updated: Bun keeps the plugin's other modules cached
+for the life of the process, so the new code runs from the next launch.
 
 ## Settings a plugin needs
 

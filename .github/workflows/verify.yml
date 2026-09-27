@@ -62,6 +62,19 @@ jobs:
       - name: Test global upgrade from 0.5.0
         run: bun run test:global-upgrade
 
+  # Fails when a plugin the registry lists, at the ref it would install,
+  # imports a host export this change does not have. Not a deploy gate: it
+  # reads other repositories, and a plugin's own breakage only warns.
+  registry-plugins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Compile registry plugins against this host
+        run: bun run plugins:registry:check
+
   deploy-web:
     name: Deploy terminal to Cloudflare
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

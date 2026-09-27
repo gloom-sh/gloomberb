@@ -65,6 +65,7 @@ Some changes need one more check:
 |---|---|
 | A built-in plugin's id, name, description, toggle, panes or capabilities | `bun run plugins:manifest:check`; `bun run plugins:manifest` regenerates `plugin-manifest.json` |
 | A plugin compiled into the web app, or the `hosts` it declares | `bun run web:proxy-hosts:check`; `bun run web:proxy-hosts` regenerates the allowlist |
+| A runtime export of the plugin API (package.json `exports`) | `bun test src/public/public-api.test.ts` and `bun run plugins:registry:check`; see [Plugin compatibility](PLUGINS.md#plugin-compatibility) before removing or renaming one |
 | Desktop view code | `bun run desktop:view:build` |
 | Web app, share page or Worker code | `bun run web:audit` and `bun run cloudflare:dry-run` |
 | Build scripts or the terminal entry point | `bun run build` |

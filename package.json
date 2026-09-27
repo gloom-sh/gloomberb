@@ -64,6 +64,7 @@
     "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
+    "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
     "web:proxy-hosts": "bun run scripts/generate-web-proxy-hosts.ts",
     "web:proxy-hosts:check": "bun run scripts/generate-web-proxy-hosts.ts --check",
     "typecheck": "bun run typecheck:opentui && bun run typecheck:dom && bun run typecheck:cloudflare && bun run typecheck:scripts",
