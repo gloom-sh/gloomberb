@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamMember, TeamSummary } from "../../../../api-client";
+import type { TeamMember } from "../../../../api-client";
 import {
   cycleAccent,
   draftChanges,
@@ -13,19 +13,9 @@ import {
   setDraftName,
   setDraftShortName,
 } from "./pane-model";
+import { createTestTeam } from "./test-fixture";
 
-const team: TeamSummary = {
-  id: "org-1",
-  name: "Macro Desk",
-  slug: "macro-desk",
-  accentColor: "magenta",
-  shortName: "MD",
-  allowMemberInvites: false,
-  channelId: "team:org-1",
-  createdAt: "2026-09-14T12:00:00.000Z",
-  role: "owner",
-  memberCount: 3,
-};
+const team = createTestTeam({ role: "owner" });
 
 const members: TeamMember[] = [
   { id: "m-1", role: "owner", joinedAt: "", user: { id: "u0", username: "ada", displayName: "Ada" } },

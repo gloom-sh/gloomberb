@@ -7,55 +7,20 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, Text } from "../../../ui";
 import { createQuickNotesPane } from "./quick-notes-pane";
-import type { NotesFiles } from "./files";
-import { NotesStoreRegistry } from "./store";
-
-/** The tabs take a registry; while signed out it hands back the disk store. */
-function registryFor(files: NotesFiles): NotesStoreRegistry {
-  return new NotesStoreRegistry({ persistence: null, files, isSignedIn: () => false });
-}
-import type { QuickNoteEntry } from "./model";
+import { createTestNotesFiles, registryFor, type TestNotesFiles } from "./test-fixture";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
 const TAB_A = "tab-a";
 const TAB_B = "tab-b";
 
-function createMockNotesFiles(options?: { loadDelayMs?: number }) {
-  const saves: Array<{ key: string; text: string }> = [];
-  const notes = new Map<string, string>([
-    [TAB_A, ""],
-    [TAB_B, "beta-note"],
-  ]);
-  const index: QuickNoteEntry[] = [
-    { id: TAB_A, title: "Alpha" },
-    { id: TAB_B, title: "Beta" },
-  ];
-  const loadDelayMs = options?.loadDelayMs ?? 0;
-
-  return {
-    saves,
-    readOnly: false,
-    owner: { kind: "user" },
-    async load(key: string) {
-      if (loadDelayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, loadDelayMs));
-      }
-      return notes.get(key) ?? "";
-    },
-    async save(key: string, text: string) {
-      saves.push({ key, text });
-      notes.set(key, text);
-    },
-    async delete() {},
-    quickNoteKey(id: string) {
-      return id;
-    },
-    async loadQuickNotesIndex() {
-      return index;
-    },
-    async saveQuickNotesIndex() {},
-  } as unknown as NotesFiles & { saves: Array<{ key: string; text: string }> };
+/** Two quick notes, the first empty. */
+function createMockNotesFiles(options: { loadDelayMs?: number } = {}) {
+  return createTestNotesFiles({
+    ...options,
+    notes: { [TAB_A]: "", [TAB_B]: "beta-note" },
+    index: [{ id: TAB_A, title: "Alpha" }, { id: TAB_B, title: "Beta" }],
+  });
 }
 
 const PANE_INSTANCE_ID = "quick-notes:test";
@@ -171,7 +136,7 @@ describe("createQuickNotesPane", () => {
       async load() {
         throw new Error("EACCES: permission denied");
       },
-    } as unknown as NotesFiles & { saves: Array<{ key: string; text: string }> };
+    } as TestNotesFiles;
     const QuickNotesPane = createQuickNotesPane(registryFor(failing));
 
     testSetup = await testRender(

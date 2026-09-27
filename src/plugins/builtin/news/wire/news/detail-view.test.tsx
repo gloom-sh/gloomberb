@@ -11,6 +11,7 @@ import { createInitialState, appReducer } from "../../../../../state/app/context
 import { PaneFooterProvider, PaneFooterBar } from "../../../../../components/layout/pane/footer";
 import { formatDetailDate } from "../../../../../utils/datetime-format";
 import type { NewsArticle } from "../../../../../news/types";
+import { createTestArticle } from "../../../../../test-support/news";
 import { Box } from "../../../../../ui";
 
 const query = { feed: "latest", limit: 200 } as const;
@@ -18,14 +19,14 @@ let setup: Awaited<ReturnType<typeof testRender>>;
 let service: NewsService;
 function story(id = "acme", title = "Acme plans acquisition", version = 1, items = false): NewsArticle {
   const publishedAt = new Date(`2026-09-11T1${version}:00:00Z`);
-  return {
-    id, title, publishedAt,
+  return createTestArticle(id, {
+    title, publishedAt,
     url: `https://example.test/${id}`,
     source: "Controlled wire",
     summary: `Acme cash consideration version ${version}`,
-    topic: "earnings", topics: ["earnings"], sectors: [], categories: [], tickers: [],
+    topic: "earnings", topics: ["earnings"],
     scores: { importance: 70, urgency: 0, marketImpact: 70, novelty: 0, confidence: 90 },
-    importance: 70, isBreaking: false, isDeveloping: true,
+    importance: 70, isDeveloping: true,
     ...(items ? { items: [{
       id: `${id}-update-${version}`,
       title: `Timeline cash consideration ${version}`,
@@ -34,7 +35,7 @@ function story(id = "acme", title = "Acme plans acquisition", version = 1, items
       url: `https://example.test/${id}/${version}`,
       sourceName: "Controlled wire", sourceKey: "controlled",
     }] } : {}),
-  };
+  });
 }
 
 async function mount(
