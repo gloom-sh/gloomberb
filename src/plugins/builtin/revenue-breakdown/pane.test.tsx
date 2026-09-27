@@ -3,7 +3,7 @@ import { act } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { RevenueBreakdownPayload } from "../../../api-client/revenue-breakdown";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, createTestTicker, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -99,14 +99,10 @@ test("hovering a quarter reads out its value, and an unreported one says so", as
   const y = lines.findIndex((line) => line.includes("iPhone"));
   const x = lines[y]!.indexOf("·");
   expect(x).toBeGreaterThan(0);
-  const hoverAt = async (column: number) => {
+  const hoverAt = async (column: number, readout: string) => {
     await act(async () => setup!.mockMouse.moveTo(column, y));
-    for (let i = 0; i < 3; i++) await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await setup!.renderOnce();
-    });
-    return setup!.captureCharFrame();
+    return createTestControls(() => setup!).waitForFrameToContain(readout);
   };
-  expect(await hoverAt(x)).toContain("iPhone  Q4 2025  not reported");
-  expect(await hoverAt(x + 2)).toContain("iPhone  Q1 2026  85.3B");
+  expect(await hoverAt(x, "iPhone  Q4 2025  not reported")).toContain("iPhone  Q4 2025  not reported");
+  expect(await hoverAt(x + 2, "iPhone  Q1 2026  85.3B")).toContain("iPhone  Q1 2026  85.3B");
 });
