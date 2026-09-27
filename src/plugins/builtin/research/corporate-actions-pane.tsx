@@ -46,8 +46,6 @@ import {
   type EventStatus,
 } from "./event-model";
 
-export { buildEventRows } from "./event-model";
-
 type EventColumnId = "date" | "status" | "period" | "qEps" | "qRevenue" | "annualEps" | "annualRevenue" | "value" | "detail";
 type EventColumn = DataTableColumn & { id: EventColumnId };
 

@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { YahooFinanceClient } from "./yahoo-finance";
-import { getYahooSymbolsToTry } from "./yahoo-finance/symbols";
 import { setHttpFetchTransport } from "../utils/http-transport";
 
-describe("YahooFinanceClient exchange aliases", () => {
+describe("YahooFinanceClient", () => {
   afterEach(() => { setSystemTime(); });
 
   test("FX rates keep the matching price observation time and reject another pair", async () => {
@@ -126,14 +125,6 @@ describe("YahooFinanceClient exchange aliases", () => {
       ["2025-09-30", 55, undefined],
       ["2025-12-31", 60, 12],
     ]);
-  });
-
-  test("tries the Taipei Exchange suffix for TPEX tickers", () => {
-    expect(getYahooSymbolsToTry("3105", "TPEX")).toEqual(["3105.TWO", "3105.TW"]);
-  });
-
-  test("prefers Frankfurt-style symbols for FWB2 listings", () => {
-    expect(getYahooSymbolsToTry("HY9H", "FWB2")).toEqual(["HY9H.F", "HY9H.DE"]);
   });
 
   test("symbol news drops search headlines Yahoo does not link to the symbol", async () => {

@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 import {
   attachFredSeriesPersistence,
   isFredPublicationPending,
   loadCachedFredSeries,
   resetFredSeriesPersistence,
+  withFredSourceFreshness,
   type FredSeriesData,
   type FredSeriesRequest,
-} from "../../../data/fred-series";
+} from "./fred-series";
 
 const REQUEST: FredSeriesRequest = {
   seriesId: "CPIAUCSL",
@@ -154,8 +155,7 @@ test("a daily series cached before its morning publication is re-read within the
   expect(isFredPublicationPending(series("2026-09-16", "2026-09-09", "2026-09-02").observations, monday - hour, monday)).toBe(false);
 });
 
-test("a successful HTTP response cannot erase the source's stale flag or retrieval time", async () => {
-  const { withFredSourceFreshness } = await import("../../../data/fred-series");
+test("a successful HTTP response cannot erase the source's stale flag or retrieval time", () => {
   const sourceTime = Date.parse("2026-09-08T12:00:00Z");
   const entry = withFredSourceFreshness({
     data: { observations: [{ date: "2026-09-04", value: 4.78 }], info: null, stale: true, fetchedAt: new Date(sourceTime).toISOString() },

@@ -3,7 +3,6 @@ import { existsSync, mkdtempSync, mkdirSync, readlinkSync, writeFileSync } from 
 import { tmpdir } from "os";
 import { join } from "path";
 import { linkHostPackages } from "./host-link";
-import { pluginDirectoryNames } from "./plugin-names";
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -12,17 +11,6 @@ import { pluginDirectoryNames } from "./plugin-names";
  * long as the migration runs. When the link is missed the sibling's import
  * throws and the plugin fails to load, which is why this is worth pinning.
  */
-describe("pluginDirectoryNames", () => {
-  test("looks under both product names, declared name first", () => {
-    expect(pluginDirectoryNames("gloomberb-ibkr")).toEqual(["gloomberb-ibkr", "gloom-ibkr"]);
-    expect(pluginDirectoryNames("gloom-ibkr")).toEqual(["gloom-ibkr", "gloomberb-ibkr"]);
-  });
-
-  test("leaves a name that is neither alone", () => {
-    expect(pluginDirectoryNames("react")).toEqual(["react"]);
-  });
-});
-
 describe("linkPeerPlugins", () => {
   /** A plugins dir holding `peerDir`, plus a plugin that depends on `peerDep`. */
   function setup(peerDep: string, peerDir: string) {

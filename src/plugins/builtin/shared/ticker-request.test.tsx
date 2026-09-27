@@ -9,6 +9,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { AnalystResearchView } from "../research/analyst-pane";
 import { CorporateActionsView } from "../research/corporate-actions-pane";
 import { HistoricalPricesPane } from "../ticker-detail/data-panes/historical-prices";
+import { listingIdentity } from "./ticker-request";
 
 type Pane = "analyst-research" | "earnings-estimates" | "corporate-actions" | "historical-prices";
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -129,4 +130,13 @@ test("a refresh failure without a message cannot leave retained data looking cur
   const failed = view();
   expect(failed).toContain("Original Research");
   expect(failed).toContain("Request failed");
+});
+
+test("a listing key splits into the bare symbol and its exchange", () => {
+  expect(listingIdentity("AMD:XNAS")).toEqual({ symbol: "AMD", exchange: "NASDAQ" });
+  expect(listingIdentity("spy:arcx", "NYSEARCA")).toEqual({ symbol: "SPY", exchange: "ARCA" });
+  expect(listingIdentity("AMD", "NASDAQ")).toEqual({ symbol: "AMD", exchange: "NASDAQ" });
+  expect(listingIdentity("BRK.B")).toEqual({ symbol: "BRK.B", exchange: "" });
+  expect(listingIdentity("  ")).toBeNull();
+  expect(listingIdentity(null)).toBeNull();
 });

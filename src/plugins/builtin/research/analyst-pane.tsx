@@ -43,13 +43,6 @@ import {
   type RatingSortPreference,
 } from "./analyst-model";
 
-export {
-  buildRatingColumns,
-  formatRatingTarget,
-  sortRatingRows,
-  type RatingSortPreference,
-} from "./analyst-model";
-
 /** Enough of the pane to keep a readable table under the chart. */
 const MIN_CHART_PANE_HEIGHT = 16;
 const MIN_CHART_POINTS = 3;

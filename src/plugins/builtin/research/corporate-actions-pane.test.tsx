@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { testRender, emitKeypress } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -7,7 +7,8 @@ import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { CorporateActionsData } from "../../../types/financials";
 import { Box } from "../../../ui";
-import { CorporateActionsView } from "./corporate-actions-pane";
+import { buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
+import { buildEventRows } from "./event-model";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -74,4 +75,68 @@ test.each(["corporate-actions", "earnings-estimates"] as const)("%s preserves un
     coverage: { dividends: "available", splits: "unavailable", earnings: "unavailable" },
   }, variant);
   expect(setup!.captureCharFrame()).toContain(variant === "earnings-estimates" ? "Unavailable: earnings" : "Unavailable: splits, earnings");
+});
+
+/** The detail as text, one line per heading, labelled figure or note. */
+function detailText(sections: EventDetailSection[]): string {
+  return sections.flatMap((section) => [
+    ...(section.title ? [section.title] : []),
+    ...section.blocks.map((block) => block.kind === "row" ? `${block.label}: ${block.value}` : block.text),
+  ]).join("\n");
+}
+
+describe("event detail", () => {
+  test("estimate drilldown and JSON retain distinct EPS/revenue inputs, currencies and attribution", () => {
+    const eps = { date: "2026-09-30", period: "current quarter", currency: "USD", average: 4.4, low: 4, high: 5, yearAgo: 0, growth: 0, analysts: 12 };
+    const revenue = { date: eps.date, period: eps.period, currency: "TWD", average: 1.45e12, low: 1.4e12, high: 1.5e12, yearAgo: 1e12, growth: .45, analysts: 20 };
+    const rows = buildEventRows(null, { symbol: "TSM", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z",
+      recommendations: [], ratings: [], earningsEstimates: [eps], revenueEstimates: [revenue] }, null, "USD");
+    const row = JSON.parse(JSON.stringify(rows[0]));
+    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z" });
+    const detail = detailText(buildEventDetail({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
+      inlineContent: new Map(), primaryContent: null, primaryContentLoading: false }));
+    expect(detail).toContain("EPS consensus\nAverage: 4.4 USD\nLow: 4 USD\nHigh: 5 USD\nPrior year: 0 USD\nGrowth: 0.00%");
+    expect(detail).toContain("Revenue consensus\nAverage: 1,450,000,000,000 TWD\nLow: 1,400,000,000,000 TWD\nHigh: 1,500,000,000,000 TWD");
+    expect(detail).toContain("Growth: +45.00%");
+    expect(detail).toContain("As of: 2026-09-11T12:00:00Z");
+    // The pane says what the figures are, never which feed served them.
+    expect(detail).not.toContain("yahoo");
+  });
+
+  test("matches reported earnings to nearby SEC earnings-release filings", () => {
+    const row = buildEventRows({
+      symbol: "AAPL",
+      dividends: [],
+      splits: [],
+      earnings: [{ date: "2026-01-30", epsActual: 2.4 }],
+    }, null, null, "USD").find((candidate) => candidate.status === "Earnings");
+    const filings = [
+      {
+        accessionNumber: "0000320193-26-000010",
+        form: "10-Q",
+        filingDate: new Date("2026-02-04T00:00:00Z"),
+        cik: "0000320193",
+        filingUrl: "https://www.sec.gov/Archives/edgar/data/320193/0000320193-26-000010-index.htm",
+      },
+      {
+        accessionNumber: "0000320193-26-000009",
+        form: "8-K",
+        filingDate: "2026-01-31T00:00:00.000Z" as unknown as Date,
+        items: "2.02,9.01",
+        primaryDocDescription: "Results of Operations and Financial Condition",
+        cik: "0000320193",
+        filingUrl: "https://www.sec.gov/Archives/edgar/data/320193/0000320193-26-000009-index.htm",
+      },
+    ];
+
+    expect(matchEarningsSecFiling(row, filings)?.accessionNumber).toBe("0000320193-26-000009");
+    expect(matchEarningsSecFiling({ ...row!, dateType: "fiscal-period-end" }, filings)).toBeNull();
+    const periodRow = { ...row!, dateType: "fiscal-period-end" as const,
+      dateEvidence: { accessionNumber: "0000320193-26-000010", filed: "2026-02-04", startDate: "2025-10-01" } };
+    expect(matchEarningsSecFiling(periodRow, filings)?.form).toBe("10-Q");
+    const detail = detailText(buildEventDetail({ row: periodRow, secFilingsLoading: false,
+      filing: filings[0]!, documents: [], documentsLoading: false, inlineContent: new Map(),
+      primaryContent: "Fiscal statement content", primaryContentLoading: false }));
+    expect(detail).toContain("Fiscal statement content");
+  });
 });
