@@ -4,7 +4,7 @@ import {
   ChartTableHeader,
   DataTableView,
   EmptyState,
-  Spinner,
+  PaneStatusBody,
   scalarPoint,
   staticSeries,
   unavailableText,
@@ -119,51 +119,42 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;
   }
 
-  if ((status === "idle" || status === "loading") && records.length === 0) {
-    return <Spinner label="Loading short interest..." />;
-  }
-
-  if (status === "error" && records.length === 0) {
-    return <EmptyState title={unavailableText("Short interest")} message={error ?? undefined} />;
-  }
-
-  if (status === "loaded" && records.length === 0) {
-    const usEquitiesOnly = isKnownNonUsEquityTicker(ticker);
-    return (
-      <EmptyState
-        title={usEquitiesOnly ? "US equities only" : "No short interest data"}
-        message={usEquitiesOnly
-          ? "Short interest data is available for US equities."
-          : `No short interest found for ${symbol}.`}
-      />
-    );
-  }
-
+  const noRecords = records.length === 0;
   return (
-    <Box flexDirection="column" width={width} height={height}>
-      <DataTableView<ShortInterestRow, ShortInterestColumn>
-        focused={focused}
-        selection={{ kind: "id", selectedId: effectiveKey, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
-        rootWidth={width}
-        rootHeight={height}
-        rootBefore={<ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
-          // Two settlements (the signed-out fallback) are a line between numbers the
-          // figures and rows already give, so the chart waits for a real history.
-          figures={figures} chart={records.length >= 3 ? {
-          series, formatValue: formatMaybeCompact, formatAxisValue: formatSharesAxis, remoteKind: "short-interest-history", ...link,
-        } : null} />}
-        columns={columns}
-        freezeFirstColumn
-        items={sortedRows}
-        sortColumnId={sortPreference.columnId}
-        sortDirection={sortPreference.direction}
-        onHeaderClick={handleHeaderClick}
-        getItemKey={rowKey}
-        renderCell={renderCell}
-        selectedTextOverridesCellColor
-        emptyStateTitle={status === "loading" ? "Loading..." : "No data"}
-      />
-    </Box>
+    <PaneStatusBody
+      loading={noRecords && (status === "idle" || status === "loading")}
+      error={noRecords && status === "error" ? error : null}
+      empty={noRecords && status === "loaded"}
+      subject="short interest"
+      errorTitle={unavailableText("Short interest")}
+      emptyTitle={skipNonUs ? "US equities only" : "No short interest data"}
+      emptyMessage={skipNonUs ? "Short interest data is available for US equities." : `No short interest found for ${symbol}.`}
+    >
+      <Box flexDirection="column" width={width} height={height}>
+        <DataTableView<ShortInterestRow, ShortInterestColumn>
+          focused={focused}
+          selection={{ kind: "id", selectedId: effectiveKey, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
+          rootWidth={width}
+          rootHeight={height}
+          rootBefore={<ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
+            // Two settlements (the signed-out fallback) are a line between numbers the
+            // figures and rows already give, so the chart waits for a real history.
+            figures={figures} chart={records.length >= 3 ? {
+            series, formatValue: formatMaybeCompact, formatAxisValue: formatSharesAxis, remoteKind: "short-interest-history", ...link,
+          } : null} />}
+          columns={columns}
+          freezeFirstColumn
+          items={sortedRows}
+          sortColumnId={sortPreference.columnId}
+          sortDirection={sortPreference.direction}
+          onHeaderClick={handleHeaderClick}
+          getItemKey={rowKey}
+          renderCell={renderCell}
+          selectedTextOverridesCellColor
+          emptyStateTitle="No data"
+        />
+      </Box>
+    </PaneStatusBody>
   );
 }
 
