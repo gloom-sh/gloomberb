@@ -1148,7 +1148,7 @@ Choose the existing control that owns the interaction you need:
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
-| Paragraphs and separators | `Prose`, `Divider` |
+| Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
 | External links | `ExternalLink`, `ExternalLinkText` |
 | Sidebar | `PaneSidebar`, `PaneSidebarRow`, `PaneSidebarAction` |

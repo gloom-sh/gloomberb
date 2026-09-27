@@ -107,20 +107,20 @@ export { MarkdownText } from "./markdown-text";
 // this file is the public `gloomberb/components` surface: a kit component
 // reaches plugins only once it is added here.
 export {
-  ActionRow, Badge, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, DataTable,
+  ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, DataTable,
   DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
-  fieldGridColumns, fieldGridRows, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
+  fieldGridColumns, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
-  QueryBar, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
+  QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, unavailableText,
   usePaneLinkMenuEntry,
 } from "./ui";
 export type {
-  ActionRowProps, BadgeProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
+  ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DialogFrameProps,
-  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, GridField,
+  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,
   KeyValueRowProps, ListRowState, ListViewItem, ListViewProps, MenuItem, MenuPopoverProps,
   MenuProps, MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction,

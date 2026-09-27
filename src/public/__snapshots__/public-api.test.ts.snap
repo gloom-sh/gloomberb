@@ -40,6 +40,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
   "./components": [
     "ActionRow",
     "Badge",
+    "BulletList",
     "Button",
     "ButtonActionScope",
     "Checkbox",
@@ -59,6 +60,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "ExternalLinkText",
     "FeedDataTableStackView",
     "FieldGrid",
+    "FigureList",
     "GridFieldView",
     "ICON_GLYPHS",
     "Icon",
@@ -91,6 +93,7 @@ exports[`the runtime exports of every public subpath are the reviewed ones 1`] =
     "PriceSelectorDialog",
     "Prose",
     "QueryBar",
+    "READING_WIDTH",
     "RemoteImage",
     "Section",
     "SectionHeading",

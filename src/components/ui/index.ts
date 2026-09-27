@@ -50,8 +50,11 @@ export { SegmentedControl } from "./toggle";
 export type { SegmentedControlProps } from "./toggle";
 export { EmptyState, PaneStatusBody, Notice, loadingText, unavailableText } from "./status";
 export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps } from "./status";
-export { Badge, Divider, KeyValueRow, Prose, Section, SectionHeading } from "./display";
-export type { BadgeProps, DividerProps, KeyValueRowProps, ProseProps, SectionProps, SectionHeadingProps } from "./display";
+export { Badge, BulletList, Divider, FigureList, KeyValueRow, Prose, READING_WIDTH, Section, SectionHeading } from "./display";
+export type {
+  BadgeProps, BulletListProps, DividerProps, FigureListItem, FigureListProps, KeyValueRowProps, ProseProps, SectionProps,
+  SectionHeadingProps,
+} from "./display";
 export { InlineQuickAddRow } from "./inline-quick-add";
 export type { InlineQuickAddRowProps } from "./inline-quick-add";
 

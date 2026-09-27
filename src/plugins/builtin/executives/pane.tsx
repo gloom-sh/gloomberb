@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type {
   CloudExecutiveRowPayload,
   CloudProxyStatementPayload,
 } from "../../../api-client";
 import {
+  BulletList,
   DataTableView,
-  EmptyState, PaneStatusBody, Prose, QueryBar, SectionHeading,
-  Tabs,
+  EmptyState, FigureList, PaneStatusBody, Prose, QueryBar, READING_WIDTH, SectionHeading,
   usePaneFooter,
-  usePaneHeaderTabs,
   usePaneNoticeFooter,
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
   type PaneHint,
-  type QueryBarFilter,
 } from "../../../components";
-import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { useShortcut } from "../../../react/input";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneStateValue } from "../../../state/app/context";
 import { colors, getChartIndicatorColor } from "../../../theme/colors";
@@ -28,10 +24,9 @@ import {
   TextAttributes,
   useRendererHost,
   useUiCapabilities,
-  type ScrollBoxRenderable,
 } from "../../../ui";
-import { isPlainKey } from "../../../utils/keyboard";
 import { isPermanentClientError } from "../../../api-client/errors";
+import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useBoundTicker } from "../shared/ticker-request";
 import { loadProxyStatement, loadProxyStatements } from "./data";
 import {
@@ -44,39 +39,11 @@ import {
 
 export const EXECUTIVES_PANE_ID = "executives";
 
-const MAX_PROSE_WIDTH = 100;
-
 function retainedDataNotice(subject: string, error: string, fetchedAt: number | null): string {
   const retrieved = new Date(fetchedAt ?? Number.NaN);
   const age = Number.isFinite(retrieved.getTime())
     ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
   return `${subject} refresh failed: ${error}. Retained data ${age}.`;
-}
-
-/** A figure and what it is, value first so the column of numbers is what the eye reads. */
-function FigureLine({
-  value,
-  label,
-  note,
-  width,
-  valueWidth,
-}: {
-  value: string;
-  label: string;
-  note?: string;
-  width: number;
-  valueWidth: number;
-}) {
-  const text = [label, note].filter(Boolean).join(", ");
-  return (
-    <Prose
-      text={text}
-      width={width}
-      color={colors.textDim}
-      prefix={`${value.padEnd(valueWidth)}  `}
-      prefixColor={colors.textBright}
-    />
-  );
 }
 
 const PAY_PARTS: Array<{ key: keyof CloudExecutiveRowPayload; label: string }> =
@@ -319,13 +286,12 @@ export function ExecutivesResearchTab(props: { focused: boolean; width: number; 
 function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string; focused: boolean; width: number; nested: boolean }) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
-  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
   const loadYears = useCallback((force: boolean) => loadProxyStatements(ticker, { force }), [ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
-  const years = useMemo(() => list.data?.data?.proxies ?? [], [list.data]);
-  const year = years.some(entry => entry.proxyYear === selectedYear)
-    ? selectedYear : years[0]?.proxyYear ?? null;
+  const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
+  const year = selectedYear !== null && years.includes(selectedYear)
+    ? selectedYear : years[0] ?? null;
   const loadStatement = useCallback((force: boolean) => loadProxyStatement(ticker, year!, { force }), [ticker, year]);
   const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
@@ -347,47 +313,21 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
     if (year !== null) void detail.reload();
   }, [list.reload, detail.reload, year]);
 
-  useEffect(() => {
-    const scrollBox = scrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [year]);
-
   const openFiling = useCallback(() => {
     if (statement?.docUrl) void rendererHost.openExternal(statement.docUrl);
   }, [rendererHost, statement]);
-
-  const nextYear = useCallback(() => {
-    if (years.length < 2) return;
-    const index = years.findIndex((entry) => entry.proxyYear === year);
-    setYear(years[(index + 1) % years.length]!.proxyYear);
-  }, [setYear, year, years]);
-
-  const scrollBy = useCallback((delta: number) => {
-    const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const max = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
-    scrollBox.scrollTop = Math.max(
-      0,
-      Math.min(max, scrollBox.scrollTop + delta),
-    );
-  }, []);
-
-  // The footer binds the `o` and `y` hints.
-  useShortcut(
-    (event) => {
-      if (handleRefreshKey(event, refresh)) return;
-      if (isPlainKey(event, "j", "down")) {
-        // One line per press; marked handled so the pane scroll keys, which
-        // page this statement, do not scroll it again.
-        event.preventDefault();
-        scrollBy(1);
-      } else if (isPlainKey(event, "k", "up")) {
-        event.preventDefault();
-        scrollBy(-1);
-      }
-    },
-    { enabled: focused, scope: "executives" },
-  );
+  const { scrollRef, yearStrip, yearFilters, yearHint } = useFilingYearReader({
+    years,
+    year,
+    onSelectYear: setYear,
+    tabForm: "proxy",
+    filterLabel: "Proxy",
+    focused,
+    nested,
+    scope: "executives",
+    documentKey: String(year),
+    refresh,
+  });
 
   usePaneFooter(EXECUTIVES_PANE_ID, () => {
     const info: PaneFooterSegment[] = [];
@@ -403,38 +343,14 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
     }
     // `r` refreshes every pane, so it gets no hint here.
     const hints: PaneHint[] = statement ? [{ id: "open", key: "o", label: "pen filing", onPress: openFiling }] : [];
-    // The year strip answers h/l only where it is the pane's own strip; `y`
-    // steps it everywhere, including under Ticker Research's strip.
-    if (years.length > 1) hints.push({ id: "year", key: "y", label: "ear", onPress: nextYear });
+    if (yearHint) hints.push(yearHint);
     return { info, hints };
-  }, [loading, statement, openFiling, years.length, nextYear]);
+  }, [loading, statement, openFiling, yearHint]);
 
   const figures = useMemo(
     () => (statement ? figuresOf(statement) : []),
     [statement],
   );
-  const yearTabs = useMemo(() => years.map((entry) => ({
-    label: `${entry.proxyYear} proxy`,
-    value: String(entry.proxyYear),
-  })), [years]);
-  const selectYear = useCallback((value: string) => setYear(Number(value)), [setYear]);
-  const tabsInHeader = usePaneHeaderTabs(years.length > 1 ? {
-    tabs: yearTabs,
-    activeValue: year === null ? "" : String(year),
-    onSelect: selectYear,
-    focused,
-  } : null);
-  // Nested in Ticker Research the years stay in the body: the terminal keeps
-  // its tab row, the desktop picks the year from the query bar.
-  const yearStrip = years.length > 1 && !tabsInHeader;
-  const yearFilters = useMemo<QueryBarFilter[]>(() => yearStrip && nativePaneChrome ? [{
-    id: "year",
-    label: "Proxy",
-    inline: years.length <= 4,
-    value: year === null ? "" : String(year),
-    options: years.map((entry) => ({ label: String(entry.proxyYear), value: String(entry.proxyYear) })),
-    onChange: selectYear,
-  }] : [], [nativePaneChrome, selectYear, year, yearStrip, years]);
   // The year is named by the tabs or the filter when there is a choice; a
   // single proxy says which one it is here.
   const meta = statement ? [
@@ -443,11 +359,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
     statement.meetingDate ? `meeting ${formatFiled(statement.meetingDate)}` : null,
   ].filter(Boolean).join(" · ") : "";
   const bodyWidth = Math.max(12, width - 2);
-  const proseWidth = Math.min(bodyWidth, MAX_PROSE_WIDTH);
-  const valueWidth = Math.min(
-    14,
-    Math.max(4, ...figures.map((figure) => figure.value.length)),
-  );
+  const proseWidth = Math.min(bodyWidth, READING_WIDTH);
 
   if (list.loading && !list.data?.data) {
     return <PaneStatusBody loading align="center" loadingLabel="Loading proxy statement..." />;
@@ -468,19 +380,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
       minHeight={0}
       overflow="hidden"
     >
-      {yearStrip && !nativePaneChrome && (
-        <Box height={1} flexShrink={0} paddingX={1} overflow="hidden">
-          <Tabs
-            tabs={yearTabs}
-            activeValue={year === null ? "" : String(year)}
-            onSelect={selectYear}
-            compact
-            variant="bare"
-            focused={focused}
-            keyboardNavigation={!nested}
-          />
-        </Box>
-      )}
+      {yearStrip}
       {(yearFilters.length > 0 || meta) && <QueryBar width={width} filters={yearFilters} meta={meta || undefined} />}
       <ScrollBox
         ref={scrollRef}
@@ -499,16 +399,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
             {figures.length > 0 && (
               <Box flexDirection="column">
                 <SectionHeading title="KEY FIGURES" />
-                {figures.map((figure) => (
-                  <FigureLine
-                    key={`${figure.label}-${figure.value}`}
-                    value={figure.value}
-                    label={figure.label}
-                    note={figure.note}
-                    width={proseWidth}
-                    valueWidth={valueWidth}
-                  />
-                ))}
+                <FigureList figures={figures} width={proseWidth} minValueWidth={4} maxValueWidth={14} />
               </Box>
             )}
             {statement.ceo && (
@@ -531,15 +422,7 @@ function ExecutiveResearch({ ticker, focused, width, nested }: { ticker: string;
             {statement.highlights && (
               <Box flexDirection="column">
                 <SectionHeading marginTop={1} title="WHAT CHANGED" />
-                {statement.highlights.split("\n").map((point) => (
-                  <Prose
-                    key={point}
-                    text={point}
-                    width={proseWidth}
-                    color={colors.text}
-                    prefix="• "
-                  />
-                ))}
+                <BulletList items={statement.highlights.split("\n")} width={proseWidth} color={colors.text} />
               </Box>
             )}
           </Box>

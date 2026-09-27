@@ -154,3 +154,55 @@ export function Prose({
     ),
   );
 }
+
+/**
+ * The widest a paragraph runs. On a wide pane a full-width line is over two
+ * hundred characters, which the eye loses on the way back.
+ */
+export const READING_WIDTH = 100;
+
+export interface BulletListProps {
+  items: string[];
+  width: number;
+  color?: string;
+}
+
+/** One bulleted paragraph per item, later lines indented under the text. */
+export function BulletList({ items, width, color }: BulletListProps) {
+  return items.map((item, index) => (
+    <Prose key={`${index}-${item}`} text={item} width={width} color={color} prefix="• " />
+  ));
+}
+
+export interface FigureListItem {
+  value: string;
+  label: string;
+  note?: string;
+}
+
+export interface FigureListProps {
+  figures: FigureListItem[];
+  width: number;
+  /** The value column is as wide as the longest value, within these bounds. */
+  minValueWidth?: number;
+  maxValueWidth?: number;
+}
+
+/** Figures one per line, value first, so the column of numbers is what the eye reads. */
+export function FigureList({ figures, width, minValueWidth = 0, maxValueWidth = 18 }: FigureListProps) {
+  const colors = useThemeColors();
+  const valueWidth = Math.min(
+    maxValueWidth,
+    Math.max(minValueWidth, ...figures.map((figure) => figure.value.length)),
+  );
+  return figures.map((figure) => (
+    <Prose
+      key={`${figure.label}-${figure.value}`}
+      text={[figure.label, figure.note].filter(Boolean).join(", ")}
+      width={width}
+      color={colors.textDim}
+      prefix={`${figure.value.padEnd(valueWidth)}  `}
+      prefixColor={colors.textBright}
+    />
+  ));
+}
