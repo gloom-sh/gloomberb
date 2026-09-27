@@ -399,13 +399,3 @@ export function sortTrades(rows: readonly CdsTrade[], sort: TradeSortPreference)
     return compared !== 0 ? compared : right.eventAt - left.eventAt;
   });
 }
-
-export function nextSort<Id extends string>(
-  current: SortPreference<Id>,
-  columnId: Id,
-  fallback: SortPreference<Id>,
-): SortPreference<Id> {
-  if (current.columnId !== columnId) return { columnId, direction: "asc" };
-  if (current.direction === "asc") return { columnId, direction: "desc" };
-  return fallback;
-}

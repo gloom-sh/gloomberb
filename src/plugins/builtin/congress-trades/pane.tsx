@@ -20,6 +20,7 @@ const CONGRESS_TABS = [
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useShortcut } from "../../../react/input";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
@@ -41,7 +42,6 @@ import {
   buildMemberColumns,
   buildTradeColumns,
   congressScanNotice,
-  nextSort,
   previousCongressYearPage,
   selectedIndexById,
   sortedMembers,
@@ -55,7 +55,6 @@ import {
   type LoadStatus,
   type MemberColumn,
   type MemberColumnId,
-  type SortDirection,
   type TradeColumn,
   type TradeColumnId,
 } from "./model";
@@ -473,7 +472,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           items={tradeRows}
           sortColumnId={tradeSort.columnId}
           sortDirection={tradeSort.direction}
-          onHeaderClick={(columnId) => setTradeSort((current) => nextSort(current, columnId as TradeColumnId, columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId as TradeColumnId, { firstDirection: columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc" }))}
           getItemKey={(trade) => trade.id}
           renderCell={(trade, column, index, row) => {
             const cell = renderCongressTradeCell(trade, column, index, row);
@@ -491,7 +490,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           rootWidth={width} rootHeight={Math.max(1, height - tabRows - filterHeight)} rootBefore={filterBar}
           onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
           sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
-          onHeaderClick={(columnId) => setTickerSort((current) => nextSort(current, columnId as TickerColumnId, columnId === "ticker" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setTickerSort((current) => nextHeaderSort(current, columnId as TickerColumnId, { firstDirection: columnId === "ticker" ? "asc" : "desc" }))}
           renderCell={(row, column, index, selected) => {
             const cell = renderCongressTickerCell(row, column, index, selected);
             return !selected.selected && mineTickers.has(row.ticker) && column.id === "ticker" ? { ...cell, color: colors.borderFocused } : cell;
@@ -525,7 +524,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           items={memberRows}
           sortColumnId={memberSort.columnId}
           sortDirection={memberSort.direction}
-          onHeaderClick={(columnId) => setMemberSort((current) => nextSort(current, columnId as MemberColumnId, columnId === "member" || columnId === "district" ? "asc" : "desc"))}
+          onHeaderClick={(columnId) => setMemberSort((current) => nextHeaderSort(current, columnId as MemberColumnId, { firstDirection: columnId === "member" || columnId === "district" ? "asc" : "desc" }))}
           getItemKey={(member) => member.id}
           renderCell={renderCongressMemberCell}
           emptyStateTitle="No matching members."

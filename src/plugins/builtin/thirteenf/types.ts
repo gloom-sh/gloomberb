@@ -1,9 +1,9 @@
 import type { DataTableColumn } from "../../../components";
+import type { SortDirection } from "../../../utils/sort-values";
 
 export type ThirteenFBrowserTab = "funds" | "performance" | "byTicker" | "latest";
 export type ThirteenFDetailTab = "holdings" | "filings" | "overlap";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";
-export type SortDirection = "asc" | "desc";
 
 export interface ThirteenFFund {
   cik: string;

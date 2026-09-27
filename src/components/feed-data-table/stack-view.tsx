@@ -6,6 +6,7 @@ import { useAppLanguage } from "../../i18n/react";
 import { displayWidth, formatTimeAgo } from "../../utils/format";
 import { colors } from "../../theme/colors";
 import { isPlainKey } from "../../utils/keyboard";
+import { nextHeaderSort } from "../../utils/sort-values";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
 import { usePaneFooter } from "../layout/pane/footer";
@@ -94,23 +95,6 @@ function compareRows(a: DetailRow, b: DetailRow, columnId: DetailColumnId) {
     case "title":
       return compareText(a.item.title, b.item.title);
   }
-}
-
-function nextSortPreference(
-  current: SortPreference,
-  columnId: DetailColumnId,
-): SortPreference {
-  if (current.columnId === columnId) {
-    return {
-      columnId,
-      direction: current.direction === "asc" ? "desc" : "asc",
-    };
-  }
-
-  return {
-    columnId,
-    direction: columnId === "time" ? "desc" : "asc",
-  };
 }
 
 function buildColumns(
@@ -397,7 +381,7 @@ export function FeedDataTableStackView({
       sortDirection={sortPreference.direction}
       onHeaderClick={(columnId) =>
         setSortPreference((current) =>
-          nextSortPreference(current, columnId as DetailColumnId)
+          nextHeaderSort(current, columnId as DetailColumnId, { firstDirection: columnId === "time" ? "desc" : "asc" })
         )}
       getItemKey={(row) => row.item.id}
       renderCell={renderCell}

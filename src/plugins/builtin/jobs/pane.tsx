@@ -26,6 +26,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -46,14 +47,14 @@ import {
   formatShare,
   historyChartPoints,
   moversHaveWeekHistory,
-  nextMoverSort,
-  nextPostingSort,
   sortMoverRows,
   sortPostingRows,
   type MoverColumn,
+  type MoverColumnId,
   type MoverRow,
   type MoverSort,
   type PostingColumn,
+  type PostingColumnId,
   type PostingRow,
   type PostingSort,
 } from "./model";
@@ -445,7 +446,9 @@ function CompanyView({
             items={rows}
             sortColumnId={sort.columnId}
             sortDirection={sort.direction}
-            onHeaderClick={(columnId) => setSort((current) => nextPostingSort(current, columnId))}
+            onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as PostingColumnId, {
+              firstDirection: columnId === "title" || columnId === "location" || columnId === "function" ? "asc" : "desc",
+            }))}
             getItemKey={(row) => row.key}
             renderCell={renderCell}
             emptyStateTitle="No open roles"
@@ -689,7 +692,9 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
         items={rows}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}
-        onHeaderClick={(columnId) => setSort((current) => nextMoverSort(current, columnId))}
+        onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as MoverColumnId, {
+          firstDirection: columnId === "ticker" || columnId === "company" || columnId === "function" ? "asc" : "desc",
+        }))}
         getItemKey={(row) => row.key}
         renderCell={renderCell}
         emptyStateTitle={status === "loading" ? "Loading..." : "No companies covered yet"}

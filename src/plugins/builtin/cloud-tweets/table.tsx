@@ -27,6 +27,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
 import { SignInWall } from "../cloud/auth-actions";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import {
   appendNewTweets,
   mergeLatestTweets,
@@ -414,11 +415,7 @@ export function TweetSearchTable({
 
   const handleHeaderClick = useCallback((columnId: string) => {
     if (!isTweetSortColumnId(columnId)) return;
-    setSort((current) => (
-      current.columnId === columnId
-        ? { columnId, direction: current.direction === "desc" ? "asc" : "desc" }
-        : { columnId, direction: "desc" }
-    ));
+    setSort((current) => nextHeaderSort(current, columnId, { firstDirection: "desc" }));
   }, []);
 
   const handleRootKeyDown = useCallback((

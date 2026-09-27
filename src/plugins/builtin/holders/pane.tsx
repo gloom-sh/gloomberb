@@ -16,6 +16,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import type { HolderData } from "../../../types/financials";
 import { clipToDisplayWidth, formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
 import { useInResearchTab } from "../ticker-detail/research-tab-keys";
@@ -31,13 +32,12 @@ import {
   buildColumns,
   buildRows,
   DEFAULT_SORT,
-  nextSortPreference,
   sortRows,
   VIEW_TABS,
 } from "./table-model";
 import { loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
-import type { HolderColumn, HolderRow, SortPreference, ViewMode } from "./types";
+import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
 import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 
@@ -168,7 +168,9 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   }, [createPaneFromTemplate, fundMatches]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as HolderColumnId, {
+      firstDirection: (id) => id === "holder" || id === "reportDate" ? "asc" : "desc",
+    }));
   }, [setSortPreference]);
 
   const toggleView = useCallback(() => {

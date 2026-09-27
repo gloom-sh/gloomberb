@@ -12,7 +12,7 @@ import {
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
-import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -46,16 +46,6 @@ interface CatalogSortPreference {
 }
 
 const DEFAULT_SORT: CatalogSortPreference = { columnId: "publisher", direction: "asc" };
-
-function nextSortPreference(
-  current: CatalogSortPreference,
-  columnId: string,
-): CatalogSortPreference {
-  const typed = columnId as CatalogColumnId;
-  if (current.columnId !== typed) return { columnId: typed, direction: "asc" };
-  if (current.direction === "asc") return { columnId: typed, direction: "desc" };
-  return DEFAULT_SORT;
-}
 
 function sortValue(columnId: CatalogColumnId, row: CatalogSeriesRow): string | null {
   switch (columnId) {
@@ -293,7 +283,9 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
       items={rows}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference((current) => nextSortPreference(current, columnId))}
+      onHeaderClick={(columnId) => setSortPreference((current) => nextHeaderSort(current, columnId as CatalogColumnId, {
+        resetTo: DEFAULT_SORT,
+      }))}
       getItemKey={(row) => row.id}
       onActivate={chartSelected}
       renderCell={renderCell}

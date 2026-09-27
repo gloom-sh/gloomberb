@@ -46,17 +46,3 @@ export function sortRows(
     sortPreference.direction,
   ));
 }
-
-export function nextSortPreference(
-  current: DividendSortPreference,
-  columnId: string,
-): DividendSortPreference {
-  const typedColumnId = columnId as DividendColumnId;
-  if (current.columnId !== typedColumnId) {
-    return { columnId: typedColumnId, direction: "desc" };
-  }
-  if (current.direction === "desc") {
-    return { columnId: typedColumnId, direction: "asc" };
-  }
-  return DEFAULT_SORT_PREFERENCE;
-}

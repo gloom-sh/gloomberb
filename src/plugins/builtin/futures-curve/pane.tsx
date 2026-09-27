@@ -9,6 +9,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { formatPercentRaw } from "../../../utils/format";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -43,7 +44,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const resource = useAsyncResource(loader, { initialData: () => getCachedFuturesCurve(root), clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "curve");
   const [selected, setSelected] = usePluginPaneState<string | null>("contract", null);
-  const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "expiry", direction: "asc" });
   const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
@@ -52,7 +53,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   // The footer carries the newest quote time, so the legend does not repeat it.
   const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon)
     .map((series) => series.id === "current" && curveTimestamp(series.asOf ?? null) === curveTimestamp(newest) ? { ...series, asOf: undefined } : series) : [], [data, colors, horizon, newest]);
-  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
+  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.columnId, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
   // The highlighted row carries the selected contract's price and rank.
   const slopeDate = data?.slope.asOf && curveTimestamp(data.slope.asOf) !== curveTimestamp(newest) ? curveTimestamp(data.slope.asOf) : null;
@@ -113,8 +114,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
           rootWidth={width} rootHeight={tableHeight}
           selection={{ kind: "id", selectedId: selectedRow?.symbol ?? null, getId: (row) => row.symbol, onChange: setSelected }}
           onActivate={(row) => setSelected(row.symbol)} getItemKey={(row) => row.symbol} renderCell={renderCell}
-          sortColumnId={sort.id} sortDirection={sort.direction}
-          onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }))}
+          sortColumnId={sort.columnId} sortDirection={sort.direction}
+          onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
           emptyStateTitle="No listed contracts available." />
       </> : null}
     </PaneStatusBody>

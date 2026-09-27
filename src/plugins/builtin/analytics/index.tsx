@@ -10,6 +10,7 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
 import { convertCurrency } from "../../../utils/format";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import {
   getFocusedCollectionId,
   useAppSelector,
@@ -49,9 +50,9 @@ import {
   buildSectorRowsFromPortfolioColumns,
   buildTrackedCurrencies,
   DEFAULT_SECTOR_SORT,
-  nextSectorSortPreference,
   sortSectorRows,
   type SectorSortPreference,
+  type SectorTableColumn,
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
 import {
@@ -317,7 +318,9 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   ), [brokerPerformance.performance]);
 
   const handleSectorHeaderClick = useCallback((columnId: string) => {
-    setSectorSort((current) => nextSectorSortPreference(current, columnId));
+    setSectorSort((current) => nextHeaderSort(current, columnId as SectorTableColumn["id"], {
+      resetTo: { columnId: null, direction: "asc" },
+    }));
   }, []);
 
   useEffect(() => {

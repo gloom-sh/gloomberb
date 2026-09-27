@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { formatCompact } from "../../../utils/format";
+import type { SortDirection } from "../../../utils/sort-values";
 
 export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
 import type {
@@ -19,7 +20,6 @@ export const CONGRESS_EARLIEST_YEAR = 2008;
 
 export type CongressTab = "trades" | "members" | "tickers";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";
-export type SortDirection = "asc" | "desc";
 export type DetailMode =
   | { kind: "trade"; tradeId: string }
   | { kind: "member"; memberId: string }
@@ -210,20 +210,6 @@ function compareMember(
     case "lag":
       return (left.avgLagDays ?? -1) - (right.avgLagDays ?? -1);
   }
-}
-
-export function nextSort<TColumn extends string>(
-  current: { columnId: TColumn; direction: SortDirection },
-  columnId: TColumn,
-  defaultDirection: SortDirection,
-): { columnId: TColumn; direction: SortDirection } {
-  if (current.columnId !== columnId) {
-    return { columnId, direction: defaultDirection };
-  }
-  return {
-    columnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
 }
 
 export function buildTradeColumns(width: number, tickerView = false): TradeColumn[] {

@@ -21,7 +21,7 @@ import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { cycleSortPreference } from "../../../utils/sort-values";
+import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
@@ -32,10 +32,10 @@ import {
   auctionHistoryDays,
   auctionSize,
   buildAuctionColumns,
+  firstAuctionSortDirection,
   formatAuctionRate,
   indirectPct,
   isPendingAuction,
-  nextAuctionSort,
   nextFilter,
   rateLabel,
   rateValue,
@@ -419,7 +419,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => setSortPreference((current) => (
-          nextAuctionSort(current, columnId as AuctionColumnId)
+          nextHeaderSort(current, columnId as AuctionColumnId, { firstDirection: firstAuctionSortDirection })
         ))}
         getItemKey={auctionKey}
         renderCell={renderAuctionRow}

@@ -6,6 +6,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, shortDate, verdictLabel } from "./format";
 import { projectRichCheap, type RichCheapRow, sharedReading, type VcaPreset } from "./model";
@@ -51,15 +52,10 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
   const resource = useAsyncResource(universe.instruments.length ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  const [sort, setSort] = useState<{ id: SortId; direction: "asc" | "desc" }>({ id: "percentile", direction: "desc" });
+  const [sort, setSort] = useState<{ columnId: SortId; direction: SortDirection }>({ columnId: "percentile", direction: "desc" });
   const rows = useMemo(() => {
     const projected = projectRichCheap(resource.data?.rows ?? [], hv);
-    return projected.sort((left, right) => {
-      const a = left[sort.id], b = right[sort.id];
-      if (a == null || b == null) return a == null ? b == null ? 0 : 1 : -1;
-      const order = typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b));
-      return sort.direction === "asc" ? order : -order;
-    });
+    return projected.sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   }, [resource.data, hv, sort]);
   const shared = useMemo(() => sharedReading(rows), [rows]);
   // A shared reading date moves to the footer, and a column no row fills is left out.
@@ -111,8 +107,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     ]} />
     <PaneStatusBody subject="volatility rich/cheap" loading={resource.loading && !resource.data} error={universe.error && !universe.instruments.length ? universe.error : !resource.data ? resource.error : null}>
       <DataTableView<RichCheapRow> focused={focused && !symbolsActive} columns={columns} items={rows} rootWidth={width} rootHeight={Math.max(2, height - 1)}
-        getItemKey={(row) => row.symbol} sortColumnId={sort.id} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
-        onHeaderClick={(id) => setSort({ id: id as SortId, direction: sort.id === id && sort.direction === "desc" ? "asc" : "desc" })}
+        getItemKey={(row) => row.symbol} sortColumnId={sort.columnId} sortDirection={sort.direction} emptyStateTitle="No symbols to screen."
+        onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as SortId, { firstDirection: "desc" }))}
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
         onActivate={openHistory} onRootKeyDown={handleKey}
         getExportMetadata={() => [["universe", universe.label], ["as of", resource.data?.asOf], ["IV", "30-day ATM, annualized"],

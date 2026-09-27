@@ -84,19 +84,6 @@ export function sortRows(rows: ShortInterestRow[], preference: SortPreference): 
   );
 }
 
-export function nextSortPreference(
-  current: SortPreference,
-  columnId: string,
-): SortPreference {
-  if (current.columnId === columnId) {
-    return {
-      columnId: columnId as ShortInterestColumnId,
-      direction: current.direction === "asc" ? "desc" : "asc",
-    };
-  }
-  return { columnId: columnId as ShortInterestColumnId, direction: "desc" };
-}
-
 /**
  * FINRA settlement history carries no float, so percent of float is null for
  * every row on that route. Keeping the column drew a header over a column of

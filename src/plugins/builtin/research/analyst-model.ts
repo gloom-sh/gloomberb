@@ -266,21 +266,8 @@ export function sortRatingRows<T extends AnalystRatingRecord>(
     .map((entry) => entry.row);
 }
 
-export function nextRatingSortPreference(
-  current: RatingSortPreference,
-  columnId: string,
-): RatingSortPreference {
-  const typedColumnId = columnId as RatingColumnId;
-  if (current.columnId !== typedColumnId) {
-    return {
-      columnId: typedColumnId,
-      direction: DEFAULT_RATING_SORT_DIRECTIONS[typedColumnId] ?? "asc",
-    };
-  }
-  return {
-    columnId: typedColumnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
+export function firstRatingSortDirection(columnId: RatingColumnId): SortDirection {
+  return DEFAULT_RATING_SORT_DIRECTIONS[columnId] ?? "asc";
 }
 
 function footerSegmentWidth(segment: PaneFooterSegment): number {

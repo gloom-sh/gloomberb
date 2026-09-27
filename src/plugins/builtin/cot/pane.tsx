@@ -8,6 +8,7 @@ import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../..
 import { isAccessDenied } from "../../../api-client/errors";
 import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
 import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
@@ -58,7 +59,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchFocus, setSearchFocus] = useState(0);
-  const [sort, setSort] = useState({ id: "", direction: "desc" as "asc" | "desc" });
+  const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "desc" });
   const control = useRef<SelectControl>(null);
   const scopeControl = useRef<SelectControl>(null);
   const searchInput = useRef<InputRenderable | null>(null);
@@ -69,16 +70,10 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     // A typed query searches every market; the scope only shapes the unsearched board.
     const result = (data?.rows ?? []).filter((row) => query ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase())
       : scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
-    if (!sort.id) return result;
+    if (!sort.columnId) return result;
     const value = (row: CotBoardRow) => ({ name: cotMarketName(row.marketName), code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
-      one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, asOf: row.reportDate })[sort.id as "name"];
-    return [...result].sort((a, b) => {
-      const left = value(a), right = value(b);
-      if (left == null) return right == null ? 0 : 1;
-      if (right == null) return -1;
-      const order = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
-      return sort.direction === "asc" ? order : -order;
-    });
+      one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, asOf: row.reportDate })[sort.columnId as "name"];
+    return [...result].sort((a, b) => compareSortValues(value(a), value(b), sort.direction));
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
   // The class, scope and search controls live in the board's query bar, so
@@ -104,7 +99,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     rootWidth={width} rootHeight={height} selection={{ kind: "id", selectedId: selected, getId: (row) => row.contractCode, onChange: setSelected }}
     getItemKey={(row) => row.contractCode} onActivate={(row) => setOpen(row.contractCode)} freezeFirstColumn
-    sortable sortColumnId={sort.id || null} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "desc" ? "asc" : "desc" }))}
+    sortable sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, { firstDirection: "desc" }))}
     renderCell={(row, column) => {
       if (column.id === "name") return { text: cotMarketName(row.marketName) };
       if (column.id === "code") return { text: row.contractCode, color: colors.textMuted };

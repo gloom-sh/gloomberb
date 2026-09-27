@@ -175,16 +175,9 @@ export function visibleAuctions(
     });
 }
 
-export function nextAuctionSort(
-  current: AuctionSortPreference,
-  columnId: AuctionColumnId,
-): AuctionSortPreference {
-  if (current.columnId === columnId) {
-    const direction: SortDirection = current.direction === "asc" ? "desc" : "asc";
-    return { columnId, direction };
-  }
-  // Text columns read best ascending; every metric reads best highest-first.
-  return { columnId, direction: columnId === "type" || columnId === "term" ? "asc" : "desc" };
+/** Text columns read best ascending; every metric reads best highest-first. */
+export function firstAuctionSortDirection(columnId: AuctionColumnId): SortDirection {
+  return columnId === "type" || columnId === "term" ? "asc" : "desc";
 }
 
 /** TERM takes the spare width; the table adds the gaps and header room itself. */

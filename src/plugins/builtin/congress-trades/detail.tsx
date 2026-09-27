@@ -14,6 +14,7 @@ import {
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import type {
   CloudCongressHousePayload,
   CloudCongressMemberPayload,
@@ -31,7 +32,6 @@ import {
   buildMemberTradeColumns,
   formatCongressReturn,
   formatLag,
-  nextSort,
   sortedTrades,
   truncate,
   type LoadStatus,
@@ -368,11 +368,9 @@ export function MemberTradesDetail({
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => {
-          setSortPreference((current) => nextSort(
-            current,
-            columnId as TradeColumnId,
-            columnId === "ticker" || columnId === "asset" || columnId === "side" || columnId === "owner" ? "asc" : "desc",
-          ));
+          setSortPreference((current) => nextHeaderSort(current, columnId as TradeColumnId, {
+            firstDirection: columnId === "ticker" || columnId === "asset" || columnId === "side" || columnId === "owner" ? "asc" : "desc",
+          }));
         }}
         getItemKey={(trade) => trade.id}
         renderCell={renderCongressTradeCell}

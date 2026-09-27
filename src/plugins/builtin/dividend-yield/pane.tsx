@@ -20,6 +20,7 @@ import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRender
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -29,10 +30,10 @@ import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
-  nextSortPreference,
   sortRows,
   toDividendRows,
   type DividendColumn,
+  type DividendColumnId,
   type DividendRow,
   type DividendSortPreference,
 } from "./model";
@@ -257,7 +258,10 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   );
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {
+      firstDirection: "desc",
+      resetTo: DEFAULT_SORT_PREFERENCE,
+    }));
   }, []);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {

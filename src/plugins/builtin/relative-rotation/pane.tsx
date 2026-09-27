@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import {
   DataTableStackView,
   PaneStatusBody,
@@ -221,9 +222,9 @@ function RotationView({
     null,
   );
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
-  const [sort, setSort] = useState({
-    id: "symbol",
-    direction: "asc" as "asc" | "desc",
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({
+    columnId: "symbol",
+    direction: "asc",
   });
   const data = resource.data?.payload;
   const selected = data?.rows.find((row) => row.id === openId);
@@ -257,23 +258,12 @@ function RotationView({
     () =>
       [...(data?.rows ?? [])].sort((a, b) => {
         const value = (row: RotationRow) =>
-          sort.id === "strengthRank"
+          sort.columnId === "strengthRank"
             ? row.strengthRank.percentile
-            : sort.id === "momentumRank"
+            : sort.columnId === "momentumRank"
               ? row.momentumRank.percentile
-              : row[sort.id as "symbol"];
-        const left = value(a),
-          right = value(b);
-        return left == null
-          ? right == null
-            ? 0
-            : 1
-          : right == null
-            ? -1
-            : (typeof left === "number" && typeof right === "number"
-                ? left - right
-                : String(left).localeCompare(String(right))) *
-              (sort.direction === "asc" ? 1 : -1);
+              : row[sort.columnId as "symbol"];
+        return compareSortValues(value(a), value(b), sort.direction);
       }),
     [data, sort],
   );
@@ -372,15 +362,9 @@ function RotationView({
                   />
                 ) : null
               }
-              sortColumnId={sort.id}
+              sortColumnId={sort.columnId}
               sortDirection={sort.direction}
-              onHeaderClick={(id) =>
-                setSort({
-                  id,
-                  direction:
-                    sort.id === id && sort.direction === "asc" ? "desc" : "asc",
-                })
-              }
+              onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
               renderCell={(row, column) => ({
                 text:
                   column.id === "strengthRank"

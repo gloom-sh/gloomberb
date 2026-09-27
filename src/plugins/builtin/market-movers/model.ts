@@ -112,20 +112,6 @@ export function sortRows(
   ));
 }
 
-export function nextSortPreference(
-  current: MarketMoverSortPreference,
-  columnId: string,
-): MarketMoverSortPreference {
-  const typedColumnId = columnId as MarketMoverColumnId;
-  if (current.columnId !== typedColumnId) {
-    return { columnId: typedColumnId, direction: "asc" };
-  }
-  if (current.direction === "asc") {
-    return { columnId: typedColumnId, direction: "desc" };
-  }
-  return DEFAULT_SORT_PREFERENCE;
-}
-
 /** A row is rebuilt only when its quote or rank moved, so unchanged rows skip the render. */
 const moverRows = new WeakMap<ScreenerQuote, MarketMoverRow>();
 

@@ -14,6 +14,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { resolveOptionsTarget } from "../../../utils/options";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -81,7 +82,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const [camera, setCamera] = usePluginPaneState<SurfaceCamera>("camera", DEFAULT_SURFACE_CAMERA);
   const [fixedYears, setFixedYears] = usePluginPaneState<number | null>("fixedYears", null);
   const [historyDate, setHistoryDate] = usePluginPaneState<string | null>("historyDate", null);
-  const [sort, setSort] = useState<{ id: string; direction: "asc" | "desc" }>({ id: "tenor", direction: "asc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "tenor", direction: "asc" });
   const controller = useRef<AbortController | null>(null);
   const [partial, setPartial] = useState<{ key: string; snapshot: SurfaceSnapshot } | null>(null);
   const quote = (target?.isOptionTicker ? underlyingFinancials : financials)?.quote;
@@ -384,12 +385,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(grid?.rows[0]?.cells.map((cell, index) => ({ id: String(index), width: 10, align: "right" as const,
       label: surfaceCoordinateLabel(axis, cell.coordinate, index) })) ?? [])];
   const sortedRows = [...(grid?.rows ?? [])].sort((a, b) => {
-    const delta = sort.id === "tenor" ? a.years - b.years : (a.cells[Number(sort.id)]?.volatility ?? -1) - (b.cells[Number(sort.id)]?.volatility ?? -1);
+    const delta = sort.columnId === "tenor" ? a.years - b.years : (a.cells[Number(sort.columnId)]?.volatility ?? -1) - (b.cells[Number(sort.columnId)]?.volatility ?? -1);
     return sort.direction === "asc" ? delta : -delta;
   });
   const table = <DataTableView<SurfaceGridRow> focused={focused} rootWidth={width} rootHeight={tableHeight}
     columns={columns} items={sortedRows} getItemKey={(row) => row.label} scrollRef={scrollRef} onBodyScrollActivity={onScroll}
-    sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
+    sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
     selection={{ kind: "id", selectedId: tableSelectedRow?.label ?? null, getId: (row) => row.label, onChange: (_id, row) => onSelectRow(row) }}
     onActivate={onSelectRow} onRootKeyDown={handleKey} getExportMetadata={exportMetadata} freezeFirstColumn
     renderCell={(row, column) => {
@@ -469,14 +470,14 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
 }) {
   const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put", "25d call", "RR pts", "BF pts", "90/110 pts", "Slope/yr"];
   const integerColumn = forwards ? "4" : null;
-  const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "expiry", direction: "asc" });
   const value = (entry: SurfaceExpiry, id: string): number | string | null => id === "expiry" ? entry.expiration
     : forwards ? [entry.forward, entry.forward == null ? null : entry.forward - snapshot.spot,
       entry.dividendYield == null || entry.years * 365 < DIVIDEND_YIELD_MIN_DAYS ? null : entry.dividendYield * 100,
       entry.rate == null ? null : entry.rate * 100, snapshot.stored ? null : entry.parity.pairs.length, entry.asOf?.slice(0, 10) ?? null][Number(id)] ?? null
       : [entry.skew.put25, entry.skew.call25, entry.skew.riskReversal, entry.skew.butterfly, entry.skew.moneynessSkew, entry.termSlope][Number(id)] ?? null;
   const rows = [...snapshot.expiries].sort((a, b) => {
-    const x = value(a, sort.id), y = value(b, sort.id);
+    const x = value(a, sort.columnId), y = value(b, sort.columnId);
     const difference = typeof x === "number" && typeof y === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""));
     return sort.direction === "asc" ? difference : -difference;
   });
@@ -484,7 +485,7 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
     columns={[{ id: "expiry", label: "Expiry", width: 13, align: "left" }, ...fields.map((label, i) => ({ id: String(i), label, width: 13, align: "right" as const }))]}
     getItemKey={(entry) => String(entry.expiration)} selection={{ kind: "id", selectedId: String(selected?.expiration), getId: (entry) => String(entry.expiration), onChange: (_id, entry) => onSelect(entry) }}
     onActivate={onSelect} onRootKeyDown={onKey} getExportMetadata={metadata} freezeFirstColumn
-    sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
+    sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
     renderCell={(entry, column) => { const raw = value(entry, column.id); return { text: column.id === "expiry" ? expiryLabel(entry.expiration)
       : raw == null ? "--" : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
         : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : `${(raw * 100).toFixed(2)}` }; }} emptyStateTitle="No expiry observations." />;

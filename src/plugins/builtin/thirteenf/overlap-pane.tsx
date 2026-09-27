@@ -5,6 +5,7 @@ import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
@@ -33,7 +34,7 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<InputRenderable | null>(null);
   const [focusToken, setFocusToken] = useState(0);
-  const [fundSort, setFundSort] = useState<{ id: "name" | "cik"; desc: boolean }>({ id: "name", desc: false });
+  const [fundSort, setFundSort] = useState<{ columnId: "name" | "cik"; direction: SortDirection }>({ columnId: "name", direction: "asc" });
   const [hasMore, setHasMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const moreController = useRef<AbortController | null>(null);
@@ -102,9 +103,9 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
       />
     </Box>}
     scrollRef={scrollRef} onBodyScrollActivity={onScroll} resetScrollKey={query}
-    sortColumnId={fundSort.id} sortDirection={fundSort.desc ? "desc" : "asc"} onHeaderClick={id => setFundSort(current => ({ id: id === "cik" ? "cik" : "name", desc: current.id === id ? !current.desc : false }))}
+    sortColumnId={fundSort.columnId} sortDirection={fundSort.direction} onHeaderClick={id => setFundSort(current => nextHeaderSort(current, id === "cik" ? "cik" : "name"))}
     rootWidth={width} columns={[{ id: "name", label: "FUND", width: Math.max(20, width - 17), align: "left" }, { id: "cik", label: "CIK", width: 12, align: "left" }]}
-    items={[...funds].sort((a, b) => a[fundSort.id].localeCompare(b[fundSort.id]) * (fundSort.desc ? -1 : 1))} getItemKey={row => row.cik} selection={{ kind: "id", selectedId, getId: row => row.cik, onChange: setSelectedId }}
+    items={[...funds].sort((a, b) => a[fundSort.columnId].localeCompare(b[fundSort.columnId]) * (fundSort.direction === "desc" ? -1 : 1))} getItemKey={row => row.cik} selection={{ kind: "id", selectedId, getId: row => row.cik, onChange: setSelectedId }}
     onActivate={fund => { setSearchFocused(false); setTarget(fund); }}
     rootBefore={<QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "Second fund name or CIK", focused, active: searchFocused,
       onActiveChange: (active) => active ? focusSearch() : setSearchFocused(false), focusToken, inputRef: searchRef, debounceMs: 250,

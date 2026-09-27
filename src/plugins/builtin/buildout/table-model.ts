@@ -7,8 +7,8 @@ import type {
   BuildoutRow,
   BuildoutTabId,
   SortComparable,
-  SortDirection,
 } from "./model/types";
+import type { SortDirection } from "../../../utils/sort-values";
 import { metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
 
 export const tabs: Array<{ label: string; value: BuildoutTabId }> = [

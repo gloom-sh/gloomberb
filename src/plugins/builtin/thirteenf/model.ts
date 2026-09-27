@@ -15,7 +15,6 @@ import type {
   FundTimelineColumnId,
   FundTimelineRow,
   HoldingAction,
-  SortDirection,
   ThirteenFBrowserTab,
   ThirteenFDetailTab,
   ThirteenFFormSummary,
@@ -586,18 +585,6 @@ export function sortTimelineRows(
     timelineSortValue(right, preference.columnId),
     preference.direction,
   ));
-}
-
-export function nextSortPreference<TColumn extends string>(
-  current: FundSortPreference<TColumn>,
-  columnId: TColumn,
-  defaultDirection: SortDirection,
-): FundSortPreference<TColumn> {
-  if (current.columnId !== columnId) return { columnId, direction: defaultDirection };
-  return {
-    columnId,
-    direction: current.direction === "asc" ? "desc" : "asc",
-  };
 }
 
 /** The name column takes the room the figures leave; the table lays it out. */

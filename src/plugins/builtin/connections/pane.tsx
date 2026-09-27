@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/relative-time";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { useConnectionHealth, usePluginPaneState } from "../../runtime";
 
 interface ConnectionColumn extends DataTableColumn {
@@ -219,11 +220,7 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
         items={sources}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}
-        onHeaderClick={(columnId) => {
-          setSort((current) => current.columnId === columnId
-            ? { ...current, direction: current.direction === "asc" ? "desc" : "asc" }
-            : { columnId: columnId as ConnectionColumn["id"], direction: "asc" });
-        }}
+        onHeaderClick={(columnId) => setSort((current) => nextHeaderSort(current, columnId as ConnectionColumn["id"]))}
         getItemKey={(source) => source.id}
         renderCell={renderCell}
         emptyContent={settled ? undefined : (

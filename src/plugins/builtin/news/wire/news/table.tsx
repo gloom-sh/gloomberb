@@ -16,6 +16,7 @@ import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useLoadNewsStory } from "../../../../../news/hooks";
 import { formatRelativeTime } from "../../../../../utils/datetime-format";
+import { nextHeaderSort } from "../../../../../utils/sort-values";
 import { formatNewsCategory } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 
@@ -139,21 +140,6 @@ function sortNewsArticles(
     compareArticle,
     (a, b) => b.publishedAt.getTime() - a.publishedAt.getTime(),
   );
-}
-
-function nextSortPreference(current: NewsSortPreference, columnId: NewsColumnId): NewsSortPreference {
-  if (current.columnId === columnId) {
-    return {
-      columnId,
-      direction: current.direction === "asc" ? "desc" : "asc",
-    };
-  }
-  return {
-    columnId,
-    direction: columnId === "title" || columnId === "source" || columnId === "categories"
-      ? "asc"
-      : "desc",
-  };
 }
 
 const FIXED_COLUMN_WIDTHS: Record<Exclude<NewsColumnId, "title">, number> = {
@@ -404,7 +390,9 @@ export function NewsArticleStackView({
       items={sortedArticles}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference(nextSortPreference(sortPreference, columnId as NewsColumnId))}
+      onHeaderClick={(columnId) => setSortPreference(nextHeaderSort(sortPreference, columnId as NewsColumnId, {
+        firstDirection: columnId === "title" || columnId === "source" || columnId === "categories" ? "asc" : "desc",
+      }))}
       getItemKey={(item) => item.id}
       renderCell={renderCell}
       emptyContent={emptyContent}

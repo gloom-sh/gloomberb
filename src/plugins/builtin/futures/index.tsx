@@ -15,7 +15,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { cycleSortPreference } from "../../../utils/sort-values";
+import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -38,7 +38,6 @@ import {
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
   futuresRowId,
-  nextFuturesSort,
   type FuturesColumnId,
   type FuturesSortPreference,
   type FuturesTableRow,
@@ -245,7 +244,9 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       sortable
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
-      onHeaderClick={(columnId) => setSortPreference((current) => nextFuturesSort(current, columnId))}
+      onHeaderClick={(columnId) => setSortPreference((current) => nextHeaderSort(current, columnId as FuturesColumnId, {
+        resetTo: DEFAULT_FUTURES_SORT,
+      }))}
       onSortChange={(columnId, direction) => setSortPreference((current) => ({ ...current, columnId: columnId as FuturesSortPreference["columnId"], direction }))}
       getItemKey={futuresRowId}
       visibleRangeKey={windowSymbols.join(",")}

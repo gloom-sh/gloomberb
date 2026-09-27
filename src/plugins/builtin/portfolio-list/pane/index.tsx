@@ -25,6 +25,7 @@ import {
 } from "../../../../state/app/context";
 import { summarizeFxRates, fxStatusLabel } from "../../../../utils/fx-status";
 import { convertCurrency } from "../../../../utils/format";
+import { nextHeaderSort } from "../../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
@@ -329,15 +330,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [activeCollectionId, collectionSorts, setCollectionSorts]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    if (activeSort.columnId === columnId) {
-      setSortPreference(
-        activeSort.direction === "asc"
-          ? { columnId, direction: "desc" }
-          : { columnId: null, direction: "asc" },
-      );
-      return;
-    }
-    setSortPreference({ columnId, direction: "asc" });
+    setSortPreference(nextHeaderSort(activeSort, columnId, { resetTo: { columnId: null, direction: "asc" } }));
   }, [activeSort.columnId, activeSort.direction, setSortPreference]);
 
   const openTickerFloating = useCallback((symbol: string, options?: { newPane?: boolean }) => {

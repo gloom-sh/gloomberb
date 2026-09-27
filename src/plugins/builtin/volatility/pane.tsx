@@ -8,6 +8,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
@@ -47,7 +48,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const [initialTab] = usePaneSettingValue("initialTab", "curve");
   const [tab, setTab] = usePluginPaneState("activeTabId", initialTab);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedIndexId", "vix");
-  const [sort, setSort] = useState<{ id: string | null; direction: "asc" | "desc" }>({ id: null, direction: "asc" });
+  const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "asc" });
   const [partial, setPartial] = useState<VolatilityLoadResult | null>(null);
   const controller = useRef<AbortController | null>(null);
   const request = useCallback(async (force: boolean) => {
@@ -105,8 +106,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   const loading = !!result && result.loaded < result.total;
   const rows = useMemo(() => {
     const ordered = boardOrder(data?.board ?? []).filter((row) => row.value != null || (loading && !row.error));
-    if (!sort.id) return ordered;
-    const key = sort.id as keyof VolatilityBoardRow;
+    if (!sort.columnId) return ordered;
+    const key = sort.columnId as keyof VolatilityBoardRow;
     return ordered.sort((left, right) => {
       const a = left[key], b = right[key];
       if (a == null) return b == null ? 0 : 1;
@@ -181,8 +182,9 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
         <DataTableView<VolatilityBoardRow> focused={focused} columns={BOARD_COLUMNS} items={rows} rootWidth={width} rootHeight={boardHeight}
           emptyStateTitle="Volatility indices unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}
           onActivate={(row) => setSelectedId(row.id)} sortable
-          sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort(id === sort.id && sort.direction === "desc" ? { id: null, direction: "asc" } : { id, direction: id === sort.id ? "desc" : "asc" })}
-          onSortChange={(id, direction) => setSort({ id, direction })}
+          sortColumnId={sort.columnId} sortDirection={sort.direction}
+          onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, { resetTo: { columnId: null, direction: "asc" } }))}
+          onSortChange={(columnId, direction) => setSort({ columnId, direction })}
           getExportMetadata={() => [["basis", "daily history; sparse observations retain their timestamp"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "id" ? row.id.toUpperCase()
             : column.id === "label" ? row.label

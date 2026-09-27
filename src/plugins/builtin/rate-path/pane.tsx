@@ -8,6 +8,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -53,7 +54,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const resource = useAsyncResource(loader, { initialData: getCachedRatePath, clearOnError: isAccessDenied });
   const [tab, setTab] = usePluginPaneState("tab", "path");
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
-  const [sort, setSort] = useState({ id: "date", direction: "asc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "date", direction: "asc" });
   const [contract, setContract] = useState<string | null>(null);
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
@@ -63,7 +64,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     path: colors.positive, ghosts: curveGhostColors(colors), band: colors.borderFocused, projection: colors.negative,
   }) : [], [data]);
   const meetings = useMemo(() => [...(data?.meetings ?? [])].sort((a, b) => {
-    const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.id] as keyof RateMeeting | undefined;
+    const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.columnId] as keyof RateMeeting | undefined;
     const left = key ? a[key] : null, right = key ? b[key] : null;
     if (left == null) return right == null ? 0 : 1;
     if (right == null) return -1;
@@ -114,7 +115,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
     ] : [],
   });
   const selection = { kind: "id" as const, selectedId: selected, getId: (row: RateMeeting) => row.date, onChange: setSelected };
-  const onHeaderClick = (id: string) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }));
+  const onHeaderClick = (id: string) => setSort((current) => nextHeaderSort(current, id));
   return <Box width={width} height={height} flexDirection="column">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!resource.loading && !resource.error && !data} subject="rate path">
@@ -122,7 +123,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
         <StatGrid items={statItems} width={width} />
         {tab === "path" ? <>
           {showPath ? <CurveSurface series={chartCurves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected} /> : null}
-          <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={meetingTableHeight} emptyStateTitle="No scheduled FOMC meetings" />
+          <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={meetingTableHeight} emptyStateTitle="No scheduled FOMC meetings" />
         </> : tab === "probabilities" ? <DataTableView
           columns={[MEETING_COLUMNS[0]!, ...targets.map((target) => {
             const halfWidth = data.current.targetLower.value != null && data.current.targetUpper.value != null

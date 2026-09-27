@@ -1,4 +1,5 @@
 import { isPlainKey } from "../../../utils/keyboard";
+import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import {
@@ -43,7 +44,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
   const { rules, error } = useMemo(() => readEventAlerts(json), [json]);
   const [selected, setSelected] = useState(0);
-  const [sort, setSort] = useState({ id: "created", direction: "desc" as "asc" | "desc" });
+  const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "created", direction: "desc" });
   const sync = useCloudSyncStatus();
   const dialog = useDialog();
   const { openPluginCommandWorkflow } = usePluginAppActions();
@@ -51,11 +52,11 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     () =>
       [...rules].sort((a, b) => {
         const value = (rule: EventAlertRule) =>
-          sort.id === "target"
+          sort.columnId === "target"
             ? eventAlertTarget(rule)
-            : sort.id === "created"
+            : sort.columnId === "created"
               ? rule.createdAt
-              : sort.id === "kind"
+              : sort.columnId === "kind"
                 ? rule.kind
                 : rule.status;
         return (
@@ -180,14 +181,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       getItemKey={(rule) => rule.id}
       onActivate={toggle}
       onRootKeyDown={onKey}
-      sortColumnId={sort.id}
+      sortColumnId={sort.columnId}
       sortDirection={sort.direction}
-      onHeaderClick={(id) =>
-        setSort((current) => ({
-          id,
-          direction: current.id === id && current.direction === "asc" ? "desc" : "asc",
-        }))
-      }
+      onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
       renderCell={(rule, column, _index, row) => ({
         text:
           column.id === "kind"

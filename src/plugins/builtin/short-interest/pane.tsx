@@ -17,15 +17,16 @@ import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
+import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { loadShortInterest } from "./client";
 import {
   DEFAULT_SORT,
   buildColumns,
   buildRows,
-  nextSortPreference,
   sortRows,
   type ShortInterestColumn,
+  type ShortInterestColumnId,
   type ShortInterestRow,
   type SortPreference,
 } from "./model";
@@ -75,7 +76,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     : -1;
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => nextSortPreference(current, columnId));
+    setSortPreference((current) => nextHeaderSort(current, columnId as ShortInterestColumnId, { firstDirection: "desc" }));
   }, [setSortPreference]);
 
   useShortcut((event) => {

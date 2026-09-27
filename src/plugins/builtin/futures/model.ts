@@ -143,13 +143,3 @@ export function buildFuturesRows(
   }
   return rows;
 }
-
-export function nextFuturesSort(
-  current: FuturesSortPreference,
-  columnId: string,
-): FuturesSortPreference {
-  const typed = columnId as FuturesColumnId;
-  if (current.columnId !== typed) return { columnId: typed, direction: "asc" };
-  if (current.direction === "asc") return { columnId: typed, direction: "desc" };
-  return DEFAULT_FUTURES_SORT;
-}

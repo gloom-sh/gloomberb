@@ -19,7 +19,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor } from "../../../theme/colors";
-import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { usePluginTickerActions } from "../../runtime";
@@ -250,11 +250,9 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, [reload]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
-    setSortPreference((current) => (
-      current.columnId === columnId
-        ? { columnId: current.columnId, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { columnId: columnId as RelativeColumnId, direction: columnId === "symbol" ? "asc" : "desc" }
-    ));
+    setSortPreference((current) => nextHeaderSort(current, columnId as RelativeColumnId, {
+      firstDirection: columnId === "symbol" ? "asc" : "desc",
+    }));
   }, []);
 
   usePaneFooter("relative-valuation", () => ({

@@ -4,7 +4,7 @@ import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
-import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 
 const DAY_MS = 86_400_000;
 
@@ -203,10 +203,10 @@ const TEXT_COLUMNS = new Set<CryptoColumnId>(["rank", "code", "name"]);
 export function nextCryptoSort(current: CryptoSortPreference, columnId: string): CryptoSortPreference {
   const id = columnId as CryptoColumnId;
   if (id === "trend") return current;
-  const first: SortDirection = TEXT_COLUMNS.has(id) ? "asc" : "desc";
-  if (current.columnId !== id) return { columnId: id, direction: first };
-  if (current.direction === first) return { columnId: id, direction: first === "asc" ? "desc" : "asc" };
-  return DEFAULT_CRYPTO_SORT;
+  return nextHeaderSort(current, id, {
+    firstDirection: TEXT_COLUMNS.has(id) ? "asc" : "desc",
+    resetTo: DEFAULT_CRYPTO_SORT,
+  });
 }
 
 export function sortCryptoRows(rows: CryptoRow[], sort: CryptoSortPreference): CryptoRow[] {
