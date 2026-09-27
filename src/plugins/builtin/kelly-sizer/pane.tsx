@@ -21,7 +21,6 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency, formatCurrency } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -401,36 +400,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     }
   }, { enabled: focused });
 
-  // While a cell is active, Tab and Shift+Tab walk the cells and let go past
-  // either end, so the next Tab moves to the next pane; Esc leaves. Enter in a
-  // cell commits in place. Every cell is an input; the Side switch lives in the
-  // query bar, which the pane menu reaches.
-  useShortcut((event) => {
-    if (event.defaultPrevented || event.propagationStopped) return;
-    const activeIndex = gridFields.findIndex((field) => field.id === activeInputId);
-    if (activeIndex < 0) return;
-    const consume = () => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    if (event.name === "tab" && !event.ctrl && !event.meta && !event.super && !event.alt) {
-      consume();
-      const nextIndex = activeIndex + (event.shift ? -1 : 1);
-      if (nextIndex < 0 || nextIndex >= gridFields.length) activateInput(null);
-      else activateInput(gridFields[nextIndex]!.id, nextIndex);
-      return;
-    }
-    if (isPlainKey(event, "escape", "esc")) {
-      consume();
-      activateInput(null);
-    }
-  }, {
-    allowEditable: true,
-    enabled: focused && !commandBarOpen && activeInputId !== null && !!ticker,
-    phase: "before",
-    scope: "kelly-sizer:fields",
-  });
-
   usePaneFooter(KELLY_PANE_ID, () => ({
     info: bankroll <= 0 && ticker
       // Every size reads 0% until there is a bankroll; say so where status lives.
@@ -567,6 +536,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         activeId={activeInputId}
         width={width}
         focused={focused}
+        // Enter in a cell commits in place; the grid walks the cells with Tab.
+        // Every cell is an input: the Side switch lives in the query bar.
+        keyboard={!commandBarOpen}
         onActivate={(id) => {
           const index = gridFields.findIndex((field) => field.id === id);
           activateInput(id, index >= 0 ? index : undefined);

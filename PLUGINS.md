@@ -1160,9 +1160,10 @@ Choose the existing control that owns the interaction you need:
 | Summary figures under the query bar | `StatGrid` (`StatItem`: label, value, detail, tone), `statGridRows` |
 | Choices inside forms | `SegmentedControl`, `SelectButton`, `SelectField`, `Checkbox` |
 | Actions and inputs | `Button`, `IconButton`, `Icon`, `TextField`, `NumberField` |
+| A form's field labels and keyboard ring | `FieldLabel`, `TextField` (`active`, `labelWidth`), `useFieldRing` |
 | Clickable/expandable summaries | `ActionRow` |
 | Selectable lists | `ListView` |
-| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
@@ -1184,7 +1185,7 @@ A pane's summary figures (a VWAP, a spread, a percentile, a range) go in a `Stat
 
 Table header labels and `SectionHeading` titles are uppercased by the kit. Pass `onHeaderClick` only when the table sorts; without it the headers are not interactive.
 
-A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells, with the pane owning which field is active and the Tab order. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
+A pane that computes an answer from inputs (a calculator, a sizer) puts its mode switches in a `QueryBar` (inline filters) and its inputs in a `FieldGrid`: one aligned sheet of label, value and unit cells. The pane owns which field is active; while one is being edited the grid walks its cells with Tab and leaves on Esc. Icon-only actions use `IconButton` with a name from the shared icon set; never draw an SVG or glyph button yourself.
 
 Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box.
 

@@ -30,6 +30,11 @@ export interface GridField {
   onClear?: () => void;
   onPress?: () => void;
   tone?: "neutral" | "positive" | "negative";
+  /**
+   * False for a cell Tab never lands on, such as a text cell that applies
+   * when it is left: Tab leaves it like Esc.
+   */
+  tabStop?: boolean;
 }
 
 export interface FieldGridProps {
@@ -41,6 +46,8 @@ export interface FieldGridProps {
   onDeactivate?: () => void;
   width: number;
   focused: boolean;
+  /** False while something over the pane, such as the command bar, has the keyboard. */
+  keyboard?: boolean;
   /** Fixed column count; by default 3 at 78 cells, 2 at 42, else 1. */
   columns?: number;
   /** Cells per field, capped so a value sits near its label in a wide pane. */
@@ -89,8 +96,10 @@ function layoutRows(fields: GridField[], columns: number): GridField[][] {
  * The inputs of a calculator, sizer or form-like pane as one aligned sheet:
  * label, value and unit per cell. The terminal draws cells as text on the pane
  * background; the desktop draws a band of hairline-split cells that matches
- * the query bar above it. Tab order and which field is active stay with the
- * pane.
+ * the query bar above it. The pane keeps which field is active and how
+ * editing starts. While a cell is being edited, Tab and Shift+Tab walk the
+ * cells and let go past either end, so the next Tab moves to the next pane,
+ * and Esc leaves.
  */
 export function FieldGrid({
   fields,
@@ -99,10 +108,25 @@ export function FieldGrid({
   onDeactivate,
   width,
   focused,
+  keyboard = true,
   columns: columnsProp,
   maxFieldWidth = 26,
 }: FieldGridProps) {
   const { nativePaneChrome } = useUiCapabilities();
+  const editing = activeId !== null && fields.some((field) => field.id === activeId);
+  useShortcut((event) => {
+    if (event.defaultPrevented || event.propagationStopped) return;
+    const tab = event.name === "tab" && !event.ctrl && !event.meta && !event.alt && !event.super;
+    if (!tab && !isPlainKey(event, "escape", "esc")) return;
+    const stops = fields.filter((field) => field.tabStop !== false);
+    const index = tab ? stops.findIndex((field) => field.id === activeId) : -1;
+    const next = index < 0 ? undefined : stops[index + (event.shift ? -1 : 1)];
+    if (!next && !onDeactivate) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (next) onActivate(next.id);
+    else onDeactivate?.();
+  }, { allowEditable: true, phase: "before", scope: "field-grid", enabled: focused && keyboard && editing });
   const columns = Math.max(1, columnsProp ?? fieldGridColumns(width));
   const fieldWidth = Math.max(12, Math.min(maxFieldWidth, Math.floor((width - 2) / columns)));
   const rows = layoutRows(fields, columns);

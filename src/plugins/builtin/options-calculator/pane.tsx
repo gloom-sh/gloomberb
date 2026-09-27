@@ -228,42 +228,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const editSelectedField = useCallback(() => setActiveFieldId(selectedField?.id ?? null), [selectedField?.id]);
   const editSymbol = useCallback(() => { setSymbolText(draft.symbol); setActiveFieldId("symbol"); }, [draft.symbol]);
 
-  // Tab walks the fields only while one is being edited, and past either end
-  // it leaves them, so the next Tab moves to the next pane as everywhere else.
   // Enter or `e` starts editing, Enter in a cell commits and keeps the exact
-  // number in view, and Esc stops.
+  // number in view. While a cell is being edited the grid has the keyboard:
+  // Tab walks the number cells, and Tab or Esc leaves (and commits) any cell.
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
+    if (activeFieldId !== null || event.targetEditable) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
-    const plainTab = event.name === "tab"
-      && !event.ctrl && !event.meta && !event.super && !event.alt;
-    if (activeFieldId === "dividends" || activeFieldId === "symbol") {
-      // Enter reaches the text field itself, which submits and leaves.
-      if (plainTab || isPlainKey(event, "escape", "esc")) {
-        consume();
-        if (activeFieldId === "symbol") commitSymbol(symbolText); else setActiveFieldId(null);
-      }
-      return;
-    }
-    const ringIndex = activeFieldId ? fields.findIndex((field) => field.id === activeFieldId) : -1;
-    if (ringIndex >= 0) {
-      if (plainTab) {
-        consume();
-        const nextIndex = ringIndex + (event.shift ? -1 : 1);
-        if (nextIndex < 0 || nextIndex >= fields.length) {
-          setActiveFieldId(null);
-          return;
-        }
-        setSelectedIndex(nextIndex);
-        setActiveFieldId(fields[nextIndex]!.id);
-      } else if (isPlainKey(event, "escape", "esc")) {
-        // Leaving the cell commits what was typed.
-        consume();
-        setActiveFieldId(null);
-      }
-      return;
-    }
-    if (event.targetEditable) return;
     if (isPlainKey(event, "left", "right")) {
       consume();
       setSide(event.name === "left" ? "call" : "put");
@@ -315,10 +286,11 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   }), [implied.note, problem, american, surfaceSource, surfaceResource.loading, surface, activeFieldId, draft.symbol, draft.steps, effectiveSteps, liveInputs?.delayed, !!liveInputs, selectedField?.id, selectedField?.label, editSelectedField, editSymbol]);
 
   const gridFields: GridField[] = [
-    { id: "symbol", kind: "text", label: "Underlying", valueText: symbolText, placeholder: "ticker",
+    // The text cells are not Tab stops: Tab leaves them, applying what was typed.
+    { id: "symbol", kind: "text", label: "Underlying", valueText: symbolText, placeholder: "ticker", tabStop: false,
       onText: (value) => setSymbolText(value.toUpperCase()) },
     ...fields,
-    ...(american ? [{ id: "dividends", kind: "text" as const, label: "Dividends", wide: true, valueText: dividendText,
+    ...(american ? [{ id: "dividends", kind: "text" as const, label: "Dividends", wide: true, tabStop: false, valueText: dividendText,
       placeholder: "day:amount; e.g. 30:0.25;90:0.25", onText: setDividendText }] : []),
   ];
   // Each paired metric needs room for its label, value and complete unit.
@@ -345,6 +317,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
         activeId={activeFieldId}
         width={width}
         focused={focused}
+        keyboard={!commandBarOpen}
         onActivate={(id) => {
           const index = fields.findIndex((field) => field.id === id);
           if (index >= 0) setSelectedIndex(index);

@@ -311,8 +311,12 @@ header, with the detail's height.
   `SegmentedControl`, `MultiSelectDialogButton`, each with a `label`. A raw
   `Input` is not a field.
 - One `activeField` names the focused input; Tab and Shift+Tab (and `j`/`k`
-  outside a text input) move the ring; a click focuses. Capture input while
-  a text field is focused so global shortcuts do not eat typing.
+  outside a text input) move the ring; a click focuses. `useFieldRing` is
+  that ring, with Enter and Space actions and scroll into view. Pass the
+  field's `active` to `TextField` (and `labelWidth` for a label column beside
+  it), or use `FieldLabel`, so the terminal marks it; the desktop's focus ring
+  already does. Capture input while a text field is focused so global
+  shortcuts do not eat typing.
 - Submit lives with the form: `Save` (`variant="primary"`) and `Cancel`
   (`secondary`) on one row at the bottom of the section they save. Enter in
   any field submits, Esc cancels. Several forms in several tabs means one
@@ -324,8 +328,9 @@ header, with the detail's height.
 - Fixed metadata (email, plan, visibility) is body, not footer.
 - A reactive form whose result updates as the user types (Kelly sizer) has no
   Save; drafts persist with `usePluginPaneState`.
-- Destructive actions use `ConfirmDialog` from a `variant="danger"` button or
-  a footer hint, never a bare button that acts on first press.
+- Destructive actions ask with `confirmDialog` (a `ConfirmDialog`) from a
+  `variant="danger"` button or a footer hint, never a bare button that acts
+  on first press.
 - A form inside a stack detail follows the same rules; Back is the navigation
   Cancel and the footer goes empty while editing.
 

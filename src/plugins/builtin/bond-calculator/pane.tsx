@@ -73,16 +73,10 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
-    if (event.name === "tab") {
-      // Tab walks the fields once one is being edited and leaves them past
-      // either end; with no field active it moves to the next pane as usual.
-      if (tab !== "valuation" || !activeField) return;
-      consume();
-      setActiveField(FIELDS[FIELDS.indexOf(activeField) + (event.shift ? -1 : 1)] ?? null);
-    } else if (event.name === "escape" && activeField) { consume(); setActiveField(null); }
+    // The grid walks its fields with Tab and leaves them on Esc.
     // Shifted letters are global chords (Shift+R refreshes everything).
-    else if (event.targetEditable || event.shift) return;
-    else if (event.name === "e") { consume(); setTab("valuation"); setActiveField("settlement"); }
+    if (event.targetEditable || event.shift) return;
+    if (event.name === "e") { consume(); setTab("valuation"); setActiveField("settlement"); }
     else if (event.name === "r") { consume(); void load(); }
     else if ((event.name === "j" || event.name === "k") && tab === "valuation") {
       consume();
