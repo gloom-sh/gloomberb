@@ -100,8 +100,8 @@ export function getCloudApiBaseUrl(): string {
 export type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
 
 /**
- * PUTs `body` with `expectedRevision` as If-Match. On a 412 it reads back what
- * the server holds now (null if that read fails too) and throws it as a
+ * PUTs `body` with the expected revision as If-Match. On a 412 it reads back
+ * what the server holds now (null if that read fails too) and throws it as a
  * `conflict`, whose revision falls back to the one after the expected one.
  */
 export async function putWithRevision<T, Current extends { revision: number }>(
