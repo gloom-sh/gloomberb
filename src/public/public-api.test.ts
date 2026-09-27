@@ -17,7 +17,7 @@ test("a bundled external plugin uses the host's React and public hooks", async (
   const { join } = await import("node:path");
   const { createElement } = await import("react");
   const { renderToStaticMarkup } = await import("react-dom/server");
-  const { useMarketData } = await import("./react");
+  const { useAssetData } = await import("./react");
   const { bundleExternalPlugin } = await import("../plugins/bundle");
   const { installPluginHostModules } = await import("../plugins/host-modules");
   const dir = await mkdtemp(join(tmpdir(), "gloom-public-plugin-"));
@@ -25,16 +25,16 @@ test("a bundled external plugin uses the host's React and public hooks", async (
     await Bun.write(join(dir, "package.json"), JSON.stringify({ name: "smoke-plugin", main: "index.tsx" }));
     await Bun.write(join(dir, "index.tsx"), `
       import { createElement, useState } from "react";
-      import { useMarketData } from "gloomberb/react";
+      import { useAssetData } from "gloomberb/react";
       export default {
-        id: "smoke-plugin", name: "Smoke", version: "1.0.0", useMarketData,
+        id: "smoke-plugin", name: "Smoke", version: "1.0.0", useAssetData,
         component() { return createElement("div", null, useState("ready")[0]); },
       };
     `);
     await installPluginHostModules();
     const bundle = await bundleExternalPlugin(dir, join(dir, "out"));
     const plugin = (await import(bundle.outputPath)).default;
-    expect(plugin.useMarketData).toBe(useMarketData);
+    expect(plugin.useAssetData).toBe(useAssetData);
     expect(renderToStaticMarkup(createElement(plugin.component))).toBe("<div>ready</div>");
   } finally {
     await rm(dir, { recursive: true, force: true });

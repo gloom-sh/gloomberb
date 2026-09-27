@@ -12,7 +12,7 @@ import {
   portfolioPlugin,
 } from "../builtin/composite-plugins";
 import { composeBuiltinPlugin } from "../builtin/plugin-module";
-import { useMarketData, usePluginAppActions } from "../runtime";
+import { useAssetData, usePluginAppActions } from "../runtime";
 import { PluginRegistry } from "./index";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 
@@ -520,7 +520,7 @@ test("composed slots receive plugin context and keep extracted actions bound", a
   let notify: ReturnType<typeof usePluginAppActions>["notify"];
   const widget = () => {
     notify = usePluginAppActions().notify;
-    return useMarketData()!.id;
+    return useAssetData()!.id;
   };
   await registry.register(composeBuiltinPlugin({
     id: "slot-probe", name: "Slot probe", version: "1",

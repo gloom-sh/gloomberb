@@ -232,7 +232,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
       });
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
-      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+      pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,
       });
@@ -261,7 +261,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
         dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
       }
 
-      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+      pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: result.ticker.metadata.ticker,
         portfolioId: portfolio.id,
       });

@@ -22,7 +22,7 @@ function createHarness(initialTicker: TickerRecord) {
   const payloads: Array<{ symbol: string; portfolioId: string }> = [];
   const events = new EventBus();
   const pluginRegistry = { events } as PluginRegistry;
-  events.on("command-bar:portfolio-membership-persisted", (payload) => {
+  events.on("host:portfolio-ticker-saved", (payload) => {
     order.push("event");
     payloads.push(payload);
   });

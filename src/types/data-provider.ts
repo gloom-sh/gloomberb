@@ -201,6 +201,11 @@ export interface AssetDataProvider {
   getSecFilingContent?(filing: SecFilingItem): Promise<string | null>;
   /** Fetch article summary/description by URL (lazy-loaded on selection) */
   getArticleSummary(url: string): Promise<string | null>;
+  /**
+   * Price history for a range. This and the `*WithMetadata` methods are the
+   * canonical history API; the plain resolution and detailed variants below are
+   * compatibility projections of them.
+   */
   getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]>;
   /** Default history with source-declared cadence, when the provider can retain it. */
   getPriceHistoryWithMetadata?(
@@ -224,6 +229,7 @@ export interface AssetDataProvider {
     barSize: string,
     context?: MarketDataRequestContext,
   ): Promise<import("./price-history").PriceHistoryResult>;
+  /** @deprecated Implement `getPriceHistoryForResolutionWithMetadata`; the host still calls this when it is the only one. */
   getPriceHistoryForResolution?(
     ticker: string,
     exchange: string,
@@ -231,13 +237,18 @@ export interface AssetDataProvider {
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
   ): Promise<PricePoint[]>;
-  /** Fetch higher-resolution price data for a specific date window (e.g. when zoomed in). */
+  /**
+   * Fetch higher-resolution price data for a specific date window (e.g. when zoomed in).
+   * @deprecated Implement `getDetailedPriceHistoryWithMetadata`; the host still calls this when it is the only one.
+   */
   getDetailedPriceHistory?(ticker: string, exchange: string, startDate: Date, endDate: Date, barSize: string, context?: MarketDataRequestContext): Promise<PricePoint[]>;
+  /** Which chart resolutions the source serves, and how far back each one reaches. */
   getChartResolutionSupport?(
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
   ): Promise<ChartResolutionSupport[]> | ChartResolutionSupport[];
+  /** @deprecated Implement `getChartResolutionSupport`; the host still calls this when it is the only one. */
   getChartResolutionCapabilities?(
     ticker: string,
     exchange?: string,

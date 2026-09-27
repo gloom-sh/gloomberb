@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import type { CapabilityInvoker } from "../../capabilities";
 import { useOptionalPaneInstanceId } from "../../state/app/context";
 import {
   usePluginRenderContext,
@@ -60,13 +61,15 @@ export function usePluginAppActions() {
   };
 }
 
-export function useMarketData(): ReturnType<PluginRuntimeAccess["getMarketData"]> {
+/** The active asset-data client, or null before the app has one. */
+export function useAssetData(): ReturnType<PluginRuntimeAccess["getMarketData"]> {
   const { runtime } = usePluginRenderContext();
   return runtime.getMarketData();
 }
 
-export function useAssetData(): ReturnType<PluginRuntimeAccess["getMarketData"]> {
-  return useMarketData();
+/** @deprecated Use `useAssetData`, which returns the same client. */
+export function useMarketData(): ReturnType<PluginRuntimeAccess["getMarketData"]> {
+  return useAssetData();
 }
 
 export function useConnectionHealth(): ReturnType<PluginRuntimeAccess["getConnectionHealth"]> {
@@ -74,7 +77,8 @@ export function useConnectionHealth(): ReturnType<PluginRuntimeAccess["getConnec
   return runtime.getConnectionHealth();
 }
 
-export function useCapabilityInvoker(): PluginRuntimeAccess {
+/** Request/response access to capabilities registered by any plugin. */
+export function useCapabilityInvoker(): CapabilityInvoker {
   return usePluginRenderContext().runtime;
 }
 

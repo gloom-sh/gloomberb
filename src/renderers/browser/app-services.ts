@@ -25,7 +25,7 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
         priority: 0,
         provider: { fetchNews: (query) => cloudNews?.provider.fetchNews(query) ?? Promise.resolve([]) },
       }));
-      return pluginRegistry.events.on("command-bar:portfolio-membership-persisted", () => recordResearchActivity("ticker_saved"));
+      return pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
     },
   });
 }

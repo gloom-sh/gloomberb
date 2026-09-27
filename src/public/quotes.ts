@@ -1,7 +1,7 @@
 /**
  * Public live-quote surface for external plugins (`gloomberb/quotes`).
  *
- * `useMarketData()` from `gloomberb/react` hands a plugin the `DataProvider`
+ * `useAssetData()` from `gloomberb/react` hands a plugin the `DataProvider`
  * for one-off reads. This module is the streaming layer on top of it: a pane
  * that shows many symbols at once subscribes to them here and receives the
  * same live or polled updates the host's own screeners get, through the same

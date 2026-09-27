@@ -16,6 +16,11 @@ type KeypressListener = (event: {
   preventDefault: () => void;
 }) => void;
 
+/**
+ * Replays DOM keydowns as terminal keypresses for plugins that still read
+ * `useNativeRenderer().keyInput`. Deprecated with that field; nothing in the
+ * host listens to it.
+ */
 class WebKeyInput {
   private readonly listeners = new Map<string, Set<KeypressListener>>();
 

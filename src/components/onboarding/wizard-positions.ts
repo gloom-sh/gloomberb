@@ -243,7 +243,7 @@ export function useOnboardingPositions({
       if (created) {
         pluginRegistry.events.emit("ticker:added", { symbol: nextTicker.metadata.ticker, ticker: nextTicker });
       }
-      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+      pluginRegistry.events.emit("host:portfolio-ticker-saved", {
         symbol: nextTicker.metadata.ticker,
         portfolioId,
       });

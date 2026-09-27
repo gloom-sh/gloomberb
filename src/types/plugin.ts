@@ -52,15 +52,27 @@ import type { SyncContributor, SyncTransport } from "../sync/types";
 
 export type { TickerInstrumentKind } from "./instrument";
 
+/**
+ * Named render slots. The host renders only `status:widget`; the other names
+ * are never drawn and are kept so existing plugins still type-check.
+ */
 export interface GloomSlots {
+  /** @deprecated Never rendered. Use `ctx.registerTickerResearchTab`. */
   "ticker-research:tab": { ticker: TickerRecord; financials: TickerFinancials | null };
+  /** @deprecated Never rendered. Use `ctx.registerTickerResearchTab`. */
   "ticker-research:section": { ticker: TickerRecord; financials: TickerFinancials | null };
+  /** @deprecated Never rendered. Use `ctx.registerColumn`. */
   "list:column": { ticker: TickerRecord; financials: TickerFinancials | null };
+  /** @deprecated Never rendered. Use `ctx.registerCommandBarSearchProvider`. */
   "command:extra": { query: string };
+  /** @deprecated Never rendered. Use `ctx.registerCommand`. */
   "command:preset": Record<string, never>;
   "status:widget": Record<string, never>;
+  /** @deprecated Never rendered. Declare settings with `configSchema`. */
   "config:section": Record<string, never>;
+  /** @deprecated Never called. Subscribe with `ctx.on("ticker:refreshed")`. */
   "data:post-refresh": { ticker: string; financials: TickerFinancials };
+  /** @deprecated Never called. Contribute data with an `asset-data` capability. */
   "data:enricher": { ticker: TickerRecord };
 }
 

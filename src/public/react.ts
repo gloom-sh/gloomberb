@@ -29,7 +29,12 @@ export {
   usePrunePluginPaneState,
   useSetPluginConfigStates,
 } from "../plugins/runtime";
-export type { PluginRuntimeAccess } from "../plugins/runtime";
+import type { PluginRuntimeAccess as HostPluginRuntimeAccess } from "../plugins/runtime";
+/**
+ * @deprecated Import it from `gloomberb/test-support`, next to the runtime
+ * doubles that build one. Panes reach the runtime through the hooks above.
+ */
+export type PluginRuntimeAccess = HostPluginRuntimeAccess;
 
 export { useInlineTickerOpener, useInlineTickers } from "../state/hooks/inline-tickers";
 

@@ -45,7 +45,7 @@ import type {
 } from "../../types/plugin";
 import type { TickerRecord } from "../../types/ticker";
 import { debugLog } from "../../utils/debug-log";
-import { EventBus } from "../event-bus";
+import { EventBus, type HostEvents } from "../event-bus";
 import { isReservedBuiltinPluginId } from "../ownership";
 import { createPluginPersistence } from "../plugin-persistence";
 import { createPluginTeamState } from "../team-state";
@@ -583,7 +583,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
         items.eventDisposers.push(dispose);
         return dispose;
       },
-      emit: (event, payload) => this.events.emit(event, payload),
+      // Every plugin event is also a host event; TypeScript cannot see that through the generic key.
+      emit: (event, payload) => this.events.emit(event, payload as HostEvents[typeof event]),
       notify: (notification) => this.notifyFn(notification),
     };
   }

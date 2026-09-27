@@ -382,6 +382,8 @@ Plugins should treat Gloomberb's UI APIs as the renderer contract. Official plug
 
 React plugin panes and Ticker Research tabs are wrapped in a plugin render context. Use plugin runtime hooks for app services from render code.
 
+To adjust layout for the renderer, check `useUiCapabilities().nativePaneChrome` from `gloomberb/ui`. It is true where panes are drawn with DOM elements (the desktop app and the web) and false in the terminal. `useUiHost().kind` stays available for code that has to name the host, such as shortcut labels, but prefer the capability for layout.
+
 The `setup()` function receives a context object with these capabilities:
 
 ### Registration methods
@@ -674,9 +676,16 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
-### Plugin persistence
+### Plugin persistence and resume state
 
-Use `ctx.persistence` for local data and cached responses. State stores versioned plugin-local data; resources add cache metadata and TTLs:
+A plugin has two local stores. Both persist across restarts; they differ in who reads them:
+
+- `ctx.persistence` holds versioned state and cached resources with TTLs. Nothing is notified when it changes, so use it for data that code reads when it runs: `setup()`, commands, capability handlers. `createPluginCache` from `gloomberb/utils` is built on it.
+- `ctx.resume` holds state that panes render. `ctx.resume.getState`/`setState` is the plugin-global store behind `usePluginState`, and a write re-renders every pane reading that key. `ctx.resume.getPaneState`/`setPaneState` is the per-pane store behind `usePluginPaneState`; it belongs to the active layout and can travel with a shared layout. Use the `ctx.resume` methods outside render, such as in a command handler, and the hooks inside a pane.
+
+The stores have separate keys: `ctx.persistence.setState("draft")` is not visible to `usePluginState("draft")`.
+
+`ctx.persistence` state stores versioned plugin-local data; resources add cache metadata and TTLs:
 
 ```typescript
 ctx.persistence.setState("draft", { text: "hello" }, { schemaVersion: 1 });
@@ -698,9 +707,7 @@ const summary = ctx.persistence.getResource<string>("summary", "AAPL", {
 ctx.persistence.deleteResource("summary", "AAPL", { sourceKey: "provider" });
 ```
 
-### Resume state
-
-Plugin-global resume state persists locally across restarts and is shared by every pane instance. Use it for plugin-wide user data, shared defaults, or transient handoffs that you explicitly delete:
+Plugin-global resume state is shared by every pane instance. Use it for plugin-wide user data, shared defaults, or transient handoffs that you explicitly delete:
 
 ```typescript
 ctx.resume.setState("last-provider", "example");
@@ -1169,7 +1176,7 @@ const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
 
 ### Live quotes
 
-`gloomberb/quotes` is the streaming layer over `useMarketData()`. A pane showing many symbols subscribes to them and receives the same live or polled updates the host's screeners get, through one shared feed per symbol:
+`gloomberb/quotes` is the streaming layer over `useAssetData()`. A pane showing many symbols subscribes to them and receives the same live or polled updates the host's screeners get, through one shared feed per symbol:
 
 ```tsx
 import {
@@ -1246,7 +1253,6 @@ These hooks are available inside pane and tab components rendered by a plugin. T
 ```typescript
 import {
   useAssetData,
-  useMarketData,
   usePluginPaneState,
   usePrunePluginPaneState,
   usePluginState,
@@ -1255,7 +1261,6 @@ import {
   usePluginAppActions,
 } from "gloomberb/react";
 
-const marketData = useMarketData();
 const assetData = useAssetData();
 const { navigateTicker, pinTicker } = usePluginTickerActions();
 const { openCommandBar, showPane, hidePane, notify } = usePluginAppActions();
@@ -1545,7 +1550,26 @@ slots: {
 },
 ```
 
-The host renders no other `GloomSlots` name. Use the explicit registration methods for ticker tabs, columns, commands, events, and capabilities.
+The host renders no other `GloomSlots` name; the rest are deprecated (see [Deprecated APIs](#deprecated-apis)). Use the explicit registration methods for ticker tabs, columns, commands, events, and capabilities.
+
+## Deprecated APIs
+
+These names still work and are marked `@deprecated` in the types. None is removed earlier than the release after the official plugins have migrated off it.
+
+| Deprecated | Use instead |
+|------------|-------------|
+| `useMarketData()` from `gloomberb/react` | `useAssetData()`, which returns the same client |
+| `PluginRuntimeAccess` type from `gloomberb/react` | The same type from `gloomberb/test-support` |
+| `getPluginResourceStore()` and `setPluginResourceStore()` from `gloomberb/broker` | `createPluginCache` from `gloomberb/utils` |
+| `GloomSlots` names other than `status:widget` | The registration methods: `ctx.registerTickerResearchTab`, `ctx.registerColumn`, `ctx.registerCommand`, `ctx.registerCommandBarSearchProvider`, `configSchema`, `ctx.on("ticker:refreshed")`, or an `asset-data` capability |
+| `DataProvider.getPriceHistoryForResolution` | `getPriceHistoryForResolutionWithMetadata` |
+| `DataProvider.getDetailedPriceHistory` | `getDetailedPriceHistoryWithMetadata` |
+| `DataProvider.getChartResolutionCapabilities` | `getChartResolutionSupport` |
+| `PageStackView` props `backLabel` and `backHint` | Leave them out; the back control reads "Back" |
+| `useNativeRenderer().keyInput` on the desktop and the web | `useShortcut` from `gloomberb/react` |
+| An `AppContext` value of `{ state, dispatch }` in tests | `createStaticAppStore(state, dispatch)` from `gloomberb/test-support` |
+
+The `DataProvider` history methods are deprecated on data providers only. `BrokerAdapter` has no `*WithMetadata` variants, so a broker keeps implementing `getPriceHistoryForResolution` and `getDetailedPriceHistory`.
 
 ## Tips
 
@@ -1553,6 +1577,6 @@ The host renders no other `GloomSlots` name. Use the explicit registration metho
 - Use `order` on Ticker Research tabs to control position (core tabs use 10, 20, 30)
 - Toggleable plugins can be enabled/disabled by users from settings (`Ctrl+,`)
 - The terminal renderer is backed by [OpenTUI](https://opentui.com/) packages such as `@opentui/core` and `@opentui/react`; plugin UI should stay on `gloomberb/ui` and `gloomberb/components`
-- Use `ctx.persistence` for cached resources, `ctx.resume` for local resume state, `ctx.configState` for configuration, and `ctx.teamState` for data shared with a team
+- Use `ctx.persistence` for cached resources, `ctx.resume` for state panes render, `ctx.configState` for configuration, and `ctx.teamState` for data shared with a team
 - Use `ctx.on()` to react to app events without polling
 - Use `ctx.notify()` for non-intrusive user feedback and desktop notifications

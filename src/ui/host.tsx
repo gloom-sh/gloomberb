@@ -197,6 +197,11 @@ export interface NativeRendererHost {
   isDestroyed?: boolean;
   currentFocusedRenderable?: unknown;
   currentFocusedEditor?: unknown;
+  /**
+   * @deprecated Plugins handle keys with `useShortcut` from `gloomberb/react`.
+   * The desktop and web renderers only emulate this terminal key stream, and
+   * that emulation will be removed; the field stays for the terminal host.
+   */
   keyInput?: {
     on(event: string, handler: (...args: any[]) => void): void;
     off(event: string, handler: (...args: any[]) => void): void;

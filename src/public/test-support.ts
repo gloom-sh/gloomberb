@@ -20,6 +20,7 @@ export {
   createTestPluginRuntime,
 } from "../test-support/plugin-runtime";
 export { PluginRenderProvider } from "../plugins/runtime";
+export type { PluginRuntimeAccess } from "../plugins/runtime";
 
 export {
   createOpenTuiTestRoot,
@@ -31,6 +32,9 @@ export {
 export type { TestKeyEvent } from "../renderers/opentui/test-utils";
 
 export { AppContext, PaneInstanceProvider } from "../state/app/context";
+// The value to hand `AppContext` when a test renders hooks without the app's
+// provider: one fixed state and the suite's dispatch.
+export { createStaticAppStore } from "../test-support/app-store";
 export { appReducer } from "../state/app/context";
 export { createInitialState } from "../core/state/app/state";
 export type { PaneRuntimeState } from "../core/state/app/state";
@@ -66,4 +70,7 @@ export { PaneFooterBar, PaneFooterProvider } from "../components/layout/pane/foo
 // Broker plugins test against the real account cache and persistence rather
 // than a hand-rolled double that drifts from how the app actually stores rows.
 export { AppPersistence } from "../data/app-persistence";
-export * from "../brokers/account-cache";
+export {
+  clearPersistedBrokerAccounts, getBrokerAccountCacheSourceKey, loadPersistedBrokerAccountMap,
+  loadPersistedBrokerAccounts, persistBrokerAccounts,
+} from "../brokers/account-cache";
