@@ -1221,7 +1221,7 @@ const rows = useLiveTickerFinancialsMap(tickers, { visible: false });
 
 `usePaneTickerIdentity()` returns the pane's symbol, ticker and contract without its financials; `usePaneTicker()` also re-renders on every quote tick of the symbol, so a pane that only needs the symbol (news, filings, holders) uses the identity hook.
 
-`createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues` and `cycleSortPreference` from `gloomberb/utils` so mixed columns sort like the host's.
+`createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues`, `nextHeaderSort` (header clicks) and `cycleSortPreference` (the keyboard equivalent) from `gloomberb/utils` so mixed columns sort like the host's.
 
 ### Live quotes
 
