@@ -4,6 +4,9 @@ import type { CompositeChartXMarker } from "./types";
 export interface StaticChartXAxisLabel {
   label: string;
   ratio: number;
+  /** Cells the label covers in the fixed-width axis text, end inclusive. */
+  start?: number;
+  end?: number;
 }
 
 function clampRatio(value: number): number {
@@ -22,6 +25,66 @@ function alignAxisLabel(label: string, width: number, index: number, count: numb
   if (index === count - 1) return clipped.padStart(width);
   const left = Math.floor(padding / 2);
   return `${" ".repeat(left)}${clipped}${" ".repeat(padding - left)}`;
+}
+
+interface LabelPlacement {
+  start: number;
+  end: number;
+}
+
+/**
+ * Terminal ticks sit on whole cells, so neighbours that land within a cell of
+ * each other would print as one word ("930D"). Keep the first tick, then each
+ * one clear of the last kept by a blank cell, holding room for the final tick.
+ */
+function dropCollidingLabels<T extends LabelPlacement>(placements: readonly T[]): T[] {
+  const sorted = [...placements].sort((left, right) => left.start - right.start);
+  const final = sorted[sorted.length - 1];
+  const kept: T[] = [];
+  let lastEnd = Number.NEGATIVE_INFINITY;
+  for (const placement of sorted) {
+    if (placement.start <= lastEnd + 1) continue;
+    if (placement !== final && kept.length > 0 && final && final.start <= placement.end + 1) continue;
+    kept.push(placement);
+    lastEnd = placement.end;
+  }
+  return kept;
+}
+
+/**
+ * The cursor and anchor badges print over the flow text, so every label they
+ * touch, with a blank cell either side, is blanked whole rather than leaving
+ * its ends around the badge. A single fixed-width axis text is split by its
+ * tick spans; evenly spread labels each count as one.
+ */
+function blankLabelsUnderBadges(
+  segments: readonly string[],
+  ticks: readonly StaticChartXAxisLabel[],
+  clearOfBadges: (start: number, end: number) => boolean,
+): string[] {
+  const cells = segments.join("").split("");
+  const spans: LabelPlacement[] = [];
+  const tickSpans = ticks.filter((tick) => Number.isFinite(tick.start) && Number.isFinite(tick.end));
+  if (segments.length === 1 && tickSpans.length > 0) {
+    for (const tick of tickSpans) spans.push({ start: tick.start!, end: tick.end! });
+  } else {
+    let offset = 0;
+    for (const segment of segments) {
+      const first = segment.search(/\S/);
+      if (first >= 0) spans.push({ start: offset + first, end: offset + segment.trimEnd().length - 1 });
+      offset += segment.length;
+    }
+  }
+  for (const { start, end } of spans) {
+    if (clearOfBadges(start, end + 1)) continue;
+    for (let cell = Math.max(0, start); cell <= end && cell < cells.length; cell += 1) cells[cell] = " ";
+  }
+  let offset = 0;
+  return segments.map((segment) => {
+    const text = cells.slice(offset, offset + segment.length).join("");
+    offset += segment.length;
+    return text;
+  });
 }
 
 export interface StaticXAxisMarker {
@@ -63,7 +126,7 @@ export function StaticXAxisLabels({
   if (width <= 0) return null;
   const segmentCount = Math.max(visibleLabels.length, 1);
   const baseWidth = Math.floor(width / segmentCount);
-  let remainder = width - baseWidth * segmentCount;
+  const remainder = width - baseWidth * segmentCount;
   const clippedCursorLabel = cursorLabel ? cursorLabel.slice(0, width) : null;
   const cursorLabelWidth = clippedCursorLabel?.length ?? 0;
   const usePixelOverlay = fractionalViewport
@@ -111,7 +174,7 @@ export function StaticXAxisLabels({
   const clearOfBadges = (start: number, end: number) => badgeSpans.every(([badgeStart, badgeEnd]) => (
     end + 1 <= badgeStart || start >= badgeEnd + 1
   ));
-  const positionedPlacements = visiblePositionedLabels.flatMap((entry, index) => {
+  const placedPositionedLabels = visiblePositionedLabels.flatMap((entry, index) => {
     const ratio = clampRatio(entry.ratio);
     const labelWidth = entry.label.length;
     const halfLabel = labelWidth / 2;
@@ -133,8 +196,17 @@ export function StaticXAxisLabels({
       edgeStyle = { left: `${ratio * 100}%`, transform: "translateX(-50%)" };
     }
     if (!clearOfBadges(start, start + labelWidth)) return [];
-    return [{ entry, index, edgeStyle }];
+    return [{ entry, index, edgeStyle, start, end: start + labelWidth - 1 }];
   });
+  const positionedPlacements = isDesktop
+    ? placedPositionedLabels
+    : dropCollidingLabels(placedPositionedLabels);
+  const segmentWidths = visibleLabels.map((_, index) => baseWidth + (index < remainder ? 1 : 0));
+  const flowText = blankLabelsUnderBadges(
+    visibleLabels.map((label, index) => alignAxisLabel(label, segmentWidths[index]!, index, visibleLabels.length)),
+    visibleLabels.length === 1 ? visiblePositionedLabels : [],
+    clearOfBadges,
+  );
 
   return (
     <Box
@@ -171,15 +243,11 @@ export function StaticXAxisLabels({
         </Box>
       ) : (
         <Box width={width} height={1} flexDirection="row">
-          {visibleLabels.map((label, index) => {
-            const cellWidth = baseWidth + (remainder > 0 ? 1 : 0);
-            remainder -= remainder > 0 ? 1 : 0;
-            return (
-              <Box key={`${label}:${index}`} width={cellWidth} overflow="hidden">
-                <Text fg={color}>{alignAxisLabel(label, cellWidth, index, visibleLabels.length)}</Text>
-              </Box>
-            );
-          })}
+          {visibleLabels.map((label, index) => (
+            <Box key={`${label}:${index}`} width={segmentWidths[index]} overflow="hidden">
+              <Text fg={color}>{flowText[index]}</Text>
+            </Box>
+          ))}
         </Box>
       )}
       {extraMarkers?.map((marker) => {

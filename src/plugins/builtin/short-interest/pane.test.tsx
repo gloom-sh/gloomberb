@@ -4,6 +4,7 @@ import { apiClient } from "../../../api-client";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { testRender, settleFrame, emitKeypress, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { ShortInterestView } from "./pane";
@@ -54,4 +55,35 @@ test("reported percentages fit at normal width and dated rows remain usable thro
   expect(yahoo).toHaveBeenCalledTimes(2);
   await emitKeypress(setup!, { name: "r", ctrl: true }); await settleFrame(setup!, 6);
   expect(yahoo).toHaveBeenCalledTimes(2);
+});
+
+test("the table owns every row below the chart, and short panes drop the chart for the table", async () => {
+  const points = Array.from({ length: 18 }, (_, index) => ({ settlementDate: `2026-${String(1 + Math.floor(index / 2)).padStart(2, "0")}-${index % 2 ? "28" : "14"}`,
+    sharesShort: 10_000_000 + index * 1_000_000, previousSharesShort: null, averageDailyVolume: 5_000_000,
+    daysToCover: 2 + index / 10, changePercent: null, revised: false }));
+  const cloud = spyOn(apiClient, "getCloudShortInterest").mockResolvedValue({ status: "success", data: { symbol: "TEST", issueName: null, points } });
+  restore = () => cloud.mockRestore();
+  const config = createTestPaneConfig("/tmp/short-interest-test-unused", { instanceId: "si", paneId: "short-interest" });
+  const state = createInitialState(config); state.focusedPaneId = "si";
+  state.paneState.si = { cursorSymbol: "TEST" }; state.tickers.set("TEST", createTestTicker("TEST", "Controlled issuer", { assetCategory: "STK" }));
+  let resize: (value: number) => void = () => {};
+  function Harness() {
+    const [height, setHeight] = useState(23); resize = setHeight;
+    return <TestPaneProvider state={state} paneId="si" pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+      <ShortInterestView focused width={88} height={height} />
+    </TestPaneProvider>;
+  }
+  await act(async () => { setup = await testRender(<Harness />, { width: 88, height: 23 }); });
+  await settleFrame(setup!, 10);
+  expect(setup!.captureCharFrame()).toContain("Jan 14 2026");
+  // Blank row, chart, blank row, then a table that ends on the pane's last row:
+  // the cursor on the 14th settlement scrolls it into view.
+  for (let i = 0; i < 13; i++) await emitKeypress(setup!, { name: "down" });
+  await settleFrame(setup!, 6);
+  expect(setup!.captureCharFrame()).toContain("2026-03-14");
+  await act(async () => { resize(15); setup!.resize(88, 15); });
+  await settleFrame(setup!, 6);
+  const lines = setup!.captureCharFrame().split("\n");
+  expect(lines[0]).toContain("DATE");
+  expect(lines.join("\n")).not.toContain("Jan 14 2026");
 });

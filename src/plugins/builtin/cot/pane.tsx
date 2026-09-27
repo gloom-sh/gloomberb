@@ -49,7 +49,10 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const [storedClass, setClass] = usePluginPaneState<CotClass>("class", COT_CLASSES[family][0]!.value);
   const traderClass = cotClass(family, storedClass);
   const [selected, setSelected] = usePluginPaneState<string | null>("selected", initialCode);
-  const [open, setOpen] = usePluginPaneState<string | null>("open", initialCode);
+  // A closed detail is stored as "": pane state reads null as unset, so Back
+  // would fall through to the deep-linked code and reopen it.
+  const [storedOpen, setOpen] = usePluginPaneState<string>("open", initialCode ?? "");
+  const open = storedOpen || null;
   const [storedScope, setScope] = usePluginPaneState<CotScope>("scope", "major");
   const scope = cotScope(storedScope);
   const [query, setQuery] = useState("");
@@ -117,7 +120,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
         { id: "class", label: "Class", value: traderClass, options: COT_CLASSES[family], onChange: setClass, controlRef: control },
         { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },
       ]} />}
-    emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen(null)}
+    emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen("")}
     detailTitle={cotDetailTitle(data?.rows.find((row) => row.contractCode === open)?.marketName, open)}
     detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 2)} focused={focused}
       code={open} family={family} traderClass={traderClass} onClassChange={setClass} /> : null} />;

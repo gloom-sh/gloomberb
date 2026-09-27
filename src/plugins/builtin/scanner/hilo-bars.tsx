@@ -1,24 +1,34 @@
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import type { ScannerHiloPayload } from "../../../api-client";
-import { buildHiloBarRows, terminalBarCells, type HiloBarRow } from "./hilo-model";
-
-const LABEL_WIDTH = 8;
-const MIN_HALF_WIDTH = 4;
+import {
+  buildHiloBarRows,
+  hiloBarLayout,
+  hiloWindowLabel,
+  HILO_LABEL_WIDTH,
+  terminalBarCells,
+  type HiloBarRow,
+} from "./hilo-model";
 
 export interface HiloBarsProps {
   windows: ScannerHiloPayload["windows"] | null | undefined;
   width: number;
 }
 
-function halfWidthFor(width: number): number {
-  return Math.max(MIN_HALF_WIDTH, Math.floor((width - LABEL_WIDTH - 2) / 2));
-}
-
 function RowLabel({ row }: { row: HiloBarRow }) {
   return (
-    <Box width={LABEL_WIDTH} flexShrink={0} justifyContent="center" alignItems="center">
-      <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{row.label}</Text>
+    <Box width={HILO_LABEL_WIDTH} flexShrink={0}>
+      <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{hiloWindowLabel(row.label)}</Text>
+    </Box>
+  );
+}
+
+/** Names the side at an end of the top row; the other rows keep the cells so every bar shares one scale. */
+function SideName({ name, width, align }: { name: string | null; width: number; align: "left" | "right" }) {
+  if (width <= 0) return null;
+  return (
+    <Box width={width} flexShrink={0} flexDirection="row" justifyContent={align === "left" ? "flex-start" : "flex-end"}>
+      {name ? <Text fg={colors.textMuted}>{name}</Text> : null}
     </Box>
   );
 }
@@ -29,18 +39,19 @@ function countWidthFor(rows: readonly HiloBarRow[]): number {
   return Math.max(...rows.flatMap((row) => [String(row.lows).length, String(row.highs).length]), 1) + 1;
 }
 
-function TerminalHiloBars({ rows, halfWidth, width }: { rows: HiloBarRow[]; halfWidth: number; width: number }) {
+function TerminalHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number }) {
   const countWidth = countWidthFor(rows);
-  const barWidth = Math.max(0, halfWidth - countWidth);
+  const { halfWidth, barWidth, sideNameWidth } = hiloBarLayout(width, countWidth);
   return (
     <Box flexDirection="column" width={width}>
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         const low = terminalBarCells(row.lowRatio, barWidth);
         const high = terminalBarCells(row.highRatio, barWidth);
         const lowBar = `${low.half ? "▐" : ""}${"█".repeat(low.full)}`;
         const highBar = `${"█".repeat(high.full)}${high.half ? "▌" : ""}`;
         return (
           <Box key={row.key} flexDirection="row" height={1} paddingX={1}>
+            <SideName name={index === 0 ? "LOWS" : null} width={sideNameWidth} align="left" />
             <Box width={halfWidth} flexShrink={0} flexDirection="row" justifyContent="flex-end">
               <Text fg={colors.negative}>{lowBar}</Text>
               <Text fg={colors.textDim}>{String(row.lows).padStart(countWidth)}</Text>
@@ -50,6 +61,7 @@ function TerminalHiloBars({ rows, halfWidth, width }: { rows: HiloBarRow[]; half
               <Text fg={colors.textDim}>{String(row.highs).padEnd(countWidth)}</Text>
               <Text fg={colors.positive}>{highBar}</Text>
             </Box>
+            <SideName name={index === 0 ? "HIGHS" : null} width={sideNameWidth} align="right" />
           </Box>
         );
       })}
@@ -59,10 +71,12 @@ function TerminalHiloBars({ rows, halfWidth, width }: { rows: HiloBarRow[]; half
 
 /** Desktop bars are real flex-sized divs, so length is fractional instead of cell-quantized. */
 function DesktopHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number }) {
+  const { sideNameWidth } = hiloBarLayout(width, countWidthFor(rows));
   return (
     <Box flexDirection="column" width={width}>
-      {rows.map((row) => (
+      {rows.map((row, index) => (
         <Box key={row.key} flexDirection="row" height={1} paddingX={1} alignItems="center">
+          <SideName name={index === 0 ? "LOWS" : null} width={sideNameWidth} align="left" />
           <Box flexGrow={1} flexDirection="row" justifyContent="flex-end" overflow="hidden" alignItems="center">
             <Box
               backgroundColor={colors.negative}
@@ -88,6 +102,7 @@ function DesktopHiloBars({ rows, width }: { rows: HiloBarRow[]; width: number })
               }}
             />
           </Box>
+          <SideName name={index === 0 ? "HIGHS" : null} width={sideNameWidth} align="right" />
         </Box>
       ))}
     </Box>
@@ -102,7 +117,7 @@ export function HiloBars({ windows, width }: HiloBarsProps) {
     <Box flexDirection="column" width={width} flexShrink={0}>
       {isDesktopWeb
         ? <DesktopHiloBars rows={rows} width={width} />
-        : <TerminalHiloBars rows={rows} halfWidth={halfWidthFor(width)} width={width} />}
+        : <TerminalHiloBars rows={rows} width={width} />}
     </Box>
   );
 }

@@ -146,11 +146,13 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     );
   }
 
-  const showChart = chartPoints.length >= 2;
   // The desktop runs the chart straight under the title bar and lets the table
-  // fill to the footer; the terminal keeps a blank row around the chart.
-  const chartHeight = showChart ? Math.max(1, Math.floor((height - (nativePaneChrome ? 0 : 1)) * 0.35)) : 0;
-  const tableHeight = Math.max(1, height - chartHeight - 1);
+  // fill to the footer; the terminal keeps a blank row above and below the
+  // chart. Under 16 rows the table keeps the whole body, as in Daily volume.
+  const spacerRows = nativePaneChrome ? 0 : 2;
+  const showChart = chartPoints.length >= 2 && height >= 16;
+  const chartHeight = showChart ? Math.max(1, Math.floor((height - spacerRows) * 0.35)) : 0;
+  const tableHeight = Math.max(1, height - (showChart ? chartHeight + spacerRows : 0));
   const chartWidth = Math.max(24, width - 2);
   const palette = {
     ...resolveChartPalette(colors, "neutral"),

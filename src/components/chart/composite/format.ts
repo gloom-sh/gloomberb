@@ -337,14 +337,44 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
 
 export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
 
+type LabeledTick = { value: number; label: string };
+
+function repeatsLabel(ticks: LabeledTick[]): boolean {
+  return ticks.some((tick, index) => index > 0 && tick.label === ticks[index - 1]!.label);
+}
+
+/** A formatter coarser than the tick step prints one label down several rows
+ * (2k 2k 1.9k). The axis then climbs the 1-2-5 ladder until its labels
+ * differ, and failing that keeps its top and bottom, or the top alone. */
+function distinctAxisTicks(domain: CompositeAxisDomain, format: CompositeAxisValueFormatter): LabeledTick[] {
+  const label = (values: number[]) => values.map((value) => ({ value, label: format(value, domain) }));
+  const ticks = label(axisTickValues(domain));
+  if (ticks.length < 2 || !repeatsLabel(ticks)) return ticks;
+  if (domain.scale !== "log") {
+    const gap = Math.abs(ticks[0]!.value - ticks[1]!.value);
+    let step = niceCeilStep(gap);
+    if (step <= gap * (1 + 1e-9)) step = adjacentNiceStep(step, 1);
+    for (let attempt = 0; attempt < 12; attempt += 1, step = adjacentNiceStep(step, 1)) {
+      const values = stepMultiples(domain.min, domain.max, step);
+      if (values.length < 2) break;
+      if (!ticksFitRows(domain, values)) continue;
+      const coarser = label(values);
+      if (!repeatsLabel(coarser)) return coarser;
+    }
+  }
+  const top = ticks[0]!;
+  const bottom = ticks.at(-1)!;
+  return top.label !== bottom.label ? [top, bottom] : [top];
+}
+
 export function compositeAxisTicks(
   domain: CompositeAxisDomain,
   format: CompositeAxisValueFormatter = formatCompositeAxisValue,
 ): Array<{ ratio: number; value: number; label: string }> {
-  return axisTickValues(domain).map((value) => ({
+  return distinctAxisTicks(domain, format).map(({ value, label }) => ({
     ratio: axisTickRatio(domain, value),
     value,
-    label: format(value, domain),
+    label,
   }));
 }
 

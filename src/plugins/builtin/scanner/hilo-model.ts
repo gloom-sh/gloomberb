@@ -46,6 +46,39 @@ export function buildHiloBarRows(windows: ScannerHiloPayload["windows"] | null |
   }));
 }
 
+/** Room for "30 sec" with two cells either side, so a count never runs into the window label. */
+export const HILO_LABEL_WIDTH = 10;
+/** "HIGHS" plus a cell of gap from the bar. */
+export const HILO_SIDE_NAME_WIDTH = 6;
+/** The side names give way before they would squeeze a bar below this many cells. */
+const MIN_NAMED_BAR_WIDTH = 10;
+const MIN_HALF_WIDTH = 4;
+
+/** The window label centred by padding, so both renderers leave the same gap to the counts. */
+export function hiloWindowLabel(label: string): string {
+  const lead = Math.max(0, Math.floor((HILO_LABEL_WIDTH - label.length) / 2));
+  return label.padStart(label.length + lead).padEnd(HILO_LABEL_WIDTH);
+}
+
+export interface HiloBarLayout {
+  /** Cells for one side's count and bar. */
+  halfWidth: number;
+  barWidth: number;
+  /** Cells for "LOWS" and "HIGHS" at the ends of the top row; 0 when the pane is too narrow. */
+  sideNameWidth: number;
+}
+
+/**
+ * Splits a bars row of `width` cells (one cell of padding each side) around the
+ * window label. `countWidth` is the widest count plus its gap to the bar.
+ */
+export function hiloBarLayout(width: number, countWidth: number): HiloBarLayout {
+  const available = Math.max(MIN_HALF_WIDTH, Math.floor((width - 2 - HILO_LABEL_WIDTH) / 2));
+  const sideNameWidth = available - HILO_SIDE_NAME_WIDTH - countWidth >= MIN_NAMED_BAR_WIDTH ? HILO_SIDE_NAME_WIDTH : 0;
+  const halfWidth = available - sideNameWidth;
+  return { halfWidth, barWidth: Math.max(0, halfWidth - countWidth), sideNameWidth };
+}
+
 export interface TerminalBarCells {
   full: number;
   /** Trailing half cell, so small-but-nonzero counts stay visible in cell units. */

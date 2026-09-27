@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
 import { isAccessDenied } from "../../../api-client/errors";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
@@ -63,9 +64,13 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   ] : [];
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
   const tabRows = tabsInHeader ? 0 : 1;
-  const bodyHeight = Math.max(9, height - tabRows - statGridRows(statItems, width));
-  const tableHeight = tab === "curve" ? Math.max(3, Math.min(rows.length + 2, Math.floor(bodyHeight * 0.4))) : bodyHeight;
-  const curveHeight = tab === "curve" ? Math.max(6, bodyHeight - tableHeight) : 0;
+  // The contract table needs its header, rows and any scrollbar; the curve
+  // takes the rest, and when that is too short to draw, the table takes it all.
+  const bodyHeight = Math.max(1, height - tabRows - statGridRows(statItems, width));
+  const contractRows = rows.length + 1 + (hasMeaningfulTableHorizontalOverflow(getTableWidth(COLUMNS), width) ? 1 : 0);
+  const curveRoom = tab === "curve" ? bodyHeight - Math.max(3, Math.min(contractRows, Math.floor(bodyHeight * 0.4))) : 0;
+  const curveHeight = curveRoom >= 8 ? curveRoom : 0;
+  const tableHeight = bodyHeight - curveHeight;
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise. A
   // settlement curve changes once a day.
@@ -100,7 +105,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       empty={!!data && !data.contracts.length} subject="futures curve">
       {data ? <>
         <StatGrid items={statItems} width={width} />
-        {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
+        {curveHeight ? <CurveSurface series={curves} width={width} height={curveHeight} display="chart"
           formatValue={(value) => curvePrice(value, root)} formatAxisValue={(value, domain) => curveAxisPrice(value, domain, root)}
           formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(0, 10)}
           selectedPointId={selectedRow?.symbol ?? null} onSelectedPointChange={setSelected} /> : null}

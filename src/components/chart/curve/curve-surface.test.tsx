@@ -52,3 +52,14 @@ test("chart keyboard cursor uses stable point ids and keeps unavailable values u
   expect(selections).toEqual(["oct", "nov"]);
   expect(setup!.captureCharFrame()).toContain("Nov · Today --");
 });
+
+test("a chart-only surface without room draws nothing rather than a second table", async () => {
+  const selections: string[] = [];
+  await act(async () => { setup = await testRender(<CurveSurface series={series} width={60} height={7} focused display="chart"
+    onSelectedPointChange={(id) => selections.push(id)} />, { width: 60, height: 7 }); });
+  await frame();
+  expect(setup!.captureCharFrame().trim()).toBe("");
+  await emitKeypress(setup!, { name: "right" });
+  await frame();
+  expect(selections).toEqual([]);
+});

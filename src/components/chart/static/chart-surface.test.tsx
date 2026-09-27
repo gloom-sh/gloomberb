@@ -7,6 +7,7 @@ import { resolveChartPalette } from "../core/palette";
 import { StaticChartSurface, buildStaticChartSeries } from "./chart-surface";
 import type { ProjectedChartPoint } from "../core/data";
 import { buildCompositeChartScene } from "../composite/scene";
+import type { CompositeAxisDomain } from "../composite/types";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let remoteRegistry: RemoteUiRegistry | null = null;
@@ -90,6 +91,39 @@ describe("StaticChartSurface", () => {
     expect(frame).toContain("target");
     expect(frame).toContain("full");
     expect(frame).toContain("┃");
+  });
+
+  // Regression: the surface dropped the domain, so no y formatter could size its digits to the span.
+  test("passes the axis domain to the y-axis formatter", async () => {
+    const domains: Array<CompositeAxisDomain | undefined> = [];
+    testSetup = await testRender(
+      <StaticChartSurface
+        points={points}
+        width={48}
+        height={10}
+        mode="line"
+        colors={resolveChartPalette(colors, "positive")}
+        formatYAxisValue={(value, domain) => {
+          domains.push(domain);
+          return domain ? `D${value.toFixed(1)}` : "none";
+        }}
+      />,
+      { width: 50, height: 12 },
+    );
+
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toMatch(/D\d\.\d/);
+    expect(frame).not.toContain("none");
+    expect(domains.length).toBeGreaterThan(0);
+    for (const domain of domains) {
+      expect(domain!.min).toBeLessThanOrEqual(3.5);
+      expect(domain!.max).toBeGreaterThanOrEqual(4.9);
+    }
   });
 
   test("moves a remote-controlled cursor and labels both axes through the formatters", async () => {

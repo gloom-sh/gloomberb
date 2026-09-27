@@ -33,6 +33,10 @@ import type {
 } from "../../../api-client/debt-maturities";
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
+import {
+  getTableWidth,
+  hasMeaningfulTableHorizontalOverflow,
+} from "../../../components/ui/table-layout";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
@@ -366,8 +370,8 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       : null,
   );
   const tabRows = tabsInHeader ? 0 : 1;
-  // The desktop footer is chrome outside the body; the terminal gives it a row.
-  const bodyHeight = Math.max(3, height - tabRows - (nativePaneChrome ? 0 : 1));
+  // `height` is the pane body: the footer is chrome outside it on both targets.
+  const bodyHeight = Math.max(3, height - tabRows);
   // The as-of date is said once; a figure from another date carries its own.
   const statItems = useMemo<StatItem[]>(() => {
     if (!latest) return [];
@@ -387,19 +391,32 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const fill = (rows: number) => nativePaneChrome
     ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 0 }
     : { height: rows, flexShrink: 0 };
-  // The terminal sizes the table to its rows and gives the chart the rest; the
-  // desktop gives the chart a share and lets the table fill to the footer.
-  const tableHeight = Math.min(9, Math.max(4, bodyHeight - 3));
+  // The terminal sizes the table to its header, rows and any scrollbar and
+  // gives the chart the rest, or the table all of it when the chart would be
+  // under 4 rows; the desktop gives the chart a share and lets the table fill
+  // to the footer.
+  const scrollbarRow = (columns: typeof BUCKET_COLUMNS | typeof HISTORY_COLUMNS) =>
+    hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width) ? 1 : 0;
+  const bucketTableHeight = Math.min(
+    buckets.length + 1 + scrollbarRow(BUCKET_COLUMNS),
+    Math.max(4, bodyHeight - 3),
+  );
   const chartHeight = nativePaneChrome
     ? Math.max(0, Math.floor((bodyHeight - statRows) * 0.55))
-    : Math.max(0, bodyHeight - tableHeight - statRows);
-  const historyTableHeight = Math.min(
-    history.length + 3,
+    : Math.max(0, bodyHeight - bucketTableHeight - statRows);
+  const tableHeight = nativePaneChrome || chartHeight >= 4
+    ? bucketTableHeight
+    : Math.max(1, bodyHeight - statRows);
+  const historyRowsHeight = Math.min(
+    history.length + 1 + scrollbarRow(HISTORY_COLUMNS),
     Math.max(4, Math.floor(bodyHeight * 0.6)),
   );
   const historyChartHeight = nativePaneChrome
     ? Math.max(0, Math.floor((bodyHeight - 1) * 0.5))
-    : Math.max(0, bodyHeight - historyTableHeight - 1);
+    : Math.max(0, bodyHeight - historyRowsHeight - 1);
+  const historyTableHeight = nativePaneChrome || historyChartHeight >= 4
+    ? historyRowsHeight
+    : Math.max(1, bodyHeight - 1);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && isPlainKey(event, "r")) {

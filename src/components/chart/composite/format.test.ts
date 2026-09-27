@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CompositeChartScene } from "./types";
 import {
+  compositeAxisMaxTicks,
   compositeAxisTicks,
   formatChartLegendValue,
   formatCompositeAxisValue,
@@ -9,7 +10,9 @@ import {
   formatCompositePointDetails,
   formatCompositeSeriesValue,
   formatCompositeTimeAxisDate,
+  type CompositeAxisValueFormatter,
 } from "./format";
+import { formatCompact } from "../../../utils/format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { renderCompositeAxisText } from "./text-renderer";
 import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
@@ -252,4 +255,65 @@ test("constrained axis ticks never become plausible numeric prefixes", () => {
     expect(renderCompositeAxisText(domain, 5, 5, side, () => "12345 CAD")[0]?.trim()).toBe("…");
     expect(renderCompositeAxisText(domain, 5, 5, side, () => "−12.5%")[0]?.trim()).toBe("…");
   }
+});
+
+// Regression: a formatter coarser than the tick step printed one label down
+// several rows: 2k 2k 1.9k in JOBS, 47% 47% 46% 46% 45% on a percent axis.
+describe("axis ticks never repeat a label", () => {
+  const domain = (min: number, max: number, rows: number, extra: Record<string, unknown> = {}) => ({
+    side: "left" as const,
+    seriesIds: ["value"],
+    min,
+    max,
+    scale: "linear" as const,
+    unit: "",
+    unitGroup: "",
+    maxTicks: compositeAxisMaxTicks(rows),
+    tickRows: rows,
+    ...extra,
+  });
+  const thousands = (value: number) => formatCompact(Math.round(value));
+  const percent = (value: number) => `${value.toFixed(0)}%`;
+  const labels = (format: CompositeAxisValueFormatter, ...args: Parameters<typeof domain>) =>
+    compositeAxisTicks(domain(...args), format).map((tick) => tick.label);
+
+  test("steps up to coarser round ticks and reformats them", () => {
+    expect(labels(percent, 44.6, 47.3, 14)).toEqual(["47%", "46%", "45%"]);
+    expect(labels(thousands, 1950, 2025, 14)).toEqual(["2k", "1.9k"]);
+    expect(compositeAxisTicks(domain(1950, 2025, 14), thousands).map((tick) => tick.value)).toEqual([2000, 1950]);
+  });
+
+  test("keeps the returned ratios on the values it labels", () => {
+    const axis = domain(44.6, 47.3, 14);
+    for (const tick of compositeAxisTicks(axis, percent)) {
+      expect(tick.ratio).toBeCloseTo((axis.max - tick.value) / (axis.max - axis.min), 12);
+    }
+  });
+
+  test("falls back to the top and bottom, then to one label", () => {
+    // A log axis has no round ladder to climb.
+    expect(labels(thousands, 1880, 2030, 14, { scale: "log" })).toEqual(["2k", "1.9k"]);
+    expect(labels(percent, 45.2, 45.4, 14)).toEqual(["45%"]);
+    expect(labels(() => "n/a", 0, 100, 20)).toEqual(["n/a"]);
+  });
+
+  test("leaves distinct labels alone", () => {
+    expect(labels(String, 1880, 2030, 20)).toEqual(["2000", "1950", "1900"]);
+    expect(labels(String, 44.6, 47.3, 14)).toEqual(["47", "46.5", "46", "45.5", "45"]);
+  });
+
+  test("holds across formatters, spans and panel heights", () => {
+    const formats: CompositeAxisValueFormatter[] = [thousands, percent, (value) => formatCompact(value), (value) => value.toFixed(1)];
+    for (const rows of [3, 4, 6, 8, 10, 14, 20, 30]) {
+      for (const [min, max] of [[1880, 2030], [1950, 2025], [158_700, 160_300], [44.6, 47.3], [45.2, 45.4], [0.2, 0.9], [3, 5]] as const) {
+        for (const scale of ["linear", "log"] as const) {
+          for (const format of formats) {
+            const ticks = labels(format, min, max, rows, { scale });
+            expect(ticks.length).toBeGreaterThan(0);
+            expect(ticks.some((label, index) => index > 0 && label === ticks[index - 1])).toBe(false);
+          }
+        }
+      }
+    }
+  });
 });

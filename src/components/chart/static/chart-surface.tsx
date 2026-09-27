@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Box, Text } from "../../../ui";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { CompositeChart } from "../composite/composite-chart";
-import type { CompositeChartXAxis, CompositeChartXMarker } from "../composite/types";
+import type { CompositeAxisDomain, CompositeChartXAxis, CompositeChartXMarker } from "../composite/types";
 import type { ProjectedChartPoint } from "../core/data";
 import type { ChartRenderMode } from "../core/types";
 import { scalarPoint, staticSeries } from "./series";
@@ -48,7 +48,8 @@ export interface StaticChartSurfaceProps {
   xMarkers?: readonly StaticChartXMarker[];
   yAxisLabel?: string;
   yAxisColor?: string;
-  formatYAxisValue?: (value: number) => string;
+  /** Receives the axis domain too, so a label can size its digits to the span. */
+  formatYAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
   /** Left/Right step the cursor through the observations and Esc clears it, as the pointer's hover does. */
   focused?: boolean;
 }
@@ -128,10 +129,6 @@ export function StaticChartSurface({
     textDim: yAxisColor ?? xAxisColor ?? timeAxisColor ?? colors.axisColor,
     negative: colors.candleDown ?? colors.lineColor,
   }), [colors, timeAxisColor, xAxisColor, yAxisColor]);
-  const formatAxisValue = useMemo(
-    () => formatYAxisValue ? (value: number) => formatYAxisValue(value) : undefined,
-    [formatYAxisValue],
-  );
   const xAxis = useMemo<CompositeChartXAxis | undefined>(() => (
     xAxisLabels || xAxisTicks || xMarkers || formatXAxisCursorValue
       ? { labels: xAxisLabels, ticks: xAxisTicks, markers: xMarkers, formatCursor: formatXAxisCursorValue }
@@ -156,7 +153,7 @@ export function StaticChartSurface({
         navigable={false}
         showLegend={false}
         showTimeAxis={showTimeAxis || (xAxisLabels?.length ?? 0) > 0 || (xAxisTicks?.length ?? 0) > 0}
-        formatAxisValue={formatAxisValue}
+        formatAxisValue={formatYAxisValue}
         xAxis={xAxis}
         remoteKind="static-chart"
       />

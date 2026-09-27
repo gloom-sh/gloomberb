@@ -86,8 +86,10 @@ export function PaneStatusBody({
 }: PaneStatusBodyProps) {
   const status = error ? "error" : loading ? "loading" : empty ? "empty" : null;
   if (!status) return <>{children}</>;
+  // Keyed so content that starts with a bare Box never reuses this padded node.
   return (
     <Box
+      key="pane-status"
       width={width}
       height={height}
       flexGrow={align === "center" ? 1 : undefined}

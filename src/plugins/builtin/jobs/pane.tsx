@@ -17,12 +17,14 @@ import {
   type DataTableCell,
   type PaneFooterSegment,
 } from "../../../components";
+import { compositeAxisTicks } from "../../../components/chart/composite/format";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { blendHex, colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -136,6 +138,23 @@ function CompanyHeader({ summary, width }: { summary: CloudJobsSummaryPayload; w
   );
 }
 
+const COMPACT_AXIS_UNITS = [[1e9, "B"], [1e6, "M"], [1e3, "k"]] as const;
+
+/**
+ * Open-role counts on the chart axis. Below 10k they read as whole counts
+ * (2,025 / 2,000 / 1,975), where 1.9k would repeat down the gutter; above
+ * that, compact with the decimals the tick step needs (160.0k / 159.5k).
+ */
+export function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDomain): string {
+  const magnitude = Math.max(Math.abs(domain.min), Math.abs(domain.max));
+  if (magnitude < 10_000) return formatNumber(Math.round(value), 0);
+  const [divisor, suffix] = COMPACT_AXIS_UNITS.find(([unit]) => magnitude >= unit)!;
+  const ticks = compositeAxisTicks(domain, String).map((tick) => tick.value);
+  const gap = Math.min(...ticks.slice(1).map((tick, index) => Math.abs(tick - ticks[index]!)));
+  const decimals = Number.isFinite(gap) && gap > 0 ? Math.min(3, Math.max(0, Math.ceil(-Math.log10(gap / divisor) - 1e-9))) : 1;
+  return `${formatNumber(value / divisor, decimals)}${suffix}`;
+}
+
 /**
  * The open-roles history once a week of daily reads exists; before that,
  * the backlog by posting age, which is the one thing a first read can say
@@ -168,7 +187,7 @@ function Chart({ summary, width, height, focused = false }: { summary: CloudJobs
           showTimeAxis
           timeAxisColor={colors.textDim}
           yAxisColor={colors.textDim}
-          formatYAxisValue={(value: number) => formatCompact(Math.round(value))}
+          formatYAxisValue={formatOpenRolesAxisValue}
           focused={focused}
         />
       </Box>

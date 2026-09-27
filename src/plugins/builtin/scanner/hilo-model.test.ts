@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHiloBarRows, terminalBarCells } from "./hilo-model";
+import { buildHiloBarRows, hiloBarLayout, hiloWindowLabel, HILO_LABEL_WIDTH, HILO_SIDE_NAME_WIDTH, terminalBarCells } from "./hilo-model";
 
 const windows = {
   s30: { highs: 42, lows: 11 },
@@ -40,5 +40,30 @@ describe("hilo bar scaling", () => {
     expect(terminalBarCells(42 / 512, 20)).toEqual({ full: 1, half: true });
     expect(terminalBarCells(0.001, 20)).toEqual({ full: 0, half: true });
     expect(terminalBarCells(0, 20)).toEqual({ full: 0, half: false });
+  });
+});
+
+describe("hilo bar labels", () => {
+  test("centres every window label with at least two cells either side", () => {
+    for (const label of ["5 min", "1 min", "30 sec"]) {
+      const padded = hiloWindowLabel(label);
+      expect(padded).toHaveLength(HILO_LABEL_WIDTH);
+      expect(padded.trim()).toBe(label);
+      expect(padded.indexOf(label)).toBeGreaterThanOrEqual(2);
+      expect(HILO_LABEL_WIDTH - padded.indexOf(label) - label.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test("names the sides only when the bars keep their room, and never overflows the row", () => {
+    const wide = hiloBarLayout(80, 4);
+    expect(wide.sideNameWidth).toBe(HILO_SIDE_NAME_WIDTH);
+    expect(2 + 2 * (wide.sideNameWidth + wide.halfWidth) + HILO_LABEL_WIDTH).toBeLessThanOrEqual(80);
+    expect(wide.barWidth).toBe(wide.halfWidth - 4);
+
+    // The split tables' minimum width drops the names and gives the cells back to the bars.
+    const narrow = hiloBarLayout(44, 4);
+    expect(narrow.sideNameWidth).toBe(0);
+    expect(2 + 2 * narrow.halfWidth + HILO_LABEL_WIDTH).toBeLessThanOrEqual(44);
+    expect(narrow.barWidth).toBe(narrow.halfWidth - 4);
   });
 });

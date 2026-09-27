@@ -1,5 +1,5 @@
 import { RGBA, StyledText as OpenTuiStyledText, SyntaxStyle, TextAttributes as OpenTuiTextAttributes } from "@opentui/core";
-import { createElement, forwardRef, useEffect, useState, type ReactNode } from "react";
+import { createElement, forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
 import { OpenTuiImageSurface } from "./image/surface";
@@ -10,12 +10,97 @@ interface OpenTuiPrimitiveProps {
   [key: string]: unknown;
 }
 
+// A padding or margin edge falls back to the broader prop still passed, so
+// dropping paddingLeft under paddingX keeps paddingX on that edge.
+const EDGE_FALLBACKS: Record<string, readonly string[]> = {
+  padding: [],
+  paddingX: ["padding"],
+  paddingY: ["padding"],
+  paddingTop: ["paddingY", "padding"],
+  paddingBottom: ["paddingY", "padding"],
+  paddingLeft: ["paddingX", "padding"],
+  paddingRight: ["paddingX", "padding"],
+  margin: [],
+  marginX: ["margin"],
+  marginY: ["margin"],
+  marginTop: ["marginY", "margin"],
+  marginBottom: ["marginY", "margin"],
+  marginLeft: ["marginX", "margin"],
+  marginRight: ["marginX", "margin"],
+};
+
+const LAYOUT_DEFAULTS: Record<string, unknown> = {
+  width: "auto",
+  height: "auto",
+  top: "auto",
+  right: "auto",
+  bottom: "auto",
+  left: "auto",
+  minWidth: undefined,
+  minHeight: undefined,
+  maxWidth: undefined,
+  maxHeight: undefined,
+  flexBasis: undefined,
+  position: "relative",
+  overflow: "visible",
+};
+
+function isLayoutProp(key: string): boolean {
+  return key in EDGE_FALLBACKS || key in LAYOUT_DEFAULTS;
+}
+
+function hasNumericSize(props: OpenTuiPrimitiveProps): boolean {
+  return typeof props.width === "number" || typeof props.height === "number";
+}
+
+interface AppliedLayout {
+  keys: Set<string>;
+  forcedFlexShrink: boolean;
+}
+
+/**
+ * @opentui/react sends null for a prop that is no longer passed, and the core
+ * layout setters ignore null. A reused host node (a status box turning into
+ * the content box) would keep its padding, margins and size, so layout props
+ * applied on an earlier render get an explicit reset once they go away.
+ */
+function withLayoutResets(props: OpenTuiPrimitiveProps, applied: AppliedLayout): OpenTuiPrimitiveProps {
+  let next: OpenTuiPrimitiveProps | null = null;
+  for (const key of applied.keys) {
+    if (props[key] != null) continue;
+    next ??= { ...props };
+    const fallbacks = EDGE_FALLBACKS[key];
+    next[key] = fallbacks
+      ? fallbacks.map((fallback) => props[fallback]).find((value) => value != null) ?? 0
+      : LAYOUT_DEFAULTS[key];
+  }
+  // A numeric width or height forces flexShrink to 0 in the core; restore the
+  // default once no numeric size is left, unless the caller set flexShrink.
+  if (props.flexShrink == null) {
+    if (hasNumericSize(props)) {
+      applied.forcedFlexShrink = true;
+    } else if (applied.forcedFlexShrink) {
+      next ??= { ...props };
+      next.flexShrink = 1;
+    }
+  }
+  for (const key in props) {
+    if (props[key] != null && isLayoutProp(key)) applied.keys.add(key);
+  }
+  return next ?? props;
+}
+
 function createOpenTuiPrimitive(tagName: string) {
   return forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiPrimitive(
     { children, ...props },
     ref,
   ) {
-    return createElement(tagName as any, { ...props, ref }, children as ReactNode);
+    const appliedLayout = useRef<AppliedLayout>({ keys: new Set(), forcedFlexShrink: false });
+    return createElement(
+      tagName as any,
+      { ...withLayoutResets(props, appliedLayout.current), ref },
+      children as ReactNode,
+    );
   });
 }
 

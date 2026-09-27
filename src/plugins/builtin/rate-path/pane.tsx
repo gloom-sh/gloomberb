@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { isAccessDenied } from "../../../api-client/errors";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { blendHex, colors } from "../../../theme/colors";
@@ -88,11 +89,15 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       detail: [percentileText(data.slope.percentile), ownDate(data.slope.asOf) && timestamp(data.slope.asOf)].filter(Boolean).join(" · ") }] : []),
   ] : [];
   const statRows = statGridRows(statItems, width);
-  // The meeting table only needs its rows; the chart takes whatever is left.
-  // The desktop grows the table to the footer.
-  const bodyHeight = Math.max(9, height - statRows - tabRows);
-  const meetingTableHeight = Math.max(3, Math.min((data?.meetings.length ?? 0) + 2, Math.floor(bodyHeight * 0.5)));
-  const pathHeight = Math.max(6, bodyHeight - meetingTableHeight);
+  // The meeting table only needs its header, rows and any scrollbar; the chart
+  // takes whatever is left, and when that is too short to draw, the table
+  // takes the whole body. The desktop grows the table to the footer.
+  const bodyHeight = Math.max(1, height - statRows - tabRows);
+  const meetingRows = (data?.meetings.length ?? 0) + 1
+    + (hasMeaningfulTableHorizontalOverflow(getTableWidth(MEETING_COLUMNS), width) ? 1 : 0);
+  const pathHeight = bodyHeight - Math.max(3, Math.min(meetingRows, Math.floor(bodyHeight * 0.5)));
+  const showPath = pathHeight >= 8;
+  const meetingTableHeight = showPath ? bodyHeight - pathHeight : bodyHeight;
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise.
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: futuresSessionRefreshInterval() });
@@ -116,7 +121,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
       {data ? <>
         <StatGrid items={statItems} width={width} />
         {tab === "path" ? <>
-          <CurveSurface series={chartCurves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected} />
+          {showPath ? <CurveSurface series={chartCurves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected} /> : null}
           <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={meetingTableHeight} emptyStateTitle="No scheduled FOMC meetings" />
         </> : tab === "probabilities" ? <DataTableView
           columns={[MEETING_COLUMNS[0]!, ...targets.map((target) => {

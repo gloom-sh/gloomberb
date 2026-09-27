@@ -54,7 +54,13 @@ const LOOKBACK_FILTER_OPTIONS = [
   { value: "10", label: "10Y" },
   { value: "max", label: "Max" },
 ];
-/** Stacked below 120 cells: the equity chart keeps at least this many rows and the metrics scroll under it. */
+/**
+ * The metrics sit beside the chart once the chart keeps this many columns. The
+ * rule reads the body width, which is two cells narrower in the terminal than
+ * on the desktop, so both renderers pick the same layout at a pane's default size.
+ */
+const MIN_WIDE_CHART_COLS = 60;
+/** Stacked: the equity chart keeps at least this many rows and the metrics scroll under it. */
 const MIN_STACKED_CHART_ROWS = 8;
 /** The metrics table needs its header and a few rows to be worth showing beside a squeezed chart. */
 const MIN_STACKED_TABLE_ROWS = 4;
@@ -143,7 +149,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const tabsInHeader = usePaneHeaderTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused } : null);
   if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
   const bodyHeight = Math.max(4, height - 1 - (tabsInHeader ? 0 : 1));
-  const wide = width >= 120;
+  const wide = width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
   // The equity chart is the pane's main output, so a short pane keeps a
   // minimum chart and lets the metrics scroll rather than dropping it.
   const stackedChartRows = bodyHeight >= MIN_STACKED_CHART_ROWS + MIN_STACKED_TABLE_ROWS

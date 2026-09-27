@@ -26,7 +26,9 @@ export interface CurveSurfaceProps {
   primarySeriesId?: string;
   selectedPointId?: string | null;
   onSelectedPointChange?: (id: string, point: CurvePoint) => void;
-  display?: "chart" | "table" | "both";
+  /** "auto" draws the chart and falls back to the table when the chart has no
+   * room; "chart" draws nothing then, for callers that list the points below. */
+  display?: "auto" | "chart" | "table" | "both";
   formatValue?: (value: number) => string;
   /** Gridline labels; defaults to formatValue. */
   formatAxisValue?: CompositeAxisValueFormatter;
@@ -43,7 +45,7 @@ const sourceTime = (value: string) => value.replace("T", " ").slice(0, 16);
 /** One numeric-axis curve surface across terminal bitmap, text and desktop.
  * Each ghost owns its coordinates and nulls, so missing months stay gaps. */
 export function CurveSurface({ series, width, height, focused = false, primarySeriesId, selectedPointId,
-  onSelectedPointChange, display = "chart", formatValue = formatNumber, formatAxisValue, formatX = formatNumber,
+  onSelectedPointChange, display = "auto", formatValue = formatNumber, formatAxisValue, formatX = formatNumber,
   valueLabel = "Value", slope }: CurveSurfaceProps) {
   const colors = useThemeColors();
   const [localSelection, setLocalSelection] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     else legendRows.push([item]);
   }
   const showChart = display !== "table" && totalWidth >= 24 && totalHeight >= Math.max(8, legendRows.length + 6) && plottedCount >= 2;
-  const showTable = display !== "chart" || !showChart;
+  const showTable = display === "table" || display === "both" || (display === "auto" && !showChart);
   const legendHeight = showChart ? legendRows.length : 0;
   const slopeHeight = slope && totalHeight > 5 ? 1 : 0;
   const cursorHeight = showChart ? 1 : 0;
@@ -81,7 +83,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     if (point) onSelectedPointChange?.(row.id, point);
   }, [onSelectedPointChange, primary]);
   useShortcut((event) => {
-    if (!focused || showTable || event.ctrl || event.meta || event.shift || event.targetEditable) return;
+    if (!focused || showTable || !showChart || event.ctrl || event.meta || event.shift || event.targetEditable) return;
     const offset = event.name === "left" || event.name === "k" ? -1
       : event.name === "right" || event.name === "j" ? 1 : 0;
     if (!offset || !rows.length) return;
@@ -119,6 +121,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     return { text: point?.value != null && Number.isFinite(point.value) ? formatValue(point.value) : "--" };
   }, [colors.textMuted, formatValue, rowAsOf]);
   if (!rows.length) return <EmptyState title="No curve observations." />;
+  if (!showChart && !showTable) return null;
   return <Box width={totalWidth} height={totalHeight} flexDirection="column" overflow="hidden">
     {showChart ? legendRows.map((row, index) => <Box key={index} height={1} flexShrink={0} paddingX={1} gap={3} flexDirection="row">
       {row.map((entry) => <Text key={entry.id} fg={entry.color}>{entry.text}</Text>)}

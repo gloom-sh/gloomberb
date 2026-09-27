@@ -126,7 +126,8 @@ function HiloPane({ focused, width, height }: PaneProps) {
   useScannerStatusFooter("hilo", feed, focused);
 
   const split = width >= SPLIT_MIN_WIDTH;
-  const showBars = height >= BARS_MIN_HEIGHT;
+  // Zero counts before the first payload would read as a dead market, not a loading one.
+  const showBars = !!feed.payload && height >= BARS_MIN_HEIGHT;
   // One cell of gutter keeps the two cursors from reading as a single wide row.
   const tableWidth = split ? Math.max(12, Math.floor((width - 1) / 2)) : Math.max(12, width);
   // A single table gets a strip naming its side, so the other side is visibly there.
