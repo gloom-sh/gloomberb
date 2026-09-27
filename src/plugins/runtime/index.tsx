@@ -6,11 +6,7 @@ import {
   type PluginRuntimeAccess,
 } from "./context";
 
-export {
-  PluginRenderProvider,
-  wrapPaneDefWithRuntime,
-  wrapTickerResearchTabDefWithRuntime
-} from "./context";
+export { PluginRenderProvider, withPluginRender } from "./context";
 export type { PluginRuntimeAccess } from "./context";
 
 export {

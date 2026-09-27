@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { apiClient } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import { useAppSelector } from "../../../state/app/context";
 import { Button } from "../../../components/ui/button";
 import { useCommandBarShortcut } from "../../../ui";
 import { chatController, type ChatController } from "../chat/controller";
@@ -20,7 +19,6 @@ interface CloudUpgradeStatusWidgetProps {
  */
 export function CloudUpgradeStatusWidget({ controller = chatController }: CloudUpgradeStatusWidgetProps) {
   useAppLanguage();
-  const cloudPluginDisabled = useAppSelector((state) => state.config.disabledPlugins).includes("gloomberb-cloud");
   const openUpgrade = useCloudUpgradeAction();
   const openPlan = useCloudPlanAction();
   // The status bar takes no keyboard focus; the chip names the command instead.
@@ -33,7 +31,7 @@ export function CloudUpgradeStatusWidget({ controller = chatController }: CloudU
     [controller],
   );
 
-  if (cloudPluginDisabled || !access.signedIn || access.isPayingPro) return null;
+  if (!access.signedIn || access.isPayingPro) return null;
 
   const trial = access.isTrialActive;
   const label = trial

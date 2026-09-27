@@ -11,10 +11,8 @@ import type { DataProvider } from "../../types/data-provider";
 import type {
   AppNotificationRequest,
   BrokerInstanceUpdateOptions,
-  PaneDef,
   PaneTemplateCreateOptions,
   PinTickerOptions,
-  TickerResearchTabDef,
 } from "../../types/plugin";
 
 export interface PluginRuntimeAccess extends CapabilityInvoker {
@@ -74,40 +72,20 @@ export function PluginRenderProvider({
   );
 }
 
-export function wrapPaneDefWithRuntime(
+/**
+ * Renders a plugin's pane, tab or slot inside its render context. Pass the
+ * plugin's state namespace so every surface of one plugin reads the same state.
+ */
+export function withPluginRender<P>(
   pluginId: string,
-  pane: PaneDef,
   runtime: PluginRuntimeAccess,
-): PaneDef {
-  return {
-    ...pane,
-    component: (props) => createElement(
-      PluginRenderProvider,
-      {
-        pluginId,
-        runtime,
-        children: createElement(pane.component as any, props),
-      },
-    ),
-  };
-}
-
-export function wrapTickerResearchTabDefWithRuntime(
-  pluginId: string,
-  tab: TickerResearchTabDef,
-  runtime: PluginRuntimeAccess,
-): TickerResearchTabDef {
-  return {
-    ...tab,
-    component: (props) => createElement(
-      PluginRenderProvider,
-      {
-        pluginId,
-        runtime,
-        children: createElement(tab.component as any, props),
-      },
-    ),
-  };
+  component: (props: P) => ReactNode,
+): (props: P) => ReactNode {
+  return (props) => (
+    <PluginRenderProvider pluginId={pluginId} runtime={runtime}>
+      {createElement(component as (props: any) => ReactNode, props)}
+    </PluginRenderProvider>
+  );
 }
 
 export function usePluginRenderContext(): PluginRenderContextValue {

@@ -618,6 +618,7 @@ describe("ChatContent channel sidebar", () => {
       showPane: () => {},
       hidePane: () => {},
       notify: () => {},
+      log: { error: () => {} },
     } as any);
     const ChatPaneComponent = gloomberbCloudPlugin.panes?.find((pane) => pane.id === "chat")?.component;
     expect(ChatPaneComponent).toBeDefined();

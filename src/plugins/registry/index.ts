@@ -49,11 +49,7 @@ import { EventBus, type HostEvents } from "../event-bus";
 import { isReservedBuiltinPluginId } from "../ownership";
 import { createPluginPersistence } from "../plugin-persistence";
 import { createPluginTeamState } from "../team-state";
-import {
-  wrapPaneDefWithRuntime,
-  wrapTickerResearchTabDefWithRuntime,
-  type PluginRuntimeAccess,
-} from "../runtime";
+import { withPluginRender, type PluginRuntimeAccess } from "../runtime";
 import { resolveRegistryContextMenuItems } from "./context-menu";
 import { RegistryContributions, type PluginItems } from "./contributions";
 import {
@@ -244,8 +240,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     this.remoteCapabilityInvoke = options.remoteCapabilityInvoke;
     this.events = new EventBus();
     this.contributions = new RegistryContributions({
-      wrapPaneDef: (pluginId, pane) => wrapPaneDefWithRuntime(this.stateNamespace(pluginId), pane, this),
-      wrapTickerResearchTabDef: (pluginId, tab) => wrapTickerResearchTabDefWithRuntime(this.stateNamespace(pluginId), tab, this),
+      wrapComponent: (pluginId, component) => withPluginRender(this.stateNamespace(pluginId), this, component),
       wrapBrokerAdapter: this.wrapBrokerAdapter,
     });
 
@@ -336,8 +331,12 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   notify = (notification: AppNotificationRequest): AppNotificationDelivery | void => this.notifyFn(notification);
 
-  renderSlot<K extends keyof GloomSlots>(name: K, props: GloomSlots[K]): ReactNode {
-    return this.slots.render(name, props);
+  renderSlot<K extends keyof GloomSlots>(
+    name: K,
+    props: GloomSlots[K],
+    disabledPlugins: readonly string[] = this.getConfigFn().disabledPlugins,
+  ): ReactNode {
+    return this.slots.render(name, props, disabledPlugins);
   }
 
   private registerCapabilityForPlugin(pluginId: string, capability: PluginCapability, items: PluginItems): void {
@@ -622,7 +621,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
         }
       }
 
-      this.slots.register(plugin, this);
+      this.slots.register(plugin, (renderer) => withPluginRender(this.stateNamespace(plugin.id), this, renderer));
 
       const setupCommand = createPluginSetupCommand(plugin, {
         getValues: () => this.getConfigFn().pluginConfig[this.stateNamespace(plugin.id)] ?? {},

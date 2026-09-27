@@ -4,7 +4,6 @@ import { Button } from "../../../components/ui/button";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useAppActive } from "../../../state/app/activity";
-import { useAppSelector } from "../../../state/app/context";
 import { useCommandBarShortcut } from "../../../ui";
 import { useToastHost } from "../../../ui/toast";
 import { usePlanAccess } from "../../../api-client/plan-access";
@@ -21,7 +20,6 @@ const RESEND_COOLDOWN_MS = 60_000;
  */
 export function CloudVerificationStatusWidget() {
   useAppLanguage();
-  const cloudPluginDisabled = useAppSelector((state) => state.config.disabledPlugins).includes("gloomberb-cloud");
   const access = usePlanAccess();
   const appActive = useAppActive();
   const toast = useToastHost();
@@ -29,7 +27,7 @@ export function CloudVerificationStatusWidget() {
   const commandBarKey = useCommandBarShortcut();
   const [sending, setSending] = useState(false);
   const [sentAt, setSentAt] = useState<number | null>(null);
-  const pending = !cloudPluginDisabled && access.signedIn && !access.emailVerified;
+  const pending = access.signedIn && !access.emailVerified;
 
   useEffect(() => {
     if (!pending || !appActive) return;
