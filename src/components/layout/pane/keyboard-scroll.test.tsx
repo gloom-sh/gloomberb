@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactNode } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, appReducer, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { createDefaultConfig } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
@@ -109,7 +110,7 @@ function Harness({
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <PaneContent
         component={component}
         paneId="test-pane:main"

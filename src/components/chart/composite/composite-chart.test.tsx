@@ -27,6 +27,7 @@ import {
 import { CompositeChart } from "./composite-chart";
 import { createDefaultConfig } from "../../../types/config";
 import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import {
   buildCompositeNavigationFrame,
   zoomCompositeViewport,
@@ -260,7 +261,7 @@ describe("CompositeChart", () => {
     config.chartPreferences.renderer = "braille";
 
     testSetup = await testRender(
-      <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(createInitialState(config))}>
         <CaptureChartSurfaceProvider>
           <CompositeChart
             width={60}
@@ -1940,7 +1941,7 @@ describe("CompositeChart", () => {
         settings,
       });
       testSetup = await testRender(
-        <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(createInitialState(config))}>
           <PaneInstanceProvider paneId="chart:test">
             <CaptureChartSurfaceProvider canvasCharts>
               <CompositeChart

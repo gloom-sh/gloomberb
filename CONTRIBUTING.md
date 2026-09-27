@@ -86,7 +86,7 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 ### Test helpers
 
-- `src/test-support/` is the home for shared fixtures and fakes: a data provider with quote and financials factories, ticker records, a stand-in broker, a doubled plugin runtime, plugin persistence, market sessions, pane providers and the `TestPaneFrame` footer shell, headless and CLI contexts, a Cloud API WebSocket fake and temporary databases. Put a new shared fixture there instead of declaring it inline in another test.
+- `src/test-support/` is the home for shared fixtures and fakes: a data provider with quote and financials factories, ticker records, a stand-in broker, a doubled plugin runtime, plugin persistence, market sessions, a static app store (`createStaticAppStore`), pane providers and the `TestPaneFrame` footer shell, headless and CLI contexts, a Cloud API WebSocket fake and temporary databases. Put a new shared fixture there instead of declaring it inline in another test.
 - For a pending result, use `Promise.withResolvers()` rather than a local `deferred()` helper.
 - `src/renderers/opentui/test-utils.tsx` renders into a test terminal: `testRender`, `emitKeypress`, `settleFrame`.
 - `src/renderers/electrobun/view/test-utils.tsx` renders the desktop view into happy-dom: `createDomTestHarness`.

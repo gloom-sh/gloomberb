@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { colors } from "../../../theme/colors";
 import { createDefaultConfig } from "../../../types/config";
@@ -122,7 +123,7 @@ describe("ChatContent", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
             <ChatContent
               controller={controller}
@@ -1259,7 +1260,7 @@ describe("ChatContent", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
             <ChatStatusWidget controller={controller} />
           </PluginRenderProvider>
@@ -1293,7 +1294,7 @@ describe("ChatContent", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
             <ChatStatusWidget controller={controller} />
           </PluginRenderProvider>
@@ -1352,7 +1353,7 @@ describe("ChatContent", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
             <ChatStatusWidget controller={controller} />
           </PluginRenderProvider>
@@ -1409,7 +1410,7 @@ describe("ChatContent", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
             <ChatStatusWidget controller={controller} />
           </PluginRenderProvider>

@@ -8,6 +8,7 @@ import {
   PaneInstanceProvider,
   createInitialState,
 } from "../../../../../state/app/context";
+import { createStaticAppStore } from "../../../../../test-support/app-store";
 import { createDefaultConfig } from "../../../../../types/config";
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import { NewsArticleStackView, buildColumns, type NewsSortPreference } from "./table";
@@ -53,7 +54,7 @@ function Harness() {
   );
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInstanceProvider paneId="news-feed:main">
         <NewsArticleStackView
           articles={[
@@ -114,7 +115,7 @@ describe("NewsArticleStackView", () => {
     );
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-top:main">
           <NewsArticleStackView
             articles={[
@@ -180,7 +181,7 @@ describe("NewsArticleStackView", () => {
     );
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="news-feed:main">
           <NewsArticleStackView
             articles={[

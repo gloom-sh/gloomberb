@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { act, createRef, useState } from "react";
 import { DataTableView } from "../../../../components/data-table/view";
 import { AppContext, createInitialState } from "../../../../state/app/context";
+import { createStaticAppStore } from "../../../../test-support/app-store";
 import { createDefaultConfig } from "../../../../types/config";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
@@ -23,7 +24,7 @@ test("DOM fixed axis fits covered values with ellipses and preserves selection, 
     const ui = useUiHost(); const renderer = useRendererHost();
     const [frozen, updateFrozen] = useState(true); setFrozen = updateFrozen;
     return <UiHostProvider ui={{ ...ui, DataTable: WebDataTable }} renderer={renderer}>
-      <WebInputHostProvider><AppContext value={{ state, dispatch: () => {} }}>
+      <WebInputHostProvider><AppContext value={createStaticAppStore(state)}>
         <DataTableView focused freezeFirstColumn={frozen} scrollRef={bodyRef} headerScrollRef={headerRef}
           items={["JPY", "EUR"]}
           columns={[{ id: "base", label: "", width: 5 }, ...["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"].map(id => ({ id, label: id, width: 10, align: "right" as const }))]}

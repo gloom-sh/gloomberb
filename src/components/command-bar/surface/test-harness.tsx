@@ -11,6 +11,7 @@ import {
   type AppAction,
   type AppState,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { ThemeProvider, useThemeId } from "../../../theme/theme-context";
 import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
@@ -303,7 +304,7 @@ export function CommandBarHarness({
 
   return (
     <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
-      <AppContext value={{ state: currentState, dispatch: currentDispatch }}>
+      <AppContext value={createStaticAppStore(currentState, currentDispatch)}>
         <TestDialogProvider>
           {/* The header hosts the bar's input while it is open, so typing in a
               test needs the real header on the first row. */}

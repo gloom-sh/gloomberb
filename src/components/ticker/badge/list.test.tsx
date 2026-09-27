@@ -5,6 +5,7 @@ import { setSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { setSharedRegistryForTests, type PluginRegistry } from "../../../plugins/registry";
 import { resetInlineTickerFailures } from "../../../state/hooks/inline-ticker-failures";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { TickerBadgeList } from "./list";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -35,7 +36,7 @@ async function renderList(width: number) {
   setSharedRegistryForTests({ pinTicker: () => {} } as unknown as PluginRegistry);
   await act(async () => {
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <TickerBadgeList symbols={["NFLX"]} width={width} />
       </AppContext>,
       { width: width + 4, height: 1 },

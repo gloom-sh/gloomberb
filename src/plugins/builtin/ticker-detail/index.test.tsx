@@ -9,6 +9,7 @@ import {
   PaneInstanceProvider,
   type AppAction,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider, createTestFinancials } from "../../../test-support/data-provider";
 import {
@@ -87,7 +88,7 @@ function FinancialsTabHarness({ width }: { width: number }) {
   financialsHarnessState = appState;
 
   return (
-    <AppContext value={{ state: appState, dispatch }}>
+    <AppContext value={createStaticAppStore(appState, dispatch)}>
       <PaneInstanceProvider paneId="ticker-detail:main">
         <ResolvedFinancialsTab
           width={width}
@@ -220,7 +221,7 @@ function DetailHarness({
   detailHarnessState = state;
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
         <text>{`active:${state.paneState[TEST_PANE_ID]?.activeTabId ?? ""}`}</text>
         <PluginRenderProvider pluginId="ticker-research" runtime={runtime}>

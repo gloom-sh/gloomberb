@@ -11,6 +11,7 @@ import {
   createInitialState,
   type AppState,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { PluginRenderProvider } from "../../runtime";
 import { OPTIONS_CALCULATOR_PANE_ID } from "./model";
@@ -52,7 +53,7 @@ function Harness({ params, settings, width = 90, height = 18 }: { params?: Recor
   harnessState = state;
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <GlobalTabHandler />
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
         <PaneKeyboardScrollController paneId={TEST_PANE_ID} focused />

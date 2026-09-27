@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
 import { Header } from "./header";
@@ -18,7 +19,7 @@ test("opens the command bar by clicking the header prompt", async () => {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-header-test"));
   const actions: Array<{ type: string; open?: boolean; query?: string }> = [];
   testSetup = await testRender(
-    <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string }) }}>
+    <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string }))}>
       <Header />
     </AppContext>,
     { width: 120, height: 1 },
@@ -48,7 +49,7 @@ test("hosts the command bar input while a list screen is published", async () =>
   };
   const typed: string[] = [];
   testSetup = await testRender(
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <Header />
     </AppContext>,
     { width: 120, height: 1 },

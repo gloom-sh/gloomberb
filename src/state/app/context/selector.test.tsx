@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useRef, useState, type Dispatch } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneStateValue, usePaneTicker, usePaneTitle, type AppAction } from "./index";
+import { AppContext, AppProvider, PaneInstanceProvider, createInitialState, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneStateValue, usePaneTicker, usePaneTitle, type AppAction } from "./index";
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import { applyTheme } from "../../../theme/colors";
 import { useThemeId } from "../../../theme/theme-context";
@@ -147,6 +147,22 @@ describe("pane selectors", () => {
     });
     expect(currentConfig.layouts[0]!.layout.instances[0]).toEqual(pane);
     expect(testSetup.captureCharFrame()).toContain("two:0");
+  });
+
+  test("the deprecated { state, dispatch } value still serves the hooks, for external plugin tests", async () => {
+    const dispatch: Dispatch<AppAction> = () => {};
+    testSetup = await testRender(
+      <AppContext value={{ state: createInitialState(createTickerDetailConfig("MSFT")), dispatch }}>
+        <PaneInstanceProvider paneId={TEST_PANE_ID}>
+          <DispatchCapture />
+          <PaneTickerHarness />
+        </PaneInstanceProvider>
+      </AppContext>,
+      { width: 24, height: 4 },
+    );
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("MSFT:1");
+    expect(capturedDispatch).toBe(dispatch);
   });
 
   test("does not rerender usePaneTicker consumers for unrelated app state updates", async () => {

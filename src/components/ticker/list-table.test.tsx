@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useRef, useState, type ReactNode } from "react";
 import { emitKeypress, testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import type { ColumnConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
@@ -27,14 +28,11 @@ function resolveCell(_column: ColumnConfig, ticker: TickerRecord, _financials: T
   return { text: ticker.metadata.ticker };
 }
 
-const testDispatch = () => {};
-
 function TickerTableTestProviders({ children }: { children: ReactNode }) {
   // A stable store like the app's, so row memoization is what the tests see.
-  const [value] = useState(() => ({
-    state: createInitialState(createDefaultConfig("/tmp/gloomberb-ticker-table-test")),
-    dispatch: testDispatch,
-  }));
+  const [value] = useState(() => createStaticAppStore(
+    createInitialState(createDefaultConfig("/tmp/gloomberb-ticker-table-test")),
+  ));
   return (
     <AppContext value={value}>
       <PaneInstanceProvider paneId="ticker-table-test">

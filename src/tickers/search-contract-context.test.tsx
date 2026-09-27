@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { testRender } from "../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState, usePaneTicker, type AppAction } from "../state/app/context";
+import { createStaticAppStore } from "../test-support/app-store";
 import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../types/config";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
@@ -53,7 +54,7 @@ test.each([48, 80, 120])("search keeps broker and explicit public panes through 
       persistLayout: (layout) => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });
     paneActions = useCommandBarPaneActions({ dispatch, pluginRegistry: registry, stateRef });
     search = useCommandBarTickerSearchActions({ closeAll() {}, dispatch, focusTicker: paneActions.focusTicker, pluginRegistry: registry, tickerRepository: repo, tickers: state.tickers });
-    return <AppContext.Provider value={{ state, dispatch }}><box flexDirection="column">{state.config.layout.instances.map((pane) => <PaneInstanceProvider key={pane.instanceId} paneId={pane.instanceId}><Observer id={pane.instanceId} /></PaneInstanceProvider>)}</box></AppContext.Provider>;
+    return <AppContext.Provider value={createStaticAppStore(state, dispatch)}><box flexDirection="column">{state.config.layout.instances.map((pane) => <PaneInstanceProvider key={pane.instanceId} paneId={pane.instanceId}><Observer id={pane.instanceId} /></PaneInstanceProvider>)}</box></AppContext.Provider>;
   }
   const rendered = await testRender(<Harness />, { width, height: 12 });
   try {

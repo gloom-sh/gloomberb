@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { createTestTicker } from "../../../test-support/ticker";
 import { buildTickerReport, ticker as runTickerCommand } from "../../../cli/commands/ticker";
@@ -33,7 +34,7 @@ for (const withSummary of [true, false]) for (const covered of [false, true]) {
     const state = createInitialState(config);
     await act(async () => {
       setup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <OverviewTab ticker={savedTicker} financials={financials} width={120} />
         </AppContext>,
         { width: 120, height: 20 },

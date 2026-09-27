@@ -4,6 +4,7 @@ import { tableHeaderPx } from "./dom";
 import { act, useRef, useState } from "react";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
 import { AppContext, createInitialState } from "../../../../state/app/context";
+import { createStaticAppStore } from "../../../../test-support/app-store";
 import { createDefaultConfig } from "../../../../types/config";
 import type { DataTableVisibleRange } from "../../../../components/ui/data-table";
 import { useTableBodyScrollActivity } from "../../../../components/table-view-shared";
@@ -48,7 +49,7 @@ test("controlled centering keeps following late quotes until the user scrolls", 
       afterScroll: () => { paginationChecks += 1; },
     });
     return (
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <WebDataTable
           items={currentItems}
           columns={[{ id: "strike", label: "Strike", width: 10, align: "right" }]}

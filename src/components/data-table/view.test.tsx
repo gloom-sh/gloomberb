@@ -7,6 +7,7 @@ import {
   PaneInstanceProvider,
   createInitialState,
 } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
 import type { DataTableCell, DataTableColumn } from "../ui";
@@ -55,7 +56,7 @@ function Harness({ onCursor = () => {} }: { onCursor?: () => void }) {
   const cursorTitle = rows[cursorIndex]?.title ?? "none";
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInstanceProvider paneId="data-table-view-test">
         <DataTableView<Row, Column>
           focused
@@ -106,7 +107,7 @@ function LargeSelectionHarness({
   );
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInstanceProvider paneId="data-table-view-large-test">
         <DataTableView<Row, Column>
           focused
@@ -148,7 +149,7 @@ function DeferredScrollHarness({ onScroll, initialRows = [], initialIndex = 500,
   setRequestedIndex = requestIndex;
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-table-deferred-scroll"));
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInstanceProvider paneId="deferred-scroll-test">
         <DataTableView<Row, Column>
           focused

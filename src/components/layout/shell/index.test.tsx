@@ -11,6 +11,7 @@ import {
   resolveTickerForPane,
   usePaneTicker,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Text, Textarea } from "../../../ui";
@@ -109,7 +110,7 @@ async function renderShellForWindowModeTest(
   const actions: ShellTestAction[] = [];
   const registry = options.registry ?? createShellPluginRegistry();
   testSetup = await testRender(
-    <AppContext value={{ state, dispatch: options.dispatch ?? ((action) => actions.push(action)) }}>
+    <AppContext value={createStaticAppStore(state, options.dispatch ?? ((action) => actions.push(action)))}>
       <TestDialogProvider>
         <Shell pluginRegistry={registry} />
       </TestDialogProvider>
@@ -147,7 +148,7 @@ function ShellTransientHarness({
   controls.dispatch = dispatch;
   controls.state = state;
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <TransientLayoutProvider>
         <TestDialogProvider>
           <Shell pluginRegistry={registry} />
@@ -237,7 +238,7 @@ describe("Shell", () => {
     const pluginRegistry = createShellPluginRegistry();
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <TestDialogProvider>
           <Shell pluginRegistry={pluginRegistry} />
         </TestDialogProvider>
@@ -280,7 +281,7 @@ describe("Shell", () => {
     const pluginRegistry = createShellPluginRegistry();
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <TestDialogProvider>
           <Shell
             pluginRegistry={pluginRegistry}
@@ -329,7 +330,7 @@ describe("Shell", () => {
     const pluginRegistry = createShellPluginRegistry();
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <TestDialogProvider>
           <Shell pluginRegistry={pluginRegistry} />
         </TestDialogProvider>
@@ -1097,7 +1098,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1139,7 +1140,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1184,7 +1185,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1229,7 +1230,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1275,7 +1276,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1312,7 +1313,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>
@@ -1356,7 +1357,7 @@ describe("Shell", () => {
     const actions: Array<any> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
         <TestDialogProvider>
           <Shell pluginRegistry={createShellPluginRegistry()} />
         </TestDialogProvider>

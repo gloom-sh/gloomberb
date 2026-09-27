@@ -6,6 +6,7 @@ import {
   PaneInstanceProvider,
   createInitialState,
 } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
 import type { DataTableCell, DataTableColumn } from "../ui";
@@ -48,7 +49,7 @@ function Harness() {
   ];
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInstanceProvider paneId="portfolio-list:main">
         <DataTableStackView<Row, Column>
           focused

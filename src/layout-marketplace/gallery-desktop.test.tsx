@@ -9,6 +9,7 @@ import type { LayoutGalleryController } from "./gallery";
 import { createDomTestHarness } from "../renderers/electrobun/view/test-utils";
 import { WebInputHostProvider } from "../renderers/electrobun/view/input-host";
 import { AppContext, createInitialState } from "../state/app/context";
+import { createStaticAppStore } from "../test-support/app-store";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness();
 
@@ -92,7 +93,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
 function renderInApp(node: ReactNode) {
   return renderDom(
     <WebInputHostProvider>
-      <AppContext value={{ state: createInitialState(createDefaultConfig("/tmp/gloomberb-gallery-desktop-app")), dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-gallery-desktop-app")))}>
         {node}
       </AppContext>
     </WebInputHostProvider>,

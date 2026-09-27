@@ -5,6 +5,7 @@ import { setLanguage } from "../../i18n";
 import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import { Box } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { ChoiceDialog } from "./choice-dialog";
 import { DataTable, type DataTableVisibleRange } from "./data-table";
@@ -701,7 +702,7 @@ describe("shared UI kit", () => {
   test("activates data table rows on a second click", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableActivationHarness />
         </PaneInstanceProvider>
@@ -731,7 +732,7 @@ describe("shared UI kit", () => {
   test("renders data table section headers as non-selectable rows", async () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableSectionHarness />
         </PaneInstanceProvider>
@@ -767,7 +768,7 @@ describe("shared UI kit", () => {
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     tableScrollBoxForTest = null;
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="portfolio-list:main">
           <DataTableVirtualizationHarness />
         </PaneInstanceProvider>

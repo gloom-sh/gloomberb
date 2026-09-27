@@ -3,6 +3,7 @@ import { act, useCallback, useState } from "react";
 import { testRender } from "../renderers/opentui/test-utils";
 import { PaneInViewProvider, setAppVisible } from "../state/app/activity";
 import { AppContext, createInitialState } from "../state/app/context";
+import { createStaticAppStore } from "../test-support/app-store";
 import { createDefaultConfig } from "../types/config";
 import { Text } from "../ui";
 import { useAutoRefresh } from "./auto-refresh";
@@ -28,7 +29,7 @@ function Harness(props: { intervalMs: number; loadMs: number; succeeds?: boolean
   const [inView, setInViewState] = useState(true);
   setInView = setInViewState;
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PaneInViewProvider value={inView}>
         <Probe {...props} />
       </PaneInViewProvider>

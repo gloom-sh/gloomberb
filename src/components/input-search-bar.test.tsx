@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { testRender } from "../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction } from "../state/app/context";
+import { createStaticAppStore } from "../test-support/app-store";
 import { createDefaultConfig } from "../types/config";
 import type { InputRenderable } from "../ui";
 import { InputSearchBar } from "./input-search-bar";
@@ -38,7 +39,7 @@ function Harness({
   }, [actions]);
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <InputSearchBar
         value=""
         focused

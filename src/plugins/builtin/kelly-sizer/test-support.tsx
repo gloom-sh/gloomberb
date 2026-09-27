@@ -5,6 +5,7 @@ import {
   createInitialState,
   PaneInstanceProvider,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
@@ -147,7 +148,7 @@ export function KellySizerHarness({
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
         <PluginRenderProvider pluginId="portfolio" runtime={createTestPluginRuntime()}>
           <KellySizerPane

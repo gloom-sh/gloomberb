@@ -4,6 +4,7 @@ import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
 import { StatusBar } from "./status-bar";
@@ -71,7 +72,7 @@ describe("StatusBar", () => {
     const handleExit = () => { exitCount += 1; };
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string; index?: number }) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string; index?: number }))}>
         <TransientLayoutProvider>
           <SeedTransientLayout
             onActivate={handleActivate}
@@ -138,7 +139,7 @@ describe("StatusBar", () => {
     const actions: Array<{ type: string; fromIndex?: number; toIndex?: number }> = [];
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string; fromIndex?: number; toIndex?: number }) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string; fromIndex?: number; toIndex?: number }))}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 3 },
@@ -196,7 +197,7 @@ describe("StatusBar", () => {
     } as any);
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string }) }}>
+      <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string }))}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 1 },
@@ -256,7 +257,7 @@ describe("StatusBar", () => {
     } as any);
 
     testSetup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 1 },

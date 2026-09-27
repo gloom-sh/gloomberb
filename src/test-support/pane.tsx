@@ -1,8 +1,9 @@
-import type { Dispatch, ReactNode } from "react";
+import { useMemo, type Dispatch, type ReactNode } from "react";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider, type CombinedPaneFooter } from "../components/layout/pane/footer";
 import { AppContext, PaneInstanceProvider, type AppAction, type AppState } from "../state/app/context";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../plugins/runtime";
 import { Box } from "../ui";
+import { createStaticAppStore } from "./app-store";
 import { cloneLayout, createDefaultConfig, type AppConfig, type PaneInstanceConfig } from "../types/config";
 
 export { createTestTicker } from "./ticker";
@@ -18,10 +19,11 @@ interface TestPaneProviderProps {
 
 /** Provider wiring only: the suite retains ownership of its state and update timing. */
 export function TestPaneProvider({
-  state, dispatch = () => {}, paneId, pluginId, runtime, children,
+  state, dispatch, paneId, pluginId, runtime, children,
 }: TestPaneProviderProps) {
+  const store = useMemo(() => createStaticAppStore(state, dispatch), [state, dispatch]);
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={store}>
       <PaneInstanceProvider paneId={paneId}>
         <PluginRenderProvider pluginId={pluginId} runtime={runtime}>
           {children}

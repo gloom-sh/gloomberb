@@ -3,6 +3,7 @@ import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { testRender, emitKeypress, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Input } from "../../ui";
 import { Tabs } from "../ui/tabs";
@@ -19,7 +20,7 @@ function Harness() {
   const [options, setOptions] = useState<Options>({ focused: true, keyboardNavigation: true, scroll: true, compact: false, editing: false, manyRows: false, tabs: withTabs });
   update = (next) => setOptions((current) => ({ ...current, ...next }));
   const state = createInitialState(createDefaultConfig("/tmp/gloom-table-horizontal"));
-  return <AppContext value={{ state, dispatch: () => {} }}>
+  return <AppContext value={createStaticAppStore(state)}>
     <PaneInstanceProvider paneId="horizontal-table">
       <DataTableView
         focused={options.focused}

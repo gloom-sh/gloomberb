@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { createTestTicker } from "../../../test-support/ticker";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -34,7 +35,7 @@ for (const quoted of [true, false]) test(`fund classification and profile surviv
     profile, fundamentals: { dividendYield: 0 }, priceHistory: [], annualStatements: [], quarterlyStatements: [],
   };
   await act(async () => {
-    setup = await testRender(<AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+    setup = await testRender(<AppContext value={createStaticAppStore(createInitialState(config))}>
       <OverviewTab ticker={ticker} financials={financials} width={80} />
     </AppContext>, { width: 80, height: 24 });
   });

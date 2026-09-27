@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { act, createRef, useState } from "react";
 import { DataTableView } from "../../../../components/data-table/view";
 import { AppContext, createInitialState } from "../../../../state/app/context";
+import { createStaticAppStore } from "../../../../test-support/app-store";
 import { createDefaultConfig } from "../../../../types/config";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../../../ui";
 import type { ScrollBoxRenderable } from "../../../../ui/host";
@@ -24,7 +25,7 @@ test("DOM table handles expose horizontal extent to shared keyboard navigation",
     const [focused, updateFocused] = useState(true);
     setFocused = updateFocused;
     return <UiHostProvider ui={{ ...ui, DataTable: WebDataTable }} renderer={renderer}>
-      <WebInputHostProvider><AppContext value={{ state, dispatch: () => {} }}>
+      <WebInputHostProvider><AppContext value={createStaticAppStore(state)}>
         <DataTableView focused={focused} scrollRef={bodyRef} headerScrollRef={headerRef}
           items={[{ symbol: "ALPH", value: "$100M" }]}
           columns={[{ id: "symbol", label: "TICKER", width: 60 }, { id: "value", label: "VALUE", width: 40 }]}

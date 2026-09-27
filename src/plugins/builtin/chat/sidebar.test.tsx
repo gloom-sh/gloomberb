@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useCallback, useMemo, useRef, useState } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, appReducer, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createConfigBackedTestPluginRuntime, createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, findPaneInstance, type PaneInstanceConfig } from "../../../types/config";
 import { TextAttributes } from "../../../ui";
@@ -58,7 +59,7 @@ function createChannelPane(
   return function ChannelPane() {
     const [channelId, setChannelId] = useState(initialChannelId);
     return (
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
           <ChatContent
             controller={controller}
@@ -86,7 +87,7 @@ describe("ChatContent channel sidebar", () => {
 
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
     const renderChannelPane = (width: number) => (
-      <AppContext value={{ state, dispatch: () => {} }}>
+      <AppContext value={createStaticAppStore(state)}>
         <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
           <ChatContent
             controller={controller}
@@ -573,7 +574,7 @@ describe("ChatContent channel sidebar", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
             <ChatContent
               controller={controller}
@@ -673,7 +674,7 @@ describe("ChatContent channel sidebar", () => {
       }), [dispatch]);
 
       return (
-        <AppContext value={{ state, dispatch }}>
+        <AppContext value={createStaticAppStore(state, dispatch)}>
           <PaneInstanceProvider paneId={paneInstanceId}>
             <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
               <ResolvedChatPaneComponent

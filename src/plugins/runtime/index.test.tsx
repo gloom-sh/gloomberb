@@ -7,6 +7,7 @@ import {
   appReducer,
   createInitialState,
 } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createConfigBackedTestPluginRuntime, createTestPluginRuntime } from "../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../types/config";
 import {
@@ -66,7 +67,7 @@ describe("plugin runtime hooks", () => {
       stateRef.current = state;
 
       return (
-        <AppContext value={{ state, dispatch }}>
+        <AppContext value={createStaticAppStore(state, dispatch)}>
           <PaneInstanceProvider paneId="prediction-markets:main">
             <PluginRenderProvider pluginId="prediction-markets" runtime={runtime}>
               <HookProbe />
@@ -123,7 +124,7 @@ describe("plugin runtime hooks", () => {
       dispatchRef.current = dispatch;
 
       return (
-        <AppContext value={{ state, dispatch }}>
+        <AppContext value={createStaticAppStore(state, dispatch)}>
           <PaneInstanceProvider paneId="portfolio-list:main">
             <PluginRenderProvider pluginId="news" runtime={runtime}>
               <HookProbe />

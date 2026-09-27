@@ -12,6 +12,7 @@ import { setSharedRegistryForTests, type PluginRegistry } from "../../plugins/re
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import { AppContext, createInitialState } from "../app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { INLINE_TICKER_STREAM_WEIGHT, useInlineTickers } from "./inline-tickers";
 import { resetInlineTickerFailures } from "./inline-ticker-failures";
 import { createTestTicker } from "../../test-support/ticker";
@@ -66,7 +67,7 @@ describe("useInlineTickers", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+        <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
           <InlineTickerHarness />
         </AppContext>,
         { width: 20, height: 1 },
@@ -94,7 +95,7 @@ describe("useInlineTickers", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <InlineTickerHarness liveQuotes={false} />
         </AppContext>,
         { width: 20, height: 1 },
@@ -128,7 +129,7 @@ describe("useInlineTickers", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <InlineTickerHarness />
         </AppContext>,
         { width: 20, height: 1 },
@@ -191,7 +192,7 @@ describe("useInlineTickers", () => {
 
     await act(async () => {
       testSetup = await testRender(
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(state)}>
           <Host />
         </AppContext>,
         { width: 20, height: 1 },

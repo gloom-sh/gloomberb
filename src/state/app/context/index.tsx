@@ -62,13 +62,19 @@ export type {
   PaneRuntimeState,
 } from "../../../core/state/app/state";
 
-interface AppContextStoreValue {
+/** What AppProvider puts in AppContext: the current state and a change feed. */
+export interface AppContextStoreValue {
   dispatch: Dispatch<AppAction>;
   getState: () => AppState;
   subscribe: (listener: () => void) => () => void;
 }
 
+/**
+ * @deprecated Provide a store instead: `createStaticAppStore(state, dispatch)`
+ * from `gloomberb/test-support`. The hooks still read this shape.
+ */
 interface AppContextLegacyValue {
+  /** @deprecated Wrap the state with `createStaticAppStore(state, dispatch)`. */
   state: AppState;
   dispatch: Dispatch<AppAction>;
 }
@@ -78,6 +84,7 @@ type AppContextValue = AppContextStoreValue | AppContextLegacyValue;
 export const AppContext = createContext<AppContextValue | null>(null);
 const PaneContext = createContext<string | null>(null);
 
+/** False only for the deprecated `{ state, dispatch }` value, which the hooks below still read. */
 function isAppStoreContextValue(context: AppContextValue): context is AppContextStoreValue {
   return "getState" in context && "subscribe" in context;
 }

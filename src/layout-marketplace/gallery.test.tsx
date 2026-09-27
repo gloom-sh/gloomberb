@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction } from "../state/app/context";
+import { createStaticAppStore } from "../test-support/app-store";
 import { cloneLayout, createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
 import { Box } from "../ui";
@@ -44,7 +45,7 @@ async function renderGallery() {
   let closed = false;
 
   testSetup = await testRender(
-    <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+    <AppContext value={createStaticAppStore(state, (action) => actions.push(action))}>
       <PaneFooterProvider>
         {(footer) => (
           <Box width={100} height={24} flexDirection="column">

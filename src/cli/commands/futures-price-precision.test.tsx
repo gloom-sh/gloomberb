@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender, settleFrame } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { createTestTicker } from "../../test-support/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
@@ -39,7 +40,7 @@ for (const [symbol, price, change, priorPrice] of [
     const ticker = createTestTicker(symbol, symbol, { assetCategory: "STK", currency: "USD" });
     await act(async () => {
       setup = await testRender(
-        <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+        <AppContext value={createStaticAppStore(createInitialState(config))}>
           <OverviewTab ticker={ticker} financials={financials} width={120} />
         </AppContext>,
         { width: 120, height: 20 },

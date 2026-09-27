@@ -9,6 +9,7 @@ import {
   appReducer,
   createInitialState,
 } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { colors } from "../../../theme/colors";
 import { createDefaultConfig } from "../../../types/config";
 import { getNativeSurfaceManager } from "../native/surface/manager";
@@ -56,7 +57,7 @@ function ChartScrollHarness() {
   });
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <AppContext value={createStaticAppStore(state, dispatch)}>
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
         <scrollbox ref={scrollRef} height={10} scrollY>
           <box flexDirection="column">

@@ -4,6 +4,7 @@ import { buildHeadlessFunctionReport, renderHeadlessPaneText } from "../../../..
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
 import { takeSavedTextFile, testRender } from "../../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../../state/app/context";
+import { createStaticAppStore } from "../../../../test-support/app-store";
 import { exportPaneTable } from "../../../../state/pane-table-export-registry";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createTestPaneConfig, createTestTicker } from "../../../../test-support/pane";
@@ -74,7 +75,7 @@ async function mount(financials: TickerFinancials, period: Period = "annual") {
   function Harness() {
     const [state, dispatch] = useReducer(appReducer, initial);
     return (
-      <AppContext value={{ state, dispatch }}>
+      <AppContext value={createStaticAppStore(state, dispatch)}>
         <PaneInstanceProvider paneId={PANE_ID}>
           <PaneFooterProvider>
             {(footer) => (

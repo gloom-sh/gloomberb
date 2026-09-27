@@ -2,6 +2,7 @@ import { act } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
@@ -200,7 +201,7 @@ export function createHarness(
   );
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
+    <AppContext value={createStaticAppStore(state)}>
       <PluginRenderProvider pluginId="gloomberb-cloud" runtime={options?.runtime ?? createTestPluginRuntime()}>
         {content}
       </PluginRenderProvider>

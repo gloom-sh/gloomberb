@@ -4,6 +4,7 @@ import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../comp
 import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { AppConfig } from "../../../types/config";
@@ -42,7 +43,7 @@ function Harness({ config }: { config: AppConfig }) {
   initial.focusedPaneId = ID;
   const [state, dispatch] = useReducer(appReducer, initial);
   useEffect(() => { latestState = state; }, [state]);
-  return <AppContext value={{ state, dispatch }}><PaneInstanceProvider paneId={ID}>
+  return <AppContext value={createStaticAppStore(state, dispatch)}><PaneInstanceProvider paneId={ID}>
     <PaneKeyboardScrollController paneId={ID} focused />
     <PluginRenderProvider pluginId={PLUGIN} runtime={runtime}><RemoteUiRegistryProvider registry={registry}>
       <PaneFooterProvider>{(footer) => <Box width={WIDTH} height={HEIGHT} flexDirection="column">

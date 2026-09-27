@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import { CurveSurface } from "./curve-surface";
 import type { CurveSeries } from "./model";
@@ -25,7 +26,7 @@ async function frame() {
 test("short curve panes fall back to the shared table and permit selection of missing nodes", async () => {
   const selections: string[] = [];
   const state = createInitialState(createDefaultConfig("/tmp/gloom-curve-test"));
-  await act(async () => { setup = await testRender(<AppContext value={{ state, dispatch: () => {} }}>
+  await act(async () => { setup = await testRender(<AppContext value={createStaticAppStore(state)}>
     <CurveSurface series={series} width={60} height={7} focused onSelectedPointChange={(id) => selections.push(id)} />
   </AppContext>, { width: 60, height: 7 }); });
   await frame();

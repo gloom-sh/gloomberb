@@ -17,6 +17,7 @@ import {
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { AppContext, createInitialState } from "../../../state/app/context";
+import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import type { ChartSpec } from "../../../time-series/types";
 import { buildPriceChartPreset } from "./presets";
@@ -125,7 +126,7 @@ describe("chart series inline quick add", () => {
     let renderedWidth = 0;
 
     testSetup = await testRender(
-      <AppContext.Provider value={{ state: initial, dispatch: () => {} }}>
+      <AppContext.Provider value={createStaticAppStore(initial)}>
         <ChartSeriesQuickAdd
           spec={startingSpec}
           setSpec={(next) => {
@@ -218,7 +219,7 @@ describe("chart series inline quick add", () => {
     }
 
     testSetup = await testRender(
-      <AppContext.Provider value={{ state: initial, dispatch: () => {} }}>
+      <AppContext.Provider value={createStaticAppStore(initial)}>
         <CaptureInputProvider>
           <Harness />
         </CaptureInputProvider>
