@@ -1,11 +1,12 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
-import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "./contracts";
-import { futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
+import { FUTURES_RETURN_COLUMNS, futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
+import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
 
@@ -22,6 +23,9 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "price", label: "Last", description: "Last traded price." },
   { id: "change", label: "Change", description: "Change on the session." },
   { id: "changePercent", label: "Change %", description: "Percent change on the session." },
+  { id: "return1w", label: "1W", description: "Front contract's return over one week." },
+  { id: "return1m", label: "1M", description: "Front contract's return over one month." },
+  { id: "returnYtd", label: "YTD", description: "Front contract's return since the end of last year." },
   { id: "volume", label: "Volume", description: "Contracts traded on the session." },
   { id: "prevClose", label: "Prev close", description: "Previous session close." },
   { id: "time", label: "Time", description: "UTC time of the last quote." },
@@ -34,9 +38,12 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
  * readable contract name; a narrow pane drops them instead of clipping.
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
-  volume: 92,
-  prevClose: 104,
-  time: 114,
+  return1w: 84,
+  return1m: 92,
+  returnYtd: 106,
+  volume: 116,
+  prevClose: 128,
+  time: 140,
 };
 const SESSION_TEXT_MIN_WIDTH = 100;
 
@@ -46,6 +53,9 @@ const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
   price: 12,
   change: 10,
   changePercent: 9,
+  return1w: 8,
+  return1m: 8,
+  returnYtd: 8,
   volume: 9,
   prevClose: 12,
   // An 8-char TIME UTC header over a 5-char time: the shared table's floating-pane
@@ -97,6 +107,9 @@ const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
   price: "LAST",
   change: "CHG",
   changePercent: "CHG%",
+  return1w: "1W",
+  return1m: "1M",
+  returnYtd: "YTD",
   volume: "VOL",
   prevClose: "PREV",
   time: "TIME UTC",
@@ -187,7 +200,7 @@ export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
   quotes: BoardQuoteMap,
-  options?: { sessionText?: boolean },
+  options?: { sessionText?: boolean; returns?: FrontReturnsMap },
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 
@@ -210,6 +223,15 @@ export function renderFuturesCell(
         return { text: "—", color: colors.textDim };
       }
       return { text: formatCompact(quote.volume, { fixedDecimals: true }), color: colors.textDim };
+    case "return1w":
+    case "return1m":
+    case "returnYtd": {
+      const returns = options?.returns?.get(contract.symbol);
+      if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
+      const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
+      if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
+      return { text: formatPercentRaw(value), color: priceColor(value) };
+    }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.previousClose == null || !Number.isFinite(quote.previousClose)) {
