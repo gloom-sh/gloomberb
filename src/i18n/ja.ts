@@ -1335,4 +1335,10 @@ export const ja: Record<string, string> = {
   "Sign in": "サインイン",
   "On this device": "このデバイスで",
   "Sign in, or on this device": "サインイン、またはこのデバイスで",
+  "Open the link and enter the code there.": "リンクを開き、そこでコードを入力してください。",
+  "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "{broker} に連携している他の AI アプリは切断されます。代わりに Gloom に接続してください。",
+  "Waiting for {broker}...": "{broker} を待っています...",
+  "Contacting Gloom...": "Gloom に接続中...",
+  "Something went wrong.": "問題が発生しました。",
+  "Connecting broker…": "証券会社に接続中…",
 };

@@ -20,6 +20,10 @@ import type {
   CommandBarNotifyFn,
 } from "./collection-actions";
 
+/**
+ * What the form does after a submit. "stay" keeps it as it was: the user
+ * backed out of a step the submit opened, such as a broker sign-in.
+ */
 export type WorkflowSuccessDisposition = "back" | "close" | "stay";
 
 /** The first required field left empty, and what to tell the user about it. */
@@ -102,20 +106,17 @@ export async function submitCommandBarWorkflow(options: {
     visibleFields,
   } = options;
 
-  const connectBrokerFromWorkflow = async (selectorKey: "brokerType" | "source") => {
+  /** False when the user backed out of signing the broker in. */
+  const connectBrokerFromWorkflow = async (selectorKey: "brokerType" | "source"): Promise<boolean> => {
     const selection = resolveBrokerWorkflowSelection(route, selectorKey);
     if (!selection) throw new Error("Broker is required.");
     if (selection.method.kind === "signed-in") {
-      // The connect dialog opens over the form, which closes now; the outcome,
-      // a refusal included, arrives as a toast.
-      void collectionWorkflowActions.connectSignedInBroker(selection.method.broker).catch((error: unknown) => {
-        notify(error instanceof Error ? error.message : String(error), { type: "error" });
-      });
-      return;
+      return await collectionWorkflowActions.connectSignedInBroker(selection.method.broker);
     }
     const brokerId = selection.method.adapter.id;
     const values = extractBrokerWorkflowValues(route.values, selectorKey, brokerId);
     await collectionWorkflowActions.connectBrokerProfile(brokerId, values);
+    return true;
   };
 
   switch (route.payload.kind) {
@@ -148,13 +149,13 @@ export async function submitCommandBarWorkflow(options: {
               coerceFieldString(route.values.name),
               parseOwnerValue(route.values.owner),
             );
-          } else {
-            await connectBrokerFromWorkflow("source");
+          } else if (!await connectBrokerFromWorkflow("source")) {
+            return "stay";
           }
           break;
         }
         case "add-broker-account":
-          await connectBrokerFromWorkflow("brokerType");
+          if (!await connectBrokerFromWorkflow("brokerType")) return "stay";
           break;
         case "add-portfolio": {
           const shares = coerceFieldString(route.values.shares).trim();

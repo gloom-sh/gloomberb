@@ -25,7 +25,11 @@ import {
   type FormRouteResult,
 } from "./routes";
 
-/** Pane settings width, in cells. */
+/**
+ * Pane settings width, in cells. The broker connect step that Add Broker and
+ * New Portfolio advance to fits in it too (its QR code, the link, the note
+ * wrapped), since a dialog keeps the width it opened with.
+ */
 const FORM_MODAL_WIDTH = 68;
 /** A prompt or a JSON body needs room to read. */
 const FORM_MODAL_TEXTAREA_WIDTH = 88;

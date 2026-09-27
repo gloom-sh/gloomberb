@@ -1,4 +1,5 @@
 import type { Dispatch } from "react";
+import type { SignedInBroker } from "../../brokers/signed-in/client";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import {
@@ -33,6 +34,8 @@ export interface FormModalDeps {
 export function createFormCollectionActions(
   deps: FormModalDeps,
   notify: CommandBarNotifyFn,
+  /** The form's own connect step for a signed-in broker. */
+  requestBrokerSignIn?: (broker: SignedInBroker) => Promise<boolean>,
 ): CommandBarCollectionWorkflowActions {
   const state = deps.getState();
   return createCommandBarCollectionWorkflowActions({
@@ -44,6 +47,7 @@ export function createFormCollectionActions(
     notify,
     persistConfig: (nextConfig) => persistWorkflowConfig(deps.getState(), nextConfig),
     pluginRegistry: deps.pluginRegistry,
+    requestBrokerSignIn,
     setActiveCollection: (collectionId) => showCollectionInPortfolioPane(deps.getState(), deps.dispatch, collectionId),
     tickerRepository: deps.tickerRepository,
   });

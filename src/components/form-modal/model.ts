@@ -7,11 +7,33 @@ import type {
   CommandBarFieldValue,
   CommandBarWorkflowRoute,
 } from "../command-bar/workflow/types";
+import type { ReactNode } from "react";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { t } from "../../i18n";
 
 /** A form in the modal: the command bar's workflow route, owned by the modal now. */
 export type FormRoute = CommandBarWorkflowRoute;
+
+/**
+ * Where a submit can take the form instead of closing it, in the same dialog:
+ * the step replaces the fields until the submit moves on, and Cancel or Esc
+ * closes the form. Its body owns every key but Esc.
+ */
+export interface FormStep {
+  kind: "custom";
+  /** A new id mounts the body afresh. */
+  id: string;
+  title: string;
+  subtitle?: string;
+  render(context: FormStepContext): ReactNode;
+}
+
+export interface FormStepContext {
+  /** Terminal rows the body may fill, between the title and the Cancel button. */
+  bodyRows: number;
+  /** Terminal columns inside the frame. */
+  contentWidth: number;
+}
 
 /**
  * Where the keyboard is. The primary button is the last stop of the ring, so a

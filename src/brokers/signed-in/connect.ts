@@ -31,7 +31,7 @@ export interface ConnectSignedInBrokerDeps<T> {
   getConfig(): AppConfig;
   createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
   syncBrokerInstance(instanceId: string): Promise<T>;
-  /** Opens the connect dialog; replaced in tests. */
+  /** Asks the user to connect: a form's own connect step, or the connect dialog when missing. */
   requestSignIn?: (broker: SignedInBroker) => Promise<boolean>;
 }
 

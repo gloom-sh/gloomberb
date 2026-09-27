@@ -37,8 +37,11 @@ export type CommandBarNotifyFn = (
 
 export interface CommandBarCollectionWorkflowActions {
   connectBrokerProfile: (brokerId: string, values: WorkflowStringValues) => Promise<void>;
-  /** Opens the connect dialog; rejects with what to tell the user when it is not connected. */
-  connectSignedInBroker: (broker: SignedInBroker) => Promise<void>;
+  /**
+   * Asks the user to connect `broker` (the form's connect step), then syncs
+   * its profile. False when they backed out before it connected.
+   */
+  connectSignedInBroker: (broker: SignedInBroker) => Promise<boolean>;
   createManualPortfolio: (name: string, owner?: CollectionOwner) => Promise<void>;
   createWatchlist: (name: string, owner?: CollectionOwner) => Promise<void>;
   deletePortfolio: (portfolioId: string) => Promise<void>;
@@ -57,6 +60,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
   notify: CommandBarNotifyFn;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
+  /** Shows the connect step for a signed-in broker; the app's connect dialog when missing. */
+  requestBrokerSignIn?: (broker: SignedInBroker) => Promise<boolean>;
   setActiveCollection: (collectionId: string) => void;
   tickerRepository: AppTickerRepositoryPort;
 }): CommandBarCollectionWorkflowActions {
@@ -69,6 +74,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
     notify,
     persistConfig,
     pluginRegistry,
+    requestBrokerSignIn,
     setActiveCollection,
     tickerRepository,
   } = options;
@@ -115,9 +121,11 @@ export function createCommandBarCollectionWorkflowActions(options: {
         getConfig: () => pluginRegistry.getConfigFn(),
         createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstanceFn(brokerType, label, values),
         syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstanceFn(instanceId),
+        requestSignIn: requestBrokerSignIn,
       });
-      if (!connected) throw new Error(`${broker.name} was not connected.`);
+      if (!connected) return false;
       showConnectedBroker(connected.instance.id);
+      return true;
     },
 
     async createManualPortfolio(name, owner) {

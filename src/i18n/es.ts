@@ -1339,4 +1339,10 @@ export const es: Record<string, string> = {
   "Sign in": "Iniciar sesión",
   "On this device": "En este dispositivo",
   "Sign in, or on this device": "Iniciar sesión, o en este dispositivo",
+  "Open the link and enter the code there.": "Abre el enlace e introduce el código allí.",
+  "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "Otras apps de IA vinculadas a {broker} se desconectarán. Conéctalas a Gloom en su lugar.",
+  "Waiting for {broker}...": "Esperando a {broker}...",
+  "Contacting Gloom...": "Contactando con Gloom...",
+  "Something went wrong.": "Algo salió mal.",
+  "Connecting broker…": "Conectando bróker…",
 };

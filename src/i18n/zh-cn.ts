@@ -1335,4 +1335,10 @@ export const zhCN: Record<string, string> = {
   "Sign in": "登录",
   "On this device": "在此设备上",
   "Sign in, or on this device": "登录，或在此设备上",
+  "Open the link and enter the code there.": "打开链接并在那里输入代码。",
+  "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "已关联 {broker} 的其他 AI 应用会被断开。请改为将它们连接到 Gloom。",
+  "Waiting for {broker}...": "正在等待 {broker}...",
+  "Contacting Gloom...": "正在连接 Gloom...",
+  "Something went wrong.": "出了点问题。",
+  "Connecting broker…": "正在连接券商…",
 };

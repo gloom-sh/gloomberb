@@ -1333,4 +1333,10 @@ export const ko: Record<string, string> = {
   "Sign in": "로그인",
   "On this device": "이 기기에서",
   "Sign in, or on this device": "로그인 또는 이 기기에서",
+  "Open the link and enter the code there.": "링크를 열고 그곳에 코드를 입력하세요.",
+  "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "{broker}에 연결된 다른 AI 앱은 연결이 해제됩니다. 대신 Gloom에 연결하세요.",
+  "Waiting for {broker}...": "{broker} 기다리는 중...",
+  "Contacting Gloom...": "Gloom에 연결하는 중...",
+  "Something went wrong.": "문제가 발생했습니다.",
+  "Connecting broker…": "브로커 연결 중…",
 };

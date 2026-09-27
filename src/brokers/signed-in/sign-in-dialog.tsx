@@ -1,8 +1,9 @@
 /**
  * The dialog that connects a signed-in broker, plus the request bridge that
- * lets the command bar, the Brokers pane and onboarding open it. Those run
- * outside the React tree or in the desktop view, which is also where the
- * browser hand-off has to happen, so the broker adapter never opens it.
+ * lets the Brokers pane and onboarding open it. Those run outside the React
+ * tree or in the desktop view, which is also where the browser hand-off has to
+ * happen, so the broker adapter never opens it. Add Broker and New Portfolio
+ * show the same step inside their form, built from the pieces exported here.
  */
 import { useEffect, useRef, useState } from "react";
 import { apiClient, type AuthUser } from "../../api-client";
@@ -12,7 +13,7 @@ import { useAppLanguage } from "../../i18n/react";
 import { useViewport } from "../../react/input";
 import { colors } from "../../theme/colors";
 import { Box, Text, TextAttributes } from "../../ui";
-import { useDialog, useDialogKeyboard, type PromptContext } from "../../ui/dialog";
+import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
 import { DeviceSignInDialog } from "../../plugins/builtin/cloud/device-signin-dialog";
 import type { SignedInBroker } from "./client";
@@ -23,7 +24,7 @@ import {
   type BrokerSignInSnapshot,
 } from "./sign-in";
 
-function signInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): { text: string; color: string } {
+export function brokerSignInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): { text: string; color: string } {
   switch (snapshot.phase) {
     case "connected":
       return { text: t("Connected"), color: colors.positive };
@@ -39,18 +40,31 @@ function signInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): {
   }
 }
 
-function BrokerSignInDialog({
-  resolve,
-  dismiss,
-  broker,
-  write,
-}: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean }) {
-  useAppLanguage();
-  const { height: termHeight } = useViewport();
+/** Under the code: the broker's own note, or what connecting a single-connection broker does to other apps. */
+export function brokerSignInNote(broker: SignedInBroker): string | null {
+  return broker.capabilities.signupNote
+    ?? (broker.capabilities.singleConnection
+      ? tf("Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.", { broker: broker.name })
+      : null);
+}
+
+/**
+ * One attempt at connecting `broker`, with a controller of its own: started on
+ * mount, cancelled on unmount. A session Gloom refused ends it at once as
+ * "signed-out", for a new Gloom sign-in and a fresh attempt; "connected" waits
+ * a beat so it is seen, and `finish` skips the wait.
+ */
+export function useBrokerSignInAttempt(
+  broker: SignedInBroker,
+  write: boolean,
+  onOutcome: (outcome: "connected" | "signed-out") => void,
+): { snapshot: BrokerSignInSnapshot; restart(): void; finish(): void } {
   const controllerRef = useRef<BrokerSignInController | null>(null);
   if (!controllerRef.current) controllerRef.current = new BrokerSignInController(broker, write);
   const controller = controllerRef.current;
   const [snapshot, setSnapshot] = useState(controller.getSnapshot());
+  const onOutcomeRef = useRef(onOutcome);
+  onOutcomeRef.current = onOutcome;
 
   useEffect(() => {
     const unsubscribe = controller.subscribe(setSnapshot);
@@ -61,33 +75,59 @@ function BrokerSignInDialog({
     };
   }, [controller]);
 
-  // Close after a beat so "Connected" is visible; enter skips the wait. Signed
-  // out closes at once, for the host to sign in to Gloom.
   useEffect(() => {
     if (snapshot.phase === "signed-out") {
-      resolve("signed-out");
+      onOutcomeRef.current("signed-out");
       return;
     }
     if (snapshot.phase !== "connected") return;
-    const closeTimer = setTimeout(() => resolve("connected"), 900);
+    const closeTimer = setTimeout(() => onOutcomeRef.current("connected"), 900);
     return () => clearTimeout(closeTimer);
-  }, [resolve, snapshot.phase]);
+  }, [snapshot.phase]);
+
+  return {
+    snapshot,
+    restart: () => {
+      if (snapshot.phase !== "connected") controller.start();
+    },
+    finish: () => {
+      if (snapshot.phase === "connected") onOutcomeRef.current("connected");
+    },
+  };
+}
+
+/** Gloom's device sign-in, stacked over whatever asked for it. True once signed in. */
+export async function promptGloomSignIn(dialog: DialogApi): Promise<boolean> {
+  return !!await dialog.prompt<AuthUser | undefined>({
+    size: "full",
+    content: (context: unknown) => <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} />,
+  });
+}
+
+function BrokerSignInDialog({
+  resolve,
+  dismiss,
+  broker,
+  write,
+}: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean }) {
+  useAppLanguage();
+  const { height: termHeight } = useViewport();
+  // Close after a beat so "Connected" is visible; enter skips the wait. Signed
+  // out closes at once, for the host to sign in to Gloom.
+  const { snapshot, restart, finish } = useBrokerSignInAttempt(broker, write, resolve);
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
     if (event.name === "enter" || event.name === "return") {
-      if (snapshot.phase === "connected") resolve("connected");
-    } else if (isPlainKey(event, "r") && snapshot.phase !== "connected") {
-      controller.start();
+      finish();
+    } else if (isPlainKey(event, "r")) {
+      restart();
     } else if (event.name === "escape") {
       dismiss();
     }
   });
 
-  const note = broker.capabilities.signupNote
-    ?? (broker.capabilities.singleConnection
-      ? tf("Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.", { broker: broker.name })
-      : null);
+  const note = brokerSignInNote(broker);
   // Title, spacing, note, and footer take about eleven rows around the panel.
   const panelHeight = Math.max(4, termHeight - (note ? 12 : 10));
 
@@ -105,7 +145,7 @@ function BrokerSignInDialog({
       <SignInCodePanel
         url={snapshot.connectUrl}
         code={snapshot.code}
-        status={signInStatus(snapshot, broker)}
+        status={brokerSignInStatus(snapshot, broker)}
         height={panelHeight}
         shortcutScope="broker-signin:browser"
       />
@@ -161,10 +201,7 @@ export function BrokerSignInDialogHost() {
       // The broker connection belongs to the Gloom account, so there must be one.
       void runBrokerSignIn(request.broker, request.write, {
         isSignedIn: () => apiClient.isSignedIn(),
-        signInToGloom: async () => !!await dialog.prompt<AuthUser | undefined>({
-          size: "full",
-          content: (context: unknown) => <DeviceSignInDialog {...(context as PromptContext<AuthUser | undefined>)} />,
-        }),
+        signInToGloom: () => promptGloomSignIn(dialog),
         connectBroker: async (broker, write) => await dialog.prompt<BrokerSignInOutcome>({
           size: "full",
           content: (context: unknown) => (

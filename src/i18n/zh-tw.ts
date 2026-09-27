@@ -1335,4 +1335,10 @@ export const zhTW: Record<string, string> = {
   "Sign in": "登入",
   "On this device": "在此裝置上",
   "Sign in, or on this device": "登入，或在此裝置上",
+  "Open the link and enter the code there.": "開啟連結並在那裡輸入代碼。",
+  "Other AI apps linked to {broker} get disconnected. Connect them to Gloom instead.": "已連結 {broker} 的其他 AI 應用程式會被中斷連線。請改為將它們連線到 Gloom。",
+  "Waiting for {broker}...": "正在等待 {broker}...",
+  "Contacting Gloom...": "正在連線 Gloom...",
+  "Something went wrong.": "發生錯誤。",
+  "Connecting broker…": "正在連線券商…",
 };

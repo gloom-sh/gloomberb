@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
+import { apiClient } from "../../api-client";
+import type { SignedInBroker } from "../../brokers/signed-in/client";
+import { runBrokerSignIn, type BrokerSignInOutcome } from "../../brokers/signed-in/sign-in";
+import { promptGloomSignIn } from "../../brokers/signed-in/sign-in-dialog";
 import { extractBrokerWorkflowValues } from "../command-bar/workflow/broker";
 import { useAlertWorkflowQuoteSync } from "../command-bar/workflow/alert";
 import {
@@ -8,7 +12,11 @@ import {
   getWorkflowSubmitLabel,
   isWorkflowTextField,
 } from "../command-bar/workflow/fields";
-import { submitCommandBarWorkflow, validateRequiredWorkflowFields } from "../command-bar/workflow/submit";
+import {
+  submitCommandBarWorkflow,
+  validateRequiredWorkflowFields,
+  type WorkflowSuccessDisposition,
+} from "../command-bar/workflow/submit";
 import { buildTickerListingPicker } from "../command-bar/workflow/ticker-listing-picker";
 import type {
   CommandBarFieldValue,
@@ -30,6 +38,7 @@ import { ChoiceDialog } from "../ui/choice-dialog";
 import { DialogFrame } from "../ui/frame";
 import { Spinner } from "../ui/loading";
 import { openSelectField, type SelectFieldHandle } from "../ui/select-field";
+import { brokerConnectStep } from "./broker-step";
 import { createFormCollectionActions, type FormModalDeps } from "./deps";
 import { FormFieldRow } from "./field-row";
 import {
@@ -41,6 +50,7 @@ import {
   moveFormFocus,
   type FormFocus,
   type FormRoute,
+  type FormStep,
 } from "./model";
 
 /** Handed to the form by its host: the app at the moment it is asked, and a way to close it. */
@@ -118,6 +128,7 @@ export function FormModalContent({
   const [route, setRouteState] = useState<FormRoute>(() => ({ ...initialRoute, pending: false, error: null }));
   const [onSubmitStop, setOnSubmitStop] = useState(() => initialFormFocus(initialRoute).onSubmit);
   const [textareaRevisions, setTextareaRevisions] = useState<Record<string, number>>({});
+  const [step, setStep] = useState<FormStep | null>(null);
   // Keys can arrive faster than renders (a held key, a paste), so handlers read these.
   const routeRef = useRef(route);
   const onSubmitStopRef = useRef(onSubmitStop);
@@ -125,11 +136,16 @@ export function FormModalContent({
   const mountedRef = useRef(true);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const selectRefs = useRef(new Map<string, SelectFieldHandle>());
+  // The broker connect step being shown, and how many have been.
+  const endStepRef = useRef<((outcome: BrokerSignInOutcome) => void) | null>(null);
+  const stepAttemptsRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      // Closing the form cancels the step: no profile is created.
+      endStepRef.current?.("cancelled");
     };
   }, []);
 
@@ -160,6 +176,36 @@ export function FormModalContent({
   const setValue = useCallback((fieldId: string, value: CommandBarFieldValue) => {
     updateRoute((current) => applyFormValue(current, fieldId, value));
   }, [updateRoute]);
+
+  /** Shows one attempt at connecting the broker in place of the fields, until it ends. */
+  const connectBrokerInForm = useCallback((broker: SignedInBroker, write: boolean) => (
+    new Promise<BrokerSignInOutcome>((resolve) => {
+      if (!mountedRef.current) {
+        resolve("cancelled");
+        return;
+      }
+      const end = (outcome: BrokerSignInOutcome) => {
+        if (endStepRef.current !== end) return;
+        endStepRef.current = null;
+        if (mountedRef.current) setStep(null);
+        resolve(outcome);
+      };
+      endStepRef.current = end;
+      stepAttemptsRef.current += 1;
+      setStep(brokerConnectStep(broker, write, stepAttemptsRef.current, end));
+    })
+  ), []);
+
+  /**
+   * Signs a broker in from the form: Gloom's sign-in stacked over it when
+   * needed, then the connect step inside it, again after a session Gloom
+   * refused. False when the user backed out.
+   */
+  const signInBroker = useCallback((broker: SignedInBroker) => runBrokerSignIn(broker, undefined, {
+    isSignedIn: () => apiClient.isSignedIn(),
+    signInToGloom: async () => mountedRef.current && await promptGloomSignIn(dialog),
+    connectBroker: connectBrokerInForm,
+  }), [connectBrokerInForm, dialog]);
 
   useAlertWorkflowQuoteSync({
     dataProvider: runtime.getDeps().dataProvider,
@@ -193,10 +239,11 @@ export function FormModalContent({
       deps.pluginRegistry.notify({ body, ...options });
     };
 
+    let disposition: WorkflowSuccessDisposition;
     try {
-      await submitCommandBarWorkflow({
+      disposition = await submitCommandBarWorkflow({
         activeLayoutIndex: deps.getState().config.activeLayoutIndex,
-        collectionWorkflowActions: createFormCollectionActions(deps, notify),
+        collectionWorkflowActions: createFormCollectionActions(deps, notify, signInBroker),
         dispatch: deps.dispatch,
         extractBrokerWorkflowValues,
         getFieldStringValue: (_field, value) => coerceFieldString(value),
@@ -242,12 +289,18 @@ export function FormModalContent({
     }
 
     pendingRef.current = false;
+    if (disposition === "stay") {
+      // Backed out of Gloom's sign-in: the form is as it was. A cancelled
+      // connect step closed the form, which has nothing left to show.
+      if (mountedRef.current) updateRoute((latest) => ({ ...latest, pending: false }));
+      return;
+    }
     if (mountedRef.current) {
       dismiss();
     } else if (!notified) {
       deps.pluginRegistry.notify({ body: t("Done."), type: "success" });
     }
-  }, [dialog, dismiss, runtime, updateRoute]);
+  }, [dialog, dismiss, runtime, signInBroker, updateRoute]);
 
   const moveOn = useCallback((fieldId: string) => {
     setFocus(focusAfterField(routeRef.current, fieldId));
@@ -392,7 +445,43 @@ export function FormModalContent({
       return;
     }
     if (activeField) void openField(activeField);
-  }, { allowEditable: true });
+  }, { allowEditable: true, enabled: step === null });
+
+  if (step) {
+    const stepSubtitleRows = step.subtitle ? wrapTextLines(step.subtitle, contentWidth).length : 0;
+    const stepBody = (
+      <Fragment key={step.id}>
+        {step.render({
+          bodyRows: Math.max(1, viewport.height - 2 - TERMINAL_CHROME_ROWS - stepSubtitleRows),
+          contentWidth,
+        })}
+      </Fragment>
+    );
+    const cancel = (
+      <Box flexDirection="row" justifyContent="flex-end">
+        <Button label={t("Cancel")} variant="secondary" onPress={dismiss} />
+      </Box>
+    );
+    if (desktop) {
+      return (
+        <Box width={width} maxWidth="calc(100vw - 72px)" flexDirection="column">
+          <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss}>
+            {stepBody}
+            <Box style={{ marginTop: 14 }}>{cancel}</Box>
+          </DialogFrame>
+        </Box>
+      );
+    }
+    return (
+      <DialogFrame title={step.title} subtitle={step.subtitle}>
+        <Box flexDirection="column" width={contentWidth}>
+          {stepBody}
+          <Box height={1} />
+          {cancel}
+        </Box>
+      </DialogFrame>
+    );
+  }
 
   const visibleFields = getVisibleWorkflowFields(route.fields, route.values);
   const inputsFocusable = !route.pending && isTopmost;
