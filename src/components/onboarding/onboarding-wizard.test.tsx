@@ -6,6 +6,8 @@ import { act, type ReactNode } from "react";
 import { apiClient } from "../../api-client";
 import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
+import { JsonTickerRepository } from "../../data/json-ticker-repository";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { EventBus } from "../../plugins/event-bus";
 import { useShortcut } from "../../react/input";
@@ -23,35 +25,12 @@ import {
   type AppConfig,
 } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
-import type { TickerRecord } from "../../types/ticker";
 import { OnboardingWizard } from "./onboarding-wizard";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let tempDataDir: string | null = null;
 let capturedConfig: AppConfig | null = null;
 let capturedBrokerAccounts: Record<string, unknown> | null = null;
-
-function createTickerRepository(
-  initial: TickerRecord[] = [],
-  onSave?: (ticker: TickerRecord, persist: () => void) => void | Promise<void>,
-) {
-  const tickers = new Map(initial.map((ticker) => [ticker.metadata.ticker, ticker] as const));
-  return {
-    async loadAllTickers() { return [...tickers.values()]; },
-    async loadTicker(symbol: string) { return tickers.get(symbol) ?? null; },
-    async saveTicker(ticker: TickerRecord) {
-      const persist = () => { tickers.set(ticker.metadata.ticker, ticker); };
-      await onSave?.(ticker, persist);
-      if (!onSave) persist();
-    },
-    async createTicker(metadata: TickerRecord["metadata"]) {
-      const ticker = { metadata };
-      tickers.set(metadata.ticker, ticker);
-      return ticker;
-    },
-    async deleteTicker(symbol: string) { tickers.delete(symbol); },
-  };
-}
 
 const KNOWN_COMPANIES: Record<string, string> = {
   AAPL: "Apple Inc.",
@@ -76,14 +55,14 @@ function createMarketData(): DataProvider {
 
 function createPluginRegistry(options: {
   brokers?: Map<string, BrokerAdapter>;
-  tickerRepository?: ReturnType<typeof createTickerRepository>;
+  tickerRepository?: AppTickerRepositoryPort;
 } = {}): PluginRegistry {
   return {
     allPlugins: new Map(),
     brokers: options.brokers ?? new Map(),
     paneTemplates: new Map(),
     events: new EventBus(),
-    tickerRepository: options.tickerRepository ?? createTickerRepository(),
+    tickerRepository: options.tickerRepository ?? new JsonTickerRepository(),
     marketData: createMarketData(),
     panes: new Map(["portfolio-list", "chart-composer", "news-top", "world-indices"].map((id) => [id, {}])),
     persistence: { resources: undefined },
@@ -151,7 +130,7 @@ function RuntimeOnboardingWizard({
   onComplete = () => {},
 }: {
   pluginRegistry: PluginRegistry;
-  tickerRepository: ReturnType<typeof createTickerRepository>;
+  tickerRepository: AppTickerRepositoryPort;
   onComplete?: (config: AppConfig) => void;
 }) {
   const dispatch = useAppDispatch();
@@ -181,7 +160,7 @@ function RuntimeWizardHarness({
 }: {
   config: AppConfig;
   pluginRegistry: PluginRegistry;
-  tickerRepository: ReturnType<typeof createTickerRepository>;
+  tickerRepository: AppTickerRepositoryPort;
   onComplete?: (config: AppConfig) => void;
 }) {
   return (
@@ -268,7 +247,7 @@ afterEach(async () => {
 describe("OnboardingWizard", () => {
   test("saves manual positions and opens the largest one as the research workspace", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
     testSetup = await testRender(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
@@ -319,7 +298,7 @@ describe("OnboardingWizard", () => {
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-follow-"));
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
     testSetup = await testRender(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
@@ -368,7 +347,7 @@ describe("OnboardingWizard", () => {
 
   test("imports a broker portfolio after the first manual position and opens its largest holding", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-"));
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     const broker: BrokerAdapter = {
       id: "demo",
       name: "Demo Broker",
@@ -443,7 +422,7 @@ describe("OnboardingWizard", () => {
 
   test("Back prevents a delayed broker import from committing config, accounts, or positions", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-cancel-"));
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     let resolvePositions: (positions: BrokerPosition[]) => void = () => {};
     const positions = new Promise<BrokerPosition[]>((resolve) => {
       resolvePositions = resolve;
@@ -515,15 +494,18 @@ describe("OnboardingWizard", () => {
     const firstWriteStarted = new Promise<void>((resolve) => { resolveFirstWrite = resolve; });
     let releaseSecondWrite: () => void = () => {};
     const secondWrite = new Promise<void>((resolve) => { releaseSecondWrite = resolve; });
-    const tickerRepository = createTickerRepository([], async (ticker, persist) => {
-      if (ticker.metadata.ticker !== "MSFT") {
-        persist();
+    const repository = new JsonTickerRepository();
+    const tickerRepository: AppTickerRepositoryPort = {
+      loadAllTickers: () => repository.loadAllTickers(),
+      loadTicker: (symbol) => repository.loadTicker(symbol),
+      createTicker: (metadata) => repository.createTicker(metadata),
+      deleteTicker: (symbol) => repository.deleteTicker(symbol),
+      async saveTicker(ticker) {
+        if (ticker.metadata.ticker === "MSFT") await secondWrite;
+        await repository.saveTicker(ticker);
         if (ticker.metadata.ticker === "AAPL") resolveFirstWrite();
-        return;
-      }
-      await secondWrite;
-      persist();
-    });
+      },
+    };
     const broker: BrokerAdapter = {
       id: "committing",
       name: "Commit Broker",
@@ -1017,7 +999,7 @@ describe("OnboardingWizard", () => {
   });
   test("the keyboard removes an added position once the fields let go", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-remove-"));
-    const tickerRepository = createTickerRepository();
+    const tickerRepository = new JsonTickerRepository();
     testSetup = await testRender(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={createPluginRegistry({ tickerRepository })} />,
       { width: 100, height: 32 },

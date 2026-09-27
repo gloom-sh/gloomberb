@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { resolvePortfolioAccountState } from "./index";
+import { getLanguage, setLanguage } from "../../../../i18n";
+import type { BrokerAccount } from "../../../../types/trading";
+import type { PortfolioSummaryTotals } from "../metrics";
+import {
+  buildPortfolioFooterSegments,
+  buildPortfolioSummarySegments,
+  fitSummarySegments,
+  layoutPortfolioSummaryHeader,
+  resolvePortfolioAccountState,
+} from "./index";
 
 describe("resolvePortfolioAccountState", () => {
   test("does not reuse a single cached broker account for a different explicit portfolio account", () => {
@@ -181,4 +190,105 @@ describe("resolvePortfolioAccountState", () => {
     expect(accountState?.sourceLabel).toBe("Flex Jun 16");
   });
 
+});
+
+describe("buildPortfolioSummarySegments", () => {
+  const totals: PortfolioSummaryTotals = {
+    totalMktValue: 125000,
+    dailyPnl: 5000,
+    dailyPnlPct: 4.17,
+    totalCostBasis: 100000,
+    hasPositions: true,
+    unrealizedPnl: 25000,
+    unrealizedPnlPct: 25,
+    avgWatchlistChange: 0,
+    watchlistCount: 0,
+  };
+
+  const account: BrokerAccount = {
+    accountId: "DU12345",
+    name: "DU12345",
+    netLiquidation: 125000,
+    grossPositionValue: 175000,
+    totalCashValue: -50000,
+    settledCash: -45000,
+    availableFunds: 12000,
+    excessLiquidity: 10000,
+    buyingPower: 24000,
+  };
+
+  test("prioritizes net liquidation at narrow widths for broker portfolios", () => {
+    const segments = fitSummarySegments(buildPortfolioSummarySegments({
+      totals,
+      accountState: { account, sourceLabel: "Live" },
+    }), 26);
+
+    expect(segments.map((segment) => segment.id)).toEqual(["netliq", "val"]);
+  });
+
+  test("fits segments using translated terminal display widths", () => {
+    const previousLanguage = getLanguage();
+    try {
+      setLanguage("zh-CN");
+      const segments = fitSummarySegments(buildPortfolioSummarySegments({
+        totals,
+        accountState: { account, sourceLabel: "Live" },
+      }), 22);
+
+      expect(segments.map((segment) => segment.id)).toEqual(["netliq"]);
+    } finally {
+      setLanguage(previousLanguage);
+    }
+  });
+
+  test("uses broker gross position value for broker portfolio value", () => {
+    const segments = buildPortfolioSummarySegments({
+      totals,
+      accountState: { account, sourceLabel: "Live" },
+    });
+
+    expect(segments.find((segment) => segment.id === "val")?.parts[1]?.text).toBe("175.0k");
+  });
+
+  test("drops low-priority broker segments before required ones", () => {
+    const segments = fitSummarySegments(buildPortfolioSummarySegments({
+      totals,
+      accountState: { account, sourceLabel: "Live" },
+    }), 112);
+
+    expect(segments.map((segment) => segment.id)).toEqual([
+      "netliq",
+      "val",
+      "cash",
+      "day",
+      "pnl",
+      "settled",
+      "avail",
+    ]);
+  });
+
+  test("the open cash drawer continues where the header row ran out of room", () => {
+    const segments = buildPortfolioSummarySegments({ totals, accountState: { account, sourceLabel: "Live" } });
+    const layout = layoutPortfolioSummaryHeader(segments, 56, { cashDrawer: true, hideHeader: false });
+    const ids = (list: typeof segments) => list.map((segment) => segment.id);
+
+    expect(ids(layout.row)).toEqual(["netliq", "val", "cash"]);
+    expect(ids(layout.detail)).toEqual(["day", "pnl", "settled"]);
+    expect(ids(layoutPortfolioSummaryHeader(segments, 56, { cashDrawer: true, hideHeader: true }).detail))
+      .toEqual(["netliq", "val", "cash"]);
+  });
+
+  test("keeps an account failure in the footer when the portfolio has nothing to total", () => {
+    const segments = buildPortfolioFooterSegments({
+      totals: { ...totals, hasPositions: false },
+      accountState: null,
+      accountStatusText: "Acct missing",
+      financialsMap: new Map(),
+      isPortfolioTab: true,
+      refreshingSize: 0,
+      sortedTickers: [],
+    });
+
+    expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
+  });
 });

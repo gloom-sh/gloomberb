@@ -45,9 +45,3 @@ export function useTickerRequest<T>(
   const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, { clearOnError: discardDeniedResearch });
   return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }
-
-export function formatDateTime(date: Date): string {
-  const iso = date.toISOString();
-  const hasTime = date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0 || date.getUTCSeconds() !== 0;
-  return hasTime ? iso.slice(0, 16).replace("T", " ") : iso.slice(0, 10);
-}

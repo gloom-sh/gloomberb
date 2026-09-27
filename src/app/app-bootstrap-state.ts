@@ -4,11 +4,9 @@ import {
   reconcileAppSessionSnapshot,
   type AppSessionSnapshot,
 } from "../core/state/session-persistence";
+import { materializeDetachedLayouts } from "../core/state/app/layout";
 import type { SessionStore } from "../data/session-store";
-import {
-  materializeDetachedPanesAsFloating,
-  type AppConfig,
-} from "../types/config";
+import type { AppConfig } from "../types/config";
 import type {
   DesktopSharedStateSnapshot,
   DesktopWindowBridge,
@@ -48,16 +46,7 @@ export function resolveInitialAppConfig({
   hasDesktopWindowBridge,
 }: ResolveInitialAppConfigOptions): AppConfig {
   const baseConfig = desktopSnapshot?.config ?? initialConfig;
-  if (hasDesktopWindowBridge) return baseConfig;
-
-  return {
-    ...baseConfig,
-    layout: materializeDetachedPanesAsFloating(baseConfig.layout),
-    layouts: baseConfig.layouts.map((entry) => ({
-      ...entry,
-      layout: materializeDetachedPanesAsFloating(entry.layout),
-    })),
-  };
+  return hasDesktopWindowBridge ? baseConfig : materializeDetachedLayouts(baseConfig);
 }
 
 export function resolveCliLaunchConfig<TLaunchState = unknown>({

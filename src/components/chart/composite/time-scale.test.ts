@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { ResolvedSeries } from "../../../time-series/types";
+import { createTestResolvedSeries, createTestSeriesPoint } from "../../../test-support/time-series";
 import {
   buildCompositeTimeScale,
   projectCompositeTimestamp,
@@ -7,30 +8,19 @@ import {
 
 const HOUR_MS = 60 * 60 * 1_000;
 
-function point(timestamp: string): TimeSeriesPoint {
-  const date = new Date(timestamp);
-  return { date, observedAt: date, value: 1 };
-}
-
 function series(timestamps: string[], market = false): ResolvedSeries {
-  return {
+  return createTestResolvedSeries({
     id: "primary",
     label: "Primary",
     color: "#fff",
-    unit: "USD",
     unitGroup: "price",
-    nativeFrequency: "daily",
     dataShape: "ohlcv",
     style: "candles",
-    transform: "raw",
-    axis: "left",
-    panelId: "main",
-    interpolation: "none",
     timeBasis: market
       ? { kind: "market", timeZone: "America/New_York", cadenceMs: HOUR_MS }
       : undefined,
-    points: timestamps.map(point),
-  };
+    points: timestamps.map((timestamp) => createTestSeriesPoint(timestamp)),
+  });
 }
 
 describe("composite time scale", () => {

@@ -4,11 +4,11 @@ import { testRender } from "../renderers/opentui/test-utils";
 import { AppContext, createInitialState, type AppAction } from "../state/app/context";
 import { createStaticAppStore } from "../test-support/app-store";
 import { cloneLayout, createDefaultConfig } from "../types/config";
-import type { PaneDef } from "../types/plugin";
 import { Box } from "../ui";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../components/layout/pane/footer";
 import type { PluginRegistry } from "../plugins/registry";
 import { LayoutMarketplaceGallery } from "./gallery";
+import { testPanes as panes } from "./test-fixture";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -18,16 +18,6 @@ afterEach(async () => {
     testSetup = undefined;
   });
 });
-
-function paneDef(id: string, name: string, icon: string): PaneDef {
-  return { id, name, icon, component: () => null, defaultPosition: "left" };
-}
-
-const panes = new Map<string, PaneDef>([
-  ["portfolio-list", paneDef("portfolio-list", "Portfolio", "P")],
-  ["ticker-research", paneDef("ticker-research", "Ticker Research", "T")],
-  ["chat", paneDef("chat", "Chat", "M")],
-]);
 
 const registry = {
   panes,

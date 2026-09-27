@@ -6,25 +6,20 @@ import {
   parseMutedSectors,
   selectNotifiableArticles,
 } from "./filters";
+import { createTestArticle } from "../../../../../test-support/news";
 
 function article(overrides: Partial<MarketNewsItem> = {}): MarketNewsItem {
-  return {
-    id: "1",
+  return createTestArticle("1", {
     title: "Headline",
     url: "https://example.com/1",
     source: "Reuters",
     publishedAt: new Date("2026-09-01T12:00:00Z"),
-    topic: "general",
     topics: [],
-    sectors: [],
-    categories: [],
-    tickers: [],
     scores: { importance: 80, urgency: 80, marketImpact: 80, novelty: 50, confidence: 90 },
     isBreaking: true,
-    isDeveloping: false,
     importance: 80,
     ...overrides,
-  };
+  });
 }
 
 const watched = new Set(["AAPL", "MSFT"]);

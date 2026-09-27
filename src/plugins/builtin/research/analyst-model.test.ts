@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
-import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
+import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -133,4 +133,130 @@ test("the mean-target line starts once five firms, or every covering firm, are i
   // Three firms cover the stock, so the line starts when all three are in.
   expect(buildMeanTargetHistory(eight.slice(0, 3))).toEqual([{ date: "2026-03-12", average: 110, firms: 3 }]);
   expect(buildMeanTargetHistory([])).toEqual([]);
+});
+
+describe("analyst rating sorting", () => {
+  const ratings: AnalystRatingRecord[] = [
+    {
+      date: "2026-05-06",
+      firm: "Beta Capital",
+      action: "Raises",
+      current: "Neutral",
+      prior: "Neutral",
+      currentPriceTarget: 385,
+      priorPriceTarget: 270,
+    },
+    {
+      date: "2026-05-07",
+      firm: "Alpha Research",
+      action: "Downgrade",
+      current: "Hold",
+      prior: "Buy",
+      currentPriceTarget: 340,
+      priorPriceTarget: 335,
+    },
+    {
+      date: "2026-05-06",
+      firm: "Zenith",
+      action: "Upgrade",
+      current: "Buy",
+      prior: "Neutral",
+      currentPriceTarget: 525,
+      priorPriceTarget: 265,
+    },
+    {
+      date: "2026-05-05",
+      firm: "No Target",
+      action: "Reiterates",
+      current: "Buy",
+      prior: "Buy",
+    },
+  ];
+
+  test("sorts date newest first by default", () => {
+    const preference: RatingSortPreference = { columnId: "date", direction: "desc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Alpha Research",
+      "Beta Capital",
+      "Zenith",
+      "No Target",
+    ]);
+  });
+
+  test("sorts target by current target value with missing targets last", () => {
+    const preference: RatingSortPreference = { columnId: "target", direction: "desc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Zenith",
+      "Beta Capital",
+      "Alpha Research",
+      "No Target",
+    ]);
+  });
+
+  test("sorts text columns alphabetically with recent dates as a tie-breaker", () => {
+    const preference: RatingSortPreference = { columnId: "firm", direction: "asc" };
+
+    expect(sortRatingRows(ratings, preference).map((row) => row.firm)).toEqual([
+      "Alpha Research",
+      "Beta Capital",
+      "No Target",
+      "Zenith",
+    ]);
+  });
+});
+
+describe("analyst rating columns", () => {
+  test("widens the target column for formatted price target changes", () => {
+    const columns = buildRatingColumns(
+      [
+        {
+          date: "2026-04-16",
+          firm: "RBC Capital",
+          action: "Raises",
+          current: "Outperform",
+          prior: "Outperform",
+          currentPriceTarget: 1725,
+          priorPriceTarget: 1625,
+        },
+      ],
+      "USD",
+    );
+
+    expect(columns.find((column) => column.id === "target")?.width).toBe(16);
+  });
+
+  test("aligns target arrows across mixed price widths", () => {
+    const narrowPrior: AnalystRatingRecord = {
+      date: "2026-05-01",
+      firm: "Alpha",
+      action: "Raises",
+      current: "Outperform",
+      prior: "Outperform",
+      currentPriceTarget: 220,
+      priorPriceTarget: 9,
+    };
+    const widePrior: AnalystRatingRecord = {
+      date: "2026-05-02",
+      firm: "Beta",
+      action: "Raises",
+      current: "Outperform",
+      prior: "Outperform",
+      currentPriceTarget: 230,
+      priorPriceTarget: 230,
+    };
+    const targetColumn = buildRatingColumns([narrowPrior, widePrior], "USD")
+      .find((column) => column.id === "target");
+
+    expect(formatRatingTarget(narrowPrior, "USD", targetColumn).indexOf("→")).toBe(
+      formatRatingTarget(widePrior, "USD", targetColumn).indexOf("→"),
+    );
+  });
+
+  test("a cached first target's 0 prior reads as no prior target", () => {
+    const first: AnalystRatingRecord = { date: "2026-08-04", firm: "China Renaissance", currentPriceTarget: 280, priorPriceTarget: 0 };
+    expect(formatRatingTarget(first, "USD")).toBe(" $280");
+    expect(ratingTargetDelta(first)).toBeNull();
+  });
 });

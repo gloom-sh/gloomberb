@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { TimeSeriesPoint } from "../../../time-series/types";
 import {
   allocateCompositePanelHeights,
   applyCompositeChartCursor,
@@ -13,35 +13,10 @@ import { buildCompositeColumnLayout } from "./column-layout";
 import { compositeAxisTicks, compositeGridRatios, formatCompositeAxisValue } from "./format";
 import { renderCompositeAxisText } from "./text-renderer";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
+import { createTestResolvedSeries as series, createTestSeriesPoint as point } from "../../../test-support/time-series";
 
 /** Ratio the newest observation lands on once the right offset is reserved. */
 const NEWEST_X_RATIO = 1 / (1 + COMPOSITE_RIGHT_OFFSET_RATIO);
-
-function point(date: string, value: number): TimeSeriesPoint {
-  const observedAt = new Date(`${date}T00:00:00.000Z`);
-  return { date: observedAt, observedAt, value };
-}
-
-function series(overrides: Partial<ResolvedSeries> & Pick<ResolvedSeries, "id" | "points">): ResolvedSeries {
-  return {
-    id: overrides.id,
-    label: overrides.label ?? overrides.id,
-    color: overrides.color ?? "#00ff66",
-    unit: overrides.unit ?? "USD",
-    unitGroup: overrides.unitGroup ?? "currency",
-    nativeFrequency: overrides.nativeFrequency ?? "daily",
-    dataShape: overrides.dataShape ?? "scalar",
-    style: overrides.style ?? "line",
-    transform: overrides.transform ?? "raw",
-    axis: overrides.axis ?? "left",
-    panelId: overrides.panelId ?? "main",
-    interpolation: overrides.interpolation ?? "none",
-    timestampMode: overrides.timestampMode,
-    timeBasis: overrides.timeBasis,
-    points: overrides.points,
-    warning: overrides.warning,
-  };
-}
 
 describe("composite chart scene", () => {
   test("default legend stays inside the viewport when the right buffer contains a newer observation", () => {

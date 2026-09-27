@@ -7,6 +7,7 @@ import type { ChartResult } from "../../../sources/yahoo-finance/types";
 import { createDividendYieldHeadless } from "./headless";
 import { fetchDividendData, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, INVALID_DIVIDEND_SUMMARY_DATE, UNAVAILABLE_DIVIDEND_SUMMARY } from "./client";
 import { fetchProviderDividendData } from "./provider-client";
+import { chartResponse, yahooTransport } from "./test-fixture";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 
 const day = new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000;
@@ -18,19 +19,17 @@ const context = { marketData: { getQuote: async () => ({ symbol: "CASHFUND", pri
 afterEach(() => setHttpFetchTransport(null));
 
 function nativeSource(currency: string | undefined, dividends: Record<string, unknown>, summaryDetail: Record<string, unknown> = {}, chartFails = false) {
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
+  setHttpFetchTransport(yahooTransport(async (url) => {
     if (url.includes("/chart/")) {
       if (chartFails) throw new Error("Controlled history unavailable");
-      return Response.json({ chart: { result: [{
+      return chartResponse({
         meta: { currency, exchangeTimezoneName: "America/New_York", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo" },
-        timestamp: [day], indicators: { quote: [{ close: [100] }] }, events: { dividends },
-      }] } });
+        time: day, dividends,
+      });
     }
     if (url.includes("/quoteSummary/")) return Response.json({ quoteSummary: { result: [{ summaryDetail }] } });
     throw new Error(`Unexpected controlled request: ${url}`);
-  });
+  }));
 }
 
 function metric(result: HeadlessBundleResult, label: string) {
@@ -66,19 +65,17 @@ test("invalid summary dates cannot break reports or invalidate independent cash 
 
 test("independent summary transport and provider-body failures keep known cash and mark the report incomplete", async () => {
   let failure: "transport" | "provider-body" = "transport";
-  setHttpFetchTransport(async (url) => {
-    if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-    if (url.includes("getcrumb")) return new Response("fixture");
-    if (url.includes("/chart/")) return Response.json({ chart: { result: [{
+  setHttpFetchTransport(yahooTransport(async (url) => {
+    if (url.includes("/chart/")) return chartResponse({
       meta: { currency: "USD", regularMarketPrice: 100, regularMarketTime: day, dataGranularity: "1mo" },
-      timestamp: [day], indicators: { quote: [{ close: [100] }] }, events: { dividends: { cash } },
-    }] } });
+      time: day, dividends: { cash },
+    });
     if (url.includes("/quoteSummary/")) {
       if (failure === "transport") throw new Error("Controlled summary unavailable");
       return Response.json({ quoteSummary: { result: null, error: { description: "Controlled provider failure" } } });
     }
     throw new Error(`Unexpected controlled request: ${url}`);
-  });
+  }));
   const definition = createDividendYieldHeadless();
   for (const mode of ["transport", "provider-body"] as const) {
     failure = mode;

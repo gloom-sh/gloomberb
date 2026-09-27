@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig, createPaneInstance } from "../types/config";
-import type { TickerFinancials } from "../types/financials";
-import type { TickerRecord } from "../types/ticker";
-import { buildAppSessionSnapshot, reconcileAppSessionSnapshot } from "../core/state/session-persistence";
-import { instrumentIdentityKey } from "../utils/instrument-identity";
-import { createTestTicker } from "../test-support/ticker";
+import { createDefaultConfig, createPaneInstance } from "../../types/config";
+import type { TickerFinancials } from "../../types/financials";
+import type { TickerRecord } from "../../types/ticker";
+import { buildAppSessionSnapshot, reconcileAppSessionSnapshot } from "./session-persistence";
+import { instrumentIdentityKey } from "../../utils/instrument-identity";
+import { createTestTicker } from "../../test-support/ticker";
 
 function createTicker(symbol: string, exchange = "NASDAQ"): TickerRecord {
   return createTestTicker(symbol, symbol, { exchange, portfolios: ["main"], broker_contracts: [] });

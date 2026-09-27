@@ -160,16 +160,15 @@ describe("StatusBar", () => {
     expect(actions).toContainEqual({ type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
   });
 
-  test("offers to tidy three floating windows and tiles them on click", async () => {
+  /** Float three chat windows at `rect(index)`, then click Tidy Windows. */
+  async function tidyFloatingWindows(rect: (index: number) => { x: number; y: number; width: number }) {
     const config = createDefaultConfig("/tmp/gloomberb-tidy-test");
     const floatingLayout: LayoutConfig = {
       dockRoot: null,
       instances: Array.from({ length: 3 }, (_, index) => createPaneInstance("chat", { instanceId: `chat-${index}` })),
       floating: Array.from({ length: 3 }, (_, index) => ({
         instanceId: `chat-${index}`,
-        x: index * 40,
-        y: 0,
-        width: 40,
+        ...rect(index),
         height: 20,
         zIndex: 50 + index,
       })),
@@ -183,33 +182,39 @@ describe("StatusBar", () => {
       }),
       statusBarVisible: true,
     };
-    const actions: Array<{ type: string }> = [];
-    let updatedLayout: LayoutConfig | null = null;
-    const notifications: AppNotificationRequest[] = [];
+    const result = {
+      actions: [] as Array<{ type: string }>,
+      notifications: [] as AppNotificationRequest[],
+      updatedLayout: null as LayoutConfig | null,
+    };
 
     setSharedRegistryForTests({
       panes: new Map([["chat", { name: "Chat" }]]),
       getLayoutFn: () => state.config.layout,
       getTermSizeFn: () => ({ width: 120, height: 40 }),
-      updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
-      notify: (notification: AppNotificationRequest) => { notifications.push(notification); },
+      updateLayoutFn: (layout: LayoutConfig) => { result.updatedLayout = layout; },
+      notify: (notification: AppNotificationRequest) => { result.notifications.push(notification); },
       renderSlot: () => null,
     } as any);
 
     testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state, (action) => actions.push(action as { type: string }))}>
+      <AppContext value={createStaticAppStore(state, (action) => result.actions.push(action as { type: string }))}>
         <StatusBar />
       </AppContext>,
       { width: 120, height: 1 },
     );
 
     await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
-    const buttonX = frame.split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
-    expect(buttonX).toBeGreaterThanOrEqual(0);
+    const tidyX = testSetup.captureCharFrame().split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
+    expect(tidyX).toBeGreaterThanOrEqual(0);
 
-    await testSetup.mockMouse.click(buttonX + 1, 0);
+    await testSetup.mockMouse.click(tidyX + 1, 0);
     await testSetup.renderOnce();
+    return result;
+  }
+
+  test("offers to tidy three floating windows and tiles them on click", async () => {
+    const { actions, notifications, updatedLayout } = await tidyFloatingWindows((index) => ({ x: index * 40, y: 0, width: 40 }));
 
     expect(updatedLayout?.floating).toHaveLength(0);
     expect(notifications[0]).toMatchObject({
@@ -222,54 +227,7 @@ describe("StatusBar", () => {
   });
 
   test("tidies covered windows instead of leaving them floating", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-covered-test");
-    const floatingLayout: LayoutConfig = {
-      dockRoot: null,
-      instances: Array.from({ length: 3 }, (_, index) => createPaneInstance("chat", { instanceId: `chat-${index}` })),
-      floating: Array.from({ length: 3 }, (_, index) => ({
-        instanceId: `chat-${index}`,
-        x: 10,
-        y: 4,
-        width: 50,
-        height: 20,
-        zIndex: 50 + index,
-      })),
-      detached: [],
-    };
-    const state = {
-      ...createInitialState({
-        ...config,
-        layout: floatingLayout,
-        layouts: [{ name: "Default", layout: cloneLayout(floatingLayout) }],
-      }),
-      statusBarVisible: true,
-    };
-    let updatedLayout: LayoutConfig | null = null;
-    const notifications: AppNotificationRequest[] = [];
-
-    setSharedRegistryForTests({
-      panes: new Map([["chat", { name: "Chat" }]]),
-      getLayoutFn: () => state.config.layout,
-      getTermSizeFn: () => ({ width: 120, height: 40 }),
-      updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
-      notify: (notification: AppNotificationRequest) => { notifications.push(notification); },
-      renderSlot: () => null,
-    } as any);
-
-    testSetup = await testRender(
-      <AppContext value={createStaticAppStore(state)}>
-        <StatusBar />
-      </AppContext>,
-      { width: 120, height: 1 },
-    );
-
-    await testSetup.renderOnce();
-    const frame = testSetup.captureCharFrame();
-    const tidyX = frame.split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
-    expect(tidyX).toBeGreaterThanOrEqual(0);
-
-    await testSetup.mockMouse.click(tidyX + 1, 0);
-    await testSetup.renderOnce();
+    const { notifications, updatedLayout } = await tidyFloatingWindows(() => ({ x: 10, y: 4, width: 50 }));
 
     expect(updatedLayout?.floating).toHaveLength(0);
     expect(getDockedPaneIds(updatedLayout!)).toHaveLength(3);

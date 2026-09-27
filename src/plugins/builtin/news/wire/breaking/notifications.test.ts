@@ -9,29 +9,23 @@ import {
   BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,
   setupBreakingNewsNotifications,
 } from "./notifications";
+import { createTestArticle } from "../../../../../test-support/news";
 
 function article(
   id: string,
   title = id,
   overrides: Partial<MarketNewsItem> = {},
 ): MarketNewsItem {
-  return {
-    id,
+  return createTestArticle(id, {
     title,
-    url: `https://example.com/${id}`,
     source: "Test Wire",
-    publishedAt: new Date(),
-    topic: "general",
-    topics: ["general"],
-    sectors: [],
     categories: ["general"],
     tickers: ["AAPL"],
     scores: { importance: 90, urgency: 90, marketImpact: 80, novelty: 80, confidence: 90 },
     importance: 90,
     isBreaking: true,
-    isDeveloping: false,
     ...overrides,
-  };
+  });
 }
 
 function ready(articles: MarketNewsItem[]): NewsQueryState {

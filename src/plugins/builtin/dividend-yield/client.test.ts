@@ -4,6 +4,7 @@ import type { DividendPayment } from "./types";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless } from "./headless";
+import { chartResponse, yahooTransport } from "./test-fixture";
 
 afterEach(() => setHttpFetchTransport(null));
 
@@ -58,16 +59,13 @@ describe("extractDividendFields", () => {
 describe("cash distribution calculations", () => {
   test("native income keeps the listing's ex-date when its session starts on the previous UTC date", async () => {
     const timestamp = Date.parse("2026-01-01T23:00:00Z") / 1000;
-    setHttpFetchTransport(async (url) => {
-      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-      if (url.includes("getcrumb")) return new Response("fixture-crumb");
-      if (url.includes("/chart/")) return Response.json({ chart: { result: [{
+    setHttpFetchTransport(yahooTransport(async (url) => {
+      if (url.includes("/chart/")) return chartResponse({
         meta: { currency: "AUD", exchangeTimezoneName: "Australia/Sydney", regularMarketPrice: 100, dataGranularity: "1mo" },
-        timestamp: [timestamp], indicators: { quote: [{ close: [100] }] },
-        events: { dividends: { one: { date: timestamp, amount: 0.25 } } },
-      }] } });
+        time: timestamp, dividends: { one: { date: timestamp, amount: 0.25 } },
+      });
       return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "AUD" } }] } });
-    });
+    }));
     const data = await fetchDividendData("FIXTURE.AX", null);
     expect(data.payments[0]).toMatchObject({ exDate: new Date("2026-01-02"), amount: 0.25, currency: "AUD" });
   });
@@ -99,18 +97,16 @@ describe("cash distribution calculations", () => {
   ] as const)("loads the selected dividend listing %s with separate exchange %s", async (symbol, exchange, expected, currency, amount) => {
     const requested: string[] = [];
     const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
-    setHttpFetchTransport(async (url) => {
-      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-      if (url.includes("getcrumb")) return new Response("fixture-crumb");
+    setHttpFetchTransport(yahooTransport(async (url) => {
       const sourceSymbol = decodeURIComponent(new URL(url).pathname.split("/").at(-1)!);
       requested.push(sourceSymbol);
       if (sourceSymbol !== expected) return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
-      if (url.includes("/chart/")) return Response.json({ chart: { result: [{
-        meta: { symbol: expected, currency, regularMarketPrice: 100, dataGranularity: "1mo" }, timestamp: [timestamp],
-        indicators: { quote: [{ close: [100] }] }, events: { dividends: { [timestamp]: { date: timestamp, amount } } },
-      }] } });
+      if (url.includes("/chart/")) return chartResponse({
+        meta: { symbol: expected, currency, regularMarketPrice: 100, dataGranularity: "1mo" },
+        time: timestamp, dividends: { [timestamp]: { date: timestamp, amount } },
+      });
       return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency } }] } });
-    });
+    }));
 
     const data = await fetchDividendData(symbol, null, exchange);
     expect(requested).toEqual([expected, expected]);
@@ -122,12 +118,10 @@ describe("cash distribution calculations", () => {
 
   test("an unavailable explicitly selected foreign listing does not fall back to another venue", async () => {
     const requested: string[] = [];
-    setHttpFetchTransport(async (url) => {
-      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-      if (url.includes("getcrumb")) return new Response("fixture-crumb");
+    setHttpFetchTransport(yahooTransport(async (url) => {
       requested.push(decodeURIComponent(new URL(url).pathname.split("/").at(-1)!));
       return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
-    });
+    }));
     await expect(fetchDividendData("SAP:XFRA", null)).rejects.toThrow("No dividend data found");
     expect(requested).toEqual(["SAP.F", "SAP.F"]);
   });
@@ -157,16 +151,14 @@ describe("cash distribution calculations", () => {
 
   test("initial loading and headless yields only use external prices with matching explicit currency", async () => {
     const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
-    setHttpFetchTransport(async (url) => {
-      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
-      if (url.includes("getcrumb")) return new Response("fixture-crumb");
-      if (url.includes("/chart/")) return Response.json({ chart: { result: [{
-        meta: { currency: "EUR", regularMarketPrice: 80, dataGranularity: "1mo" }, timestamp: [timestamp],
-        indicators: { quote: [{ close: [80] }] }, events: { dividends: { [timestamp]: { date: timestamp, amount: 4 } } },
-      }] } });
+    setHttpFetchTransport(yahooTransport(async (url) => {
+      if (url.includes("/chart/")) return chartResponse({
+        meta: { currency: "EUR", regularMarketPrice: 80, dataGranularity: "1mo" },
+        time: timestamp, close: 80, dividends: { [timestamp]: { date: timestamp, amount: 4 } },
+      });
       if (url.includes("/quoteSummary/")) return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "EUR" } }] } });
       throw new Error(`Unexpected fixture URL: ${url}`);
-    });
+    }));
 
     for (const [quoteCurrency, expectedPrice] of [["USD", 80], [undefined, 80], ["EUR", 100]] as const) {
       const data = await fetchDividendData("ASML.AS", 100, "AMS", quoteCurrency);

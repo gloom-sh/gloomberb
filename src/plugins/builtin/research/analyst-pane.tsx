@@ -48,13 +48,6 @@ import {
   type RatingSortPreference,
 } from "./analyst-model";
 
-export {
-  buildRatingColumns,
-  formatRatingTarget,
-  sortRatingRows,
-  type RatingSortPreference,
-} from "./analyst-model";
-
 const MIN_CHART_POINTS = 3;
 
 type RatingRow = AnalystResearchData["ratings"][number];

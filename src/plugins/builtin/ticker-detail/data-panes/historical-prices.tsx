@@ -27,7 +27,7 @@ import {
 } from "../../../runtime";
 import { usePaneTicker } from "../../../../state/app/context";
 import { useClampSelectedIndex } from "../../../../components/data-table/table-pane";
-import { formatDateTime, useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
+import { useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
 type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
@@ -44,6 +44,12 @@ function pricePointDate(point: PricePoint): Date | null {
   const value = point.date as Date | string | number;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function formatDateTime(date: Date): string {
+  const iso = date.toISOString();
+  const hasTime = date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0 || date.getUTCSeconds() !== 0;
+  return hasTime ? iso.slice(0, 16).replace("T", " ") : iso.slice(0, 10);
 }
 
 /** Every price in the table at one decimal count, so the columns line up. */

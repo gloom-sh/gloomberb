@@ -2,17 +2,15 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { CachedQuery } from "../../../data/cached-query";
 import type { DataProvider } from "../../../types/data-provider";
-import { Box } from "../../../ui";
-import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
-import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { testRender } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { TestPaneFrame, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
+import { createOptionsControls } from "./test-fixture";
 import { OptionsView } from "./view";
 import { optionsModule } from "./index";
 import { draftFromParams } from "../options-calculator/model";
@@ -30,12 +28,7 @@ afterEach(async () => {
   Date.now = realNow;
 });
 
-async function settle() {
-  for (let i = 0; i < 4; i += 1) await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await setup!.renderOnce();
-  });
-}
+const { settle, key, capture: captureLaunch } = createOptionsControls(() => setup!);
 
 async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?: number) {
   let now = Date.UTC(2026, 8, 17, 16);
@@ -125,31 +118,14 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
       dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
         instances: [{ ...pane, settings: { ...pane.settings, ...incoming.settings } }] } });
     };
-    return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={width} height={18} flexDirection="column">
-        <Box width={width} height={17}><OptionsView width={width} height={17} focused /></Box>
-        <PaneFooterBar footer={footer} focused width={width} />
-      </Box>}</PaneFooterProvider>
-    </TestPaneProvider>;
+    return <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime} width={width} height={18}>
+      {(body) => <OptionsView {...body} focused />}
+    </TestPaneFrame>;
   }
   await act(async () => { setup = await testRender(<Harness />, { width, height: 18 }); });
   await settle();
-  async function key(key: "enter" | "left" | "right" | "c") {
-    await act(async () => {
-      if (key === "enter") setup!.mockInput.pressEnter();
-      else if (key === "left" || key === "right") setup!.mockInput.pressArrow(key);
-      else setup!.mockInput.pressKey(key);
-    });
-    await settle();
-  }
   async function capture(label: string) {
-    const count = launches.length;
-    await key("c");
-    await exportPaneTable(PANE_ID, `${label}.csv`);
-    const csv = takeSavedTextFile()?.text ?? "";
-    const frame = setup!.captureCharFrame();
-    const result = { frame, csv, launch: launches.length > count ? launches.at(-1) : undefined, requests: [...requests] };
-    return result;
+    return { ...await captureLaunch(PANE_ID, `${label}.csv`, launches), requests: [...requests] };
   }
   async function refresh(dates: number[], expiration?: number, advanceClock = true) {
     catalogue = dates;

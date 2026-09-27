@@ -2,24 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { TeamNotification, TeamReceivedInvitation, TeamSummary, TeamUpdatedEvent } from "../../../../api-client";
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
 import { TeamStore, type TeamStoreClient } from "./store";
+import { createTestTeam, createTestTeamCard } from "./test-fixture";
 
-function team(overrides: Partial<TeamSummary>): TeamSummary {
-  return {
-    id: "org-1",
-    name: "Macro Desk",
-    slug: "macro-desk",
-    accentColor: "magenta",
-    shortName: "MD",
-    allowMemberInvites: false,
-    channelId: "team:org-1",
-    createdAt: "2026-09-14T12:00:00.000Z",
-    role: "member",
-    memberCount: 2,
-    ...overrides,
-  };
-}
-
-const teamCard = { id: "org-1", name: "Macro Desk", accentColor: "magenta" as const, shortName: "MD" };
+const teamCard = createTestTeamCard();
 
 function notification(id: string, kind: "team-invite" | "team-joined" | "layout-updated", createdAt = "2026-09-14T12:00:00.000Z"): TeamNotification {
   const actor = { id: "u2", username: "alice", displayName: "Alice" };
@@ -37,7 +22,7 @@ function fakeClient(overrides: Partial<TeamStoreClient> = {}) {
   const userListeners = new Set<() => void>();
   const teamListeners = new Set<(n: TeamNotification) => void>();
   const delivered: string[][] = [];
-  let teams: TeamSummary[] = [team({ name: "Rates", id: "org-2", shortName: "RT" }), team({})];
+  let teams: TeamSummary[] = [createTestTeam({ name: "Rates", id: "org-2", shortName: "RT" }), createTestTeam()];
   let invitations: TeamReceivedInvitation[] = [];
   const updateListeners = new Set<(event: TeamUpdatedEvent) => void>();
   let listCalls = 0;
@@ -196,7 +181,7 @@ describe("TeamStore", () => {
     expect(store.isTeamCollapsed("org-1")).toBe(false);
 
     // Applying a server response is immediate; a later refresh confirms it.
-    store.upsertTeam(team({ id: "org-3", name: "Alpha", shortName: "AL" }));
+    store.upsertTeam(createTestTeam({ id: "org-3", name: "Alpha", shortName: "AL" }));
     expect(store.getSnapshot().teams.map((entry) => entry.name)).toEqual(["Alpha", "Macro Desk", "Rates"]);
     store.setFocus({ teamId: "org-3" });
     store.removeTeam("org-3");
@@ -219,7 +204,7 @@ describe("TeamStore", () => {
     const second = store.refresh();
     expect(calls).toBe(1);
     expect(store.getSnapshot().loading).toBe(true);
-    resolveList?.([team({})]);
+    resolveList?.([createTestTeam()]);
     await Promise.all([first, second]);
     expect(store.getSnapshot().teams).toHaveLength(1);
     expect(calls).toBe(1);
