@@ -519,7 +519,7 @@ describe("CommandBar pane and layout routes", () => {
     }]);
   });
 
-  test("CMP AAPL, opens inline completion when the ticker list is incomplete", async () => {
+  test("CMP AAPL, opens the form when the ticker list is incomplete", async () => {
     testSetup = await testRender(<CommandBarHarness
       query="CMP AAPL,"
       configurePluginRegistry={(pluginRegistry) => {
@@ -542,7 +542,7 @@ describe("CommandBar pane and layout routes", () => {
     expect(frame).toContain("AAPL,");
   });
 
-  test("CMP with one resolved ticker opens inline completion instead of creating a one-symbol chart", async () => {
+  test("CMP with one resolved ticker opens the form instead of creating a one-symbol chart", async () => {
     const created: CreatedPaneCall[] = [];
 
     testSetup = await testRender(<CommandBarHarness
@@ -573,7 +573,7 @@ describe("CommandBar pane and layout routes", () => {
     expect(frame).toContain("AMD");
   });
 
-  test("AI <prompt> opens the inline workflow and prefills the textarea prompt", async () => {
+  test("AI <prompt> opens the form and prefills the textarea prompt", async () => {
     const created: CreatedPaneCall[] = [];
 
     testSetup = await testRender(<CommandBarHarness

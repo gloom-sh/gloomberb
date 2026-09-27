@@ -248,7 +248,7 @@ describe("CommandBar", () => {
     expect(opened).toEqual([{ paneId: "portfolio-list:main", mode: "resize" }]);
   });
 
-  test("opens plugin command shortcut arguments in the wizard for confirmation", async () => {
+  test("opens plugin command shortcut arguments in the form for confirmation", async () => {
     const calls: Array<Record<string, string> | undefined> = [];
 
     testSetup = await testRender(<CommandBarHarness
@@ -284,7 +284,7 @@ describe("CommandBar", () => {
     expect(calls).toEqual([]);
   });
 
-  test("opens partial plugin command shortcut arguments in the wizard", async () => {
+  test("opens partial plugin command shortcut arguments in the form", async () => {
     testSetup = await testRender(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
@@ -361,7 +361,7 @@ describe("CommandBar", () => {
     expect(workflowFrame).toContain("201.5");
   });
 
-  test("updates workflow select fields from the option picker", async () => {
+  test("updates form select fields from the stacked picker", async () => {
     testSetup = await testRender(<CommandBarHarness
       query="SA AMD"
       configurePluginRegistry={(pluginRegistry) => {
