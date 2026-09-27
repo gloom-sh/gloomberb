@@ -26,6 +26,7 @@ import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
+import { scrollByLines } from "../../../state/pane-scroll-registry";
 import { isPlainKey } from "../../../utils/keyboard";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, timeLabel } from "./calendar-model";
@@ -274,9 +275,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
         onRootKeyDown={(event) => {
           const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
           const body = historyScrollRef.current;
-          if (!delta || !body?.viewport) return false;
-          const maxScrollTop = Math.max(0, body.scrollHeight - body.viewport.height);
-          body.scrollTop = Math.max(0, Math.min(maxScrollTop, body.scrollTop + delta));
+          if (!delta || !body) return false;
+          scrollByLines(body, delta);
           event.stopPropagation?.();
           event.preventDefault?.();
           return true;
