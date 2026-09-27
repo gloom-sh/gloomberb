@@ -11,6 +11,7 @@ import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import {
   isIntradayResolution,
   normalizeChartResolutionSupport,
+  parseBarInterval,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
@@ -479,8 +480,8 @@ export class ProviderRouterHistoryRoutes {
     context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
     const intervalMs = priceHistoryIntervalMs(barSize);
-    const calendarBounds = intervalMs !== null
-      && /^\d+\s*(d|day|days|w|wk|week|weeks|mo|month|months)$/i.test(barSize.trim());
+    const barUnit = parseBarInterval(barSize)?.unit;
+    const calendarBounds = barUnit === "day" || barUnit === "week" || barUnit === "month";
     // Intraday requests forward exact times. Date-only keys could reuse another
     // window or suppress its refresh; ISO bounds also bypass those legacy keys.
     const primaryParts: Array<[string, string | number | undefined | null]> = [

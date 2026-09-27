@@ -60,6 +60,33 @@ export const CHART_RESOLUTION_STEP_MS: Record<ManualChartResolution, number> = {
   "1mo": 30 * 24 * 60 * 60_000,
 };
 
+export type BarIntervalUnit = "min" | "h" | "day" | "week" | "month";
+
+/** One bar of each unit in milliseconds; a month counts as 30 days. */
+export const BAR_INTERVAL_UNIT_MS: Readonly<Record<BarIntervalUnit, number>> = {
+  min: 60_000,
+  h: 60 * 60_000,
+  day: 24 * 60 * 60_000,
+  week: 7 * 24 * 60 * 60_000,
+  month: 30 * 24 * 60 * 60_000,
+};
+
+/**
+ * Reads a bar size such as "5m", "1h", "1wk" or "3 months" as a positive
+ * count of one unit; null for anything else.
+ */
+export function parseBarInterval(value: unknown): { count: number; unit: BarIntervalUnit } | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months)$/i.exec(value.trim());
+  const count = Number(match?.[1]);
+  if (!match || !Number.isSafeInteger(count) || count <= 0) return null;
+  const unit = match[2]!.toLowerCase();
+  return {
+    count,
+    unit: /^(mo|month)/.test(unit) ? "month" : /^(w|wk|week)/.test(unit) ? "week" : /^(d|day)/.test(unit) ? "day" : /^(h|hr|hour)/.test(unit) ? "h" : "min",
+  };
+}
+
 const CHART_RESOLUTION_POINTS_PER_DAY: Record<ManualChartResolution, number> = {
   "1m": 390,
   "5m": 78,

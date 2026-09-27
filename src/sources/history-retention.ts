@@ -1,5 +1,6 @@
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { isRecord } from "../utils/guards";
+import { parseBarInterval } from "../time-series/resolution";
 
 export const HISTORY_RETENTION_MAX_AGE_MS = 5 * 60_000;
 // The record carries the server's clock; the server revalidates it on retry.
@@ -50,11 +51,8 @@ const instant = (value: unknown): value is number => Number.isSafeInteger(value)
 const yahooRetentionIntervals = new Set(["1min", "5min", "15min", "30min", "1h"]);
 
 export function canonicalHistoryInterval(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months)$/i.exec(value.trim());
-  if (!match || !Number.isSafeInteger(Number(match[1])) || Number(match[1]) <= 0) return null;
-  const unit = match[2]!.toLowerCase();
-  return `${Number(match[1])}${/^(mo|month)/.test(unit) ? "month" : /^(w|wk|week)/.test(unit) ? "week" : /^(d|day)/.test(unit) ? "day" : /^(h|hr|hour)/.test(unit) ? "h" : "min"}`;
+  const interval = parseBarInterval(value);
+  return interval ? `${interval.count}${interval.unit}` : null;
 }
 
 export function parseHistoryRetention(value: unknown, now = Date.now()): HistoryRetention | null {
