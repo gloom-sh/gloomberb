@@ -1,6 +1,6 @@
 import type { GloomPlugin } from "../../../types/plugin";
 import type { NewsArticle, NewsQuery } from "../../../types/news-source";
-import type { NewsItem } from "../../../types/data-provider";
+import { normalizeNewsFeed } from "../../../news/news-model";
 import { YahooFinanceClient } from "../../../sources/yahoo-finance";
 import { assetDataProvider, newsProvider } from "../../../capabilities";
 
@@ -12,48 +12,14 @@ function createYahooProvider() {
   return new YahooPluginProvider();
 }
 
-function yahooArticleId(item: NewsItem, ticker: string): string {
-  return item.url || `${ticker}:${item.title}:${item.publishedAt.toISOString()}`;
-}
-
-function mapYahooNewsItem(item: NewsItem, ticker: string): NewsArticle {
-  return {
-    id: yahooArticleId(item, ticker),
-    title: item.title,
-    url: item.url,
-    source: item.source || "Yahoo Finance",
-    publishedAt: item.publishedAt,
-    summary: item.summary,
-    topic: "ticker",
-    topics: ["ticker"],
-    sectors: [],
-    categories: [],
-    tickers: [ticker],
-    scores: {
-      importance: 0,
-      urgency: 0,
-      marketImpact: 0,
-      novelty: 0,
-      confidence: 0,
-    },
-    importance: 0,
-    isBreaking: false,
-    isDeveloping: false,
-  };
-}
-
 function createYahooNewsProvider(provider: YahooPluginProvider) {
   return {
     supports(query: NewsQuery): boolean {
-      const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
-      return feed === "ticker" && !!query.ticker;
+      return normalizeNewsFeed(query) === "ticker" && !!query.ticker;
     },
     async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {
-      const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
-      if (feed !== "ticker" || !query.ticker) return [];
-      const ticker = query.ticker.trim().toUpperCase();
-      const items = await provider.getNews(ticker, query.limit ?? 50, query.exchange ?? "");
-      return items.map((item) => mapYahooNewsItem(item, ticker));
+      if (normalizeNewsFeed(query) !== "ticker" || !query.ticker) return [];
+      return provider.getNews(query.ticker.trim().toUpperCase(), query.limit ?? 50, query.exchange ?? "");
     },
   };
 }

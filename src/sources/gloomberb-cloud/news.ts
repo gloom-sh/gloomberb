@@ -1,3 +1,4 @@
+import { normalizeNewsFeed } from "../../news/news-model";
 import { collectNewsDisplayTickers } from "../../news/ticker-symbols";
 import type { NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
 import type {
@@ -95,7 +96,7 @@ export function mapCloudNewsArticle(
 }
 
 export function cloudNewsParams(query: NewsQuery): CloudNewsParams {
-  const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
+  const feed = normalizeNewsFeed(query);
   const ticker = query.ticker ? parsePublicTickerKey(query.ticker) : undefined;
   const exchange = ticker?.exchange ?? query.exchange;
   let symbol = ticker?.symbol;

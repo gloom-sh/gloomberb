@@ -3,7 +3,8 @@ import { fxFreshUntil } from "../utils/fx-market-hours";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
 import type { PriceHistoryResult } from "../types/price-history";
-import type { DataProvider, EarningsEvent, MarketDataRequestContext, NewsItem, SecFilingItem } from "../types/data-provider";
+import type { DataProvider, EarningsEvent, MarketDataRequestContext, SecFilingItem } from "../types/data-provider";
+import type { NewsArticle } from "../news/types";
 import type { TimeRange } from "../time-series/range";
 import {
   type ChartResolutionSupport,
@@ -203,7 +204,7 @@ export class YahooFinanceClient implements DataProvider {
   }
 
   /** Fetch news for a ticker */
-  async getNews(ticker: string, count = 10, exchange = "", _context?: MarketDataRequestContext): Promise<NewsItem[]> {
+  async getNews(ticker: string, count = 10, exchange = "", _context?: MarketDataRequestContext): Promise<NewsArticle[]> {
     // Use the Yahoo symbol for better search results on international tickers
     const symbol = getYahooSymbol(ticker, exchange);
     const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=0&newsCount=${count}`;
@@ -217,18 +218,31 @@ export class YahooFinanceClient implements DataProvider {
       // Search is a text query: for symbols it cannot match (crypto pairs, many
       // listings) it returns general headlines. Keep only items Yahoo links to the symbol.
       const wanted = new Set([symbol.toUpperCase(), ticker.toUpperCase()]);
-      const items: NewsItem[] = (data.news || [])
+      return (data.news || [])
         .filter((n: any) => Array.isArray(n.relatedTickers)
           && n.relatedTickers.some((related: unknown) => typeof related === "string" && wanted.has(related.toUpperCase())))
-        .map((n: any) => ({
-        title: n.title || "",
-        url: n.link || "",
-        source: n.publisher || "",
-        publishedAt: new Date((n.providerPublishTime || 0) * 1000),
-        summary: n.summary || undefined,
-      }));
-
-      return items;
+        .map((n: any): NewsArticle => {
+          const title: string = n.title || "";
+          const url: string = n.link || "";
+          const publishedAt = new Date((n.providerPublishTime || 0) * 1000);
+          return {
+            id: url || `${ticker}:${title}:${publishedAt.toISOString()}`,
+            title,
+            url,
+            source: n.publisher || "Yahoo Finance",
+            publishedAt,
+            summary: n.summary || undefined,
+            topic: "ticker",
+            topics: ["ticker"],
+            sectors: [],
+            categories: [],
+            tickers: [ticker],
+            scores: { importance: 0, urgency: 0, marketImpact: 0, novelty: 0, confidence: 0 },
+            importance: 0,
+            isBreaking: false,
+            isDeveloping: false,
+          };
+        });
     } catch {
       return [];
     }

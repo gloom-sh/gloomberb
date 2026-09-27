@@ -589,7 +589,6 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       notesFiles.load(normalized),
       dataProvider.getNews({
         feed: "ticker",
-        scope: "ticker",
         ticker: normalized,
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",
