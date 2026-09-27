@@ -7,7 +7,7 @@ import { getYahooSymbolsToTry, withYahooSymbols } from "../../../sources/yahoo-f
 import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/types";
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { calendarYearsBefore } from "./calendar";
+import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { inferCadence, trailingCashAt } from "./trailing-cash";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { dividendPriceAsOf } from "./reference-price";
@@ -276,8 +276,8 @@ export function repriceDividendMetrics(metrics: DividendMetrics, price: number |
 }
 
 function computeGrowth(payments: DividendPayment[], years: number, now: Date): number | null {
-  const priorEnd = calendarYearsBefore(now, years);
-  const priorStart = calendarYearsBefore(priorEnd, 1);
+  const priorEnd = calendarMonthsBefore(now, 12 * years);
+  const priorStart = calendarMonthsBefore(priorEnd, 12);
   // A new fund's partial first year is not a full-year growth baseline.
   if (!payments.some((payment) => payment.exDate <= priorStart)) return null;
   const recent = trailingCashAt(payments, now);
@@ -286,6 +286,6 @@ function computeGrowth(payments: DividendPayment[], years: number, now: Date): n
 }
 
 function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {
-  if (!payments.some((payment) => payment.exDate > calendarYearsBefore(now, 1))) return null;
+  if (!payments.some((payment) => payment.exDate > calendarMonthsBefore(now, 12))) return null;
   return inferCadence(payments, now);
 }

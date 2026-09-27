@@ -1,4 +1,4 @@
-import { calendarYearsBefore } from "./calendar";
+import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import type { DividendMetrics, DividendPayment } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -21,7 +21,7 @@ export const LATE_GRACE_DAYS = [...new Set(Object.values(REGULAR_CADENCE)
 
 /** Cadence of ex-dates in the two years ending at `asOf`, ignoring later payments. */
 export function inferCadence(payments: readonly DividendPayment[], asOf: Date): Cadence | null {
-  const cutoff = calendarYearsBefore(asOf, 2);
+  const cutoff = calendarMonthsBefore(asOf, 24);
   // Old suspensions or a former schedule must not redefine a fund's recent cadence.
   const dates = [...new Set(payments.filter((payment) => payment.exDate > cutoff && payment.exDate <= asOf)
     .map((payment) => payment.exDate.getTime()))]
@@ -49,7 +49,7 @@ export function inferCadence(payments: readonly DividendPayment[], asOf: Date): 
 export function trailingCashAt(payments: readonly DividendPayment[], asOf: Date): number {
   const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0)
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
-  const cutoff = calendarYearsBefore(asOf, 1);
+  const cutoff = calendarMonthsBefore(asOf, 12);
   const cadence = inferCadence(known, asOf);
   const regular = cadence ? REGULAR_CADENCE[cadence] : undefined;
   if (!regular) return known.filter((payment) => payment.exDate > cutoff).reduce((sum, payment) => sum + payment.amount, 0);
