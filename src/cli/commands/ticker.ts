@@ -589,6 +589,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       notesFiles.load(normalized),
       dataProvider.getNews({
         feed: "ticker",
+        // Still set for news plugins that read the deprecated scope.
+        scope: "ticker",
         ticker: normalized,
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",

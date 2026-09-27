@@ -431,6 +431,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const limit = ctx.cliOptions.limit ?? 20;
     const articles = await market.dataProvider.getNews({
       feed: feed ?? (ticker ? "ticker" : "latest"),
+      // Still set for news plugins that read the deprecated scope.
+      scope: ticker ? "ticker" : "global",
       ticker,
       limit,
     });
