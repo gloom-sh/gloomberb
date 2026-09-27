@@ -1,9 +1,9 @@
-import { readFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { join } from "path";
 
-import { findHostPackageRoot } from "./host-link";
-import { resolvePluginBrowserEntry } from "./loader";
+import { explainPluginLoadError } from "./compat";
+import { hostPublicModules } from "./host-link";
+import { resolvePluginBrowserEntry, resolvePluginEntry } from "./loader";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from "./host-modules";
 
 /**
@@ -45,8 +45,6 @@ export function buildSharedModuleSource(specifier: string, exportNames: readonly
   return lines.join("\n");
 }
 
-let hostExportMap: Map<string, string> | null = null;
-
 /**
  * Resolves a `gloomberb/*` specifier that is not shared to the host's own file.
  *
@@ -59,25 +57,19 @@ let hostExportMap: Map<string, string> | null = null;
  * own export map resolves both without writing anything to disk.
  */
 function hostModulePath(specifier: string): string | null {
-  if (!hostExportMap) {
-    hostExportMap = new Map();
-    const root = findHostPackageRoot();
-    if (root) {
-      try {
-        const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
-          exports?: Record<string, unknown>;
-        };
-        for (const [key, target] of Object.entries(pkg.exports ?? {})) {
-          if (typeof target !== "string" || !key.startsWith(".")) continue;
-          hostExportMap.set(key === "." ? "gloomberb" : `gloomberb/${key.slice(2)}`, join(root, target));
-        }
-      } catch {
-        // An unreadable host package.json leaves the map empty, and the
-        // specifier falls through to normal resolution, which reports it.
-      }
-    }
+  return hostPublicModules().get(specifier) ?? null;
+}
+
+/**
+ * A plugin that did not compile. The message says which host export is
+ * missing when that is the reason; `causes` keeps Bun's own messages for a
+ * caller that classifies them, such as the registry check.
+ */
+export class PluginBundleError extends Error {
+  constructor(readonly causes: readonly string[]) {
+    super(causes.map((cause) => explainPluginLoadError(cause)).join("\n"));
+    this.name = "PluginBundleError";
   }
-  return hostExportMap.get(specifier) ?? null;
 }
 
 export interface BundlePluginResult {
@@ -152,11 +144,19 @@ export async function bundleExternalPlugin(
      */
     minify?: boolean;
     define?: Record<string, string>;
+    /**
+     * `bun` compiles the native entry the terminal imports instead. Only the
+     * registry check uses it, to cover the native half of a plugin that has
+     * a separate browser entry.
+     */
+    target?: "browser" | "bun";
   } = {},
 ): Promise<BundlePluginResult> {
   // The browser entry when the plugin ships one, so a plugin with a native
   // half can still present its UI and metadata in the view.
-  const entry = await resolvePluginBrowserEntry(pluginDir);
+  const entry = options.target === "bun"
+    ? await resolvePluginEntry(pluginDir)
+    : await resolvePluginBrowserEntry(pluginDir);
   if (!entry) throw new Error(`No plugin entry file in ${pluginDir}`);
 
   await mkdir(outDir, { recursive: true });
@@ -165,7 +165,7 @@ export async function bundleExternalPlugin(
   const result = await Bun.build({
     entrypoints: [entry],
     outdir: outDir,
-    target: "browser",
+    target: options.target ?? "browser",
     format: "esm",
     splitting: false,
     minify: options.minify === true,
@@ -183,9 +183,7 @@ export async function bundleExternalPlugin(
     ],
   });
 
-  if (!result.success) {
-    throw new Error(result.logs.map((log) => log.message).join("\n"));
-  }
+  if (!result.success) throw new PluginBundleError(result.logs.map((log) => log.message));
 
   const output = result.outputs.find((entryOutput) => entryOutput.kind === "entry-point");
   if (!output) throw new Error(`Bundling ${pluginDir} produced no entry point`);

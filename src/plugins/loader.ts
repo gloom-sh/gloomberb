@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, statSync } from "fs";
 import { getGloomberbHome } from "../data/config/home";
 import type { GloomPlugin, PluginTarget } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
+import { checkPluginCompatibility, explainPluginLoadError, pluginSourceFiles } from "./compat";
 import { linkHostPackages } from "./host-link";
 import { pluginFromModule, pluginSupportsTarget } from "./plugin-export";
 
@@ -26,6 +27,11 @@ export interface LoadedExternalPlugin {
   /** A symlink to a local checkout (`gloomberb plugin link`) rather than a clone. */
   linked?: boolean;
   error?: string;
+  /**
+   * The Gloomberb the checkout declares it needs, when this one is older. The
+   * plugin was not imported and `error` says so.
+   */
+  needsGloomberb?: string;
   /** Set when the plugin loaded but does not support the running renderer. */
   unsupportedTarget?: PluginTarget;
   /** Loaded after startup in a way this session could not fully apply. */
@@ -135,6 +141,26 @@ export interface LoadExternalPluginOptions {
   fresh?: boolean;
 }
 
+/**
+ * The commit each plugin folder was first imported at in this process.
+ *
+ * A fresh import re-reads the entry file only. Bun keeps every other module
+ * cached by path, so after an update a plugin split across files runs its new
+ * entry against its old files, including one that failed to import, until
+ * the process restarts.
+ */
+const importedCommits = new Map<string, string | null>();
+
+/** Imported at another commit earlier in this process, with files besides the entry that Bun keeps. */
+function hasStaleModules(pluginDir: string, commit: string | null): boolean {
+  if (!importedCommits.has(pluginDir) || importedCommits.get(pluginDir) === commit) return false;
+  try {
+    return pluginSourceFiles(pluginDir).length > 1;
+  } catch {
+    return true;
+  }
+}
+
 /** Loads one plugin directory. Never throws: a broken plugin comes back with `error` set. */
 export async function loadExternalPlugin(
   pluginDir: string,
@@ -150,12 +176,31 @@ export async function loadExternalPlugin(
   linkHostPackages(pluginDir);
 
   const commit = readPluginCommit(pluginDir);
+  const linked = isSymlink(pluginDir);
+  const placeholder = { id: directory, name: directory, version: "" } as GloomPlugin;
   const base = {
     path: pluginDir,
     directory,
     ...(commit ? { commit } : {}),
-    ...(isSymlink(pluginDir) ? { linked: true } : {}),
+    ...(linked ? { linked: true } : {}),
   };
+
+  // Not for a linked checkout: that is the author's working copy, usually
+  // built against a Gloomberb run from source, which reports its last
+  // release. `plugin doctor` still checks the range.
+  const incompatible = linked ? null : checkPluginCompatibility(pluginDir);
+  if (incompatible) {
+    loaderLog.info(`Skipped ${directory}: ${incompatible.error}`);
+    return {
+      ...base,
+      plugin: placeholder,
+      error: incompatible.error,
+      ...(incompatible.needsGloomberb ? { needsGloomberb: incompatible.needsGloomberb } : {}),
+    };
+  }
+
+  const restart = hasStaleModules(pluginDir, commit) ? { needsRestart: true } : {};
+  if (!importedCommits.has(pluginDir)) importedCommits.set(pluginDir, commit);
 
   try {
     const specifier = options.fresh ? `${entryFile}?reload=${Date.now()}` : entryFile;
@@ -163,22 +208,24 @@ export async function loadExternalPlugin(
     if (!plugin) {
       return {
         ...base,
-        plugin: { id: directory, name: directory, version: "" } as GloomPlugin,
+        ...restart,
+        plugin: placeholder,
         error: "Plugin did not export a valid GloomPlugin (missing id or name).",
       };
     }
     if (!pluginSupportsTarget(plugin, target)) {
       loaderLog.info(`Skipped ${plugin.id}: does not support "${target}"`);
-      return { ...base, plugin, unsupportedTarget: target };
+      return { ...base, ...restart, plugin, unsupportedTarget: target };
     }
     loaderLog.info(`Loaded external plugin: ${plugin.id} v${plugin.version ?? "0.0.0"}`);
-    return { ...base, plugin };
+    return { ...base, ...restart, plugin };
   } catch (err) {
     loaderLog.error(`Failed to load plugin from ${pluginDir}: ${err}`);
     return {
       ...base,
-      plugin: { id: directory, name: directory, version: "" } as GloomPlugin,
-      error: err instanceof Error ? err.message : String(err),
+      ...restart,
+      plugin: placeholder,
+      error: explainPluginLoadError(err instanceof Error ? err.message : String(err)),
     };
   }
 }

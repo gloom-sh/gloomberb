@@ -352,6 +352,7 @@ export function bindAppPanePluginRegistry({
           ...(entry.linked ? { linked: true } : {}),
           ...(entry.unsupportedTarget ? { unsupportedTarget: entry.unsupportedTarget } : {}),
           ...(entry.error ? { loadError: entry.error } : {}),
+          ...(entry.needsGloomberb ? { needsGloomberb: entry.needsGloomberb } : {}),
           ...(entry.needsRestart ? { needsRestart: true } : {}),
         });
       }
@@ -361,6 +362,14 @@ export function bindAppPanePluginRegistry({
     activate: async (entry) => {
       if (isDetachedWindow) throw new Error("Manage plugins from the main window.");
       const pluginId = entry.plugin.id;
+      // New files under modules this process already imported: loading them
+      // would mix old and new code, so what is running keeps running and the
+      // row asks for a restart. The commit is the checkout's, now the new one.
+      if (entry.needsRestart) {
+        const running = listExternalPlugins().find((existing) => existing.directory === entry.directory);
+        upsertExternalPlugin({ ...(running ?? entry), ...(entry.commit ? { commit: entry.commit } : {}), needsRestart: true });
+        return;
+      }
       if (entry.error || entry.unsupportedTarget) {
         upsertExternalPlugin(entry);
         return;

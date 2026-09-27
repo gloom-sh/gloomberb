@@ -81,7 +81,13 @@ async function bundlePluginDirectory(
     ...(plugin.targets ? { targets: plugin.targets } : {}),
   };
 
-  if (loaded.error) return { ...base, error: loaded.error };
+  // The view could run a fresh bundle, but data calls land here, on the
+  // modules this process imported first; both halves wait for the restart.
+  if (loaded.needsRestart) return { ...base, needsRestart: true };
+
+  if (loaded.error) {
+    return { ...base, error: loaded.error, ...(loaded.needsGloomberb ? { needsGloomberb: loaded.needsGloomberb } : {}) };
+  }
 
   // Skip compiling something the desktop cannot run anyway; the marketplace
   // still lists it, explaining why it is inert.

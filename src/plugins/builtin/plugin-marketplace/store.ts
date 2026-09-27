@@ -19,6 +19,8 @@ export interface MarketplaceHost {
    * commands exist in this session. Replaces a previous registration of the
    * same id (an update). Rejects with the setup error when the plugin cannot
    * be registered, in which case the entry is kept with that error attached.
+   * An entry that `needsRestart` is not registered: whatever already runs
+   * keeps running and is marked for a restart.
    */
   activate(entry: LoadedExternalPlugin): Promise<void>;
   /**
@@ -61,7 +63,12 @@ export interface PluginPin {
 }
 
 export type PluginOperationResult =
-  | { ok: true; directory: string }
+  | {
+    ok: true;
+    directory: string;
+    /** Why an update left the checkout where it was: the registry's commit is older. */
+    kept?: string;
+  }
   | { ok: false; error: string };
 
 /**

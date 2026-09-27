@@ -341,9 +341,15 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     directory: string,
     activeHost: MarketplaceHost,
     activeManager: PluginManager,
-  ): Promise<{ ok: true; pluginId: string; name: string } | { ok: false; error: string }> => {
+  ): Promise<{ ok: true; pluginId: string; name: string; restart?: boolean } | { ok: false; error: string }> => {
     const loaded = await activeManager.load(directory);
     if (!loaded) return { ok: false, error: "The plugin has no entry file." };
+    // Registering it here, or where data calls run, would mix the new files
+    // with modules this process already imported; the host keeps what runs.
+    if (loaded.needsRestart) {
+      await activeHost.activate(loaded).catch(() => {});
+      return { ok: true, pluginId: loaded.plugin.id, name: loaded.plugin.name, restart: true };
+    }
     if (loaded.error) {
       await activeHost.activate(loaded).catch(() => {});
       return { ok: false, error: loaded.error };
@@ -393,10 +399,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   /**
    * The registry's code for this plugin needs a newer Gloomberb. Installing or
    * updating would land it anyway and it would then fail to compile, so say
-   * what to do instead. Also leaves a working older checkout alone.
+   * what to do instead. Also leaves a working older checkout alone, and does
+   * not update one that already needs a newer Gloomberb: updates only move
+   * forward, so that would not help either.
    */
   const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => {
-    const required = requiredGloomberb(entry.minGloomberb);
+    const required = requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb;
     if (!required) return false;
     notify({ body: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`, type: "error" });
     return true;
@@ -432,7 +440,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const activated = await activate(result.directory, host, manager);
     setBusy(null);
     bump();
-    if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
+    if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
+    else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
     else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
   }, [activate, announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
 
@@ -451,11 +460,21 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       notify({ body: `Could not update ${entry.name}: ${result.error}`, type: "error" });
       return;
     }
+    if (result.kept) {
+      setBusy(null);
+      notify({ body: `Kept ${entry.name}: ${result.kept}.`, type: "info" });
+      return;
+    }
     const activated = await activate(directory, host, manager);
     setBusy(null);
     bump();
-    if (activated.ok) announceAdded(activated.pluginId, activated.name, reinstall ? "Reloaded" : "Updated", host);
-    else notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
+    if (activated.ok && activated.restart) {
+      notify({ body: `Restart to finish ${reinstall ? "reloading" : "updating"} ${entry.name}.`, type: "info" });
+    } else if (activated.ok) {
+      announceAdded(activated.pluginId, activated.name, reinstall ? "Reloaded" : "Updated", host);
+    } else {
+      notify({ body: `${entry.name} updated but did not load: ${activated.error}`, type: "error" });
+    }
   }, [activate, announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected]);
 
   const removeSelected = useCallback(async () => {
@@ -511,7 +530,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const canOpen = !!selected && !!host && selected.installed && selected.enabled && !selected.loadError
     && (host.contributions(selected.id).templates.length > 0 || host.contributions(selected.id).panes.length > 0);
-  const tooNew = !!selected && !!requiredGloomberb(selected.minGloomberb);
+  const tooNew = !!selected && (!!requiredGloomberb(selected.minGloomberb) || !!selected.needsGloomberb);
   const canInstall = !!selected && isInstallable(selected) && !!manager && !busy && !tooNew;
   const canUpdate = !!selected && isManaged(selected) && !selected.linked && !!manager && !busy && !tooNew
     && (hasUpdate(selected) || !!selected.loadError);

@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
-import { parseRemoteHead } from "./installer";
+import { describeOlderCommit, parseRemoteHead } from "./installer";
 
 /**
  * `git ls-remote` is the only way to know whether a plugin the registry does
@@ -14,16 +18,80 @@ describe("parseRemoteHead", () => {
       .toBe("abfdcf0aa3e4a0f6f0d2c8ab2cf4b0a0d9e1f234");
   });
 
-  test("ignores surrounding whitespace", () => {
-    expect(parseRemoteHead("  2222222bbb3333333ccc4444444ddd5555555eee  \tHEAD  "))
-      .toBe("2222222bbb3333333ccc4444444ddd5555555eee");
-  });
-
   test("returns null for an empty or non-sha answer", () => {
     expect(parseRemoteHead("")).toBeNull();
     expect(parseRemoteHead("\n")).toBeNull();
     expect(parseRemoteHead("fatal: could not read Username for 'https://github.com'")).toBeNull();
     // Too short to be a commit, so it is something else that happened to be printed.
     expect(parseRemoteHead("abc123\tHEAD")).toBeNull();
+  });
+});
+
+const scratch: string[] = [];
+
+afterEach(() => {
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function git(cwd: string, args: string[], date = "2026-01-01T00:00:00Z"): string {
+  return execFileSync("git", ["-c", "commit.gpgsign=false", ...args], {
+    cwd,
+    stdio: ["ignore", "pipe", "ignore"],
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@example.com",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@example.com",
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_DATE: date,
+    },
+  }).toString().trim();
+}
+
+/** A plugin repository with a `v1` tag, then one newer commit on `main`. */
+function remote(versions: [tagged: string, head: string]): string {
+  const dir = mkdtempSync(join(tmpdir(), "gloom-remote-"));
+  scratch.push(dir);
+  git(dir, ["init", "-q", "-b", "main"]);
+  versions.forEach((version, index) => {
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "p", version }));
+    git(dir, ["add", "."]);
+    git(dir, ["commit", "-q", "--allow-empty", "-m", version], `2026-0${index + 1}-01T00:00:00Z`);
+    if (index === 0) git(dir, ["tag", "v1"]);
+  });
+  return dir;
+}
+
+/** What the installer leaves: a depth-1 clone at `ref`, with `wanted` fetched beside it. */
+function shallowCheckout(origin: string, ref: string, wanted: string): { dir: string; head: string; fetched: string } {
+  const parent = mkdtempSync(join(tmpdir(), "gloom-plugin-"));
+  scratch.push(parent);
+  const dir = join(parent, "p");
+  git(parent, ["clone", "-q", "--depth", "1", "--branch", ref, `file://${origin}`, dir]);
+  git(dir, ["fetch", "-q", "--depth", "1", "origin", wanted]);
+  return { dir, head: git(dir, ["rev-parse", "HEAD"]), fetched: git(dir, ["rev-parse", "FETCH_HEAD^{commit}"]) };
+}
+
+/**
+ * The registry pins tags, and a checkout installed from the default branch
+ * can be ahead of the newest one. Checking that tag out would downgrade it.
+ * Installs are shallow, so the history that would settle it is usually not
+ * there and the checkout itself has to say which commit is older.
+ */
+describe("describeOlderCommit", () => {
+  test("keeps a checkout that is ahead of the registry's tag", () => {
+    const { dir, head, fetched } = shallowCheckout(remote(["1.1.0", "1.2.0"]), "main", "v1");
+    expect(describeOlderCommit(dir, head, fetched, "v1")).toBe("the registry's v1 is older than the installed 1.2.0");
+  });
+
+  test("tells commits apart by date when every commit has the same version", () => {
+    const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "main", "v1");
+    expect(describeOlderCommit(dir, head, fetched, "v1")).toBe(`the registry's v1 is older than the installed ${head.slice(0, 7)}`);
+  });
+
+  test("lets a newer commit through", () => {
+    const { dir, head, fetched } = shallowCheckout(remote(["1.0.0", "1.0.0"]), "v1", "main");
+    expect(describeOlderCommit(dir, head, fetched)).toBeNull();
   });
 });

@@ -37,11 +37,16 @@ export async function loadDesktopExternalPlugin(bundle: DesktopExternalPluginBun
     } as GloomPlugin,
   };
 
+  if (bundle.needsRestart) return { ...fallback, needsRestart: true };
   if (bundle.unsupportedTarget) {
     return { ...fallback, unsupportedTarget: bundle.unsupportedTarget };
   }
   if (bundle.error || !bundle.code) {
-    return { ...fallback, error: bundle.error ?? "Plugin produced no bundle." };
+    return {
+      ...fallback,
+      error: bundle.error ?? "Plugin produced no bundle.",
+      ...(bundle.needsGloomberb ? { needsGloomberb: bundle.needsGloomberb } : {}),
+    };
   }
 
   let objectUrl: string | null = null;

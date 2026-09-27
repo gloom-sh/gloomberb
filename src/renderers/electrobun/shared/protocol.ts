@@ -110,11 +110,15 @@ export interface DesktopExternalPluginBundle {
   code?: string;
   targets?: readonly ("cli" | "tui" | "desktop" | "web")[];
   error?: string;
+  /** The Gloomberb the checkout declares it needs, when this one is older. */
+  needsGloomberb?: string;
   /**
    * The plugin loaded but declares it does not run on the desktop. Not an
    * error: the marketplace shows it as terminal-only rather than failed.
    */
   unsupportedTarget?: "desktop";
+  /** The files changed under modules the Bun process already imported; no code is sent. */
+  needsRestart?: boolean;
 }
 
 /**

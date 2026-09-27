@@ -1,5 +1,15 @@
 import { basename, join, resolve } from "path";
-import { existsSync, lstatSync, readFileSync, readdirSync, rmSync } from "fs";
+import { existsSync, lstatSync, readFileSync, rmSync } from "fs";
+import {
+  DEPRECATED_HOST_EXPORTS,
+  REMOVED_HOST_EXPORTS,
+  checkPluginCompatibility,
+  explainPluginLoadError,
+  findHostImports,
+  pluginSourceFiles,
+  readPluginManifest,
+  type HostExportTable,
+} from "../../plugins/compat";
 import {
   getPluginsDir,
   readPluginCommit,
@@ -18,7 +28,7 @@ import {
 } from "../../plugins/installer";
 import { isReservedBuiltinPluginId } from "../../plugins/ownership";
 import { pluginFromModule, pluginSupportsTarget } from "../../plugins/plugin-export";
-import { requiredGloomberb } from "../../utils/semver";
+import { formatVersion, requiredGloomberb } from "../../utils/semver";
 import { ALL_PLUGIN_TARGETS, type GloomPlugin, type PluginTarget } from "../../types/plugin";
 import {
   cliStyles,
@@ -96,27 +106,33 @@ const HOST_LITERAL_PATTERN = /https?:\/\/([a-z0-9][a-z0-9.-]*\.[a-z]{2,})/gi;
 
 const IGNORED_HOST_PATTERN = /(^|\.)(example\.(com|org|net)|localhost|github\.com|gloom\.sh)$/i;
 
-function collectSourceFiles(dir: string, out: string[] = [], depth = 0): string[] {
-  if (depth > 6) return out;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "dist") continue;
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) collectSourceFiles(full, out, depth + 1);
-    else if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry.name) && !/\.(test|spec)\.[jt]sx?$/.test(entry.name)) out.push(full);
-  }
-  return out;
-}
-
 function hostCovered(host: string, declared: readonly string[]): boolean {
   return declared.some((entry) => host === entry || host.endsWith(`.${entry}`));
 }
 
+/** Host imports the compat tables list, as `name from gloomberb/x (...)` lines. */
+function listedHostImports<T>(
+  sources: readonly string[],
+  table: HostExportTable<T>,
+  describeEntry: (entry: T) => string,
+): string[] {
+  const found = new Set<string>();
+  for (const source of sources) {
+    for (const { specifier, name } of findHostImports(source)) {
+      const entry = table[specifier]?.[name];
+      if (entry) found.add(`${name} from ${specifier} (${describeEntry(entry)})`);
+    }
+  }
+  return [...found].sort();
+}
+
 /**
  * Everything that makes a plugin show up as `failed` or as a broken pane
- * later, checked before the author publishes: the entry resolves, the module
- * evaluates, the export is a plugin, the id is free, the targets are real, the
- * hosts it reaches are declared, and the browser build the desktop and web app
- * need actually compiles.
+ * later, checked before the author publishes: the entry resolves, the
+ * Gloomberb it declares is this one or older, it imports nothing removed or
+ * deprecated, the module evaluates, the export is a plugin, the id is free,
+ * the targets are real, the hosts it reaches are declared, and the browser
+ * build the desktop and web app need actually compiles.
  */
 export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
   const candidate = nameOrPath.includes("/") || nameOrPath.startsWith(".") ? resolve(nameOrPath) : join(PLUGINS_DIR, nameOrPath);
@@ -152,6 +168,21 @@ export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorRepo
   else if (link.provider === "process") add("host-link", "ok", "served by the host process");
   else add("host-link", "ok", `linked ${link.linked.join(", ")}`);
 
+  const incompatible = checkPluginCompatibility(candidate);
+  const declaredMin = readPluginManifest(candidate).minGloomberb;
+  // The loader skips this check for a linked checkout, so it only warns there.
+  if (incompatible) add("gloomberb", linked ? "warn" : "fail", incompatible.error);
+  else if (declaredMin) add("gloomberb", "ok", `${formatVersion(declaredMin)} or newer`);
+  else add("gloomberb", "warn", "Declares no minimum Gloomberb: set minGloom in gloom.json.");
+
+  // Before the import: a removed export is exactly what makes it fail.
+  const sources = pluginSourceFiles(candidate).map((file) => readFileSync(file, "utf-8"));
+  const removed = listedHostImports(sources, REMOVED_HOST_EXPORTS, (entry) => `removed in ${entry.removedIn}; use ${entry.use}`);
+  const deprecated = listedHostImports(sources, DEPRECATED_HOST_EXPORTS, (entry) => `deprecated in ${entry.deprecatedIn}; use ${entry.use}`);
+  if (removed.length > 0) add("host-api", "fail", `Imports removed APIs: ${removed.join(", ")}`);
+  if (deprecated.length > 0) add("host-api", "warn", `Imports deprecated APIs: ${deprecated.join(", ")}`);
+  if (removed.length === 0 && deprecated.length === 0) add("host-api", "ok", "no removed or deprecated imports");
+
   let plugin: GloomPlugin | null = null;
   try {
     plugin = pluginFromModule(await import(`${entryFile}?doctor=${Date.now()}`));
@@ -164,7 +195,7 @@ export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorRepo
     report.version = plugin.version ?? null;
     add("export", "ok", `${plugin.name} v${plugin.version ?? "0.0.0"}`);
   } catch (error) {
-    add("export", "fail", `Import failed: ${error instanceof Error ? error.message : String(error)}`);
+    add("export", "fail", `Import failed: ${explainPluginLoadError(error instanceof Error ? error.message : String(error))}`);
     return report;
   }
 
@@ -184,8 +215,7 @@ export async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorRepo
 
   const declaredHosts = plugin.hosts ?? [];
   const seenHosts = new Set<string>();
-  for (const file of collectSourceFiles(candidate)) {
-    const text = readFileSync(file, "utf-8");
+  for (const text of sources) {
     for (const match of text.matchAll(HOST_LITERAL_PATTERN)) {
       const host = match[1]!.toLowerCase();
       if (IGNORED_HOST_PATTERN.test(host)) continue;
@@ -238,6 +268,8 @@ export interface InstalledPluginRow {
   update?: string;
   description: string;
   linked: boolean;
+  /** Why the loader skips it without importing it: it needs a newer Gloomberb, or the checkout is known to break. */
+  blocked?: string;
 }
 
 async function readInstalledPlugins(options: { check?: boolean }): Promise<InstalledPluginRow[]> {
@@ -265,12 +297,14 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
     }
     const linked = lstatSync(dir).isSymbolicLink();
     const commit = readPluginCommit(dir);
+    const blocked = linked ? null : checkPluginCompatibility(dir)?.error;
     const row: InstalledPluginRow = {
       name,
       version,
       commit: linked ? "linked" : commit ? commit.slice(0, 7) : "",
       description,
       linked,
+      ...(blocked ? { blocked } : {}),
     };
     if (!options.check) return row;
     const remote = readPluginRemote(dir);
@@ -306,6 +340,7 @@ export async function listPlugins(ctx: CliCommandContext, options: { check?: boo
             return key === "update" && value && value !== "up to date" ? cliStyles.warning(value) : value;
           })),
         ),
+        ...rows.filter((row) => row.blocked).map((row) => cliStyles.warning(`${row.name} is not loaded: ${row.blocked}`)),
         "",
         renderStats([["Directory", cliStyles.muted(PLUGINS_DIR)]]),
       ].join("\n");

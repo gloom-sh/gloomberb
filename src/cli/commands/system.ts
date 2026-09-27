@@ -338,7 +338,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         title: "Developing a plugin",
         lines: [
           "link puts a symlink to a local checkout in the plugins folder, so edits are live on the next start.",
-          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
+          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, the Gloomberb it declares, removed or deprecated imports, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
         ],
       }],
       examples: ["plugin list", "plugin info news", "plugin disable hackernews", "plugin link ../my-plugin", "plugin doctor ../my-plugin"],

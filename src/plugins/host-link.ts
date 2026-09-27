@@ -56,6 +56,35 @@ export function findHostPackageRoot(startDir: string = import.meta.dir): string 
   return null;
 }
 
+let hostPublicModuleMap: Map<string, string> | null = null;
+
+/**
+ * The host's public modules, `gloomberb/ui` to the file it names, read from
+ * the export map in the host's package.json. Empty for a packaged host: it
+ * has no package on disk and serves the same specifiers from the process.
+ */
+export function hostPublicModules(): ReadonlyMap<string, string> {
+  if (hostPublicModuleMap) return hostPublicModuleMap;
+  const modules = new Map<string, string>();
+  const root = findHostPackageRoot();
+  if (root) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+        exports?: Record<string, unknown>;
+      };
+      for (const [key, target] of Object.entries(pkg.exports ?? {})) {
+        if (typeof target !== "string" || !key.startsWith(".")) continue;
+        modules.set(key === "." ? "gloomberb" : `gloomberb/${key.slice(2)}`, join(root, target));
+      }
+    } catch {
+      // An unreadable host package.json leaves the map empty, and callers fall
+      // back to whatever resolution they would do without it.
+    }
+  }
+  hostPublicModuleMap = modules;
+  return modules;
+}
+
 function linkTarget(hostRoot: string, pkg: string): string | null {
   if (pkg === "gloomberb") return hostRoot;
   const candidate = join(hostRoot, "node_modules", pkg);

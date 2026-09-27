@@ -30,8 +30,7 @@ import { remoteCliCommand } from "./commands/remote";
 import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
-import { installPlugin, parseGitHubRef, removePlugin, resolveRegistryListing } from "../plugins/installer";
-import { requiredGloomberb } from "../utils/semver";
+import { installListedPlugin, removePlugin } from "../plugins/installer";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 
 function createCoreCliCommands(
@@ -209,12 +208,7 @@ function createCoreCliCommands(
         if (!ref) {
           fail("Usage: gloomberb install <user/repo>");
         }
-        // A listed plugin lands on the commit the registry reviewed, the same
-        // as an install from the marketplace pane. Unlisted ones follow HEAD.
-        const listing = await resolveRegistryListing(parseGitHubRef(ref).repo);
-        const required = requiredGloomberb(listing?.minGloomberb);
-        if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
-        await installPlugin(ref, listing?.pin ? { pin: listing.pin } : {});
+        await installListedPlugin(ref);
       },
     },
     {

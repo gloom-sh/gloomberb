@@ -51,6 +51,8 @@ export interface InstalledPlugin {
   /** Set when the plugin is installed but cannot run on this renderer. */
   unsupportedTarget?: PluginTarget;
   loadError?: string;
+  /** The checkout declares a newer Gloomberb than this one, so it was not loaded. */
+  needsGloomberb?: string;
   /** Declares a `configSchema` and is missing a required value. */
   needsSetup?: boolean;
   hasSetup?: boolean;
@@ -95,6 +97,8 @@ export interface MarketplaceEntry {
   minGloomberb?: string;
   contributes?: RegistryPlugin["contributes"];
   loadError?: string;
+  /** What the installed checkout declares it needs, when this Gloomberb is older. */
+  needsGloomberb?: string;
   needsSetup: boolean;
   hasSetup: boolean;
   errorCount: number;
@@ -205,6 +209,7 @@ export function mergeCatalog(options: {
       minGloomberb: plugin.minGloomberb,
       contributes: plugin.contributes,
       loadError: local?.loadError,
+      needsGloomberb: local?.needsGloomberb,
       needsSetup: local?.needsSetup === true,
       hasSetup: local?.hasSetup === true,
       errorCount: local?.errorCount ?? 0,
@@ -249,6 +254,7 @@ export function mergeCatalog(options: {
       installedCommit: local.commit,
       remoteCommit: remoteHeadFor(local),
       loadError: local.loadError,
+      needsGloomberb: local.needsGloomberb,
       needsSetup: local.needsSetup === true,
       hasSetup: local.hasSetup === true,
       errorCount: local.errorCount ?? 0,
@@ -338,8 +344,13 @@ export interface MarketplaceStatus {
  * a plugin that is enabled but failed to load is `failed`, not `enabled`.
  */
 export function statusOf(entry: MarketplaceEntry): MarketplaceStatus {
-  if (entry.loadError) return { kind: "failed", text: "failed" };
+  // Before `failed`: the checkout was never imported, and the fix is updating
+  // Gloomberb rather than the plugin.
+  if (entry.needsGloomberb) return { kind: "needs-gloomberb", text: `needs ${entry.needsGloomberb}` };
+  // Also before `failed`: an update landed over modules this session already
+  // imported, so any error on the row is from the old code.
   if (entry.needsRestart) return { kind: "needs-restart", text: "needs restart" };
+  if (entry.loadError) return { kind: "failed", text: "failed" };
   const unsupported = unsupportedLabel(entry);
   if (unsupported) return { kind: "unsupported", text: unsupported.toLowerCase() };
   const required = requiredGloomberb(entry.minGloomberb);

@@ -23,8 +23,16 @@ export async function restoreExtractedPlugins(): Promise<string[] | null> {
     const config = await loadCliConfigIfAvailable();
     // No data directory yet means a first run: there is nothing to restore.
     if (!config) return null;
-    const { installPlugin } = await import("../plugins/installer");
-    const result = await seedExtractedPlugins(config, installPlugin);
+    // Through the registry like `gloomberb install`: the reviewed commit, and
+    // nothing on a Gloomberb too old for it. That failure is retried at the
+    // next launch, by when this Gloomberb has usually updated itself. The
+    // registry is read once, and only when something is left to install.
+    const { installListedPlugin, loadRegistryListings } = await import("../plugins/installer");
+    let listings: ReturnType<typeof loadRegistryListings> | undefined;
+    const result = await seedExtractedPlugins(config, async (repo) => {
+      listings ??= loadRegistryListings();
+      return installListedPlugin(repo, {}, await listings);
+    });
 
     const seeded = [...new Set(result.seeded)].sort();
     const existing = [...new Set(config.seededPlugins ?? [])].sort();

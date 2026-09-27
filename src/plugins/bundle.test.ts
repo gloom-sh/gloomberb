@@ -5,6 +5,7 @@ import { join } from "path";
 
 import { bundleExternalPlugin, buildSharedModuleSource } from "./bundle";
 import { PLUGIN_HOST_GLOBAL } from "./host-modules";
+import { VERSION } from "../version";
 
 /**
  * This is the seam that lets a plugin on disk run inside the desktop and
@@ -108,13 +109,14 @@ describe("bundleExternalPlugin", () => {
   test("names the import an older host does not export", async () => {
     // A plugin built for a newer Gloomberb, installed on an older one. Bun's
     // own message for this was "Bundle failed", which told the user nothing.
+    // Also pins the bundler's wording, which compat.ts has to recognize.
     const dir = scratchPlugin(`
       import { Box, QueryBar } from "gloomberb/ui";
       export default { id: "scratch", name: "Scratch", version: "1.0.0", Box, QueryBar };
     `);
     try {
       await expect(bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports }))
-        .rejects.toThrow(`No matching export in "gloom-host:gloomberb/ui" for import "QueryBar"`);
+        .rejects.toThrow(`Uses QueryBar from gloomberb/ui, which Gloomberb ${VERSION} does not have.`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

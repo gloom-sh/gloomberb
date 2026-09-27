@@ -8,6 +8,8 @@ import { getPluginsDir, isDirectoryOrLink, isPluginDirectory, readPluginCommit, 
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
+import { compareSemver, requiredGloomberb } from "../utils/semver";
+import { VERSION } from "../version";
 import { fail } from "../cli/errors";
 
 /**
@@ -119,21 +121,79 @@ function pinMatches(commit: string | null, expected: string | undefined): boolea
 }
 
 /**
- * Brings `targetDir` to the pinned commit. With a ref, the checkout is what the
- * ref names and the commit (when known) only verifies it; with a commit alone,
- * that commit is fetched directly. Either way HEAD ends detached at one exact
- * commit, which is the state `update` expects to find.
+ * Fetches the pinned commit without checking it out. With a ref, the commit
+ * is what the ref names and the pinned commit (when known) only verifies it;
+ * with a commit alone, that commit is fetched directly.
  */
-function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean): void {
+function fetchPin(targetDir: string, pin: PluginPin, quiet: boolean): string {
   const wanted = pin.ref ?? pin.commit;
-  if (!wanted) return;
+  if (!wanted) throw new Error("The registry pin names no ref or commit.");
   if (pin.commit && !COMMIT_PATTERN.test(pin.commit)) throw new Error(`Invalid commit in registry pin: ${pin.commit}`);
   git(["fetch", "--depth", "1", "origin", wanted], targetDir, quiet, `Could not fetch ${wanted}`);
-  git(["checkout", "--detach", "--force", "FETCH_HEAD"], targetDir, quiet, `Could not check out ${wanted}`);
-  const commit = readPluginCommit(targetDir);
+  const commit = git(["rev-parse", "FETCH_HEAD^{commit}"], targetDir, quiet, `Could not read ${wanted}`);
   if (!pinMatches(commit, pin.commit)) {
-    throw new Error(`${pin.ref ?? "The pinned ref"} now points at ${commit?.slice(0, 7) ?? "?"}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
+    throw new Error(`${pin.ref ?? "The pinned ref"} now points at ${commit.slice(0, 7)}, the registry reviewed ${pin.commit!.slice(0, 7)}.`);
   }
+  return commit;
+}
+
+/** Leaves HEAD detached at one exact commit, which is the state `update` expects to find. */
+function checkoutCommit(targetDir: string, commit: string, quiet: boolean): void {
+  git(["checkout", "--detach", "--force", commit], targetDir, quiet, `Could not check out ${commit.slice(0, 7)}`);
+}
+
+function gitSucceeds(args: string[], cwd: string): boolean {
+  try {
+    execFileSync("git", args, { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gitOutput(args: string[], cwd: string): string | null {
+  try {
+    return execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "ignore"] }).toString("utf-8").trim();
+  } catch {
+    return null;
+  }
+}
+
+function versionAt(dir: string, commit: string): string | null {
+  const text = gitOutput(["show", `${commit}:package.json`], dir);
+  if (!text) return null;
+  try {
+    const version = JSON.parse(text).version;
+    return typeof version === "string" ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Why checking out `candidate` would move the checkout at `installed`
+ * backwards, or null when it would not. The registry pins a tag, which can
+ * be older than a checkout that was installed from the default branch.
+ * Installs are shallow, so history answers only when both commits are in
+ * it; otherwise the versions the two commits declare decide, then, when
+ * those match, their commit dates.
+ */
+export function describeOlderCommit(dir: string, installed: string, candidate: string, label = candidate.slice(0, 7)): string | null {
+  if (installed === candidate || gitSucceeds(["merge-base", "--is-ancestor", installed, candidate], dir)) return null;
+  const installedVersion = versionAt(dir, installed);
+  const byVersion = compareSemver(versionAt(dir, candidate), installedVersion);
+  const older = () => `the registry's ${label} is older than the installed ${byVersion ? installedVersion : installed.slice(0, 7)}`;
+  if (gitSucceeds(["merge-base", "--is-ancestor", candidate, installed], dir)) return older();
+  if (byVersion !== null && byVersion !== 0) return byVersion < 0 ? older() : null;
+  const candidateTime = Number(gitOutput(["show", "-s", "--format=%ct", candidate], dir));
+  const installedTime = Number(gitOutput(["show", "-s", "--format=%ct", installed], dir));
+  return candidateTime > 0 && installedTime > 0 && candidateTime < installedTime ? older() : null;
+}
+
+/** Brings `targetDir` to the pinned commit. */
+function checkoutPin(targetDir: string, pin: PluginPin, quiet: boolean): void {
+  if (!pin.ref && !pin.commit) return;
+  checkoutCommit(targetDir, fetchPin(targetDir, pin, quiet), quiet);
 }
 
 async function installDependencies(targetDir: string, quiet: boolean): Promise<void> {
@@ -239,6 +299,8 @@ export async function removePlugin(name: string, options: PluginInstallOptions =
 export interface PluginUpdateResult extends PluginDirectoryInfo {
   before: string | null;
   changed: boolean;
+  /** Why the checkout was left where it was: the registry's commit is older. */
+  kept?: string;
 }
 
 /** `owner/repo` from the checkout's origin remote, or null for anything that is not a GitHub clone. */
@@ -319,7 +381,15 @@ export async function updatePlugin(name: string, options: PluginInstallOptions =
 
   const pin = options.pin;
   if (pin?.ref || pin?.commit) {
-    checkoutPin(targetDir, pin, quiet);
+    const commit = fetchPin(targetDir, pin, quiet);
+    // Updates only move forward: a checkout installed from the default
+    // branch can be ahead of the tag the registry reviewed.
+    const kept = before ? describeOlderCommit(targetDir, before, commit, pin.ref ?? commit.slice(0, 7)) : null;
+    if (kept) {
+      if (!quiet) console.log(cliStyles.muted(`Kept ${name}: ${kept}.`));
+      return { ...describe(targetDir, name, null), before, changed: false, kept };
+    }
+    checkoutCommit(targetDir, commit, quiet);
   } else {
     // Not in the registry, so there is nothing reviewed to land on: follow the
     // remote's default branch, whether the checkout is on a branch or detached
@@ -385,6 +455,24 @@ export async function loadRegistryListings(): Promise<Map<string, RegistryListin
 /** The registry's listing for a repository, so a CLI install lands where the catalog says. */
 export async function resolveRegistryListing(repo: string): Promise<RegistryListing | null> {
   return (await loadRegistryListings()).get(repo.toLowerCase()) ?? null;
+}
+
+/**
+ * Installs a plugin the way the marketplace does: a listed one at the commit
+ * the registry reviewed, and not at all on a Gloomberb too old to run it.
+ * An unlisted repository follows its default branch. A caller installing
+ * several passes `listings` so the registry is read once.
+ */
+export async function installListedPlugin(
+  ref: string,
+  options: Omit<PluginInstallOptions, "pin"> = {},
+  listings?: ReadonlyMap<string, RegistryListing>,
+): Promise<PluginDirectoryInfo> {
+  const repo = parseGitHubRef(ref).repo;
+  const listing = listings ? listings.get(repo.toLowerCase()) : await resolveRegistryListing(repo);
+  const required = requiredGloomberb(listing?.minGloomberb);
+  if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
+  return installPlugin(ref, { ...options, ...(listing?.pin ? { pin: listing.pin } : {}) });
 }
 
 /** Folder names of every installed plugin, clones and links alike. */
