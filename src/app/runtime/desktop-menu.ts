@@ -34,12 +34,7 @@ export function useDesktopApplicationMenuRuntime({
           pluginRegistry.openPluginCommandWorkflowFn(command.commandId);
           break;
         case "open-builtin-workflow":
-          dispatch({
-            type: "SET_COMMAND_BAR",
-            open: true,
-            query: "",
-            launch: { kind: "builtin-workflow", actionId: command.actionId },
-          });
+          pluginRegistry.openBuiltInWorkflowFn(command.actionId);
           break;
         case "open-url":
           void rendererHost.openExternal(command.url).catch((error) => {

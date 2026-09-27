@@ -206,13 +206,9 @@ export function useCommandBarActionRuntime({
   });
 
   useCommandBarLaunchRequest({
-    activeTickerSymbol,
     commandBarLaunchRequest: state.commandBarLaunchRequest,
     commandBarOpen: state.commandBarOpen,
-    openBuiltInWorkflow,
     openModeRoute,
-    openPluginCommandWorkflow,
-    pluginRegistry,
   });
 
   const {

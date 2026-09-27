@@ -47,6 +47,7 @@ import { teamAccentHex } from "../../plugins/builtin/cloud/team/model";
 import { teamStore } from "../../plugins/builtin/cloud/team/store";
 import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } from "./status-bar-groups";
 import { requestFeedbackDialog } from "../feedback-dialog";
+import { openFormModal } from "../form-modal";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -297,7 +298,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       }
     };
     const openLayoutWorkflow = (actionId: "new-layout" | "rename-layout") => {
-      dispatch({ type: "SET_COMMAND_BAR", open: true, query: "", launch: { kind: "builtin-workflow", actionId } });
+      openFormModal({ kind: "builtin", actionId });
     };
     const items: ContextMenuItem[] = [];
 

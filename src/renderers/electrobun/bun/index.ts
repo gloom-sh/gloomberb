@@ -670,6 +670,11 @@ ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
     return;
   }
   if (!isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) return;
+  // The bar and every form open in the main window; with a detached window
+  // key, the keys would go there instead.
+  if (command.type === "open-command-bar" || command.type === "open-builtin-workflow" || command.type === "open-plugin-workflow") {
+    detachedWindowManager.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
+  }
   getWindowRpc(MAIN_WINDOW_RPC_KEY)?.send["application-menu.select"]({ command });
 });
 

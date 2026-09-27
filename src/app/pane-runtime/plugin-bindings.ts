@@ -4,6 +4,8 @@ import {
   createPaneTemplateOrThrow,
 } from "../../components/command-bar/workflow/ops";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
+import { openFormModal } from "../../components/form-modal";
+import { t } from "../../i18n";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
 import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
@@ -130,14 +132,26 @@ export function bindAppPanePluginRegistry({
     if (isDetachedWindow) return;
     dispatch({ type: "SET_COMMAND_BAR", open: true, query });
   };
+  // Forms submit through the main window's state, so a detached window says where to go.
   pluginRegistry.openPluginCommandWorkflowFn = (commandId) => {
-    if (isDetachedWindow) return;
-    dispatch({
-      type: "SET_COMMAND_BAR",
-      open: true,
-      query: "",
-      launch: { kind: "plugin-command", commandId },
-    });
+    if (isDetachedWindow) {
+      pluginRegistry.notify({ body: t("Open this from the main window."), type: "info" });
+      return;
+    }
+    const command = pluginRegistry.commands.get(commandId);
+    if (!command?.wizard || command.wizard.length === 0) {
+      // Nothing to fill in: the bar opens, as it always has for such a command.
+      dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+      return;
+    }
+    openFormModal({ kind: "plugin-command", commandId });
+  };
+  pluginRegistry.openBuiltInWorkflowFn = (actionId) => {
+    if (isDetachedWindow) {
+      pluginRegistry.notify({ body: t("Open this from the main window."), type: "info" });
+      return;
+    }
+    openFormModal({ kind: "builtin", actionId });
   };
   pluginRegistry.getLayoutFn = () => stateRef.current.config.layout;
   pluginRegistry.updateLayoutFn = (layout) => {

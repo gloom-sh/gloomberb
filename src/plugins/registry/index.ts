@@ -129,6 +129,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
   switchTabFn: ((tabId: string, paneId?: string) => void) = () => {};
   openCommandBarFn: ((query?: string) => void) = () => {};
   openPluginCommandWorkflowFn: ((commandId: string) => void) = () => {};
+  /** Opens one of the app's own forms, such as `add-broker-account`. Not on the plugin API. */
+  openBuiltInWorkflowFn: ((actionId: string) => void) = () => {};
   openPaneSettingsFn: ((paneId?: string) => void) = () => {};
   sharePaneFn: ((paneId?: string) => void) = () => {};
   openWindowModeFn: ((paneId?: string, mode?: WindowEditMode) => void) = () => {};
@@ -193,6 +195,9 @@ export class PluginRegistry implements PluginRuntimeAccess {
   };
   openPluginCommandWorkflow = (commandId: string) => {
     this.openPluginCommandWorkflowFn(commandId);
+  };
+  openBuiltInWorkflow = (actionId: string) => {
+    this.openBuiltInWorkflowFn(actionId);
   };
   showPane = (paneId: string) => {
     this.showPaneFn(paneId);
