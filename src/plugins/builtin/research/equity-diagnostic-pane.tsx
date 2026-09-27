@@ -18,7 +18,7 @@ import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilitie
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { SignInWall } from "../cloud/auth-actions";
+import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
@@ -565,14 +565,9 @@ export function EquityDiagnosticView({ focused, width }: {
   // Buttons in an empty state's actions answer Enter and are in the pane menu.
   if (proRequired) {
     return (
-      <PaneStatusBody
-        empty
-        emptyTitle="The Equity Diagnostic is part of Gloom Cloud Pro."
-        emptyMessage="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
-        actions={<>
-          <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
-          <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
-        </>}
+      <ProWall
+        title="The Equity Diagnostic is part of Gloom Cloud Pro."
+        message="An on-demand review of one company's filings, financials, ownership, and news, with red flags, anomalies, and green flags cited back to their source."
       />
     );
   }

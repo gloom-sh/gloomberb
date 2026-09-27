@@ -5,7 +5,6 @@ import type {
 } from "../../../api-client";
 import { recordResearchActivity } from "../../../api-client/research-activity";
 import {
-  Button,
   DataTableStackView,
   EmptyState,
   PaneStatusBody, QueryBar, Spinner,
@@ -29,8 +28,7 @@ import {
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePluginPaneState } from "../../runtime";
-import { SignInWall } from "../cloud/auth-actions";
-import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import {
@@ -180,8 +178,6 @@ interface EarningsCallsViewProps {
 export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewProps) {
   const { symbol } = useSymbolBinding();
   const access = usePlanAccess();
-  const openUpgrade = useCloudUpgradeAction();
-  const openPlan = useCloudPlanAction();
 
   const [calls, setCalls] = useState<CloudEarningsCallPayload[]>([]);
   const [listStatus, setListStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -773,13 +769,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
   if (proRequired) {
     return (
-      <EmptyState
+      <ProWall
         title="Earnings call transcripts are part of Gloom Cloud Pro."
         message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
-        actions={<>
-          <Button label="Upgrade to Pro" onPress={openUpgrade} />
-          <Button label="Manage account" variant="secondary" onPress={openPlan} />
-        </>}
       />
     );
   }
@@ -810,13 +802,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }
 
   const detailContent = transcriptProRequired ? (
-    <EmptyState
+    <ProWall
       title="Earnings call transcripts are part of Gloom Cloud Pro."
       message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
-      actions={<>
-        <Button label="Upgrade to Pro" onPress={openUpgrade} />
-        <Button label="Manage account" variant="secondary" onPress={openPlan} />
-      </>}
     />
   ) : selected && !selectedTranscript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
     <Box flexDirection="column" flexGrow={1} paddingX={1} gap={1}>

@@ -7,13 +7,15 @@
  * "Sign in to ...", so the copy stays in one voice instead of drifting per pane.
  * `InlineAuthActions` is the other shape: a row of actions sitting inside a
  * surface that still works signed out, such as the chat composer.
+ * `ProWall` is the signed-in counterpart for a pane body that needs Pro.
  */
 import { useId } from "react";
 import { Box, Text } from "../../../ui";
-import { Button, EmptyState, usePaneMenuItems } from "../../../components";
+import { Button, EmptyState, PaneStatusBody, usePaneMenuItems } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
+import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { requestAuthDialog } from "./auth-dialog";
 import type { AccountMode } from "./auth-model";
 
@@ -101,5 +103,30 @@ export function SignInWall({ action, needsVerification = false, hint }: SignInWa
         )}
       />
     </Box>
+  );
+}
+
+export interface ProWallProps {
+  /** The headline, e.g. "Hiring data is part of Gloom Cloud Pro." */
+  title: string;
+  /** What Pro unlocks here. */
+  message: string;
+}
+
+/** The upgrade wall for a pane body that needs Pro; Manage account covers a plan the account already has. */
+export function ProWall({ title, message }: ProWallProps) {
+  const openUpgrade = useCloudUpgradeAction();
+  const openPlan = useCloudPlanAction();
+  // The status body carries the pane inset that a bare EmptyState lacks.
+  return (
+    <PaneStatusBody
+      empty
+      emptyTitle={title}
+      emptyMessage={message}
+      actions={<>
+        <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
+        <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
+      </>}
+    />
   );
 }

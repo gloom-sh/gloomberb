@@ -24,8 +24,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { SignInWall } from "../cloud/auth-actions";
-import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { fetchJobs, fetchJobsMovers, fetchJobsPostings, type JobsCompanyState } from "./client";
@@ -86,17 +85,11 @@ function Stat({ label, value, detail, color, width }: { label: string; value: st
   );
 }
 
-function ProWall({ action }: { action: string }) {
-  const openUpgrade = useCloudUpgradeAction();
-  const openPlan = useCloudPlanAction();
+function HiringProWall({ symbol }: { symbol: string | null }) {
   return (
-    <EmptyState
+    <ProWall
       title="Hiring data is part of Gloom Cloud Pro."
-      message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges. ${action}`}
-      actions={<>
-        <Button label="Upgrade to Pro" onPress={openUpgrade} />
-        <Button label="Manage account" variant="secondary" onPress={openPlan} />
-      </>}
+      message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />
   );
 }
@@ -507,7 +500,7 @@ function CompanyPanel({
   }, [data, reload]);
 
   if (data?.kind === "denied") {
-    if (data.status === 402) return <ProWall action={`Open ${symbol}'s hiring picture with Pro.`} />;
+    if (data.status === 402) return <HiringProWall symbol={symbol} />;
     return <SignInWall action="see who is hiring" needsVerification={data.status === 403} />;
   }
   if ((status === "idle" || status === "loading") && !data) {
@@ -705,7 +698,7 @@ export function JobsView({ width, height, focused, companyOnly = false }: JobsVi
 
   if (!access.signedIn) return <SignInWall action="see who is hiring" />;
   if (!access.emailVerified) return <SignInWall action="see who is hiring" needsVerification />;
-  if (!access.hasProAccess) return <ProWall action={symbol ? `Open ${symbol}'s hiring picture with Pro.` : ""} />;
+  if (!access.hasProAccess) return <HiringProWall symbol={symbol} />;
 
   if (!symbol) {
     if (companyOnly) return <EmptyState title="No ticker selected." message="Select a ticker to see its hiring." />;
