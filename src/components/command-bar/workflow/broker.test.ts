@@ -67,6 +67,27 @@ test("a broker offered both ways asks for the method, and only the device method
   expect(device.selection?.method).toEqual({ kind: "device", adapter: ibkrDevice });
 });
 
+test("the broker list names each broker and says how it connects", () => {
+  const route = buildBrokerWorkflowRoute({
+    directory: buildBrokerDirectory({
+      signedIn: [signedIn("ibkr", "Interactive Brokers"), signedIn("robinhood", "Robinhood")],
+      adapters: [ibkrDevice, { ...ibkrDevice, id: "simplefin", name: "SimpleFIN" }, signedInBrokerAdapter],
+    }),
+    selectorKey: "source",
+    title: "New Portfolio",
+    subtitle: undefined,
+    submitLabel: "Create Portfolio",
+    includeManualOption: true,
+  })!;
+  const source = route.fields.find((field) => field.id === "source");
+  expect(source?.type === "select" ? source.options.map(({ label, description }) => [label, description]) : null).toEqual([
+    ["Manual", "Add tickers and positions by hand"],
+    ["Interactive Brokers", "Sign in, or on this device"],
+    ["Robinhood", "Sign in"],
+    ["SimpleFIN", "On this device"],
+  ]);
+});
+
 test("a broker offered only by signing in has nothing to fill in", () => {
   const robinhood = view(addBrokerRoute(), { brokerType: "robinhood" });
   expect(robinhood.fields).toEqual(["brokerType"]);

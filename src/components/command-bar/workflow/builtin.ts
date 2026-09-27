@@ -39,7 +39,7 @@ export function parseOwnerValue(value: unknown): { kind: "user" } | { kind: "tea
 type BrokerWorkflowBuilder = (
   selectorKey: "brokerType" | "source",
   title: string,
-  subtitle: string,
+  subtitle: string | undefined,
   submitLabel: string,
   includeManualPortfolio: boolean,
 ) => CommandBarWorkflowRoute | null;
@@ -72,7 +72,6 @@ export function buildBuiltInWorkflowRoute(options: {
         route: buildCommandBarWorkflowRoute({
           workflowId: "builtin:new-watchlist",
           title: "New Watchlist",
-          subtitle: "Create a new watchlist inside the command bar.",
           fields: [
             ...(owner ? [owner.field] : []),
             {
@@ -160,7 +159,7 @@ export function buildBuiltInWorkflowRoute(options: {
       const route = buildBrokerWorkflow(
         "brokerType",
         "Add Broker Account",
-        "Connect a new broker profile without leaving the command bar.",
+        undefined,
         "Connect Broker",
         false,
       );

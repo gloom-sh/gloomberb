@@ -24,6 +24,14 @@ function brokerMethodFieldId(entryKey: string): string {
   return `method:${entryKey}`;
 }
 
+/** How a broker connects, under its name in the broker list. */
+function brokerConnectionSummary(entry: BrokerDirectoryEntry): string {
+  const signsIn = entry.methods.some((method) => method.kind === "signed-in");
+  const onDevice = entry.methods.some((method) => method.kind === "device");
+  if (signsIn && onDevice) return "Sign in, or on this device";
+  return signsIn ? "Sign in" : "On this device";
+}
+
 export function buildBrokerWorkflowRoute({
   directory,
   includeManualOption,
@@ -42,15 +50,15 @@ export function buildBrokerWorkflowRoute({
   const options: CommandBarFieldOption[] = [];
   if (includeManualOption) {
     options.push({
-      label: "Create Manual Portfolio",
+      label: "Manual",
       value: "manual",
       description: "Add tickers and positions by hand",
     });
   }
   options.push(...directory.map((entry) => ({
-    label: `Connect ${entry.name}`,
+    label: entry.name,
     value: entry.key,
-    description: includeManualOption ? `Auto-import positions via ${entry.name}` : `Create a new ${entry.name} profile`,
+    description: brokerConnectionSummary(entry),
   })));
 
   if (options.length === 0) return null;
