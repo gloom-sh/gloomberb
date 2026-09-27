@@ -46,7 +46,7 @@ interface UseCommandBarDirectCommandRuntimeOptions {
     initialQuery?: string,
     payload?: Record<string, unknown>,
   ) => void;
-  openPaneSettingsRoute: (paneId: string) => void;
+  openPaneSettings: (paneId: string | null) => void;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   pushRoute: (route: CommandBarRoute) => void;
@@ -69,7 +69,7 @@ export function useCommandBarDirectCommandRuntime({
   openBuiltInWorkflow,
   openInlineConfirm,
   openModeRoute,
-  openPaneSettingsRoute,
+  openPaneSettings,
   persistConfig,
   pluginRegistry,
   pushRoute,
@@ -138,7 +138,7 @@ export function useCommandBarDirectCommandRuntime({
       openBuiltInWorkflow,
       openInlineConfirm,
       openModeRoute,
-      openPaneSettingsRoute,
+      openPaneSettings,
       persistConfig,
       pluginRegistry,
       pushRoute,
@@ -161,7 +161,7 @@ export function useCommandBarDirectCommandRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,

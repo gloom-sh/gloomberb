@@ -1,6 +1,6 @@
 import type { KeyEventLike } from "../../react/input";
 import { isPlainBackspace } from "../../utils/back-navigation";
-import type { ListJump, ListScreenState } from "./list/model";
+import type { ListJump } from "./list/model";
 import type { ThemePickerHandle } from "./theme-picker";
 import type { CommandBarRoute } from "./workflow/types";
 
@@ -61,14 +61,7 @@ export function handleRouteBackShortcut({
   event: KeyEventLike;
   popRoute: () => void;
 }): boolean {
-  if (
-    currentRoute
-    && (currentRoute.kind === "mode"
-      || currentRoute.kind === "picker"
-      || currentRoute.kind === "pane-settings")
-    && isPlainBackspace(event)
-    && currentRoute.query.length === 0
-  ) {
+  if (currentRoute && isPlainBackspace(event) && currentRoute.query.length === 0) {
     consumeShortcutEvent(event);
     popRoute();
     return true;
@@ -78,22 +71,14 @@ export function handleRouteBackShortcut({
 
 export function handlePickerRouteShortcut({
   activateListSelection,
-  commitMultiSelectPicker,
   currentRoute,
   event,
-  handleMultiSelectMove,
-  handleMultiSelectToggle,
   moveListSelection,
-  visibleListStateRef,
 }: {
   activateListSelection: (options?: { secondary?: boolean }) => void;
-  commitMultiSelectPicker: () => void;
   currentRoute: CommandBarRoute | null;
   event: KeyEventLike;
-  handleMultiSelectMove: (direction: "up" | "down") => void;
-  handleMultiSelectToggle: (optionId: string) => void;
   moveListSelection: (delta: number) => void;
-  visibleListStateRef: RefLike<ListScreenState | null>;
 }): boolean {
   if (currentRoute?.kind !== "picker") return false;
 
@@ -107,58 +92,7 @@ export function handlePickerRouteShortcut({
     moveListSelection(1);
     return true;
   }
-  if (currentRoute.pickerId === "field-multi-select" && (event.name === "space" || event.sequence === " ")) {
-    consumeShortcutEvent(event);
-    const listState = visibleListStateRef.current;
-    const selected = listState?.results[listState.selectedIdx];
-    if (selected) handleMultiSelectToggle(selected.id);
-    return true;
-  }
-  if (currentRoute.pickerId === "field-multi-select" && event.name === "[") {
-    consumeShortcutEvent(event);
-    handleMultiSelectMove("up");
-    return true;
-  }
-  if (currentRoute.pickerId === "field-multi-select" && event.name === "]") {
-    consumeShortcutEvent(event);
-    handleMultiSelectMove("down");
-    return true;
-  }
   if (isCommitShortcut(event)) {
-    consumeShortcutEvent(event);
-    if (currentRoute.pickerId === "field-multi-select") {
-      commitMultiSelectPicker();
-      return true;
-    }
-    activateListSelection();
-  }
-  return true;
-}
-
-export function handlePaneSettingsRouteShortcut({
-  activateListSelection,
-  currentRoute,
-  event,
-  moveListSelection,
-}: {
-  activateListSelection: (options?: { secondary?: boolean }) => void;
-  currentRoute: CommandBarRoute | null;
-  event: KeyEventLike;
-  moveListSelection: (delta: number) => void;
-}): boolean {
-  if (currentRoute?.kind !== "pane-settings") return false;
-
-  if (isMoveUpShortcut(event)) {
-    consumeShortcutEvent(event);
-    moveListSelection(-1);
-    return true;
-  }
-  if (isMoveDownShortcut(event)) {
-    consumeShortcutEvent(event);
-    moveListSelection(1);
-    return true;
-  }
-  if (isCommitShortcut(event) || event.name === "space") {
     consumeShortcutEvent(event);
     activateListSelection();
   }

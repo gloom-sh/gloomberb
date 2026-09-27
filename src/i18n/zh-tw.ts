@@ -1330,4 +1330,5 @@ export const zhTW: Record<string, string> = {
   "Open this from the main window.": "請在主視窗中開啟。",
   "Done.": "完成。",
   "Could not complete that action.": "無法完成該操作。",
+  "The focused pane has no settings.": "目前面板沒有設定。",
 };

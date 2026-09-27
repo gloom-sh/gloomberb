@@ -52,31 +52,14 @@ export function getCollectionCommandVerb(action: CollectionMembershipAction): st
   return action === "add" ? "Add" : "Remove";
 }
 
-export function getScreenFooterLeft(route: CommandBarRoute | null): string {
-  if (!route) return "up/down move  enter select";
-  switch (route.kind) {
-    case "mode":
-      return "up/down move  enter select";
-    case "picker":
-      if (route.pickerId === "field-multi-select") {
-        const ordered = route.payload?.fieldType === "ordered-multi-select";
-        return ordered ? "up/down move  space toggle  [ ] reorder  enter done" : "up/down move  space toggle  enter done";
-      }
-      return "up/down move  enter select";
-    case "pane-settings":
-      return "up/down move  enter edit";
-    default:
-      return "up/down move  enter select";
-  }
+export function getScreenFooterLeft(_route: CommandBarRoute | null): string {
+  return "up/down move  enter select";
 }
 
 export function getScreenFooterRight(route: CommandBarRoute | null): string {
   if (!route) return "esc cancel";
 
-  if (
-    (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings")
-    && route.query.trim().length > 0
-  ) {
+  if (route.query.trim().length > 0) {
     return "backspace delete  esc back";
   }
 

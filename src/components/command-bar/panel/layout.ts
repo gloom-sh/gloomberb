@@ -44,7 +44,6 @@ export function resolveCommandBarPanelLayout({
   nativeListRowCount,
   nativePaneChrome,
   nativeWindowChrome,
-  showCustomMultiSelectPicker,
   termHeight,
   termWidth,
   themePickerActive,
@@ -60,7 +59,6 @@ export function resolveCommandBarPanelLayout({
   nativeListRowCount: number;
   nativePaneChrome: boolean;
   nativeWindowChrome?: boolean;
-  showCustomMultiSelectPicker: boolean;
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
@@ -106,8 +104,7 @@ export function resolveCommandBarPanelLayout({
   // a dozen themes.
   const compactRowCount = themePickerActive ? themePickerRowCount : nativeListRowCount;
   const shouldUseCompactListHeight = nativePaneChrome
-    && (hasVisibleListState || themePickerActive)
-    && !showCustomMultiSelectPicker;
+    && (hasVisibleListState || themePickerActive);
   const listBodyHeight = shouldUseCompactListHeight
     ? Math.min(baseBodyHeight, Math.max(1, compactRowCount))
     : baseBodyHeight;

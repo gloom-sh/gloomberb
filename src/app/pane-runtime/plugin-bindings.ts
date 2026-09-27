@@ -69,7 +69,7 @@ interface BindAppPanePluginRegistryOptions {
   externalPlugins: readonly LoadedExternalPlugin[];
   focusVisiblePane: (paneId: string, layout?: LayoutConfig) => void;
   isDetachedWindow: boolean;
-  openPaneSettings: (paneId?: string) => Promise<void>;
+  openPaneSettings: (paneId?: string, options?: { fieldKey?: string }) => Promise<void>;
   openPinnedTicker: (rawSymbol: string, options?: PinTickerOptions) => Promise<void>;
   persistConfig: (nextConfig: AppState["config"]) => void;
   persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
@@ -158,7 +158,7 @@ export function bindAppPanePluginRegistry({
     if (isDetachedWindow) return;
     persistLayout(layout);
   };
-  pluginRegistry.openPaneSettingsFn = (paneId) => { void openPaneSettings(paneId); };
+  pluginRegistry.openPaneSettingsFn = (paneId, options) => { void openPaneSettings(paneId, options); };
   pluginRegistry.showPaneFn = (paneId) => {
     if (isDetachedWindow) return;
     showPane(paneId);

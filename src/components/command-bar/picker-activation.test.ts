@@ -29,8 +29,6 @@ function confirmDisconnect(instance: BrokerInstanceConfig): string[] {
       options: [{ id: instance.id, label: instance.label }],
     },
     selectedId: instance.id,
-    setRouteStack: () => {},
-    updateTopRoute: () => {},
   });
   return body;
 }

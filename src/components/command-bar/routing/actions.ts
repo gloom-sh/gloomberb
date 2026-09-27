@@ -1,8 +1,8 @@
 import { useCallback, type Dispatch, type MutableRefObject } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { useAppGetState, type AppAction, type AppState } from "../../../state/app/context";
+import { t } from "../../../i18n";
 import type { TickerFinancials } from "../../../types/financials";
-import type { PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import { executeCollectionCommandAction } from "../commands/collection";
 import type { CollectionCommandId } from "../helpers";
@@ -11,14 +11,8 @@ import {
   buildWindowModeResultItems,
 } from "../layout-items";
 import type { ResultItem } from "../list/model";
-import {
-  activatePaneSettingFieldAction,
-  buildPaneSettingResultItems,
-} from "../pane-settings";
-import type {
-  CommandBarRoute,
-  CommandBarWorkflowRoute,
-} from "../workflow/types";
+import { buildPaneSettingResultItems } from "../pane-settings";
+import type { CommandBarRoute } from "../workflow/types";
 import type { OpenInlineConfirm } from "./confirm";
 
 type CloseAll = (options?: { revertThemePreview?: boolean }) => void;
@@ -43,14 +37,12 @@ interface UseCommandBarRouteActionsOptions {
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: OpenModeRoute;
-  openWorkflowRoute: (route: CommandBarWorkflowRoute) => void;
   persistConfig: (nextConfig: AppState["config"]) => void;
   persistLayoutChange: (layout: AppState["config"]["layout"]) => void;
   pluginRegistry: PluginRegistry;
   pushRoute: (route: CommandBarRoute) => void;
   state: AppState;
   stateRef: MutableRefObject<AppState>;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 
 export function useCommandBarRouteActions({
@@ -67,14 +59,12 @@ export function useCommandBarRouteActions({
   openBuiltInWorkflow,
   openInlineConfirm,
   openModeRoute,
-  openWorkflowRoute,
   persistConfig,
   persistLayoutChange,
   pluginRegistry,
   pushRoute,
   state,
   stateRef,
-  updateTopRoute,
 }: UseCommandBarRouteActionsOptions) {
   const getState = useAppGetState();
   const buildWindowModeItems = useCallback((arg: string): ResultItem[] => buildWindowModeResultItems({
@@ -113,22 +103,19 @@ export function useCommandBarRouteActions({
     state,
   ]);
 
-  const openPaneSettingsRoute = useCallback((paneId: string) => {
-    const descriptor = pluginRegistry.resolvePaneSettings(paneId);
-    if (!descriptor) {
-      notify("The focused pane has no settings.", { type: "info" });
+  /**
+   * The real pane settings dialog, on the chosen setting when there is one.
+   * The bar closes first: it would take the dialog's keys, and on the desktop
+   * it would cover it.
+   */
+  const openPaneSettings = useCallback((paneId: string | null, fieldKey?: string) => {
+    if (!paneId || !pluginRegistry.hasPaneSettings(paneId)) {
+      notify(t("The focused pane has no settings."), { type: "info" });
       return;
     }
-    pushRoute({
-      kind: "pane-settings",
-      paneId: descriptor.paneId,
-      query: "",
-      selectedIdx: 0,
-      hoveredIdx: null,
-      error: null,
-      pendingFieldKey: null,
-    });
-  }, [notify, pluginRegistry, pushRoute]);
+    closeAll({ revertThemePreview: false });
+    pluginRegistry.openPaneSettingsFn(paneId, fieldKey ? { fieldKey } : undefined);
+  }, [closeAll, notify, pluginRegistry]);
 
   const executeCollectionCommand = useCallback(async (
     commandId: CollectionCommandId,
@@ -161,43 +148,16 @@ export function useCommandBarRouteActions({
     stateRef,
   ]);
 
-  const activatePaneSettingField = useCallback((
-    paneId: string,
-    field: PaneSettingField,
-    currentValue: unknown,
-    options?: { keepRouteOpen?: boolean },
-  ) => activatePaneSettingFieldAction({
-    closeAll,
-    currentValue,
-    field,
-    keepRouteOpen: options?.keepRouteOpen,
-    notify,
-    openWorkflowRoute,
-    paneId,
-    pluginRegistry,
-    pushRoute,
-    updateTopRoute,
-  }), [
-    closeAll,
-    notify,
-    openWorkflowRoute,
-    pluginRegistry,
-    pushRoute,
-    updateTopRoute,
-  ]);
-
   const buildPaneSettingItems = useCallback((
     paneId: string | null,
     query: string,
-    options?: { keepRouteOpen?: boolean },
   ): ResultItem[] => buildPaneSettingResultItems({
-    activatePaneSettingField,
-    keepRouteOpen: options?.keepRouteOpen,
+    openPaneSettings,
     paneId,
     pluginRegistry,
     query,
   }), [
-    activatePaneSettingField,
+    openPaneSettings,
     pluginRegistry,
   ]);
 
@@ -222,12 +182,11 @@ export function useCommandBarRouteActions({
   }, [activeFinancials, activeTickerData, closeAll, pluginRegistry]);
 
   return {
-    activatePaneSettingField,
     buildLayoutItems,
     buildPaneSettingItems,
     buildWindowModeItems,
     executeCollectionCommand,
-    openPaneSettingsRoute,
+    openPaneSettings,
     tickerActionItems,
   };
 }

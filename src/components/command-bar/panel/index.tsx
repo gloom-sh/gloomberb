@@ -6,7 +6,6 @@ import { truncateToDisplayWidth } from "../../../utils/format";
 import { Button } from "../../ui";
 import type { ListScreenState } from "../list/model";
 import { CommandBarListBody } from "../list/view";
-import { CommandBarMultiSelectBody, isMultiSelectPickerRoute } from "../multi-select-picker";
 import { ThemePicker } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
@@ -30,7 +29,6 @@ function resolvePromptPlaceholder(listState: ListScreenState): string {
 }
 
 export function CommandBarPanel({
-  bodyHeight,
   bodySlotKey,
   committedThemeId,
   contentPadding,
@@ -46,9 +44,6 @@ export function CommandBarPanel({
   onListHoverIndex,
   onListRowMouseDown,
   onListScroll,
-  onMultiSelectCommit,
-  onMultiSelectSelect,
-  onMultiSelectToggle,
   onNativeOccluderChange,
   onOverlayClose,
   onQueryChange,
@@ -213,7 +208,7 @@ export function CommandBarPanel({
             />
           )}
 
-          {visibleListState && !themePickerActive && !isMultiSelectPickerRoute(currentRoute) && (
+          {visibleListState && !themePickerActive && (
             <CommandBarListBody
               visibleListState={visibleListState}
               nativeListRows={nativeListRows}
@@ -229,17 +224,6 @@ export function CommandBarPanel({
               onRowMouseDown={onListRowMouseDown}
             />
           )}
-          {isMultiSelectPickerRoute(currentRoute) && (
-            <CommandBarMultiSelectBody
-              route={currentRoute}
-              bodyHeight={bodyHeight}
-              contentPadding={contentPadding}
-              nativePaneChrome={nativePaneChrome}
-              onCommit={onMultiSelectCommit}
-              onSelect={onMultiSelectSelect}
-              onToggle={onMultiSelectToggle}
-            />
-          )}
         </Box>
 
         {!nativePaneChrome && <Box height={1} />}
@@ -253,6 +237,5 @@ function getCommandBarPanelTitle(route: CommandBarRoute): string {
     if (route.screen === "layout") return "Layout Actions";
     return "Security Description";
   }
-  if (route.kind === "picker") return route.title;
-  return "Pane Settings";
+  return route.title;
 }

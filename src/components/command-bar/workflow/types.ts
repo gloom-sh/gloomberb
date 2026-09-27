@@ -62,9 +62,7 @@ export interface CommandBarPickerRoute extends CommandBarRouteBase {
     | "delete-portfolio"
     | "disconnect-broker"
     | "collection-target"
-    | "broker-type"
-    | "field-select"
-    | "field-multi-select";
+    | "broker-type";
   title: string;
   query: string;
   selectedIdx: number;
@@ -97,23 +95,12 @@ export interface CommandBarWorkflowRoute {
   error: string | null;
   successBehavior?: "close" | "back";
   payload: {
-    kind: "builtin" | "plugin-command" | "pane-template" | "pane-setting";
+    kind: "builtin" | "plugin-command" | "pane-template";
     actionId: string;
   };
   payloadMeta?: Record<string, unknown>;
 }
 
-interface CommandBarPaneSettingsRoute extends CommandBarRouteBase {
-  kind: "pane-settings";
-  paneId: string;
-  query: string;
-  selectedIdx: number;
-  hoveredIdx: number | null;
-  error: string | null;
-  pendingFieldKey: string | null;
-}
-
 export type CommandBarRoute =
   | CommandBarModeRoute
-  | CommandBarPickerRoute
-  | CommandBarPaneSettingsRoute;
+  | CommandBarPickerRoute;

@@ -215,7 +215,7 @@ export function FormModalContent({
       const listingPicker = buildTickerListingPicker(current, error, (fieldId) => coerceFieldString(current.values[fieldId]));
       if (listingPicker) {
         updateRoute((latest) => ({ ...latest, pending: false, error: null }));
-        const fieldId = String(listingPicker.payload?.fieldId ?? "");
+        const fieldId = listingPicker.fieldId;
         const choice = await dialog.prompt<string>({
           closeOnClickOutside: true,
           content: (context: PromptContext<string>) => (

@@ -162,7 +162,6 @@ export function CommandBar({
     themePickerRef,
     tickerRepository,
     tickers: state.tickers,
-    updateTopRoute,
   });
 
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
@@ -381,7 +380,6 @@ export function CommandBar({
     runDirectCommand,
     runSecurityDescriptionShortcut,
     setRootQuery,
-    setRouteStack,
     stateConfigLayout: state.config.layout,
     stateRef,
     updateTopRoute,
@@ -405,10 +403,8 @@ export function CommandBar({
     activeMatch,
     adaptTickerSearchRouteResult,
     buildLayoutItems,
-    buildPaneSettingItems,
     currentRoute,
     orderedRootResults,
-    pluginRegistry,
     rootCategoryPriorities: providerCategoryPriorities,
     rootHoveredIdx,
     rootModeKind: rootModeInfo.kind,
@@ -449,7 +445,6 @@ export function CommandBar({
     nativeWindowChrome,
     onNativeOccluderChange,
     persistConfig,
-    pluginRegistry,
     popRoute,
     resetAssist,
     rootModeKind: rootModeInfo.kind,

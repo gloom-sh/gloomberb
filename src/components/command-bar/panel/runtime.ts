@@ -9,7 +9,6 @@ import {
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { AppState } from "../../../state/app/context";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
-import type { PluginRegistry } from "../../../plugins/registry";
 import type { CommandBarPanelProps } from "./types";
 import { useCommandBarKeyboardShortcuts } from "../keyboard-shortcuts";
 import { useCommandBarListNavigation } from "../list/navigation";
@@ -20,7 +19,6 @@ import {
   type ListScreenState,
   type ResultItem,
 } from "../list/model";
-import { useCommandBarMultiSelectRuntime } from "../multi-select-runtime";
 import { useCommandBarPanelState } from "./state";
 import type { ThemePickerHandle } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
@@ -44,7 +42,6 @@ interface CommandBarPanelRuntimeOptions {
   nativeWindowChrome?: boolean;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
   persistConfig: (nextConfig: AppState["config"]) => void;
-  pluginRegistry: PluginRegistry;
   popRoute: () => void;
   resetAssist: () => boolean;
   rootGhostSuffix: string | null;
@@ -85,7 +82,6 @@ export function useCommandBarPanelRuntime({
   nativeWindowChrome,
   onNativeOccluderChange,
   persistConfig,
-  pluginRegistry,
   popRoute,
   resetAssist,
   rootGhostSuffix,
@@ -139,28 +135,12 @@ export function useCommandBarPanelRuntime({
     moveListSelection(nextIndex - listState.selectedIdx);
   }, [moveListSelection, visibleListStateRef]);
 
-  const {
-    commitMultiSelectPicker,
-    handleMultiSelectMove,
-    handleMultiSelectSelect,
-    handleMultiSelectToggle,
-    showCustomMultiSelectPicker,
-  } = useCommandBarMultiSelectRuntime({
-    currentRoute,
-    pluginRegistry,
-    setRouteStack,
-    updateTopRoute,
-    });
-
   useCommandBarKeyboardShortcuts({
     acceptRootShortcutTab,
     acceptSelectedShortcutTab,
     activateListSelection,
-    commitMultiSelectPicker,
     currentRoute,
     dismissCommandBar,
-    handleMultiSelectMove,
-    handleMultiSelectToggle,
     jumpListSelection,
     moveListSelection,
     popRoute,
@@ -187,7 +167,6 @@ export function useCommandBarPanelRuntime({
     rootShortcutFeedback,
     routeListState,
     setRootSelectedIdx,
-    showCustomMultiSelectPicker,
     termHeight,
     termWidth,
     themePickerActive,
@@ -209,7 +188,6 @@ export function useCommandBarPanelRuntime({
   }, [closeAll, commitTheme, persistConfig, stateRef]);
 
   return {
-    bodyHeight: panelLayout.bodyHeight,
     bodySlotKey,
     committedThemeId,
     contentPadding: panelLayout.contentPadding,
@@ -225,9 +203,6 @@ export function useCommandBarPanelRuntime({
     onListHoverIndex: setHoveredIndex,
     onListRowMouseDown: handleListRowMouseDown,
     onListScroll: handleListScroll,
-    onMultiSelectCommit: commitMultiSelectPicker,
-    onMultiSelectSelect: handleMultiSelectSelect,
-    onMultiSelectToggle: handleMultiSelectToggle,
     onNativeOccluderChange,
     onOverlayClose: closeAll,
     onQueryChange: setActiveListQuery,

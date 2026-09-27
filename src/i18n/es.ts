@@ -1334,4 +1334,5 @@ export const es: Record<string, string> = {
   "Open this from the main window.": "Ábrelo desde la ventana principal.",
   "Done.": "Listo.",
   "Could not complete that action.": "No se pudo completar esa acción.",
+  "The focused pane has no settings.": "El panel enfocado no tiene ajustes.",
 };

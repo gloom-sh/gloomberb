@@ -1328,4 +1328,5 @@ export const ko: Record<string, string> = {
   "Open this from the main window.": "메인 창에서 여세요.",
   "Done.": "완료했습니다.",
   "Could not complete that action.": "작업을 완료할 수 없습니다.",
+  "The focused pane has no settings.": "포커스된 패널에 설정이 없습니다.",
 };

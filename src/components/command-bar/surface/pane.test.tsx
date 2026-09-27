@@ -7,7 +7,6 @@ import type { PaneTemplateCreateOptions, WizardStep } from "../../../types/plugi
 import {
   CommandBarHarness,
   createCommandBarTestControls,
-  emitKeypress,
   makeQuoteMonitorPaneSettingsDescriptor,
 } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -21,7 +20,7 @@ afterEach(() => {
   }
 });
 
-const { waitForFrameToContain, clickFrameText, renderFrames } = createCommandBarTestControls(() => testSetup!);
+const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => testSetup!);
 
 type CreatedPaneCall = { templateId: string; options?: PaneTemplateCreateOptions };
 
@@ -645,26 +644,22 @@ describe("CommandBar pane and layout routes", () => {
     }]);
   });
 
-  test("edits a text pane setting in the form modal", async () => {
-    const appliedValues: Array<{ paneId: string; key: string; value: unknown }> = [];
+  test("PS closes the bar and opens the focused pane's settings", async () => {
+    const opened: Array<{ paneId?: string; fieldKey?: string }> = [];
 
     testSetup = await testRender(<CommandBarHarness
       query="PS"
       live
-      configureState={(state) => ({
-        ...state,
-        focusedPaneId: "quote-monitor:main",
-      })}
+      configureState={(state) => ({ ...state, focusedPaneId: "quote-monitor:main" })}
       hasPaneSettings={(paneId) => paneId === "quote-monitor:main"}
       configurePluginRegistry={(pluginRegistry) => {
         pluginRegistry.resolvePaneSettings = () => makeQuoteMonitorPaneSettingsDescriptor(pluginRegistry, [{
           key: "symbol",
           label: "Symbol",
           type: "text",
-          description: "Ticker symbol to track",
         }]);
-        pluginRegistry.applyPaneSettingValueFn = async (paneId, field, value) => {
-          appliedValues.push({ paneId, key: field.key, value });
+        pluginRegistry.openPaneSettingsFn = (paneId, options) => {
+          opened.push({ paneId, fieldKey: options?.fieldKey });
         };
       }}
     />, {
@@ -673,108 +668,30 @@ describe("CommandBar pane and layout routes", () => {
     });
 
     await testSetup.renderOnce();
-
     await act(async () => {
       testSetup!.mockInput.pressEnter();
       await testSetup!.renderOnce();
     });
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-    expect(frame).toContain("Symbol");
 
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-    });
-    frame = testSetup.captureCharFrame();
-    await clickFrameText("Symbol");
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Apply");
-    expect(frame).toContain("Symbol");
-
-    await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
-    });
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(appliedValues).toEqual([{
-      paneId: "quote-monitor:main",
-      key: "symbol",
-      value: "MSFT",
-    }]);
+    await waitForFrameToContain("bar:closed");
+    expect(opened).toEqual([{ paneId: "quote-monitor:main", fieldKey: undefined }]);
   });
 
-  test("clears the root shortcut query when opening pane settings and nested pickers", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query="PS"
-      configureState={(state) => ({
-        ...state,
-        focusedPaneId: "quote-monitor:main",
-      })}
-      hasPaneSettings={(paneId) => paneId === "quote-monitor:main"}
-      configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.resolvePaneSettings = () => makeQuoteMonitorPaneSettingsDescriptor(pluginRegistry, [{
-          key: "range",
-          label: "Range",
-          type: "select",
-          options: [
-            { label: "1M", value: "1M" },
-            { label: "1Y", value: "1Y" },
-          ],
-        }]);
-      }}
-    />, {
-      width: 100,
-      height: 20,
-    });
-
-    await testSetup.renderOnce();
-
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-    expect(frame).not.toContain("PS");
-
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("1M");
-    expect(frame).toContain("1Y");
-    expect(frame).not.toContain("No matches");
-    expect(frame).not.toContain("PS");
-  });
-
-  test("opens focused pane settings directly from root search", async () => {
-    const appliedValues: Array<{ paneId: string; key: string; value: unknown }> = [];
+  test("a setting found from root search opens pane settings on that setting", async () => {
+    const opened: Array<{ paneId?: string; fieldKey?: string }> = [];
 
     testSetup = await testRender(<CommandBarHarness
       query="ticker symbol"
-      configureState={(state) => ({
-        ...state,
-        focusedPaneId: "quote-monitor:main",
-      })}
+      live
+      configureState={(state) => ({ ...state, focusedPaneId: "quote-monitor:main" })}
       hasPaneSettings={(paneId) => paneId === "quote-monitor:main"}
       configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.resolvePaneSettings = () => makeQuoteMonitorPaneSettingsDescriptor(pluginRegistry, [{
-          key: "symbol",
-          label: "Symbol",
-          type: "text",
-          description: "Ticker symbol to track",
-        }]);
-        pluginRegistry.applyPaneSettingValueFn = async (paneId, field, value) => {
-          appliedValues.push({ paneId, key: field.key, value });
+        pluginRegistry.resolvePaneSettings = () => makeQuoteMonitorPaneSettingsDescriptor(pluginRegistry, [
+          { key: "range", label: "Range", type: "select", options: [{ label: "1M", value: "1M" }] },
+          { key: "symbol", label: "Symbol", type: "text", description: "Ticker symbol to track" },
+        ]);
+        pluginRegistry.openPaneSettingsFn = (paneId, options) => {
+          opened.push({ paneId, fieldKey: options?.fieldKey });
         };
       }}
     />, {
@@ -783,96 +700,13 @@ describe("CommandBar pane and layout routes", () => {
     });
 
     await testSetup.renderOnce();
-
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-    expect(frame).toContain("Symbol");
-
+    expect(testSetup.captureCharFrame()).toContain("Quote Monitor Settings");
     await act(async () => {
       testSetup!.mockInput.pressEnter();
       await testSetup!.renderOnce();
     });
 
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Apply");
-    expect(frame).toContain("Symbol");
-
-    await act(async () => {
-      await testSetup!.mockInput.typeText("MSFT");
-      await testSetup!.renderOnce();
-    });
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-
-    expect(appliedValues).toEqual([{
-      paneId: "quote-monitor:main",
-      key: "symbol",
-      value: "MSFT",
-    }]);
+    await waitForFrameToContain("bar:closed");
+    expect(opened).toEqual([{ paneId: "quote-monitor:main", fieldKey: "symbol" }]);
   });
-
-  test("uses backspace as back only when a pane-settings route query is empty", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query="PS"
-      configureState={(state) => ({
-        ...state,
-        focusedPaneId: "quote-monitor:main",
-      })}
-      hasPaneSettings={(paneId) => paneId === "quote-monitor:main"}
-      configurePluginRegistry={(pluginRegistry) => {
-        pluginRegistry.resolvePaneSettings = () => makeQuoteMonitorPaneSettingsDescriptor(pluginRegistry, [{
-          key: "symbol",
-          label: "Symbol",
-          type: "text",
-          description: "Ticker symbol to track",
-        }]);
-      }}
-    />, {
-      width: 100,
-      height: 20,
-    });
-
-    await testSetup.renderOnce();
-
-    await act(async () => {
-      testSetup!.mockInput.pressEnter();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-
-    let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-
-    await act(async () => {
-      await testSetup!.mockInput.typeText("s");
-      await testSetup!.renderOnce();
-    });
-
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-
-    await emitKeypress(testSetup, { name: "backspace", sequence: "\b" });
-
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Quote Monitor Settings");
-
-    await act(async () => {
-      testSetup!.mockInput.pressBackspace();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-    await act(async () => {
-      testSetup!.mockInput.pressBackspace();
-      await testSetup!.renderOnce();
-    });
-    await renderFrames();
-
-    frame = testSetup.captureCharFrame();
-    expect(frame).not.toContain("Quote Monitor Settings");
-    expect(frame).not.toContain("Back  Pane Settings");
-  });
-
 });

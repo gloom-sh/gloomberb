@@ -43,9 +43,7 @@ export function useCommandBarListNavigation({
       if (current.length === 0) return current;
       const next = [...current];
       const top = next[next.length - 1];
-      if (!top || (top.kind !== "mode" && top.kind !== "picker" && top.kind !== "pane-settings")) {
-        return current;
-      }
+      if (!top) return current;
       if (top.selectedIdx === nextIndex && top.hoveredIdx === null) return current;
       next[next.length - 1] = { ...top, selectedIdx: nextIndex, hoveredIdx: null };
       return next;
@@ -69,12 +67,9 @@ export function useCommandBarListNavigation({
       const next = [...current];
       const route = next[next.length - 1];
       if (!route) return current;
-      if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-        if (route.hoveredIdx === index) return current;
-        next[next.length - 1] = { ...route, hoveredIdx: index };
-        return next;
-      }
-      return current;
+      if (route.hoveredIdx === index) return current;
+      next[next.length - 1] = { ...route, hoveredIdx: index };
+      return next;
     });
   }, [currentRouteRef, setRootHoveredIdx, setRouteStack]);
 
@@ -102,9 +97,7 @@ export function useCommandBarListNavigation({
         if (current.length === 0) return current;
         const next = [...current];
         const route = next[next.length - 1];
-        if (!route || (route.kind !== "mode" && route.kind !== "picker" && route.kind !== "pane-settings")) {
-          return current;
-        }
+        if (!route) return current;
         if (route.selectedIdx === globalIdx && route.hoveredIdx === globalIdx) return current;
         next[next.length - 1] = { ...route, selectedIdx: globalIdx, hoveredIdx: globalIdx };
         return next;

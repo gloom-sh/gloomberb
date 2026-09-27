@@ -44,7 +44,6 @@ interface UseCommandBarActionRuntimeOptions {
   themePickerRef: MutableRefObject<ThemePickerHandle | null>;
   tickerRepository: AppTickerRepositoryPort;
   tickers: AppState["tickers"];
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 
 export function useCommandBarActionRuntime({
@@ -70,7 +69,6 @@ export function useCommandBarActionRuntime({
   themePickerRef,
   tickerRepository,
   tickers,
-  updateTopRoute,
 }: UseCommandBarActionRuntimeOptions) {
   const {
     duplicatePane,
@@ -125,7 +123,6 @@ export function useCommandBarActionRuntime({
     openAddToPortfolioWorkflow,
     openBuiltInWorkflow,
     openForm,
-    openWorkflowRoute,
   } = useCommandBarWorkflowCoordinator({
     closeAll,
     dataProvider,
@@ -142,7 +139,7 @@ export function useCommandBarActionRuntime({
     buildPaneSettingItems,
     buildWindowModeItems,
     executeCollectionCommand,
-    openPaneSettingsRoute,
+    openPaneSettings,
     tickerActionItems,
   } = useCommandBarRouteActions({
     activeCollectionId,
@@ -158,14 +155,12 @@ export function useCommandBarActionRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openWorkflowRoute,
     persistConfig,
     persistLayoutChange,
     pluginRegistry,
     pushRoute,
     state,
     stateRef,
-    updateTopRoute,
   });
 
   const {
@@ -229,7 +224,7 @@ export function useCommandBarActionRuntime({
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,

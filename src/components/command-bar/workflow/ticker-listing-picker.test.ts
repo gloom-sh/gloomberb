@@ -21,7 +21,7 @@ test("listing choice retains the complete research form and changes only the amb
   expect(picker.options.map((option) => [option.id, option.detail])).toEqual([
     ["MSFT, COST:XNAS, AAPL", "Costco Wholesale"], ["MSFT, COST:XLON, AAPL", "Costain Group"],
   ]);
-  const updated = applyFormValue(workflow, String(picker.payload!.fieldId), picker.options[0]!.id);
+  const updated = applyFormValue(workflow, picker.fieldId, picker.options[0]!.id);
   expect(updated.values).toEqual({ ...workflow.values, tickers: "MSFT, COST:XNAS, AAPL" });
   expect(workflow.values.tickers).toBe("MSFT, COST, AAPL");
   // The next unresolved ticker gets its own choice without undoing the first.

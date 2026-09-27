@@ -32,7 +32,7 @@ export function useAppPaneSettingsRuntime({
   stateRef,
   tickerRepository,
 }: UseAppPaneSettingsRuntimeOptions) {
-  const openPaneSettings = useCallback(async (paneId?: string) => {
+  const openPaneSettings = useCallback(async (paneId?: string, options?: { fieldKey?: string }) => {
     const targetPaneId = paneId
       ? resolvePaneTarget(paneId)
       : stateRef.current.focusedPaneId;
@@ -59,6 +59,7 @@ export function useAppPaneSettingsRuntime({
           paneId={targetPaneId}
           pluginRegistry={pluginRegistry}
           applyFieldValue={applyFieldValue}
+          initialFieldKey={options?.fieldKey}
         />
       ),
     });

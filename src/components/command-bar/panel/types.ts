@@ -7,7 +7,6 @@ import type { ThemePickerHandle } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 
 export interface CommandBarPanelProps {
-  bodyHeight: number;
   bodySlotKey: string;
   committedThemeId: string;
   contentPadding: number;
@@ -24,9 +23,6 @@ export interface CommandBarPanelProps {
   onListHoverIndex: (index: number | null) => void;
   onListRowMouseDown: (event: any, item: ResultItem, globalIdx: number) => void;
   onListScroll: (event: CommandBarListScrollEvent) => void;
-  onMultiSelectCommit: () => void;
-  onMultiSelectSelect: (index: number) => void;
-  onMultiSelectToggle: (id: string) => void;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
   onOverlayClose: () => void;
   onQueryChange: (query: string) => void;

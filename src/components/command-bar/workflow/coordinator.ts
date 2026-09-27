@@ -7,7 +7,6 @@ import type { TickerRecord } from "../../../types/ticker";
 import { openFormModal, type FormModalRequest } from "../../form-modal";
 import { createLiveCollectionActions, type FormModalDeps } from "../../form-modal/deps";
 import type { CommandBarNotifyFn } from "./collection-actions";
-import type { CommandBarWorkflowRoute } from "./types";
 
 interface UseCommandBarWorkflowCoordinatorOptions {
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
@@ -44,10 +43,6 @@ export function useCommandBarWorkflowCoordinator({
     if (openFormModal(request)) closeAll({ revertThemePreview: false });
   }, [closeAll]);
 
-  const openWorkflowRoute = useCallback((route: CommandBarWorkflowRoute) => {
-    openForm({ kind: "route", route });
-  }, [openForm]);
-
   const openAddToPortfolioWorkflow = useCallback((
     ticker: TickerRecord,
     preferredPortfolioId?: string | null,
@@ -73,6 +68,5 @@ export function useCommandBarWorkflowCoordinator({
     openAddToPortfolioWorkflow,
     openBuiltInWorkflow,
     openForm,
-    openWorkflowRoute,
   };
 }

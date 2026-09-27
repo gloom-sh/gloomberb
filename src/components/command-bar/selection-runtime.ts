@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
-} from "react";
+import { useCallback, type MutableRefObject } from "react";
 import type { AppState } from "../../state/app/context";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
@@ -67,7 +62,6 @@ interface UseCommandBarSelectionRuntimeOptions {
   runDirectCommand: (command: Command, arg: string) => void;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   setRootQuery: (query: string) => void;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   stateConfigLayout: AppState["config"]["layout"];
   stateRef: MutableRefObject<AppState>;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
@@ -100,7 +94,6 @@ export function useCommandBarSelectionRuntime({
   runDirectCommand,
   runSecurityDescriptionShortcut,
   setRootQuery,
-  setRouteStack,
   stateConfigLayout,
   stateRef,
   updateTopRoute,
@@ -226,14 +219,7 @@ export function useCommandBarSelectionRuntime({
       return;
     }
 
-    if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-      updateTopRoute((route) => {
-        if (route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings") {
-          return { ...route, query: nextQuery, selectedIdx: 0, hoveredIdx: null };
-        }
-        return route;
-      });
-    }
+    updateTopRoute((route) => ({ ...route, query: nextQuery, selectedIdx: 0, hoveredIdx: null }));
   }, [
     availableCommands,
     clearThemePreview,
@@ -271,14 +257,7 @@ export function useCommandBarSelectionRuntime({
         pluginRegistry,
         route: currentRoute,
         selectedId: selected.id,
-        setRouteStack,
-        updateTopRoute,
       });
-      return;
-    }
-
-    if (currentRoute?.kind === "pane-settings") {
-      void selected.action();
       return;
     }
 
@@ -294,9 +273,7 @@ export function useCommandBarSelectionRuntime({
     resolveImmediateRootSelection,
     rootQuery,
     rootQueryRef,
-    setRouteStack,
     stateConfigLayout,
-    updateTopRoute,
     visibleListStateRef,
   ]);
 

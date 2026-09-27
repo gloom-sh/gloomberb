@@ -1,17 +1,12 @@
-import type { Dispatch, SetStateAction } from "react";
 import { signedInBrokerForProfile } from "../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../brokers/signed-in/profile";
 import type { PluginRegistry } from "../../plugins/registry";
 import { swapPanes } from "../../plugins/pane-manager";
 import type { LayoutConfig } from "../../types/config";
-import type { PaneSettingField } from "../../types/plugin";
 import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
 import type { OpenInlineConfirm } from "./routing/confirm";
 import { isCollectionCommand, type CollectionCommandId } from "./helpers";
-import type {
-  CommandBarPickerRoute,
-  CommandBarRoute,
-} from "./workflow/types";
+import type { CommandBarPickerRoute } from "./workflow/types";
 
 export function activatePickerSelectionAction({
   closeAll,
@@ -23,8 +18,6 @@ export function activatePickerSelectionAction({
   pluginRegistry,
   route,
   selectedId,
-  setRouteStack,
-  updateTopRoute,
 }: {
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   collectionWorkflowActions: CommandBarCollectionWorkflowActions;
@@ -35,8 +28,6 @@ export function activatePickerSelectionAction({
   pluginRegistry: PluginRegistry;
   route: CommandBarPickerRoute;
   selectedId: string;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }): void {
   const option = route.options.find((entry) => entry.id === selectedId);
   if (!option || option.disabled) return;
@@ -102,24 +93,6 @@ export function activatePickerSelectionAction({
       const symbol = String(route.payload?.symbol ?? "");
       if (!isCollectionCommand(commandId)) return;
       void executeCollectionCommand(commandId, symbol, option.id);
-      return;
-    }
-    case "field-select": {
-      const parentKind = String(route.payload?.parentKind ?? "");
-      if (parentKind === "pane-settings") {
-        const paneId = String(route.payload?.paneId ?? "");
-        const field = route.payload?.field as PaneSettingField | undefined;
-        if (!paneId || !field) return;
-        void pluginRegistry.applyPaneSettingValueFn(paneId, field, option.id)
-          .then(() => {
-            setRouteStack((current) => current.slice(0, -1));
-          })
-          .catch((error) => {
-            updateTopRoute((route) => route.kind === "pane-settings"
-              ? { ...route, error: error instanceof Error ? error.message : "Could not apply that setting." }
-              : route);
-          });
-      }
       return;
     }
     default:

@@ -3,7 +3,6 @@ import { matchesKeyChord, useKeybindings, type ResolvedKeybindings } from "../..
 import { useDialogState } from "../../ui/dialog";
 import {
   consumeShortcutEvent,
-  handlePaneSettingsRouteShortcut,
   handlePickerRouteShortcut,
   handleRouteBackShortcut,
   handleThemePickerShortcut,
@@ -22,11 +21,8 @@ interface CommandBarKeyboardShortcutArgs {
   acceptRootShortcutTab: () => boolean;
   acceptSelectedShortcutTab: () => boolean;
   activateListSelection: (options?: { secondary?: boolean }) => void;
-  commitMultiSelectPicker: () => void;
   currentRoute: CommandBarRoute | null;
   dismissCommandBar: () => void;
-  handleMultiSelectMove: (direction: "up" | "down") => void;
-  handleMultiSelectToggle: (optionId: string) => void;
   jumpListSelection: (target: ListJump) => void;
   moveListSelection: (delta: number) => void;
   popRoute: () => void;
@@ -54,20 +50,12 @@ export function isTickerSearchToggle(event: KeyEventLike, keybindings: ResolvedK
   ));
 }
 
-/** Screens that type into the header prompt and pick from a list under it. */
-function isListScreenRoute(route: CommandBarRoute | null): boolean {
-  return !route || route.kind === "mode" || route.kind === "picker" || route.kind === "pane-settings";
-}
-
 export function useCommandBarKeyboardShortcuts({
   acceptRootShortcutTab,
   acceptSelectedShortcutTab,
   activateListSelection,
-  commitMultiSelectPicker,
   currentRoute,
   dismissCommandBar,
-  handleMultiSelectMove,
-  handleMultiSelectToggle,
   jumpListSelection,
   moveListSelection,
   popRoute,
@@ -93,26 +81,26 @@ export function useCommandBarKeyboardShortcuts({
       return;
     }
 
-    if (isListScreenRoute(currentRoute)) {
-      const jump = resolveListJump(event);
-      if (jump) {
-        consumeShortcutEvent(event);
-        if (themePickerActive) themePickerRef.current?.jump(jump);
-        else jumpListSelection(jump);
-        return;
+    // Every screen of the bar types into the header prompt and picks from a
+    // list under it.
+    const jump = resolveListJump(event);
+    if (jump) {
+      consumeShortcutEvent(event);
+      if (themePickerActive) themePickerRef.current?.jump(jump);
+      else jumpListSelection(jump);
+      return;
+    }
+    // The query input keeps the keyboard: Tab completes a command prefix on
+    // the root and walks the list on nested screens, but never moves focus
+    // out of the bar.
+    if (isPlainTab(event)) {
+      consumeShortcutEvent(event);
+      if (currentRoute) {
+        moveListSelection(event.shift ? -1 : 1);
+      } else if (visibleListStateRef.current && !acceptRootShortcutTab()) {
+        acceptSelectedShortcutTab();
       }
-      // The query input keeps the keyboard: Tab completes a command prefix on
-      // the root and walks the list on nested screens, but never moves focus
-      // out of the bar.
-      if (isPlainTab(event)) {
-        consumeShortcutEvent(event);
-        if (currentRoute) {
-          moveListSelection(event.shift ? -1 : 1);
-        } else if (visibleListStateRef.current && !acceptRootShortcutTab()) {
-          acceptSelectedShortcutTab();
-        }
-        return;
-      }
+      return;
     }
 
     if (handleRouteBackShortcut({ currentRoute, event, popRoute })) {
@@ -120,19 +108,6 @@ export function useCommandBarKeyboardShortcuts({
     }
 
     if (handlePickerRouteShortcut({
-      activateListSelection,
-      commitMultiSelectPicker,
-      currentRoute,
-      event,
-      handleMultiSelectMove,
-      handleMultiSelectToggle,
-      moveListSelection,
-      visibleListStateRef,
-    })) {
-      return;
-    }
-
-    if (handlePaneSettingsRouteShortcut({
       activateListSelection,
       currentRoute,
       event,

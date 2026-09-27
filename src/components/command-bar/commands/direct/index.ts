@@ -50,7 +50,7 @@ export function runDirectCommandAction(options: {
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
-  openPaneSettingsRoute: (paneId: string) => void;
+  openPaneSettings: (paneId: string | null) => void;
   pluginRegistry: PluginRegistry;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pushRoute: (route: CommandBarRoute) => void;
@@ -75,7 +75,7 @@ export function runDirectCommandAction(options: {
     openBuiltInWorkflow,
     openInlineConfirm,
     openModeRoute,
-    openPaneSettingsRoute,
+    openPaneSettings,
     persistConfig,
     pluginRegistry,
     pushRoute,
@@ -101,7 +101,7 @@ export function runDirectCommandAction(options: {
       pluginRegistry.showPane("layout-marketplace");
       return;
     case "pane-settings":
-      if (state.focusedPaneId) openPaneSettingsRoute(state.focusedPaneId);
+      openPaneSettings(state.focusedPaneId);
       return;
     case "window-mode":
       closeAll({ revertThemePreview: false });

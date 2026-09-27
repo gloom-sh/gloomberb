@@ -1330,4 +1330,5 @@ export const ja: Record<string, string> = {
   "Open this from the main window.": "メインウィンドウから開いてください。",
   "Done.": "完了しました。",
   "Could not complete that action.": "その操作を完了できませんでした。",
+  "The focused pane has no settings.": "フォーカス中のペインには設定がありません。",
 };

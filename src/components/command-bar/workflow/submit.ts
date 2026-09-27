@@ -14,7 +14,7 @@ import {
 } from "../helpers";
 import { resolveBrokerWorkflowSelection, type WorkflowStringValues } from "./broker";
 import { parseOwnerValue } from "./builtin";
-import type { PaneSettingField, PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type {
   CommandBarCollectionWorkflowActions,
   CommandBarNotifyFn,
@@ -204,21 +204,6 @@ export async function submitCommandBarWorkflow(options: {
       if (route.successLabel) {
         notify(route.successLabel, { type: "success" });
       }
-      break;
-    }
-    case "pane-setting": {
-      const field = route.payloadMeta?.field as PaneSettingField | undefined;
-      const paneId = route.payloadMeta?.paneId as string | undefined;
-      if (!field || !paneId) throw new Error("Setting context is missing.");
-      let nextValue: unknown;
-      switch (field.type) {
-        case "text":
-          nextValue = coerceFieldString(route.values[field.key]);
-          break;
-        default:
-          nextValue = coerceFieldString(route.values[field.key]);
-      }
-      await pluginRegistry.applyPaneSettingValueFn(paneId, field, nextValue);
       break;
     }
     default:

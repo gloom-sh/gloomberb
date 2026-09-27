@@ -131,7 +131,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
   openPluginCommandWorkflowFn: ((commandId: string) => void) = () => {};
   /** Opens one of the app's own forms, such as `add-broker-account`. Not on the plugin API. */
   openBuiltInWorkflowFn: ((actionId: string) => void) = () => {};
-  openPaneSettingsFn: ((paneId?: string) => void) = () => {};
+  /** `fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. Not on the plugin API. */
+  openPaneSettingsFn: ((paneId?: string, options?: { fieldKey?: string }) => void) = () => {};
   sharePaneFn: ((paneId?: string) => void) = () => {};
   openWindowModeFn: ((paneId?: string, mode?: WindowEditMode) => void) = () => {};
   /** The shell's fullscreen toggle for a pane; false when there is nothing to fill the window with. */

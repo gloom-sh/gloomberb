@@ -1330,4 +1330,5 @@ export const zhCN: Record<string, string> = {
   "Open this from the main window.": "请在主窗口中打开。",
   "Done.": "完成。",
   "Could not complete that action.": "无法完成该操作。",
+  "The focused pane has no settings.": "当前面板没有设置。",
 };
