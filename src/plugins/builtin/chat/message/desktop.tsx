@@ -4,8 +4,8 @@ import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
-import { MESSAGE_ACTION_WIDTH, normalizeInlinePreview } from "../layout";
-import { Button } from "../../../../components/ui";
+import { normalizeInlinePreview } from "../layout";
+import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
@@ -34,14 +34,17 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
-  const state = getChatMessageRenderState({ msg, index, messages, selectedIdx, hoveredIdx, canSend });
-  const canEditMessage = msg.id === latestEditableMessageId;
-  const showInlineReplyAction = !state.grouped && canSend;
-  const showInlineEditAction = !state.grouped && canSend && canEditMessage;
-  const showGroupedReplyAction = state.grouped && canSend;
-  const showGroupedEditAction = state.grouped && canSend && canEditMessage;
-  const authorLabel = msg.user.username ?? "anon";
-  const groupedActionWidth = MESSAGE_ACTION_WIDTH * Number(showGroupedReplyAction) + MESSAGE_ACTION_WIDTH * Number(showGroupedEditAction);
+  const state = getChatMessageRenderState({
+    msg,
+    index,
+    messages,
+    selectedIdx,
+    hoveredIdx,
+    canSend,
+    canEdit: msg.id === latestEditableMessageId,
+    host: "desktop",
+  });
+  const actionProps = { state, index, beginReplyTo, beginEditMessage };
   const rowProps = {
     width: "100%",
     paddingRight: DESKTOP_MESSAGE_RIGHT_PADDING,
@@ -74,7 +77,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           style={{ minWidth: 0, alignItems: "flex-start", cursor: "pointer", overflow: "hidden" }}
         >
           {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
-          <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>reply </Text>
+          <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
           <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
           <Text
             fg={state.replyMetaColor}
@@ -92,61 +95,13 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         </Box>
       )}
       {!state.grouped && (
-        <Box
-          {...rowProps}
-          flexDirection="row"
-          height={1}
-          paddingLeft={1}
-        >
-          <Box
-            height={1}
-            onMouseOver={() => onUserHover(msg.user)}
-            onMouseMove={() => onUserHover(msg.user)}
-            onMouseOut={onUserHoverEnd}
-            style={{ cursor: "pointer" }}
-          >
-            <Text
-              fg={state.authorColor}
-              attributes={state.authorAttributes}
-            >
-              {authorLabel}
-            </Text>
-          </Box>
-          <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
-          {(showInlineReplyAction || showInlineEditAction) && (
-            <>
-              <Text fg={state.headerStatusColor}> </Text>
-              {showInlineReplyAction && (
-                <Box
-                  width={MESSAGE_ACTION_WIDTH}
-                  height={1}
-                  data-gloom-role="chat-message-reply-action"
-                >
-                  <Button stopPropagation
-                    label={t("Reply")}
-                    width={MESSAGE_ACTION_WIDTH}
-                    variant={state.isSelected ? "primary" : "secondary"}
-                    onPress={() => beginReplyTo(index)}
-                  />
-                </Box>
-              )}
-              {showInlineEditAction && (
-                <Box
-                  width={MESSAGE_ACTION_WIDTH}
-                  height={1}
-                  data-gloom-role="chat-message-reply-action"
-                >
-                  <Button stopPropagation
-                    label={t("Edit")}
-                    width={MESSAGE_ACTION_WIDTH}
-                    variant={state.isSelected ? "primary" : "secondary"}
-                    onPress={() => beginEditMessage(index)}
-                  />
-                </Box>
-              )}
-            </>
-          )}
-        </Box>
+        <ChatMessageHeader
+          msg={msg}
+          rowProps={rowProps}
+          onUserHover={onUserHover}
+          onUserHoverEnd={onUserHoverEnd}
+          {...actionProps}
+        />
       )}
       <Box
         {...rowProps}
@@ -166,34 +121,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             onUserHoverEnd={onUserHoverEnd}
           />
         </Box>
-        {(showGroupedReplyAction || showGroupedEditAction) && (
-          <Box
-            position="absolute"
-            top={0}
-            right={0}
-            width={groupedActionWidth}
-            height={1}
-            flexDirection="row"
-            data-gloom-role="chat-message-reply-action"
-          >
-            {showGroupedReplyAction && (
-              <Button stopPropagation
-                label={t("Reply")}
-                width={MESSAGE_ACTION_WIDTH}
-                variant={state.isSelected ? "primary" : "secondary"}
-                onPress={() => beginReplyTo(index)}
-              />
-            )}
-            {showGroupedEditAction && (
-              <Button stopPropagation
-                label={t("Edit")}
-                width={MESSAGE_ACTION_WIDTH}
-                variant={state.isSelected ? "primary" : "secondary"}
-                onPress={() => beginEditMessage(index)}
-              />
-            )}
-          </Box>
-        )}
+        {state.grouped && <ChatMessageActions floating {...actionProps} />}
       </Box>
     </Box>
   );

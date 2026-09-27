@@ -1,7 +1,7 @@
 import { Box, Text } from "../../../../ui";
 import { t } from "../../../../i18n";
-import { MESSAGE_ACTION_WIDTH, formatInlinePreview, getMessageBodyTokenLines } from "../layout";
-import { Button } from "../../../../components/ui";
+import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
+import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
@@ -32,15 +32,18 @@ export function TerminalChatMessage({
   latestEditableMessageId,
   setHoveredIdx,
 }: TerminalChatMessageProps) {
-  const state = getChatMessageRenderState({ msg, index, messages, selectedIdx, hoveredIdx, canSend });
+  const state = getChatMessageRenderState({
+    msg,
+    index,
+    messages,
+    selectedIdx,
+    hoveredIdx,
+    canSend,
+    canEdit: msg.id === latestEditableMessageId,
+    host: "terminal",
+  });
+  const actionProps = { state, index, beginReplyTo, beginEditMessage };
   const bodyLines = getMessageBodyTokenLines(msg.content, messageBodyWidth, catalog);
-  const canEditMessage = msg.id === latestEditableMessageId;
-  const showInlineReplyAction = !state.grouped && state.showReplyAction;
-  const showInlineEditAction = !state.grouped && state.showReplyAction && canEditMessage;
-  const showGroupedReplyAction = state.grouped && state.showReplyAction;
-  const showGroupedEditAction = state.grouped && state.showReplyAction && canEditMessage;
-  const authorLabel = msg.user.username ?? "anon";
-  const groupedActionWidth = MESSAGE_ACTION_WIDTH * Number(showGroupedReplyAction) + MESSAGE_ACTION_WIDTH * Number(showGroupedEditAction);
   const setHovered = () => setHoveredIdx((current) => (current === index ? current : index));
   const clearHovered = () => setHoveredIdx((current) => (current === index ? null : current));
   const messageRowProps = {
@@ -73,54 +76,14 @@ export function TerminalChatMessage({
         </Box>
       )}
       {!state.grouped && (
-        <Box
-          {...messageRowProps}
-          flexDirection="row"
-          height={1}
-          paddingLeft={1}
-        >
-          <Box
-            width={authorLabel.length}
-            height={1}
-            onMouseOver={() => onUserHover(msg.user)}
-            onMouseMove={() => onUserHover(msg.user)}
-            onMouseOut={onUserHoverEnd}
-            style={{ cursor: "pointer" }}
-          >
-            <Text
-              fg={state.authorColor}
-              attributes={state.authorAttributes}
-            >
-              {authorLabel}
-            </Text>
-          </Box>
-          <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
-          {(showInlineReplyAction || showInlineEditAction) && (
-            <>
-              <Text fg={state.headerStatusColor}> </Text>
-              {showInlineReplyAction && (
-                <Box width={MESSAGE_ACTION_WIDTH} height={1}>
-                  <Button stopPropagation
-                    label={t("Reply")}
-                    width={MESSAGE_ACTION_WIDTH}
-                    variant={state.isSelected ? "primary" : "secondary"}
-                    onPress={() => beginReplyTo(index)}
-                  />
-                </Box>
-              )}
-              {showInlineEditAction && (
-                <Box width={MESSAGE_ACTION_WIDTH} height={1}>
-                  <Button stopPropagation
-                    label={t("Edit")}
-                    width={MESSAGE_ACTION_WIDTH}
-                    variant={state.isSelected ? "primary" : "secondary"}
-                    onPress={() => beginEditMessage(index)}
-                  />
-                </Box>
-              )}
-            </>
-          )}
-        </Box>
+        <ChatMessageHeader
+          msg={msg}
+          rowProps={messageRowProps}
+          fitAuthorWidth
+          onUserHover={onUserHover}
+          onUserHoverEnd={onUserHoverEnd}
+          {...actionProps}
+        />
       )}
       {bodyLines.map((line, lineIndex) => (
         <Box
@@ -143,26 +106,7 @@ export function TerminalChatMessage({
               onUserHoverEnd={onUserHoverEnd}
             />
           </Box>
-          {lineIndex === 0 && (showGroupedReplyAction || showGroupedEditAction) && (
-            <Box position="absolute" top={0} right={0} width={groupedActionWidth} height={1} flexDirection="row">
-              {showGroupedReplyAction && (
-                <Button stopPropagation
-                  label={t("Reply")}
-                  width={MESSAGE_ACTION_WIDTH}
-                  variant={state.isSelected ? "primary" : "secondary"}
-                  onPress={() => beginReplyTo(index)}
-                />
-              )}
-              {showGroupedEditAction && (
-                <Button stopPropagation
-                  label={t("Edit")}
-                  width={MESSAGE_ACTION_WIDTH}
-                  variant={state.isSelected ? "primary" : "secondary"}
-                  onPress={() => beginEditMessage(index)}
-                />
-              )}
-            </Box>
-          )}
+          {lineIndex === 0 && state.grouped && <ChatMessageActions floating {...actionProps} />}
         </Box>
       ))}
     </Box>
