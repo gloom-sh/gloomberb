@@ -141,6 +141,10 @@ describe("form modal", () => {
     await press({ name: "s", ctrl: true, sequence: "\x13" });
     await waitForFrameToContain("Title is required.");
     expect(submitted).toEqual([]);
+
+    // Esc closes it from a focused text field too.
+    await press(ESC);
+    expect(frame()).not.toContain("Title is required.");
   });
 
   test("while a submit runs the form ignores Enter; a failure stays in the form", async () => {
