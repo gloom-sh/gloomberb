@@ -13,8 +13,7 @@ import type {
   TeamUpdatedEvent,
   TeamUsernameInvitation,
 } from "./types";
-
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+import type { CloudApiRequest } from "./request";
 type TeamNotificationListener = (notification: TeamNotification) => void;
 type CloudEventListener = (data: unknown) => void;
 

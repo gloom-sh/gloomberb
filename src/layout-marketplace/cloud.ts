@@ -7,6 +7,7 @@ import {
 } from "./payload";
 import { isRecord } from "../utils/guards";
 import { fnv1aHex } from "../utils/hash";
+import { RevisionConflictError } from "../api-client/errors";
 
 export type CloudLayoutVisibility = "private" | "team" | "public";
 
@@ -33,14 +34,8 @@ export interface CloudLayoutEntry extends LayoutMarketplacePayload {
 }
 
 /** A publish refused because someone published in between. */
-export class LayoutRevisionConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly currentRevision: number,
-  ) {
-    super(message);
-    this.name = "LayoutRevisionConflictError";
-  }
+export class LayoutRevisionConflictError extends RevisionConflictError<CloudLayoutEntry> {
+  override name = "LayoutRevisionConflictError";
 }
 
 function parseAuthor(value: unknown): LayoutMarketplaceAuthor | null {

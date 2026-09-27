@@ -36,7 +36,7 @@ function fakeServer(initial: ServerNote[] = []) {
       calls.push(`put ${input.kind}:${input.key}@${input.expectedRevision ?? "*"}`);
       const existing = find(input.scope, input.kind, input.key);
       if (existing && input.expectedRevision !== undefined && input.expectedRevision !== existing.revision) {
-        throw new NoteConflictError("This note was edited since you opened it.", existing);
+        throw new NoteConflictError("This note was edited since you opened it.", existing, existing.revision);
       }
       const next: ServerNote = {
         id: existing?.id ?? `n${++ids}`,

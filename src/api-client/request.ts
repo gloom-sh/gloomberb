@@ -4,6 +4,7 @@ import {
   ApiRequestError,
   parseApiErrorMessage,
   parseRetryAfterMs,
+  type RevisionConflictError,
 } from "./errors";
 import {
   connectionHealth,
@@ -93,6 +94,37 @@ export function getCloudApiBaseUrl(): string {
     return DEFAULT_API_URL;
   }
   return process.env.GLOOMBERB_API_URL ?? DEFAULT_API_URL;
+}
+
+/** How a sub-API calls the cloud: a path under the API base, resolving to the parsed body. */
+export type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+
+/**
+ * PUTs `body` with `expectedRevision` as If-Match. On a 412 it reads back what
+ * the server holds now (null if that read fails too) and throws it as a
+ * `conflict`, whose revision falls back to the one after the expected one.
+ */
+export async function putWithRevision<T, Current extends { revision: number }>(
+  request: CloudApiRequest,
+  path: string,
+  body: unknown,
+  revision: {
+    expected: number | undefined;
+    loadCurrent: () => Promise<Current | null>;
+    conflict: new (message: string, current: Current | null, currentRevision: number) => RevisionConflictError<Current>;
+  },
+): Promise<T> {
+  try {
+    return await request<T>(path, {
+      method: "PUT",
+      headers: revision.expected ? { "if-match": String(revision.expected) } : {},
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (!(error instanceof ApiRequestError) || error.status !== 412) throw error;
+    const current = await revision.loadCurrent().catch(() => null);
+    throw new revision.conflict(error.message, current, current?.revision ?? (revision.expected ?? 0) + 1);
+  }
 }
 
 function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {

@@ -5,8 +5,7 @@ import type {
   FeedbackSubmitResponse,
 } from "../feedback/types";
 import { withDeadline } from "../utils/async-deadline";
-
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+import type { CloudApiRequest } from "./request";
 
 /** Long enough for a screenshot on a slow uplink, short enough that Send never hangs. */
 const SUBMIT_TIMEOUT_MS = 45_000;

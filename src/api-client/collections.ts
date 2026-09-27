@@ -1,6 +1,5 @@
 import type { TeamCollection, TeamCollectionItem, TeamCollectionKind } from "./types";
-
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
+import type { CloudApiRequest } from "./request";
 
 export class CloudCollectionsApi {
   constructor(private readonly request: CloudApiRequest) {}

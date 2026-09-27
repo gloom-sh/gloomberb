@@ -1,20 +1,14 @@
-import { ApiRequestError } from "./errors";
+import { ApiRequestError, RevisionConflictError } from "./errors";
+import { putWithRevision, type CloudApiRequest } from "./request";
 import type { CloudNote, CloudNoteScope, CloudNoteSummary, NoteKind } from "./types";
 
-type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
-
 /** A save refused because the note changed since it was loaded. */
-export class NoteConflictError extends Error {
-  constructor(
-    message: string,
-    public readonly current: CloudNote | null,
-  ) {
-    super(message);
-    this.name = "NoteConflictError";
-  }
+export class NoteConflictError extends RevisionConflictError<CloudNote> {
+  override name = "NoteConflictError";
 }
 
-function scopeQuery(scope: CloudNoteScope): string {
+/** The owner query shared by note and thesis lists. */
+export function scopeQuery(scope: { scope: string; teamId?: string }): string {
   const params = new URLSearchParams({ scope: scope.scope });
   if (scope.teamId) params.set("teamId", scope.teamId);
   return params.toString();
@@ -49,28 +43,20 @@ export class CloudNotesApi {
     content: string;
     expectedRevision?: number;
   }): Promise<CloudNote> {
-    try {
-      return await this.request<CloudNote>("/notes", {
-        method: "PUT",
-        headers: input.expectedRevision ? { "if-match": String(input.expectedRevision) } : {},
-        body: JSON.stringify({
-          scope: input.scope.scope,
-          ...(input.scope.teamId ? { teamId: input.scope.teamId } : {}),
-          kind: input.kind,
-          key: input.key,
-          ...(input.title !== undefined ? { title: input.title } : {}),
-          content: input.content,
-        }),
-      });
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 412) {
-        // The 412 body carries the current note, but the transport keeps only
-        // the message. One extra read gets the editor's name and content.
-        const current = await this.findNote(input.scope, input.kind, input.key).catch(() => null);
-        throw new NoteConflictError(error.message, current);
-      }
-      throw error;
-    }
+    return putWithRevision<CloudNote, CloudNote>(this.request, "/notes", {
+      scope: input.scope.scope,
+      ...(input.scope.teamId ? { teamId: input.scope.teamId } : {}),
+      kind: input.kind,
+      key: input.key,
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      content: input.content,
+    }, {
+      expected: input.expectedRevision,
+      // The 412 body carries the current note, but the transport keeps only
+      // the message. One extra read gets the editor's name and content.
+      loadCurrent: () => this.findNote(input.scope, input.kind, input.key),
+      conflict: NoteConflictError,
+    });
   }
 
   async deleteNote(id: string): Promise<void> {

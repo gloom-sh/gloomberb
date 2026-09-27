@@ -19,7 +19,7 @@ import { CloudAuthApi } from "./auth";
 import { CloudChatApi } from "./chat";
 import { CloudDataApi } from "./data";
 import { ApiRequestError } from "./errors";
-import { CloudApiRequestTransport } from "./request";
+import { CloudApiRequestTransport, putWithRevision } from "./request";
 import { CloudApiSocket } from "./socket";
 import { CloudCollectionsApi } from "./collections";
 import { CloudFeedbackApi } from "./feedback";
@@ -483,26 +483,23 @@ class GloomApiClient {
     payload: LayoutMarketplacePayload,
     options: { expectedRevision?: number; requires?: LayoutRequirement[]; note?: string | null; name?: string } = {},
   ): Promise<CloudLayoutEntry> {
-    try {
-      const item = parseCloudLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        headers: options.expectedRevision ? { "if-match": String(options.expectedRevision) } : {},
-        body: JSON.stringify({
-          ...payload,
-          requires: options.requires ?? [],
-          ...(options.note ? { note: options.note } : {}),
-          ...(options.name ? { name: options.name } : {}),
-        }),
-      }));
-      if (!item) throw new Error("The layout service returned invalid data.");
-      return item;
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 412) {
-        const current = await this.getCloudLayout(id).catch(() => null);
-        throw new LayoutRevisionConflictError(error.message, current?.revision ?? (options.expectedRevision ?? 0) + 1);
-      }
-      throw error;
-    }
+    const item = parseCloudLayoutEntry(await putWithRevision<unknown, CloudLayoutEntry>(
+      (path, init) => this.request(path, init),
+      `/layouts/${encodeURIComponent(id)}`,
+      {
+        ...payload,
+        requires: options.requires ?? [],
+        ...(options.note ? { note: options.note } : {}),
+        ...(options.name ? { name: options.name } : {}),
+      },
+      {
+        expected: options.expectedRevision,
+        loadCurrent: () => this.getCloudLayout(id),
+        conflict: LayoutRevisionConflictError,
+      },
+    ));
+    if (!item) throw new Error("The layout service returned invalid data.");
+    return item;
   }
 
   changePassword = this.auth.changePassword.bind(this.auth);

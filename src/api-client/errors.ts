@@ -16,6 +16,22 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * A write refused with 412 because the server holds a newer revision than the
+ * one the write was based on. `current` is what the server holds now, or null
+ * when it could not be read back.
+ */
+export class RevisionConflictError<T = unknown> extends Error {
+  constructor(
+    message: string,
+    readonly current: T | null,
+    readonly currentRevision: number,
+  ) {
+    super(message);
+    this.name = "RevisionConflictError";
+  }
+}
+
 /** The server refused the session: signed out, expired, or not allowed this resource. */
 export function isAccessDenied(error: unknown): boolean {
   return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
