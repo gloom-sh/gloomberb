@@ -10,7 +10,7 @@ export const centralBankRatesModule: PluginModule = {
   paneTemplates: [{
     id: "central-bank-rates-cbr", paneId: "central-bank-rates", label: "Central Bank Rates",
     description: "G20 policy rates, last observed changes and dated historical context.",
-    keywords: ["central", "bank", "policy", "rates", "g20", "cbr", "ecfc", "cbrt"], shortcut: { prefix: "CBR", aliases: ["ECFC", "CBRT"] },
+    keywords: ["central", "bank", "policy", "rates", "g20", "cbr", "cbrt"], shortcut: { prefix: "CBR", aliases: ["CBRT"] },
     headless: centralBankRatesHeadless,
   }],
   setup(ctx) { centralBankRatesCache.attach(ctx.persistence); },

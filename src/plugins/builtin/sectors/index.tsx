@@ -378,7 +378,7 @@ export const sectorsModule: PluginModule = {
       label: "Sector Performance",
       description: "S&P 500 sector and industry performance sorted by daily change.",
       keywords: ["sector", "sectors", "industry", "semis", "defense", "food", "leisure", "etf", "xlk", "xlv", "xlf", "performance", "spdr", "sp"],
-      shortcut: { prefix: "BI" },
+      shortcut: { prefix: "BI", aliases: ["IMAP"] },
       headless: sectorsHeadless,
     },
   ],

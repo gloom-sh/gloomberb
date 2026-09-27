@@ -1,3 +1,4 @@
+import { commands as builtInCommands, getCommandPrefixes } from "../../components/command-bar/commands/registry";
 import type { PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import {
@@ -38,6 +39,8 @@ export interface PaneCatalogEntry {
   paneName: string;
   templateId?: string;
   shortcut?: string;
+  /** Other mnemonics that open the same function (IMAP for BI). */
+  aliases: string[];
   argKind?: string;
   argPlaceholder?: string;
   keywords: string[];
@@ -53,6 +56,15 @@ export function buildTemplateContext(context: MarketContext, symbol: string | nu
     activeTicker: symbol,
     activeCollectionId: null,
   };
+}
+
+/**
+ * The command-bar mnemonic and aliases of a pane that has no template but is
+ * opened by the built-in command of the same id (HELP, LAY).
+ */
+function builtInPanePrefixes(paneId: string): string[] {
+  const command = builtInCommands.find((candidate) => candidate.id === paneId);
+  return command ? getCommandPrefixes(command) : [];
 }
 
 function registerResolverToken(
@@ -75,6 +87,9 @@ export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<stri
   }
   for (const template of registry.paneTemplates.values()) {
     for (const alias of template.shortcut?.aliases ?? []) registerResolverToken(lookup, alias, template);
+  }
+  for (const pane of registry.panes.values()) {
+    for (const prefix of builtInPanePrefixes(pane.id)) registerResolverToken(lookup, prefix, pane);
   }
   for (const template of registry.paneTemplates.values()) {
     registerResolverToken(lookup, template.id, template);
@@ -139,6 +154,7 @@ async function buildTemplateCatalogEntry(
     paneName: pane.name,
     templateId: template.id,
     shortcut: template.shortcut?.prefix,
+    aliases: [...(template.shortcut?.aliases ?? [])],
     argKind: headless?.argument.kind ?? template.shortcut?.argKind,
     argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
     keywords: template.keywords ?? [],
@@ -163,12 +179,15 @@ export async function buildPaneCatalogEntries(
 
   for (const pane of registry.panes.values()) {
     if (templatedPaneIds.has(pane.id)) continue;
+    const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
     entries.push({
-      token: pane.id,
+      token: shortcut ?? pane.id,
       label: pane.name,
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,
       paneName: pane.name,
+      shortcut,
+      aliases,
       argKind: pane.headless?.argument.kind,
       argPlaceholder: pane.headless?.argument.placeholder,
       keywords: [],
@@ -187,6 +206,7 @@ function paneCatalogSearchScore(entry: PaneCatalogEntry, query: string): number 
   const exactTokens = [
     entry.token,
     entry.shortcut,
+    ...entry.aliases,
     entry.templateId,
     entry.paneId,
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
@@ -198,6 +218,7 @@ function paneCatalogSearchScore(entry: PaneCatalogEntry, query: string): number 
     entry.paneName,
     entry.templateId,
     entry.shortcut,
+    ...entry.aliases,
     entry.argKind,
     entry.argPlaceholder,
     ...entry.keywords,
@@ -300,7 +321,10 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
     ["Bot safe", capability.botSafe ? "yes" : "no"],
     ["Pane", entry.paneId],
   ];
-  if (capability.aliases.length > 0) stats.push(["Aliases", capability.aliases.join(", ")]);
+  if (entry.aliases.length > 0) stats.push(["Aliases", entry.aliases.join(", ")]);
+  const mnemonics = new Set([entry.token, ...entry.aliases].map((value) => value.toLowerCase()));
+  const keywords = capability.aliases.filter((keyword) => !mnemonics.has(keyword.toLowerCase()));
+  if (keywords.length > 0) stats.push(["Keywords", keywords.join(", ")]);
   if (capability.dataRequirements.length > 0) stats.push(["Requires", capability.dataRequirements.join(", ")]);
   if (capability.limitations.length > 0) stats.push(["Limitations", capability.limitations.join(" ")]);
   lines.push(renderStats(stats));
@@ -320,8 +344,10 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
 }
 
 export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: ParsedPaneCatalogArgs): string {
-  const exact = args.query
-    ? entries.find((entry) => entry.token.toLowerCase() === args.query.trim().toLowerCase())
+  const query = args.query.trim().toLowerCase();
+  const exact = query
+    ? entries.find((entry) => entry.token.toLowerCase() === query)
+      ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
   if (exact) return renderCatalogEntry(exact);
   if (args.query && entries.length === 1) return renderCatalogEntry(entries[0]!);

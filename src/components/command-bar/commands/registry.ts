@@ -36,6 +36,7 @@ export const commands: Command[] = [
   {
     id: "help",
     prefix: "HELP",
+    aliases: ["HL"],
     label: "Help",
     description: "Open the help window",
     category: "Navigation",
@@ -148,6 +149,7 @@ export const commands: Command[] = [
   {
     id: "layout-marketplace",
     prefix: "LAY",
+    aliases: ["BLP"],
     label: "Layouts",
     description: "Open the layout browser to switch, publish, or add layouts",
     category: "Config",

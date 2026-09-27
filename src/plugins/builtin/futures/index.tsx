@@ -312,7 +312,7 @@ export const futuresModule: PluginModule = {
         "contracts",
         "cme",
       ],
-      shortcut: { prefix: "FUT" },
+      shortcut: { prefix: "FUT", aliases: ["GLCO"] },
     },
   ],
 };

@@ -67,6 +67,7 @@ export const researchSearchPlugin: GloomPlugin = {
       ],
       shortcut: {
         prefix: "SRCH",
+        aliases: ["NSE"],
         argPlaceholder: "query",
         argKind: "text",
         argOptional: true,

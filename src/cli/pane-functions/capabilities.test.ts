@@ -121,6 +121,7 @@ describe("pane catalog search", () => {
         paneName: "Detail",
         templateId: "graph-price-pane",
         shortcut: "GP",
+        aliases: [],
         argKind: "ticker",
         argPlaceholder: "ticker",
         keywords: ["gp", "graph", "price", "chart"],
@@ -135,6 +136,7 @@ describe("pane catalog search", () => {
         paneName: "Detail",
         templateId: "financial-analysis-pane",
         shortcut: "FA",
+        aliases: [],
         argKind: "ticker",
         argPlaceholder: "ticker",
         keywords: ["fa", "financial", "analysis", "statements"],
@@ -157,6 +159,7 @@ describe("pane catalog search", () => {
         paneName: "Fundamental Graph",
         templateId: "fundamental-graph-pane",
         shortcut: "GF",
+        aliases: [],
         argKind: "ticker-list",
         argPlaceholder: "tickers",
         keywords: ["fundamental", "graph", "financials", "statements"],
@@ -171,6 +174,7 @@ describe("pane catalog search", () => {
         paneName: "Compare",
         templateId: "comparison-chart-pane",
         shortcut: "CMP",
+        aliases: [],
         argKind: "ticker-list",
         argPlaceholder: "tickers",
         keywords: ["compare", "price"],
@@ -180,5 +184,29 @@ describe("pane catalog search", () => {
     ], "cash flow comparison");
 
     expect(matches.map(({ token }) => token)).toEqual(["GF", "CMP"]);
+  });
+
+  test("an alias opens its function even when other functions contain the same letters", () => {
+    const entry = (token: string, aliases: string[], keywords: string[]) => ({
+      token,
+      label: token,
+      description: `${token} function.`,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases,
+      keywords,
+      defaultSettings: {},
+      capability: capabilityFor(`${token.toLowerCase()}-pane`),
+    });
+    const matches = filterPaneCatalogEntries([
+      entry("COT", ["CFTC"], ["cftc", "positioning"]),
+      entry("SEC", ["CF"], ["filings"]),
+    ], "cf");
+
+    expect(matches.map(({ token }) => token)).toEqual(["SEC", "COT"]);
+    const report = renderPaneCatalogReport(matches, { query: "cf", limit: 10, botSafeOnly: false });
+    expect(report).toContain("SEC function.");
+    expect(report).not.toContain("COT function.");
   });
 });
