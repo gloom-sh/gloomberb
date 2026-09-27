@@ -124,18 +124,18 @@ export { MarkdownText } from "./markdown-text";
 // this file is the public `gloomberb/components` surface: a kit component
 // reaches plugins only once it is added here.
 export {
-  ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, DataTable,
+  ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, confirmDialog, DataTable,
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
   fieldGridColumns, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
-  Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, unavailableText,
+  Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
   usePaneLinkMenuEntry, useQueryBarSearch,
 } from "./ui";
 export type {
-  ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice,
+  ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice, ConfirmDialogOptions,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,
@@ -145,6 +145,6 @@ export type {
   QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
   QueryBarToggleFilter, QueryBarView, SectionHeadingProps, SectionProps, SegmentedControlProps,
   SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, TabsProps,
-  TextFieldProps,
+  TextFieldProps, TextPromptDialogProps,
 } from "./ui";
 export { usePaneTicker } from "../state/app/context";

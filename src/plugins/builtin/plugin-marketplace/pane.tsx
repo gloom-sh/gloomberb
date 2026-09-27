@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   EmptyState,
   KeyValueRow,
@@ -19,7 +19,7 @@ import { loadingErrorFooterInfo } from "../../../components/data-table/table-pan
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
-import { type PromptContext, useDialog } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { requiredGloomberb } from "../../../utils/semver";
@@ -304,26 +304,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   const bump = useCallback(() => setLocalRevision((value) => value + 1), []);
 
-  const confirm = useCallback((options: {
-    title: string;
-    body: string[];
-    confirmLabel: string;
-    danger?: boolean;
-  }) => dialog.prompt<boolean>({
-    closeOnClickOutside: true,
-    content: (ctx: PromptContext<boolean>) => (
-      <ConfirmDialog
-        {...ctx}
-        title={options.title}
-        body={options.body}
-        confirmLabel={options.confirmLabel}
-        cancelLabel="Cancel"
-        confirmVariant={options.danger ? "danger" : "primary"}
-        width={Math.min(64, Math.max(44, width - 8))}
-        footer={`Enter ${options.confirmLabel.toLowerCase()} · Esc cancel`}
-      />
-    ),
-  }).catch(() => false), [dialog, width]);
+  const confirmWidth = Math.min(64, Math.max(44, width - 8));
 
   const announceAdded = useCallback((pluginId: string, name: string, verb: string, activeHost: MarketplaceHost) => {
     const added = activeHost.contributions(pluginId);
@@ -379,7 +360,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       selected.tier === "official" ? "Published by Gloom." : selected.tier === "verified" ? "Reviewed by Gloom." : "Community plugin, not reviewed.",
       ...(selected.hosts.length > 0 ? [`Declares access to ${selected.hosts.join(", ")}.`] : []),
     ];
-    const confirmed = await confirm({ title: `Install ${selected.name}?`, body, confirmLabel: "Install" });
+    const confirmed = await confirmDialog(dialog, {
+      title: `Install ${selected.name}?`,
+      body,
+      confirmLabel: "Install",
+      confirmVariant: "primary",
+      width: confirmWidth,
+    });
     if (!confirmed) return;
 
     const entry = selected;
@@ -398,7 +385,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (activated.ok && activated.restart) notify({ body: `Restart to finish installing ${entry.name}.`, type: "info" });
     else if (activated.ok) announceAdded(activated.pluginId, activated.name, "Installed", host);
     else notify({ body: `${entry.name} installed but did not load: ${activated.error}`, type: "error" });
-  }, [announceAdded, bump, busy, confirm, host, manager, notify, refuseTooNew, selected]);
+  }, [announceAdded, bump, busy, confirmWidth, dialog, host, manager, notify, refuseTooNew, selected]);
 
   const updateSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy || selected.linked) return;
@@ -435,13 +422,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
     const entry = selected;
-    const confirmed = await confirm({
+    const confirmed = await confirmDialog(dialog, {
       title: `Remove ${entry.name}?`,
       body: entry.linked
         ? ["Removes the link. Your local checkout is left alone."]
         : [`Deletes ~/.gloomberb/plugins/${entry.directory}.`, "Its panes close now. Settings it saved are kept."],
       confirmLabel: "Remove",
-      danger: true,
+      width: confirmWidth,
     });
     if (!confirmed) return;
     setBusy({ id: entry.id, verb: "removing" });
@@ -456,7 +443,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       setLastError(result.error);
       notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
     }
-  }, [bump, busy, confirm, host, manager, notify, selected]);
+  }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
 
   const toggleSelected = useCallback(() => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;

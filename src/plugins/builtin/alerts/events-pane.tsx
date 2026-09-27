@@ -2,7 +2,7 @@ import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCallback, useMemo, useState } from "react";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
   PaneStatusBody,
   usePaneFooter,
@@ -10,7 +10,7 @@ import {
 } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { useCloudSyncStatus } from "../../../sync/react";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
@@ -95,19 +95,11 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const remove = useCallback(async () => {
     if (!selectedRule) return;
     const id = selectedRule.id;
-    const confirmed = await dialog
-      .prompt<boolean>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<boolean>) => (
-          <ConfirmDialog
-            {...context}
-            title="Delete event alert?"
-            body={[eventAlertTarget(selectedRule)]}
-            confirmLabel="Delete"
-          />
-        ),
-      })
-      .catch(() => false);
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete event alert?",
+      body: [eventAlertTarget(selectedRule)],
+      confirmLabel: "Delete",
+    });
     if (confirmed)
       setJson((current) => {
         const result = readEventAlerts(current);

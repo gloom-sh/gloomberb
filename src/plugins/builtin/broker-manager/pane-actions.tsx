@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { ConfirmDialog } from "../../../components";
+import { confirmDialog } from "../../../components";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,
@@ -10,7 +10,7 @@ import { disconnectSignedInProfile, signedInBrokerForProfile } from "../../../br
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
 import type { BrokerProfileAction } from "../../../types/broker";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import type { BrokerEditKey } from "./detail";
@@ -173,27 +173,21 @@ export function useBrokerManagerActions({
     const signedIn = isSignedInBrokerProfile(selectedRow.instance)
       ? signedInBrokerForProfile(selectedRow.instance, selectedRow.brokerName)
       : null;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...ctx}
-          title={t("Disconnect broker?")}
-          body={[
-            tf('Remove "{label}" and imported broker data?', { label: selectedRow.label }),
-            t("Broker-managed portfolios, positions, and contracts will be removed."),
-            ...(signedIn
-              ? [tf("This also disconnects {broker} from your other devices and agents.", { broker: signedIn.name })]
-              : []),
-          ]}
-          confirmLabel={t("Disconnect")}
-          cancelLabel={t("Back")}
-          width={58}
-          footer={t("Enter disconnect · Esc cancel")}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: t("Disconnect broker?"),
+      body: [
+        tf('Remove "{label}" and imported broker data?', { label: selectedRow.label }),
+        t("Broker-managed portfolios, positions, and contracts will be removed."),
+        ...(signedIn
+          ? [tf("This also disconnects {broker} from your other devices and agents.", { broker: signedIn.name })]
+          : []),
+      ],
+      confirmLabel: t("Disconnect"),
+      cancelLabel: t("Back"),
+      width: 58,
+      footer: t("Enter disconnect · Esc cancel"),
+    });
+    if (!confirmed) return;
 
     try {
       setBusy(t("Disconnecting…"));

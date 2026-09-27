@@ -5,7 +5,7 @@ import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
   usePaneFooter,
   type DataTableCell,
@@ -16,7 +16,7 @@ import { TextFieldDialog } from "../../../components/pane-settings-dialog/field-
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { TextAttributes } from "../../../ui";
-import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
+import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
@@ -156,18 +156,12 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const deleteAlert = useCallback(async (id: string) => {
     const alert = alerts.find((a) => a.id === id);
     if (!alert) return;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...ctx}
-          title="Delete alert?"
-          body={[`${formatAlertDescription(alert)} will no longer be watched.`]}
-          confirmLabel="Delete"
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete alert?",
+      body: [`${formatAlertDescription(alert)} will no longer be watched.`],
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
     savePaneAlerts(alerts.filter((a) => a.id !== id));
     setSelectedIdx((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
   }, [alerts, dialog, rows.length, savePaneAlerts]);

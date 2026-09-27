@@ -7,7 +7,7 @@ import {
 } from "../../../ui";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   DataTableView,
   KeyValueRow,
@@ -32,7 +32,7 @@ import {
   usePluginPaneState,
   useShortcut,
 } from "../../../public/react";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { useThemeColors } from "../../../theme/theme-context";
 import { priceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
@@ -379,18 +379,12 @@ function EquityScreenView({
   const removeSaved = async () => {
     const entry = selectedSaved;
     if (!entry || saving) return;
-    const confirmed = await dialog
-      .prompt<boolean>({
-        content: (context: PromptContext<boolean>) => (
-          <ConfirmDialog
-            {...context}
-            title="Delete saved screen?"
-            body={[entry.name]}
-            confirmLabel="Delete"
-          />
-        ),
-      })
-      .catch(() => false);
+    const confirmed = await confirmDialog(dialog, {
+      closeOnClickOutside: false,
+      title: "Delete saved screen?",
+      body: [entry.name],
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
     setSaving(true);
     try {

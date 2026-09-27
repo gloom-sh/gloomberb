@@ -42,8 +42,11 @@ export { getMessageComposerBlockHeight, MessageComposer } from "./message-compos
 
 export { DialogFrame } from "./frame";
 export type { DialogFrameProps } from "./frame";
-export { ConfirmDialog } from "./confirm-dialog";
+export { ConfirmDialog, confirmDialog } from "./confirm-dialog";
+export type { ConfirmDialogOptions } from "./confirm-dialog";
 export { ChoiceDialog } from "./choice-dialog";
+export { TextPromptDialog } from "./text-prompt-dialog";
+export type { TextPromptDialogProps } from "./text-prompt-dialog";
 export type { ChoiceDialogChoice } from "./choice-dialog";
 export { Tabs } from "./tabs";
 export type { TabsProps } from "./tabs";

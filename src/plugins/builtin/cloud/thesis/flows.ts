@@ -13,9 +13,10 @@ import {
 } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
 import type { AppNotificationRequest } from "../../../../types/plugin";
+import { confirmDialog } from "../../../../components";
 import type { DialogApi } from "../../../../ui/dialog";
 import { THESIS_METRIC_KEYS, THESIS_SERIES_KEYS, emptyDocument, itemId } from "./model";
-import { confirm, promptChoice, promptNumber, promptSelect, promptText, promptTextarea } from "./prompts";
+import { promptChoice, promptNumber, promptSelect, promptText, promptTextarea } from "./prompts";
 import { thesisStore } from "./store";
 
 export interface FlowContext {
@@ -311,11 +312,11 @@ export async function editKillCondition(ctx: FlowContext, thesis: CloudThesis, c
 /** Firing is one keystroke. Un-firing goes through the goalpost rule on the server. */
 export async function toggleKillCondition(ctx: FlowContext, thesis: CloudThesis, condition: ThesisKillCondition): Promise<CloudThesis | undefined> {
   if (!condition.triggered) {
-    const sure = await confirm(ctx.dialog, {
+    const sure = await confirmDialog(ctx.dialog, {
+      closeOnClickOutside: false,
       title: "Mark this kill condition as fired?",
       body: [condition.text, "", "The thesis becomes BROKEN. Resetting it later needs a note."],
       confirmLabel: "It fired",
-      danger: true,
     });
     if (!sure) return undefined;
   }
@@ -366,11 +367,11 @@ export type DocumentItem =
   | { kind: "catalyst"; item: ThesisCatalyst };
 
 export async function removeItem(ctx: FlowContext, thesis: CloudThesis, target: DocumentItem): Promise<CloudThesis | undefined> {
-  const sure = await confirm(ctx.dialog, {
+  const sure = await confirmDialog(ctx.dialog, {
+    closeOnClickOutside: false,
     title: `Remove this ${target.kind === "kill" ? "kill condition" : target.kind}?`,
     body: target.item.text,
     confirmLabel: "Remove",
-    danger: true,
   });
   if (!sure) return undefined;
   const document = { ...thesis.document };
@@ -454,11 +455,11 @@ export async function closeThesis(ctx: FlowContext, thesis: CloudThesis): Promis
 }
 
 export async function deleteThesis(ctx: FlowContext, thesis: CloudThesis): Promise<boolean> {
-  const sure = await confirm(ctx.dialog, {
+  const sure = await confirmDialog(ctx.dialog, {
+    closeOnClickOutside: false,
     title: `Delete the ${thesis.title} thesis?`,
     body: "Its history and signals go with it. Closing keeps the record.",
     confirmLabel: "Delete",
-    danger: true,
   });
   if (!sure) return false;
   try {

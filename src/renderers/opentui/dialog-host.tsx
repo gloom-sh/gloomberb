@@ -7,18 +7,11 @@ import {
   DialogHostProvider,
   type AlertContext,
   type DialogApi,
+  type DialogSize,
+  type DialogStyle,
   type PromptContext,
 } from "../../ui/dialog";
 import { useDialogStack, type DialogKind } from "../../ui/dialog-stack";
-
-type DialogSize = "small" | "medium" | "large" | "full";
-
-interface DialogStyle {
-  width?: number;
-  maxWidth?: number;
-  maxHeight?: number;
-  [key: string]: unknown;
-}
 
 interface DialogRecord {
   id: string;
@@ -173,10 +166,10 @@ export function OpenTuiDialogHostProvider({ children }: { children: ReactNode })
         id,
         kind,
         content: options.content,
-        size: options.size as DialogSize | undefined,
-        style: options.style as DialogStyle | undefined,
-        closeOnEscape: options.closeOnEscape as boolean | undefined,
-        closeOnClickOutside: options.closeOnClickOutside as boolean | undefined,
+        size: options.size,
+        style: options.style,
+        closeOnEscape: options.closeOnEscape,
+        closeOnClickOutside: options.closeOnClickOutside,
       };
     },
     onClosed: (_dialog, remaining) => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableView,
   StatGrid,
   usePaneTabs,
@@ -27,7 +27,7 @@ import {
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
-import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
+import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
@@ -688,21 +688,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const deleteAccount = useCallback(async () => {
     setActiveField("deleteAccountAction");
     if (busy) return;
-    const confirmed = await dialog.prompt<boolean>({
+    const confirmed = await confirmDialog(dialog, {
       closeOnClickOutside: false,
-      content: (context: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...context}
-          title={t("Delete Account")}
-          body={[
-            t("Delete your Gloom Cloud account?"),
-            t("This removes cloud profile, chat, sync, and billing-linked account data."),
-          ]}
-          confirmLabel={t("Delete Account")}
-          confirmVariant="danger"
-        />
-      ),
-    }).catch(() => false);
+      title: t("Delete Account"),
+      body: [
+        t("Delete your Gloom Cloud account?"),
+        t("This removes cloud profile, chat, sync, and billing-linked account data."),
+      ],
+      confirmLabel: t("Delete Account"),
+      confirmVariant: "danger",
+    });
     if (!confirmed) return;
 
     setBusy("delete");

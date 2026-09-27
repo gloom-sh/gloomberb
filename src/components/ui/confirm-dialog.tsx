@@ -2,7 +2,7 @@ import { useCallback, type ReactNode } from "react";
 import { Box, Text } from "../../ui";
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
-import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
+import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import { Button, type ButtonVariant } from "./button";
 import { DialogFrame } from "./frame";
 
@@ -52,6 +52,26 @@ export function ConfirmDialog({
       </Box>
     </DialogFrame>
   );
+}
+
+export type ConfirmDialogOptions = Omit<ConfirmDialogProps, keyof PromptContext<boolean>> & {
+  /** A click on the backdrop cancels. On by default. */
+  closeOnClickOutside?: boolean;
+};
+
+/**
+ * Asks in a ConfirmDialog and resolves true only when the person confirms;
+ * Cancel, Esc, a click outside or a failed dialog all resolve false.
+ */
+export async function confirmDialog(
+  dialog: DialogApi,
+  { closeOnClickOutside = true, ...props }: ConfirmDialogOptions,
+): Promise<boolean> {
+  const confirmed = await dialog.prompt<boolean>({
+    closeOnClickOutside,
+    content: (context) => <ConfirmDialog {...context} {...props} />,
+  }).catch(() => false);
+  return confirmed === true;
 }
 
 function renderBody(body: ReactNode | string | string[]): ReactNode {

@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePaneFooter, type PaneHint } from "../components/layout/pane/footer";
 import { ChoiceDialog } from "../components/ui/choice-dialog";
-import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { confirmDialog } from "../components/ui/confirm-dialog";
+import { TextPromptDialog } from "../components/ui/text-prompt-dialog";
 import { useShortcut } from "../react/input";
 import { isPlainKey } from "../utils/keyboard";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
@@ -17,7 +18,6 @@ import type { PluginRegistry } from "../plugins/registry";
 import type { LayoutConfig } from "../types/config";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { LayoutGalleryTerminal } from "./gallery-terminal";
-import { LayoutNameDialog } from "./name-dialog";
 import {
   buildCommunityEntries,
   buildOwnedEntries,
@@ -183,15 +183,17 @@ export function LayoutMarketplaceGallery({
     confirmLabel: string;
     initialValue?: string;
   }) => {
-    const name = await dialog.prompt<string | undefined>({
+    const name = await dialog.prompt<string>({
       closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <LayoutNameDialog
-          {...(context as PromptContext<string | undefined>)}
+      content: (context) => (
+        <TextPromptDialog
+          {...context}
           title={options.title}
           label={options.label}
+          placeholder="e.g. Trading, Research, Overview"
           confirmLabel={options.confirmLabel}
-          initialValue={options.initialValue ?? ""}
+          initialValue={options.initialValue}
+          width={40}
         />
       ),
     }).catch(() => undefined);
@@ -438,20 +440,13 @@ export function LayoutMarketplaceGallery({
 
   const deleteLayout = useCallback(async (entry: GalleryEntry) => {
     if (entry.index === null || layouts.length <= 1) return;
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ConfirmDialog
-          {...(context as PromptContext<boolean>)}
-          title="Delete Layout"
-          body={[`Delete layout "${entry.name}"? This cannot be undone.`]}
-          confirmLabel="Delete Layout"
-          cancelLabel="Cancel"
-          width={48}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete Layout",
+      body: [`Delete layout "${entry.name}"? This cannot be undone.`],
+      confirmLabel: "Delete Layout",
+      width: 48,
+    });
+    if (!confirmed) return;
     dispatch({ type: "DELETE_LAYOUT", index: entry.index });
     pluginRegistry.notify({ body: `Layout "${entry.name}" deleted`, type: "success" });
   }, [dialog, dispatch, layouts.length, pluginRegistry]);
@@ -480,25 +475,17 @@ export function LayoutMarketplaceGallery({
       return;
     }
     const name = layouts[activeIndex]?.name || "Community Layout";
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: unknown) => (
-        <ConfirmDialog
-          {...(context as PromptContext<boolean>)}
-          title="Publish Current Layout"
-          body={[
-            `Publish "${name}" to Discover?`,
-            "Pane setup, queries, chart views, drawings, and portable pane state will be public.",
-            "Credentials, accounts, portfolios, and fields marked private are excluded.",
-          ]}
-          confirmLabel="Publish Layout"
-          cancelLabel="Cancel"
-          confirmVariant="primary"
-          width={52}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Publish Current Layout",
+      body: [
+        `Publish "${name}" to Discover?`,
+        "Pane setup, queries, chart views, drawings, and portable pane state will be public.",
+        "Credentials, accounts, portfolios, and fields marked private are excluded.",
+      ],
+      confirmLabel: "Publish Layout",
+      confirmVariant: "primary",
+    });
+    if (!confirmed) return;
     setPublishing(true);
     try {
       const item = await discover.publish(

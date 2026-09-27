@@ -2,7 +2,7 @@ import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
-  ConfirmDialog,
+  confirmDialog,
   DataTableStackView,
   PaneStatusBody,
   QueryBar,
@@ -23,7 +23,7 @@ import { useShortcut } from "../../../react/input";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
@@ -245,22 +245,16 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, []);
 
   const removeSaved = useCallback(async (search: CloudSavedSearch) => {
-    const confirmed = await dialog.prompt<boolean>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<boolean>) => (
-        <ConfirmDialog
-          {...context}
-          title="Delete saved search?"
-          body={[
-            `Delete "${search.name || search.query}"?`,
-            search.alertEnabled ? "Its keyword alert stops with it." : "",
-          ].filter((line) => line.length > 0)}
-          confirmLabel="Delete"
-          width={44}
-        />
-      ),
-    }).catch(() => false);
-    if (confirmed !== true) return;
+    const confirmed = await confirmDialog(dialog, {
+      title: "Delete saved search?",
+      body: [
+        `Delete "${search.name || search.query}"?`,
+        search.alertEnabled ? "Its keyword alert stops with it." : "",
+      ].filter((line) => line.length > 0),
+      confirmLabel: "Delete",
+      width: 44,
+    });
+    if (!confirmed) return;
 
     const previous = saved;
     setSaved((current) => current.filter((entry) => entry.id !== search.id));
