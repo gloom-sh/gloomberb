@@ -39,6 +39,7 @@ import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
 import { useAppGlobalShortcuts } from "./app/global-shortcuts";
+import { AppDialogBridge } from "./app/dialog-bridge";
 import { KeybindingsProvider, useResolvedKeybindings } from "./app/keybindings";
 import { useAppPaneRuntime } from "./app/pane-runtime";
 import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
@@ -399,6 +400,7 @@ function AppInner({
   if (desktopWindowBridge?.kind === "detached" && desktopWindowBridge.paneId) {
     return (
       <KeybindingsProvider value={keybindings}>
+        <AppDialogBridge />
         <ContextMenuProvider pluginRegistry={pluginRegistry}>
           <RemoteControlHost
             adapter={remoteControlAdapter}
@@ -422,6 +424,7 @@ function AppInner({
 
   return (
     <KeybindingsProvider value={keybindings}>
+    <AppDialogBridge />
     <ContextMenuProvider pluginRegistry={pluginRegistry}>
       <RemoteControlHost
         adapter={remoteControlAdapter}

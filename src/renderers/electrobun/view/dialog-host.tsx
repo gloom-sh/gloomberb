@@ -1,6 +1,11 @@
 /** @jsxImportSource react */
 import { useEffect, useRef, type ReactNode } from "react";
 import { DialogHostProvider } from "../../../ui/dialog";
+import {
+  bridgeDialogContent,
+  DialogBridgeRegistrationProvider,
+  useDialogBridgeSlot,
+} from "../../../ui/dialog-bridge";
 import { useDialogStack } from "../../../ui/dialog-stack";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -21,6 +26,7 @@ interface DialogState {
 export function WebDialogHostProvider({ children }: { children: ReactNode }) {
   const colors = useThemeColors();
   const dialogElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const { bridge, register } = useDialogBridgeSlot();
   const dialogBorder = blendHex(colors.border, colors.borderFocused, 0.18);
   const dialogBg = blendHex(colors.panel, colors.bg, 0.12);
   const { dialogs, close, api } = useDialogStack<DialogState>({
@@ -81,7 +87,9 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
 
   return (
     <DialogHostProvider dialog={api} isOpen={dialogs.length > 0}>
-      {children}
+      <DialogBridgeRegistrationProvider register={register}>
+        {children}
+      </DialogBridgeRegistrationProvider>
       {dialogs.map((dialogState, index) => {
         const isTopmost = index === dialogs.length - 1;
         return (
@@ -122,13 +130,13 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
                 dialogId={dialogState.id}
                 keyboardEnabled={isTopmost}
               >
-                {typeof dialogState.content === "function"
+                {bridgeDialogContent(bridge, typeof dialogState.content === "function"
                   ? dialogState.content({
                     dialogId: dialogState.id,
                     dismiss: () => close(dialogState.id, undefined),
                     resolve: (value) => close(dialogState.id, value),
                   })
-                  : dialogState.content}
+                  : dialogState.content)}
               </DialogHostProvider>
             </div>
           </div>
