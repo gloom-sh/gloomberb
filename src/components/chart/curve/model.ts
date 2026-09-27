@@ -31,7 +31,8 @@ export interface CurveSeries {
   color?: string;
   /** Keep dated table/cursor context without changing chart axes. */
   chartVisible?: boolean;
-  style?: "line" | "points";
+  /** "step" holds each value until the next point, for a rate set at discrete dates. */
+  style?: "line" | "points" | "step";
   /** Defaults to primary for the primary series and ghost for the rest. */
   role?: CurveSeriesRole;
   points: readonly CurvePoint[];

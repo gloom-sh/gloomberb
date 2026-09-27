@@ -1,7 +1,7 @@
 import type { RateMeeting } from "../../../api-client/rates";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRatePath } from "./client";
-import { rateText } from "./model";
+import { meetingMoves, moveOddsText, movesPriced, movesText, rateText } from "./model";
 import { finiteOrNull } from "../../../utils/guards";
 
 const rate = (value: unknown) => rateText(finiteOrNull(value));
@@ -33,6 +33,7 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "none" }, options: [], describe: "US rate path",
   async load(_args, ctx) {
     const data = await fetchRatePath(ctx.apiClient);
+    const moves = meetingMoves(data.meetings);
     return {
       sections: [
         { title: "Current policy", columns: [
@@ -41,14 +42,17 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "samples", header: "Samples", align: "right" }, { key: "source", header: "Source" }, { key: "stale", header: "Stale" },
         ], rows: Object.entries(data.current).map(([name, metric]) => ({ name, ...metric })) },
         { title: "FOMC meetings", columns: [
-          { key: "date", header: "Date" }, { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
+          { key: "date", header: "Date" },
+          { key: "moves", header: "Moves", align: "right", format: (value) => movesText(finiteOrNull(value)) },
+          { key: "moveOdds", header: "P(move)", align: "right", format: (value) => moveOddsText(finiteOrNull(value)) },
+          { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
           { key: "targetMidpoint", header: "Target midpoint", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
           { key: "changeBps", header: "Change", align: "right", format: bps },
           { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
           { key: "samples", header: "Samples", align: "right" }, { key: "asOf", header: "As of UTC", format: timestamp },
           { key: "probabilities", header: "Probabilities", format: probabilities },
           { key: "method", header: "Method" }, { key: "reason", header: "Reason" },
-        ], rows: data.meetings.map((meeting) => ({ ...meeting })) },
+        ], rows: data.meetings.map((meeting) => ({ ...meeting, moves: movesPriced(meeting), moveOdds: moves.get(meeting.date) ?? null })) },
         { title: "Fed funds contracts", columns: contractColumns, rows: data.fedFunds.map((contract) => ({ ...contract })) },
         { title: "SOFR contracts", columns: contractColumns, rows: data.sofr.map((contract) => ({ ...contract })) },
       ],
