@@ -199,6 +199,42 @@ describe("CommandBar portfolio commands", () => {
     expect(frame).toContain("Cancel");
   });
 
+  // Picking where to add is still a bar list; the position is a form.
+  test("AP with several manual portfolios picks the target in the bar, then opens the form", async () => {
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="AP AAPL"
+        live
+        configureConfig={(config) => ({
+          ...config,
+          portfolios: [
+            { id: "research", name: "Research", currency: "USD" },
+            { id: "growth", name: "Growth", currency: "USD" },
+          ],
+        })}
+        configureState={(state) => ({
+          ...state,
+          paneState: { ...state.paneState, "portfolio-list:main": { collectionId: "watchlist" } },
+        })}
+      />,
+      { width: 100, height: 30 },
+    );
+
+    await testSetup.renderOnce();
+    await act(async () => {
+      testSetup!.mockInput.pressEnter();
+      await testSetup!.renderOnce();
+    });
+    await waitForFrameToContain("Add AAPL to Portfolio");
+    expect(testSetup.captureCharFrame()).toContain("bar:open");
+
+    await clickFrameText("Growth");
+    const frame = await waitForFrameToContain("Avg Cost");
+    expect(frame).toContain("Growth");
+    expect(frame).toContain("Shares");
+    expect(frame).toContain("bar:closed");
+  });
+
   test("add-to-portfolio can still add membership without entering a position", async () => {
     const saved: TickerRecord[] = [];
 
