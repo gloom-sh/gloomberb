@@ -5,8 +5,25 @@
  * objects the host does, and format prices the same way, or its output looks
  * foreign next to first-party panes.
  */
-export * from "../market-data/request-types";
-export * from "../market-data/market/format";
+// The names are listed rather than re-exported with `*` because this list is
+// the public surface: a new export in these modules stays internal until it is
+// added here.
+export {
+  instrumentFromTicker, quoteSubscriptionTargetFromTicker,
+} from "../market-data/request-types";
+export type {
+  ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest, TickerInstrumentOptions,
+} from "../market-data/request-types";
+export {
+  currencyMinorDigits, formatCompactMarketPriceWithCurrency, formatMarketChangeWithCurrency,
+  formatMarketCost, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency,
+  formatMarketQuantity, formatPriceObservation, formatSignedMarketPrice, liveQuoteFormatOptions,
+  marketPriceFractionDigitCeiling, quoteFormatOptions, quoteReferencePrice, resolveAssetDisplayKind,
+  stablePriceFractionDigits, withCurrencyMinorDigits, withStablePriceDigits,
+} from "../market-data/market/format";
+export type {
+  AssetDisplayContext, AssetDisplayKind, MarketFormatOptions, StablePriceContext,
+} from "../market-data/market/format";
 
 // The coordinator the app loads snapshots through, so a plugin pane that shows
 // its own list of tickers warms the same cache the rest of the app reads.
