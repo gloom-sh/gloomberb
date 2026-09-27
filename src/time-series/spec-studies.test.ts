@@ -443,6 +443,19 @@ describe("study resolution", () => {
     }
   });
 
+  test("volume names its security only when another one is charted", () => {
+    const input = { ...resolved("aapl"), observationKind: "market" as const };
+    const volume = study("volume", "volume", [input.id]);
+    expect(resolveStudies([input], [volume]).series[0]?.label).toBe("Volume");
+    const peer = { ...resolved("msft", 2), observationKind: "market" as const };
+    expect(resolveStudies([input, peer], [volume]).series[0]?.label).toBe("Volume AAPL");
+    // A gap splits the history into segments, which must keep the same label.
+    input.points[10] = { ...input.points[10]!, provenance: { priceHistoryIntegrity: {
+      reason: "inconsistent-ohlc", sourcePoints: [{ date: input.points[10]!.date.toISOString(), open: 2, high: 1, low: 0, close: 2 }],
+    } } };
+    expect(resolveStudies([input, peer], [volume]).series[0]?.label).toBe("Volume AAPL");
+  });
+
   test("returns actionable errors for missing inputs instead of throwing", () => {
     const result = resolveStudies([resolved("a")], [study("ratio", "ratio", ["a", "missing"])]);
     expect(result.series).toEqual([]);

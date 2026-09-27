@@ -346,7 +346,7 @@ function resolveMacd(spec: ChartStudySpec, input: ResolvedSeries, color: string)
   ];
 }
 
-function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: string): ResolvedSeries[] {
+function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: string, nameInput: boolean): ResolvedSeries[] {
   // Spot FX and similar quotes report 0 for every bar: there is no volume to
   // plot, so the study adds no panel rather than an empty one.
   if (input.points.some((point) => point.volume === 0) && input.points.every((point) => !point.volume)) return [];
@@ -356,7 +356,7 @@ function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: strin
       ? [derivedPoint({ point, value: point.volume }, point.volume)]
       : []);
   return [outputSeries(spec, input, {
-    label: `Volume ${input.label}`,
+    label: nameInput ? `Volume ${input.label}` : "Volume",
     points,
     color,
     unit: input.volumeUnit ?? "",
@@ -588,6 +588,7 @@ function requiredInputs(kind: ChartStudyKind): number {
 function resolveInterruptedStudy(
   inputs: readonly ResolvedSeries[],
   spec: ChartStudySpec,
+  nameVolumeInput: boolean,
 ): StudyResolutionResult | null {
   const gaps = new Map<number, TimeSeriesPoint>();
   for (const input of inputs) {
@@ -640,7 +641,7 @@ function resolveInterruptedStudy(
       }
       return { ...cursor.input, points };
     });
-    const segment = resolveStudies(segmentInputs, [spec]);
+    const segment = resolveStudySpecs(segmentInputs, [spec], nameVolumeInput);
     for (const output of segment.series) {
       const points = output.points.filter((point) => effectiveTimeSeriesPointTime(point) > start);
       const gap = gaps.get(start);
@@ -683,6 +684,19 @@ export function activeStudyInputSeriesIds(
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
   studySpecs: readonly ChartStudySpec[],
+  marketResolution?: ManualChartResolution,
+  historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+): StudyResolutionResult {
+  // With one security on the chart its volume is just "Volume"; beside a
+  // comparison the legend names whose volume it is.
+  const nameVolumeInput = baseSeries.filter((series) => series.observationKind === "market").length > 1;
+  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries);
+}
+
+function resolveStudySpecs(
+  baseSeries: readonly ResolvedSeries[],
+  studySpecs: readonly ChartStudySpec[],
+  nameVolumeInput: boolean,
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
 ): StudyResolutionResult {
@@ -737,7 +751,7 @@ export function resolveStudies(
       resolved.push(...outputs);
       return;
     }
-    const interrupted = resolveInterruptedStudy(inputs as ResolvedSeries[], { ...spec, color });
+    const interrupted = resolveInterruptedStudy(inputs as ResolvedSeries[], { ...spec, color }, nameVolumeInput);
     if (interrupted) {
       resolved.push(...interrupted.series);
       warnings.push(...interrupted.warnings);
@@ -751,7 +765,7 @@ export function resolveStudies(
     else if (spec.kind === "rsi") outputs = resolveRsi(spec, input, color);
     else if (spec.kind === "macd") outputs = resolveMacd(spec, input, color);
     else if (spec.kind === "volume") {
-      outputs = resolveVolume(spec, input, color);
+      outputs = resolveVolume(spec, input, color, nameVolumeInput);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
         warnings.push(`Volume unit unknown: ${input.label}.`);
       }
