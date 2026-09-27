@@ -761,9 +761,9 @@ percentile. Observation dates vary between metrics and issuers. Monetary fields
 require a single currency for filtering and ordering; no implied FX conversion
 is performed. Missing values fail numeric comparisons. `Unavailable` means the
 field lacks evidence; it does not mean the financial quantity is zero. Provider
-multiples, market capitalization and dividend yield carry no observation date; the
-pane shows their collection date in the muted colour instead of inventing a source
-date.
+multiples, market capitalization and dividend yield carry no observation date; a
+company's detail shows their collection date, marked collected, instead of inventing
+a source date.
 
 US primary listings are named by their SEC conformed name; other listings keep the
 provider name. Symbols differing only by share-class separator are one listing, and

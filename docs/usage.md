@@ -525,12 +525,12 @@ category lists and available/unavailable data conditions. All criteria are ANDed
 Thresholds accept `k`, `M`, `B` and `T` suffixes, so `10B` is ten billion. The
 currency selector is required for price and market-cap comparisons.
 
-**Results** leads with the chosen metric, its covered-universe percentile and its
-date, then one column per numeric criterion and context columns (market cap, price,
-change, P/E, revenue growth, operating margin, dividend yield) as width allows. Click
-a metric header to sort by it and make it the focus; click again to reverse. Dates in
-the muted colour are collection dates for provider values that carry no observation
-date. The footer shows matches, covered listings, currency and the snapshot time.
+**Results** leads with the chosen metric and its covered-universe percentile, then
+one column per numeric criterion and context columns (market cap, price, change, P/E,
+revenue growth, operating margin, dividend yield) as width allows. Stale values are
+amber, and an AS OF column dates the chosen metric on the rows where it is stale.
+Click a metric header to sort by it and make it the focus; click again to reverse.
+The footer shows matches, covered listings, currency and the snapshot time.
 Enter opens a company's dated observations; `o` opens it in Ticker Research.
 
 `s` saves a named screen to your Cloud account; **Saved** restores one. Saving an

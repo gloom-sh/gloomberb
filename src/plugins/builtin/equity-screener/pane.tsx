@@ -34,6 +34,7 @@ import {
 } from "../../../public/react";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { useThemeColors } from "../../../theme/theme-context";
+import { priceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
 import {
   NUMERIC_FIELDS,
@@ -96,6 +97,7 @@ function resultColumns(
   width: number,
   definition: ScreenDefinition,
   metric: NumericField,
+  asOf: boolean,
 ): DataTableColumn[] {
   const [focus, ...others] = resultFields(definition, metric);
   const metricColumn = (field: NumericField): DataTableColumn => ({
@@ -115,7 +117,7 @@ function resultColumns(
     ...(sector ? [{ id: "sector", label: "SECTOR", width: 22, align: "left" as const }] : []),
     metricColumn(focus!),
     { id: "percentile", label: "PCTL", width: 4, align: "right" },
-    { id: "date", label: "AS OF", width: 10, align: "left" },
+    ...(asOf ? [{ id: "date", label: "AS OF", width: 10, align: "left" as const }] : []),
     ...extra,
   ];
   // Measured the way the table draws them (header floor, gaps, lead gaps), so a
@@ -297,7 +299,10 @@ function EquityScreenView({
   );
   const metricFields =
     fields.data?.fields.filter((field) => field.kind === "number") ?? [];
-  const columns = resultColumns(width, definition, metric);
+  // AS OF earns its column only when some row's focus metric is stale; the
+  // snapshot decides, so a live quote freshening a row does not reflow the table.
+  const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
+  const columns = resultColumns(width, definition, metric, staleFocus);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));
@@ -911,28 +916,23 @@ function EquityScreenView({
               : null;
             if (field) {
               const observation = row.metrics[field];
+              const change = field === "changePercent" && observation.value != null
+                // A move that prints 0.0 stays neutral.
+                ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
+                : undefined;
               return {
                 text: formatScreenValue(field, observation.value),
-                color: observation.state === "stale" ? colors.warning : undefined,
+                color: observation.state === "stale" ? colors.warning : change,
               };
             }
             const focus = row.metrics[metric];
             if (column.id === "percentile")
               return { text: rank(focus.percentile.value) };
-            if (column.id === "date") {
-              const stamp = metricDate(focus);
-              return {
-                text: stamp.text,
-                color:
-                  focus.state === "stale"
-                    ? colors.warning
-                    : stamp.collected
-                      ? colors.textMuted
-                      : undefined,
-              };
-            }
-            if (column.id === "name")
-              return { text: row.name?.toUpperCase() ?? "--" };
+            if (column.id === "date")
+              return focus.state === "stale"
+                ? { text: metricDate(focus).text, color: colors.warning }
+                : { text: "" };
+            if (column.id === "name") return { text: row.name ?? "--" };
             return { text: String(row[column.id as "symbol"] ?? "--") };
           }}
           sortColumnId={

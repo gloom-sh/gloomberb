@@ -4,6 +4,7 @@ import type { ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen } from "./client";
 import {
   appendScreenPage,
+  columnWidth,
   criterionText,
   DEFAULT_SCREEN,
   formatScreenValue,
@@ -95,6 +96,10 @@ test("values keep sign, scale and missing distinct from zero", () => {
   expect(formatScreenValue("revenueGrowthPercent", 0)).toBe("0.0");
   expect(formatScreenValue("insiderSales90d", 20)).toBe("20");
   expect(formatScreenValue("trailingPE", null)).toBe("--");
+  // Thousands separators; a six-figure price still fits its column.
+  expect(formatScreenValue("price", 757_398)).toBe("757,398.00");
+  expect(formatScreenValue("price", 757_398).length).toBeLessThanOrEqual(columnWidth("price"));
+  expect(formatScreenValue("trailingPE", -1_234.56)).toBe("-1,234.6");
 });
 
 test("undated provider values show their collection date, never an invented source date", () => {

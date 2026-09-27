@@ -12,7 +12,7 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { canonicalExchange } from "../../../utils/exchanges";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, formatNumber } from "../../../utils/format";
 
 /**
  * Column headers. Currency sits in the footer; percentage fields carry %.
@@ -62,10 +62,10 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   if (COMPACT.has(field)) return formatCompact(value, { fixedDecimals: true });
   if (DAILY_COUNTS.has(field)) return value < 1_000 ? value.toFixed(0) : formatCompact(value, { fixedDecimals: true });
   if (RATIOS.has(field)) return `${value.toFixed(1)}x`;
-  if (COUNTS.has(field)) return value.toFixed(0);
-  if (field === "price") return value.toFixed(2);
+  if (COUNTS.has(field)) return formatNumber(value, 0);
+  if (field === "price") return formatNumber(value, 2);
   // A value that rounds to zero prints 0.0, never -0.0.
-  const fixed = Math.abs(value) < 0.05 ? "0.0" : value.toFixed(1);
+  const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
 }
 
@@ -83,7 +83,8 @@ export function resultFields(definition: ScreenDefinition, metric: NumericField)
   return [...new Set(fields)].filter((field) => definition.currency || !MONETARY.has(field) || field === metric);
 }
 
-export const columnWidth = (field: NumericField) => Math.max(8, SHORT_LABELS[field].length);
+/** Prices get room for a separated six-figure quote (757,398.00). */
+export const columnWidth = (field: NumericField) => Math.max(field === "price" ? 10 : 8, SHORT_LABELS[field].length);
 
 export const DEFAULT_SCREEN: ScreenDefinition = {
   version: 1,
