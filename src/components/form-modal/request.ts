@@ -22,10 +22,9 @@ const listeners = new Set<FormModalListener>();
  * detached window, an isolated render) or a form is already open.
  */
 export function openFormModal(request: FormModalRequest): boolean {
-  for (const listener of listeners) {
-    if (listener(request)) return true;
-  }
-  return false;
+  // One host answers: the newest, as an older one is on its way out.
+  const host = [...listeners].at(-1);
+  return host ? host(request) : false;
 }
 
 export function subscribeFormModalRequests(listener: FormModalListener): () => void {
