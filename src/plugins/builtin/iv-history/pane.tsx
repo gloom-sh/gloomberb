@@ -92,7 +92,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
   const statsHeight = model ? model.stats.length + 1 : 0;
   const statSelection = statSelectionValue ?? model?.stats[0]?.id ?? "";
   const statCell = (row: IvStatRow, id: string): { text: string; color?: string } => {
-    const tone = row.percentile == null ? colors.text : row.percentile >= 80 ? colors.negative : row.percentile <= 20 ? colors.positive : colors.text;
+    // A level, not a move: the extremes of its range take the warning, either end,
+    // so green and red keep meaning up and down.
+    const tone = row.percentile != null && (row.percentile >= 80 || row.percentile <= 20) ? colors.warning : colors.text;
     switch (id) {
       case "label": return { text: row.label, color: colors.textBright };
       case "value": return { text: formatStat(row.value, row.unit), color: row.id.startsWith("iv30") ? colors.warning : colors.textBright };
