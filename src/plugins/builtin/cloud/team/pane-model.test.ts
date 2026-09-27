@@ -6,7 +6,6 @@ import {
   draftFromTeam,
   draftProblem,
   emptyTeamDraft,
-  nextFieldId,
   nextNonTextFieldId,
   restingFieldId,
   sectionFieldIds,
@@ -91,14 +90,5 @@ describe("keyboard ring", () => {
     const settings = sectionFieldIds({ ...base, section: "settings" });
     expect(nextNonTextFieldId(settings, "name")).toBe("accent");
     expect(nextNonTextFieldId(settings, "shortName")).toBe("accent");
-  });
-
-  test("walks the ring in both directions and wraps", () => {
-    const ids = ["a", "b", "c"];
-    expect(nextFieldId(ids, null, 1)).toBe("a");
-    expect(nextFieldId(ids, null, -1)).toBe("c");
-    expect(nextFieldId(ids, "c", 1)).toBe("a");
-    expect(nextFieldId(ids, "a", -1)).toBe("c");
-    expect(nextFieldId([], "a", 1)).toBeNull();
   });
 });

@@ -125,19 +125,20 @@ export { MarkdownText } from "./markdown-text";
 // reaches plugins only once it is added here.
 export {
   ActionRow, Badge, BulletList, Button, ButtonActionScope, Checkbox, ChoiceDialog, ConfirmDialog, confirmDialog, DataTable,
-  DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid,
+  DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldGridColumns, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
   MessageComposer, MultiSelectDialogButton, MultiSelectDialogContent, Notice, NumberField,
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
-  usePaneLinkMenuEntry, useQueryBarSearch,
+  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CheckboxProps, ChoiceDialogChoice, ConfirmDialogOptions,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
-  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FigureListItem, FigureListProps, GridField,
+  DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
+  FigureListItem, FigureListProps, GridField,
   IconButtonPressEvent, IconButtonProps, IconName, IconProps, InlineQuickAddRowProps,
   KeyValueRowProps, ListRowState, ListViewItem, ListViewProps, MenuItem, MenuPopoverProps,
   MenuProps, MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint, MultiSelectRowAction,

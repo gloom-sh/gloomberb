@@ -3,7 +3,9 @@ import {
   Button,
   confirmDialog,
   DataTableView,
+  FieldLabel,
   StatGrid,
+  TextField,
   usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
@@ -22,8 +24,6 @@ import {
   Textarea,
   TextAttributes,
   useRendererHost,
-  useUiCapabilities,
-  type BoxRenderable,
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "../../../ui";
@@ -33,9 +33,7 @@ import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
-import { afterLayout, revealInScrollBox } from "../cloud/reveal-in-scroll-box";
 import {
-  AccountTextField,
   CheckboxRow,
   FieldRow,
   PublicAnalyticsGroup,
@@ -195,7 +193,6 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const language = useAppLanguage();
   const dialog = useDialog();
   const renderer = useRendererHost();
-  const { nativePaneChrome } = useUiCapabilities();
   const config = usePaneAppConfig();
   const portfolios = config.portfolios;
   const baseCurrency = config.baseCurrency;
@@ -230,6 +227,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const twoColumns = formWidth >= 60;
   const fieldWidth = twoColumns ? Math.max(22, Math.floor((formWidth - 3) / 2)) : Math.max(18, Math.min(46, formWidth - 2));
   const formLabelWidth = accountFieldLabelWidth(formWidth);
+  const fieldLabelWidth = accountFieldLabelWidth(fieldWidth);
   const bodyHeight = Math.max(5, height);
   const fieldOrder = ACCOUNT_TAB_FIELD_ORDER[activeTab];
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
@@ -560,38 +558,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, []);
 
   // A field the keyboard moves to can sit below the fold in a short pane.
-  // Pointer moves (a hover over the stats row, a click) leave the scroll alone.
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const revealActiveFieldRef = useRef(false);
-  const cycleField = useCallback((delta: number) => {
-    setActiveField((current) => {
-      const index = fieldOrder.indexOf(current);
-      const nextIndex = Math.max(0, Math.min(fieldOrder.length - 1, index + delta));
-      const next = fieldOrder[nextIndex] ?? "username";
-      if (next !== current) revealActiveFieldRef.current = true;
-      return next;
-    });
-  }, [fieldOrder]);
-  const fieldNodes = useRef(new Map<AccountFieldKey, BoxRenderable>());
-  const fieldNodeRef = useMemo(() => {
-    const refs = new Map<AccountFieldKey, (node: BoxRenderable | null) => void>();
-    return (key: AccountFieldKey) => {
-      let ref = refs.get(key);
-      if (!ref) {
-        ref = (node: BoxRenderable | null) => {
-          if (node) fieldNodes.current.set(key, node);
-          else fieldNodes.current.delete(key);
-        };
-        refs.set(key, ref);
-      }
-      return ref;
-    };
-  }, []);
-  useEffect(() => {
-    if (!revealActiveFieldRef.current) return;
-    revealActiveFieldRef.current = false;
-    return afterLayout(() => revealInScrollBox(scrollRef.current, fieldNodes.current.get(activeField) ?? null));
-  }, [activeField]);
 
   const cyclePortfolio = useCallback((delta: number) => {
     const optionIds = portfolioOptionIds(portfolios);
@@ -726,9 +693,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     saveProfile,
   });
 
-  useAccountManagementKeyboard({
+  const { nodeRef: fieldNodeRef } = useAccountManagementKeyboard({
     activeField,
-    cycleField,
     cyclePortfolio,
     deleteAccount,
     draftRef,
@@ -739,9 +705,28 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     openPortfolioDialog: openPortfolioPicker,
     openUpgrade,
     saveProfile,
+    scrollRef,
+    setActiveField,
     setDraftValue,
     turnOffEmailAlerts,
   });
+
+  const textField = (key: "username" | "name" | "company" | "title" | "publicEmail" | "xAccount", label: string, placeholder: string) => (
+    <Box ref={fieldNodeRef(key)}>
+      <TextField
+        label={label}
+        labelWidth={fieldLabelWidth}
+        active={activeField === key}
+        value={draft[key]}
+        placeholder={placeholder}
+        focused={focused && activeField === key}
+        width={fieldWidth}
+        onMouseDown={() => setActiveField(key)}
+        onChange={(value) => setDraftValue(key, value)}
+        onSubmit={() => { void saveProfile(); }}
+      />
+    </Box>
+  );
 
   if (!hasSession && !apiClient.isSignedIn()) {
     return <SignInWall action="manage your Gloom Cloud account" />;
@@ -776,90 +761,18 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="username"
-                  nodeRef={fieldNodeRef("username")}
-                  label={t("Username")}
-                  value={draft.username}
-                  placeholder={t("username")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("username", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="name"
-                  nodeRef={fieldNodeRef("name")}
-                  label={t("Full Name")}
-                  value={draft.name}
-                  placeholder={t("Full name")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("name", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("username", t("Username"), t("username"))}
+                {textField("name", t("Full Name"), t("Full name"))}
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="company"
-                  nodeRef={fieldNodeRef("company")}
-                  label={t("Company")}
-                  value={draft.company}
-                  placeholder={t("Company")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("company", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="title"
-                  nodeRef={fieldNodeRef("title")}
-                  label={t("Title")}
-                  value={draft.title}
-                  placeholder={t("Title")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("title", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("company", t("Company"), t("Company"))}
+                {textField("title", t("Title"), t("Title"))}
               </FieldRow>
 
               <FieldRow twoColumns={twoColumns}>
-                <AccountTextField
-                  fieldKey="publicEmail"
-                  nodeRef={fieldNodeRef("publicEmail")}
-                  label={t("Public Email")}
-                  value={draft.publicEmail}
-                  placeholder="public@example.com"
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("publicEmail", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
-                <AccountTextField
-                  fieldKey="xAccount"
-                  nodeRef={fieldNodeRef("xAccount")}
-                  label={t("X Account")}
-                  value={draft.xAccount}
-                  placeholder={t("handle")}
-                  activeField={activeField}
-                  focused={focused}
-                  width={fieldWidth}
-                  onFocus={setActiveField}
-                  onChange={(value) => setDraftValue("xAccount", value)}
-                  onSubmit={() => { void saveProfile(); }}
-                />
+                {textField("publicEmail", t("Public Email"), "public@example.com")}
+                {textField("xAccount", t("X Account"), t("handle"))}
               </FieldRow>
 
               <Box
@@ -869,13 +782,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 gap={1}
                 onMouseDown={() => setActiveField("bio")}
               >
-                <Text
-                  width={formLabelWidth}
-                  fg={activeField === "bio" ? colors.textBright : colors.textDim}
-                  attributes={activeField === "bio" ? TextAttributes.BOLD : 0}
-                >
-                  {nativePaneChrome ? t("Bio") : `${activeField === "bio" ? "> " : "  "}${t("Bio")}`}
-                </Text>
+                <FieldLabel label={t("Bio")} active={activeField === "bio"} width={formLabelWidth} />
                 <Box
                   height={3}
                   width={Math.max(18, formWidth - formLabelWidth - 1)}

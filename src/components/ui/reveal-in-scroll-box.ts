@@ -1,4 +1,4 @@
-import type { BoxRenderable, ScrollBoxRenderable } from "../../../ui";
+import type { BoxRenderable, ScrollBoxRenderable } from "../../ui";
 
 /**
  * Scrolls the least distance that brings `node` inside `scrollBox`'s viewport,

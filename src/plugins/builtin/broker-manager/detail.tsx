@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
-import { Button, NumberField, SectionHeading, SegmentedControl, TextField } from "../../../components";
+import { useRef } from "react";
+import { Box, ScrollBox, Text, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { Button, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
@@ -19,38 +19,6 @@ import { stateColor } from "./table";
 export type BrokerEditKey = "label" | "enabled" | string;
 
 type RowRef = (node: BoxRenderable | null) => void;
-
-/**
- * Scrolls the detail so the active edit row is in view. The terminal measures
- * rows in cells from the top of the content; the desktop in pixels, since a
- * focused text field scrolls itself but a segmented control does not.
- */
-function revealEditRow(scroll: ScrollBoxRenderable | null, top: BoxRenderable | null, row: BoxRenderable | null): void {
-  if (!scroll || !top || !row) return;
-  const topRect = top.getBoundingClientRect?.();
-  const rowRect = row.getBoundingClientRect?.();
-  const pixels = topRect && rowRect && scroll.viewportPx && typeof scroll.scrollTopPx === "number";
-  const offset = pixels ? rowRect.y - topRect.y : (row.y ?? 0) - (top.y ?? 0);
-  const size = pixels ? rowRect.height : row.height ?? 1;
-  const viewport = pixels ? scroll.viewportPx!.height : scroll.viewport?.height ?? 0;
-  const current = pixels ? scroll.scrollTopPx! : scroll.scrollTop;
-  if (viewport <= 0) return;
-  let next = current;
-  if (offset < current) next = offset;
-  else if (offset + size > current + viewport) next = Math.min(offset, offset + size - viewport);
-  if (next === current) return;
-  if (pixels) scroll.scrollTopPx = Math.max(0, next);
-  else scroll.scrollTo(Math.max(0, next));
-}
-
-/**
- * The desktop field draws its own focus ring, so the label is plain there. The
- * terminal field label does not change with focus, so it keeps the marker.
- */
-function useFieldLabel(): (label: string, focused: boolean) => string {
-  const { nativePaneChrome } = useUiCapabilities();
-  return (label, focused) => nativePaneChrome ? label : `${focused ? "> " : "  "}${label}`;
-}
 
 function BrokerConfigFieldEditor({
   field,
@@ -77,7 +45,6 @@ function BrokerConfigFieldEditor({
   onChange: (key: string, value: string) => void;
   onSubmit: () => void;
 }) {
-  const fieldLabel = useFieldLabel();
   const value = draft.values[field.key] ?? "";
   const previousPassword = field.type === "password"
     ? String(((adapter.toConfigValues?.(previous) ?? previous.config)[field.key] ?? "") || "")
@@ -86,9 +53,7 @@ function BrokerConfigFieldEditor({
   if (field.type === "select") {
     return (
       <Box ref={rowRef} flexDirection="column" onMouseDown={onFocus}>
-        <Text fg={focused ? colors.textBright : colors.textDim} attributes={focused ? TextAttributes.BOLD : 0}>
-          {fieldLabel(t(field.label), focused)}
-        </Text>
+        <FieldLabel label={t(field.label)} active={focused} />
         <SegmentedControl
           value={value}
           focused={focused}
@@ -105,7 +70,8 @@ function BrokerConfigFieldEditor({
   return (
     <Box ref={rowRef} onMouseDown={onFocus}>
       <Field
-        label={fieldLabel(t(field.label), focused)}
+        label={t(field.label)}
+        active={focused}
         value={value}
         focused={focused}
         width={width}
@@ -134,6 +100,7 @@ export function BrokerDetailContent({
   editDraft,
   editFields,
   activeEditKey,
+  editKeys,
   busy,
   message,
   width,
@@ -151,6 +118,8 @@ export function BrokerDetailContent({
   editDraft: BrokerProfileDraft | null;
   editFields: BrokerConfigField[];
   activeEditKey: BrokerEditKey;
+  /** The edit form's fields in Tab order. */
+  editKeys: readonly BrokerEditKey[];
   busy: string | null;
   message: BrokerManagerMessage | null;
   width: number;
@@ -165,27 +134,18 @@ export function BrokerDetailContent({
   onSaveEdit: () => void;
   onCancelEdit: () => void;
 }) {
-  const fieldLabel = useFieldLabel();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const topRef = useRef<BoxRenderable | null>(null);
-  const rowRefs = useRef(new Map<BrokerEditKey, BoxRenderable>());
-  const rowRef = (key: BrokerEditKey): RowRef => (node) => {
-    if (node) rowRefs.current.set(key, node);
-    else rowRefs.current.delete(key);
-  };
-  const editing = !!editDraft;
-  const shownEditKey = useRef<BrokerEditKey | null>(null);
-  useEffect(() => {
-    if (!editing) {
-      shownEditKey.current = null;
-      return;
-    }
-    // The form opens at its first field; after that the view follows the active row.
-    const previous = shownEditKey.current;
-    shownEditKey.current = activeEditKey;
-    if (previous === null || previous === activeEditKey) return;
-    revealEditRow(scrollRef.current, topRef.current, rowRefs.current.get(activeEditKey) ?? null);
-  }, [activeEditKey, editing]);
+  // Tab and j/k walk the fields and go round; Enter, Esc and the select rows'
+  // left and right are the pane's (keyboard.ts).
+  const { nodeRef: rowRef } = useFieldRing({
+    ids: editKeys,
+    activeId: activeEditKey,
+    onActivate: onActiveEditKeyChange,
+    enabled: paneFocused && !!editDraft,
+    scope: editScope,
+    wrap: true,
+    scrollRef,
+  });
 
   if (!row) return <Box flexGrow={1} />;
 
@@ -198,7 +158,7 @@ export function BrokerDetailContent({
 
   return (
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
-      <Box ref={topRef} flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
         <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
           {truncateToDisplayWidth(row.stateLabel, width)}
@@ -222,7 +182,8 @@ export function BrokerDetailContent({
             <SectionHeading title="Edit Profile" />
             <Box ref={rowRef("label")} onMouseDown={() => onActiveEditKeyChange("label")}>
               <TextField
-                label={fieldLabel(t("Profile Label"), activeEditKey === "label")}
+                label={t("Profile Label")}
+                active={activeEditKey === "label"}
                 value={editDraft.label}
                 focused={paneFocused && activeEditKey === "label"}
                 width={fieldWidth}
@@ -231,9 +192,7 @@ export function BrokerDetailContent({
               />
             </Box>
             <Box ref={rowRef("enabled")} flexDirection="column" onMouseDown={() => onActiveEditKeyChange("enabled")}>
-              <Text fg={activeEditKey === "enabled" ? colors.textBright : colors.textDim} attributes={activeEditKey === "enabled" ? TextAttributes.BOLD : 0}>
-                {fieldLabel(t("Enabled"), activeEditKey === "enabled")}
-              </Text>
+              <FieldLabel label={t("Enabled")} active={activeEditKey === "enabled"} />
               <SegmentedControl
                 value={editDraft.enabled ? "yes" : "no"}
                 focused={paneFocused && activeEditKey === "enabled"}

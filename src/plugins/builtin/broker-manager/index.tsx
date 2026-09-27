@@ -179,11 +179,9 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   useBrokerManagerKeyboard({
     activeEditKey,
     editing: !!editDraft,
-    editKeys,
     focused,
     scope: editScope,
     selectKeys: editSelectKeys,
-    onActiveEditKeyChange: setActiveEditKey,
     onCancelEdit: cancelEdit,
     onCycleSelect: cycleEditSelect,
     saveEdit,
@@ -233,6 +231,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       editDraft={editDraft}
       editFields={editFields}
       activeEditKey={activeEditKey}
+      editKeys={editKeys}
       busy={busy}
       message={message}
       width={detailContentWidth}

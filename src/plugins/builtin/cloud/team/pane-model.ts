@@ -176,13 +176,6 @@ export function nextNonTextFieldId(ids: readonly string[], current: string | nul
   return null;
 }
 
-export function nextFieldId(ids: readonly string[], current: string | null, delta: number): string | null {
-  if (ids.length === 0) return null;
-  const index = current ? ids.indexOf(current) : -1;
-  if (index === -1) return delta >= 0 ? ids[0]! : ids[ids.length - 1]!;
-  return ids[(index + delta + ids.length) % ids.length]!;
-}
-
 export function describeMemberCount(count: number): string {
   return count === 1 ? "1 member" : `${count} members`;
 }

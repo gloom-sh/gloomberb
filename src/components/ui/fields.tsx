@@ -1,12 +1,51 @@
-import { Box, Input, Span, Text, useUiHost } from "../../ui";
+import { Box, Input, Span, Text, TextAttributes, useUiCapabilities, useUiHost } from "../../ui";
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from "react";
 import { type InputRenderable } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
+import { truncateWithEllipsis } from "../../utils/text-wrap";
+
+export interface FieldLabelProps {
+  label: string;
+  /** The form's current field. */
+  active?: boolean;
+  /** A label column this wide: the label is cut to fit and the column keeps its width. */
+  width?: number;
+  /** Cuts the label to fit without reserving a column. */
+  maxWidth?: number;
+}
+
+/**
+ * A form field's label. The active field's label is bright and bold. The
+ * terminal also marks it with "> " (and indents the others to match) because
+ * its input shows only a cursor; the desktop control draws a focus ring.
+ */
+export function FieldLabel({ label, active = false, width, maxWidth }: FieldLabelProps) {
+  const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  const text = nativePaneChrome ? label : `${active ? "> " : "  "}${label}`;
+  const fit = width ?? maxWidth;
+  return (
+    <Text width={width} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
+      {fit === undefined ? text : truncateWithEllipsis(text, fit)}
+    </Text>
+  );
+}
 
 export interface TextFieldProps {
   label?: string;
+  /**
+   * The form's current field, in a form that walks its fields with the
+   * keyboard. The terminal marks the label (see FieldLabel); the desktop
+   * field's focus ring already shows it.
+   */
+  active?: boolean;
+  /**
+   * Puts the label in a column this wide beside the input rather than above
+   * it, as a FieldLabel. `width` is then the whole row.
+   */
+  labelWidth?: number;
   value?: string;
   placeholder?: string;
   focused?: boolean;
@@ -45,8 +84,31 @@ function maskPassword(value: string): string {
   return PASSWORD_MASK_CHAR.repeat(value.length);
 }
 
-export function TextField({
+export function TextField(props: TextFieldProps) {
+  return props.labelWidth === undefined ? <TextFieldControl {...props} /> : <InlineTextField {...props} />;
+}
+
+function InlineTextField({ label = "", labelWidth = 0, active, width, hint, onMouseDown, ...props }: TextFieldProps) {
+  const colors = useThemeColors();
+  const inputWidth = width === undefined ? undefined : Math.max(8, width - labelWidth - 1);
+  return (
+    <Box flexDirection="column" width={width}>
+      <Box height={1} flexDirection="row" alignItems="center" gap={1} onMouseDown={onMouseDown}>
+        <FieldLabel label={label} active={active} width={labelWidth} />
+        <TextFieldControl {...props} width={inputWidth} onMouseDown={onMouseDown} />
+      </Box>
+      {hint ? (
+        <Box paddingLeft={labelWidth + 1}>
+          <Text fg={colors.textMuted} wrapText width={inputWidth}>{hint}</Text>
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function TextFieldControl({
   label,
+  active,
   value,
   placeholder,
   focused,
@@ -143,7 +205,7 @@ export function TextField({
     <Box flexDirection="column">
       {label && (
         <Box height={1}>
-          <Text fg={placeholderColor}>{label}</Text>
+          <Text fg={placeholderColor}>{active === undefined ? label : `${active ? "> " : "  "}${label}`}</Text>
         </Box>
       )}
       <Box height={1} onMouseDown={() => {

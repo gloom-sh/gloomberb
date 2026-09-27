@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { TeamAccentColor } from "../../../../api-client";
-import { Badge, Button, Checkbox, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
+import { Badge, Button, Checkbox, FieldLabel, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes, type BoxRenderable } from "../../../../ui";
 import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "./model";
@@ -71,23 +71,20 @@ export function PaneField({
   const active = focus.activeField === id;
   useFieldAction(id, null);
   const nodeRef = useFieldNode(id);
-  const inputWidth = Math.max(8, width - labelWidth - 1);
   return (
     <Box ref={nodeRef} flexDirection="column" width={Math.max(width, hintWidth ?? 0)}>
-      <Box height={1} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => focus.setActiveField(id)}>
-        <Text width={labelWidth} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {`${active ? "> " : "  "}${label}`}
-        </Text>
-        <TextField
-          value={value}
-          placeholder={placeholder}
-          focused={focus.focused && active}
-          width={inputWidth}
-          onChange={onChange}
-          onSubmit={onSubmit}
-          onMouseDown={() => focus.setActiveField(id)}
-        />
-      </Box>
+      <TextField
+        label={label}
+        labelWidth={labelWidth}
+        active={active}
+        value={value}
+        placeholder={placeholder}
+        focused={focus.focused && active}
+        width={width}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        onMouseDown={() => focus.setActiveField(id)}
+      />
       {hint ? (
         <Box paddingLeft={labelWidth + 1} width={Math.max(width, hintWidth ?? 0)}>
           <Text fg={colors.textMuted} wrapText width={Math.max(8, (hintWidth ?? width) - labelWidth - 1)}>{hint}</Text>
@@ -205,9 +202,7 @@ export function AccentPicker({
   return (
     <Box ref={nodeRef} flexDirection="column" width={width} onMouseDown={() => focus.setActiveField(id)}>
       <Box height={1} flexDirection="row" alignItems="center" gap={1}>
-        <Text width={labelWidth} fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
-          {`${active ? "> " : "  "}Accent`}
-        </Text>
+        <FieldLabel label="Accent" active={active} width={labelWidth} />
         <Box flexDirection="row" gap={1}>
           {TEAM_ACCENT_COLORS.map((candidate) => {
             const selected = candidate === value;

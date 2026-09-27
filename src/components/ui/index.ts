@@ -28,7 +28,9 @@ export { NumberPromptDialog } from "./number-prompt-dialog";
 export { SelectButton } from "./select-button";
 export type { SelectButtonOption, SelectButtonProps, SelectControl } from "./select-button";
 
-export { TextField, NumberField } from "./fields";
+export { FieldLabel, TextField, NumberField } from "./fields";
+export { useFieldRing } from "./field-ring";
+export type { FieldRing, FieldRingOptions } from "./field-ring";
 export { QueryBar, useQueryBarSearch } from "./query-bar";
 export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./field-grid";
 export type { FieldGridProps, GridField } from "./field-grid";
@@ -36,7 +38,7 @@ export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
 export type { SplitBarPart } from "./split-bar";
 export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
-export type { TextFieldProps, NumberFieldProps } from "./fields";
+export type { FieldLabelProps, TextFieldProps, NumberFieldProps } from "./fields";
 
 export { getMessageComposerBlockHeight, MessageComposer } from "./message-composer";
 
