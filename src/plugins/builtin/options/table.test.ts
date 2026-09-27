@@ -7,8 +7,10 @@ import { createOptionColumns, optionColumnColor, renderOptionCell } from "./tabl
 import type { OptionColumn, OptionTableRow } from "./types";
 
 // The band has to clear the neighbouring one by this much to read as a band at
-// all, and the text standing on it stays held to the body minimum.
-const MONEYNESS_MIN_SEPARATION = 1.45;
+// all, the selected row has to clear the band, and the text standing on it
+// stays held to the body minimum.
+const MONEYNESS_MIN_SEPARATION = 1.25;
+const SELECTION_MIN_SEPARATION = 1.25;
 const BODY_TEXT_MIN = 4.5;
 
 const FIELDS = ["bid", "ask", "spread", "last", "delta", "iv", "volume"] as const;
@@ -40,15 +42,23 @@ const ROW: OptionTableRow = {
   isPositionStrike: false,
 };
 
+// The mirror: the put in the money, the call out of it.
+const MIRROR_ROW: OptionTableRow = {
+  strike: 100,
+  call: contract(100, false),
+  put: contract(100, true),
+  isPositionStrike: false,
+};
+
 const COLUMNS = createOptionColumns(FIELDS).map((column) => ({
   ...column,
   headerColor: "#ffffff",
 })) as OptionColumn[];
 
-function cells(selected: boolean) {
+function cells(selected: boolean, row = ROW) {
   return COLUMNS.map((column) => ({
     column,
-    cell: renderOptionCell(ROW, column, 0, { selected }),
+    cell: renderOptionCell(row, column, 0, { selected }),
   }));
 }
 
@@ -73,11 +83,19 @@ test("every theme separates the moneyness bands and keeps their text readable", 
     const otmSurface = outOfTheMoney[0]!.cell.backgroundColor!;
     for (const { cell } of outOfTheMoney) expect(cell.backgroundColor).toBe(otmSurface);
 
+    // Calls and puts share one in-the-money band.
+    const inTheMoneyPuts = cells(false, MIRROR_ROW).filter(({ column }) => column.side === "put");
+    for (const { cell } of inTheMoneyPuts) expect(cell.backgroundColor).toBe(inTheMoney[0]!.cell.backgroundColor);
+
     for (const { column, cell } of inTheMoney) {
       const surface = cell.backgroundColor!;
       const separation = contrastRatio(surface, otmSurface);
       if (separation < MONEYNESS_MIN_SEPARATION) {
         throw new Error(`${themeId} ${column.id} band separation ${separation.toFixed(2)} is below ${MONEYNESS_MIN_SEPARATION}`);
+      }
+      const selection = contrastRatio(colors.selected, surface);
+      if (selection < SELECTION_MIN_SEPARATION) {
+        throw new Error(`${themeId} ${column.id} selected row stands ${selection.toFixed(2)} off the band, below ${SELECTION_MIN_SEPARATION}`);
       }
       const text = contrastRatio(optionColumnColor(column, surface), surface);
       if (text < BODY_TEXT_MIN) {

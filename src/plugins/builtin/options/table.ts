@@ -23,12 +23,14 @@ type OptionFieldDef = {
 };
 
 const OPTION_TEXT_MIN_CONTRAST = 4.5;
-// How far the in-the-money band has to stand off the out-of-the-money one. The
-// two sit edge to edge across the strike column, so this is the step the eye
+// How far the in-the-money band stands off the out-of-the-money one. The two
+// sit edge to edge across the strike column, so this is the step the eye
 // actually reads, and holding it fixed is what makes the banding land the same
-// way on every palette. The ceiling keeps the band a tint of the background
-// rather than a wall of the side colour.
-const MONEYNESS_MIN_SEPARATION = 1.45;
+// way on every palette. Both sides share one neutral band: the call and put
+// columns already carry their colour in the text, and a green and a red slab
+// under it drowned the numbers. The step stays small enough that the selected
+// row still stands clear of the band it sits in.
+const MONEYNESS_MIN_SEPARATION = 1.25;
 const MONEYNESS_MAX_TINT = 0.42;
 
 export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
@@ -46,7 +48,7 @@ export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
   { id: "openInterest", label: "Open interest", header: "OI", width: 6, description: "Outstanding open contracts." },
 ];
 
-export const DEFAULT_OPTION_FIELD_IDS: OptionFieldId[] = ["bid", "ask", "spread", "last", "delta", "gamma"];
+export const DEFAULT_OPTION_FIELD_IDS: OptionFieldId[] = ["bid", "ask", "last", "iv", "delta", "volume", "openInterest"];
 
 const OPTION_FIELDS_BY_ID = new Map(OPTION_FIELD_DEFS.map((field) => [field.id, field]));
 
@@ -220,10 +222,9 @@ function optionMoneynessBackground(
   if (rowState.selected || !column.side) return undefined;
   const outOfTheMoney = blendHex(colors.bg, colors.neutral, 0.055);
   if (!inferColumnMoneyness(row, contract, column.side)) return outOfTheMoney;
-  const sideColor = column.side === "call" ? colors.positive : colors.negative;
   return blendForSeparation(
     colors.bg,
-    sideColor,
+    colors.neutral,
     outOfTheMoney,
     MONEYNESS_MIN_SEPARATION,
     MONEYNESS_MAX_TINT,

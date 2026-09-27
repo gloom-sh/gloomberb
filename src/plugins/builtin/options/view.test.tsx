@@ -225,7 +225,7 @@ test("keeps table geometry and scroll steady while a cold expiry loads", async (
   expect((testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
 });
 
-test("shows volatility statistics and mirrored default Greeks", async () => {
+test("shows the spot, volatility statistics and the mirrored default fields", async () => {
   const provider = createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),
   });
@@ -240,13 +240,11 @@ test("shows volatility statistics and mirrored default Greeks", async () => {
   await renderSettled();
 
   const frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Spot\s+101\.00/);
   expect(frame).toMatch(/ATM IV\s+90\.1%/);
   expect(frame).toMatch(/HV30\s+--/);
   expect(frame).toMatch(/Volume\s+4\.0k/);
-  expect(frame).toContain("C Δ");
-  expect(frame).toContain("C Γ");
-  expect(frame).toContain("P Γ");
-  expect(frame).toContain("P Δ");
+  for (const header of ["C IV", "C Δ", "C VOL", "C OI", "P OI", "P VOL", "P Δ", "P IV"]) expect(frame).toContain(header);
 });
 
 test("streams live quotes without resetting manual scroll", async () => {
@@ -528,7 +526,7 @@ test("starts at a held contract's expiry and preserves a researcher-selected rol
   expect(testSetup!.captureCharFrame()).toContain("Loading options chain");
   await act(async () => { selectTicker(ticker); });
   await renderSettled();
-  expect(testSetup!.captureCharFrame()).toMatch(/34\.05\s+0\.3%\s+34\.00\s+.*340/);
+  expect(testSetup!.captureCharFrame()).toMatch(/33\.95\s+34\.05\s+34\.00\s+.*340/);
 });
 
 test("keeps the selected chain visible when its refresh fails", async () => {
@@ -584,7 +582,7 @@ test("stale underlying preserves contract observations but cannot seed current G
   const deltaColumns = lines[0]!.flatMap((cell, i) => cell.includes("Δ") ? [i] : []);
   expect(deltaColumns).toHaveLength(2);
   for (const row of lines.slice(1)) for (const i of deltaColumns) expect(row[i]).toBe("—");
-  expect(saved).toContain("10.05,10.15,1.0%,10.1");
+  expect(saved).toContain("10.05,10.15,10.10");
   await act(async () => { setStale(false); });
   await renderSettled();
   const recovered = testSetup!.captureCharFrame();
@@ -617,7 +615,7 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   expect(frame).toMatch(/HV30\s+--/);
   expect(frame).toMatch(/IV\/HV\s+--/);
   expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
-  expect(frame).toContain("HV30 unavailable: inconsistent OHLC history");
+  expect(frame).toContain("HV30 unavailable: inconsistent OHLC");
   expect(frame).toContain("[c]alc");
 });
 
@@ -635,7 +633,7 @@ test("reports the contract under the cursor in the status bar instead of above t
   // Identity, bid, ask, last and the expiry all already exist above or in the
   // chain, so the body must not spend rows repeating them.
   expect(body).not.toContain("AAPL260619C00101000");
-  // The spread reads per strike in its own column, so the status bar drops it.
-  expect(body).toContain("C SPRD");
-  expect(status).not.toContain("spread");
+  // The default columns leave the spread out, so the status bar carries it.
+  expect(body).not.toContain("C SPRD");
+  expect(status).toContain("spread");
 });

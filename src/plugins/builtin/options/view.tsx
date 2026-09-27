@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
@@ -65,6 +66,7 @@ import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
 import { optionMid } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
+import type { TickerFinancials } from "../../../types/financials";
 import type { IvStats } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
 import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
@@ -86,8 +88,28 @@ function transientTicker(symbol: string, exchange: string, currency: string): Ti
   return { metadata: { ticker: symbol, exchange, currency, name: symbol, portfolios: [], watchlists: [], positions: [], custom: {}, tags: [] } };
 }
 
+/**
+ * The underlying's price and day change: the level every strike is read
+ * against. A stale quote stays on screen, muted, while the footer says why.
+ */
+function spotItem(underlying: TickerFinancials | null | undefined, assetCategory: string | undefined): StatItem {
+  const quote = underlying?.quote;
+  if (!quote || !Number.isFinite(quote.price)) return { id: "spot", label: "Spot", value: "--" };
+  const options = liveQuoteFormatOptions(quote, quote.currency, assetCategory, underlying?.quoteMetadata?.instrumentType);
+  const change = Number.isFinite(quote.change) ? quote.change : 0;
+  return {
+    id: "spot",
+    label: "Spot",
+    value: formatMarketPrice(quote.price, options),
+    detail: Number.isFinite(quote.change) && Number.isFinite(quote.changePercent)
+      ? `${formatSignedMarketPrice(quote.change, options)} ${formatPercentRaw(quote.changePercent)}` : undefined,
+    color: quote.stale ? colors.textDim : priceColor(change),
+  };
+}
+
 /** The chain's volatility, expected move and flow figures, in the order the stat band reads them. */
-function optionsSummaryItems({ summary, enrichment, currency, ivRank }: {
+function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
+  spot: StatItem;
   summary: OptionsSummary | null;
   enrichment: OptionsEnrichmentSnapshot | null;
   currency: string;
@@ -106,6 +128,7 @@ function optionsSummaryItems({ summary, enrichment, currency, ivRank }: {
   // The selected expiry is the active choice in the bar above, so the slope names only the one it runs to.
   const slopeTo = enrichment?.neighbourExpiration == null ? undefined : `to ${formatExpDate(enrichment.neighbourExpiration)}`;
   return [
+    spot,
     { id: "atm-iv", label: "ATM IV", value: iv(summary?.atmImpliedVolatility) },
     { id: "hv30", label: "HV30", value: iv(summary?.historicalVolatility30d) },
     { id: "iv-hv", label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
@@ -637,6 +660,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // The root insets the terminal body, so the band gets the width inside it.
   const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const statItems = optionsSummaryItems({
+    spot: spotItem(underlying, isOpt ? undefined : ticker.metadata.assetCategory),
     summary, enrichment, currency: underlying?.quote?.currency ?? ticker.metadata.currency ?? "",
     ivRank: showIvRank ? { stats: ivRank } : null,
   });
