@@ -4,6 +4,7 @@ import { INCOME_STATEMENT_FIELDS } from "../utils/income-statement";
 import { createSecEpsBasisResolver } from "../utils/sec-eps-basis";
 import { truncateWithEllipsis } from "../utils/text-wrap";
 import { decodeHtmlEntities } from "../utils/html-entities";
+import { recordOrNull } from "../utils/guards";
 import {
   PDF_FALLBACK_MESSAGE,
   extractFilingContent,
@@ -13,7 +14,6 @@ import { parseSecAcceptanceTime } from "./sec-edgar/acceptance-time";
 import { secFourthQuarters, withGuardedFourthQuarters, type SecFourthQuarter } from "./sec-edgar/fourth-quarter";
 
 export { extractFilingContent } from "./sec-edgar/content";
-import { recordOrNull } from "../utils/guards";
 
 const LOOKUP_URL = "https://www.sec.gov/files/company_tickers_exchange.json";
 const SUBMISSIONS_URL = "https://data.sec.gov/submissions";
