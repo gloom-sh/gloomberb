@@ -41,30 +41,7 @@ import {
 import { renderCongressTradeCell } from "./table";
 import { loadCongressHouse } from "./client";
 
-function DetailLine({
-  label,
-  value,
-  tone,
-  bold = false,
-}: {
-  label: string;
-  value: string;
-  tone?: "muted" | "value" | "positive" | "negative" | "warning";
-  bold?: boolean;
-}) {
-  const color = tone === "positive"
-    ? colors.positive
-    : tone === "negative"
-      ? colors.negative
-      : tone === "warning"
-        ? colors.warning
-        : tone === "value"
-          ? colors.textBright
-          : tone === "muted"
-            ? colors.textDim
-            : colors.text;
-  return <KeyValueRow label={label} value={value} labelWidth={16} color={color} emphasis={bold} />;
-}
+const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
 
 export function TradeDetail({
   trade,
@@ -78,21 +55,21 @@ export function TradeDetail({
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
         {/* The detail title already carries the member and ticker. */}
-        <DetailLine label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
-        <DetailLine label="party" value={trade.party ?? "--"} />
-        <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <DetailLine label="asset" value={truncateWithEllipsis(trade.assetName, Math.max(10, lineWidth - 16))} />
-        <DetailLine label="amount" value={trade.amount} tone="value" />
-        <DetailLine label="owner" value={trade.owner} />
-        <DetailLine label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
-        <DetailLine label="filed return" value={formatCongressReturn(trade.returnSinceFiling)} />
-        <DetailLine label="price as of" value={trade.returnAsOf ?? "--"} />
-        <DetailLine label="tx date" value={trade.transactionDate ?? "--"} />
-        <DetailLine label="notification" value={trade.notificationDate ?? "--"} />
-        <DetailLine label="filed" value={trade.filingDate} />
-        <DetailLine label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
-        {trade.filingStatus ? <DetailLine label="status" value={trade.filingStatus} /> : null}
-        {trade.subholdingOf ? <DetailLine label="subholding" value={truncateWithEllipsis(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
+        <KeyValueRow {...DETAIL_ROW} label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
+        <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
+        <KeyValueRow {...DETAIL_ROW} label="asset" value={truncateWithEllipsis(trade.assetName, Math.max(10, lineWidth - 16))} />
+        <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
+        <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
+        <KeyValueRow {...DETAIL_ROW} label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
+        <KeyValueRow {...DETAIL_ROW} label="filed return" value={formatCongressReturn(trade.returnSinceFiling)} />
+        <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? "--"} />
+        <KeyValueRow {...DETAIL_ROW} label="filed" value={trade.filingDate} />
+        <KeyValueRow {...DETAIL_ROW} label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
+        {trade.filingStatus ? <KeyValueRow {...DETAIL_ROW} label="status" value={trade.filingStatus} /> : null}
+        {trade.subholdingOf ? <KeyValueRow {...DETAIL_ROW} label="subholding" value={truncateWithEllipsis(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
         {trade.description ? (
           <>
             <Text>{" "}</Text>

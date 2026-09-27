@@ -1,8 +1,23 @@
 import { t } from "../../i18n";
+import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { SplitBar, type SplitBarPart } from "./split-bar";
+
+export type StatTone = "neutral" | "positive" | "negative" | "warning" | "accent" | "muted";
+
+/** A figure's tone as a theme colour; undefined for `neutral`, which keeps the component's own text colour. */
+export function statToneColor(tone: StatTone | undefined, colors: ThemeColors): string | undefined {
+  switch (tone) {
+    case "positive": return colors.positive;
+    case "negative": return colors.negative;
+    case "warning": return colors.warning;
+    case "accent": return colors.borderFocused;
+    case "muted": return colors.textDim;
+    default: return undefined;
+  }
+}
 
 /**
  * One read-only figure in a StatGrid: a label, the value, and optional muted
@@ -13,7 +28,7 @@ export interface StatItem {
   label: string;
   value: string;
   detail?: string;
-  tone?: "neutral" | "positive" | "negative" | "warning" | "accent" | "muted";
+  tone?: StatTone;
   /** A domain colour (a price change, a series). Wins over `tone`. */
   color?: string;
   /** Takes a whole row, e.g. a figure with a long window description. */
@@ -90,17 +105,8 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
   const cellWidth = Math.max(8, Math.floor((innerWidth - CELL_GAP * (columns - 1)) / columns));
   const widestValue = Math.max(0, ...items.filter((item) => !item.wide).map((item) => displayWidth(item.value)));
 
-  const toneColor = (item: StatItem): string => {
-    if (item.color) return item.color;
-    switch (item.tone) {
-      case "positive": return colors.positive;
-      case "negative": return colors.negative;
-      case "warning": return colors.warning;
-      case "accent": return colors.borderFocused;
-      case "muted": return colors.textDim;
-      default: return nativePaneChrome ? colors.textBright : colors.text;
-    }
-  };
+  const toneColor = (item: StatItem): string =>
+    item.color || (statToneColor(item.tone, colors) ?? (nativePaneChrome ? colors.textBright : colors.text));
 
   return (
     <Box
