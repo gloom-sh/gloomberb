@@ -5,6 +5,7 @@ import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
+import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
@@ -53,6 +54,8 @@ const TERM_STATE_LABELS: Record<string, string> = { normal: "Contango", inverted
 
 export function VolatilityPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
+  // By the sign the two-decimal text shows, so a move that rounds to zero stays neutral.
+  const signColor = (value: number) => priceColor(Number(value.toFixed(2)), colors);
   const [initialTab] = usePaneSettingValue("initialTab", "curve");
   const [tab, setTab] = usePluginPaneState("activeTabId", initialTab);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedIndexId", "vix");
@@ -193,9 +196,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
           if (column.id === "tenor") return { text: row.tenor, color: row.value == null ? colors.textMuted : colors.text };
           if (column.id === "value") return { text: number(row.value), color: row.value == null ? colors.textMuted : colors.warning };
           const change = column.id === "change1w" ? row.change1w : row.change1m;
-          // Rising volatility reads as a warning, falling as calm, as on the board.
-          return { text: number(change, true), color: change == null ? colors.textMuted
-            : change > 0 ? colors.warning : change < 0 ? colors.positive : colors.text };
+          // Up and down colors, as on every board; the percentile says whether vol is high.
+          return { text: number(change, true), color: change == null ? colors.textMuted : signColor(change) };
         }}
         rootBefore={<ChartTableHeader width={width} height={curveHeight} tableRows={curveRows.length} figures={curveStats} chart={curveBandStrip ? {
           render: (size) => <CurveSurface series={curveSeries} width={size.width} height={size.height} display="chart"
@@ -219,7 +221,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
               : String(row.date ?? "--"),
-            color: column.id.startsWith("change") && row.change1d != null ? row.change1d > 0 ? colors.warning : row.change1d < 0 ? colors.positive : colors.text
+            color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
           <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? "--"}`}</Text></Box>
