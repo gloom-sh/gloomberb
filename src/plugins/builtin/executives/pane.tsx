@@ -28,6 +28,7 @@ import {
 import { isPermanentClientError } from "../../../api-client/errors";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useBoundTicker } from "../shared/ticker-request";
+import { SplitBar } from "../../../components/ui/split-bar";
 import { loadProxyStatement, loadProxyStatements } from "./data";
 import {
   equityShare,
@@ -59,9 +60,7 @@ const PAY_PARTS: Array<{ key: keyof CloudExecutiveRowPayload; label: string }> =
 
 /**
  * How the chief executive's pay was made up, as one bar. Salary is usually
- * a sliver and equity most of it; seeing that beats the table. The terminal
- * draws block runs with at least one cell per piece so a small one still
- * shows; the desktop draws real elements so a piece can be thinner than a cell.
+ * a sliver and equity most of it; seeing that beats the table.
  */
 function PayMixBar({
   row,
@@ -80,42 +79,9 @@ function PayMixBar({
   const sum = parts.reduce((total, part) => total + part.value, 0);
   if (sum <= 0) return null;
   const barWidth = Math.max(10, Math.min(width, 60));
-  let cells = parts.map((part) =>
-    Math.max(1, Math.round((part.value / sum) * barWidth)),
-  );
-  // Rounding and the one-cell floor can overshoot; trim the largest piece.
-  while (cells.reduce((a, b) => a + b, 0) > barWidth) {
-    const largest = cells.indexOf(Math.max(...cells));
-    cells[largest] = cells[largest]! - 1;
-  }
-  cells = cells.map((count) => Math.max(1, count));
   return (
     <Box flexDirection="column">
-      {isDesktopWeb ? (
-        <Box
-          height={1}
-          flexDirection="row"
-          alignItems="center"
-          width={barWidth}
-          style={{ height: "9px", borderRadius: "2px", overflow: "hidden" }}
-        >
-          {parts.map((part) => (
-            <Box
-              key={part.key}
-              backgroundColor={part.color}
-              style={{ width: `${((part.value / sum) * 100).toFixed(2)}%`, height: "100%", minWidth: "2px" }}
-            />
-          ))}
-        </Box>
-      ) : (
-        <Box height={1} flexDirection="row">
-          {parts.map((part, index) => (
-            <Text key={part.key} fg={part.color}>
-              {"█".repeat(cells[index]!)}
-            </Text>
-          ))}
-        </Box>
-      )}
+      <SplitBar parts={parts.map((part) => ({ id: part.key, value: part.value, color: part.color }))} width={barWidth} />
       <Box flexDirection="row" flexWrap="wrap">
         {parts.map((part) => (
           <Box key={part.key} flexDirection="row" alignItems="center" marginRight={2}>

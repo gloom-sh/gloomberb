@@ -2,6 +2,7 @@ import { t } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { SplitBar, type SplitBarPart } from "./split-bar";
 
 /**
  * One read-only figure in a StatGrid: a label, the value, and optional muted
@@ -17,6 +18,8 @@ export interface StatItem {
   color?: string;
   /** Takes a whole row, e.g. a figure with a long window description. */
   wide?: boolean;
+  /** A whole and its parts (a Buy/Hold/Sell mix), drawn as a bar after the value when the cell has room. */
+  split?: readonly SplitBarPart[];
 }
 
 export interface StatGridProps {
@@ -30,12 +33,15 @@ const MAX_COLUMNS = 4;
 const MAX_LABEL_CHARS = 18;
 /** Terminal gap between cells. */
 const CELL_GAP = 2;
+/** Cells a split bar takes after its value. */
+const SPLIT_BAR_CELLS = 12;
 
 function labelChars(items: StatItem[]): number {
   return Math.min(MAX_LABEL_CHARS, Math.max(4, ...items.map((item) => displayWidth(t(item.label)))));
 }
 
 function naturalWidth(item: StatItem, labels: number): number {
+  // A split bar takes the room the cell has left and is not counted here.
   const detail = item.detail ? displayWidth(item.detail) + 2 : 0;
   return labels + 1 + displayWidth(item.value) + detail + CELL_GAP;
 }
@@ -116,7 +122,10 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
             const labelWidth = Math.min(labels + 1, Math.max(4, Math.floor(width * 0.5), width - widestValue - 1));
             const valueWidth = Math.max(1, width - labelWidth);
             const value = nativePaneChrome ? item.value : truncateToDisplayWidth(item.value, valueWidth);
-            const detailWidth = valueWidth - displayWidth(value) - 2;
+            // The bar shows only whole enough to read; the value never gives way to it.
+            const barRoom = valueWidth - displayWidth(value) - 1;
+            const barCells = !item.split ? 0 : nativePaneChrome ? SPLIT_BAR_CELLS : barRoom >= 4 ? Math.min(SPLIT_BAR_CELLS, barRoom) : 0;
+            const detailWidth = valueWidth - displayWidth(value) - (barCells ? barCells + 1 : 0) - 2;
             const detail = !item.detail
               ? ""
               : nativePaneChrome ? item.detail : detailWidth > 1 ? truncateToDisplayWidth(item.detail, detailWidth) : "";
@@ -140,6 +149,11 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
                   {nativePaneChrome ? label : truncateToDisplayWidth(label, labelWidth - 1).padEnd(labelWidth)}
                 </Text>
                 <Text fg={toneColor(item)} attributes={TextAttributes.BOLD} data-gloom-role="stat-grid-value">{value}</Text>
+                {item.split && barCells ? (
+                  <Box marginLeft={nativePaneChrome ? 0 : 1} flexShrink={nativePaneChrome ? 1 : 0} style={nativePaneChrome ? { minWidth: 0 } : undefined}>
+                    <SplitBar parts={item.split} width={barCells} />
+                  </Box>
+                ) : null}
                 {detail ? (
                   <Text fg={colors.textDim} data-gloom-role="stat-grid-detail">{nativePaneChrome ? detail : `  ${detail}`}</Text>
                 ) : null}

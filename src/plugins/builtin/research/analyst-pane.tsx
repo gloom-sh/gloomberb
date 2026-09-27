@@ -39,6 +39,7 @@ import {
   buildRatingColumns,
   firstRatingSortDirection,
   formatRatingTarget,
+  ratingSplit,
   ratingTargetDelta,
   sortRatingRows,
   targetUpside,
@@ -72,11 +73,12 @@ interface AnalystQuoteBinding {
 }
 
 /**
- * The reported consensus and its upside, then the mean-target line over the
- * rating actions. The upside moves with the live price, so this header (not
- * the ratings table) re-renders on it. The line is rebuilt from each firm's
- * latest dated target, which is not the reported consensus, so its legend
- * names it a mean and counts the firms in it at the cursor.
+ * The reported consensus, its upside and the Buy/Hold/Sell split, then the
+ * mean-target line over the rating actions. The upside moves with the live
+ * price, so this header (not the ratings table) re-renders on it. The line is
+ * rebuilt from each firm's latest dated target, which is not the reported
+ * consensus: its legend names it and counts the firms in it at the cursor,
+ * and leaves the level to the axis so the consensus is the one target figure.
  */
 function AnalystHeader({ data, history, series, currency, width, height, tableRows, tableChromeRows, binding, link }: {
   data: AnalystResearchData | null;
@@ -93,7 +95,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
   const financials = useTickerFinancials(binding.ticker ? binding.symbol : null, binding.ticker);
   const target = data?.priceTarget;
   const upside = targetUpside(target, analystReferencePrice(data, financials?.quote).price);
-  const formatValue = useCallback((value: number) => formatPriceTarget(value, currency), [currency]);
+  const formatValue = useCallback(() => "", []);
   const formatAxisValue = useMemo(
     () => spanAxisFormatter((value, digits) => formatPriceTarget(Number(value.toFixed(digits)), currency)),
     [currency],
@@ -102,6 +104,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
   // cells shorten the label rather than clip it.
   const { nativePaneChrome } = useUiCapabilities();
   const consensusLabel = !nativePaneChrome && width < 44 ? "Cons." : "Consensus";
+  const split = ratingSplit(data);
   // The table body already reports loading, error, and empty states.
   const figures: StatItem[] = data ? [
     { id: "target", label: consensusLabel, value: formatAnalystPrice(target?.average, currency) },
@@ -111,6 +114,17 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
       value: upside != null ? formatPercent(upside) : "-",
       tone: upside == null || upside === 0 ? "muted" : upside > 0 ? "positive" : "negative",
     },
+    ...(split ? [{
+      id: "ratings",
+      label: "Ratings",
+      value: `${split.buy} Buy · ${split.hold} Hold · ${split.sell} Sell`,
+      split: [
+        { id: "buy", value: split.buy, color: colors.positive },
+        { id: "hold", value: split.hold, color: colors.textMuted },
+        { id: "sell", value: split.sell, color: colors.negative },
+      ],
+      ...(split.period ? { detail: split.period } : {}),
+    }] : []),
   ] : [];
   const cursorTime = link.cursorDate?.getTime();
   const shown = cursorTime == null ? history.at(-1)

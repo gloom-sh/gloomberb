@@ -109,10 +109,15 @@ afterEach(async () => {
  * header that advertised an average target.
  */
 test("renders each rating's price target and only dashes the rows without one", async () => {
-  await renderHarness(research);
+  await renderHarness({
+    ...research,
+    recommendations: [{ period: "0m", strongBuy: 5, buy: 10, hold: 8, sell: 1, strongSell: 1 }],
+  });
 
   const frame = testSetup!.captureCharFrame();
   expect(frame).toMatch(/Consensus\s+\$50\.46/);
+  // Strong ratings fold into Buy and Sell, drawn as one split bar.
+  expect(frame).toMatch(/Ratings\s+15 Buy · 8 Hold · 2 Sell █+/);
   expect(frame).toContain("$47 → $42");
   expect(frame).toContain("$61");
   const noTargetRow = frame.split("\n").find((line) => line.includes("No Target"));
@@ -140,9 +145,11 @@ test("arrows walk the actions while the consensus context stays in the status ba
   expect(before).toContain("low $23.00 med $46.50 high $94.00");
   expect(before).toContain("rating 6.1/10");
   expect(before).toContain("upside vs $38.40");
-  // Body keeps the reported consensus, then the rebuilt mean it is not, with its firm count.
+  // The reported consensus is the one target figure; the rebuilt mean's line
+  // is named with its firm count and leaves its level to the axis.
   expect(before).toMatch(/Consensus\s+\$50\.46/);
-  expect(before).toMatch(/● Mean target \$59\.5\s+40 firms/);
+  expect(before).toMatch(/● Mean target\s+40 firms/);
+  expect(before).not.toMatch(/Mean target \$/);
   expect(before).not.toContain("Upside reference price");
 
   const offscreenFirm = "Firm 20";
@@ -165,20 +172,20 @@ test("the selected action is the mean-target cursor, and a short pane keeps the 
   }));
   await renderHarness({ ...research, ratings }, 24);
   // Every firm's latest target: 40 through 51.
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target \$45\.5\s+12 firms/);
+  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+12 firms/);
   await emitKeypress(testSetup!, { name: "down", sequence: "\u001b[B" }, { frames: 2 });
   await act(async () => { await Bun.sleep(200); await testSetup!.renderOnce(); });
   // The day before, Firm 00 had not published: 41 through 51.
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target \$46\s+11 firms/);
+  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+11 firms/);
   await emitKeypress(testSetup!, { name: "left" }, { frames: 2 });
   await act(async () => { await Bun.sleep(50); await testSetup!.renderOnce(); });
-  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target \$46\.5\s+10 firms/);
+  expect(testSetup!.captureCharFrame()).toMatch(/● Mean target\s+10 firms/);
   await act(async () => testSetup!.renderer.destroy());
 
   // Eleven rows: the figures, the strip, then the table's header and rows.
   await renderHarness({ ...research, ratings }, 11);
   const lines = testSetup!.captureCharFrame().split("\n");
-  expect(lines[1]).toMatch(/^ ● Mean target [⠀-⣿]+ \$45\.5/);
+  expect(lines[1]).toMatch(/^ ● Mean target [⠀-⣿]+\s*$/);
   expect(lines[2]).toContain("FIRM");
   expect(lines.filter((line) => line.includes("Raises")).length).toBeGreaterThanOrEqual(4);
 });

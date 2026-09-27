@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
-import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
+import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingSplit, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -38,12 +38,14 @@ test("status segments name an older mix's period and never claim fresh stale dat
   const text = (research: AnalystResearchData) => buildAnalystStatusSegments(research)
     .map((segment) => segment.parts.map((part) => part.text).join(" ")).join(" · ");
 
+  // The Buy/Hold/Sell split is a figure above the chart, not a footer segment.
   expect(text(research)).toBe(
-    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · SB 2  B 3  H 4  S 0 9 analysts"
-    + " · upside vs $467.50 · fetched 2h ago",
+    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 · fetched 2h ago",
   );
-  expect(text({ ...research, recommendations: [{ ...complete, period: "previous month" }] }))
-    .toContain("9 analysts (prev month)");
+  expect(ratingSplit(research)).toEqual({ buy: 5, hold: 4, sell: 0, period: null });
+  expect(ratingSplit({ ...research, recommendations: [{ ...complete, period: "previous month" }] })?.period)
+    .toBe("prev month");
+  expect(ratingSplit({ ...research, recommendations: [{ ...complete, strongSell: undefined }] })).toBeNull();
   const stale = text({ ...research, stale: true });
   expect(stale.startsWith("stale · ")).toBe(true);
   expect(stale).not.toContain("fetched");
@@ -53,7 +55,7 @@ test("status segments name an older mix's period and never claim fresh stale dat
   const info = (width: number, error: string | null = null) =>
     buildAnalystFooterInfo(research, { width, loading: false, error })
       .map((segment) => segment.parts.map((part) => part.text).join(" "));
-  expect(info(200)).toHaveLength(5);
+  expect(info(200)).toHaveLength(4);
   expect(info(60)).toEqual(["low $225.00 med $482.50 high $625.00", "rating 8.8/10"]);
   expect(info(60, "provider down")).toEqual(["provider down", "low $225.00 med $482.50 high $625.00"]);
 });

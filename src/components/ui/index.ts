@@ -34,6 +34,7 @@ export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./fie
 export type { FieldGridProps, GridField } from "./field-grid";
 export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
+export type { SplitBarPart } from "./split-bar";
 export type { QueryBarProps, QueryBarFilter, QueryBarMultiFilter, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter, QueryBarToggleFilter, QueryBarView } from "./query-bar";
 export type { TextFieldProps, NumberFieldProps } from "./fields";
 
