@@ -9,9 +9,11 @@ import {
   clearBrokerInstanceTickerData,
   ensureBrokerPortfolio,
   findReusableBrokerPortfolioId,
+  isHeldByOtherSignedInProfile,
   removeStaleBrokerPortfolios,
   resolvePortfolioBrokerId,
 } from "./broker-portfolio-sync";
+import { isSignedInBrokerProfile } from "./signed-in/profile";
 import {
   loadTickerMap,
   upsertBrokerPositionTicker,
@@ -255,37 +257,37 @@ export async function syncBrokerInstance({
   }
 
   const portfolioIds: string[] = [];
+  // Portfolios a signed-in profile holds: this profile writes nothing there.
+  const heldElsewhere = new Set<string>();
+  const claimPortfolio = (portfolioId: string, name: string, currency: string, accountId: string | undefined) => {
+    const ensured = ensureBrokerPortfolio(
+      nextConfig,
+      instance,
+      portfolioId,
+      name,
+      currency,
+      accountId,
+      syncedAt,
+      portfolioBrokerId,
+    );
+    if (isHeldByOtherSignedInProfile(ensured, portfolioId, instance)) {
+      heldElsewhere.add(portfolioId);
+      return;
+    }
+    nextConfig = ensured;
+    portfolioIds.push(portfolioId);
+  };
   if (accountIds.size > 0) {
     for (const accountId of accountIds) {
       const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, accountId, portfolioBrokerId);
       const account = accountMetadata.get(accountId);
-      nextConfig = ensureBrokerPortfolio(
-        nextConfig,
-        instance,
-        portfolioId,
-        account?.name || accountId,
-        account?.currency || "USD",
-        accountId,
-        syncedAt,
-        portfolioBrokerId,
-      );
-      portfolioIds.push(portfolioId);
+      claimPortfolio(portfolioId, account?.name || accountId, account?.currency || "USD", accountId);
     }
   } else {
     const defaultAccount = brokerAccounts[0];
     const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, defaultAccount?.accountId, portfolioBrokerId);
     const fallbackName = defaultAccount?.name || defaultAccount?.accountId || instance.label || broker.name;
-    nextConfig = ensureBrokerPortfolio(
-      nextConfig,
-      instance,
-      portfolioId,
-      fallbackName,
-      defaultAccount?.currency || "USD",
-      defaultAccount?.accountId,
-      syncedAt,
-      portfolioBrokerId,
-    );
-    portfolioIds.push(portfolioId);
+    claimPortfolio(portfolioId, fallbackName, defaultAccount?.currency || "USD", defaultAccount?.accountId);
   }
 
   const currentPortfolioIds = new Set(portfolioIds);
@@ -296,13 +298,16 @@ export async function syncBrokerInstance({
     ...portfolioIds,
   ]);
 
-  // A portfolio this profile took from another (a Flex account now signed in)
-  // drops that profile's positions, so nothing it no longer reports lingers.
-  const takenOverPortfolioIds = new Set(portfolioIds.filter((portfolioId) => {
-    const before = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
-    const after = nextConfig.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
-    return !!before && before !== instance.id && after === instance.id;
-  }));
+  // A portfolio a signed-in profile took from another (a Flex account now
+  // signed in) drops that profile's positions, so nothing it no longer reports
+  // lingers. Other take-overs, such as Gateway over Flex, keep them.
+  const takenOverPortfolioIds = new Set(isSignedInBrokerProfile(instance)
+    ? portfolioIds.filter((portfolioId) => {
+      const before = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
+      const after = nextConfig.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
+      return !!before && before !== instance.id && after === instance.id;
+    })
+    : []);
 
   nextConfig = removeStaleBrokerPortfolios(nextConfig, instance.id, currentPortfolioIds);
   const cleanedTickers = new Map<string, TickerRecord>();
@@ -323,6 +328,7 @@ export async function syncBrokerInstance({
   for (const position of positions) {
     throwIfBrokerImportCancelled(signal);
     const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, position.accountId, portfolioBrokerId);
+    if (heldElsewhere.has(portfolioId)) continue;
     const { ticker, created } = upsertBrokerPositionTicker({
       tickers,
       instance,

@@ -527,6 +527,68 @@ describe("syncBrokerInstance", () => {
     ]);
   });
 
+  test("Gateway taking over a Flex portfolio keeps what Flex imported there, and Flex still syncs into it", async () => {
+    const flex: BrokerInstanceConfig = {
+      ...createBrokerInstanceWithId("demo-flex"),
+      connectionMode: "flex",
+      config: { connectionMode: "flex", apiKey: "flex-key" },
+    };
+    const gateway: BrokerInstanceConfig = {
+      ...createBrokerInstanceWithId("demo-gateway"),
+      connectionMode: "gateway",
+      config: { connectionMode: "gateway", apiKey: "gateway-key" },
+    };
+    const portfolioId = "broker:demo-flex:ACC-1";
+    const flexPosition = (ticker: string, shares: number): TickerRecord => createTestTicker(ticker, ticker, {
+      portfolios: [portfolioId],
+      positions: [{ portfolio: portfolioId, shares, avgCost: 100, currency: "USD", broker: "demo", brokerInstanceId: "demo-flex", brokerAccountId: "ACC-1" }],
+      broker_contracts: [],
+    });
+    const config = {
+      ...createDefaultConfig("/tmp/gloomberb-sync-gateway-over-flex"),
+      portfolios: [{ id: portfolioId, name: "Primary", currency: "USD", brokerId: "demo", brokerInstanceId: "demo-flex", brokerAccountId: "ACC-1" }],
+      brokerInstances: [flex, gateway],
+    };
+    const tickerRepository = new JsonTickerRepository(undefined, [flexPosition("AAPL", 10), flexPosition("MSFT", 5)]);
+    const flexBroker: BrokerAdapter = {
+      ...createDemoBroker(),
+      importPositions: async () => [
+        { ticker: "AAPL", exchange: "NASDAQ", shares: 10, avgCost: 100, currency: "USD", accountId: "ACC-1" },
+        { ticker: "MSFT", exchange: "NASDAQ", shares: 5, avgCost: 100, currency: "USD", accountId: "ACC-1" },
+      ],
+    };
+
+    const gatewaySync = await syncBrokerInstance({
+      config,
+      instanceId: "demo-gateway",
+      brokers: new Map([["demo", createDemoBroker()]]),
+      tickerRepository,
+    });
+
+    expect(gatewaySync.config.portfolios).toEqual([expect.objectContaining({ id: portfolioId, brokerInstanceId: "demo-gateway" })]);
+    expect(gatewaySync.tickers.get("AAPL")?.metadata.positions).toEqual([
+      expect.objectContaining({ portfolio: portfolioId, shares: 12, brokerInstanceId: "demo-gateway" }),
+    ]);
+    // Gateway does not report MSFT; Flex's position stays, as it did before sign-in existed.
+    expect(gatewaySync.tickers.get("MSFT")?.metadata.positions).toEqual([
+      expect.objectContaining({ portfolio: portfolioId, shares: 5, brokerInstanceId: "demo-flex" }),
+    ]);
+    expect(gatewaySync.tickers.get("MSFT")?.metadata.portfolios).toEqual([portfolioId]);
+
+    const flexSync = await syncBrokerInstance({
+      config: gatewaySync.config,
+      instanceId: "demo-flex",
+      brokers: new Map([["demo", flexBroker]]),
+      tickerRepository,
+      existingTickers: gatewaySync.tickers,
+    });
+
+    expect(flexSync.portfolioIds).toEqual([portfolioId]);
+    expect(flexSync.tickers.get("AAPL")?.metadata.positions).toEqual([
+      expect.objectContaining({ portfolio: portfolioId, shares: 10, brokerInstanceId: "demo-flex" }),
+    ]);
+  });
+
   test("restores missing broker portfolios from existing ticker positions", () => {
     const config = {
       ...createDefaultConfig("/tmp/gloomberb-restore-broker-portfolios"),
@@ -621,5 +683,56 @@ describe("switching an account to sign-in", () => {
     expect(stateRef.current.config.brokerInstances.map((instance) => instance.id)).toEqual(["signed-in-ibkr"]);
     expect(stateRef.current.config.portfolios.map((portfolio) => portfolio.id)).toEqual([portfolioId]);
     expect(stateRef.current.tickers.get("AAPL")?.metadata.positions).toHaveLength(1);
+  });
+
+  test("a Flex sync after the switch leaves the signed-in portfolio alone", async () => {
+    const flex: BrokerInstanceConfig = {
+      id: "ibkr-flex", brokerType: "ibkr", label: "IBKR Flex", connectionMode: "flex", config: { connectionMode: "flex" }, enabled: true,
+    };
+    const signedIn: BrokerInstanceConfig = {
+      id: "signed-in-ibkr", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, enabled: true,
+    };
+    const portfolioId = "broker:ibkr-flex:U123";
+    const portfolio = {
+      id: portfolioId, name: "U123", currency: "USD", brokerId: "ibkr", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "U123", lastSyncedAt: 5,
+    };
+    const config = {
+      ...createDefaultConfig("/tmp/gloomberb-signed-in-flex-resync"),
+      portfolios: [portfolio],
+      brokerInstances: [flex, signedIn],
+    };
+    const signedInTicker = createTestTicker("AAPL", "Apple Inc.", {
+      portfolios: [portfolioId],
+      positions: [{ portfolio: portfolioId, shares: 12, avgCost: 180, currency: "USD", broker: "signed-in", brokerInstanceId: "signed-in-ibkr", brokerAccountId: "U123" }],
+      broker_contracts: [],
+    });
+    // The Flex statement is a day behind: fewer AAPL, and MSFT that has since been sold.
+    const flexBroker: BrokerAdapter = {
+      id: "ibkr",
+      name: "IBKR",
+      configSchema: [],
+      validate: async () => true,
+      listAccounts: async () => [{ accountId: "U123", name: "U123", currency: "USD" }],
+      importPositions: async () => [
+        { ticker: "AAPL", exchange: "NASDAQ", shares: 10, avgCost: 170, currency: "USD", accountId: "U123" },
+        { ticker: "MSFT", exchange: "NASDAQ", shares: 5, avgCost: 300, currency: "USD", accountId: "U123" },
+      ],
+    };
+    const tickerRepository = new JsonTickerRepository(undefined, [signedInTicker]);
+
+    const result = await syncBrokerInstance({
+      config,
+      instanceId: "ibkr-flex",
+      brokers: new Map<string, BrokerAdapter>([["ibkr", flexBroker], ["signed-in", createSignedInBrokerAdapter()]]),
+      tickerRepository,
+    });
+
+    expect(result.portfolioIds).toEqual([]);
+    expect(result.config.portfolios).toEqual([portfolio]);
+    expect(result.tickers.get("AAPL")?.metadata.positions).toEqual([
+      expect.objectContaining({ portfolio: portfolioId, shares: 12, brokerInstanceId: "signed-in-ibkr" }),
+    ]);
+    expect(result.tickers.has("MSFT")).toBe(false);
+    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toHaveLength(1);
   });
 });

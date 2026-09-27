@@ -40,6 +40,21 @@ function shouldPreferBrokerInstance(config: AppConfig, current: Portfolio, next:
   return isSignedInBrokerProfile(next) && currentMode === "flex";
 }
 
+/**
+ * Whether a signed-in profile other than `instance` holds the portfolio. Its
+ * account data there is current, so another profile of the same account (the
+ * Flex statement it replaced) leaves the portfolio alone.
+ */
+export function isHeldByOtherSignedInProfile(
+  config: AppConfig,
+  portfolioId: string,
+  instance: BrokerInstanceConfig,
+): boolean {
+  const ownerId = config.portfolios.find((portfolio) => portfolio.id === portfolioId)?.brokerInstanceId;
+  const owner = getBrokerInstance(config.brokerInstances, ownerId);
+  return !!owner && owner.id !== instance.id && isSignedInBrokerProfile(owner);
+}
+
 function updateBrokerPortfolioSource(
   config: AppConfig,
   portfolio: Portfolio,
