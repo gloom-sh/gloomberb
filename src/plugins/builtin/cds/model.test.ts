@@ -5,7 +5,6 @@ import {
   issuerGroupKey,
   normalizeCdsTrades,
   resolveIssuerQuery,
-  spreadChartHeight,
   spreadChartPoints,
   spreadFigures,
   spreadToBasisPoints,
@@ -249,14 +248,6 @@ function level(date: string, spreadBp: number): CloudCdsHistoryPointPayload {
 }
 
 describe("5Y spread chart", () => {
-  test("takes rows only when the pane can hold a chart and a table", () => {
-    expect(spreadChartHeight(92, 15)).toBe(0);
-    expect(spreadChartHeight(39, 28)).toBe(0);
-    expect(spreadChartHeight(92, 16)).toBe(6);
-    expect(spreadChartHeight(92, 26)).toBe(9);
-    expect(spreadChartHeight(92, 60)).toBe(12);
-  });
-
   test("breaks the line across three weeks without a level", () => {
     const points = spreadChartPoints([
       level("2026-06-01", 157),

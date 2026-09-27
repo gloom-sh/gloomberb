@@ -9,6 +9,17 @@ export type { StaticChartOverlay } from "./chart/static/chart-surface";
 // a cursor, and range selection. Ticker overview, polls, econ statistics,
 // and prediction markets all draw with it.
 export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
+// Figures, then a chart, then a table: the header zone, its size rule at every
+// pane size, and the selection the chart and the table share.
+export {
+  ChartStrip, ChartTableHeader, chartTableLayout, formatBpAxis, formatPercentAxis,
+  spanAxisFormatter, useChartTableLayout, useChartTableSelection,
+} from "./chart-table";
+export type {
+  ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
+  ChartTableSelection,
+} from "./chart-table";
+export { scalarPoint, staticSeries } from "./chart/static/series";
 export type {
   CompositeAxisDomain,
   CompositeAxisSide,

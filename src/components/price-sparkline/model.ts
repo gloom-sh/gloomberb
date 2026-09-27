@@ -9,31 +9,35 @@ const LIVE_POINT_STEPS = 64;
 
 export type PriceSparklineTrend = "positive" | "negative" | "neutral";
 export type PriceSparklinePeriod = "1D" | "1W" | "1M" | "1Y";
+/** A window, or "all" for every point of a series whose span the caller already chose. */
+export type SparklineWindow = PriceSparklinePeriod | "all";
 
 export interface SparklineSample {
   x: number;
   y: number;
 }
 
-const PERIOD_WINDOW_DAYS: Record<PriceSparklinePeriod, number> = {
+const PERIOD_WINDOW_DAYS: Record<SparklineWindow, number> = {
   "1D": 1,
   "1W": 7,
   "1M": 30,
   "1Y": 365,
+  all: Number.POSITIVE_INFINITY,
 };
 
-const PERIOD_FALLBACK_POINTS: Record<PriceSparklinePeriod, number> = {
+const PERIOD_FALLBACK_POINTS: Record<SparklineWindow, number> = {
   "1D": 2,
   "1W": 7,
   "1M": SPARKLINE_FALLBACK_POINTS,
   "1Y": 252,
+  all: Number.POSITIVE_INFINITY,
 };
 
 function closeValue(point: PricePoint): number | null {
   return Number.isFinite(point.close) ? point.close : null;
 }
 
-export function resolveSparklineHistory(priceHistory: PricePoint[], period: PriceSparklinePeriod = "1M"): PricePoint[] {
+export function resolveSparklineHistory(priceHistory: PricePoint[], period: SparklineWindow = "1M"): PricePoint[] {
   const validHistory = priceHistory.filter((point) => Number.isFinite(getPricePointTimestamp(point)));
   const latest = validHistory.at(-1);
   if (!latest) return [];

@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import {
+  ChartTableHeader,
   CompositeChart,
+  formatBpAxis,
   MarketBoardStack,
   PaneStatusBody,
   StatGrid,
@@ -47,12 +49,23 @@ function boardRow(row: CreditConditionRow): CreditBoardRow {
   };
 }
 
-function SpreadChart({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
-  const series = useMemo(() => [staticSeries(row.history.map((point) => ({
+function spreadHistorySeries(row: CreditConditionRow) {
+  return [staticSeries(row.history.map((point) => ({
     date: new Date(point.date), observedAt: new Date(point.date), value: point.valueBp,
-  })), { id: row.seriesId, label: row.label, color: colors.positive, calendarSpaced: true })], [row]);
+  })), { id: row.seriesId, label: `${row.label} OAS`, color: colors.positive, calendarSpaced: true })];
+}
+
+function spreadChart(row: CreditConditionRow) {
+  return {
+    series: spreadHistorySeries(row), formatValue: (value: number) => formatBp(value),
+    formatAxisValue: formatBpAxis, remoteKind: "credit-spread-history",
+  };
+}
+
+function SpreadChart({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
+  const series = useMemo(() => spreadHistorySeries(row), [row]);
   return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
-    navigable={false} showTimeAxis formatAxisValue={(value) => formatBp(value)} remoteKind="credit-spread-history" />;
+    navigable={false} showTimeAxis formatAxisValue={formatBpAxis} remoteKind="credit-spread-history" />;
 }
 
 function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow; width: number; height: number; focused: boolean }) {
@@ -120,15 +133,13 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     );
   }
 
-  // Like the funding boards, the selected index's year fills the space above the board.
+  // Like the funding boards, the selected index's year sits above the board;
+  // the legend names the index, so the chart reads without the highlighted row.
   const selected = boardRows.find((row) => row.id === selectedId) ?? boardRows[0];
-  const boardHeight = Math.max(3, Math.min(boardRows.length + 2, Math.floor(height * 0.45)));
-  const chartHeight = height - boardHeight;
-  const detailOpen = boardRows.some((row) => row.id === openId);
   return (
     <MarketBoardStack rows={boardRows} width={width} height={height} focused={focused}
-      rootBefore={selected && selected.spread.history.length >= 2 && chartHeight >= 8
-        ? <SpreadChart row={selected.spread} width={width} height={chartHeight} focused={focused && !detailOpen} /> : undefined}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={boardRows.length}
+        chart={selected ? spreadChart(selected.spread) : null} />}
       selectedId={selectedId} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
       labelHeader="INDEX" labelWidth={10} valueLabel="OAS" valueWidth={10}
       renderDetail={(row) => <SpreadDetail row={row.spread} width={width} height={Math.max(5, height - 2)} focused={focused} />} />

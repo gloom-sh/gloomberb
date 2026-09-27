@@ -413,11 +413,6 @@ export function nextSort<Id extends string>(
 
 const DAY_MS = 86_400_000;
 
-/** Rows for the 5Y chart above the trade table; 0 leaves the table alone. */
-export function spreadChartHeight(width: number, height: number): number {
-  if (width < 40 || height < 16) return 0;
-  return Math.max(5, Math.min(12, Math.floor(height * 0.38)));
-}
 
 /** Three weeks without a level breaks the line instead of drawing one nobody traded. */
 const CHART_GAP_MS = 21 * DAY_MS;

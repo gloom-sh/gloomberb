@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  CompositeChart,
+  ChartTableHeader,
   DataTableStackView,
   DataTableView,
-  EmptyState, PaneStatusBody, StatGrid,
+  EmptyState, formatBpAxis, PaneStatusBody, staticSeries,
+  useChartTableSelection,
   usePaneMenuItems,
   usePaneNoticeFooter,
   type DataTableCell,
@@ -12,13 +13,11 @@ import {
   type StatItem
 } from "../../../components";
 import type { CloudCdsHistoryPointPayload } from "../../../api-client";
-import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { staticSeries } from "../../../components/chart/static/series";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
@@ -47,7 +46,6 @@ import {
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
-  spreadChartHeight,
   spreadChartPoints,
   spreadFigures,
   summarizeIssuers,
@@ -98,15 +96,14 @@ const renderIssuerRow = (
   _index: number,
   state: { selected: boolean },
 ) => renderIssuerCell(row, column, state.selected);
-const renderTradeRow = (
-  trade: CdsTrade,
-  column: TradeColumn,
-  _index: number,
-  state: { selected: boolean },
-) => renderTradeCell(trade, column, state.selected);
-
-function renderTradeCell(row: CdsTrade, column: TradeColumn, selected: boolean): DataTableCell {
-  const selectedColor = selected ? colors.selectedText : undefined;
+/**
+ * Trades on another contract than the one the 5Y line follows are dimmed, so
+ * the headline, the line and the bright rows describe the same instrument.
+ */
+function renderTradeCell(row: CdsTrade, column: TradeColumn, selected: boolean, lineMaturity: string | null): DataTableCell {
+  const selectedColor = selected
+    ? colors.selectedText
+    : lineMaturity && row.maturity !== lineMaturity ? colors.textDim : undefined;
   switch (column.id) {
     case "time":
       return { text: formatEventTime(row.eventAt), color: selectedColor ?? colors.textMuted };
@@ -142,6 +139,7 @@ function CdsTradeTable({
   onSelect,
   onKeyDown,
   before,
+  lineMaturity = null,
 }: {
   trades: CdsTrade[];
   focused: boolean;
@@ -153,8 +151,13 @@ function CdsTradeTable({
   onSelect: (id: string | null) => void;
   onKeyDown: (event: DataTableKeyEvent) => boolean;
   before?: ReactNode;
+  /** The contract the 5Y line follows today. */
+  lineMaturity?: string | null;
 }) {
   const columns = useMemo(() => buildTradeColumns(width), [width]);
+  const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn, _index: number, state: { selected: boolean }) => (
+    renderTradeCell(trade, column, state.selected, lineMaturity)
+  ), [lineMaturity]);
   return (
     <DataTableView<CdsTrade, TradeColumn>
       focused={focused}
@@ -182,62 +185,42 @@ function CdsTradeTable({
 
 const NO_TRADES: CdsTrade[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
-const PANELS = [{ id: "main" }];
-const DAY_MS = 86_400_000;
-/** A daily series: a few levels still span two weeks, so the axis reads days, not hours. */
-const MIN_CHART_SPAN_MS = 14 * DAY_MS;
+const tradeDate = (trade: CdsTrade) => new Date(trade.eventAt);
 
-/** Whole bp unless the plotted range is narrow enough for rounding to repeat a label. */
-function formatAxisBp(value: number, domain: CompositeAxisDomain): string {
-  const span = domain.max - domain.min;
-  return `${value.toFixed(span >= 10 ? 0 : span >= 1 ? 1 : 2)}bp`;
-}
-
-function SpreadChart({ points, width, height, focused }: {
-  points: readonly CloudCdsHistoryPointPayload[];
-  width: number;
-  height: number;
-  focused: boolean;
-}) {
-  const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
-    id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
-  })], [points]);
-  const viewport = useMemo(() => {
-    const first = Date.parse(`${points[0]?.date}T00:00:00Z`);
-    const last = Date.parse(`${points.at(-1)?.date}T00:00:00Z`);
-    return last - first < MIN_CHART_SPAN_MS
-      ? { start: new Date(last - MIN_CHART_SPAN_MS), end: new Date(last + DAY_MS) }
-      : undefined;
-  }, [points]);
-  return (
-    <Box paddingX={1} flexShrink={0}>
-      <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={height}
-        focused={focused} showLegend={false} navigable={false} showTimeAxis viewport={viewport}
-        formatAxisValue={formatAxisBp} remoteKind="cds-spread-history" />
-    </Box>
-  );
-}
-
-/** The issuer's figures, then its 5Y line when the pane has rows to spare for it. */
-function IssuerHeader({ issuer, points, width, height, focused }: {
+/**
+ * The issuer's figures, then its 5Y line over the trades, sized by the chart
+ * table layout. The selected trade is the chart's cursor.
+ */
+function IssuerHeader({ issuer, points, trades, width, height, focused, loading, selectedId, onSelect }: {
   /** Left out in the stack detail, whose title already names the issuer. */
   issuer?: string;
   points: readonly CloudCdsHistoryPointPayload[];
+  trades: readonly CdsTrade[];
   width: number;
   height: number;
   focused: boolean;
+  loading: boolean;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 }) {
-  const items: StatItem[] = [
-    ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
+  // The level first: in a short pane the figures at the end give way.
+  const figures: StatItem[] = [
     ...spreadFigures(points),
+    ...(issuer ? [{ id: "issuer", label: "Issuer", value: issuer }] : []),
   ];
-  const chartHeight = points.length >= 2 ? spreadChartHeight(width, height) : 0;
-  if (!items.length) return null;
+  const series = useMemo(() => [staticSeries(spreadChartPoints(points), {
+    id: "cds-5y", label: "5Y spread", color: colors.positive, calendarSpaced: true,
+  })], [points]);
+  const link = useChartTableSelection({
+    rows: trades, getId: tradeKey, getDate: tradeDate,
+    selectedId: selectedId && trades.some((trade) => trade.id === selectedId) ? selectedId : trades[0]?.id ?? null,
+    onSelect, focused,
+  });
   return (
-    <Box flexDirection="column" flexShrink={0}>
-      <StatGrid items={items} width={width} />
-      {chartHeight ? <SpreadChart points={points} width={width} height={chartHeight} focused={focused} /> : null}
-    </Box>
+    <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
+      chart={points.length >= 2 || loading ? {
+        series, formatValue: formatBp, formatAxisValue: formatBpAxis, remoteKind: "cds-spread-history", loading, ...link,
+      } : null} />
   );
 }
 
@@ -295,6 +278,9 @@ export function CdsPane({
   const history = useAsyncResource(historyIssuer ? historyRequest : null);
   useAutoRefresh(history.updatedAt, history.load);
   const spreadPoints = history.data?.points ?? NO_POINTS;
+  // The band holds its rows while the first history loads, so the trades do not jump.
+  const historyLoading = !!historyIssuer && history.loading && !history.data;
+  const lineMaturity = spreadPoints.at(-1)?.maturity ?? null;
   // Without it a failed request reads as a name with no 5Y line.
   usePaneNoticeFooter({
     registrationId: `${paneId}:cds-history`,
@@ -384,8 +370,9 @@ export function CdsPane({
     // issuer name the backend was actually queried for, which is the expanded
     // company name once instrument search has resolved a bare symbol.
     const header = (
-      <IssuerHeader issuer={activity.issuer ?? issuerQuery} points={spreadPoints}
-        width={width} height={height} focused={focused} />
+      <IssuerHeader issuer={activity.issuer ?? issuerQuery} points={spreadPoints} trades={visibleTrades}
+        width={width} height={height} focused={focused} loading={historyLoading}
+        selectedId={selectedTradeId} onSelect={setSelectedTradeId} />
     );
     return (
       <CdsTradeTable
@@ -399,6 +386,7 @@ export function CdsPane({
         onSelect={setSelectedTradeId}
         onKeyDown={handleTradeKey}
         before={header}
+        lineMaturity={lineMaturity}
       />
     );
   }
@@ -415,15 +403,17 @@ export function CdsPane({
           trades={visibleTrades}
           focused={focused && detailOpen}
           width={width}
-          before={spreadPoints.length ? (
-            <IssuerHeader points={spreadPoints} width={width} height={Math.max(0, height - 2)}
-              focused={focused && detailOpen} />
+          before={spreadPoints.length || historyLoading ? (
+            <IssuerHeader points={spreadPoints} trades={visibleTrades} width={width}
+              height={Math.max(0, height - 1)} focused={focused && detailOpen} loading={historyLoading}
+              selectedId={selectedTradeId} onSelect={setSelectedTradeId} />
           ) : undefined}
           sort={tradeSort}
           onSort={(columnId) => setTradeSort((current) => nextSort(current, columnId, DEFAULT_TRADE_SORT))}
           selectedId={selectedTradeId}
           onSelect={setSelectedTradeId}
           onKeyDown={handleTradeKey}
+          lineMaturity={lineMaturity}
         />
       ) : null}
       onDetailKeyDown={handleTradeKey}

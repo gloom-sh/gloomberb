@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
+import { ChartTableHeader, DataTableStackView, EmptyState, formatPercentAxis, KeyValueRow, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -15,8 +15,8 @@ import { cachedShortVolume, loadShortVolume } from "./client";
 import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
-const PANELS = [{ id: "main" }];
 const DETAIL_LABEL_WIDTH = 26;
+const rowDate = (row: ShortVolumeObservation) => row.ratioPercent == null ? null : new Date(row.date);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
   const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
     : column.id === "status" ? volumePointStatus(row) : volumeQuantity(row[column.id]);
@@ -58,12 +58,24 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const openRow = rows.find((row) => rowKey(row) === openId);
   const selected = openRow ?? rows[selectedIndex];
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
+  // The legend names the series, so it reads the same as the SHORT % column.
   const series = useMemo(() => [staticSeries(data ? volumeHistoryPoints(data) : [], {
-    id: "daily-short-ratio", label: "Off-exchange short ratio (%)", color: colors.warning, calendarSpaced: true,
-  })], [data]);
-  const chartHeight = height >= 16 ? Math.max(5, Math.min(12, Math.floor(height * .38))) : 0;
+    id: "daily-short-ratio", label: scope === "otc" ? "OTC short %" : "Short %", color: colors.warning, calendarSpaced: true,
+  })], [data, scope]);
   const latest = data?.latest;
   const stats = latest?.percentile;
+  const link = useChartTableSelection({
+    rows, getId: rowKey, getDate: rowDate, selectedId: rows[selectedIndex] ? rowKey(rows[selectedIndex]!) : null,
+    onSelect: setSelectedId, focused: focused && !openRow,
+  });
+  // "Short ratio" reads as days to cover, so the figures name the table's SHORT % column.
+  const figures: StatItem[] = [
+    { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
+      detail: `${stats?.value == null ? "--" : stats.value.toFixed(0)} pctl ${stats?.completeWindow ? "1Y" : "sample"}` },
+    { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
+    { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
+      detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },
+  ];
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "short-volume:notices", focused,
@@ -88,20 +100,9 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
         detailTitle={openRow?.date} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as VolumeSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
-        rootBefore={<Box flexDirection="column" flexShrink={0}>
-          {/* "Short ratio" reads as days to cover, so the band names the table's SHORT % column. */}
-          <StatGrid width={width} items={[
-            { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
-              detail: `${stats?.value == null ? "--" : stats.value.toFixed(0)} pctl ${stats?.completeWindow ? "1Y" : "sample"}` },
-            { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
-            { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
-              detail: stats ? `${stats.historyStart ?? "--"} to ${stats.historyEnd ?? "--"}` : undefined },
-          ]} />
-          {chartHeight && data.history.some((point) => point.ratioPercent !== null) ? <Box paddingX={1} flexShrink={0}>
-            <CompositeChart series={series} panels={PANELS} width={Math.max(1, width - 2)} height={chartHeight} focused={focused && !openRow} showLegend={false} showTimeAxis navigable={false}
-              formatAxisValue={(value) => `${value.toFixed(0)}%`} remoteKind="short-volume-history" />
-          </Box> : null}
-        </Box>}
+        rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={figures} chart={{
+          series, formatValue: volumePercent, formatAxisValue: formatPercentAxis, remoteKind: "short-volume-history", ...link,
+        }} />}
       /> : null}
     </PaneStatusBody>
   </Box>;

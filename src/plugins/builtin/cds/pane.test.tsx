@@ -191,12 +191,19 @@ describe("CdsPane", () => {
     expect(tableHeader).toBeGreaterThanOrEqual(8);
   });
 
-  test("keeps figures but drops the chart in a short pane", async () => {
+  test("fits the chart into a short pane's spare rows, then gives way to a strip", async () => {
+    // Three trades need four rows, so a 12-row pane still has six for the chart.
     await renderPane({ symbol: "ORCL", height: 12, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
-    const lines = setup!.captureCharFrame().split("\n");
-    const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
-    expect(lines.join("\n")).toContain("235bp");
-    expect(tableHeader).toBeLessThanOrEqual(3);
+    let lines = setup!.captureCharFrame().split("\n");
+    expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(12 - 4);
+    expect(lines.some((line) => line.includes("● 5Y spread"))).toBe(true);
+    await act(async () => setup?.renderer.destroy());
+    // Nine rows: one row of figures, the strip, then every trade.
+    await renderPane({ symbol: "ORCL", height: 9, activity: { ...ACTIVITY, issuer: "Oracle Corporation" } });
+    lines = setup!.captureCharFrame().split("\n");
+    expect(lines[0]).toContain("235bp");
+    expect(lines.findIndex((line) => line.includes("TIME UTC"))).toBe(2);
+    expect(lines.filter((line) => /\d{2}\/\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
   });
 
   test("still lists trades when the history request fails", async () => {

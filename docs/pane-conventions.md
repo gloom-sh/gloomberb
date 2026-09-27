@@ -159,6 +159,64 @@ footer shows `loading more` while a page is in flight. Restoring a persisted
 open item past the first page expands to that page first. Client-side "reveal
 more of what is loaded" uses the same helper.
 
+## 5b. A chart over a table
+
+The pane that shows figures, a chart and the rows behind it (daily short
+volume, credit spreads, a futures curve, a CDS spread) has one layout, built
+with `ChartTableHeader` in the table's `rootBefore`. Never split rows between
+a chart and a table by hand.
+
+**Order.** Query bar, figures (`StatGrid`), chart, table. Range and window
+controls go in the query bar and govern the chart and the table together.
+
+**The chart says what it plots.** The legend row is the caption: each series
+is named in the table's words (`Short %`, `US HY OAS`, `5Y spread`) and shows
+its value, the latest one until the cursor moves. Units live in the axis
+labels. No loose title line above a chart, no `yAxisLabel` row, no unnamed
+single line. A chart that follows the selected row names that row.
+
+**The chart earns its rows.** It shows what the table cannot: a trend, a
+curve's shape, how a level moved (look-back curves, trails). The table adds
+what the chart cannot: dates, events, per-row detail. When every table row is
+just a point of the chart, give the table a change column or fold the chart
+into an inline bar column instead of drawing the same numbers twice.
+
+**One selection.** The table's selected row is the chart's cursor (a time
+series), the chart's series (a board of instruments) or the curve's point.
+`useChartTableSelection` wires it: Left and Right step through time from the
+table in the direction the chart reads, whatever the sort; hovering the chart
+previews without moving the selection; clicking it selects the nearest row.
+Inside this layout the chart takes no keys of its own and is never
+`navigable`.
+
+**Every size.** `chartTableLayout` decides, so every pane shrinks and grows
+the same way:
+
+| Pane body | Figures | Band | Table |
+|---|---|---|---|
+| Room for the chart (six rows: legend, four plot rows, axis) and the table's header plus four rows | up to a quarter of the body, trimmed from the end | the chart, 40% of what the figures leave, or all the rows a short table does not need | the rest; all its rows when they fit |
+| Too short for that | one row | one row: `● label` sparkline value | the rest |
+| Shorter still, or narrower than 24 columns | one row | none | the rest |
+
+- The table keeps its header and four rows (all of them when it has fewer)
+  at every size; the chart gives way first, then the second row of figures.
+- Figures are listed most important first; the ones at the end go when rows
+  run short, and the strip leaves out what the remaining figures already say.
+- A short table never leaves a blank band: the chart grows into its spare rows.
+- Custom charts (curves, scatters) pass their own `minRows` and a `strip`.
+- The desktop uses the same rows for the band and lets the table fill below.
+
+**Axis.** Tick labels never repeat and take their decimals from the plotted
+range (`formatBpAxis`, `formatPercentAxis`, `spanAxisFormatter`). A daily
+series shorter than two weeks still spans two weeks, so the axis reads days.
+
+**Loading and failure.** While a separate history request loads, the band
+holds its rows (`loading`) so the table does not jump. A failed history is a
+footer notice and the band collapses; the table stays.
+
+**Details.** A stack detail that shows a chart and a table uses the same
+header, with the detail's height.
+
 ## 6. Tabs
 
 - `Tabs` is the only tab strip: controlled, mouse, `h`/`l` and arrows while
@@ -306,6 +364,7 @@ more of what is loaded" uses the same helper.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
 14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
+15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
 
 ## Reference implementations
 
@@ -332,4 +391,7 @@ All under `src/plugins/builtin/` unless noted.
 | Status, notice, empty state | `src/components/ui/status.tsx` |
 | Load-more helper | `src/components/table-view-shared.tsx` |
 | Stack | `src/components/data-table/stack-view.tsx`, `ui/page-stack-view.tsx` |
+| Figures, chart and table, selection drives the cursor | `short-volume/pane.tsx` |
+| Board whose chart follows the selected row | `credit-conditions/index.tsx` |
+| Chart over table layout, strip, selection | `src/components/chart-table/` |
 | Rationale in prose | `docs/research-data.md` intro, `PLUGINS.md` UI guidelines |
