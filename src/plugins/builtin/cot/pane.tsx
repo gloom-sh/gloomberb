@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { CompositeChart, DataTableStackView, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
+import { ChartTableHeader, CompositeChart, DataTableStackView, DataTableView, PaneStatusBody, QueryBar, Tabs, usePaneFooter, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type ChartTableChart, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
+import type { ResolvedSeries } from "../../../time-series/types";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
 import { isAccessDenied } from "../../../api-client/errors";
 import { Box, type InputRenderable } from "../../../ui";
@@ -31,6 +32,11 @@ const POSITION_COLUMNS: DataTableColumn[] = [
   { id: "one", label: "PCTL 1Y", width: 8, align: "right" },
   { id: "three", label: "PCTL 3Y", width: 8, align: "right" },
 ];
+/** Net positioning is the subject: two parts of the plot to the front price's one. */
+const NET_PRICE_PANELS = [{ id: "net", height: 2 }, { id: "price", height: 1 }];
+const NET_PANEL = [{ id: "net" }];
+/** Legend, four net rows, two price rows and the axis; a shorter band keeps the net alone. */
+const PRICE_PANEL_MIN_ROWS = 8;
 const rank = (value: number | null) => value == null ? "--" : value.toFixed(0);
 const cotDetailTitle = (name: string | undefined, code: string | null) => name ? cotMarketName(name) : code ?? undefined;
 
@@ -122,8 +128,20 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       ]} />}
     emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen("")}
     detailTitle={cotDetailTitle(data?.rows.find((row) => row.contractCode === open)?.marketName, open)}
-    detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 2)} focused={focused}
+    detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 1)} focused={focused}
       code={open} family={family} traderClass={traderClass} onClassChange={setClass} /> : null} />;
+}
+
+/**
+ * The charted class's net over the contract's history, with the front price
+ * below it when the band has rows for both. The legend formats each series in
+ * its own units, which the kit's value-only formatter cannot.
+ */
+function CotChart({ series, width, height }: { series: ResolvedSeries[]; width: number; height: number }) {
+  const withPrice = series.length > 1 && height >= PRICE_PANEL_MIN_ROWS;
+  const shown = useMemo(() => withPrice ? series : series.filter((entry) => entry.id === "net"), [series, withPrice]);
+  return <CompositeChart series={shown} panels={withPrice ? NET_PRICE_PANELS : NET_PANEL} width={width} height={height}
+    focused={false} navigable={false} showLegend showTimeAxis formatValue={cotLegendValue} remoteKind="cot-history" />;
 }
 
 function CotDetail({ width, height, focused, code, family, traderClass, onClassChange }: Pick<PaneProps, "width" | "height" | "focused"> & { code: string; family: CotFamily; traderClass: CotClass; onClassChange: (value: CotClass) => void }) {
@@ -136,13 +154,18 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   const current = payload?.positions.find((row) => row.id === traderClass);
   const series = useMemo(() => data ? cotChartSeries(data.payload, traderClass, data.price, colors) : [], [data, traderClass, colors]);
   // The selected class row already carries the net and both ranks, and the
-  // legend the charted net, so the detail opens on the chart. A rank over a
-  // short history is a limitation, so it sits behind the warning.
+  // legend names the class it charts, so the detail opens on the chart. A rank
+  // over a short history is a limitation, so it sits behind the warning.
   const partialRanks = current ? ([1, 3] as const).flatMap((years) => {
     const window = years === 1 ? current.percentile1Y : current.percentile3Y;
     return window.completeWindow ? [] : [`${years}Y percentiles rank a partial history${window.historyStart ? ` from ${window.historyStart}` : ""}.`];
   }) : [];
-  const chartHeight = Math.max(6, Math.floor((height - 1) * 0.65));
+  const charted = (series.find((entry) => entry.id === "net")?.points ?? []).filter((point) => point.value != null).length >= 2;
+  const chart = useMemo<ChartTableChart | null>(() => charted ? {
+    // The kit reads the strip from the first series, the net.
+    series, formatValue: (value) => cotInteger(value, true),
+    render: (size) => <CotChart series={series} width={size.width} height={size.height} />,
+  } : null, [charted, series]);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && !event.targetEditable && !event.ctrl && !event.meta && !event.alt && !event.super && event.name === "r") {
@@ -153,15 +176,13 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
-    {payload && data ? <Box width={width} height={height} flexDirection="column">
-      <CompositeChart series={series} panels={data.price.length ? [{ id: "price", height: 2 }, { id: "net", height: 1 }] : [{ id: "net" }]}
-        width={width} height={chartHeight} focused={focused} showLegend showTimeAxis navigable={false} formatValue={cotLegendValue} remoteKind="cot-history" />
-      <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={Math.max(3, height - chartHeight)}
-        selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
-        onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc"
-        renderCell={(row: CotClassSummary, column) => ({ text: column.id === "name" ? row.label : column.id === "one" ? rank(row.percentile1Y.value)
-          : column.id === "three" ? rank(row.percentile3Y.value) : cotInteger(column.id === "change" ? row.weeklyChange : row[column.id as "long" | "short" | "net"], column.id === "net" || column.id === "change") })}
-        emptyStateTitle="Position classes unavailable." />
-    </Box> : null}
+    {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}
+        tableColumns={POSITION_COLUMNS} />}
+      selection={{ kind: "id", selectedId: traderClass, getId: (row) => row.id, onChange: (id) => onClassChange(id as CotClass) }}
+      onActivate={(row) => onClassChange(row.id)} getItemKey={(row) => row.id} sortColumnId={null} sortDirection="asc"
+      renderCell={(row: CotClassSummary, column) => ({ text: column.id === "name" ? row.label : column.id === "one" ? rank(row.percentile1Y.value)
+        : column.id === "three" ? rank(row.percentile3Y.value) : cotInteger(column.id === "change" ? row.weeklyChange : row[column.id as "long" | "short" | "net"], column.id === "net" || column.id === "change") })}
+      emptyStateTitle="Position classes unavailable." /> : null}
   </PaneStatusBody>;
 }

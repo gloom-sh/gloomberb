@@ -5,6 +5,7 @@ export {
   CHART_MIN_WIDTH,
   CHART_SHARE,
   TABLE_MIN_BODY_ROWS,
+  chartTableChromeRows,
   chartTableLayout,
 } from "./layout";
 export type { ChartBandMode, ChartTableLayout, ChartTableLayoutInput } from "./layout";

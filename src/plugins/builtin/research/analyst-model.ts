@@ -479,3 +479,20 @@ export function buildAnalystTargetHistory(
 
   return history;
 }
+
+/** Firms the mean needs before the line starts, or every covered firm when fewer. */
+const MEAN_TARGET_START_FIRMS = 5;
+
+/**
+ * The line the pane draws: the mean of each covered firm's latest target, from
+ * the first day at least five firms (or all of them, when fewer cover the
+ * stock) are in it, so the line does not open on one or two firms' targets.
+ */
+export function buildMeanTargetHistory(
+  ratings: readonly AnalystRatingRecord[],
+  options: { windowDays?: number; spanDays?: number } = {},
+): AnalystTargetHistoryPoint[] {
+  const finalFirms = buildAnalystTargetHistory(ratings, { ...options, minFirms: 1 }).at(-1)?.firms ?? 0;
+  if (finalFirms === 0) return [];
+  return buildAnalystTargetHistory(ratings, { ...options, minFirms: Math.min(MEAN_TARGET_START_FIRMS, finalFirms) });
+}

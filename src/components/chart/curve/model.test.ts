@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { buildCompositeChartScene } from "../composite/scene";
-import { buildCurveChart, curveSlope, curveTableRows, historyStatistics, type CurveSeries } from "./model";
+import { buildCurveChart, curvePlotWidth, curveSlope, curveStrip, curveSurfaceMinRows, curveTableRows, historyStatistics, type CurveSeries } from "./model";
 
 const primary: CurveSeries = {
   id: "current", label: "Today", asOf: "2026-09-21",
@@ -112,4 +112,54 @@ test("axis ticks leave room for edge labels that pin inward", () => {
   // At 120 columns the second expiry sits eleven columns in: clear of a centered label, not of the pinned first one.
   const chart = buildCurveChart([{ id: "current", label: "Latest", asOf: null, points }], 120, ["green"]);
   expect(chart.ticks.map((tick) => tick.label)).toEqual(["26-10-20", "29-07-16"]);
+});
+
+const maturities: CurveSeries = { id: "yield", label: "Yield", points: [0.25, 1, 4, 16].map((years, index) => ({
+  id: `${years}`, label: `${years}Y`, x: years, value: 4 + index / 10 })) };
+
+test("a log axis spreads maturities by ratio and an even axis gives every row one slot", () => {
+  const log = buildCurveChart([maturities], 80, ["green"], { xScale: "log" });
+  [0, 1 / 3, 2 / 3, 1].forEach((ratio, index) => expect(log.ratioOf([0.25, 1, 4, 16][index]!)).toBeCloseTo(ratio, 12));
+  expect(log.fromDate(log.toDate(4))).toBeCloseTo(4, 9);
+  const marker: CurveSeries = { id: "meeting", label: "Meeting", role: "marker", points: [{ id: "m", label: "Meeting", x: 2.5, value: 4 }] };
+  const even = buildCurveChart([{ ...maturities, points: maturities.points.map((point, index) => ({ ...point, x: [1, 2, 10, 30][index]! })) }, marker],
+    80, ["green", "gray"], { xScale: "even" });
+  expect([1, 2, 10, 30].map((x) => even.ratioOf(x))).toEqual([0, 1 / 3, 2 / 3, 1]);
+  // A marker between two rows sits between their slots, drawn as a point and never labelling the axis.
+  expect(even.ratioOf(2.5)).toBeCloseTo(1 / 3 + 0.5 / 8 / 3, 12);
+  expect(even.fromDate(even.toDate(2.5))).toBeCloseTo(2.5, 9);
+  expect(even.series[1]!.style).toBe("points");
+  expect(even.ticksAt(200).map((tick) => tick.label)).not.toContain("Meeting");
+  // Maturities at or below zero cannot sit on a log axis, so it reads by value.
+  const linear = buildCurveChart([{ ...maturities, points: [{ id: "0", label: "0", x: 0, value: 1 }, ...maturities.points] }], 80, ["green"], { xScale: "log" });
+  expect(linear.ratioOf(8)).toBeCloseTo(0.5, 12);
+});
+
+test("references and markers are drawn but never rows", () => {
+  const reference: CurveSeries = { id: "policy", label: "Policy", role: "reference", points: [
+    { id: "a", label: "", x: 0.25, value: 4 }, { id: "b", label: "", x: 16, value: 4 }] };
+  const rows = curveTableRows([maturities, reference]);
+  expect(rows.map((row) => row.id)).toEqual(["0.25", "1", "4", "16"]);
+  expect(rows[0]!.points.policy).toBeUndefined();
+  expect(buildCurveChart([maturities, reference], 80, ["green", "gray"]).series.map((entry) => entry.id)).toEqual(["yield", "policy"]);
+});
+
+test("ticks are culled at the plot's width, which leaves the value axis its labels", () => {
+  const chart = buildCurveChart([maturities], 40, ["green"], { xScale: "log" });
+  const format = (value: number) => `${value.toFixed(2)}%`;
+  const plot = curvePlotWidth(chart.series, 40, 6, format);
+  // "4.30%" is five cells, plus the gap before the plot.
+  expect(plot).toBe(34);
+  expect(chart.ticksAt(plot).map((tick) => tick.label)).toEqual(["0.25Y", "1Y", "4Y", "16Y"]);
+  expect(chart.ticksAt(16).map((tick) => tick.label)).toEqual(["0.25Y", "16Y"]);
+});
+
+test("the strip and the minimum rows describe a curve for the chart-table kit", () => {
+  const strip = curveStrip([maturities], (value) => value.toFixed(2), { caption: "Yield % by maturity", selectedPointId: "1" });
+  expect(strip).toEqual({ label: "Yield % by maturity", values: [4, 4.1, 4.2, 4.3], value: "1Y 4.10", color: undefined });
+  expect(curveStrip([maturities], String)?.value).toBe("16Y 4.3");
+  expect(curveStrip([{ ...maturities, points: maturities.points.slice(0, 1) }], String)).toBeNull();
+  expect(curveSurfaceMinRows({ series: [maturities], width: 80, caption: "Yield %" })).toBe(7);
+  const many = Array.from({ length: 6 }, (_, index) => ({ ...maturities, id: `s${index}`, label: `Series number ${index}` }));
+  expect(curveSurfaceMinRows({ series: many, width: 40 })).toBeGreaterThan(7);
 });

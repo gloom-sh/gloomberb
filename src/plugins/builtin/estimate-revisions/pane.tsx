@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, ScrollBox, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, type ScrollBoxRenderable } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -8,16 +8,16 @@ import {
   useShortcut,
 } from "../../../public/react";
 import {
-  CompositeChart,
+  ChartTableHeader,
   DataTableStackView,
   DataTableView,
   EmptyState,
   KeyValueRow,
   PaneStatusBody,
   Prose,
-  StatGrid,
-  statGridRows,
+  spanAxisFormatter,
   Tabs,
+  useChartTableSelection,
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
@@ -28,6 +28,7 @@ import {
 import { isAccessDenied } from "../../../api-client/errors";
 import { listingIdentity } from "../shared/ticker-request";
 import type {
+  EstimateObservation,
   EstimatePeriod,
   EstimateSurprise,
 } from "../../../api-client/estimate-revisions";
@@ -72,7 +73,6 @@ const TABS = [
   { value: "surprises", label: "Surprises" },
   { value: "guidance", label: "Guidance" },
 ];
-const PANELS = [{ id: "main" }];
 const GUIDANCE_COLUMNS: DataTableColumn[] = [
   ...PERIOD_COLUMNS.filter((column) =>
     ["period", "currency", "eps", "percentile", "asOf"].includes(column.id),
@@ -96,6 +96,17 @@ const SURPRISE: DataTableColumn[] = [
   { id: "percent", label: "SURPRISE %", width: 12, align: "right" },
   { id: "percentile", label: "PCTL 1Y", width: 9, align: "right" },
 ];
+const historyId = (row: EstimateObservation) => `${row.source}:${row.date}`;
+const historyDate = (row: EstimateObservation) => new Date(`${row.date}T00:00:00Z`);
+const historySource = (row: EstimateObservation) => row.source === "yahoo" ? "Recorded" : "Reported lookback";
+/** EPS ticks with the decimals the plotted range needs. */
+const formatEpsAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
+
+/**
+ * One fiscal period: its consensus figures, the EPS history as recorded and
+ * as reported in lookbacks, then every observation. The selected observation
+ * is the chart's cursor.
+ */
 function EstimateDetail({
   period,
   width,
@@ -121,6 +132,8 @@ function EstimateDetail({
     "estimate-history:row",
     null,
   );
+  const selectedId = rows.some((row) => historyId(row) === selected) ? selected : rows[0] ? historyId(rows[0]) : null;
+  // The legend names each line as the SOURCE column does.
   const series = useMemo(
     () => [
       staticSeries(estimatePoints(period.recorded), {
@@ -131,14 +144,16 @@ function EstimateDetail({
       }),
       staticSeries(estimatePoints(period.lookbacks), {
         id: "lookbacks",
-        label: "Reported lookbacks",
+        label: "Reported lookback",
         color: colors.warning,
         calendarSpaced: true,
       }),
     ],
     [period, colors],
   );
-  const { nativePaneChrome } = useUiCapabilities();
+  const link = useChartTableSelection({
+    rows, getId: historyId, getDate: historyDate, selectedId, onSelect: setSelected, focused,
+  });
   const breadth = period.breadth.find((row) => row.days === 30);
   const asOf = current?.date;
   // The latest observation date is said once, on the consensus; the other
@@ -181,71 +196,44 @@ function EstimateDetail({
       detail: otherDate(period.revenue.asOf),
     }] : []),
   ];
-  const figureRows = statGridRows(figures, width);
-  const chartHeight = Math.max(4, Math.floor((height - figureRows - 2) * 0.6));
-  // The desktop table takes whatever the chart leaves, down to the footer; the
-  // terminal splits its rows by count.
+  const hasHistory = rows.some((row) => row.average != null);
   return (
-    <Box
-      width={width}
-      height={nativePaneChrome ? undefined : height}
-      flexGrow={nativePaneChrome ? 1 : undefined}
-      flexBasis={nativePaneChrome ? 0 : undefined}
-      minHeight={nativePaneChrome ? 0 : undefined}
-      flexDirection="column"
-    >
-      <StatGrid items={figures} width={width} />
-      {rows.some((row) => row.average != null) ? (
-        <CompositeChart
-          series={series}
-          panels={PANELS}
-          width={width}
-          height={chartHeight}
-          focused={focused}
-          showTimeAxis
-          showLegend
-          navigable={false}
-          formatAxisValue={number}
-          remoteKind="estimate-revision-history"
-        />
-      ) : (
-        <EmptyState title="No observed revision history." />
-      )}
-      <DataTableView
-        columns={HISTORY}
-        items={rows}
-        focused={focused}
-        rootWidth={width}
-        rootHeight={Math.max(3, height - figureRows - chartHeight - 1)}
-        selection={{
-          kind: "id",
-          selectedId: selected,
-          getId: (row) => `${row.source}:${row.date}`,
-          onChange: setSelected,
-        }}
-        getItemKey={(row) => `${row.source}:${row.date}`}
-        onActivate={(row) => setSelected(`${row.source}:${row.date}`)}
-        sortColumnId={historySort.column}
-        sortDirection={historySort.direction}
-        onHeaderClick={(column) =>
-          setHistorySort((old) => nextEstimateSort(old, column))
-        }
-        renderCell={(row, column) => ({
-          text:
-            column.id === "date"
-              ? row.date
-              : column.id === "source"
-                ? row.source === "yahoo"
-                  ? "Recorded"
-                  : "Reported lookback"
-                : number(
-                    row[column.id as "average" | "low" | "high" | "analysts"],
-                  ),
-          color: row.source === "yahoo" ? colors.text : colors.warning,
-        })}
-        emptyStateTitle="No stored observations."
-      />
-    </Box>
+    <DataTableView<EstimateObservation>
+      columns={HISTORY}
+      items={rows}
+      focused={focused}
+      rootWidth={width}
+      rootHeight={height}
+      rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={figures}
+        chart={hasHistory ? {
+          series, formatValue: number, formatAxisValue: formatEpsAxis, remoteKind: "estimate-revision-history", ...link,
+        } : null} />}
+      selection={{
+        kind: "id",
+        selectedId,
+        getId: historyId,
+        onChange: setSelected,
+      }}
+      getItemKey={historyId}
+      onActivate={(row) => setSelected(historyId(row))}
+      sortColumnId={historySort.column}
+      sortDirection={historySort.direction}
+      onHeaderClick={(column) =>
+        setHistorySort((old) => nextEstimateSort(old, column))
+      }
+      renderCell={(row, column, _index, state) => ({
+        text:
+          column.id === "date"
+            ? row.date
+            : column.id === "source"
+              ? historySource(row)
+              : number(
+                  row[column.id as "average" | "low" | "high" | "analysts"],
+                ),
+        color: state.selected ? colors.selectedText : row.source === "yahoo" ? colors.text : colors.warning,
+      })}
+      emptyStateTitle="No stored observations."
+    />
   );
 }
 export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
@@ -460,7 +448,7 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
                 <EstimateDetail
                   period={selectedPeriod}
                   width={width}
-                  height={Math.max(3, bodyHeight - 2)}
+                  height={Math.max(3, bodyHeight - 1)}
                   focused={focused}
                 />
               ) : null

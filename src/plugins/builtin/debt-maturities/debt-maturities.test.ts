@@ -10,9 +10,14 @@ import {
   validateDebtMaturities,
 } from "./client";
 import {
-  bucketCursor,
-  bucketPoints,
+  bucketBar,
+  bucketColumns,
   bucketShare,
+  datedBucketScale,
+  debtAxisAmount,
+  historyAxis,
+  historyBars,
+  historyChartPoints,
   sortedBuckets,
   sortedDebtHistory,
 } from "./model";
@@ -242,13 +247,11 @@ describe("debt maturity Cloud boundary", () => {
     expect(
       validateDebtMaturities(data, "TEST").latest!.next12Months.value,
     ).toBe(0);
+    const scale = datedBucketScale(latest);
     expect(
-      bucketPoints(latest)
-        .slice(1, -1)
-        .map((row) => row.value),
-    ).toEqual([0, 10, 20, 30, 40, null]);
+      latest.buckets.map((row) => bucketBar(row, scale)?.ratio ?? null),
+    ).toEqual([0, 0.25, 0.5, 0.75, 1, null]);
     expect(bucketShare(latest.buckets[0]!, latest)).toBeNull();
-    expect(bucketCursor(1)).toBe("Thereafter");
   });
 
   test("structured unsupported issuers and absent endpoints do not masquerade as zero debt", async () => {
@@ -314,4 +317,43 @@ test("historical view is bounded by the comparable ten-year window and sorts nul
     });
     expect(rows.map((row) => row.asOf)).toEqual(["2025-06-30", "2020-06-30"]);
   }
+});
+
+test("the wall scales to the dated years and caps an open-ended Thereafter", () => {
+  const latest = fixture().latest!;
+  latest.buckets[5]!.value = 400;
+  const scale = datedBucketScale(latest);
+  expect(scale).toBe(40);
+  expect(bucketBar(latest.buckets[2]!, scale)).toEqual({ ratio: 0.5, capped: false });
+  expect(bucketBar(latest.buckets[5]!, scale)).toEqual({ ratio: 1, capped: true });
+  // Nothing dated to scale to: any principal fills the column, capped.
+  expect(bucketBar(latest.buckets[5]!, 0)).toEqual({ ratio: 1, capped: true });
+  // The bar column takes what the numbers leave and goes before they would scroll.
+  expect(bucketColumns(94).map((column) => column.id)).toEqual(["label", "value", "share", "wall"]);
+  expect(bucketColumns(40).map((column) => column.id)).toEqual(["label", "value", "share"]);
+  expect(bucketColumns(60).reduce((sum, column) => sum + column.width + 1, 2)).toBeLessThanOrEqual(58);
+});
+
+test("each filing's bar sits in its own slot with its year under it", () => {
+  const data = fixture();
+  const bars = historyBars(data);
+  expect(bars.map((row) => row.asOf)).toEqual([...bars.map((row) => row.asOf)].sort());
+  const points = historyChartPoints(bars);
+  // An empty slot at each end keeps the outer bars inside the plot.
+  expect(points).toHaveLength(bars.length + 2);
+  expect([points[0]!.value, points.at(-1)!.value]).toEqual([null, null]);
+  const axis = historyAxis(bars);
+  expect(axis.ticks.map((tick) => tick.label)).toEqual(bars.map((row) => row.asOf.slice(0, 4)));
+  expect(axis.ticks[0]!.ratio).toBeCloseTo(1 / (bars.length + 1));
+  expect(axis.formatCursor(axis.ticks.at(-1)!.ratio)).toBe(bars.at(-1)!.asOf);
+  expect(axis.formatCursor(1)).toBe(bars.at(-1)!.asOf);
+});
+
+test("amount ticks take their decimals from the plotted range", () => {
+  const domain = (min: number, max: number) => ({ min, max }) as Parameters<typeof debtAxisAmount>[1];
+  expect(debtAxisAmount(0, domain(0, 125e9))).toBe("0");
+  expect(debtAxisAmount(50e9, domain(0, 125e9))).toBe("50B");
+  expect(debtAxisAmount(91.2e9, domain(91e9, 92e9))).toBe("91.2B");
+  expect(debtAxisAmount(91.25e9, domain(91e9, 91.5e9))).toBe("91.25B");
+  expect(debtAxisAmount(750e6, domain(0, 900e6))).toBe("750M");
 });

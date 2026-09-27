@@ -31,17 +31,25 @@ export function completeYieldCurve(points: readonly YieldPoint[]): YieldPoint[] 
   });
 }
 
-/** Pick one published session on/before the requested date. A lagging tenor is
- * unavailable for that curve, never silently carried from a different session. */
-export async function loadHistoricalYieldCurve(
-  requestedDate: string,
-  loader: TreasurySeriesLoader = (id, options) => apiClient.getCloudFredSeries(id, options),
-): Promise<YieldPoint[]> {
-  const endDate = yieldCurveDate(requestedDate);
-  if (!endDate) throw new Error("A historical curve requires a date.");
-  const startDate = new Date(Date.parse(endDate) - 10 * DAY_MS).toISOString().slice(0, 10);
-  const results = await Promise.allSettled(TREASURY_MATURITIES.map(async ({ seriesId }) => {
-    const payload = await loader(seriesId, { startDate, endDate, limit: 10, sortOrder: "desc" });
+interface TreasurySeriesResult {
+  payload: CloudFredSeriesPayload;
+  observations: Array<{ date: string; value: number }>;
+  error?: string;
+}
+
+function daysBefore(date: string, days: number): string {
+  return new Date(Date.parse(date) - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Every tenor's daily closes between two dates, one request per tenor. */
+async function loadTreasurySeries(
+  startDate: string,
+  endDate: string,
+  limit: number,
+  loader: TreasurySeriesLoader,
+): Promise<PromiseSettledResult<TreasurySeriesResult>[]> {
+  return Promise.allSettled(TREASURY_MATURITIES.map(async ({ seriesId }) => {
+    const payload = await loader(seriesId, { startDate, endDate, limit, sortOrder: "desc" });
     if (payload.info && payload.info.id !== seriesId) {
       throw new Error(`Expected ${seriesId}, received ${payload.info.id || "unknown series"}`);
     }
@@ -58,8 +66,14 @@ export async function loadHistoricalYieldCurve(
     return { payload, observations,
       error: invalidDate ? `Invalid Treasury observation date: ${invalidDate.date}` : undefined };
   }));
+}
+
+/** The last session every tenor could have published within ten days on or before `endDate`. */
+function curveOnOrBefore(results: readonly PromiseSettledResult<TreasurySeriesResult>[], endDate: string): YieldPoint[] {
+  const startDate = daysBefore(endDate, 10);
+  const inWindow = (point: { date: string }) => point.date >= startDate && point.date <= endDate;
   const dates = results.flatMap((result) => result.status === "fulfilled"
-    ? result.value.observations.map((point) => point.date) : []);
+    ? result.value.observations.filter(inWindow).map((point) => point.date) : []);
   const asOf = dates.sort().at(-1);
   const errors = results.flatMap((result, index) => {
     const error = result.status === "rejected"
@@ -85,5 +99,60 @@ export async function loadHistoricalYieldCurve(
         ? result.reason instanceof Error ? result.reason.message : String(result.reason)
         : data?.error,
     };
+  });
+}
+
+/** Pick one published session on/before the requested date. A lagging tenor is
+ * unavailable for that curve, never silently carried from a different session. */
+export async function loadHistoricalYieldCurve(
+  requestedDate: string,
+  loader: TreasurySeriesLoader = (id, options) => apiClient.getCloudFredSeries(id, options),
+): Promise<YieldPoint[]> {
+  const endDate = yieldCurveDate(requestedDate);
+  if (!endDate) throw new Error("A historical curve requires a date.");
+  return curveOnOrBefore(await loadTreasurySeries(daysBefore(endDate, 10), endDate, 10, loader), endDate);
+}
+
+export type YieldCurveLookbackId = "1W" | "1M";
+
+export interface YieldCurveLookback {
+  id: YieldCurveLookbackId;
+  /** The day the look-back asks for; the curve is the last session on or before it. */
+  requestedDate: string;
+  points: YieldPoint[] | null;
+  error: string | null;
+}
+
+/** A week back is seven calendar days; a month back is the same day of the previous month, or its last day. */
+export function yieldCurveLookbackDate(asOf: string, id: YieldCurveLookbackId): string {
+  if (id === "1W") return daysBefore(asOf, 7);
+  const date = new Date(`${asOf}T00:00:00.000Z`);
+  const day = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() - 1);
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(day, lastDay));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * The curve a week and a month before `asOf`, by the same session rule as a
+ * historical curve. Both come from one request per tenor that spans the two
+ * windows, so the look-backs cost what one historical curve does.
+ */
+export async function loadYieldCurveLookbacks(
+  asOf: string,
+  loader: TreasurySeriesLoader = (id, options) => apiClient.getCloudFredSeries(id, options),
+): Promise<YieldCurveLookback[]> {
+  const targets = (["1W", "1M"] as const).map((id) => ({ id, requestedDate: yieldCurveLookbackDate(asOf, id) }));
+  const endDate = targets[0]!.requestedDate;
+  // About 25 sessions from ten days before the month back to the week back.
+  const results = await loadTreasurySeries(daysBefore(targets[1]!.requestedDate, 10), endDate, 40, loader);
+  return targets.map((target) => {
+    try {
+      return { ...target, points: curveOnOrBefore(results, target.requestedDate), error: null };
+    } catch (error) {
+      return { ...target, points: null, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 }

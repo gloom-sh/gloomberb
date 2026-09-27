@@ -18,12 +18,17 @@ export const DEFAULT_SORT_PREFERENCE: DividendSortPreference = {
   direction: "desc",
 };
 
-/** The ex-date takes the room the fixed amount and currency leave; the kit adds the gutters. */
-export function buildDividendColumns(): DividendColumn[] {
+/**
+ * The amount sits beside its ex-date rather than across the pane. The currency
+ * column shows only when the payments mix currencies; otherwise the amount's
+ * own symbol says it.
+ */
+export function buildDividendColumns(rows: readonly Pick<DividendRow, "currency">[] = []): DividendColumn[] {
+  const mixed = new Set(rows.map((row) => row.currency)).size > 1;
   return [
-    { id: "exDate", label: "EX-DATE", width: 10, align: "left", flexGrow: 1 },
-    { id: "amount", label: "AMOUNT", width: 10, align: "right" },
-    { id: "currency", label: "CCY", width: 6, align: "left" },
+    { id: "exDate", label: "EX-DATE", width: 10, align: "left" },
+    { id: "amount", label: "AMOUNT", width: 12, align: "right" },
+    ...(mixed ? [{ id: "currency" as const, label: "CCY", width: 6, align: "left" as const }] : []),
   ];
 }
 

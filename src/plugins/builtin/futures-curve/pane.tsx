@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
-import { CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, StatGrid, statGridRows, Tabs, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
+import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, Tabs, useChartTableSelection, usePaneHeaderTabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type StatItem } from "../../../components";
+import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
-import { getTableWidth, hasMeaningfulTableHorizontalOverflow } from "../../../components/ui/table-layout";
 import type { FuturesContract } from "../../../api-client/futures-curve";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
@@ -13,11 +13,12 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedFuturesCurve, loadFuturesCurve } from "./client";
-import { curveAxisPrice, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
+import { curveAxisPrice, curveChangeText, curveContractChanges, curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, type CurveContractChanges } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 const COLUMNS: DataTableColumn[] = [
-  { id: "symbol", label: "CONTRACT", width: 15, align: "left" },
+  // The longest symbol is a three-letter root with its month and venue: RTYH27.CME.
+  { id: "symbol", label: "CONTRACT", width: 11, align: "left" },
   { id: "expiry", label: "EXPIRY", width: 10, align: "left" },
   { id: "price", label: "PRICE", width: 12, align: "right" },
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
@@ -25,8 +26,20 @@ const COLUMNS: DataTableColumn[] = [
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
+// The curve's rows move with the look-back curves drawn above them; the
+// footer carries the quote time every row would otherwise repeat.
+const CURVE_COLUMNS: DataTableColumn[] = [
+  ...COLUMNS.slice(0, 3),
+  { id: "change1w", label: "VS 1W", width: 10, align: "right" },
+  { id: "change1m", label: "VS 1M", width: 10, align: "right" },
+  ...COLUMNS.slice(3, -1),
+];
 const signedPercent = (value: number | null) => value == null ? "--" : formatPercentRaw(value);
 const integer = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US");
+const contractKey = (row: FuturesContract) => row.symbol;
+// Left and Right step along the expiries, the way the curve reads.
+const contractDate = (row: FuturesContract) => new Date(row.expiration);
+const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 export function FuturesCurvePane(props: PaneProps) {
   const pane = usePaneInstance();
@@ -49,11 +62,19 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   usePaneTitle(`CTM ${root}`);
   const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
   const newest = data ? newestQuote(data.contracts) : null;
-  // The footer carries the newest quote time, so the legend does not repeat it.
-  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon)
-    .map((series) => series.id === "current" && curveTimestamp(series.asOf ?? null) === curveTimestamp(newest) ? { ...series, asOf: undefined } : series) : [], [data, colors, horizon, newest]);
-  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
-  const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon) : [], [data, colors, horizon]);
+  const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
+  const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction, changes), [data, sort, changes]);
+  const curveTab = tab === "curve";
+  // The curve tab lists the contracts the chart plots; Contracts keeps every one.
+  const curveRows = useMemo(() => {
+    const charted = new Set(curves[0]?.points.map((point) => point.id));
+    return rows.filter((row) => charted.has(row.symbol));
+  }, [curves, rows]);
+  const tableRows = curveTab ? curveRows : rows;
+  const selectedId = tableRows.some((row) => row.symbol === selected) ? selected! : tableRows[0]?.symbol ?? null;
+  useChartTableSelection({ rows: curveRows, getId: contractKey, getDate: contractDate, selectedId, onSelect: setSelected,
+    focused, enabled: curveTab });
   // The highlighted row carries the selected contract's price and rank.
   const slopeDate = data?.slope.asOf && curveTimestamp(data.slope.asOf) !== curveTimestamp(newest) ? curveTimestamp(data.slope.asOf) : null;
   const statItems: StatItem[] = data ? [
@@ -63,14 +84,13 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       detail: [data.slope.state, curveRank(data.slope.percentile, data.slope.samples), slopeDate].filter(Boolean).join(" · ") },
   ] : [];
   const tabsInHeader = usePaneHeaderTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused });
-  const tabRows = tabsInHeader ? 0 : 1;
-  // The contract table needs its header, rows and any scrollbar; the curve
-  // takes the rest, and when that is too short to draw, the table takes it all.
-  const bodyHeight = Math.max(1, height - tabRows - statGridRows(statItems, width));
-  const contractRows = rows.length + 1 + (hasMeaningfulTableHorizontalOverflow(getTableWidth(COLUMNS), width) ? 1 : 0);
-  const curveRoom = tab === "curve" ? bodyHeight - Math.max(3, Math.min(contractRows, Math.floor(bodyHeight * 0.4))) : 0;
-  const curveHeight = curveRoom >= 8 ? curveRoom : 0;
-  const tableHeight = bodyHeight - curveHeight;
+  const bodyHeight = Math.max(1, height - (tabsInHeader ? 0 : 1));
+  const columns = curveTab ? CURVE_COLUMNS : COLUMNS;
+  const formatValue = useCallback((value: number) => curvePrice(value, root), [root]);
+  const formatChange = useCallback((value: number) => curveChangeText(value, root), [root]);
+  const caption = `${sentenceCase(data?.quoteUnit ?? data?.currency ?? "price")} by contract month`;
+  // The strip keeps the curve's shape and the selected contract in one row.
+  const strip = curveTab ? curveStrip(curves, formatValue, { caption: "Price", selectedPointId: selectedId }) : null;
   // Delayed contract quotes move all session; the curve follows them once a
   // minute while Globex trades and on the research cadence otherwise. A
   // settlement curve changes once a day.
@@ -90,33 +110,43 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       ...(staleCount ? [{ id: "stale", parts: [{ text: `${staleCount} of ${data.contracts.length} stale`, tone: "warning" as const }] }] : []),
     ] : [],
   });
+  const tableChromeRows = chartTableChromeRows(columns, width);
+  const chart = strip ? {
+    render: (size: { width: number; height: number }) => <CurveSurface series={curves} width={size.width} height={size.height} display="chart"
+      caption={caption} xScale="linear" formatValue={formatValue} formatChange={formatChange}
+      formatAxisValue={(value, domain) => curveAxisPrice(value, domain, root)}
+      selectedPointId={selectedId} onSelectedPointChange={setSelected} />,
+    minRows: curveSurfaceMinRows({ series: curves, width, caption }),
+    strip,
+  } : null;
   const renderCell = useCallback((row: FuturesContract, column: DataTableColumn) => {
     if (column.id === "symbol") return { text: row.symbol };
     if (column.id === "expiry") return { text: row.expiration, color: colors.textMuted };
-    if (column.id === "price") return { text: curvePrice(row.price, root) };
+    // Without the AS OF column, a stale quote shows on its price.
+    if (column.id === "price") return { text: curvePrice(row.price, root), color: curveTab && row.stale ? colors.warning : undefined };
+    if (column.id === "change1w" || column.id === "change1m") {
+      const change = changes.get(row.symbol)?.[column.id === "change1w" ? "1W" : "1M"] ?? null;
+      return { text: curveChangeText(change, root), color: colors.textMuted };
+    }
     if (column.id === "percentile") return { text: row.samples < 2 || row.percentile == null ? "--" : row.percentile.toFixed(0) };
     if (column.id === "oi") return { text: integer(row.openInterest) };
     if (column.id === "volume") return { text: integer(row.volume) };
     return { text: curveTimestamp(row.asOf), color: row.stale ? colors.warning : colors.textMuted };
-  }, [colors, root]);
+  }, [changes, colors, curveTab, root]);
   return <Box width={width} height={height} flexDirection="column">
     {!tabsInHeader && <Tabs tabs={TABS} activeValue={tab} onSelect={setTab} focused={focused} dense />}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
       empty={!!data && !data.contracts.length} subject="futures curve">
-      {data ? <>
-        <StatGrid items={statItems} width={width} />
-        {curveHeight ? <CurveSurface series={curves} width={width} height={curveHeight} display="chart"
-          formatValue={(value) => curvePrice(value, root)} formatAxisValue={(value, domain) => curveAxisPrice(value, domain, root)}
-          formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(0, 10)}
-          selectedPointId={selectedRow?.symbol ?? null} onSelectedPointChange={setSelected} /> : null}
-        <DataTableView columns={COLUMNS} items={rows} focused={focused}
-          rootWidth={width} rootHeight={tableHeight}
-          selection={{ kind: "id", selectedId: selectedRow?.symbol ?? null, getId: (row) => row.symbol, onChange: setSelected }}
-          onActivate={(row) => setSelected(row.symbol)} getItemKey={(row) => row.symbol} renderCell={renderCell}
-          sortColumnId={sort.id} sortDirection={sort.direction}
-          onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }))}
-          emptyStateTitle="No listed contracts available." />
-      </> : null}
+      {data ? <DataTableView columns={columns} items={tableRows} focused={focused}
+        rootWidth={width} rootHeight={bodyHeight}
+        selection={{ kind: "id", selectedId, getId: contractKey, onChange: setSelected }}
+        onActivate={(row) => setSelected(row.symbol)} getItemKey={contractKey} renderCell={renderCell}
+        sortColumnId={sort.id} sortDirection={sort.direction}
+        onHeaderClick={(id) => setSort((current) => ({ id, direction: current.id === id && current.direction === "asc" ? "desc" : "asc" }))}
+        emptyStateTitle="No listed contracts available."
+        rootBefore={<ChartTableHeader width={width} height={bodyHeight} figures={statItems} tableChromeRows={tableChromeRows}
+          tableRows={tableRows.length}
+          chart={chart} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

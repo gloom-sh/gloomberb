@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
   DataTableView,
   EmptyState,
   Spinner,
-  StaticChartSurface,
+  scalarPoint,
+  staticSeries,
   unavailableText,
+  useChartTableSelection,
   usePaneFooter,
   type DataTableCell,
 } from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { blendHex, colors } from "../../../theme/colors";
-import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
-import { formatCompact } from "../../../utils/format";
+import { colors } from "../../../theme/colors";
+import { Box, TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { usePluginPaneState } from "../../runtime";
@@ -23,7 +25,10 @@ import {
   DEFAULT_SORT,
   buildColumns,
   buildRows,
+  formatMaybeCompact,
+  formatSharesAxis,
   nextSortPreference,
+  shortInterestFigures,
   sortRows,
   type ShortInterestColumn,
   type ShortInterestRow,
@@ -33,20 +38,10 @@ import type { ShortInterestRecord } from "./types";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
-
-function recordsToChartPoints(records: ShortInterestRecord[]): ProjectedChartPoint[] {
-  return records.map((record) => ({
-    date: record.settlementDate,
-    open: record.sharesShort,
-    high: record.sharesShort,
-    low: record.sharesShort,
-    close: record.sharesShort,
-    volume: 0,
-  }));
-}
+const rowKey = (row: ShortInterestRow) => row.key;
+const rowDate = (row: ShortInterestRow) => row.record.settlementDate;
 
 function ShortInterestView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
-  const { nativePaneChrome } = useUiCapabilities();
   const { ticker } = usePaneTickerIdentity();
   const symbol = ticker?.metadata.ticker ?? null;
 
@@ -62,17 +57,27 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     "short-interest:sort",
     DEFAULT_SORT,
   );
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
+  // Null follows the newest settlement, including after a reload.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  useEffect(() => { if (updatedAt !== null) setSelectedKey(null); }, [updatedAt]);
 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const columns = useMemo(() => buildColumns(records), [records]);
-  const chartPoints = useMemo(() => recordsToChartPoints(records), [records]);
-
-  const boundedSelectedIdx = sortedRows.length > 0
-    ? Math.min(selectedIdx, sortedRows.length - 1)
-    : -1;
+  // The header row, plus the scrollbar row once the columns overflow the pane.
+  const tableChromeRows = chartTableChromeRows(columns, width);
+  const effectiveKey = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
+  const figures = useMemo(() => shortInterestFigures(records), [records]);
+  // The legend reads the same as the SHARES SHORT column.
+  const series = useMemo(() => [staticSeries(
+    [...records]
+      .sort((left, right) => left.settlementDate.getTime() - right.settlementDate.getTime())
+      .map((record) => scalarPoint(record.settlementDate, record.sharesShort)),
+    { id: "shares-short", label: "Shares short", color: colors.warning, calendarSpaced: true },
+  )], [records]);
+  const link = useChartTableSelection({
+    rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId: effectiveKey, onSelect: setSelectedKey, focused,
+  });
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextSortPreference(current, columnId));
@@ -146,60 +151,27 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     );
   }
 
-  // The desktop runs the chart straight under the title bar and lets the table
-  // fill to the footer; the terminal keeps a blank row above and below the
-  // chart. Under 16 rows the table keeps the whole body, as in Daily volume.
-  const spacerRows = nativePaneChrome ? 0 : 2;
-  const showChart = chartPoints.length >= 2 && height >= 16;
-  const chartHeight = showChart ? Math.max(1, Math.floor((height - spacerRows) * 0.35)) : 0;
-  const tableHeight = Math.max(1, height - (showChart ? chartHeight + spacerRows : 0));
-  const chartWidth = Math.max(24, width - 2);
-  const palette = {
-    ...resolveChartPalette(colors, "neutral"),
-    lineColor: colors.warning,
-    fillColor: blendHex(colors.bg, colors.warning, 0.18),
-    gridColor: blendHex(colors.bg, colors.border, 0.55),
-  };
-
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {showChart ? (
-        <Box flexDirection="column" marginTop={nativePaneChrome ? 0 : 1} paddingX={1} flexShrink={0}>
-          <StaticChartSurface
-            points={chartPoints}
-            width={chartWidth}
-            height={chartHeight}
-            mode="line"
-            colors={palette}
-            showTimeAxis
-            timeAxisColor={colors.textDim}
-            yAxisColor={colors.textDim}
-            formatYAxisValue={(value: number) => formatCompact(value)}
-            focused={focused}
-          />
-        </Box>
-      ) : null}
-      <Box flexGrow={1} flexBasis={0} minHeight={0} marginTop={showChart && !nativePaneChrome ? 1 : 0}>
-        <DataTableView<ShortInterestRow, ShortInterestColumn>
-          focused={focused}
-          selection={{
-            kind: "index",
-            selectedIndex: boundedSelectedIdx,
-            onChange: (index) => setSelectedIdx(index),
-          }}
-          rootWidth={width}
-          rootHeight={tableHeight}
-          columns={columns}
-          freezeFirstColumn
-          items={sortedRows}
-          sortColumnId={sortPreference.columnId}
-          sortDirection={sortPreference.direction}
-          onHeaderClick={handleHeaderClick}
-          getItemKey={(row) => row.key}
-          renderCell={renderCell}
-          emptyStateTitle={status === "loading" ? "Loading..." : "No data"}
-        />
-      </Box>
+      <DataTableView<ShortInterestRow, ShortInterestColumn>
+        focused={focused}
+        selection={{ kind: "id", selectedId: effectiveKey, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
+        rootWidth={width}
+        rootHeight={height}
+        rootBefore={<ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
+          figures={figures} chart={{
+          series, formatValue: formatMaybeCompact, formatAxisValue: formatSharesAxis, remoteKind: "short-interest-history", ...link,
+        }} />}
+        columns={columns}
+        freezeFirstColumn
+        items={sortedRows}
+        sortColumnId={sortPreference.columnId}
+        sortDirection={sortPreference.direction}
+        onHeaderClick={handleHeaderClick}
+        getItemKey={rowKey}
+        renderCell={renderCell}
+        emptyStateTitle={status === "loading" ? "Loading..." : "No data"}
+      />
     </Box>
   );
 }

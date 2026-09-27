@@ -1,4 +1,5 @@
 import { statGridRows, type StatItem } from "../ui/stat-grid";
+import { getTableWidth, hasMeaningfulTableHorizontalOverflow, type TableWidthColumn } from "../ui/table-layout";
 
 /** A readable kit chart: legend row, four plot rows, time axis. */
 export const CHART_MIN_ROWS = 6;
@@ -12,6 +13,15 @@ export const CHART_SHARE = 0.4;
 const SHORT_BODY_ROWS = 12;
 /** The figures never take more than this share of the body. */
 const FIGURE_SHARE = 0.25;
+
+/**
+ * The rows a kit table spends outside its body: the header, plus a horizontal
+ * scrollbar when its columns are wider than the pane (less the vertical
+ * scrollbar's column).
+ */
+export function chartTableChromeRows(columns: readonly TableWidthColumn[], width: number): number {
+  return hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1) ? 2 : 1;
+}
 
 /**
  * What the band above the table shows: the full chart, one row with the label,
@@ -71,6 +81,16 @@ export function chartTableLayout(input: ChartTableLayoutInput): ChartTableLayout
     const tighter = layoutWithFigureRows(input, body, 1);
     if (tighter.mode === "full") return tighter;
   }
+  // Without a full chart, rows a short table leaves go back to figures that
+  // were dropped, rather than to a blank band under the table.
+  if (layout.mode !== "full" && layout.figures.length < (input.figures?.length ?? 0)) {
+    const tableFit = (input.tableChromeRows ?? 1) + Math.max(0, input.tableRows);
+    const spare = body - layout.figureRows - layout.chartRows - tableFit;
+    if (spare > 0) {
+      const roomier = layoutWithFigureRows(input, body, layout.figureRows + spare);
+      if (roomier.mode === layout.mode && roomier.figureRows > layout.figureRows) return roomier;
+    }
+  }
   return layout;
 }
 
@@ -95,7 +115,8 @@ function layoutWithFigureRows(input: ChartTableLayoutInput, body: number, figure
   if (room >= minRows) {
     const share = Math.round(rest * CHART_SHARE);
     const spare = rest - tableFit;
-    const chartRows = spare >= share ? spare : Math.min(room, Math.max(minRows, share));
+    // Every row a short table leaves, but never fewer than the chart can draw in.
+    const chartRows = spare >= Math.max(share, minRows) ? spare : Math.min(room, Math.max(minRows, share));
     return { figures, figureRows, mode: "full", chartRows };
   }
   if (input.chart.strip !== false && room >= 1) {

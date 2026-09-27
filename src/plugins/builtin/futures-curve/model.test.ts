@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
-import { curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote } from "./model";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
+import { curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote, sortCurveContracts } from "./model";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
@@ -88,3 +89,35 @@ test("Treasury prices keep one decimal count per root on their 32nd tick grid an
   expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 27");
   expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 26");
 });
+
+test("each contract's move since the look-back curves, with missing legs left empty", () => {
+  const data = payload();
+  data.ghosts.push({ label: "1M", requestedDate: "2026-08-22", asOf: "2026-08-22", points: [
+    { symbol: first.symbol, expiration: first.expiration, price: 82.5, asOf: "2026-08-22" },
+  ] });
+  const changes = curveContractChanges(data);
+  expect(changes.get("CLX26.NYM")).toEqual({ "1W": 5, "1M": -2.5 });
+  // No latest price on the second contract, and no month-back quote either.
+  expect(changes.get("CLZ26.NYM")).toEqual({ "1W": null, "1M": null });
+  expect(curveChangeText(5, "CL")).toBe("+5.00");
+  expect(curveChangeText(-2.5, "CL")).toBe("-2.50");
+  expect(curveChangeText(0.001, "CL")).toBe("0.00");
+  expect(curveChangeText(null, "CL")).toBe("--");
+  // The change columns sort like any other, with gaps last.
+  const rows = [first, { ...first, symbol: "CLZ26.NYM", price: null }, { ...first, symbol: "CLF27.NYM" }];
+  const moves = new Map([["CLX26.NYM", { "1W": 5, "1M": null }], ["CLZ26.NYM", { "1W": null, "1M": null }], ["CLF27.NYM", { "1W": -1, "1M": null }]]);
+  expect(sortCurveContracts(rows, "change1w", "desc", moves).map((row) => row.symbol)).toEqual(["CLX26.NYM", "CLF27.NYM", "CLZ26.NYM"]);
+  expect(sortCurveContracts(rows, "change1w", "asc", moves).map((row) => row.symbol)).toEqual(["CLF27.NYM", "CLX26.NYM", "CLZ26.NYM"]);
+});
+
+test("axis labels take their decimals from the plotted range, never the contract tick", () => {
+  const domain = (min: number, max: number): CompositeAxisDomain => ({ side: "right", min, max, scale: "linear", unit: "", unitGroup: "" });
+  // Hundreds of index points read as whole points, not 7800.00.
+  expect(curveAxisPrice(7800, domain(7690, 8080), "ES")).toBe("7800");
+  expect(curveAxisPrice(7803.75, domain(7690, 8080), "ES")).toBe("7804");
+  // A VIX strip spans a few points: one decimal, not the settlement's four.
+  expect(curveAxisPrice(18, domain(17.4, 22.3), "VX")).toBe("18.0");
+  // A narrow Treasury range keeps the 1/4 ticks exact.
+  expect(curveAxisPrice(104.75, domain(104.4, 105.1), "ZN")).toBe("104.75");
+});
+

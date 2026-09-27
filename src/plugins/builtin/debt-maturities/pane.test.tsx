@@ -1,9 +1,9 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { DebtMaturitiesPayload, DebtMetric } from "../../../api-client/debt-maturities";
 import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { BUCKET_IDS } from "./client";
@@ -44,35 +44,86 @@ async function settle() {
 
 async function render(width: number, height: number, tab = "maturities"): Promise<string[]> {
   if (setup) await act(async () => { setup!.renderer.destroy(); });
-  const state = createInitialState(createTestPaneConfig("/tmp/gloom-debt-test", { instanceId: "ddis", paneId: "debt-maturities" }));
-  state.focusedPaneId = "ddis";
-  state.paneState.ddis = { cursorSymbol: "TEST", pluginState: { "debt-maturities": { "debt:tab": tab } } };
-  state.tickers.set("TEST", createTestTicker("TEST", "Controlled issuer", { assetCategory: "STK" }));
-  await act(async () => { setup = await testRender(<TestPaneFrame state={state} paneId="ddis" pluginId="debt-maturities" runtime={createTestPluginRuntime()} width={width} height={height}>
-    {(body) => <DebtMaturitiesPane paneId="ddis" paneType="debt-maturities" focused {...body} />}
-  </TestPaneFrame>, { width, height }); });
+  spy ??= spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async () => payload());
+  const initial = createInitialState(createTestPaneConfig("/tmp/gloom-debt-test", { instanceId: "ddis", paneId: "debt-maturities" }));
+  initial.focusedPaneId = "ddis";
+  initial.paneState.ddis = { cursorSymbol: "TEST", pluginState: { "debt-maturities": { "debt:tab": tab } } };
+  initial.tickers.set("TEST", createTestTicker("TEST", "Controlled issuer", { assetCategory: "STK" }));
+  const runtime = createTestPluginRuntime();
+  // Selection is pane state, so the harness keeps the reducer's state.
+  function Harness() {
+    const [state, setState] = useState(initial);
+    return <TestPaneFrame state={state} dispatch={(action) => setState((current) => appReducer(current, action))}
+      paneId="ddis" pluginId="debt-maturities" runtime={runtime} width={width} height={height}>
+      {(body) => <DebtMaturitiesPane paneId="ddis" paneType="debt-maturities" focused {...body} />}
+    </TestPaneFrame>;
+  }
+  await act(async () => { setup = await testRender(<Harness />, { width, height }); });
   await settle();
   return setup!.captureCharFrame().split("\n");
 }
 
-test("the terminal body runs to the footer, which sits outside the pane height", async () => {
-  spy = spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async () => payload());
-  // The table holds its header and six buckets; the chart takes every other row.
-  let lines = await render(94, 29);
-  expect(lines[21]).toContain("MATURITY");
-  expect(lines[27]).toContain("AfterYearFive");
-  expect(lines[28]).toContain("just now");
-  // Four filings and the column scrollbar fill the history table to the footer.
-  lines = await render(60, 16, "history");
-  expect(lines[13]).toContain("2022-06-30");
-  expect(lines[14]!.trim()).not.toBe("");
-  expect(lines[15]).toContain("just now");
-  // Without room for the chart the buckets take the rest of the body and no
-  // more, so the column scrollbar stays above the footer and the cursor in view.
-  lines = await render(40, 11);
-  expect(lines.join("\n")).not.toContain("Next 12m");
-  expect(lines[9]!.trim()).toStartWith("█");
-  for (let i = 0; i < 5; i++) await emitKeypress(setup!, { name: "down" });
+const bar = (line: string | undefined) => (line?.match(/[█▏▎▍▌▋▊▉]+/)?.[0] ?? "").length;
+
+test("the maturity wall is an inline bar column scaled to the dated years", async () => {
+  const lines = await render(94, 29);
+  const row = (label: string) => lines.find((line) => line.includes(label));
+  expect(row("MATURITY")).toContain("WALL");
+  // No column chart repeats the six rows above the table.
+  expect(lines.join("\n")).not.toContain("●");
+  // 10M to 50M across the dated years: the longest dated bucket fills the scale.
+  const dated = ["InNextTwelve", "InYearTwo", "InYearThree", "InYearFour", "InYearFive"].map((label) => bar(row(label)));
+  expect(dated).toEqual([...dated].sort((left, right) => left - right));
+  expect(dated[1]! / dated[0]!).toBeCloseTo(2, 0);
+  // Thereafter (60M) runs past the scale, capped and labelled with its value.
+  const thereafter = row("AfterYearFive")!;
+  expect(bar(thereafter)).toBe(dated[4]);
+  expect(thereafter).toContain("▸ 60.00M");
+  // The figures stay above the table.
+  expect(lines.slice(0, 4).join("\n")).toContain("Principal total");
+});
+
+test("a short or narrow maturity pane keeps every bucket and drops the wall and figures first", async () => {
+  const lines = await render(40, 10);
+  expect(lines.join("\n")).not.toContain("WALL");
+  for (const label of ["InNextTwelve", "AfterYearFive"]) expect(lines.some((line) => line.includes(label))).toBe(true);
+  // One row of figures, the table's header and six rows, then the footer.
+  expect(lines[2]).toContain("MATURITY");
+  expect(lines[9]).toContain("just now");
+});
+
+test("the filing history names its bars and puts each year under its own bar", async () => {
+  const lines = await render(94, 29, "history");
+  expect(lines[1]).toContain("● Principal total (USD) 210.00M");
+  const axis = lines.findIndex((line) => /(^|\s)2022(\s|$)/.test(line));
+  expect(axis).toBeGreaterThan(1);
+  // The bottom plot row has a cell of every bar; each year's label spans its bar.
+  const columns = [...lines[axis - 1]!].flatMap((char, index) => /[█┼]/.test(char) ? [index] : []);
+  expect(columns).toHaveLength(4);
+  for (const [index, year] of ["2022", "2023", "2024"].entries()) {
+    const start = lines[axis]!.indexOf(year);
+    expect(columns[index]!).toBeGreaterThanOrEqual(start);
+    expect(columns[index]!).toBeLessThan(start + 4);
+  }
+  // The newest filing is selected, so the cursor reads its date on the axis.
+  expect(lines[axis]).toContain("2025-06-30");
+});
+
+test("moving the filing selection moves the chart cursor", async () => {
+  await render(94, 29, "history");
+  await emitKeypress(setup!, { name: "down" });
   await settle();
-  expect(setup!.captureCharFrame()).toContain("AfterYearFive");
+  const lines = setup!.captureCharFrame().split("\n");
+  expect(lines[1]).toContain("● Principal total (USD) 200.00M");
+  expect(lines.find((line) => /(^|\s)2022(\s|$)/.test(line))).toContain("2024-06-30");
+});
+
+test("a short history pane keeps the filings and shrinks the chart to a strip", async () => {
+  const lines = await render(60, 12, "history");
+  expect(lines[1]).toContain("● Principal total");
+  expect(lines[1]).toContain("210.00M");
+  expect(lines[2]).toContain("AS OF");
+  for (const date of ["2025-06-30", "2024-06-30", "2023-06-30", "2022-06-30"]) {
+    expect(lines.some((line) => line.includes(date))).toBe(true);
+  }
 });

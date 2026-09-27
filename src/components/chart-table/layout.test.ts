@@ -72,4 +72,18 @@ describe("chartTableLayout", () => {
     expect(chartTableLayout({ width: 90, height: 30, figures: FIGURES, tableRows: 40, chart: null }))
       .toMatchObject({ mode: "none", chartRows: 0, figureRows: FIGURE_ROWS_90 });
   });
+
+  test("never gives a full band fewer rows than the chart can draw in", () => {
+    // Six table rows leave seven spare rows: more than the 40% share, fewer than a nine-row curve needs.
+    const layout = chartTableLayout({ width: 90, height: 14, tableRows: 6, chart: { minRows: 9 } });
+    expect(layout).toMatchObject({ mode: "full", chartRows: 9 });
+  });
+
+  test("gives a short table's spare rows back to dropped figures when the chart is a strip", () => {
+    const many: StatItem[] = [...FIGURES, { id: "a", label: "Alpha", value: "1.0" }, { id: "b", label: "Beta", value: "2.0" }];
+    const layout = chartTableLayout({ width: 40, height: 9, figures: many, tableRows: 3, chart: CHART });
+    expect(layout.mode).toBe("strip");
+    expect(layout.figureRows).toBe(4);
+    expect(layout.figureRows + layout.chartRows + 1 + 3).toBe(9);
+  });
 });

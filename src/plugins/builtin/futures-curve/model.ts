@@ -1,5 +1,6 @@
 import type { FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
+import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
@@ -37,15 +38,28 @@ export function curvePrice(value: number | null, root: string): string {
   return /[1-9]/.test(text) ? text : text.replace("-", "");
 }
 
+/** A move in price, signed; one that rounds to zero stays unsigned. */
+export function curveChangeText(value: number | null, root: string): string {
+  const text = curvePrice(value, root);
+  return value != null && value > 0 && /[1-9]/.test(text) ? `+${text}` : text;
+}
+
 /**
  * Axis gridlines sit on round values, so they need no tick precision: one
- * decimal count across the gutter, only as many as those values use.
+ * decimal count across the gutter, as many as the plotted range asks for and
+ * enough to keep every tick within a percent of that range. A span of hundreds
+ * of index points reads 7800, a VIX strip 18.5, a Treasury 1/64 grid 112.25.
  */
 export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root: string): string {
-  if (RATE_TICKS[root] == null) return curvePrice(value, root);
-  const decimals = Math.max(0, ...compositeAxisTicks(domain, String)
-    .map((tick) => tick.value.toFixed(4).replace(/\.?0+$/, "").split(".")[1]?.length ?? 0));
-  return value.toFixed(decimals);
+  const cap = curvePriceDecimals(root);
+  const tolerance = Math.abs(domain.max - domain.min) / 100;
+  const needed = (tick: number) => {
+    let decimals = 0;
+    while (decimals < cap && Math.abs(Number(tick.toFixed(decimals)) - tick) > tolerance) decimals += 1;
+    return decimals;
+  };
+  const ticks = compositeAxisTicks(domain, String).map((tick) => needed(tick.value));
+  return value.toFixed(Math.min(cap, Math.max(spanDigits(domain), ...ticks)));
 }
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
@@ -112,11 +126,35 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   })];
 }
 
-export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: "asc" | "desc"): FuturesContract[] {
+export type CurveLookback = "1W" | "1M";
+export type CurveContractChanges = ReadonlyMap<string, Readonly<Record<CurveLookback, number | null>>>;
+
+/**
+ * How far each contract moved since the week- and month-back curves, by
+ * symbol: the latest price less the price then. A leg missing either side
+ * stays null rather than reading as no move.
+ */
+export function curveContractChanges(data: FuturesCurvePayload): CurveContractChanges {
+  const past = new Map(data.ghosts.map((ghost) => [ghost.label, new Map(ghost.points.map((point) => [point.symbol, point.price]))]));
+  return new Map(data.contracts.map((row) => {
+    const change = (label: CurveLookback) => {
+      const then = past.get(label)?.get(row.symbol);
+      return row.price == null || then == null ? null : row.price - then;
+    };
+    return [row.symbol, { "1W": change("1W"), "1M": change("1M") }];
+  }));
+}
+
+const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
+
+export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: "asc" | "desc",
+  changes?: CurveContractChanges): FuturesContract[] {
   const keys: Record<string, keyof FuturesContract> = { symbol: "symbol", expiry: "expiration", price: "price", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
+  const lookback = CHANGE_COLUMNS[id];
+  const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key];
   return [...rows].sort((a, b) => {
-    const left = a[key], right = b[key];
+    const left = value(a), right = value(b);
     if (left == null) return right == null ? 0 : 1;
     if (right == null) return -1;
     const order = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));

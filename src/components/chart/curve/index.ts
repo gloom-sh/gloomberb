@@ -1,3 +1,4 @@
 export { CurveSurface, type CurveSurfaceProps, type CurveSlopeReadout } from "./curve-surface";
-export { buildCurveChart, curveGhostColors, curveSlope, curveTableRows, historyStatistics,
-  type CurvePalette, type CurvePoint, type CurveSeries, type CurveTableRow, type HistoryObservation, type HistoryStatistics } from "./model";
+export { buildCurveChart, curveGhostColors, curveLookbackLabel, curveSlope, curveStrip, curveSurfaceMinRows, curveTableRows, historyStatistics,
+  type CurvePalette, type CurvePoint, type CurveSeries, type CurveSeriesRole, type CurveTableRow, type CurveXScale,
+  type HistoryObservation, type HistoryStatistics } from "./model";

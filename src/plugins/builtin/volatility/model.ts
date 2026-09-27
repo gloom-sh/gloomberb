@@ -288,6 +288,61 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
     termState: classifyTermState(spot, threeMonth), warnings };
 }
 
+export type VolatilityLookbackId = "1W" | "1M";
+
+/** The curve's tenors on one earlier date: a week or a calendar month before the curve's own. */
+export interface VolatilityCurveLookback {
+  id: VolatilityLookbackId;
+  date: string | null;
+  values: Partial<Record<string, number>>;
+}
+
+/** A week back is seven calendar days; a month back is the same day of the previous month, or its last day. */
+export function volatilityLookbackDate(date: string, id: VolatilityLookbackId): string {
+  if (id === "1W") return new Date(Date.parse(date) - 7 * DAY_MS).toISOString().slice(0, 10);
+  const target = new Date(`${date}T00:00:00.000Z`);
+  const day = target.getUTCDate();
+  target.setUTCDate(1);
+  target.setUTCMonth(target.getUTCMonth() - 1);
+  target.setUTCDate(Math.min(day, new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()));
+  return target.toISOString().slice(0, 10);
+}
+
+/**
+ * The curve a week and a month before its date, read from the same daily
+ * histories and aligned the same way: the last date on or before the look-back
+ * where the 30D and 3M both closed, else where two tenors did, within ten days.
+ * A tenor without a close on that date is a gap, never a neighbouring day.
+ */
+export function volatilityCurveLookbacks(data: Pick<VolatilityData, "curve" | "board" | "fred">): VolatilityCurveLookback[] {
+  const { curve } = data;
+  if (!curve.date) return [];
+  const histories = new Map<string, ReadonlyMap<string, number>>(curve.points.map((point) => {
+    const history = curve.source === "fred"
+      ? data.fred.metrics.find((metric) => metric.seriesId === point.sourceId)?.history
+      : data.board.find((row) => row.id === point.id)?.history;
+    return [point.id, new Map((history ?? []).map((entry) => [entry.date, entry.value]))];
+  }));
+  return (["1W", "1M"] as const).map((id) => {
+    const target = volatilityLookbackDate(curve.date!, id);
+    const floor = new Date(Date.parse(target) - 10 * DAY_MS).toISOString().slice(0, 10);
+    const counts = new Map<string, number>();
+    for (const history of histories.values()) for (const day of history.keys()) {
+      if (day >= floor && day <= target) counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
+    const days = [...counts.keys()].sort().toReversed();
+    const front = histories.get("vix"), back = histories.get("vix3m");
+    const date = days.find((day) => front?.has(day) && back?.has(day))
+      ?? days.find((day) => counts.get(day)! >= 2) ?? days[0] ?? null;
+    const values: Partial<Record<string, number>> = {};
+    if (date) for (const [pointId, history] of histories) {
+      const value = history.get(date);
+      if (value != null) values[pointId] = value;
+    }
+    return { id, date, values };
+  });
+}
+
 /** An index level observed by the quote stream, in index points at a millisecond instant. */
 export interface VolatilityLiveLevel { value: number; observedAt: number }
 

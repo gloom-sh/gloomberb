@@ -1,10 +1,22 @@
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
+import { formatPercentAxis, spanAxisFormatter } from "../../../components/chart-table";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 
 export const moneyMarketValue = (value: number | null, unit: MoneyMarketRow["unit"]) => value == null
   ? "--" : unit === "percent" ? `${value.toFixed(2)}%` : `$${value.toLocaleString("en-US", { minimumFractionDigits: Math.abs(value) < 10 ? 3 : 1, maximumFractionDigits: Math.abs(value) < 10 ? 3 : 1 })}B`;
 export const moneyMarketChange = (value: number | null, unit: MoneyMarketRow["changeUnit"]) => value == null
   ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(unit === "usd-billions" && Math.abs(value) < 1 ? 3 : 1)}${unit === "basis-points" ? "bp" : "B"}`;
+const formatBillionsAxis = spanAxisFormatter((value, digits) => `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}B`);
+
+/** Axis labels in the board's units, with the decimals the plotted range needs. */
+export function moneyMarketAxis(unit: MoneyMarketRow["unit"]): (value: number, domain: CompositeAxisDomain) => string {
+  return unit === "percent" ? formatPercentAxis : formatBillionsAxis;
+}
+
+/** A move in a bill's discount yield, in basis points like the board's change column. */
+export const moneyMarketRateChange = (value: number) => moneyMarketChange(value * 100, "basis-points");
+
 export function moneyMarketNotices(data: MoneyMarketsPayload): string[] {
   const notices = [...data.rows, data.netLiquidity].flatMap((row) => row.status === "unavailable"
     ? [`${row.label}: ${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")}.`]

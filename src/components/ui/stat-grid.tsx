@@ -82,6 +82,7 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
   const labels = labelChars(items);
   const innerWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const cellWidth = Math.max(8, Math.floor((innerWidth - CELL_GAP * (columns - 1)) / columns));
+  const widestValue = Math.max(0, ...items.filter((item) => !item.wide).map((item) => displayWidth(item.value)));
 
   const toneColor = (item: StatItem): string => {
     if (item.color) return item.color;
@@ -109,7 +110,10 @@ export function StatGrid({ items, width, columns: columnsProp }: StatGridProps) 
           {row.map((item, index) => {
             const label = t(item.label);
             const width = item.wide ? innerWidth : cellWidth;
-            const labelWidth = Math.min(labels + 1, Math.max(4, Math.floor(width * 0.5)));
+            // The label takes what the grid's widest value leaves, so values
+            // stay aligned down the column and a label is cut only when the
+            // cell has no room for it.
+            const labelWidth = Math.min(labels + 1, Math.max(4, width - widestValue - 1));
             const valueWidth = Math.max(1, width - labelWidth);
             const value = nativePaneChrome ? item.value : truncateToDisplayWidth(item.value, valueWidth);
             const detailWidth = valueWidth - displayWidth(value) - 2;

@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, TextAttributes } from "../../../ui";
+import { Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
   DataTableView,
-  StatGrid,
-  StaticChartSurface,
+  scalarPoint,
+  spanAxisFormatter,
+  staticSeries,
+  useChartTableSelection,
   usePaneFooter,
+  type ChartTableSelection,
   type DataTableCell,
   type DataTableKeyEvent,
+  type StatItem,
 } from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { getTableWidth } from "../../../components/ui/table-layout";
+import type { ResolvedSeries } from "../../../time-series/types";
 import type { AnalystResearchData } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { useTickerFinancials } from "../../../market-data/hooks";
@@ -29,7 +35,7 @@ import {
   formatAnalystPrice,
   formatPriceTarget,
   buildAnalystFooterInfo,
-  buildAnalystTargetHistory,
+  buildMeanTargetHistory,
   buildRatingColumns,
   formatRatingTarget,
   nextRatingSortPreference,
@@ -49,9 +55,9 @@ export {
   type RatingSortPreference,
 } from "./analyst-model";
 
-/** Enough of the pane to keep a readable table under the chart. */
-const MIN_CHART_PANE_HEIGHT = 16;
 const MIN_CHART_POINTS = 3;
+
+type RatingRow = AnalystResearchData["ratings"][number];
 
 function ratingActionColor(action: string | undefined): string {
   const normalized = action?.toLowerCase() ?? "";
@@ -65,16 +71,7 @@ function ratingTargetBackground(delta: number | null): string | undefined {
   return blendHex(colors.bg, delta > 0 ? colors.positive : colors.negative, 0.42);
 }
 
-function targetHistoryPoints(history: AnalystTargetHistoryPoint[]): ProjectedChartPoint[] {
-  return history.map((point) => ({
-    date: new Date(`${point.date}T00:00:00Z`),
-    open: point.average,
-    high: point.average,
-    low: point.average,
-    close: point.average,
-    volume: 0,
-  }));
-}
+const historyDate = (point: AnalystTargetHistoryPoint) => Date.parse(`${point.date}T00:00:00Z`);
 
 interface AnalystQuoteBinding {
   symbol: string | null;
@@ -82,85 +79,56 @@ interface AnalystQuoteBinding {
 }
 
 /**
- * The reported target and its upside stay in the body because the chart under
- * them is a different measure: the rest of the consensus context lives in the
- * status bar rather than in a fixed block above the actions. The upside moves
- * with the live price, so this band (not the ratings table) re-renders on it.
- * The firm count belongs to the chart line, which averages each rated firm's
- * latest target.
+ * The reported consensus and its upside, then the mean-target line over the
+ * rating actions. The upside moves with the live price, so this header (not
+ * the ratings table) re-renders on it. The line is rebuilt from each firm's
+ * latest dated target, which is not the reported consensus, so its legend
+ * names it a mean and counts the firms in it at the cursor.
  */
-function AnalystHeadline({ data, chartFirms, width, binding }: {
+function AnalystHeader({ data, history, series, currency, width, height, tableRows, tableChromeRows, binding, link }: {
   data: AnalystResearchData | null;
-  chartFirms: number | null;
+  history: readonly AnalystTargetHistoryPoint[];
+  series: ResolvedSeries[];
+  currency: string | undefined;
   width: number;
+  height: number;
+  tableRows: number;
+  tableChromeRows: number;
   binding: AnalystQuoteBinding;
+  link: ChartTableSelection;
 }) {
   const financials = useTickerFinancials(binding.ticker ? binding.symbol : null, binding.ticker);
   const target = data?.priceTarget;
   const upside = targetUpside(target, analystReferencePrice(data, financials?.quote).price);
-  const currency = analystTargetCurrency(data);
-
-  // The table body already reports loading, error, and empty states.
-  if (!data) return null;
-
-  return (
-    <StatGrid
-      width={width}
-      items={[
-        {
-          id: "target",
-          label: "Avg target",
-          value: formatAnalystPrice(target?.average, currency),
-          detail: chartFirms ? `${chartFirms} firms` : undefined,
-        },
-        {
-          id: "upside",
-          label: "Upside",
-          value: upside != null ? formatPercent(upside) : "-",
-          tone: upside == null || upside === 0 ? "muted" : upside > 0 ? "positive" : "negative",
-        },
-      ]}
-    />
+  const formatValue = useCallback((value: number) => formatPriceTarget(value, currency), [currency]);
+  const formatAxisValue = useMemo(
+    () => spanAxisFormatter((value, digits) => formatPriceTarget(Number(value.toFixed(digits)), currency)),
+    [currency],
   );
-}
-
-function TargetHistoryChart({
-  history,
-  currency,
-  width,
-  height,
-  focused = false,
-}: {
-  history: AnalystTargetHistoryPoint[];
-  currency: string | undefined;
-  width: number;
-  height: number;
-  focused?: boolean;
-}) {
-  const points = useMemo(() => targetHistoryPoints(history), [history]);
-  const first = history[0]?.average;
-  const last = history.at(-1)?.average;
-  // Read the line the way the table reads a raise or a cut.
-  const palette = resolveChartPalette(colors, first == null || last == null || last === first
-    ? "neutral"
-    : last > first ? "positive" : "negative");
-
+  // The terminal grid gives a label half its cell, so two columns under 44
+  // cells shorten the label rather than clip it.
+  const { nativePaneChrome } = useUiCapabilities();
+  const consensusLabel = !nativePaneChrome && width < 44 ? "Cons." : "Consensus";
+  // The table body already reports loading, error, and empty states.
+  const figures: StatItem[] = data ? [
+    { id: "target", label: consensusLabel, value: formatAnalystPrice(target?.average, currency) },
+    {
+      id: "upside",
+      label: "Upside",
+      value: upside != null ? formatPercent(upside) : "-",
+      tone: upside == null || upside === 0 ? "muted" : upside > 0 ? "positive" : "negative",
+    },
+  ] : [];
+  const cursorTime = link.cursorDate?.getTime();
+  const shown = cursorTime == null ? history.at(-1)
+    : history.findLast((point) => historyDate(point) <= cursorTime) ?? history[0];
+  const firms = shown ? `${shown.firms} firms` : "";
   return (
-    <Box flexDirection="column" paddingX={1} height={height} flexShrink={0}>
-      <StaticChartSurface
-        points={points}
-        width={Math.max(10, width - 2)}
-        height={height}
-        mode="step"
-        calendarSpaced
-        colors={palette}
-        showTimeAxis
-        timeAxisColor={colors.textDim}
-        yAxisColor={colors.textDim}
-        formatYAxisValue={(value) => formatPriceTarget(value, currency)}
-        focused={focused}
-      />
-    </Box>
+    <ChartTableHeader width={width} height={height} tableRows={tableRows} tableChromeRows={tableChromeRows} figures={figures}
+      chart={history.length >= MIN_CHART_POINTS ? {
+        series, formatValue, formatAxisValue, remoteKind: "analyst-mean-target", ...link,
+        legendAccessory: <Text fg={colors.textMuted}>{firms}</Text>, legendAccessoryWidth: firms.length,
+      } : null} />
   );
 }
 
@@ -215,13 +183,37 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   useEffect(() => { setSelectedIdx(0); }, [symbol, exchange]);
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
-  const targetHistory = useMemo(() => buildAnalystTargetHistory(data?.ratings ?? []), [data?.ratings]);
-  const showChart = targetHistory.length >= MIN_CHART_POINTS && height >= MIN_CHART_PANE_HEIGHT;
-  const chartHeight = showChart ? Math.min(10, Math.max(5, Math.floor((height - 1) * 0.3))) : 0;
-  const chartFirms = targetHistory.at(-1)?.firms ?? 0;
+  const targetHistory = useMemo(() => buildMeanTargetHistory(data?.ratings ?? []), [data?.ratings]);
+  const series = useMemo(() => {
+    const first = targetHistory[0]?.average;
+    const last = targetHistory.at(-1)?.average;
+    // Read the line the way the table reads a raise or a cut.
+    const color = first == null || last == null || last === first ? colors.textBright
+      : last > first ? colors.positive : colors.negative;
+    return [staticSeries(
+      targetHistory.map((point) => scalarPoint(new Date(historyDate(point)), point.average)),
+      { id: "mean-target", label: "Mean target", color, style: "step", calendarSpaced: true },
+    )];
+  }, [targetHistory]);
+  // Each action sits on the line at its date; one before the line starts has no point.
+  const ratingIds = useMemo(() => new Map((data?.ratings ?? []).map((row, index) => [row, String(index)])), [data?.ratings]);
+  const ratingId = useCallback((row: RatingRow) => ratingIds.get(row) ?? "", [ratingIds]);
+  const lineStart = targetHistory[0] ? historyDate(targetHistory[0]) : null;
+  const ratingDate = useCallback((row: RatingRow) => {
+    const time = Date.parse(`${row.date}T00:00:00Z`);
+    return lineStart != null && Number.isFinite(time) && time >= lineStart ? new Date(time) : null;
+  }, [lineStart]);
+  const link = useChartTableSelection({
+    rows, getId: ratingId, getDate: ratingDate,
+    selectedId: rows[selectedIdx] ? ratingId(rows[selectedIdx]!) : null,
+    onSelect: (id) => setSelectedIdx(Math.max(0, rows.findIndex((row) => ratingId(row) === id))),
+    focused,
+  });
+  // The header row, plus the scrollbar row once the columns overflow the pane.
+  const tableChromeRows = chartTableChromeRows(columns, width);
 
   const renderCell = useCallback((
-    row: AnalystResearchData["ratings"][number],
+    row: RatingRow,
     column: RatingColumn,
     _index: number,
     rowState: { selected: boolean },
@@ -280,7 +272,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   return (
     <>
       {footer}
-      <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>
+      <DataTableView<RatingRow, RatingColumn>
         focused={focused}
         selection={{
           kind: "index",
@@ -290,23 +282,18 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
         rootWidth={width}
         rootHeight={height}
         rootBefore={(
-          <>
-            <AnalystHeadline
-              data={data}
-              binding={binding}
-              width={width}
-              chartFirms={showChart ? chartFirms : null}
-            />
-            {showChart ? (
-              <TargetHistoryChart
-                history={targetHistory}
-                currency={ratingCurrency}
-                width={width}
-                height={chartHeight}
-                focused={focused}
-              />
-            ) : null}
-          </>
+          <AnalystHeader
+            data={data}
+            history={targetHistory}
+            series={series}
+            currency={ratingCurrency}
+            width={width}
+            height={height}
+            tableRows={rows.length}
+            tableChromeRows={tableChromeRows}
+            binding={binding}
+            link={link}
+          />
         )}
         onRootKeyDown={handleKeyDown}
         columns={columns}

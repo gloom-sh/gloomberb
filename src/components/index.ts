@@ -2,8 +2,8 @@ export { MarketBoardStack, type MarketBoardRow, type MarketBoardStackProps } fro
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
-export { CurveSurface, curveGhostColors, curveSlope, historyStatistics } from "./chart/curve";
-export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, HistoryObservation, HistoryStatistics } from "./chart/curve";
+export { CurveSurface, curveGhostColors, curveSlope, curveStrip, curveSurfaceMinRows, historyStatistics } from "./chart/curve";
+export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, CurveSeriesRole, CurveXScale, HistoryObservation, HistoryStatistics } from "./chart/curve";
 export type { StaticChartOverlay } from "./chart/static/chart-surface";
 // The time-series chart: one or more panels of resolved series with axes,
 // a cursor, and range selection. Ticker overview, polls, econ statistics,
@@ -12,8 +12,8 @@ export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
 // Figures, then a chart, then a table: the header zone, its size rule at every
 // pane size, and the selection the chart and the table share.
 export {
-  ChartStrip, ChartTableHeader, chartTableLayout, formatBpAxis, formatPercentAxis,
-  spanAxisFormatter, useChartTableLayout, useChartTableSelection,
+  ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
+  spanAxisFormatter, spanDigits, useChartTableLayout, useChartTableSelection,
 } from "./chart-table";
 export type {
   ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,

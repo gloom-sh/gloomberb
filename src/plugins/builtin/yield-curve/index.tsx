@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CurveSurface, Notice, PaneStatusBody, QueryBar, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
+import {
+  ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, Notice, PaneStatusBody, QueryBar,
+  useChartTableSelection, usePaneNoticeFooter, type DataTableColumn, type PaneFooterSegment,
+} from "../../../components";
+import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
+import { usePluginPaneState } from "../../../public/react";
+import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -10,10 +16,11 @@ import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { yieldCurveHeadless } from "./headless";
-import { buildYieldCurveSeries, formatMaturityYears } from "./chart";
-import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
+import { formatYield, formatYieldChange, yieldCurveChartSeries, yieldTenorRows, type YieldLookbackCurves, type YieldTenorRow } from "./chart";
+import { completeYieldCurve, loadHistoricalYieldCurve, loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import {
   curveAsOf,
+  isYieldObservationDate,
   loadYieldCurve,
   spreadBasisPoints,
   type YieldPoint,
@@ -22,12 +29,28 @@ import {
 
 
 const EMPTY_POINTS: YieldPoint[] = [];
-function formatYieldAxis(value: number): string {
-  return `${value.toFixed(2)}%`;
+const CAPTION = "Yield % by maturity";
+const COLUMNS: DataTableColumn[] = [
+  { id: "tenor", label: "Tenor", width: 7, align: "left" },
+  { id: "yield", label: "Yield", width: 8, align: "right" },
+  { id: "change1w", label: "1W chg", width: 8, align: "right" },
+  { id: "change1m", label: "1M chg", width: 8, align: "right" },
+];
+const AS_OF_COLUMN: DataTableColumn = { id: "asOf", label: "As of", width: 12, align: "left" };
+const tenorKey = (row: YieldTenorRow) => row.id;
+// Left and Right step along the maturities, the way the curve reads.
+const tenorPosition = (row: YieldTenorRow) => new Date(row.years * 86_400_000);
+
+/** The session a curve shows: its one date, else the latest tenor's. */
+function curveSession(points: readonly YieldPoint[]): string | null {
+  return curveAsOf(points) ?? points.flatMap((point) => isYieldObservationDate(point.asOf) && point.yield != null ? [point.asOf] : [])
+    .sort().at(-1) ?? null;
 }
 
 export function YieldCurvePane({ focused, width, height }: PaneProps) {
+  const colors = useThemeColors();
   const [requestedDate, setRequestedDate] = usePaneSettingValue<string>("asOfDate", "");
+  const [selectedTenor, setSelectedTenor] = usePluginPaneState<string | null>("yield-curve:selected", null);
   const [draftDate, setDraftDate] = useState(requestedDate);
   const [dateError, setDateError] = useState<string | null>(null);
   const [dateActive, setDateActive] = useState(false);
@@ -46,6 +69,14 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   const points = data?.requestedDate === requestedDate ? data.points : EMPTY_POINTS;
   const refreshLatest = useCallback(() => { if (!requestedDate) void load(); }, [requestedDate, load]);
   useAutoRefresh(lastUpdated, refreshLatest);
+  // The week- and month-back curves follow the session shown, not the clock,
+  // so they load once per session and a refresh of the same session keeps them.
+  const session = curveSession(points);
+  const loadLookbacks = useCallback(async () => ({ session, curves: await loadYieldCurveLookbacks(session!) }), [session]);
+  const lookbackResource = useAsyncResource(session ? loadLookbacks : null);
+  const lookbacks = lookbackResource.data?.session === session ? lookbackResource.data.curves : null;
+  const lookbackCurves = useMemo<YieldLookbackCurves>(() => Object.fromEntries((lookbacks ?? [])
+    .map((lookback) => [lookback.id, lookback.points])), [lookbacks]);
   const selectDate = (value: string) => {
     try {
       const nextDate = yieldCurveDate(value);
@@ -85,12 +116,17 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   ], [bp]);
   // Limitations of a curve that is still drawn sit behind one warning indicator.
   const missingTenors = points.filter((point) => point.yield == null).map((point) => point.maturity);
+  // Both look-backs share one request per tenor, so they usually fail together.
+  const lookbackFailures = [...new Set((lookbacks ?? []).flatMap((lookback) => lookback.points ? [] : [lookback.error]))]
+    .map((message) => `${(lookbacks ?? []).filter((lookback) => lookback.error === message).map((lookback) => lookback.id).join(" and ")} look-back unavailable: ${message}`);
   usePaneNoticeFooter({
     registrationId: "yield-curve:notices",
     notices: [
       !asOf && points.length ? "The tenors carry mixed or unknown observation dates, so the curve is not one session." : null,
       missingTenors.length ? `Unavailable tenors: ${missingTenors.join(", ")}.` : null,
       points.some((point) => point.stale) ? "Some tenors are cached values because their refresh failed." : null,
+      lookbackResource.error ? `1W and 1M look-backs unavailable: ${lookbackResource.error}` : null,
+      ...lookbackFailures,
     ].filter((notice): notice is string => notice !== null),
     focused,
     enabled: !error && !sourceError,
@@ -106,9 +142,27 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     ],
   });
 
-  // The query bar carries the session date, so the legend does not repeat it;
-  // each point keeps its own date for the table when the tenors differ.
-  const series = useMemo(() => [{ ...buildYieldCurveSeries(points), asOf: undefined }], [points]);
+  const rows = useMemo(() => yieldTenorRows(points, lookbackCurves), [lookbackCurves, points]);
+  const selectedId = rows.some((row) => row.id === selectedTenor) ? selectedTenor! : rows[0]?.id ?? null;
+  useChartTableSelection({ rows, getId: tenorKey, getDate: tenorPosition, selectedId, onSelect: setSelectedTenor,
+    focused: focused && !dateActive });
+  const series = useMemo(() => yieldCurveChartSeries(points, lookbackCurves,
+    { current: colors.positive, ghosts: curveGhostColors(colors) }), [colors, lookbackCurves, points]);
+  // Mixed tenor dates still draw the curve: the As of column and the footer
+  // warning say which tenors differ.
+  const mixedDates = new Set(rows.flatMap((row) => row.yield == null ? [] : [row.asOf])).size > 1;
+  const columns = mixedDates ? [...COLUMNS, AS_OF_COLUMN] : COLUMNS;
+  // The strip's label shares its row with the curve's shape and the point. A
+  // curve with fewer than two yields has neither, so the tenors take the band.
+  const strip = curveStrip(series, formatYield, { caption: "Yield %", selectedPointId: selectedId });
+  const renderCell = useCallback((row: YieldTenorRow, column: DataTableColumn) => {
+    const value = column.id === "yield" ? row.yield : column.id === "change1w" ? row.change1w
+      : column.id === "change1m" ? row.change1m : null;
+    if (column.id === "tenor") return { text: row.id };
+    if (column.id === "asOf") return { text: row.asOf ?? "--", color: colors.textMuted };
+    if (value == null) return { text: "--", color: colors.textMuted };
+    return column.id === "yield" ? { text: formatYield(value) } : { text: formatYieldChange(value), color: colors.textMuted };
+  }, [colors.textMuted]);
   const queryBar = (
     <QueryBar
       width={width}
@@ -137,6 +191,9 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       meta={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
     />
   );
+  // The query bar stays above the status body so the date can change while a
+  // curve loads or after one fails; the chart and the tenors share the rest.
+  const bodyHeight = Math.max(1, height - 1 - (dateError ? 1 : 0));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -144,11 +201,21 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
       <PaneStatusBody loading={loading && points.length === 0} error={points.length === 0 ? error : null}
         loadingLabel="Loading yield curve..." subject="yield curve">
-        {/* Mixed tenor dates still draw the curve: the table's As of column and
-            the footer warning say which tenors differ. */}
-        <CurveSurface series={series} width={width} height={Math.max(1, height - 1 - (dateError ? 1 : 0))}
-          focused={focused && !dateActive} display="both" valueLabel="Yield (%)"
-          formatValue={formatYieldAxis} formatX={formatMaturityYears} />
+        <DataTableView<YieldTenorRow>
+          focused={focused && !dateActive} rootWidth={width} rootHeight={bodyHeight}
+          columns={columns} items={rows} getItemKey={tenorKey} renderCell={renderCell}
+          selection={{ kind: "id", selectedId, getId: tenorKey, onChange: (id) => setSelectedTenor(id) }}
+          onActivate={(row) => setSelectedTenor(row.id)} sortColumnId={null} sortDirection="asc"
+          emptyStateTitle="No Treasury tenors."
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} chart={strip ? {
+            render: (size) => <CurveSurface series={series} width={size.width} height={size.height} display="chart"
+              caption={CAPTION} xScale="log" formatValue={formatYield} formatChange={formatYieldChange}
+              formatAxisValue={formatPercentAxis} selectedPointId={selectedId}
+              onSelectedPointChange={(id) => setSelectedTenor(id)} />,
+            minRows: curveSurfaceMinRows({ series, width, caption: CAPTION }),
+            strip,
+          } : null} />}
+        />
       </PaneStatusBody>
     </Box>
   );

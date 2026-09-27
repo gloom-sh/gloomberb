@@ -5,10 +5,11 @@ import type { ChartPanelSpec, ResolvedSeries } from "../../time-series/types";
 import { Box, Text } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { CompositeChart } from "../chart/composite";
-import type { CompositeAxisDomain } from "../chart/composite/types";
+import type { CompositeAxisDomain, CompositeChartProps } from "../chart/composite/types";
 import { PriceSparkline } from "../price-sparkline/view";
 import { StatGrid, type StatItem } from "../ui/stat-grid";
-import { chartTableLayout, type ChartTableLayout } from "./layout";
+import type { TableWidthColumn } from "../ui/table-layout";
+import { chartTableChromeRows, chartTableLayout, type ChartTableLayout } from "./layout";
 
 const DAY_MS = 86_400_000;
 /** Daily series shorter than this still span two weeks, so the axis reads days, not hours. */
@@ -35,14 +36,16 @@ export interface ChartTableChart {
   minRows?: number;
   /** The strip for a custom chart; kit series derive their own. Null keeps no strip. */
   strip?: ChartStripSpec | null;
-  /** The legend value, in the table's units. */
-  formatValue?: (value: number) => string;
+  /** The legend value, in the table's units; the series is passed when several share the chart. */
+  formatValue?: (value: number, series?: ResolvedSeries) => string;
   formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
   /** From `useChartTableSelection`, so the table and the chart share one selection. */
   cursorDate?: Date | null;
   onCursorDateChange?: (date: Date | null) => void;
   onActivate?: () => void;
   viewport?: { start: Date; end: Date };
+  /** Ticks for an x axis that is not a calendar: one per bar, a tenor, a contract month. */
+  xAxis?: CompositeChartProps["xAxis"];
   /** Muted context at the end of the legend row: a window or an as-of date. */
   legendAccessory?: ReactNode;
   legendAccessoryWidth?: number;
@@ -59,6 +62,8 @@ export interface ChartTableHeaderProps {
   tableRows: number;
   /** Table header rows, plus one when its columns overflow into a scrollbar. */
   tableChromeRows?: number;
+  /** The table's columns, to count its scrollbar row when `tableChromeRows` is not given. */
+  tableColumns?: readonly TableWidthColumn[];
   /** A one-row `QueryBar`. */
   query?: ReactNode;
   figures?: readonly StatItem[];
@@ -94,7 +99,7 @@ function stripFromSeries(chart: ChartTableChart): ChartStripSpec | null {
   return {
     label: first.label,
     values,
-    value: chart.formatValue ? chart.formatValue(latest) : String(latest),
+    value: chart.formatValue ? chart.formatValue(latest, first) : String(latest),
     color: first.color,
   };
 }
@@ -145,7 +150,8 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
     queryRows: props.query ? 1 : 0,
     figures: props.figures,
     tableRows: props.tableRows,
-    tableChromeRows: props.tableChromeRows,
+    tableChromeRows: props.tableChromeRows
+      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined),
     chart: hasChart
       ? { minRows: chart.minRows, strip: chart.strip !== null && !chart.loading }
       : null,
@@ -194,12 +200,13 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
             navigable={false}
             showLegend
             showTimeAxis
-            formatValue={formatValue ? (value) => formatValue(value) : undefined}
+            formatValue={formatValue ? (value, entry) => formatValue(value, entry) : undefined}
             formatAxisValue={chart.formatAxisValue}
             cursorDate={chart.cursorDate}
             onCursorDateChange={chart.onCursorDateChange}
             onActivate={chart.onActivate}
             viewport={viewport}
+            xAxis={chart.xAxis}
             legendAccessory={chart.legendAccessory}
             legendAccessoryWidth={chart.legendAccessoryWidth}
             remoteKind={chart.remoteKind}

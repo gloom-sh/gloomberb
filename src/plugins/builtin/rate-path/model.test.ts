@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { RateMeeting, RatePathPayload } from "../../../api-client/rates";
 import { fetchRatePath, validateRatePath } from "./client";
-import { meetingProbability, ratePathCurves } from "./model";
+import { meetingLabel, meetingProbability, rateChangeText, ratePathCurves } from "./model";
 
 const metric = { value: 4, asOf: "2026-09-21", percentile: 50, samples: 250, source: "fred" as const };
 const meeting: RateMeeting = { date: "2026-10-28", impliedRate: 3.875, targetMidpoint: 3.875, changeBps: -12.5, percentile: 25, samples: 220, asOf: "2026-09-22T14:00:00Z", probabilities: [{ targetMidpoint: 3.75, probability: 0.5 }, { targetMidpoint: 4, probability: 0.5 }], method: "following-month", reason: null };
@@ -14,23 +14,34 @@ describe("rate-path integration boundary", () => {
   test("preserves incomplete meeting nodes and historical dates without filling a gap", () => {
     const result = validateRatePath(payload());
     const curves = ratePathCurves(result);
+    const weekAgo = curves.find((entry) => entry.id === "1W")!;
     expect(curves[0]!.points[1]!.value).toBeNull();
-    expect(curves[1]!.asOf).toBe("2026-09-15");
-    expect(curves[1]!.points[1]!.value).toBeNull();
+    expect(weekAgo.asOf).toBe("2026-09-15");
+    expect(weekAgo.points[1]!.value).toBeNull();
     expect(curves[0]!.points[0]!.x).toBe(Date.parse(meeting.date));
     expect(meetingProbability(result.meetings[1]!, 4)).toBeNull();
     expect(meetingProbability(result.meetings[0]!, 4)).toBe(0.5);
     expect(meetingProbability(result.meetings[0]!, 4.25)).toBe(0);
   });
 
-  test("charts only near ghosts and labels the SEP dot as a date on the meeting axis", () => {
+  test("charts only near ghosts, the target range as one reference and the SEP dot as a marker", () => {
     const data = payload();
     data.meetings.push({ ...meeting, date: "2027-01-27", impliedRate: 4.3 });
     data.ghosts.push({ label: "1Y", requestedDate: "2025-09-22", asOf: "2025-09-22", points: [{ date: meeting.date, impliedRate: 2.9 }] });
     data.dotPlot.points = [{ year: 2026, rate: 4.1 }, { year: 2028, rate: 3.9 }, { year: "longer-run", rate: 3.2 }];
     const curves = ratePathCurves(validateRatePath(data));
-    expect(curves.map((entry) => entry.id)).toEqual(["implied", "1W", "targetLower", "targetUpper", "sep"]);
-    expect(curves.at(-1)!.points).toEqual([{ id: "sep-2026", label: "12-31", x: Date.parse("2026-12-31"), value: 4.1, asOf: "2026-09-16" }]);
+    // What the path is read against comes before the look-backs, so a narrow legend keeps it.
+    expect(curves.map((entry) => [entry.id, entry.role, entry.label])).toEqual([
+      ["implied", "primary", "EFFR"], ["targetLower", "reference", "Target range"], ["targetUpper", "reference", "Target range"],
+      ["sep", "marker", "SEP median"], ["1W", "ghost", "1W"],
+    ]);
+    expect(curves.find((entry) => entry.id === "sep")!.points).toEqual([{ id: "sep-2026", label: "SEP 2026", x: Date.parse("2026-12-31"), value: 4.1, asOf: "2026-09-16" }]);
+    // Meetings read as months on the axis and in the readout, the way CTM names contracts.
+    expect(curves[0]!.points.map((point) => point.label)).toEqual(["Oct 26", "Dec 26", "Jan 27"]);
+    expect(meetingLabel("2027-03-17")).toBe("Mar 27");
+    expect(rateChangeText(0.105)).toBe("+10.5bp");
+    expect(rateChangeText(-0.0004)).toBe("0.0bp");
+    expect(rateChangeText(null)).toBe("--");
   });
 
   test("rejects broken endpoint probabilities and impossible decision dates", () => {

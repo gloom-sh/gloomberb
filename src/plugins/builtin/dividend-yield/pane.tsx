@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
+  chartTableLayout,
   DataTableView,
-  StatGrid,
-  StaticChartSurface,
+  scalarPoint,
+  spanAxisFormatter,
   statGridColumns,
-  statGridRows,
+  staticSeries,
+  useChartTableSelection,
   usePaneFooter,
   usePaneNoticeFooter,
   usePaneTicker,
@@ -12,14 +16,13 @@ import {
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { getTableWidth } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
-import { Box, ScrollBox, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { isPlainKey, isPlainKeyboardEvent } from "../../../utils/keyboard";
+import { isPlainKey } from "../../../utils/keyboard";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -44,16 +47,6 @@ function formatRate(value: number | null, currency: string): string {
   return formatDistributionAmount(value, currency);
 }
 
-/** Axis ticks are interpolated levels: size decimals to the tick spacing, not the six kept for payments. */
-function cashAxisFractionDigits(points: readonly ProjectedChartPoint[]): number {
-  const values = points.map((point) => point.close).filter(Number.isFinite);
-  const range = values.length ? Math.max(...values) - Math.min(...values) : 0;
-  const level = values.length ? Math.max(...values.map(Math.abs)) : 0;
-  const spread = range > 0 ? range / 4 : level;
-  if (!(spread > 0)) return 2;
-  return Math.max(2, Math.min(6, Math.ceil(-Math.log10(spread))));
-}
-
 function formatGrowth(value: number | null): string {
   if (value == null) return "—";
   return formatPercentRaw(value * 100);
@@ -76,88 +69,42 @@ function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
 }
 
 /**
- * The dividend figures over the history chart. Labels stay short so a narrow
- * terminal does not clip them. The latest ex-date is the table's first row, so
- * it shows only when there is no table. Three columns read trailing, forward
- * and schedule down the band; two read trailing beside forward.
+ * The dividend figures over the history chart, most important first so a
+ * short pane keeps the yields. Labels stay short so a narrow terminal does not
+ * clip them. The latest ex-date is the table's first row, so it shows only
+ * when there is no table.
  */
-function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory: boolean, columns: number): StatItem[] {
-  const item = {
-    ttmYield: { id: "ttm-yield", label: "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
-    fwdYield: { id: "forward-yield", label: "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
-    ttmRate: { id: "ttm-rate", label: "TTM/share", value: formatRate(metrics.trailingRate, currency) },
-    fwdRate: { id: "forward-rate", label: "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
-    growth1Y: { id: "growth-1y", label: "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
-    cagr3Y: { id: "cagr-3y", label: "3Y CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
-    payout: { id: "payout", label: "Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
-    cadence: { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
-    nextPay: { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },
-  } satisfies Record<string, StatItem>;
+function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory: boolean, short: boolean): StatItem[] {
   const exDate: StatItem[] = metrics.nextExDividendDate
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
-  return columns === 3
-    ? [item.ttmYield, item.fwdYield, item.payout, item.ttmRate, item.fwdRate, item.cadence, item.growth1Y, item.cagr3Y, item.nextPay, ...exDate]
-    : [item.ttmYield, item.fwdYield, item.ttmRate, item.fwdRate, item.growth1Y, item.cagr3Y, item.payout, item.cadence, ...exDate, item.nextPay];
+  return [
+    { id: "ttm-yield", label: short ? "TTM yld" : "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
+    { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
+    { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
+    { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
+    { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
+    { id: "cagr-3y", label: "3Y CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
+    { id: "payout", label: "Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
+    { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
+    ...exDate,
+    { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },
+  ];
 }
 
-function DividendSummary({
-  metrics,
-  currency,
-  hasHistory,
-  width,
-  height,
-  chartPoints,
-  scrollRef,
-  focused = false,
-}: {
-  metrics: DividendMetrics;
-  currency: string;
-  hasHistory: boolean;
-  width: number;
-  height: number;
-  chartPoints: ProjectedChartPoint[];
-  scrollRef: RefObject<ScrollBoxRenderable | null>;
-  focused?: boolean;
-}) {
-  const { nativePaneChrome } = useUiCapabilities();
-  // Up to three columns, and in the terminal no more than the labels can
-  // share: a label gets at most half its cell there.
-  const sample = buildMetricItems(metrics, currency, hasHistory, 2);
-  const labelChars = Math.max(...sample.map((item) => displayWidth(item.label)));
-  const columns = Math.min(3, statGridColumns(sample, width),
-    nativePaneChrome ? 3 : Math.max(1, Math.floor(width / (2 * (labelChars + 1) + 2))));
-  const metricItems = columns === 3 ? buildMetricItems(metrics, currency, hasHistory, 3) : sample;
-  const rowCount = statGridRows(metricItems, width, columns);
-  const chartHeight = chartPoints.length >= 2 ? 6 : 0;
-  // Keep the history header and three cash rows usable in a short pane.
-  const summaryHeight = Math.min(rowCount + chartHeight, Math.max(1, height - 4));
-  const palette = resolveChartPalette(colors, "positive");
-  const axisDigits = cashAxisFractionDigits(chartPoints);
-
-  return (
-    <ScrollBox ref={scrollRef} scrollY focusable={false} height={summaryHeight} flexShrink={0}>
-      <StatGrid items={metricItems} width={width} columns={columns} />
-      {chartPoints.length >= 2 && (
-        <Box flexDirection="column" paddingX={1} height={chartHeight} flexShrink={0}>
-          <StaticChartSurface
-            points={chartPoints}
-            width={Math.max(10, width - 2)}
-            height={chartHeight}
-            mode="step"
-            calendarSpaced
-            showTimeAxis
-            colors={palette}
-            yAxisLabel="TTM cash/share"
-            yAxisColor={colors.textDim}
-            formatYAxisValue={(value) => formatCurrency(value, currency, axisDigits)}
-            focused={focused}
-          />
-        </Box>
-      )}
-    </ScrollBox>
-  );
+/**
+ * The terminal grid gives a label at most half its cell; where the figures the
+ * kit keeps come out in columns narrower than that, the labels would clip.
+ */
+function labelsClip(items: readonly StatItem[], width: number): boolean {
+  if (items.length < 2) return false;
+  const columns = statGridColumns([...items], width);
+  const cell = Math.floor((width - 2 - 2 * (columns - 1)) / columns);
+  const labels = Math.max(...items.map((item) => displayWidth(item.label)));
+  return Math.floor(cell / 2) < labels + 1;
 }
+
+const rowKey = (row: DividendRow) => row.key;
 
 function renderCell(
   row: DividendRow,
@@ -184,6 +131,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData;
 }) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const { nativePaneChrome } = useUiCapabilities();
   // Yields are repriced from the quote on every render, so streaming it is all
   // it takes for them to move with the stock. A yield to two decimals needs
   // about one update a second, not the fast lane of a price on screen.
@@ -194,9 +142,8 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const quotePrice = financials?.quote?.price ?? null;
 
   const [sortPreference, setSortPreference] = useState<DividendSortPreference>(DEFAULT_SORT_PREFERENCE);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const summaryScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  useEffect(() => { summaryScrollRef.current?.scrollTo(0); }, [symbol]);
+  // Null follows the table's first row, including after a reload.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // Ten years of history must not be refetched on every live price tick, so the
   // quote is read through a ref instead of being an effect dependency.
   const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
@@ -213,7 +160,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const historyData = data?.historyError && data.payments.length === 0 && lastHistory.current?.request === request
     ? lastHistory.current.data : data;
   const authWall = !data && isCloudSessionRequired(error);
-  useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
+  useEffect(() => { if (updatedAt !== null) setSelectedKey(null); }, [updatedAt]);
 
   const payments = historyData?.payments ?? [];
   const currency = data?.currency ?? payments[0]?.currency ?? resolveCurrencyUnit(ticker?.metadata.currency).currency;
@@ -250,32 +197,50 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildDividendColumns(), []);
+  const columns = useMemo(() => buildDividendColumns(rows), [rows]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
   );
+  // A step through the kit, so an annual raise reads as a stair in the legend's units.
+  const series = useMemo(() => [staticSeries(
+    chartPoints.map((point) => scalarPoint(point.date, point.close)),
+    { id: "ttm-dividend", label: "TTM dividend", color: colors.positive, style: "step", calendarSpaced: true },
+  )], [chartPoints]);
+  const formatCash = useCallback((value: number) => formatDistributionAmount(value, currency), [currency]);
+  const formatCashAxis = useMemo(
+    () => spanAxisFormatter((value, digits) => formatCurrency(value, currency, Math.max(2, digits))),
+    [currency],
+  );
+  // Payments before the first full trailing year or after today have no point on the line.
+  const chartSpan = chartPoints.length >= 2
+    ? { first: chartPoints[0]!.date.getTime(), last: chartPoints.at(-1)!.date.getTime() } : null;
+  const rowDate = useCallback((row: DividendRow) => {
+    const time = Date.parse(`${row.exDate}T00:00:00Z`);
+    return chartSpan && time >= chartSpan.first && time <= chartSpan.last ? new Date(time) : null;
+  }, [chartSpan?.first, chartSpan?.last]);
+  const selectedId = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
+  const link = useChartTableSelection({
+    rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId, onSelect: setSelectedKey, focused,
+  });
+  // The header row, plus the scrollbar row once the columns overflow the pane.
+  const tableChromeRows = chartTableChromeRows(columns, width);
+  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false) : [];
+  const keptFigures = chartTableLayout({
+    width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
+  }).figures;
+  // The desktop grid never clips a label; the terminal shortens them rather than clip.
+  const figures = metrics && !nativePaneChrome && labelsClip(keptFigures, width)
+    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextSortPreference(current, columnId));
   }, []);
 
-  const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
-    if (isPlainKeyboardEvent(event) && (event.name === "pageup" || event.name === "pagedown")) {
-      const summary = summaryScrollRef.current;
-      const viewportHeight = summary?.viewport?.height ?? 0;
-      const max = Math.max(0, (summary?.scrollHeight ?? 0) - viewportHeight);
-      if (summary && max > 0) {
-        const delta = Math.max(1, viewportHeight - 1) * (event.name === "pageup" ? -1 : 1);
-        summary.scrollTo(Math.max(0, Math.min(max, summary.scrollTop + delta)));
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        return true;
-      }
-    }
-    // Only a bare r refreshes; Cmd/Ctrl+Shift+R belongs to the window.
-    return isPlainKey(event, "r") && handleRefreshKey(event, refresh, { stopPropagation: true });
-  }, [refresh]);
+  // Only a bare r refreshes; Cmd/Ctrl+Shift+R belongs to the window.
+  const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
+    isPlainKey(event, "r") && handleRefreshKey(event, refresh, { stopPropagation: true })
+  ), [refresh]);
 
   const emptyTitle = !symbol
     ? "No ticker selected."
@@ -288,33 +253,24 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   return (
     <DataTableView<DividendRow, DividendColumn>
       focused={focused}
-      selection={{
-        kind: "index",
-        selectedIndex: sortedRows.length === 0 ? null : Math.min(selectedIdx, sortedRows.length - 1),
-        onChange: (index) => setSelectedIdx(index),
-      }}
+      selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={metrics ? (
-        <DividendSummary
-          metrics={metrics}
-          currency={currency}
-          hasHistory={sortedRows.length > 0}
-          width={width}
-          height={height}
-          chartPoints={chartPoints}
-          scrollRef={summaryScrollRef}
-          focused={focused}
-        />
+      rootBefore={metrics || chartPoints.length >= 2 ? (
+        <ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
+          figures={figures}
+          chart={chartPoints.length >= 2 ? {
+            series, formatValue: formatCash, formatAxisValue: formatCashAxis, remoteKind: "dividend-ttm-history", ...link,
+          } : null} />
       ) : undefined}
       columns={columns}
       items={sortedRows}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
-      getItemKey={(row) => row.key}
+      getItemKey={rowKey}
       renderCell={renderCell}
       emptyStateTitle={emptyTitle}
     />

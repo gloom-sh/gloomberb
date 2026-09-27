@@ -1136,6 +1136,7 @@ Choose the existing control that owns the interaction you need:
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
 | Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
+| Figures, a chart and a table in one pane | `ChartTableHeader` in the table's `rootBefore`, `useChartTableSelection`, `chartTableLayout`, `CurveSurface` with `curveStrip` for curves (see `docs/pane-conventions.md` 5b) |
 | Pane tab strip | `usePaneHeaderTabs` (title-bar tabs on the desktop), `Tabs` |
 | Search, filters, sort above a list | `QueryBar` |
 | Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |

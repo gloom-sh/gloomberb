@@ -10,15 +10,15 @@ import {
   useUpdatedAgo,
 } from "../../../public/react";
 import {
+  chartTableChromeRows,
+  ChartTableHeader,
   CompositeChart,
-  DataTableView,
+  DataTableStackView,
   EmptyState,
   KeyValueRow,
-  PageStackView,
   PaneStatusBody,
-  StatGrid,
-  statGridRows,
   Tabs,
+  useChartTableSelection,
   usePaneHeaderTabs,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
@@ -33,10 +33,6 @@ import type {
 } from "../../../api-client/debt-maturities";
 import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
-import {
-  getTableWidth,
-  hasMeaningfulTableHorizontalOverflow,
-} from "../../../components/ui/table-layout";
 import type { PaneProps } from "../../../types/plugin";
 import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
@@ -46,19 +42,21 @@ import {
 } from "../shared/research-cloud-session";
 import { cachedDebtMaturities, loadDebtMaturities } from "./client";
 import {
-  BUCKET_AXIS_TICKS,
-  BUCKET_COLUMNS,
   HISTORY_COLUMNS,
-  bucketCursor,
-  bucketPoints,
+  bucketBar,
+  bucketColumns,
   bucketShare,
+  datedBucketScale,
   debtAmount,
+  debtAxisAmount,
   debtFilingUrl,
   debtMetricCaption,
   debtMetricValue,
   debtNotices,
   debtPercent,
-  recentDebtHistory,
+  historyAxis,
+  historyBars,
+  historyChartPoints,
   sortedBuckets,
   sortedDebtHistory,
   type BucketColumn,
@@ -70,6 +68,7 @@ import {
   type HistoryColumnId,
 } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
+import { WallBar, wallLabelReserve } from "./wall-bar";
 
 const PANELS = [{ id: "main" }];
 const TABS = [
@@ -77,8 +76,12 @@ const TABS = [
   { value: "history", label: "History" },
   { value: "filing", label: "Filing" },
 ];
-const BUCKET_AXIS = { ticks: BUCKET_AXIS_TICKS, formatCursor: bucketCursor };
-const amountAxis = (value: number) => debtAmount(value);
+/** Legend, four plot rows and the year axis. */
+const HISTORY_CHART_MIN_ROWS = 6;
+const historyDate = (row: DebtHistoryPoint) => new Date(row.asOf);
+/** Table header rows, plus the horizontal scrollbar when the columns overflow. */
+const tableChrome = (columns: readonly { width: number }[], width: number) =>
+  chartTableChromeRows(columns, width);
 
 function MetricRow({ label, metric }: { label: string; metric: DebtMetric }) {
   return (
@@ -269,7 +272,6 @@ function HistoryDetail({
 }
 
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
-  const { nativePaneChrome } = useUiCapabilities();
   const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const session = useResearchCloudSession();
@@ -311,8 +313,10 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     latest = data?.latest;
   const bucketKey = (bucket: DebtBucket) =>
     `${symbol}:${latest?.accession}:${latest?.asOf}:${bucket.id}`;
-  const historyKey = (point: DebtHistoryPoint) =>
-    `${symbol}:${point.accession}:${point.asOf}`;
+  const historyKey = useCallback(
+    (point: DebtHistoryPoint) => `${symbol}:${point.accession}:${point.asOf}`,
+    [symbol],
+  );
   const buckets = useMemo(
     () => (latest ? sortedBuckets(latest, bucketSort) : []),
     [latest, bucketSort],
@@ -323,42 +327,43 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   );
   const openBucketRow = buckets.find((row) => bucketKey(row) === openBucket);
   const openHistoryRow = history.find((row) => historyKey(row) === openHistory);
+  // The first row stands selected until the user moves, so the chart's cursor shows.
   const selectedHistoryRow =
     openHistoryRow ??
     history.find((row) => historyKey(row) === selectedHistory) ??
     history[0];
-  const series = useMemo(
+  const selectedHistoryId = selectedHistoryRow ? historyKey(selectedHistoryRow) : null;
+  const bars = useMemo(() => (data ? historyBars(data) : []), [data]);
+  const historySeries = useMemo(
     () => [
-      staticSeries(latest ? bucketPoints(latest) : [], {
-        id: "debt-principal",
-        label: `Principal (${latest?.currency ?? ""})`,
+      staticSeries(historyChartPoints(bars), {
+        id: "debt-history",
+        label: `Principal total (${latest?.currency ?? ""})`,
         color: colors.warning,
         style: "columns",
       }),
     ],
-    [latest],
+    [bars, latest?.currency],
   );
-  const historySeries = useMemo(
-    () => [
-      staticSeries(
-        data
-          ? recentDebtHistory(data).map((row) => ({
-              date: new Date(row.asOf),
-              observedAt: new Date(row.asOf),
-              value: row.totalPrincipal,
-            }))
-          : [],
-        {
-          id: "debt-history",
-          label: `Principal (${latest?.currency ?? ""})`,
-          color: colors.warning,
-          style: "columns",
-          calendarSpaced: true,
-        },
-      ),
-    ],
-    [data, latest],
+  const barAxis = useMemo(() => historyAxis(bars), [bars]);
+  const historyLink = useChartTableSelection({
+    rows: history,
+    getId: historyKey,
+    getDate: historyDate,
+    selectedId: selectedHistoryId,
+    onSelect: setSelectedHistory,
+    focused: focused && !openHistoryRow,
+    enabled: tab === "history",
+  });
+  const wallScale = latest ? datedBucketScale(latest) : 0;
+  // A bucket past the dated scale keeps room at the end for its value.
+  const wallReserve = Math.max(
+    0,
+    ...buckets.map((row) =>
+      bucketBar(row, wallScale)?.capped ? wallLabelReserve(debtAmount(row.value)) : 0,
+    ),
   );
+  const bucketColumnList = useMemo(() => bucketColumns(width), [width]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   // An open bucket or filing covers its tab; the tab keys wait until it closes.
   const detailOpen =
@@ -373,6 +378,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   // `height` is the pane body: the footer is chrome outside it on both targets.
   const bodyHeight = Math.max(3, height - tabRows);
   // The as-of date is said once; a figure from another date carries its own.
+  // Most important first: a short pane keeps the leading figures.
   const statItems = useMemo<StatItem[]>(() => {
     if (!latest) return [];
     const metric = (id: string, label: string, value: DebtMetric): StatItem => ({
@@ -386,37 +392,16 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       { id: "as-of", label: "As of", value: latest.asOf },
     ];
   }, [latest]);
-  const statRows = statGridRows(statItems, width);
-  // The desktop fills to the footer with flex; the terminal keeps fixed rows.
-  const fill = (rows: number) => nativePaneChrome
-    ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minHeight: 0 }
-    : { height: rows, flexShrink: 0 };
-  // The terminal sizes the table to its header, rows and any scrollbar and
-  // gives the chart the rest, or the table all of it when the chart would be
-  // under 4 rows; the desktop gives the chart a share and lets the table fill
-  // to the footer.
-  const scrollbarRow = (columns: typeof BUCKET_COLUMNS | typeof HISTORY_COLUMNS) =>
-    hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width) ? 1 : 0;
-  const bucketTableHeight = Math.min(
-    buckets.length + 1 + scrollbarRow(BUCKET_COLUMNS),
-    Math.max(4, bodyHeight - 3),
-  );
-  const chartHeight = nativePaneChrome
-    ? Math.max(0, Math.floor((bodyHeight - statRows) * 0.55))
-    : Math.max(0, bodyHeight - bucketTableHeight - statRows);
-  const tableHeight = nativePaneChrome || chartHeight >= 4
-    ? bucketTableHeight
-    : Math.max(1, bodyHeight - statRows);
-  const historyRowsHeight = Math.min(
-    history.length + 1 + scrollbarRow(HISTORY_COLUMNS),
-    Math.max(4, Math.floor(bodyHeight * 0.6)),
-  );
-  const historyChartHeight = nativePaneChrome
-    ? Math.max(0, Math.floor((bodyHeight - 1) * 0.5))
-    : Math.max(0, bodyHeight - historyRowsHeight - 1);
-  const historyTableHeight = nativePaneChrome || historyChartHeight >= 4
-    ? historyRowsHeight
-    : Math.max(1, bodyHeight - 1);
+  const historyStrip = useMemo(() => {
+    const values = bars.flatMap((row) => row.totalPrincipal === null ? [] : [row.totalPrincipal]);
+    const last = values.at(-1);
+    return last == null || values.length < 2 ? null : {
+      label: "Principal total", values, value: debtAmount(last), color: colors.warning,
+    };
+  }, [bars]);
+  const historyWindow = latest
+    ? `${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`
+    : "";
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && isPlainKey(event, "r")) {
@@ -468,7 +453,18 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     column: BucketColumn,
     _index: number,
     state: { selected: boolean },
-  ): DataTableCell => ({
+  ): DataTableCell => column.id === "wall" ? {
+    text: "",
+    content: (
+      <WallBar
+        bar={bucketBar(row, wallScale)}
+        width={column.width}
+        reserve={wallReserve}
+        label={debtAmount(row.value)}
+        selected={state.selected}
+      />
+    ),
+  } : ({
     text:
       column.id === "label"
         ? row.label
@@ -539,8 +535,37 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
             {tab === "filing" ? (
               <FilingDetail latest={latest} width={width} height={bodyHeight} />
             ) : tab === "maturities" ? (
-              <PageStackView
+              <DataTableStackView<DebtBucket, BucketColumn>
+                emptyStateTitle="No maturity buckets available."
                 focused={focused}
+                rootWidth={width}
+                rootHeight={bodyHeight}
+                rootBefore={
+                  // The wall is drawn in the table, so the header zone is the figures.
+                  <ChartTableHeader
+                    width={width}
+                    height={bodyHeight}
+                    tableRows={buckets.length}
+                    tableChromeRows={tableChrome(bucketColumnList, width)}
+                    figures={statItems}
+                    chart={null}
+                  />
+                }
+                columns={bucketColumnList}
+                items={buckets}
+                getItemKey={bucketKey}
+                renderCell={renderBucket}
+                freezeFirstColumn
+                resetScrollKey={symbol}
+                selection={{
+                  kind: "id",
+                  selectedId:
+                    selectedBucket ??
+                    (buckets[0] ? bucketKey(buckets[0]) : null),
+                  getId: bucketKey,
+                  onChange: setSelectedBucket,
+                }}
+                onActivate={(row) => setOpenBucket(bucketKey(row))}
                 detailOpen={!!openBucketRow}
                 onBack={() => setOpenBucket(null)}
                 detailTitle={openBucketRow?.label}
@@ -553,67 +578,70 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                     />
                   ) : null
                 }
-                rootContent={
-                  <Box width={width} {...fill(bodyHeight)} flexDirection="column">
-                    <StatGrid items={statItems} width={width} />
-                    {chartHeight >= 4 ? (
-                      <Box paddingX={1} flexShrink={0}>
-                        <CompositeChart
-                          series={series}
-                          panels={PANELS}
-                          width={Math.max(1, width - 2)}
-                          height={chartHeight}
-                          focused={focused && !openBucketRow}
-                          showLegend={false}
-                          navigable={false}
-                          showTimeAxis
-                          xAxis={BUCKET_AXIS}
-                          formatAxisValue={amountAxis}
-                          remoteKind="debt-maturity-wall"
-                        />
-                      </Box>
-                    ) : null}
-                    <Box {...fill(tableHeight)}>
-                      <DataTableView<DebtBucket, BucketColumn>
-                        emptyStateTitle="No maturity buckets available."
-                        focused={focused && !openBucketRow}
-                        rootWidth={width}
-                        rootHeight={tableHeight}
-                        columns={BUCKET_COLUMNS}
-                        items={buckets}
-                        getItemKey={bucketKey}
-                        renderCell={renderBucket}
-                        freezeFirstColumn
-                        resetScrollKey={symbol}
-                        selection={{
-                          kind: "id",
-                          selectedId:
-                            selectedBucket ??
-                            (buckets[0] ? bucketKey(buckets[0]) : null),
-                          getId: bucketKey,
-                          onChange: setSelectedBucket,
-                        }}
-                        onActivate={(row) => setOpenBucket(bucketKey(row))}
-                        sortColumnId={bucketSort.column}
-                        sortDirection={bucketSort.direction}
-                        onHeaderClick={(column) =>
-                          setBucketSort((current) => ({
-                            column: column as BucketColumnId,
-                            direction:
-                              current.column === column &&
-                              current.direction === "desc"
-                                ? "asc"
-                                : "desc",
-                          }))
-                        }
-                      />
-                    </Box>
-                  </Box>
+                sortColumnId={bucketSort.column}
+                sortDirection={bucketSort.direction}
+                onHeaderClick={(column) =>
+                  setBucketSort((current) => ({
+                    column: column as BucketColumnId,
+                    direction:
+                      current.column === column &&
+                      current.direction === "desc"
+                        ? "asc"
+                        : "desc",
+                  }))
                 }
               />
             ) : (
-              <PageStackView
+              <DataTableStackView<DebtHistoryPoint, HistoryColumn>
+                emptyStateTitle="No comparable filing history."
                 focused={focused}
+                rootWidth={width}
+                rootHeight={bodyHeight}
+                rootBefore={
+                  <ChartTableHeader
+                    width={width}
+                    height={bodyHeight}
+                    tableRows={history.length}
+                    tableChromeRows={tableChrome(HISTORY_COLUMNS, width)}
+                    chart={bars.length ? {
+                      // A custom chart only so each filing's year sits under its own bar.
+                      render: (size) => (
+                        <CompositeChart
+                          series={historySeries}
+                          panels={PANELS}
+                          width={size.width}
+                          height={size.height}
+                          focused={false}
+                          navigable={false}
+                          showLegend
+                          showTimeAxis
+                          xAxis={barAxis}
+                          formatValue={(value) => debtAmount(value)}
+                          formatAxisValue={debtAxisAmount}
+                          legendAccessory={<Text fg={colors.textMuted}>{historyWindow}</Text>}
+                          legendAccessoryWidth={historyWindow.length}
+                          remoteKind="debt-filing-history"
+                          {...historyLink}
+                        />
+                      ),
+                      minRows: HISTORY_CHART_MIN_ROWS,
+                      strip: historyStrip,
+                    } : null}
+                  />
+                }
+                columns={HISTORY_COLUMNS}
+                items={history}
+                getItemKey={historyKey}
+                renderCell={renderHistory}
+                freezeFirstColumn
+                resetScrollKey={symbol}
+                selection={{
+                  kind: "id",
+                  selectedId: selectedHistoryId,
+                  getId: historyKey,
+                  onChange: setSelectedHistory,
+                }}
+                onActivate={(row) => setOpenHistory(historyKey(row))}
                 detailOpen={!!openHistoryRow}
                 onBack={() => setOpenHistory(null)}
                 detailTitle={openHistoryRow?.asOf}
@@ -626,65 +654,17 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                     />
                   ) : null
                 }
-                rootContent={
-                  <Box width={width} {...fill(bodyHeight)} flexDirection="column">
-                    {/* What the bars are and the window they span, as the chart's unit line. */}
-                    <Box paddingX={1} height={1} flexShrink={0} flexDirection="row" gap={2}>
-                      <Text fg={colors.textDim}>{`Principal total (${latest.currency})`}</Text>
-                      <Text fg={colors.textMuted}>{`${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`}</Text>
-                    </Box>
-                    {historyChartHeight >= 4 ? (
-                      <Box paddingX={1} flexShrink={0}>
-                        <CompositeChart
-                          series={historySeries}
-                          panels={PANELS}
-                          width={Math.max(1, width - 2)}
-                          height={historyChartHeight}
-                          focused={focused && !openHistoryRow}
-                          showLegend={false}
-                          navigable={false}
-                          showTimeAxis
-                          formatAxisValue={amountAxis}
-                          remoteKind="debt-filing-history"
-                        />
-                      </Box>
-                    ) : null}
-                    <Box {...fill(historyTableHeight)}>
-                      <DataTableView<DebtHistoryPoint, HistoryColumn>
-                        emptyStateTitle="No comparable filing history."
-                        focused={focused && !openHistoryRow}
-                        rootWidth={width}
-                        rootHeight={historyTableHeight}
-                        columns={HISTORY_COLUMNS}
-                        items={history}
-                        getItemKey={historyKey}
-                        renderCell={renderHistory}
-                        freezeFirstColumn
-                        resetScrollKey={symbol}
-                        selection={{
-                          kind: "id",
-                          selectedId:
-                            selectedHistory ??
-                            (history[0] ? historyKey(history[0]) : null),
-                          getId: historyKey,
-                          onChange: setSelectedHistory,
-                        }}
-                        onActivate={(row) => setOpenHistory(historyKey(row))}
-                        sortColumnId={historySort.column}
-                        sortDirection={historySort.direction}
-                        onHeaderClick={(column) =>
-                          setHistorySort((current) => ({
-                            column: column as HistoryColumnId,
-                            direction:
-                              current.column === column &&
-                              current.direction === "desc"
-                                ? "asc"
-                                : "desc",
-                          }))
-                        }
-                      />
-                    </Box>
-                  </Box>
+                sortColumnId={historySort.column}
+                sortDirection={historySort.direction}
+                onHeaderClick={(column) =>
+                  setHistorySort((current) => ({
+                    column: column as HistoryColumnId,
+                    direction:
+                      current.column === column &&
+                      current.direction === "desc"
+                        ? "asc"
+                        : "desc",
+                  }))
                 }
               />
             )}

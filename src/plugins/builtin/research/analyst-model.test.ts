@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
-import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
+import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -122,4 +122,15 @@ test("upside follows the live price only when it is quoted in the target's curre
     .find((segment) => segment.id === "analyst-reference-price")!
     .parts.map((part) => part.text).join(" ");
   expect(footer).toBe("upside vs $110.00 real-time");
+});
+
+test("the mean-target line starts once five firms, or every covering firm, are in it", () => {
+  const rating = (date: string, firm: string, currentPriceTarget: number) => ({ date, firm, currentPriceTarget });
+  const eight = Array.from({ length: 8 }, (_, index) => rating(`2026-03-${String(10 + index).padStart(2, "0")}`, `Firm ${index}`, 100 + index * 10));
+  const line = buildMeanTargetHistory(eight);
+  expect(line[0]).toEqual({ date: "2026-03-14", average: 120, firms: 5 });
+  expect(line.at(-1)).toEqual({ date: "2026-03-17", average: 135, firms: 8 });
+  // Three firms cover the stock, so the line starts when all three are in.
+  expect(buildMeanTargetHistory(eight.slice(0, 3))).toEqual([{ date: "2026-03-12", average: 110, firms: 3 }]);
+  expect(buildMeanTargetHistory([])).toEqual([]);
 });

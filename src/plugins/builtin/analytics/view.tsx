@@ -1,13 +1,7 @@
-import {
-  DataTableView, KeyValueRow, Notice, SectionHeading, Spinner, StaticChartSurface,
-  loadingText,
-  unavailableText
-} from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import type { StaticChartSurfaceProps } from "../../../components/chart/static";
+import type { ReactNode } from "react";
+import { DataTableView, type StatItem } from "../../../components";
 import type { DataTableCell } from "../../../components/ui/data-table/types";
 import { colors, priceColor } from "../../../theme/colors";
-import { Box, Text } from "../../../ui";
 import { formatCompactAmount, formatPercentRaw } from "../../../utils/format";
 import { formatSignedCompact, formatWeight, renderBar } from "./display";
 import type {
@@ -24,113 +18,71 @@ export interface AnalyticsMetricRow {
   color?: string;
 }
 
-export function AnalyticsMetricsPanel({
-  summaryRows,
-  riskRows,
-  height,
-}: {
-  summaryRows: AnalyticsMetricRow[];
-  riskRows: AnalyticsMetricRow[];
-  height: number;
-}) {
-  return (
-    <Box flexDirection="column" height={height} paddingX={1} paddingTop={1}>
-      <SectionHeading title="Summary" />
-      {summaryRows.map((row) => (
-        <KeyValueRow key={row.id} {...row} />
-      ))}
+/**
+ * Most important first: in a short pane the figures at the end give way. The
+ * account's level and its moves lead, the basket estimates follow, and the
+ * margin detail, as-of and source close the list.
+ */
+const FIGURE_ORDER = [
+  "fx-unavailable",
+  "net-liquidation",
+  "total-value",
+  "day-pnl",
+  "pnl",
+  "historical-return",
+  "cash",
+  "sharpe",
+  "beta",
+  "volatility",
+  "max-drawdown",
+  "margin-leverage",
+  "realized-pnl",
+  "available-funds",
+  "buying-power",
+  "excess-liquidity",
+  "settled-cash",
+  "account-freshness",
+  "account-source",
+];
+const RISK_FIGURE_IDS: ReadonlySet<string> = new Set(["sharpe", "beta", "volatility", "max-drawdown"]);
 
-      {riskRows.length > 0 && (
-        <>
-          <Box height={1} />
-          <SectionHeading title="Current-weight basket estimates" />
-          {riskRows.map((row) => (
-            <KeyValueRow key={row.id} {...row} labelWidth={16} />
-          ))}
-        </>
-      )}
-      <Box height={1} />
-    </Box>
-  );
+function figureRank(id: string): number {
+  const index = FIGURE_ORDER.indexOf(id);
+  return index < 0 ? FIGURE_ORDER.length : index;
 }
 
-export function PortfolioHistorySection({
-  show,
-  loading,
-  error,
-  width,
-  height,
-  points,
-  palette,
-  axisLabel,
-  period,
-  stale,
-  formatAxisValue,
-}: {
-  show: boolean;
-  loading: boolean;
-  error: string | null | undefined;
-  width: number;
-  height: number;
-  points: ProjectedChartPoint[];
-  palette: StaticChartSurfaceProps["colors"];
-  axisLabel: string;
-  period: string | undefined;
-  stale: boolean | undefined;
-  formatAxisValue: (value: number) => string;
-}) {
-  if (show) {
-    return (
-      <>
-        <Box height={1} paddingX={1} flexDirection="row">
-          <SectionHeading title="Portfolio History" />
-          <Text fg={colors.textDim}>
-            {`  Flex ${period ?? ""}${stale ? " - cached" : ""}`}
-          </Text>
-        </Box>
-        <Box paddingX={1} height={height}>
-          <StaticChartSurface
-            points={points}
-            width={Math.max(10, width - 2)}
-            height={height}
-            mode="line"
-            calendarSpaced
-            showTimeAxis
-            colors={palette}
-            yAxisLabel={axisLabel}
-            yAxisColor={colors.textDim}
-            formatYAxisValue={formatAxisValue}
-          />
-        </Box>
-      </>
-    );
-  }
+/**
+ * The overview's summary and risk rows as one set of figures. A figure's
+ * detail stays short so the grid keeps its columns: the P&L percent loses its
+ * brackets, and the risk rows' sample window and reasons are left to the
+ * footer (`riskFigureNotices`).
+ */
+export function analyticsFigures(summaryRows: readonly AnalyticsMetricRow[], riskRows: readonly AnalyticsMetricRow[]): StatItem[] {
+  return [...summaryRows, ...riskRows]
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => figureRank(left.row.id) - figureRank(right.row.id) || left.index - right.index)
+    .map(({ row }) => {
+      const percent = row.id === "day-pnl" || row.id === "pnl" ? row.detail?.replace(/^\((.*)\)$/, "$1") : row.detail;
+      const detail = RISK_FIGURE_IDS.has(row.id) || percent === "—" ? undefined : percent;
+      return {
+        id: row.id,
+        label: row.label,
+        value: row.value,
+        ...(detail ? { detail } : {}),
+        // Plain text takes the grid's own value colour, which the desktop brightens.
+        ...(row.color && row.color !== colors.text ? { color: row.color } : {}),
+      };
+    });
+}
 
-  if (loading) {
-    return (
-      <Box height={1} paddingX={1}>
-        <Spinner label={loadingText("account history")} />
-      </Box>
-    );
+/** Why a risk figure reads "—", once per reason, for the footer warning. */
+export function riskFigureNotices(riskRows: readonly AnalyticsMetricRow[]): string[] {
+  const byReason = new Map<string, string[]>();
+  for (const row of riskRows) {
+    if (row.value !== "—" || !row.detail) continue;
+    byReason.set(row.detail, [...(byReason.get(row.detail) ?? []), row.label]);
   }
-
-  if (error) {
-    return (
-      <Box paddingX={1} flexDirection="column" flexShrink={0}>
-        <Notice>{`${unavailableText("Account history")} ${error}`}</Notice>
-      </Box>
-    );
-  }
-
-  if (points.length > 0) {
-    return (
-      <Box paddingX={1} flexDirection="column" flexShrink={0}>
-        <Notice tone="muted">{`${points.filter((point) => Number.isFinite(point.close)).length >= 2 ? "Enlarge this pane to view account history." : "Account history needs at least two observations for a chart."}`}</Notice>
-      </Box>
-    );
-  }
-
-  return null;
+  return [...byReason].map(([reason, labels]) => `${labels.join(", ")}: ${reason}`);
 }
 
 const sectorRowKey = (row: SectorTableRow) => row.id;
@@ -171,6 +123,9 @@ export function SectorAllocationTable({
   selectedSectorId,
   onHeaderClick,
   onSelectSector,
+  width,
+  height,
+  before,
 }: {
   focused: boolean;
   resetScrollKey: string;
@@ -180,10 +135,17 @@ export function SectorAllocationTable({
   selectedSectorId: string | null;
   onHeaderClick: (columnId: string) => void;
   onSelectSector: (sectorId: string) => void;
+  width?: number;
+  height?: number;
+  /** The figures and the account history above the sectors. */
+  before?: ReactNode;
 }) {
   return (
     <DataTableView<SectorTableRow, SectorTableColumn>
       focused={focused}
+      rootWidth={width}
+      rootHeight={height}
+      rootBefore={before}
       selection={{
         kind: "id",
         selectedId: selectedSectorId,

@@ -1,4 +1,6 @@
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
+import { spanDigits } from "../../../components/chart-table";
 import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
@@ -454,6 +456,18 @@ export function buildHistoryAxisLabel({
   return resolvePerformanceMetric(performance) === "value"
     ? `Value (${performance?.currency?.trim() || "unknown currency"})`
     : "Return";
+}
+
+/**
+ * Compact account values whose decimals follow the plotted range, so the
+ * ticks stay apart: 55k / 60k across a wide range, 10.2k / 10.4k across a
+ * narrow one.
+ */
+export function formatHistoryValueAxis(value: number, domain: Pick<CompositeAxisDomain, "min" | "max">): string {
+  const magnitude = Math.max(Math.abs(domain.min), Math.abs(domain.max));
+  const [divisor, suffix] = magnitude >= 1e9 ? [1e9, "B"] : magnitude >= 1e6 ? [1e6, "M"] : magnitude >= 1e3 ? [1e3, "k"] : [1, ""];
+  const digits = spanDigits({ min: domain.min / divisor, max: domain.max / divisor });
+  return `${(value / divisor).toFixed(digits)}${suffix}`;
 }
 
 export function formatHistoryAxisValue(

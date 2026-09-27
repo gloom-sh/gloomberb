@@ -136,7 +136,8 @@ export function cotChartSeries(data: CotContractPayload, traderClass: CotClass, 
     ...staticSeries(cotNetPoints(data.history, traderClass), { id: "net", label: `${COT_CLASSES[data.reportFamily].find((row) => row.value === traderClass)?.label ?? traderClass} net`, color: colors.warning, calendarSpaced: true }),
     panelId: "net", unit: "contracts", unitGroup: "positions",
   }];
-  if (price.length) series.unshift({
+  // Net positioning is the subject, so it leads the legend and the strip; the front price follows.
+  if (price.length) series.push({
     ...staticSeries(price.map((row) => ({ date: row.date, observedAt: row.date, value: row.close })), { id: "price", label: "Front price", color: colors.positive, calendarSpaced: true }),
     panelId: "price", unit: "", unitGroup: "price",
   });
