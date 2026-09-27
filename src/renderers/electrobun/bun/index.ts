@@ -408,6 +408,9 @@ function closeAllDetachedWindows(): void {
   detachedWindowManager.closeAll();
 }
 
+/** How long a quit waits for the view to flush and exit on its own. */
+const QUIT_FALLBACK_MS = 2_500;
+
 function quitDesktopApp(): void {
   closeAllDetachedWindows();
   teardownServices();
@@ -689,7 +692,14 @@ ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
     return;
   }
   if (command.type === "quit") {
-    quitDesktopApp();
+    if (!isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) {
+      quitDesktopApp();
+      return;
+    }
+    // The view sends its usage counts and then asks to exit; quit anyway if
+    // it does not.
+    getWindowRpc(MAIN_WINDOW_RPC_KEY)?.send["application-menu.select"]({ command });
+    setTimeout(quitDesktopApp, QUIT_FALLBACK_MS);
     return;
   }
   if (!isWindowRpcReady(MAIN_WINDOW_RPC_KEY)) return;

@@ -8,7 +8,8 @@ export type DesktopApplicationMenuCommand =
   | { type: "open-layout-gallery" }
   | { type: "layout-undo" }
   | { type: "layout-redo" }
-  | { type: "layout-gridlock" };
+  | { type: "layout-gridlock" }
+  | { type: "quit" };
 
 export interface DesktopApplicationMenuBridge {
   subscribe(listener: (command: DesktopApplicationMenuCommand) => void): () => void;

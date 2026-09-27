@@ -120,19 +120,19 @@ async function boot() {
     backendRequest("capability.invoke", { capabilityId: NOTES_FILES_CAPABILITY_ID, operationId, payload })
   )));
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
-  // The Bun process read the switches with the environment at launch; a
-  // switch turned off in the running app applies at once.
+  // The environment's opt-out comes from the Bun process; the config
+  // switches are read live, so the command bar toggles apply at once.
   installCrashReporter({
     surface: "desktop",
     os: init.telemetry.os,
     homeDir: init.telemetry.homeDir,
-    isEnabled: () => init.telemetry.crashReports && crashReportsEnabled(currentTelemetryConfig(null)),
+    isEnabled: () => !init.telemetry.optedOut && crashReportsEnabled(currentTelemetryConfig(init.config)),
     getInstallId: () => init.telemetry.installId,
   });
   installUsageCounter({
     surface: "desktop",
     os: init.telemetry.os,
-    isEnabled: () => init.telemetry.usage && usageCountsEnabled(currentTelemetryConfig(null)),
+    isEnabled: () => !init.telemetry.optedOut && usageCountsEnabled(currentTelemetryConfig(init.config)),
     getInstallId: () => init.telemetry.installId,
     officialPluginIds: loadOfficialPluginIds,
   });

@@ -8,8 +8,10 @@ import {
   installUsageCounter,
   recordFunctionOpen,
   recordRestoredFunctions,
+  rememberBuiltinPlugins,
   resetUsageCountsForTests,
   usageCountsEnabled,
+  usageFunctionForPane,
   type UsageCounterHost,
 } from "./usage-counts";
 
@@ -31,6 +33,9 @@ function fakeHost(overrides: Partial<UsageCounterHost> = {}) {
 
 const builtin = (shortcut: string) => ({ shortcut, externalPluginId: null });
 const external = (pluginId: string, shortcut: string) => ({ shortcut, externalPluginId: pluginId });
+/** Lets the official plugin lookup that counting starts come back. */
+const settle = () => Bun.sleep(0);
+const plugin = (id: string) => ({ id, name: id, version: "1.0.0" }) as GloomPlugin;
 
 // Other test files open panes through the same module, so start clean too.
 beforeEach(() => {
@@ -86,6 +91,7 @@ describe("usage counts", () => {
     // Not a mnemonic: a built-in without one has nothing to send.
     recordFunctionOpen(builtin("FONT+"));
     recordFunctionOpen(builtin(""));
+    await settle();
     await flushUsageCounts({ timeoutMs: 500 });
 
     expect(sent[0]!.counts).toEqual([
@@ -103,8 +109,21 @@ describe("usage counts", () => {
     });
     installUsageCounter(host);
     recordFunctionOpen(external("fear-greed", "FNG"));
+    await settle();
     await flushUsageCounts({ timeoutMs: 500 });
     expect(sent[0]!.counts).toEqual([{ fn: "plugin", opened: 1, restored: 0 }]);
+  });
+
+  test("an exit flush sends at once rather than wait for the official list", async () => {
+    const { host, sent } = fakeHost({ officialPluginIds: () => new Promise(() => {}) });
+    installUsageCounter(host);
+    recordFunctionOpen(builtin("DES"));
+    recordFunctionOpen(external("fear-greed", "FNG"));
+    await flushUsageCounts({ timeoutMs: 500 });
+    expect(sent[0]!.counts).toEqual([
+      { fn: "DES", opened: 1, restored: 0 },
+      { fn: "plugin", opened: 1, restored: 0 },
+    ]);
   });
 
   test("nothing is counted or sent when the switch is off, and turning it off drops what was counted", async () => {
@@ -123,6 +142,19 @@ describe("usage counts", () => {
     enabled = true;
     await flushUsageCounts({ timeoutMs: 500 });
     expect(sent).toHaveLength(0);
+  });
+
+  test("sending picks up again after the switch was off when a batch was due", async () => {
+    let enabled = true;
+    const { host, sent } = fakeHost({ isEnabled: () => enabled });
+    installUsageCounter(host);
+    recordFunctionOpen(builtin("DES"));
+    enabled = false;
+    await flushUsageCounts({ timeoutMs: 500 });
+    enabled = true;
+    recordFunctionOpen(builtin("GP"));
+    await flushUsageCounts({ timeoutMs: 500 });
+    expect(sent.map((payload) => payload.counts)).toEqual([[{ fn: "GP", opened: 1, restored: 0 }]]);
   });
 
   test("counts made before the host is installed wait for it, and are dropped if it is off", async () => {
@@ -169,18 +201,59 @@ describe("usage counts", () => {
 });
 
 describe("describeUsageFunction", () => {
-  test("only functions of a loaded external plugin carry its id", () => {
-    const plugin = (id: string) => ({ id, name: id, version: "1.0.0" }) as GloomPlugin;
+  test("keeps a mnemonic only for built-in plugins and plugins installed from gloom-sh", () => {
     const portfolio = plugin("portfolio");
+    const official = plugin("fear-greed");
+    const bundled = plugin("polls");
+    const fork = plugin("market-halts");
     const acme = plugin("acme");
+    const justInstalled = plugin("fresh");
     // A failed external plugin that claims a built-in id is not that built-in.
     const impostor = plugin("portfolio");
-    seedExternalPlugins([{ plugin: acme, path: "/plugins/acme" }, { plugin: impostor, path: "/plugins/bad", error: "failed" }]);
-    const registry = { allPlugins: new Map([["portfolio", portfolio], ["acme", acme]]) };
+    rememberBuiltinPlugins([portfolio]);
+    seedExternalPlugins([
+      { plugin: official, path: "/plugins/gloom-fear-greed", directory: "gloom-fear-greed", repo: "gloom-sh/gloom-fear-greed" },
+      { plugin: bundled, path: "/plugins/polls.js" },
+      { plugin: fork, path: "/plugins/halts", directory: "halts", repo: "acme-co/gloom-market-halts" },
+      { plugin: acme, path: "/plugins/acme", directory: "acme" },
+      { plugin: impostor, path: "/plugins/bad", directory: "bad", error: "failed" },
+    ]);
+    const registry = {
+      allPlugins: new Map<string, GloomPlugin>([
+        ["portfolio", portfolio],
+        ["fear-greed", official],
+        ["polls", bundled],
+        ["market-halts", fork],
+        ["acme", acme],
+        ["fresh", justInstalled],
+      ]),
+    };
 
     expect(describeUsageFunction(registry, "portfolio", "PF")).toEqual({ shortcut: "PF", externalPluginId: null });
     expect(describeUsageFunction(registry, undefined, "DES")).toEqual({ shortcut: "DES", externalPluginId: null });
-    expect(describeUsageFunction(registry, "acme", "ACME")).toEqual({ shortcut: "ACME", externalPluginId: "acme" });
-    expect(describeUsageFunction(registry, "gone", "GONE")).toEqual({ shortcut: "GONE", externalPluginId: "gone" });
+    expect(describeUsageFunction(registry, "fear-greed", "FNG")).toEqual({ shortcut: "FNG", externalPluginId: "fear-greed" });
+    expect(describeUsageFunction(registry, "polls", "POLL")).toEqual({ shortcut: "POLL", externalPluginId: "polls" });
+    for (const id of ["market-halts", "acme", "fresh", "gone"]) {
+      expect(describeUsageFunction(registry, id, "SECRET")).toEqual({ shortcut: null, externalPluginId: id });
+    }
+  });
+
+  test("a restored pane is named by the plugin whose template names it", () => {
+    const twitter = plugin("gloomberb-cloud");
+    const acme = plugin("acme");
+    rememberBuiltinPlugins([twitter]);
+    seedExternalPlugins([{ plugin: acme, path: "/plugins/acme", directory: "acme", repo: "gloom-sh/acme" }]);
+    const owners = new Map([["twitter-feed-pane", "gloomberb-cloud"], ["acme-feed", "acme"]]);
+    const registry = {
+      allPlugins: new Map<string, GloomPlugin>([["gloomberb-cloud", twitter], ["acme", acme]]),
+      paneTemplates: new Map([
+        ["twitter-feed-pane", { id: "twitter-feed-pane", paneId: "x-feed", label: "X", description: "" }],
+        ["acme-feed", { id: "acme-feed", paneId: "x-feed", label: "Acme", description: "", shortcut: { prefix: "ACMEX" } }],
+      ]),
+      getPanePluginId: () => "gloomberb-cloud",
+      getPaneTemplatePluginId: (id: string) => owners.get(id),
+    } as unknown as Parameters<typeof usageFunctionForPane>[0];
+
+    expect(usageFunctionForPane(registry, "x-feed")).toEqual({ shortcut: "ACMEX", externalPluginId: "acme" });
   });
 });

@@ -31,6 +31,8 @@ export const webRendererHost: RendererHost = {
     startElectrobunWindowDrag();
   },
   async controlWindow(action) {
+    // Closing the main window quits the app; send what was counted first.
+    if (action === "close") await flushUsageCounts({ timeoutMs: 1_000 });
     await backendRequest("host.windowControl", { action });
   },
   async openExternal(url) {

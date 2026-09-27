@@ -87,7 +87,7 @@ export function runDirectCommandAction(options: {
     cancelThemePreview,
   } = options;
   const state = getState();
-  // DES is counted in focusTicker, where every way of opening it meets.
+  // DES is counted where the research pane opens (pinTicker, focusTicker).
   if (command.id !== "security-description") {
     recordFunctionOpen({ shortcut: command.prefix, externalPluginId: null });
   }

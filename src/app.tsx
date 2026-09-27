@@ -63,6 +63,7 @@ import { AppLanguageConfigObserver } from "./app/language-observer";
 import { isPaneShareHandoff } from "./shares/location";
 import { apiClient } from "./api-client";
 import { reportTelemetryConfig } from "./telemetry/live-config";
+import { recordFunctionOpen } from "./telemetry/usage-counts";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
@@ -440,7 +441,10 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header onOpenHelp={() => pluginRegistry.showPane("help")} />
+          <Header onOpenHelp={() => {
+            recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
+            pluginRegistry.showPane("help");
+          }} />
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}

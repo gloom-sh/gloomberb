@@ -9,6 +9,7 @@ import {
   type ReleaseInfo,
 } from "../../updater";
 import { VERSION } from "../../version";
+import { runAutomated } from "../../telemetry/usage-counts";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
 
@@ -94,9 +95,10 @@ export function useAppUpdateRuntime({
     dispatch({ type: "SET_CONFIG", config: nextConfig });
     void saveConfigImmediately(nextConfig).catch(() => {});
     if (!isUpgrade) return;
-    void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+    // Opened by the app, not the user: usage counts leave it out.
+    void runAutomated(() => pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
       values: { version: VERSION },
-    }, { automated: true }).catch(() => {});
+    })).catch(() => {});
   }, [dispatch, enabled, isDetachedWindow, pluginRegistry, stateRef]);
 
   useEffect(() => {

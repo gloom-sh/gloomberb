@@ -18,6 +18,7 @@ import {
   resolveSoleCollectionTarget,
 } from "../../workflow/ops";
 import type { parseRootShortcutIntent } from "./shortcuts";
+import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
 
@@ -150,6 +151,7 @@ export function buildRootShortcutItem({
     right: command.prefix,
     shortcutQuery: command.prefix,
     action: () => {
+      recordFunctionOpen({ shortcut: command.prefix, externalPluginId: null });
       void executeCollectionCommand(
         commandId,
         rootShortcutIntent.argText || undefined,

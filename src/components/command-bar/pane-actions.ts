@@ -71,8 +71,6 @@ export function useCommandBarPaneActions({
   }, [pluginRegistry]);
 
   const focusTicker = useCallback((symbol: string, options?: PinTickerOptions) => {
-    // DES, a ticker typed on its own and a ticker search pick all land here.
-    recordFunctionOpen({ shortcut: "DES", externalPluginId: null });
     const currentState = stateRef.current;
     const focusedPane = currentState.focusedPaneId
       ? findPaneInstance(currentState.config.layout, currentState.focusedPaneId)
@@ -83,6 +81,8 @@ export function useCommandBarPaneActions({
     }
 
     if (focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
+      // Opening a research pane is counted in pinTicker; retargeting one here is DES too.
+      recordFunctionOpen({ shortcut: "DES", externalPluginId: null });
       retargetTickerResearchPane(focusedPane.instanceId, symbol, options);
       return;
     }

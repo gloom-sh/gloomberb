@@ -4,9 +4,10 @@ import {
   type UsageCountsPayload,
   type UsageCountsSurface,
 } from "../api-client";
+import { isOfficialPluginRepo } from "../plugins/auto-update";
 import { listExternalPlugins } from "../plugins/external-runtime";
 import type { PluginRegistry } from "../plugins/registry";
-import type { TelemetryConfig } from "../types/config";
+import { TICKER_RESEARCH_PANE_ID, type TelemetryConfig } from "../types/config";
 import { VERSION } from "../version";
 import { telemetryOptedOut } from "./crash-reports";
 
@@ -37,6 +38,14 @@ const MAX_FUNCTIONS = 200;
 const MAX_COUNT = 1_000;
 const FUNCTION_NAME = /^[A-Z0-9][A-Z0-9-]{0,23}$/;
 const OTHER_PLUGIN = "plugin";
+/** Panes the app's own commands open, which no pane template names. */
+const PANE_FUNCTIONS: Record<string, string> = {
+  [TICKER_RESEARCH_PANE_ID]: "DES",
+  help: "HELP",
+  "layout-marketplace": "LAY",
+  "twitter-feed": "TWIT",
+  team: "TEAM",
+};
 
 /** A function as the app knows it. Only its public name is ever sent. */
 export interface UsageFunction {
@@ -56,7 +65,8 @@ export interface UsageCounterHost {
   getInstallId(): Promise<string | null> | string | null;
   /**
    * The official gloom-sh plugins, whose functions keep their mnemonic.
-   * Without it, or when it fails, every external plugin's function is `plugin`.
+   * Without it, or until it has answered, every external plugin's function
+   * is `plugin`.
    */
   officialPluginIds?(): Promise<ReadonlySet<string>>;
   /** Defaults to the Cloud API client. */
@@ -77,6 +87,10 @@ let restoredRecorded = false;
 let flushedOnce = false;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let inFlight: Promise<void> | null = null;
+let officialIds: ReadonlySet<string> | null = null;
+let officialLookup: Promise<void> | null = null;
+let automationDepth = 0;
+const builtinPlugins = new WeakSet<object>();
 
 /** Reads the config switch and the environment. Absent means on. */
 export function usageCountsEnabled(
@@ -90,7 +104,10 @@ export function usageCountsEnabled(
 /**
  * Tells a function of the app, built-in plugins included, from one an
  * external plugin contributes. `pluginId` is the owner the registry reports.
- * Never throws; when in doubt the function counts as an external plugin's.
+ * An external plugin keeps its mnemonic only when it was installed from
+ * gloom-sh or built into the app; a fork or a private plugin that reuses an
+ * official id does not. Never throws; when in doubt the function counts as
+ * an external plugin's.
  */
 export function describeUsageFunction(
   registry: Pick<PluginRegistry, "allPlugins">,
@@ -101,16 +118,65 @@ export function describeUsageFunction(
   try {
     const plugin = registry.allPlugins.get(pluginId);
     // By identity rather than id: a failed external plugin can carry a built-in's id.
-    const external = !plugin || listExternalPlugins().some((entry) => entry.plugin === plugin);
-    return { shortcut, externalPluginId: external ? pluginId : null };
+    const entry = plugin ? listExternalPlugins().find((candidate) => candidate.plugin === plugin) : undefined;
+    // A plugin still being set up after an install is not in the external
+    // list yet; only a registered plugin the app started with is built in.
+    if (plugin && !entry && builtinPlugins.has(plugin)) return { shortcut, externalPluginId: null };
+    const trusted = !!entry && (entry.directory === undefined || isOfficialPluginRepo(entry.repo));
+    return { shortcut: trusted ? shortcut : null, externalPluginId: pluginId };
   } catch {
-    return { shortcut, externalPluginId: pluginId };
+    return { shortcut: null, externalPluginId: pluginId };
   }
+}
+
+/** The app's own plugins, as the runtime registers them at startup. */
+export function rememberBuiltinPlugins(plugins: Iterable<object>): void {
+  for (const plugin of plugins) builtinPlugins.add(plugin);
+}
+
+/**
+ * The function a pane stands for: the mnemonic of the first template with a
+ * shortcut that opens it (charts: G, GP, GIP count as G), owned by whoever
+ * registered that template. Never throws; an unknown pane counts as nothing.
+ */
+export function usageFunctionForPane(
+  registry: Pick<PluginRegistry, "allPlugins" | "paneTemplates" | "getPanePluginId" | "getPaneTemplatePluginId">,
+  paneId: string,
+): UsageFunction {
+  try {
+    const own = PANE_FUNCTIONS[paneId];
+    if (own) return describeUsageFunction(registry, registry.getPanePluginId(paneId), own);
+    for (const template of registry.paneTemplates.values()) {
+      if (template.paneId !== paneId || !template.shortcut?.prefix) continue;
+      return describeUsageFunction(registry, registry.getPaneTemplatePluginId(template.id), template.shortcut.prefix);
+    }
+    return describeUsageFunction(registry, registry.getPanePluginId(paneId), null);
+  } catch {
+    return { shortcut: null, externalPluginId: null };
+  }
+}
+
+/**
+ * Runs work that automation drives, such as remote control: what it opens
+ * is not the user opening a function.
+ */
+export async function runAutomated<T>(work: () => Promise<T> | T): Promise<T> {
+  automationDepth += 1;
+  try {
+    return await work();
+  } finally {
+    automationDepth -= 1;
+  }
+}
+
+export function automationActive(): boolean {
+  return automationDepth > 0;
 }
 
 /** Counts one open of a function by the user. Never throws. */
 export function recordFunctionOpen(fn: UsageFunction): void {
   try {
+    if (automationDepth > 0) return;
     if (host && !host.isEnabled()) return;
     count(fn, "opened");
     scheduleFlush();
@@ -121,7 +187,8 @@ export function recordFunctionOpen(fn: UsageFunction): void {
 
 /**
  * Counts the functions open in the workspace restored at launch, one per
- * pane. Only the first call in a session counts.
+ * pane. Only the first call in a session counts; an empty list marks a
+ * launch with nothing restored.
  */
 export function recordRestoredFunctions(fns: readonly UsageFunction[]): void {
   try {
@@ -138,8 +205,12 @@ export function recordRestoredFunctions(fns: readonly UsageFunction[]): void {
 /** Installs the surface's host and schedules what was counted before it. */
 export function installUsageCounter(next: UsageCounterHost): () => void {
   host = next;
-  if (!next.isEnabled()) pending.clear();
-  else scheduleFlush();
+  if (!next.isEnabled()) {
+    pending.clear();
+  } else {
+    if ([...pending.values()].some((entry) => entry.externalPluginId !== null)) void lookUpOfficialPlugins();
+    scheduleFlush();
+  }
   return () => {
     if (host === next) host = null;
   };
@@ -147,7 +218,9 @@ export function installUsageCounter(next: UsageCounterHost): () => void {
 
 /**
  * Sends what has been counted, waiting at most `timeoutMs`. For an exit
- * path: resolves as soon as there is nothing left, and never rejects.
+ * path: resolves as soon as there is nothing left, and never rejects. It
+ * does not wait on the network before sending, so a page going away still
+ * gets its request out.
  */
 export async function flushUsageCounts(options: { timeoutMs?: number } = {}): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 1_500;
@@ -161,7 +234,7 @@ export async function flushUsageCounts(options: { timeoutMs?: number } = {}): Pr
     timer = setTimeout(resolve, timeoutMs);
   });
   try {
-    await Promise.race([flushNow(), deadline]);
+    await Promise.race([flushNow({ exiting: true }), deadline]);
   } catch {
     /* The caller is on its way out. */
   } finally {
@@ -183,6 +256,7 @@ function count(fn: UsageFunction, field: "opened" | "restored"): void {
     pending.set(key, entry);
   }
   entry[field] = Math.min(entry[field] + 1, MAX_COUNT);
+  if (externalPluginId !== null) void lookUpOfficialPlugins();
 }
 
 function normalizeShortcut(shortcut: string | null | undefined): string {
@@ -190,63 +264,83 @@ function normalizeShortcut(shortcut: string | null | undefined): string {
   return FUNCTION_NAME.test(name) ? name : "";
 }
 
+/** Asks for the official plugins once an external plugin's function is counted, well before a flush needs them. */
+function lookUpOfficialPlugins(): Promise<void> {
+  if (officialIds) return Promise.resolve();
+  if (officialLookup) return officialLookup;
+  const lookup = host?.officialPluginIds;
+  if (!lookup) return Promise.resolve();
+  officialLookup = Promise.resolve()
+    .then(() => lookup())
+    .then((ids) => {
+      // An empty answer means the registry could not be read; ask again later.
+      if (ids.size > 0) officialIds = ids;
+    })
+    .catch(() => {})
+    .finally(() => {
+      officialLookup = null;
+    });
+  return officialLookup;
+}
+
 function scheduleFlush(): void {
   if (!host || flushTimer || pending.size === 0) return;
   flushTimer = setTimeout(() => {
     flushTimer = null;
-    void flushNow();
+    void flushNow({ exiting: false });
   }, flushedOnce ? FLUSH_INTERVAL_MS : FIRST_FLUSH_DELAY_MS);
   // Pending counts must not keep a process alive that is otherwise done;
   // exit paths flush explicitly.
   (flushTimer as { unref?: () => void }).unref?.();
 }
 
-async function flushNow(): Promise<void> {
-  if (inFlight) return inFlight;
-  inFlight = (async () => {
-    try {
-      const current = host;
-      if (!current || pending.size === 0) return;
-      if (!current.isEnabled()) {
-        pending.clear();
-        return;
-      }
-      const installId = await current.getInstallId();
-      if (!installId) return;
-      const entries = [...pending.values()];
-      pending.clear();
-      flushedOnce = true;
-      const counts = await publicCounts(entries, current);
-      if (counts.length === 0) return;
-      await send(current, {
-        installId,
-        surface: current.surface,
-        appVersion: VERSION,
-        ...(current.os ? { os: current.os } : {}),
-        counts,
-      });
-    } catch {
-      // A batch that could not be sent is dropped, not retried: an offline
-      // app, a rate limit, or a server without this endpoint yet (404).
-    } finally {
-      inFlight = null;
-      // Counts that came in while this batch was out.
-      scheduleFlush();
-    }
-  })();
+function flushNow(options: { exiting: boolean }): Promise<void> {
+  // `finally` runs on a later tick, so a batch that ends before its first
+  // await still clears `inFlight` after it has been set, not before.
+  inFlight ??= sendPending(options).finally(() => {
+    inFlight = null;
+    // Counts that came in while this batch was out.
+    scheduleFlush();
+  });
   return inFlight;
 }
 
-/** Public names only: private plugin functions merge into one `plugin` count. */
-async function publicCounts(entries: PendingCount[], current: UsageCounterHost): Promise<FunctionUsageCount[]> {
-  const official = entries.some((entry) => entry.externalPluginId !== null)
-    ? await officialPluginIds(current)
-    : new Set<string>();
+async function sendPending({ exiting }: { exiting: boolean }): Promise<void> {
+  try {
+    const current = host;
+    if (!current || pending.size === 0) return;
+    if (!current.isEnabled()) {
+      pending.clear();
+      return;
+    }
+    const installId = await current.getInstallId();
+    if (!installId) return;
+    const entries = [...pending.values()];
+    pending.clear();
+    flushedOnce = true;
+    if (!exiting && entries.some((entry) => entry.externalPluginId !== null)) await lookUpOfficialPlugins();
+    const counts = publicCounts(entries, officialIds ?? new Set());
+    if (counts.length === 0) return;
+    await send(current, {
+      installId,
+      surface: current.surface,
+      appVersion: VERSION,
+      ...(current.os ? { os: current.os } : {}),
+      counts,
+    });
+  } catch {
+    // A batch that could not be sent is dropped, not retried: an offline
+    // app, a rate limit, or a server without this endpoint yet (404).
+  }
+}
+
+/** Public names only: every other plugin's functions merge into one `plugin` count. */
+function publicCounts(entries: PendingCount[], official: ReadonlySet<string>): FunctionUsageCount[] {
   const byName = new Map<string, FunctionUsageCount>();
   for (const entry of entries) {
     const fn = entry.externalPluginId === null
       ? entry.name
-      : official.has(entry.externalPluginId) ? entry.name : OTHER_PLUGIN;
+      : official.has(entry.externalPluginId) && entry.name ? entry.name : OTHER_PLUGIN;
     if (!fn) continue;
     const total = byName.get(fn) ?? { fn, opened: 0, restored: 0 };
     total.opened = Math.min(total.opened + entry.opened, MAX_COUNT);
@@ -256,25 +350,20 @@ async function publicCounts(entries: PendingCount[], current: UsageCounterHost):
   return [...byName.values()];
 }
 
-async function officialPluginIds(current: UsageCounterHost): Promise<ReadonlySet<string>> {
-  try {
-    return (await current.officialPluginIds?.()) ?? new Set();
-  } catch {
-    return new Set();
-  }
-}
-
 function send(current: UsageCounterHost, payload: UsageCountsPayload): Promise<void> {
   return current.send ? current.send(payload) : apiClient.reportUsageCounts(payload);
 }
 
-/** Test seam: forgets the host, the counts and the session's restore. */
+/** Test seam: forgets the host, the counts, the official plugins and the session's restore. */
 export function resetUsageCountsForTests(): void {
   host = null;
   pending.clear();
   restoredRecorded = false;
   flushedOnce = false;
   inFlight = null;
+  officialIds = null;
+  officialLookup = null;
+  automationDepth = 0;
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;

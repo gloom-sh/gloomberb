@@ -47,6 +47,7 @@ import { teamAccentHex } from "../../plugins/builtin/cloud/team/model";
 import { teamStore } from "../../plugins/builtin/cloud/team/store";
 import { buildStatusBarTabGroups, groupIdFromMarkerValue, groupMarkerValue } from "./status-bar-groups";
 import { requestFeedbackDialog } from "../feedback-dialog";
+import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -339,7 +340,10 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
       {
         id: "layout:gallery",
         label: "Browse Layouts...",
-        onSelect: () => registry?.showPane("layout-marketplace"),
+        onSelect: () => {
+          recordFunctionOpen({ shortcut: "LAY", externalPluginId: null });
+          registry?.showPane("layout-marketplace");
+        },
       },
       {
         id: "layout:actions",

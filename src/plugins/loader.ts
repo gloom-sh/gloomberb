@@ -25,6 +25,8 @@ export interface LoadedExternalPlugin {
   directory?: string;
   /** The checked-out git commit, when the install is a git checkout. */
   commit?: string;
+  /** `owner/repo` of the checkout's GitHub origin; usage counts trust only gloom-sh's. */
+  repo?: string;
   /** A symlink to a local checkout (`gloomberb plugin link`) rather than a clone. */
   linked?: boolean;
   error?: string;
@@ -105,6 +107,19 @@ export async function resolvePluginBrowserEntry(pluginDir: string): Promise<stri
   return await readPluginPackageField(pluginDir, "browser")
     ?? resolveIndexCandidate(pluginDir, "index.browser")
     ?? await resolvePluginEntry(pluginDir);
+}
+
+/** `owner/repo` of a checkout's GitHub origin, read from `.git/config` directly; null for anything else. */
+export function readPluginOriginRepo(pluginDir: string): string | null {
+  try {
+    const config = readFileSync(join(pluginDir, ".git", "config"), "utf-8");
+    const origin = /\[remote "origin"\]([^[]*)/.exec(config)?.[1] ?? "";
+    const url = /^\s*url\s*=\s*(\S+)/m.exec(origin)?.[1] ?? "";
+    const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?$/i.exec(url);
+    return match ? `${match[1]}/${match[2]}` : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -190,12 +205,14 @@ export async function loadExternalPlugin(
   linkHostPackages(pluginDir);
 
   const commit = readPluginCommit(pluginDir);
+  const repo = readPluginOriginRepo(pluginDir);
   const linked = isSymlink(pluginDir);
   const placeholder = { id: directory, name: directory, version: "" } as GloomPlugin;
   const base = {
     path: pluginDir,
     directory,
     ...(commit ? { commit } : {}),
+    ...(repo ? { repo } : {}),
     ...(linked ? { linked: true } : {}),
   };
 

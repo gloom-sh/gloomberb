@@ -22,6 +22,7 @@ import {
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import { reportCrash } from "../../telemetry/crash-reports";
+import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
 import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
@@ -34,6 +35,7 @@ import type {
   LayoutConfig,
   PaneInstanceConfig,
 } from "../../types/config";
+import { TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
@@ -149,7 +151,7 @@ export function bindAppPanePluginRegistry({
     if (isDetachedWindow) return;
     showPane(paneId);
   };
-  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options, origin) => {
+  pluginRegistry.createPaneFromTemplateAsyncFn = async (templateId, options) => {
     if (isDetachedWindow) return;
     await createPaneTemplateOrThrow(templateId, options, {
       dataProvider,
@@ -159,7 +161,6 @@ export function bindAppPanePluginRegistry({
       getState: () => stateRef.current,
       buildPaneInstance,
       placePaneInstance,
-      countAsOpen: !origin?.automated,
     });
   };
   pluginRegistry.openPortablePaneShareAsyncFn = async (payload) => {
@@ -217,12 +218,16 @@ export function bindAppPanePluginRegistry({
 
     focusVisiblePane(instanceId, layout);
   };
+  // Ticker links in panes and menus, and DES from the command bar, open the
+  // research pane (or the pane asked for) through these two.
   pluginRegistry.pinTickerFn = (symbol, options) => {
     if (isDetachedWindow) return;
+    recordFunctionOpen(usageFunctionForPane(pluginRegistry, options?.paneType ?? TICKER_RESEARCH_PANE_ID));
     void openPinnedTicker(symbol, options);
   };
   pluginRegistry.navigateTickerFn = (rawSymbol, options) => {
     if (isDetachedWindow) return;
+    recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
     const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
     const requests = tickerNavigationRequests.get(pluginRegistry) ?? new Map<string | null, symbol>();
     tickerNavigationRequests.set(pluginRegistry, requests);

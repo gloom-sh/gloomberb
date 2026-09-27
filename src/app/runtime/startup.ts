@@ -21,13 +21,12 @@ import type { DataProvider } from "../../types/data-provider";
 import {
   findPaneInstance,
   getPlacedPaneInstanceIds,
-  TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
 } from "../../types/config";
 import type { BrokerAccount } from "../../types/trading";
 import {
-  describeUsageFunction,
   recordRestoredFunctions,
+  usageFunctionForPane,
   type UsageFunction,
 } from "../../telemetry/usage-counts";
 import { debugLog } from "../../utils/debug-log";
@@ -38,33 +37,23 @@ const appLog = debugLog.createLogger("app");
 
 /** How long the restored panes wait for plugins that register theirs during setup. */
 const RESTORED_FUNCTIONS_WAIT_MS = 15_000;
-/** Panes the app's own commands open, which no pane template names. */
-const PANE_FUNCTIONS: Record<string, string> = {
-  [TICKER_RESEARCH_PANE_ID]: "DES",
-  help: "HELP",
-  "layout-marketplace": "LAY",
-};
 
 /**
  * One function per pane placed in the layout: docked, floating and popped
- * out. A pane type several templates share (charts: G, GP, GIP) counts
- * under the first; panes of disabled plugins are hidden and left out.
+ * out. Panes of disabled plugins are hidden and left out.
  */
 function restoredUsageFunctions(
   layout: LayoutConfig,
   pluginRegistry: PluginRegistry,
   disabledPlugins: readonly string[],
 ): UsageFunction[] {
-  const templates = [...pluginRegistry.paneTemplates.values()];
   const functions: UsageFunction[] = [];
   for (const instanceId of getPlacedPaneInstanceIds(layout)) {
     const paneId = findPaneInstance(layout, instanceId)?.paneId;
     if (!paneId) continue;
     const pluginId = pluginRegistry.getPanePluginId(paneId);
     if (pluginId && disabledPlugins.includes(pluginId)) continue;
-    const shortcut = PANE_FUNCTIONS[paneId]
-      ?? templates.find((template) => template.paneId === paneId && template.shortcut?.prefix)?.shortcut?.prefix;
-    functions.push(describeUsageFunction(pluginRegistry, pluginId, shortcut));
+    functions.push(usageFunctionForPane(pluginRegistry, paneId));
   }
   return functions;
 }

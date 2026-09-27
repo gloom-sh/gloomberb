@@ -32,10 +32,11 @@ export interface ElectrobunTelemetryInit {
   os: string;
   /** Replaced by `~` in reports; paths from the Bun process reach the view in plugin errors. */
   homeDir: string;
-  /** The config switch and environment, read where both exist. */
-  crashReports: boolean;
-  /** The usage counts switch, read the same way. */
-  usage: boolean;
+  /**
+   * `GLOOMBERB_NO_TELEMETRY` or `DO_NOT_TRACK` in the Bun process's
+   * environment. The view reads the config switches itself, live.
+   */
+  optedOut: boolean;
 }
 
 export interface DesktopRestartMessage {
@@ -119,6 +120,8 @@ export interface DesktopExternalPluginBundle {
   /** Folder name under the plugins directory. */
   directory: string;
   commit?: string;
+  /** `owner/repo` of the checkout's GitHub origin. */
+  repo?: string;
   linked?: boolean;
   /** ES module source, absent when `error` or `unsupportedTarget` is set. */
   code?: string;

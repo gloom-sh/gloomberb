@@ -5,6 +5,7 @@ import type { AppAction, AppState } from "../../state/app/context";
 import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import type { RendererHost } from "../../ui/host";
+import { recordFunctionOpen } from "../../telemetry/usage-counts";
 
 export function useDesktopApplicationMenuRuntime({
   desktopApplicationMenuBridge,
@@ -54,7 +55,12 @@ export function useDesktopApplicationMenuRuntime({
           dispatch({ type: "TOGGLE_STATUS_BAR" });
           break;
         case "open-layout-gallery":
+          recordFunctionOpen({ shortcut: "LAY", externalPluginId: null });
           pluginRegistry.showPane("layout-marketplace");
+          break;
+        case "quit":
+          // Through the view, so what was counted is sent before the app goes.
+          rendererHost.requestExit();
           break;
         case "layout-undo":
           dispatch({ type: "UNDO_LAYOUT" });

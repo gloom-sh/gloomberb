@@ -78,6 +78,7 @@ async function bundlePluginDirectory(
     path: pluginDir,
     directory,
     ...(loaded.commit ? { commit: loaded.commit } : {}),
+    ...(loaded.repo ? { repo: loaded.repo } : {}),
     ...(loaded.linked ? { linked: true } : {}),
     ...(plugin.targets ? { targets: plugin.targets } : {}),
   };

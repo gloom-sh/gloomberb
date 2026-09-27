@@ -136,12 +136,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   togglePaneFullscreenFn: ((paneId: string) => boolean) = () => false;
   showPaneFn: ((paneId: string) => void) = () => {};
   createPaneFromTemplateFn: ((templateId: string, options?: PaneTemplateCreateOptions) => void) = () => {};
-  /** `automated` marks a pane the app or an automation opens, which usage counts leave out. */
-  createPaneFromTemplateAsyncFn: ((
-    templateId: string,
-    options?: PaneTemplateCreateOptions,
-    origin?: { automated?: boolean },
-  ) => Promise<void>) = async () => {};
+  createPaneFromTemplateAsyncFn: ((templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>) = async () => {};
   openPortablePaneShareAsyncFn: ((layout: LayoutMarketplacePayload) => Promise<void>) = async () => {};
   hidePaneFn: ((paneId: string) => void) = () => {};
   focusPaneFn: ((paneId: string, layout?: LayoutConfig) => void) = () => {};

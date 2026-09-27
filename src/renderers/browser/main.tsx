@@ -15,7 +15,7 @@ import {
   restoreBrowserCloudSession,
 } from "./cloud-transport";
 import { loadWebBundledPlugins } from "./bundled-plugins";
-import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
+import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
@@ -29,7 +29,7 @@ import {
   readOrCreateBrowserInstallId,
 } from "../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
-import { installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
+import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
 
@@ -80,6 +80,8 @@ async function boot(): Promise<void> {
   const bundledPlugins = loadWebBundledPlugins().catch(() => []);
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
+  // Nothing was restored on a first visit, only the starter workspace shown.
+  if (!hasSavedBrowserConfig()) recordRestoredFunctions([]);
   const config = await loadConfig(BROWSER_DATA_DIR);
   loadedConfig = config;
   applyLanguageFromConfig(config);
