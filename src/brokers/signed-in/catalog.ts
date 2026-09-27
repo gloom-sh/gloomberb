@@ -3,12 +3,15 @@
  * Brokers pane, onboarding and the adapter read it synchronously. It refreshes
  * at startup and when Add Broker or onboarding opens, and the last list is kept
  * in plugin state (which, unlike the desktop view's resource cache, survives a
- * restart everywhere) so the directory still lists them offline.
+ * restart everywhere) so the directory still lists them offline. The desktop's
+ * Bun half never fetches; it picks up the list the view saved.
  */
 import type { PluginPersistence } from "../../types/plugin";
 import { listSignedInBrokers, type SignedInBroker } from "./client";
 
 const FRESH_MS = 5 * 60_000;
+/** How often a known list looks for a newer saved one. */
+const RECHECK_MS = 60_000;
 const STATE_KEY = "signed-in-brokers";
 const SCHEMA_VERSION = 1;
 /** One empty list, so a React snapshot of "nothing yet" is stable. */
@@ -44,6 +47,7 @@ export function createSignedInBrokerCatalog(
   // Null until a list is known, so a store attached after the first read still counts.
   let brokers: SignedInBroker[] | null = null;
   let fetchedAt = 0;
+  let checkedAt = 0;
   let inFlight: Promise<void> | null = null;
   const listeners = new Set<() => void>();
 
@@ -51,16 +55,21 @@ export function createSignedInBrokerCatalog(
     for (const listener of listeners) listener();
   };
 
+  // Another process on the same store (the desktop view, for its Bun half)
+  // may have saved a newer list, so a known list looks again once a minute.
   const ensureLoaded = (): SignedInBroker[] => {
-    if (brokers) return brokers;
+    if (brokers && now() - checkedAt < RECHECK_MS) return brokers;
+    checkedAt = now();
     const saved = persistence?.getState<{ brokers?: unknown; fetchedAt?: unknown }>(STATE_KEY, {
       schemaVersion: SCHEMA_VERSION,
     });
     const restored = readBrokers(saved?.brokers);
-    if (!restored) return NONE;
-    brokers = restored;
-    fetchedAt = typeof saved?.fetchedAt === "number" ? saved.fetchedAt : 0;
-    return brokers;
+    const savedAt = typeof saved?.fetchedAt === "number" ? saved.fetchedAt : 0;
+    if (restored && (!brokers || savedAt > fetchedAt)) {
+      brokers = restored;
+      fetchedAt = savedAt;
+    }
+    return brokers ?? NONE;
   };
 
   return {
@@ -72,6 +81,7 @@ export function createSignedInBrokerCatalog(
       persistence = null;
       brokers = null;
       fetchedAt = 0;
+      checkedAt = 0;
       inFlight = null;
     },
     get: ensureLoaded,

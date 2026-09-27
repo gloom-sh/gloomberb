@@ -53,3 +53,35 @@ test("one fetch at a time, the last list survives a failure and a restart, and a
   restarted.attach(persistence);
   expect(restarted.find("ibkr")).toEqual(IBKR);
 });
+
+test("a process that never fetches picks up a newer list another one saved, looking once a minute", async () => {
+  let now = 1_000;
+  const persistence = memoryPersistence();
+  const trading: SignedInBroker = { ...IBKR, capabilities: { ...IBKR.capabilities, orders: { mode: "review", types: ["LMT"] } } };
+  let served = [IBKR];
+  const view = createSignedInBrokerCatalog(async () => ({ connectors: served }), () => now);
+  view.attach(persistence);
+  await view.refresh();
+
+  let bunLoads = 0;
+  const bun = createSignedInBrokerCatalog(async () => {
+    bunLoads += 1;
+    return { connectors: [] };
+  }, () => now);
+  bun.attach(persistence);
+  expect(bun.find("ibkr")).toEqual(IBKR);
+
+  now += 10 * 60_000;
+  served = [trading];
+  await view.refresh();
+  expect(bun.find("ibkr")).toEqual(trading);
+
+  // Within the minute the known list is kept without reading the store again.
+  served = [IBKR];
+  now += 30_000;
+  await view.refresh({ force: true });
+  expect(bun.find("ibkr")).toEqual(trading);
+  now += 30_000;
+  expect(bun.find("ibkr")).toEqual(IBKR);
+  expect(bunLoads).toBe(0);
+});
