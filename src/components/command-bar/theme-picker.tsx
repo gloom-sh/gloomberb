@@ -16,6 +16,7 @@ import type { ListRowState } from "../ui/list-view";
 import type { ListJump } from "./list/model";
 import { useCommandBarPalette } from "./panel/palette";
 import { truncateText } from "./view-model";
+import { clampIndex } from "../../utils/math";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
 /**
@@ -76,10 +77,6 @@ export interface ThemePickerHandle {
   jump: (target: ListJump) => boolean;
   commit: () => boolean;
   cancelPreview: () => void;
-}
-
-function clampIndex(index: number, length: number): number {
-  return Math.max(0, Math.min(index, Math.max(0, length - 1)));
 }
 
 export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(function ThemePicker({

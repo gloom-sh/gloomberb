@@ -9,8 +9,7 @@ import type {
   CompositeProjectedPoint,
   CompositeProjectedSeries,
 } from "./types";
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+import { clamp } from "../../../utils/math";
 
 function setCell(rows: string[][], x: number, y: number, value: string): void {
   const row = rows[y];

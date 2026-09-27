@@ -43,6 +43,7 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../../../state/hooks/live-streaming";
+import { isRecord } from "../../../utils/guards";
 
 function normalizedSymbol(value: string | null | undefined): string | null {
   const symbol = value?.trim().toUpperCase() ?? "";
@@ -107,10 +108,6 @@ function chartTitle(spec: ChartSpec, prefix = "G"): string {
   if (labels.length === 0) return "Custom Chart";
   const remaining = spec.series.length - labels.length;
   return `${prefix} ${labels.join(" · ")}${remaining > 0 ? ` +${remaining}` : ""}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

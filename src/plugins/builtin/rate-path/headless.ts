@@ -2,12 +2,12 @@ import type { RateMeeting } from "../../../api-client/rates";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRatePath } from "./client";
 import { rateText } from "./model";
+import { finiteOrNull } from "../../../utils/guards";
 
-const num = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
-const rate = (value: unknown) => rateText(num(value));
-const pctl = (value: unknown) => num(value)?.toFixed(0) ?? "--";
+const rate = (value: unknown) => rateText(finiteOrNull(value));
+const pctl = (value: unknown) => finiteOrNull(value)?.toFixed(0) ?? "--";
 const bps = (value: unknown) => {
-  const bp = num(value);
+  const bp = finiteOrNull(value);
   return bp == null ? "--" : `${bp > 0 ? "+" : ""}${bp.toFixed(1)}bp`;
 };
 const timestamp = (value: unknown) => typeof value === "string" ? value.replace("T", " ").slice(0, 16) : "--";
@@ -19,7 +19,7 @@ const probabilities = (value: unknown) => {
 
 const contractColumns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Symbol" }, { key: "month", header: "Month" },
-  { key: "price", header: "Price", align: "right", format: (value) => num(value)?.toFixed(3) ?? "--" },
+  { key: "price", header: "Price", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
   { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
   { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
   { key: "samples", header: "Samples", align: "right" },
@@ -42,7 +42,7 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
         ], rows: Object.entries(data.current).map(([name, metric]) => ({ name, ...metric })) },
         { title: "FOMC meetings", columns: [
           { key: "date", header: "Date" }, { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
-          { key: "targetMidpoint", header: "Target midpoint", align: "right", format: (value) => num(value)?.toFixed(3) ?? "--" },
+          { key: "targetMidpoint", header: "Target midpoint", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
           { key: "changeBps", header: "Change", align: "right", format: bps },
           { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
           { key: "samples", header: "Samples", align: "right" }, { key: "asOf", header: "As of UTC", format: timestamp },

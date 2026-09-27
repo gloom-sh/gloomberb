@@ -3,6 +3,7 @@ import {
   type LayoutMarketplacePayload,
 } from "../layout-marketplace/payload";
 import { safeExternalUrl } from "../utils/external-url";
+import { isRecord } from "../utils/guards";
 
 export const MAX_SHARE_BYTES = 128 * 1024;
 const MAX_TITLE_LENGTH = 200;
@@ -70,10 +71,6 @@ export type SharePayload =
   | { kind: "article"; data: ArticleShareData }
   | { kind: "pane"; data: PaneShareData };
 
-function record(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 function shortString(value: unknown, max = MAX_TITLE_LENGTH): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
 }
@@ -105,33 +102,33 @@ function isCell(value: unknown): value is CellValue {
 }
 
 function isTableData(value: unknown): value is TableShareData {
-  if (!record(value) || !shortString(value.title) || !safeOptionalUrl(value.sourceUrl)) return false;
+  if (!isRecord(value) || !shortString(value.title) || !safeOptionalUrl(value.sourceUrl)) return false;
   if (!Array.isArray(value.columns) || value.columns.length === 0 || value.columns.length > MAX_TABLE_COLUMNS) return false;
   const keys = new Set<string>();
   for (const column of value.columns) {
-    if (!record(column) || !shortString(column.key, 80) || !shortString(column.label, 120) || keys.has(column.key)) return false;
+    if (!isRecord(column) || !shortString(column.key, 80) || !shortString(column.label, 120) || keys.has(column.key)) return false;
     keys.add(column.key);
   }
   return Array.isArray(value.rows)
     && value.rows.length <= MAX_TABLE_ROWS
-    && value.rows.every((row) => record(row)
+    && value.rows.every((row) => isRecord(row)
       && Object.keys(row).every((key) => keys.has(key))
       && Object.values(row).every(isCell));
 }
 
 function isChartData(value: unknown): value is ChartShareData {
-  if (!record(value) || !shortString(value.title) || !safeOptionalUrl(value.sourceUrl)) return false;
+  if (!isRecord(value) || !shortString(value.title) || !safeOptionalUrl(value.sourceUrl)) return false;
   if (Object.keys(value).some((key) => !["title", "series", "sourceUrl", "viewport", "warnings"].includes(key))) return false;
   if (value.warnings !== undefined && (!Array.isArray(value.warnings) || value.warnings.length > 20
     || !value.warnings.every((warning) => shortString(warning, 500)))) return false;
-  if (value.viewport !== undefined && (!record(value.viewport)
+  if (value.viewport !== undefined && (!isRecord(value.viewport)
     || Object.keys(value.viewport).some((key) => !["start", "end"].includes(key))
     || !viewportDate(value.viewport.start) || !viewportDate(value.viewport.end)
     || Date.parse(value.viewport.start) > Date.parse(value.viewport.end))) return false;
   return Array.isArray(value.series)
     && value.series.length > 0
     && value.series.length <= MAX_CHART_SERIES
-    && value.series.every((series) => record(series)
+    && value.series.every((series) => isRecord(series)
       && Object.keys(series).every((key) => ["name", "points", "unit", "style"].includes(key))
       && shortString(series.name, 120)
       && (series.unit === undefined || shortString(series.unit, 80))
@@ -139,14 +136,14 @@ function isChartData(value: unknown): value is ChartShareData {
       && Array.isArray(series.points)
       && series.points.length > 0
       && series.points.length <= MAX_CHART_POINTS
-      && series.points.every((point) => record(point)
+      && series.points.every((point) => isRecord(point)
         && Object.keys(point).every((key) => ["x", "y"].includes(key))
         && ((typeof point.x === "string" && point.x.length <= 100) || (typeof point.x === "number" && Number.isFinite(point.x)))
         && (point.y === null || (typeof point.y === "number" && Number.isFinite(point.y)))));
 }
 
 function isArticleData(value: unknown): value is ArticleShareData {
-  return record(value)
+  return isRecord(value)
     && shortString(value.title)
     && typeof value.text === "string"
     && value.text.length <= MAX_TEXT_LENGTH
@@ -161,20 +158,20 @@ function boundedJson(value: unknown, depth = 0): value is ShareJsonValue {
   if (Array.isArray(value)) {
     return value.length <= MAX_PANE_ARRAY_ITEMS && value.every((entry) => boundedJson(entry, depth + 1));
   }
-  if (!record(value)) return false;
+  if (!isRecord(value)) return false;
   const entries = Object.entries(value);
   return entries.length <= MAX_PANE_OBJECT_KEYS && entries.every(([, entry]) => boundedJson(entry, depth + 1));
 }
 
 function parsePaneData(value: unknown): PaneShareData | null {
-  if (!record(value) || !shortString(value.title)) return null;
+  if (!isRecord(value) || !shortString(value.title)) return null;
   if (
     value.version === 1
     && Object.keys(value).every((key) => ["version", "templateId", "title", "description", "data"].includes(key))
     && typeof value.templateId === "string"
     && PANE_TEMPLATE_ID.test(value.templateId)
     && (value.description === undefined || shortString(value.description, MAX_PANE_DESCRIPTION_LENGTH))
-    && record(value.data)
+    && isRecord(value.data)
     && boundedJson(value.data)
   ) return value as unknown as LegacyPaneShareData;
   if (
@@ -194,7 +191,7 @@ function parsePaneData(value: unknown): PaneShareData | null {
 }
 
 export function parseSharePayload(value: unknown): SharePayload | null {
-  if (!record(value) || !shortString(value.kind, 20) || !("data" in value)) return null;
+  if (!isRecord(value) || !shortString(value.kind, 20) || !("data" in value)) return null;
   let json: string;
   try { json = JSON.stringify(value); } catch { return null; }
   if (new TextEncoder().encode(json).byteLength > MAX_SHARE_BYTES) return null;

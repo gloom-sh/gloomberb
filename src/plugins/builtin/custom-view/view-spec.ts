@@ -6,6 +6,7 @@
  */
 
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { isRecord } from "../../../utils/guards";
 
 export const VIEW_SPEC_VERSION = 1;
 export const MAX_VIEW_COLUMNS = 24;
@@ -88,10 +89,6 @@ const FILTER_OPS = new Set<ViewFilterOp>(["eq", "neq", "gt", "gte", "lt", "lte",
 const KEY_PATTERN = /^[A-Za-z0-9_.\-:]{1,80}$/;
 const PANE_TOKEN_PATTERN = /^[A-Za-z0-9_.\-:]{1,120}$/;
 
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 function issue(path: string, code: string, message: string): ViewSpecIssue {
   return { path, code, message };
 }
@@ -108,7 +105,7 @@ function cleanString(value: unknown, max = 200): string | undefined {
 
 function normalizeColumn(value: unknown): ViewColumn | null {
   if (typeof value === "string") return KEY_PATTERN.test(value) ? { key: value } : null;
-  if (!record(value) || typeof value.key !== "string") return null;
+  if (!isRecord(value) || typeof value.key !== "string") return null;
   const column: ViewColumn = { key: value.key };
   const label = cleanString(value.label, 80);
   if (label) column.label = label;
@@ -121,7 +118,7 @@ function normalizeColumn(value: unknown): ViewColumn | null {
 }
 
 function normalizeFilter(value: unknown): ViewFilter | null {
-  if (!record(value) || typeof value.key !== "string" || typeof value.op !== "string") return null;
+  if (!isRecord(value) || typeof value.key !== "string" || typeof value.op !== "string") return null;
   const filter: ViewFilter = { key: value.key, op: value.op as ViewFilterOp };
   if (Array.isArray(value.value)) filter.value = value.value.filter(primitive);
   else if (primitive(value.value)) filter.value = value.value;
@@ -129,7 +126,7 @@ function normalizeFilter(value: unknown): ViewFilter | null {
 }
 
 function normalizeSource(value: unknown): ViewSource | null {
-  if (!record(value)) return null;
+  if (!isRecord(value)) return null;
   if (value.kind === "ref") {
     if (typeof value.viewId !== "string") return null;
     return {
@@ -143,7 +140,7 @@ function normalizeSource(value: unknown): ViewSource | null {
   const source: ViewSource = { kind: "inline", pane: value.pane.trim() };
   const argument = cleanString(value.argument, 500);
   if (argument) source.argument = argument;
-  if (record(value.options)) {
+  if (isRecord(value.options)) {
     const options: Record<string, string | number | boolean> = {};
     for (const [key, entry] of Object.entries(value.options)) {
       if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") options[key] = entry;
@@ -155,9 +152,9 @@ function normalizeSource(value: unknown): ViewSource | null {
 
 /** Fills defaults and drops junk without judging; `validateViewSpec` judges. */
 export function normalizeViewSpec(value: unknown): ViewSpec {
-  const raw = record(value) ? value : {};
-  const projectionRaw = record(raw.projection) ? raw.projection : {};
-  const presentationRaw = record(raw.presentation) ? raw.presentation : {};
+  const raw = isRecord(value) ? value : {};
+  const projectionRaw = isRecord(raw.projection) ? raw.projection : {};
+  const presentationRaw = isRecord(raw.presentation) ? raw.presentation : {};
   const columns = Array.isArray(projectionRaw.columns)
     ? projectionRaw.columns.map(normalizeColumn).filter((column): column is ViewColumn => column !== null)
     : [];
@@ -166,7 +163,7 @@ export function normalizeViewSpec(value: unknown): ViewSpec {
     : Array.isArray(projectionRaw.filter)
       ? projectionRaw.filter.map(normalizeFilter).filter((filter): filter is ViewFilter => filter !== null)
       : [];
-  const sortRaw = record(projectionRaw.sort) ? projectionRaw.sort : null;
+  const sortRaw = isRecord(projectionRaw.sort) ? projectionRaw.sort : null;
   const sort: ViewSort | undefined = sortRaw && typeof sortRaw.by === "string"
     ? { by: sortRaw.by, direction: sortRaw.direction === "asc" ? "asc" : "desc" }
     : undefined;

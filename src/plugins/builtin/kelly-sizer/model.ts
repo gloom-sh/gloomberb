@@ -17,6 +17,7 @@ import {
   type SensitivityGrid,
   type SensitivityGridCell,
 } from "./types";
+import { clamp } from "../../../utils/math";
 
 const MAX_NUMERIC_KELLY_FRACTION = 10;
 /** Widest Kelly curve window worth drawing: 200% of bankroll. */
@@ -25,10 +26,6 @@ const SOLVER_ITERATIONS = 80;
 
 function finite(value: number): boolean {
   return Number.isFinite(value);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function sanitizeFraction(value: number, fallback: number, min = 0, max = 1): number {

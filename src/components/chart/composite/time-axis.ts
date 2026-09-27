@@ -1,6 +1,7 @@
 import type { CompositeViewportRange } from "./interactions";
 import { projectCompositeTimestamp } from "./time-scale";
 import type { CompositeChartScene } from "./types";
+import { clamp } from "../../../utils/math";
 
 const MONTHS = [
   "Jan",
@@ -98,10 +99,6 @@ const TIME_AXIS_INTERVALS: readonly CompositeTimeAxisInterval[] = [
   { unit: "year", step: 20, approximateMs: 20 * YEAR_MS },
   { unit: "year", step: 50, approximateMs: 50 * YEAR_MS },
 ] as const;
-
-const clamp = (value: number, min: number, max: number) => (
-  Math.max(min, Math.min(max, value))
-);
 
 function validTimestamp(value: number): boolean {
   return Number.isFinite(value);

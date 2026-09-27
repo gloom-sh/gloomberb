@@ -11,10 +11,7 @@ import {
   TwitterFeedPane,
   TwitterTickerTab,
 } from "./pane";
-
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
+import { isRecord } from "../../../utils/guards";
 
 export function registerTwitterFeedFeature(ctx: GloomPluginContext): void {
   ctx.registerTickerResearchTab({
@@ -46,7 +43,7 @@ export function registerTwitterFeedFeature(ctx: GloomPluginContext): void {
     description: "Open an X advanced-search feed.",
     keywords: ["twitter", "x", "tweet", "tweets", "feed", "social"],
     createInstance: (_context, options) => {
-      const shared = record(options?.shareData) ? options.shareData : null;
+      const shared = isRecord(options?.shareData) ? options.shareData : null;
       const query = typeof shared?.query === "string"
         ? shared.query.trim()
         : options?.values?.query?.trim() || options?.arg?.trim() || "";
@@ -61,12 +58,12 @@ export function registerTwitterFeedFeature(ctx: GloomPluginContext): void {
     },
     publicShare: {
       serialize: ({ pane, paneState }) => {
-        const pluginState = record(paneState.pluginState)
+        const pluginState = isRecord(paneState.pluginState)
           ? paneState.pluginState["gloomberb-cloud"]
           : null;
-        const feedsState = record(pluginState) ? pluginState.feeds : null;
+        const feedsState = isRecord(pluginState) ? pluginState.feeds : null;
         const feeds = normalizeFeeds(feedsState);
-        const activeFeedId = record(pluginState) && typeof pluginState.activeFeedId === "string"
+        const activeFeedId = isRecord(pluginState) && typeof pluginState.activeFeedId === "string"
           ? pluginState.activeFeedId
           : null;
         const active = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];

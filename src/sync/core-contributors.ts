@@ -1,6 +1,6 @@
 import { scheduleConfigSave } from "../state/config-save-scheduler";
 import { debugLog } from "../utils/debug-log";
-import { stableStringify } from "../remote/revision";
+import { stableStringify } from "../utils/hash";
 import type { AppConfig, BrokerInstanceConfig, SavedLayout } from "../types/config";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { Portfolio, TickerMetadata, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
@@ -27,6 +27,7 @@ import {
   normalizeBuiltinDisabledPluginIds,
   normalizeBuiltinPluginStateMap,
 } from "../plugins/ownership";
+import { isRecord } from "../utils/guards";
 
 /**
  * What a saved layout mirrors from the live session rather than from the
@@ -41,15 +42,11 @@ const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|private|api[_-]
 
 const log = debugLog.createLogger("sync");
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === "object" && !Array.isArray(value);
-}
-
 function sanitizeUnknown(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sanitizeUnknown).filter((entry) => entry !== undefined);
   }
-  if (!isPlainObject(value)) return value;
+  if (!isRecord(value)) return value;
 
   const output: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
@@ -529,9 +526,9 @@ function collectCoreCollectionsPayload(
 }
 
 function hydrateProfileAnalytics(payload: Record<string, unknown>): void {
-  if (!isPlainObject(payload.analyticsByPortfolio)) return;
+  if (!isRecord(payload.analyticsByPortfolio)) return;
   for (const [portfolioId, analytics] of Object.entries(payload.analyticsByPortfolio)) {
-    if (!isPlainObject(analytics)) continue;
+    if (!isRecord(analytics)) continue;
     setSyncedProfileAnalytics(portfolioId, {
       oneYearReturn: typeof analytics.oneYearReturn === "number" ? analytics.oneYearReturn : null,
       spyBeta: typeof analytics.spyBeta === "number" ? analytics.spyBeta : null,
@@ -545,11 +542,11 @@ function valuesEqual(left: unknown, right: unknown): boolean {
 }
 
 function isPluginStateMap(value: unknown): value is Record<string, Record<string, unknown>> {
-  return isPlainObject(value) && Object.values(value).every(isPlainObject);
+  return isRecord(value) && Object.values(value).every(isRecord);
 }
 
 function withoutSessionLayoutState(savedLayout: SavedLayout): SavedLayout {
-  if (!isPlainObject(savedLayout)) return savedLayout;
+  if (!isRecord(savedLayout)) return savedLayout;
   if (!SESSION_SAVED_LAYOUT_KEYS.some((key) => key in savedLayout)) return savedLayout;
   const { paneState: _paneState, focusedPaneId: _focusedPaneId, activePanel: _activePanel, ...rest } = savedLayout;
   return rest;
@@ -566,7 +563,7 @@ function withLocalSessionLayoutState(
 ): SavedLayout[] {
   const localByName = new Map(local.map((savedLayout) => [savedLayout?.name, savedLayout]));
   return pulled.map((savedLayout, index) => {
-    if (!isPlainObject(savedLayout)) return savedLayout;
+    if (!isRecord(savedLayout)) return savedLayout;
     const stripped = withoutSessionLayoutState(savedLayout);
     const source = localByName.get(savedLayout.name) ?? local[index];
     if (!source) return stripped;
@@ -585,12 +582,12 @@ function mergeConfigPayload(
   baselineConfig: AppConfig = config,
   lastSyncedPayload?: unknown,
 ): AppConfig | null {
-  if (!isPlainObject(payload)) return null;
+  if (!isRecord(payload)) return null;
   const next: AppConfig = { ...config };
   // Two guards, both needed. baselineConfig catches edits made while this pull
   // was in flight; lastSyncedPayload catches edits made while the app was not
   // running at all (CLI writes, offline edits), which otherwise look pristine.
-  const lastSynced = isPlainObject(lastSyncedPayload) ? lastSyncedPayload : null;
+  const lastSynced = isRecord(lastSyncedPayload) ? lastSyncedPayload : null;
   const localPayload = lastSynced
     ? collectCoreConfigPayload(config) as Record<string, unknown>
     : null;
@@ -676,10 +673,10 @@ function mergeConfigPayload(
 }
 
 function lastSyncedTickersById(baselinePayload: unknown): Map<string, Record<string, unknown>> | null {
-  if (!isPlainObject(baselinePayload) || !Array.isArray(baselinePayload.tickers)) return null;
+  if (!isRecord(baselinePayload) || !Array.isArray(baselinePayload.tickers)) return null;
   const byId = new Map<string, Record<string, unknown>>();
   for (const entry of baselinePayload.tickers) {
-    if (isPlainObject(entry) && typeof entry.ticker === "string") byId.set(entry.ticker, entry);
+    if (isRecord(entry) && typeof entry.ticker === "string") byId.set(entry.ticker, entry);
   }
   return byId;
 }
@@ -735,14 +732,14 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     state.brokerAccounts,
   ),
   apply: async (payload, { baselinePayload, getState, isCurrent, dispatch, tickerRepository }) => {
-    if (!isPlainObject(payload)) return;
+    if (!isRecord(payload)) return;
     hydrateProfileAnalytics(payload);
     const lastSyncedTickers = lastSyncedTickersById(baselinePayload);
     const incomingRecords: TickerRecord[] = [];
     const rawTickers = Array.isArray(payload.tickers) ? payload.tickers : [];
     for (const rawTicker of rawTickers) {
       if (!isCurrent()) return;
-      if (!isPlainObject(rawTicker)) continue;
+      if (!isRecord(rawTicker)) continue;
       const current = typeof rawTicker.ticker === "string"
         ? getState().tickers.get(rawTicker.ticker)
         : null;

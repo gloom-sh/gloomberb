@@ -21,6 +21,7 @@ import type {
   CompositeProjectedPoint,
   CompositeProjectedSeries,
 } from "./types";
+import { clamp } from "../../../utils/math";
 
 interface RenderCompositePanelBitmapOptions {
   pixelWidth: number;
@@ -30,8 +31,6 @@ interface RenderCompositePanelBitmapOptions {
    * row its label snaps to. */
   snapGridToRows?: boolean;
 }
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 /** Dash geometry of the last price level, in bitmap pixels. */
 const LAST_PRICE_DASH_PIXELS = 6;

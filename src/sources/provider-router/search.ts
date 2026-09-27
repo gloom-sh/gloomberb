@@ -3,6 +3,7 @@ import type { InstrumentSearchResult } from "../../types/instrument";
 import type { BrokerCandidate } from "./brokers";
 import { shouldLogProviderError } from "../provider-errors";
 import { searchInstrumentKey } from "../../tickers/search/identity";
+import { settleWithin } from "../../utils/async-deadline";
 
 const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 100;
@@ -19,16 +20,6 @@ interface BrokerSearchCandidate {
   brokerId: string;
   brokerInstanceId: string;
   brokerLabel: string;
-}
-
-function withSearchTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
-  return new Promise<T | null>((resolve) => {
-    const timer = setTimeout(() => resolve(null), timeoutMs);
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      () => { clearTimeout(timer); resolve(null); },
-    );
-  });
 }
 
 function buildSearchCacheKey(query: string, context?: SearchRequestContext): string {
@@ -170,7 +161,7 @@ export class ProviderRouterSearchRoutes {
 
     const searchBroker = (candidate: BrokerCandidate) => (async () => {
       try {
-        const items = await withSearchTimeout(
+        const items = await settleWithin(
           candidate.broker.searchInstruments!(query, candidate.instance),
           timeoutMs,
         );
@@ -182,7 +173,7 @@ export class ProviderRouterSearchRoutes {
 
     const searchProvider = (provider: DataProvider) => (async () => {
       try {
-        record(await withSearchTimeout(provider.search(query, context), timeoutMs));
+        record(await settleWithin(provider.search(query, context), timeoutMs));
       } catch (error) {
         if (shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);

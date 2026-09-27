@@ -8,6 +8,7 @@ import type {
 import type { ValuationCurrencyContext } from "./valuation-currency";
 import { valuationPriceAtOrBefore } from "./valuation-price";
 import type { TimeSeriesPoint } from "./types";
+import { isFiniteNumber } from "../utils/guards";
 
 /**
  * Forward multiples over time. No source serves the consensus as it stood on
@@ -41,10 +42,6 @@ export const FORWARD_VALUATION_BASIS_NOTICES: ReadonlySet<string> = new Set([
   REALIZED_NTM_PE_BASIS_NOTICE,
 ]);
 
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function isoDay(value: string): string {
   return value.slice(0, 10);
 }
@@ -71,8 +68,8 @@ function blendedNextTwelveMonthsEps(
   const next = nextYear?.eps;
   const end = validDate(currentYear?.periodEnd);
   const at = validDate(asOf);
-  if (!finite(next)) return null;
-  if (!finite(current) || !end || !at) return next > 0 ? next : null;
+  if (!isFiniteNumber(next)) return null;
+  if (!isFiniteNumber(current) || !end || !at) return next > 0 ? next : null;
   const remaining = Math.min(1, Math.max(0, (end.getTime() - at.getTime()) / (365.25 * DAY_MS)));
   const blended = current * remaining + next * (1 - remaining);
   return blended > 0 ? blended : null;
@@ -148,7 +145,7 @@ function reportDatePoints(
     const window = rows.slice(index + 1, index + 1 + NTM_QUARTERS);
     if (window.length < NTM_QUARTERS) break;
     const values = window.map(pick);
-    if (!values.every(finite)) continue;
+    if (!values.every(isFiniteNumber)) continue;
     const sum = (values as number[]).reduce((total, value) => total + value, 0);
     if (sum <= 0) continue;
     const priced = pricedDate(financials, currencies, history.currency, rows[index]!.date);
@@ -189,8 +186,8 @@ function currentConsensusPoint(
 ): TimeSeriesPoint | null {
   const quote = financials.quote;
   const quoteTime = quote?.lastUpdated;
-  const quoteDate = validDate(finite(quoteTime) && quoteTime > 0 ? new Date(quoteTime).toISOString() : undefined);
-  if (!quoteDate || !finite(quote?.price) || quote.price <= 0) return null;
+  const quoteDate = validDate(isFiniteNumber(quoteTime) && quoteTime > 0 ? new Date(quoteTime).toISOString() : undefined);
+  if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
   const periods = consensusByPeriod(history.consensus);
   const currentYear = periods.get("current year");
   const nextYear = periods.get("next year");

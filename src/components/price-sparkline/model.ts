@@ -1,6 +1,8 @@
+import { parseHex } from "../../theme/color-utils";
 import { colors, type ThemeColors } from "../../theme/colors";
 import { appendLiveQuotePoint } from "../../time-series/chart-data";
 import type { PricePoint, Quote } from "../../types/financials";
+import { clamp } from "../../utils/math";
 import { getPricePointTimestamp } from "../../utils/price-history";
 
 const SPARKLINE_FALLBACK_POINTS = 22;
@@ -100,11 +102,8 @@ export function svgAreaPath(samples: SparklineSample[], baseline: number): strin
 
 export function colorWithAlpha(color: string, alpha: number): string {
   if (!/^#[0-9a-f]{6}$/i.test(color)) return color;
-  const normalized = color.replace("#", "");
-  const r = parseInt(normalized.slice(0, 2), 16);
-  const g = parseInt(normalized.slice(2, 4), 16);
-  const b = parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
+  const [r, g, b] = parseHex(color);
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
 }
 
 export function resolvePriceSparklineRange(

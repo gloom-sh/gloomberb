@@ -1,4 +1,5 @@
 import { valueOption, type ImpliedVolatilityResult, type OptionCalcDraft, type OptionValuation } from "./model";
+import { isFiniteNumber } from "../../../utils/guards";
 
 const DAYS_PER_YEAR = 365;
 export const DEFAULT_BINOMIAL_STEPS = 400;
@@ -28,16 +29,15 @@ interface PreparedInputs extends BinomialInputs {
   discount: number;
 }
 
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const intrinsic = (draft: OptionCalcDraft, spot: number) => Math.max(0, draft.side === "call" ? spot - draft.strike : draft.strike - spot);
 
 export function validateBinomialInputs(draft: OptionCalcDraft, input: Partial<BinomialInputs> = {}): string | null {
   if (!draft || typeof draft !== "object") return "Option inputs are required.";
   if (draft.side !== "call" && draft.side !== "put") return "Side must be call or put.";
   for (const [key, label] of [["spot", "Spot"], ["strike", "Strike"], ["daysToExpiry", "Days to expiry"], ["volatility", "Volatility"]] as const) {
-    if (!finite(draft[key]) || draft[key] < 0) return `${label} must be finite and nonnegative.`;
+    if (!isFiniteNumber(draft[key]) || draft[key] < 0) return `${label} must be finite and nonnegative.`;
   }
-  if (!finite(draft.rate) || !finite(draft.dividendYield)) return "Rate and continuous dividend yield must be finite.";
+  if (!isFiniteNumber(draft.rate) || !isFiniteNumber(draft.dividendYield)) return "Rate and continuous dividend yield must be finite.";
   if (!input || typeof input !== "object" || Array.isArray(input)) return "Binomial settings must be an object.";
   const exercise = input.exercise === undefined ? "american" : input.exercise;
   if (exercise !== "american" && exercise !== "european") return "Exercise must be american or european.";
@@ -46,10 +46,10 @@ export function validateBinomialInputs(draft: OptionCalcDraft, input: Partial<Bi
   const dividends = input.dividends === undefined ? [] : input.dividends;
   if (!Array.isArray(dividends) || dividends.length > 64) return "Supply at most 64 discrete cash dividends.";
   for (const dividend of dividends) {
-    if (!dividend || typeof dividend !== "object" || !finite(dividend.days) || dividend.days < 0 || dividend.days > draft.daysToExpiry) {
+    if (!dividend || typeof dividend !== "object" || !isFiniteNumber(dividend.days) || dividend.days < 0 || dividend.days > draft.daysToExpiry) {
       return "Dividend dates must be finite days from valuation through expiry.";
     }
-    if (!finite(dividend.amount) || dividend.amount < 0) return "Dividend cash amounts must be finite and nonnegative.";
+    if (!isFiniteNumber(dividend.amount) || dividend.amount < 0) return "Dividend cash amounts must be finite and nonnegative.";
   }
   return null;
 }
@@ -61,7 +61,7 @@ function prepare(draft: OptionCalcDraft, input: Partial<BinomialInputs>): Prepar
   for (const dividend of input.dividends ?? []) {
     if (dividend.amount === 0) continue;
     const amount = (byDate.get(dividend.days) ?? 0) + dividend.amount;
-    if (!finite(amount)) throw new Error("Dividend amounts exceed model precision.");
+    if (!isFiniteNumber(amount)) throw new Error("Dividend amounts exceed model precision.");
     byDate.set(dividend.days, amount);
   }
   const dividends = [...byDate].sort((a, b) => a[0] - b[0]).map(([days, amount]) => ({ days, amount }));
@@ -82,8 +82,8 @@ function prepare(draft: OptionCalcDraft, input: Partial<BinomialInputs>): Prepar
     if (dx > 0 && (Math.exp(dx) === 1 || Math.exp(-dx) === 1)) throw new Error("Tree increments are below floating-point resolution.");
     const probability = Math.expm1(carry * dt + dx) / Math.expm1(2 * dx);
     const discount = Math.exp(-draft.rate * dt);
-    if (!finite(dx) || dx <= 0 || !finite(discount) || discount <= 0) break;
-    if (finite(probability) && probability > 0 && probability < 1) {
+    if (!isFiniteNumber(dx) || dx <= 0 || !isFiniteNumber(discount) || discount <= 0) break;
+    if (isFiniteNumber(probability) && probability > 0 && probability < 1) {
       return { ...base, effectiveSteps, dx, probability, discount };
     }
   }
@@ -96,7 +96,7 @@ export function effectiveBinomialSteps(draft: OptionCalcDraft, input: Partial<Bi
 }
 
 function finitePrice(value: number): number {
-  if (!finite(value)) throw new Error("Option inputs exceed binomial model precision.");
+  if (!isFiniteNumber(value)) throw new Error("Option inputs exceed binomial model precision.");
   return Math.max(0, value);
 }
 
@@ -112,12 +112,12 @@ function deterministicPrice(draft: OptionCalcDraft, inputs: PreparedInputs): num
     // Discounted intrinsic is a difference of two exponentials. Endpoints
     // plus its one possible stationary point exhaust every exercise choice.
     const ratio = rate * draft.strike / (yieldRate * spot);
-    if (inputs.exercise === "american" && duration > 0 && carry !== 0 && ratio > 0 && finite(ratio)) {
+    if (inputs.exercise === "american" && duration > 0 && carry !== 0 && ratio > 0 && isFiniteNumber(ratio)) {
       const stationary = Math.log(ratio) / carry;
       if (stationary > 0 && stationary < duration) best = Math.max(best, at(spot * Math.exp(carry * stationary), time + stationary));
     }
     if (spot > 0) spot *= Math.exp(carry * duration);
-    if (!finite(spot)) throw new Error("Deterministic stock carry exceeds model precision.");
+    if (!isFiniteNumber(spot)) throw new Error("Deterministic stock carry exceeds model precision.");
     time = end;
     if (inputs.exercise === "american") best = Math.max(best, at(spot, time));
   };
@@ -170,12 +170,12 @@ function cashDividendPrice(draft: OptionCalcDraft, inputs: PreparedInputs): numb
     spots[j] = Math.exp(logSpot + (lowerIndex + j) * dx);
     values[j] = intrinsic(draft, spots[j]!);
   }
-  if (spots[0] === 0 || !finite(spots.at(-1))) throw new Error("Cash-dividend grid exceeds model precision.");
+  if (spots[0] === 0 || !isFiniteNumber(spots.at(-1))) throw new Error("Cash-dividend grid exceeds model precision.");
   const cashByStep = new Map<number, number>();
   for (const dividend of inputs.dividends) {
     const step = Math.round(dividend.days / draft.daysToExpiry * n);
     const amount = (cashByStep.get(step) ?? 0) + dividend.amount;
-    if (!finite(amount)) throw new Error("Dividend amounts exceed model precision.");
+    if (!isFiniteNumber(amount)) throw new Error("Dividend amounts exceed model precision.");
     cashByStep.set(step, amount);
   }
   let zeroValue = intrinsic(draft, 0);
@@ -274,7 +274,7 @@ export function solveBinomialImpliedVolatility(
   draft: OptionCalcDraft, marketPrice: number, input: Partial<BinomialInputs> = {},
 ): ImpliedVolatilityResult {
   if (marketPrice === 0) return { volatility: null, note: null };
-  if (!finite(marketPrice) || marketPrice < 0) return { volatility: null, note: "Market price must be finite and positive." };
+  if (!isFiniteNumber(marketPrice) || marketPrice < 0) return { volatility: null, note: "Market price must be finite and positive." };
   const problem = validateBinomialInputs(draft, input);
   if (problem) return { volatility: null, note: problem };
   if (draft.daysToExpiry <= 0) return { volatility: null, note: "Expired, no implied volatility." };
@@ -285,7 +285,7 @@ export function solveBinomialImpliedVolatility(
     : draft.strike * Math.exp(-draft.rate * years);
   const bound = american ? Math.max(upper, draft.side === "call" ? draft.spot : draft.strike) : upper;
   const tolerance = Math.max(1, draft.spot, draft.strike) * 1e-8;
-  if (!finite(bound)) return { volatility: null, note: "Inputs exceed model precision." };
+  if (!isFiniteNumber(bound)) return { volatility: null, note: "Inputs exceed model precision." };
   if (marketPrice >= bound - tolerance) return { volatility: null, note: marketPrice > bound + tolerance
     ? "Market price is above the model's no-arbitrage maximum." : "No finite IV at the model maximum." };
   if (american && marketPrice < intrinsic(draft, draft.spot) - tolerance) {

@@ -1,4 +1,5 @@
 import type { ResolvedSeries, TimeSeriesPoint } from "./types";
+import { isFiniteNumber } from "../utils/guards";
 
 export interface AlignmentOptions {
   mode?: "union" | "intersection";
@@ -20,14 +21,10 @@ export interface AlignedTimeSeriesRow {
   values: Record<string, AlignedSeriesValue | null>;
 }
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 export function scalarPointValue(point: TimeSeriesPoint): number | null {
-  return finiteNumber(point.value)
+  return isFiniteNumber(point.value)
     ? point.value
-    : finiteNumber(point.close)
+    : isFiniteNumber(point.close)
       ? point.close
       : null;
 }
@@ -65,7 +62,7 @@ function sortedUniquePoints(points: readonly TimeSeriesPoint[]): readonly TimeSe
 export function effectiveTimeSeriesPointTime(point: TimeSeriesPoint): number {
   const pointTime = point.date.getTime();
   const availableTime = point.availableAt?.getTime();
-  return finiteNumber(availableTime) ? Math.max(pointTime, availableTime) : pointTime;
+  return isFiniteNumber(availableTime) ? Math.max(pointTime, availableTime) : pointTime;
 }
 
 /**

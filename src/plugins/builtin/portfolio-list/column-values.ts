@@ -46,6 +46,7 @@ import {
   signedPositionDirection,
   type PortfolioPositionPnl,
 } from "./position-metrics";
+import { isFiniteNumber } from "../../../utils/guards";
 
 export interface ColumnContext {
   activeTab?: string;
@@ -62,10 +63,6 @@ export interface ColumnContext {
 }
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
 
 function parseDateValue(value: Date | string | number | null | undefined): Date | null {
   if (value == null) return null;
@@ -300,13 +297,13 @@ export function getColumnValue(
           : "—",
       };
     case "spread_pct": {
-      if (!finiteNumber(quote?.bid) || !finiteNumber(quote?.ask)) return { text: "—" };
+      if (!isFiniteNumber(quote?.bid) || !isFiniteNumber(quote?.ask)) return { text: "—" };
       const midpoint = (quote.bid + quote.ask) / 2;
       if (midpoint === 0) return { text: "—" };
       return { text: formatPercentRaw(((quote.ask - quote.bid) / Math.abs(midpoint)) * 100) };
     }
     case "bid_ask_size": {
-      if (!finiteNumber(quote?.bidSize) && !finiteNumber(quote?.askSize)) return { text: "—" };
+      if (!isFiniteNumber(quote?.bidSize) && !isFiniteNumber(quote?.askSize)) return { text: "—" };
       return { text: `${formatCompact(quote?.bidSize)}/${formatCompact(quote?.askSize)}` };
     }
     case "change_pct":
@@ -314,9 +311,9 @@ export function getColumnValue(
         ? { text: formatPercentRaw(displayQuote.changePercent), color: marketChangeColor(displayQuote.changePercent, quote?.marketState) }
         : { text: quote ? formatPercentRaw(quote.changePercent) : "—", color: quote ? marketChangeColor(quote.changePercent, quote.marketState) : undefined };
     case "volume":
-      return { text: finiteNumber(quote?.volume) ? formatCompact(quote.volume, { fixedDecimals: true }) : "—" };
+      return { text: isFiniteNumber(quote?.volume) ? formatCompact(quote.volume, { fixedDecimals: true }) : "—" };
     case "dollar_volume": {
-      if (!displayQuote || !finiteNumber(quote?.volume)) return { text: "—" };
+      if (!displayQuote || !isFiniteNumber(quote?.volume)) return { text: "—" };
       return { text: formatCompact(toBaseQuote(displayQuote.price * quote.volume), { fixedDecimals: true }) };
     }
     case "range_52w": {
@@ -339,12 +336,12 @@ export function getColumnValue(
     case "ext_hours":
       if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
         const changePercent = quote.preMarketChangePercent;
-        if (!finiteNumber(changePercent)) return { text: "—" };
+        if (!isFiniteNumber(changePercent)) return { text: "—" };
         return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
       }
       if ((quote?.marketState === "POST" || quote?.marketState === "POSTPOST") && quote.postMarketPrice != null) {
         const changePercent = quote.postMarketChangePercent;
-        if (!finiteNumber(changePercent)) return { text: "—" };
+        if (!isFiniteNumber(changePercent)) return { text: "—" };
         return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
       }
       return { text: "—" };
@@ -366,7 +363,7 @@ export function getColumnValue(
       return { text: formatPercentRaw((marketValue / ctx.portfolioTotalMarketValue) * 100) };
     }
     case "day_pnl":
-      if (activeQuote && finiteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
+      if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
         return { text: formatCompactAmount(dayPnl, { signed: true }), color: priceColor(dayPnl) };
       }
@@ -493,12 +490,12 @@ export function getSortValue(
     case "spread":
       return quote?.bid != null && quote?.ask != null ? quote.ask - quote.bid : null;
     case "spread_pct": {
-      if (!finiteNumber(quote?.bid) || !finiteNumber(quote?.ask)) return null;
+      if (!isFiniteNumber(quote?.bid) || !isFiniteNumber(quote?.ask)) return null;
       const midpoint = (quote.bid + quote.ask) / 2;
       return midpoint !== 0 ? ((quote.ask - quote.bid) / Math.abs(midpoint)) * 100 : null;
     }
     case "bid_ask_size":
-      return finiteNumber(quote?.bidSize) || finiteNumber(quote?.askSize)
+      return isFiniteNumber(quote?.bidSize) || isFiniteNumber(quote?.askSize)
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
     case "change":
@@ -508,7 +505,7 @@ export function getSortValue(
     case "volume":
       return quote?.volume ?? null;
     case "dollar_volume":
-      return displayQuote && finiteNumber(quote?.volume)
+      return displayQuote && isFiniteNumber(quote?.volume)
         ? toBaseQuote(displayQuote.price * quote.volume)
         : null;
     case "range_52w":
@@ -548,7 +545,7 @@ export function getSortValue(
         : null;
     }
     case "day_pnl":
-      if (activeQuote && finiteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
+      if (activeQuote && isFiniteNumber(activeQuote.change) && Number.isFinite(positionMetrics.grossPriceUnits) && positionMetrics.grossPriceUnits !== 0) {
         return toBaseQuote(totalPriceUnits * activeQuote.change);
       }
       return null;

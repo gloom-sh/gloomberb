@@ -10,6 +10,9 @@ import { evaluateSurfaceSmile, surfaceCalendarWarnings, type SurfaceExpiry, type
 import { interpolateTotalVariance, logForwardMoneyness } from "../shared/volatility";
 import { daysToExpiryFrom } from "./model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
+import { isFiniteNumber } from "../../../utils/guards";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export interface CalculatorSurfaceRequest {
   symbol: string;
@@ -53,8 +56,6 @@ export function createCalculatorSurfaceDependencies(
 }
 
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
 const expiryLabel = (expiration: number): string => new Date(expiration * 1000).toISOString().slice(0, 10);
 /** Brackets are fetched separately, so their quote instants never match; the New York session is what must agree. */
 const quoteSession = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -62,17 +63,7 @@ const empty = (error: string, warnings: string[] = []): CalculatorSurfaceVol => 
   volatility: null, rate: null, dividendYield: null, asOf: null, sourceSpot: null, spotAsOf: null, rateAsOf: [],
   source: "OVDV midpoint", warnings, error,
 });
-const abortError = () => new DOMException("Surface volatility load was cancelled", "AbortError");
-
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Surface volatility load was cancelled";
 
 function bracketingExpiries(catalogue: readonly number[], years: number, now: number): number[] {
   const sorted = [...new Set(catalogue)].filter((expiration) => positive(expiration) && daysToExpiryFrom(expiration, now) > 0)
@@ -104,7 +95,7 @@ export function projectCalculatorSurfaceVol(
   for (let index = 0; index < selected.length; index += 1) {
     const expiry = selected[index];
     if (!expiry || expiry.stale || expiry.error || expiry.state !== "ready" || !expiry.fit
-      || !positive(expiry.forward) || !finite(expiry.rate) || !finite(expiry.dividendYield)) {
+      || !positive(expiry.forward) || !isFiniteNumber(expiry.rate) || !isFiniteNumber(expiry.dividendYield)) {
       return empty(`${expiryLabel(brackets[index]!)} surface is ${expiry?.stale ? "stale" : "unavailable"}; both tenor brackets are required`, warnings);
     }
   }
@@ -144,7 +135,7 @@ export async function loadCalculatorSurfaceVol(
   request: CalculatorSurfaceRequest,
   dependencies: CalculatorSurfaceDependencies = createCalculatorSurfaceDependencies(),
 ): Promise<CalculatorSurfaceVol> {
-  if (request.signal?.aborted) throw abortError();
+  if (request.signal?.aborted) throw abortError(CANCELLED);
   const target = parsePublicTickerKey(request.symbol);
   const exchange = target.exchange ?? request.exchange;
   if (!target.symbol || !positive(request.strike) || !positive(request.daysToExpiry)) {
@@ -169,9 +160,9 @@ export async function loadCalculatorSurfaceVol(
     const [rawInitial, quoteEntry] = await abortable(Promise.all([
       dependencies.loadOptions(initialRequest, { forceRefresh: request.forceRefresh }),
       dependencies.loadQuote(instrument, { forceRefresh: request.forceRefresh }),
-    ]), request.signal);
+    ]), request.signal, CANCELLED);
     const initial = validateChain(rawInitial, initialRequest);
-    if (request.signal?.aborted) throw abortError();
+    if (request.signal?.aborted) throw abortError(CANCELLED);
     const quote = resolveEntryValue(quoteEntry);
     if (!quote || quote.stale || quoteEntry.error || (quoteEntry.staleAt != null && quoteEntry.staleAt <= now)
       || !positive(quote.price)) return empty(quoteEntry.error?.message ?? "A current underlying quote is required for the surface");
@@ -198,7 +189,7 @@ export async function loadCalculatorSurfaceVol(
     });
     return projectCalculatorSurfaceVol(snapshot, { ...request, symbol: target.symbol });
   } catch (error) {
-    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError();
-    return empty(message(error));
+    if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
+    return empty(errorMessage(error));
   }
 }

@@ -1,35 +1,10 @@
-export type ShortcutPlatform = "darwin" | "win32" | "linux" | "unknown";
+import { detectPlatform, type DesktopPlatform } from "./platform";
+
+export type ShortcutPlatform = DesktopPlatform;
 export type ShortcutDisplayMode = "platform" | "terminal";
 
-function platformFromProcess(): ShortcutPlatform | null {
-  const platform = (globalThis as { process?: { platform?: string } }).process?.platform;
-  if (platform === "darwin" || platform === "win32" || platform === "linux") return platform;
-  return null;
-}
-
-function platformFromNavigator(): ShortcutPlatform | null {
-  const navigatorLike = (globalThis as {
-    navigator?: {
-      platform?: string;
-      userAgent?: string;
-      userAgentData?: { platform?: string };
-    };
-  }).navigator;
-  const raw = [
-    navigatorLike?.userAgentData?.platform,
-    navigatorLike?.platform,
-    navigatorLike?.userAgent,
-  ].filter(Boolean).join(" ").toLowerCase();
-
-  if (!raw) return null;
-  if (/(mac|iphone|ipad|ipod)/.test(raw)) return "darwin";
-  if (/win/.test(raw)) return "win32";
-  if (/(linux|x11)/.test(raw)) return "linux";
-  return null;
-}
-
 export function detectShortcutPlatform(): ShortcutPlatform {
-  return platformFromProcess() ?? platformFromNavigator() ?? "unknown";
+  return detectPlatform((globalThis as { process?: { platform?: string } }).process?.platform);
 }
 
 function isMacShortcutPlatform(platform: ShortcutPlatform = detectShortcutPlatform()): boolean {

@@ -28,6 +28,7 @@ import {
   formatVenueLocalTime,
   venueRemainingSeconds,
 } from "./model";
+import { errorMessage } from "../../../utils/errors";
 
 export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
 
@@ -43,10 +44,6 @@ function venueColumns(width: number): VenueColumn[] {
     { id: "name", label: "VENUE", width: Math.max(10, width - fixed - 6), flexGrow: 1, align: "left" },
     ...(timeWidth ? [{ id: "time" as const, label: "LOCAL", width: timeWidth, align: "left" as const }] : []),
   ];
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function SelectedVenueHeader({

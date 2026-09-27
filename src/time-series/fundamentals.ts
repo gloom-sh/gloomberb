@@ -11,6 +11,7 @@ import { reportingCurrencySeries } from "./reporting-currency";
 import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
 import { valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
+import { isFiniteNumber } from "../utils/guards";
 
 type NumericStatementField =
   | "totalRevenue"
@@ -122,10 +123,6 @@ const PRICE_HISTORY_VALUATION_IDS = new Set([
   "realizedNtmPE",
 ]);
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function validDate(value: unknown): Date | null {
   if (value instanceof Date) {
     return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
@@ -142,7 +139,7 @@ function statementTime(statement: FinancialStatement): number {
 function statementNumber(statement: FinancialStatement, field: NumericStatementField): number | null {
   if (field === "eps" && statement.epsBasis?.status === "unresolved") return null;
   const value = statement[field];
-  return finiteNumber(value) ? value : null;
+  return isFiniteNumber(value) ? value : null;
 }
 
 function setStatementNumber(
@@ -423,7 +420,7 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
     };
     const unresolvedEps = window.find((statement) => statement.epsBasis?.status === "unresolved");
     if (unresolvedEps) ttm.epsBasis = unresolvedEps.epsBasis;
-    const commonIncomeCount = window.filter((statement) => finiteNumber(statement.netIncomeCommonStockholders)).length;
+    const commonIncomeCount = window.filter((statement) => isFiniteNumber(statement.netIncomeCommonStockholders)).length;
     // Known common claims in some quarters cannot be ignored by substituting
     // aggregate income for the entire window or only its missing quarters.
     if ((commonIncomeCount > 0 && commonIncomeCount < window.length)
@@ -497,14 +494,14 @@ function sourceStatements(
 }
 
 function ratio(numerator: unknown, denominator: unknown): number | null {
-  return finiteNumber(numerator) && finiteNumber(denominator) && denominator !== 0
+  return isFiniteNumber(numerator) && isFiniteNumber(denominator) && denominator !== 0
     ? numerator / denominator
     : null;
 }
 
 function freeCashFlow(statement: FinancialStatement): { value: number | null; derived: boolean } {
-  if (finiteNumber(statement.freeCashFlow)) return { value: statement.freeCashFlow, derived: false };
-  if (finiteNumber(statement.operatingCashFlow) && finiteNumber(statement.capitalExpenditure)) {
+  if (isFiniteNumber(statement.freeCashFlow)) return { value: statement.freeCashFlow, derived: false };
+  if (isFiniteNumber(statement.operatingCashFlow) && isFiniteNumber(statement.capitalExpenditure)) {
     return { value: statement.operatingCashFlow + statement.capitalExpenditure, derived: true };
   }
   return { value: null, derived: false };
@@ -546,7 +543,7 @@ function selectedEps(
   statement: InternalStatement,
 ): { value: number; dependencies: NumericStatementField[] } | null {
   if (statement.epsBasis?.status === "unresolved" || hasStatementGap(statement, "eps")) return null;
-  if (finiteNumber(statement.eps)) {
+  if (isFiniteNumber(statement.eps)) {
     return { value: statement.eps, dependencies: ["eps"] };
   }
   if (statement.__timeSeriesIncompleteCommonIncome || statement.__timeSeriesIncompleteAverageShares
@@ -571,12 +568,12 @@ function metricDependencies(metric: string, statement: FinancialStatement): Nume
   if (metric === "operatingMargin") return ["operatingIncome", "totalRevenue"];
   if (metric === "netMargin") return ["netIncome", "totalRevenue"];
   if (metric === "freeCashFlowMargin") {
-    return finiteNumber(statement.freeCashFlow)
+    return isFiniteNumber(statement.freeCashFlow)
       ? ["freeCashFlow", "totalRevenue"]
       : ["operatingCashFlow", "capitalExpenditure", "totalRevenue"];
   }
   if (metric === "freeCashFlow") {
-    return finiteNumber(statement.freeCashFlow)
+    return isFiniteNumber(statement.freeCashFlow)
       ? ["freeCashFlow"]
       : ["operatingCashFlow", "capitalExpenditure"];
   }
@@ -602,7 +599,7 @@ function metricDependencies(metric: string, statement: FinancialStatement): Nume
   }
   if (metric === "priceFcf") {
     return uniqueDependencies([
-      ...(finiteNumber(statement.freeCashFlow)
+      ...(isFiniteNumber(statement.freeCashFlow)
         ? ["freeCashFlow" as const]
         : ["operatingCashFlow" as const, "capitalExpenditure" as const]),
       selectedShares(statement)?.field,
@@ -701,11 +698,11 @@ function hasValuationInputs(statement: InternalStatement, metric: string): boole
       || selectedEps(statement) !== null;
   }
   if (!selectedShares(statement)) return false;
-  if (metric === "priceSales") return finiteNumber(statement.totalRevenue);
+  if (metric === "priceSales") return isFiniteNumber(statement.totalRevenue);
   if (metric === "priceFcf") return freeCashFlow(statement).value !== null;
-  if (!finiteNumber(statement.totalDebt) || !selectedCash(statement)) return false;
-  return metric === "evSales" ? finiteNumber(statement.totalRevenue)
-    : metric === "evEbitda" && finiteNumber(statement.ebitda);
+  if (!isFiniteNumber(statement.totalDebt) || !selectedCash(statement)) return false;
+  return metric === "evSales" ? isFiniteNumber(statement.totalRevenue)
+    : metric === "evEbitda" && isFiniteNumber(statement.ebitda);
 }
 
 function valuationAtPrice(
@@ -719,7 +716,7 @@ function valuationAtPrice(
   const debt = statement.totalDebt;
   // Unknown balance-sheet inputs are not zero balances. Avoid manufacturing
   // an EV multiple from market capitalization alone when coverage is sparse.
-  const enterpriseValue = marketCap !== null && finiteNumber(debt) && finiteNumber(cash)
+  const enterpriseValue = marketCap !== null && isFiniteNumber(debt) && isFiniteNumber(cash)
     ? marketCap + debt - cash
     : null;
   if (metric === "trailingPE") {
@@ -742,9 +739,9 @@ function providerCurrentValuationPoint(
     : metric === "pegRatio"
       ? financials.fundamentals?.pegRatio
       : undefined;
-  if (!finiteNumber(value) || (metric === "forwardPE" && value <= 0)) return null;
+  if (!isFiniteNumber(value) || (metric === "forwardPE" && value <= 0)) return null;
   const quoteTime = financials.quote?.lastUpdated;
-  const date = validDate(finiteNumber(quoteTime) && quoteTime > 0 ? quoteTime : null);
+  const date = validDate(isFiniteNumber(quoteTime) && quoteTime > 0 ? quoteTime : null);
   if (!date) return null;
   return {
     date,
@@ -768,7 +765,7 @@ function currentDerivedValuationPoint(
   const quote = financials.quote;
   if (valuationQuoteIssue(quote)) return null;
   const quoteDate = validDate(quote?.lastUpdated);
-  if (!quoteDate || !finiteNumber(quote?.price) || quote.price <= 0) return null;
+  if (!quoteDate || !isFiniteNumber(quote?.price) || quote.price <= 0) return null;
   const quoteTime = quoteDate.getTime();
   // Select the latest known period first. Missing inputs, a loss or incompatible
   // currency cannot make an older period's denominator current again.

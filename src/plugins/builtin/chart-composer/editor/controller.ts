@@ -49,11 +49,7 @@ import {
   supportsSeriesTimestampMode,
   titleCaseSeriesEditorValue,
 } from "./model";
-
-function clampIndex(value: number, length: number): number {
-  if (length <= 0) return -1;
-  return Math.max(0, Math.min(value, length - 1));
-}
+import { clampIndex } from "../../../../utils/math";
 
 function seriesFieldId(series: ChartSeriesSpec): string {
   return series.source.kind === "security" ? series.source.fieldId : series.source.seriesId;
@@ -106,7 +102,7 @@ export function useSeriesEditorController({
   isDesktop: boolean;
 }) {
   const [draft, setDraft] = useState(() => parseChartSpecOr(initialSpec, buildEmptyChartPreset()));
-  const [selectedIndex, setSelectedIndex] = useState(() => clampIndex(0, initialSpec.series.length));
+  const [selectedIndex, setSelectedIndex] = useState(() => clampIndex(0, initialSpec.series.length, -1));
   const [expression, setExpression] = useState(() => initialSpec.series[0] ? formatSeriesExpression(initialSpec.series[0]) : "");
   const [editingExpression, setEditingExpression] = useState(false);
   const [quickAddActive, setQuickAddActive] = useState(true);
@@ -209,7 +205,7 @@ export function useSeriesEditorController({
   // Plugin catalogs land after the securities: only pull a stranded cursor
   // back into range, so a row the user already moved to stays selected.
   useEffect(() => {
-    setQuickAddSelection((current) => clampIndex(current, quickAddSuggestions.length));
+    setQuickAddSelection((current) => clampIndex(current, quickAddSuggestions.length, -1));
   }, [quickAddSuggestions.length]);
 
   useEffect(() => {
@@ -329,11 +325,11 @@ export function useSeriesEditorController({
   };
 
   const moveQuickAddSelection = (delta: -1 | 1) => {
-    setQuickAddSelection((current) => clampIndex(current + delta, quickAddSuggestions.length));
+    setQuickAddSelection((current) => clampIndex(current + delta, quickAddSuggestions.length, -1));
   };
 
   const submitQuickAdd = () => {
-    addCatalogSuggestion(quickAddSuggestions[clampIndex(quickAddSelection, quickAddSuggestions.length)]);
+    addCatalogSuggestion(quickAddSuggestions[clampIndex(quickAddSelection, quickAddSuggestions.length, -1)]);
   };
 
   const leaveQuickAdd = () => {
@@ -348,7 +344,7 @@ export function useSeriesEditorController({
       ...current,
       series: current.series.filter((_, index) => index !== selectedIndex),
     }));
-    setSelectedIndex((current) => clampIndex(current, draft.series.length - 1));
+    setSelectedIndex((current) => clampIndex(current, draft.series.length - 1, -1));
     setError(null);
   };
 
@@ -540,9 +536,9 @@ export function useSeriesEditorController({
     if (event.name === "tab") {
       moveKeyboardFocus(event.shift ? -1 : 1);
     } else if (keyboardFocusRef.current === "series" && isPlainKey(event, "up", "k")) {
-      setSelectedIndex((current) => clampIndex(current - 1, draft.series.length));
+      setSelectedIndex((current) => clampIndex(current - 1, draft.series.length, -1));
     } else if (keyboardFocusRef.current === "series" && isPlainKey(event, "down", "j")) {
-      setSelectedIndex((current) => clampIndex(current + 1, draft.series.length));
+      setSelectedIndex((current) => clampIndex(current + 1, draft.series.length, -1));
     } else if (event.name === "[") {
       moveSeries(-1);
     } else if (event.name === "]") {

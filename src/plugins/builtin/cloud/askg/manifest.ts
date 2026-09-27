@@ -1,5 +1,5 @@
 import type { PaneFunctionCatalog } from "../../../../cli/pane-functions/catalog";
-import { stableStringify } from "../../../../remote/revision";
+import { stableStringify } from "../../../../utils/hash";
 import {
   REMOTE_OPERATIONS,
   REMOTE_RESOURCES,

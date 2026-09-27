@@ -10,6 +10,7 @@ import {
   quoteBelongsToLatestBar,
 } from "./chart-data";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
+import { isFiniteNumber } from "../utils/guards";
 
 const DAY_MS = 24 * 60 * 60_000;
 const EXTENDED_HOURS_STATES = new Set(["PRE", "PREPRE", "POST", "POSTPOST"]);
@@ -64,20 +65,16 @@ function pointTime(point: Pick<PricePoint, "date">): number {
   return date instanceof Date ? date.getTime() : new Date(date).getTime();
 }
 
-function finite(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function anchorKey(point: PricePoint, time: number): string {
   return `${time}|${point.open}|${point.high}|${point.low}|${point.close}|${point.volume}`;
 }
 
 function foldIntoBar(bar: PricePoint, observation: PricePoint): PricePoint {
-  const open = finite(bar.open) ? bar.open : bar.close;
+  const open = isFiniteNumber(bar.open) ? bar.open : bar.close;
   const extremes = pricePointIntegrity(observation) ? [] : [observation.high, observation.low];
-  const prices = [bar.high, bar.low, open, bar.close, observation.close, ...extremes].filter(finite);
-  const volume = finite(bar.volume) || finite(observation.volume)
-    ? (finite(bar.volume) ? bar.volume : 0) + (finite(observation.volume) ? observation.volume : 0)
+  const prices = [bar.high, bar.low, open, bar.close, observation.close, ...extremes].filter(isFiniteNumber);
+  const volume = isFiniteNumber(bar.volume) || isFiniteNumber(observation.volume)
+    ? (isFiniteNumber(bar.volume) ? bar.volume : 0) + (isFiniteNumber(observation.volume) ? observation.volume : 0)
     : undefined;
   return {
     ...bar,
@@ -102,7 +99,7 @@ export function foldFinalObservation(
 ): PricePoint[] {
   const last = history.at(-1);
   const previous = history.at(-2);
-  if (!last || !previous || !finite(last.close) || !finite(previous.close) || pricePointIntegrity(previous)) return history;
+  if (!last || !previous || !isFiniteNumber(last.close) || !isFiniteNumber(previous.close) || pricePointIntegrity(previous)) return history;
   const previousTime = pointTime(previous);
   const gap = pointTime(last) - previousTime;
   if (!(gap > 0)) return history;
@@ -254,7 +251,7 @@ export class LiveBarAccumulator {
     const observation = liveQuoteObservation(quote, options.now, options.assetCategory);
     if (!observation) return;
     const { time, price } = observation;
-    const volume = finite(quote.volume) && quote.volume >= 0 ? quote.volume : null;
+    const volume = isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null;
     if (time < this.lastTime) return;
     if (time === this.lastTime && price === this.lastPrice && (volume === null || volume === this.cumulative)) return;
 
@@ -360,14 +357,14 @@ export class LiveBarAccumulator {
     if (!pricePointIntegrity(latest)) {
       let volume = latest.volume;
       const end = anchor.volumeEnd ?? this.cumulative;
-      if (finite(volume) && end !== null && anchor.volumeBase !== null) {
+      if (isFiniteNumber(volume) && end !== null && anchor.volumeBase !== null) {
         volume += Math.max(0, end - anchor.volumeBase);
       }
       if (anchor.close !== null) {
         const close = anchor.close;
-        const open = finite(latest.open) ? latest.open : latest.close;
-        const high = finite(latest.high) ? latest.high : Math.max(open, latest.close);
-        const low = finite(latest.low) ? latest.low : Math.min(open, latest.close);
+        const open = isFiniteNumber(latest.open) ? latest.open : latest.close;
+        const high = isFiniteNumber(latest.high) ? latest.high : Math.max(open, latest.close);
+        const low = isFiniteNumber(latest.low) ? latest.low : Math.min(open, latest.close);
         value = {
           ...latest,
           open,
@@ -404,7 +401,7 @@ export class LiveBarAccumulator {
     if (merged === latest && this.bars.length === 0) return history;
     const projected = history.slice();
     projected[projected.length - 1] = merged;
-    const volumeKnown = finite(latest.volume);
+    const volumeKnown = isFiniteNumber(latest.volume);
     for (const bar of this.bars) projected.push(this.barPoint(bar, volumeKnown));
     return projected;
   }

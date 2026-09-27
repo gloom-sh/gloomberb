@@ -2,6 +2,7 @@ import type { BrokerAccount } from "../../../types/trading";
 import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
 import type { PortfolioSummaryTotals } from "./metrics";
 import { portfolioPnlPercent } from "./position-metrics";
+import { isFiniteNumber } from "../../../utils/guards";
 
 export interface PortfolioAccountMetrics {
   dailyPnl: number;
@@ -34,10 +35,6 @@ interface SnapshotDelta {
   gross: number;
   /** Signed by side; applies to P&L and net liquidation. */
   net: number;
-}
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
 }
 
 function percentChange(value: number, previousValue: number): number {
@@ -98,7 +95,7 @@ function brokerSnapshotDelta(
 /** A broker's day P&L belongs to the session it was taken in. */
 function isCurrentSessionSnapshot(account: BrokerAccount, now = Date.now()): boolean {
   const takenAt = account.dailyPnlAsOf ?? account.updatedAt;
-  if (!finiteNumber(takenAt) || takenAt <= 0) return true;
+  if (!isFiniteNumber(takenAt) || takenAt <= 0) return true;
   return !isTimestampStaleForExchangeSession(takenAt, "NYSE", now);
 }
 
@@ -111,7 +108,7 @@ export function resolveBrokerPortfolioMarketValue(
   account?: BrokerAccount | null,
   convertAccountValue: (value: number) => number = (value) => value,
 ): number | null {
-  if (finiteNumber(account?.grossPositionValue)) {
+  if (isFiniteNumber(account?.grossPositionValue)) {
     return convertAccountValue(account.grossPositionValue);
   }
   return null;
@@ -138,7 +135,7 @@ export function resolvePortfolioNetLiquidation(
   convertAccountValue: (value: number) => number = (value) => value,
   basis: BrokerSnapshotBasis = "loaded",
 ): number | null {
-  if (!account || !finiteNumber(account.netLiquidation)) return null;
+  if (!account || !isFiniteNumber(account.netLiquidation)) return null;
   return convertAccountValue(account.netLiquidation) + brokerSnapshotDelta(totals, account, basis, convertAccountValue).net;
 }
 
@@ -155,7 +152,7 @@ export function resolvePortfolioAccountMetrics(
   // from this session, so the figure and its basis never flip. One from an
   // earlier session only stands in, unmoved, when quotes cannot give today's.
   const currentSession = !!account && isCurrentSessionSnapshot(account);
-  const brokerDailyPnl = account && finiteNumber(account.dailyPnl) && (currentSession || !Number.isFinite(totals.dailyPnl))
+  const brokerDailyPnl = account && isFiniteNumber(account.dailyPnl) && (currentSession || !Number.isFinite(totals.dailyPnl))
     ? convertAccountValue(account.dailyPnl)
     : null;
   const dailyPnl = brokerDailyPnl != null
@@ -165,9 +162,9 @@ export function resolvePortfolioAccountMetrics(
   // is used as is; otherwise the snapshot's own pair defines it.
   const previousNetLiquidation = brokerDailyPnl == null
     ? null
-    : finiteNumber(account?.previousNetLiquidation)
+    : isFiniteNumber(account?.previousNetLiquidation)
       ? convertAccountValue(account.previousNetLiquidation)
-      : finiteNumber(account?.netLiquidation)
+      : isFiniteNumber(account?.netLiquidation)
         ? convertAccountValue(account.netLiquidation) - brokerDailyPnl
         : null;
   const dailyPnlPct = previousNetLiquidation != null
@@ -175,7 +172,7 @@ export function resolvePortfolioAccountMetrics(
     : totals.dailyPnlPct;
 
   const liveUnrealizedPnl = liveTotal(totals, totals.unrealizedPnl);
-  const brokerUnrealizedPnl = liveUnrealizedPnl == null && finiteNumber(account?.unrealizedPnl)
+  const brokerUnrealizedPnl = liveUnrealizedPnl == null && isFiniteNumber(account?.unrealizedPnl)
     ? convertAccountValue(account.unrealizedPnl) + delta.net
     : null;
   const unrealizedPnl = brokerUnrealizedPnl ?? totals.unrealizedPnl;
@@ -186,6 +183,6 @@ export function resolvePortfolioAccountMetrics(
     dailyPnlPct,
     unrealizedPnl,
     unrealizedPnlPct,
-    realizedPnl: finiteNumber(account?.realizedPnl) ? convertAccountValue(account.realizedPnl) : undefined,
+    realizedPnl: isFiniteNumber(account?.realizedPnl) ? convertAccountValue(account.realizedPnl) : undefined,
   };
 }

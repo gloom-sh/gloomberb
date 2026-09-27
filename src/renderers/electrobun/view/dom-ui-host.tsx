@@ -2,6 +2,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { UiHost } from "../../../ui/host";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { detectPlatform } from "../../../utils/platform";
 import { WebDataTable } from "./data-table";
 import {
   WebButton,
@@ -28,27 +29,10 @@ import { cleanDomProps, commonStyle } from "./host/style";
 import { WebAsciiText, WebSpan, WebStrong, WebText, WebUnderline } from "./host/text";
 import { WebTabs } from "./host/tabs";
 
-function currentDesktopPlatform(): string {
-  const navigatorWithUserAgentData = navigator as Navigator & {
-    userAgentData?: { platform?: string };
-  };
-  return [
-    navigatorWithUserAgentData.userAgentData?.platform,
-    navigator.platform,
-    navigator.userAgent,
-  ].filter((value): value is string => Boolean(value)).join(" ");
-}
-
-const DESKTOP_PLATFORM = currentDesktopPlatform();
-const USES_WINDOWS_CONTROLS = !/(darwin|ipad|iphone|linux|mac)/i.test(DESKTOP_PLATFORM);
-const NON_WINDOWS_DESKTOP_PLATFORMS = /^(darwin|linux|freebsd|openbsd|aix|sunos)$/i;
-
+/** Windows-style caption buttons everywhere except macOS and Linux. */
 function usesWindowsWindowControls(desktopPlatform?: string): boolean {
-  const platform = desktopPlatform?.trim();
-  if (!platform) return USES_WINDOWS_CONTROLS;
-  if (/^win/i.test(platform)) return true;
-  if (NON_WINDOWS_DESKTOP_PLATFORMS.test(platform)) return false;
-  return USES_WINDOWS_CONTROLS;
+  const platform = detectPlatform(desktopPlatform);
+  return platform !== "darwin" && platform !== "linux";
 }
 
 export function createDomUiHost(

@@ -34,6 +34,7 @@ import {
 import { getPortfolioPositionValue } from "./sector-model";
 import type { AnalyticsMetricRow } from "./view";
 import { qualifySharpeCadence, qualifyReturnTimestamps, type SharpeCadenceResult, type ReturnTimestampResult, type TimestampHistory } from "./sharpe-cadence";
+import { isFiniteNumber } from "../../../utils/guards";
 
 export const PORTFOLIO_BENCHMARK = {
   symbol: "SPY", exchange: "ARCA", currency: "USD", isin: "US78462F1030",
@@ -67,12 +68,8 @@ function formatAccountFreshness(account: ResolvedPortfolioAccountState["account"
   return account.updatedAt ? formatRelativeAge(account.updatedAt) : null;
 }
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function formatMarginLeverage(netLiquidation: number | undefined, totalMarketValue: number): string | null {
-  if (!finiteNumber(netLiquidation) || netLiquidation <= 0 || !finiteNumber(totalMarketValue) || totalMarketValue < 0) return null;
+  if (!isFiniteNumber(netLiquidation) || netLiquidation <= 0 || !isFiniteNumber(totalMarketValue) || totalMarketValue < 0) return null;
   return `${(totalMarketValue / netLiquidation).toFixed(1)}x`;
 }
 
@@ -226,7 +223,7 @@ export function buildAnalyticsSummaryRows({
   const accountFreshness = formatAccountFreshness(account);
   const totalMarketValue = resolvePortfolioMarketValue(portfolioStats, account, convertAccountValue, basis);
   const netLiquidation = resolvePortfolioNetLiquidation(portfolioStats, account, convertAccountValue, basis);
-  const hasMarketValue = portfolioStats.hasPositions || finiteNumber(account?.grossPositionValue);
+  const hasMarketValue = portfolioStats.hasPositions || isFiniteNumber(account?.grossPositionValue);
 
   if (portfolioStats.unavailableConversions?.length || (account && !Number.isFinite(convertAccountValue(1)))) {
     rows.push({
@@ -273,8 +270,8 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  if (portfolioStats.hasPositions || finiteNumber(account?.dailyPnl)) {
-    const dailyPnlPct = portfolioStats.hasPositions || finiteNumber(account?.netLiquidation)
+  if (portfolioStats.hasPositions || isFiniteNumber(account?.dailyPnl)) {
+    const dailyPnlPct = portfolioStats.hasPositions || isFiniteNumber(account?.netLiquidation)
       ? accountMetrics.dailyPnlPct : Number.NaN;
     rows.push({
       id: "day-pnl",
@@ -284,7 +281,7 @@ export function buildAnalyticsSummaryRows({
       color: priceColor(accountMetrics.dailyPnl),
     });
   }
-  if (portfolioStats.hasPositions || finiteNumber(account?.unrealizedPnl)) {
+  if (portfolioStats.hasPositions || isFiniteNumber(account?.unrealizedPnl)) {
     rows.push({
       id: "pnl",
       label: "P&L",

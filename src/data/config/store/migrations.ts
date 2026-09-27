@@ -17,6 +17,7 @@ import {
   type LegacyChartMigrationContext,
 } from "../chart-settings";
 import { sanitizeLayout } from "../layout";
+import { isRecord } from "../../../utils/guards";
 
 const CLOUD_DEFAULT_CONFIG_VERSION = 13;
 const BUILTIN_OWNERSHIP_AND_CHART_CONFIG_VERSION = 20;
@@ -80,10 +81,6 @@ function savedConfigVersion(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 function stringList(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.filter((entry): entry is string => typeof entry === "string"))]
@@ -91,7 +88,7 @@ function stringList(value: unknown): string[] {
 }
 
 function pluginConfigMap(value: unknown): Record<string, Record<string, unknown>> {
-  if (!isPlainRecord(value) || !Object.values(value).every(isPlainRecord)) return {};
+  if (!isRecord(value) || !Object.values(value).every(isRecord)) return {};
   return Object.fromEntries(
     Object.entries(value).map(([pluginId, state]) => [
       pluginId,
@@ -118,11 +115,11 @@ function migrateUnreachablePaneInstances(
   const layout = sanitizeLayout(saved.layout, defaults.layout);
   const layouts = Array.isArray(saved.layouts)
     ? saved.layouts.map((entry) => {
-      if (!isPlainRecord(entry) || typeof entry.name !== "string") return entry;
+      if (!isRecord(entry) || typeof entry.name !== "string") return entry;
       const entryLayout = sanitizeLayout(entry.layout, layout);
       const instanceIds = new Set(entryLayout.instances.map((instance) => instance.instanceId));
       const placedIds = new Set(getPlacedPaneInstanceIds(entryLayout));
-      const paneState = isPlainRecord(entry.paneState)
+      const paneState = isRecord(entry.paneState)
         ? Object.fromEntries(Object.entries(entry.paneState).filter(([instanceId]) => instanceIds.has(instanceId)))
         : entry.paneState;
       const focusedPaneId = typeof entry.focusedPaneId === "string" && !placedIds.has(entry.focusedPaneId)
@@ -163,7 +160,7 @@ function sanitizeSerializableValue(value: unknown): unknown {
       .map((entry) => sanitizeSerializableValue(entry))
       .filter((entry) => entry !== undefined);
   }
-  if (isPlainRecord(value)) {
+  if (isRecord(value)) {
     return Object.fromEntries(
       Object.entries(value)
         .map(([key, entry]) => [key, sanitizeSerializableValue(entry)])
@@ -177,13 +174,13 @@ function migrationPaneState(
   value: unknown,
   layout: LayoutConfig,
 ): Record<string, Record<string, unknown>> | undefined {
-  if (!isPlainRecord(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const validPaneIds = new Set(layout.instances.map((instance) => instance.instanceId));
   const paneState = Object.fromEntries(
     Object.entries(value)
-      .filter(([paneId, entry]) => validPaneIds.has(paneId) && isPlainRecord(entry))
+      .filter(([paneId, entry]) => validPaneIds.has(paneId) && isRecord(entry))
       .map(([paneId, entry]) => [paneId, sanitizeSerializableValue(entry)])
-      .filter((entry): entry is [string, Record<string, unknown>] => isPlainRecord(entry[1])),
+      .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1])),
   );
   return normalizeBuiltinPaneStatePluginOwners(paneState);
 }
@@ -205,7 +202,7 @@ function migrateSavedLayouts(
 ): unknown {
   if (!Array.isArray(value)) return value;
   return value.map((entry) => {
-    if (!isPlainRecord(entry) || typeof entry.name !== "string") return entry;
+    if (!isRecord(entry) || typeof entry.name !== "string") return entry;
     const layout = sanitizeLayout(entry.layout, fallbackLayout, chartMigration);
     const paneState = migrationPaneState(entry.paneState, layout);
     const migrated = migrateLegacyChartSavedPaneState(layout, paneState, entry.layout);
@@ -223,7 +220,7 @@ function migrateBuiltinOwnershipAndChartState(
 ): Record<string, unknown> {
   const defaults = createDefaultConfig(dataDir);
   const normalizedPluginConfig = normalizeBuiltinPluginStateMap(pluginConfigMap(saved.pluginConfig));
-  const chartPreferences = isPlainRecord(saved.chartPreferences) ? saved.chartPreferences : {};
+  const chartPreferences = isRecord(saved.chartPreferences) ? saved.chartPreferences : {};
   const chartMigration: LegacyChartMigrationContext = {
     migrateLegacy: true,
     defaultRenderMode: legacyRenderMode(chartPreferences.defaultRenderMode),

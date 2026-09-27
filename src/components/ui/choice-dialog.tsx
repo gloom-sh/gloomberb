@@ -5,6 +5,7 @@ import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { DialogFrame } from "./frame";
 import { ListView, listCursorMove, type ListViewItem } from "./list-view";
+import { clampIndex } from "../../utils/math";
 
 export interface ChoiceDialogChoice {
   id: string;
@@ -23,11 +24,6 @@ export interface ChoiceDialogProps extends PromptContext<string> {
 }
 
 const MAX_VISIBLE_CHOICE_ROWS = 12;
-
-function clampChoiceIndex(index: number, length: number): number {
-  if (length <= 0) return -1;
-  return Math.max(0, Math.min(length - 1, index));
-}
 
 function getChoiceDescription(choice: ChoiceDialogChoice | undefined): string {
   return choice?.description ?? "";
@@ -58,9 +54,9 @@ export function ChoiceDialog({
 }: ChoiceDialogProps) {
   const colors = useThemeColors();
   const [index, setIndex] = useState(() =>
-    clampChoiceIndex(getInitialChoiceIndex(choices, selectedChoiceId), choices.length)
+    clampIndex(getInitialChoiceIndex(choices, selectedChoiceId), choices.length, -1)
   );
-  const selectedIndex = clampChoiceIndex(index, choices.length);
+  const selectedIndex = clampIndex(index, choices.length, -1);
   const selectedChoice = selectedIndex >= 0 ? choices[selectedIndex] : undefined;
   const items = useMemo<ListViewItem[]>(() => choices.map((choice) => ({
     id: choice.id,
@@ -72,7 +68,7 @@ export function ChoiceDialog({
   const width = useMemo(() => choiceDialogWidth(title, choices), [choices, title]);
 
   useEffect(() => {
-    setIndex((current) => clampChoiceIndex(current, choices.length));
+    setIndex((current) => clampIndex(current, choices.length, -1));
   }, [choices.length]);
 
   const activateChoice = (choice: ChoiceDialogChoice | undefined) => {

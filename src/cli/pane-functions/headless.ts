@@ -23,6 +23,7 @@ import { observationDate } from "../../time-series/price-comparison";
 import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
+import { isRecord } from "../../utils/guards";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -178,10 +179,6 @@ export async function loadResolvedHeadlessPaneModel(
   };
   const result = await loadHeadlessPaneModel(definition, args, headlessContext);
   return { definition, args, result };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
 function validateHeadlessResult(shape: HeadlessPaneDefinition["shape"], result: unknown): void {

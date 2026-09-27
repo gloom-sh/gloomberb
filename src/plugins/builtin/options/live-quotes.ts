@@ -3,6 +3,7 @@ import type { OptionContract, OptionsChain, Quote } from "../../../types/financi
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionTableRow } from "./types";
+import { isFiniteNumber } from "../../../utils/guards";
 
 export const OPTIONS_QUOTE_EXCHANGE = "OPTIONS";
 export const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
@@ -34,10 +35,6 @@ const OPTIONS_STREAM_OVERSCAN_ROWS = 4;
 export interface OptionsQuoteFreshness {
   now: number;
   subscriptionStartedAt: number;
-}
-
-function isFiniteNumber(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value);
 }
 
 export interface OptionQuoteTargetWindow {

@@ -9,6 +9,8 @@ import type { PricePoint } from "../../../types/financials";
 import { buildVolatilityData, IMPLIED_CORRELATION_ROWS, VOLATILITY_INDICES, VOLATILITY_SERIES,
   type VolatilityData, type VolatilityHistoryInput, type VolatilityInputs,
   type VolatilitySeriesId, type VolatilitySeriesInput } from "./model";
+import { abortable, abortError } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 
 export const VOLATILITY_LOAD_CONCURRENCY = 4;
 export const VOLATILITY_HISTORY_LIMIT = 400;
@@ -116,17 +118,7 @@ export function getCachedVolatilityData(dependencies: VolatilityLoaderDependenci
   if (loaded === 0) return null;
   return project(inputs, loaded, VOLATILITY_INDICES.length + VOLATILITY_SERIES.length, false);
 }
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-function abortError(): Error { return new DOMException("Volatility board load was cancelled", "AbortError"); }
-function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(abortError());
-    if (signal.aborted) { abort(); return; }
-    signal.addEventListener("abort", abort, { once: true });
-    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
-  });
-}
+const CANCELLED = "Volatility board load was cancelled";
 
 /** Partial immutable projections retain cached source values beside independent refresh failures. */
 export async function loadVolatilityData(
@@ -134,7 +126,7 @@ export async function loadVolatilityData(
   dependencies: VolatilityLoaderDependencies = createVolatilityDependencies(),
   options: VolatilityLoadOptions = {},
 ): Promise<VolatilityLoadResult> {
-  if (options.signal?.aborted) throw abortError();
+  if (options.signal?.aborted) throw abortError(CANCELLED);
   const now = dependencies.now?.() ?? Date.now();
   const inputs = cachedInputs(dependencies, now);
   let loaded = 0;
@@ -153,7 +145,7 @@ export async function loadVolatilityData(
       } catch (error) {
         const previous = inputs.fred![seriesId];
         inputs.fred![seriesId] = { observations: previous?.observations ?? [], info: previous?.info ?? null,
-          fetchedAt: previous?.fetchedAt, stale: !!previous?.observations.length, error: message(error) };
+          fetchedAt: previous?.fetchedAt, stale: !!previous?.observations.length, error: errorMessage(error) };
       }
     }),
     ...VOLATILITY_INDICES.map((definition) => async () => {
@@ -172,7 +164,7 @@ export async function loadVolatilityData(
       } catch (error) {
         const previous = inputs.history![definition.id];
         inputs.history![definition.id] = { history: previous?.history ?? [], source: previous?.source ?? null,
-          fetchedAt: previous?.fetchedAt, stale: !!previous?.history.length, error: message(error) };
+          fetchedAt: previous?.fetchedAt, stale: !!previous?.history.length, error: errorMessage(error) };
       }
     }),
   ];
@@ -187,7 +179,7 @@ export async function loadVolatilityData(
       publish();
     }
   };
-  await abortable(Promise.all(Array.from({ length: Math.min(VOLATILITY_LOAD_CONCURRENCY, jobs.length) }, worker)), options.signal);
-  if (options.signal?.aborted) throw abortError();
+  await abortable(Promise.all(Array.from({ length: Math.min(VOLATILITY_LOAD_CONCURRENCY, jobs.length) }, worker)), options.signal, CANCELLED);
+  if (options.signal?.aborted) throw abortError(CANCELLED);
   return snapshot();
 }

@@ -22,16 +22,13 @@ import {
 } from "./time-scale";
 import { compositeAxisMaxTicks, seriesPriceReference } from "./format";
 import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
+import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 function resolveTimeSeriesPointValue(point: TimeSeriesPoint): number | null {
-  if (finiteNumber(point.value)) return point.value;
-  if (finiteNumber(point.close)) return point.close;
+  if (isFiniteNumber(point.value)) return point.value;
+  if (isFiniteNumber(point.close)) return point.close;
   return null;
 }
 
@@ -150,7 +147,7 @@ function explicitViewport(
 ): { startTime: number; endTime: number } | null {
   const startTime = options.viewport?.start.getTime();
   const endTime = options.viewport?.end.getTime();
-  return finiteNumber(startTime) && finiteNumber(endTime) && startTime <= endTime
+  return isFiniteNumber(startTime) && isFiniteNumber(endTime) && startTime <= endTime
     ? { startTime, endTime }
     : null;
 }
@@ -203,7 +200,7 @@ export function allocateCompositePanelHeights(
 
   const totalHeight = Math.max(panels.length, Math.floor(availableHeight));
   const weights = panels.map((panel) => (
-    finiteNumber(panel.height) && panel.height > 0 ? panel.height : 1
+    isFiniteNumber(panel.height) && panel.height > 0 ? panel.height : 1
   ));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || panels.length;
   const quotas = weights.map((weight) => (weight / totalWeight) * totalHeight);
@@ -246,7 +243,7 @@ function seriesDomainValues(series: ResolvedSeries): number[] {
     if (scalar !== null) values.push(scalar);
     if (series.dataShape === "ohlcv") {
       for (const candidate of [point.open, point.high, point.low, point.close]) {
-        if (finiteNumber(candidate)) values.push(candidate);
+        if (isFiniteNumber(candidate)) values.push(candidate);
       }
     }
   }
@@ -467,7 +464,7 @@ function primaryPriceSeries(series: readonly ResolvedSeries[]): ResolvedSeries |
 function lastCloseOf(points: readonly CompositeProjectedPoint[]): number | null {
   const last = points.at(-1);
   if (!last) return null;
-  return finiteNumber(last.point.close) ? last.point.close : last.value;
+  return isFiniteNumber(last.point.close) ? last.point.close : last.value;
 }
 
 /** Marks the newest close of the primary price series on the panel that draws it. */

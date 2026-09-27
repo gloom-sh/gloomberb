@@ -4,6 +4,7 @@ import type { Quote } from "../../types/financials";
 import { buildQuoteKey, resolveEntryData } from "../selectors";
 import type { QueryEntry } from "../result-types";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { isFiniteNumber } from "../../utils/guards";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
 const STREAM_CONNECTING_GRACE_MS = 15_000;
@@ -46,10 +47,6 @@ function quoteKey(row: Pick<ScreenerQuoteRow, "symbol" | "exchange">): string {
   return buildQuoteKey({ symbol: row.symbol, exchange: row.exchange });
 }
 
-function finite(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 /** Venues quote these in either the major or the minor unit (GBP or GBp). */
 const TWO_UNIT_CURRENCIES = new Set(["GBP", "ILS", "ZAR"]);
 
@@ -75,7 +72,7 @@ export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
 ): T[] {
   return rows.map((row) => {
     const quote = resolveEntryData(entries.get(quoteKey(row)));
-    if (!quote || !finite(quote.price)) return row;
+    if (!quote || !isFiniteNumber(quote.price)) return row;
     if (
       row.lastUpdated != null
       && Number.isFinite(row.lastUpdated)
@@ -96,13 +93,13 @@ function overlayQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
     ...row,
     name: quote.name?.trim() || row.name,
     price: quote.price,
-    change: finite(quote.change) ? quote.change : null,
-    changePercent: finite(quote.changePercent)
+    change: isFiniteNumber(quote.change) ? quote.change : null,
+    changePercent: isFiniteNumber(quote.changePercent)
       ? quote.changePercent
       : null,
-    volume: finite(quote.volume) && quote.volume >= 0 ? quote.volume : null,
+    volume: isFiniteNumber(quote.volume) && quote.volume >= 0 ? quote.volume : null,
     currency: overlayCurrency(row, quote),
-    previousClose: finite(quote.previousClose) ? quote.previousClose : undefined,
+    previousClose: isFiniteNumber(quote.previousClose) ? quote.previousClose : undefined,
     lastUpdated: quote.lastUpdated,
   };
 }

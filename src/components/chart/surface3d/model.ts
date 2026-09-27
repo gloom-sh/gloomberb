@@ -4,6 +4,8 @@
  * camera per frame. Both use the same projection so labels and hit tests agree.
  */
 
+import { clamp } from "../../../utils/math";
+
 export interface Surface3DCamera { azimuth: number; elevation: number; zoom: number }
 export interface Surface3DCell { row: number; column: number }
 export interface Surface3DTick { position: number; label: string }
@@ -36,8 +38,6 @@ export const FLOOR = -0.65;
 export const FLOOR_PROJECTION_ALPHA = 0.16;
 export const CEILING = 1;
 export const DEFAULT_SURFACE3D_CAMERA: Readonly<Surface3DCamera> = { azimuth: -0.72, elevation: 0.6, zoom: 1 };
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 export function clampSurface3DCamera(camera: Surface3DCamera): Surface3DCamera {
   const azimuth = Number.isFinite(camera.azimuth) ? camera.azimuth : DEFAULT_SURFACE3D_CAMERA.azimuth;

@@ -1,4 +1,5 @@
 import { colors } from "../../theme/colors";
+import { clamp } from "../../utils/math";
 
 export interface SpeedometerSegment {
   from: number;
@@ -22,10 +23,6 @@ export interface SpeedometerGaugeProps {
 
 export const DEFAULT_MIN_WIDTH = 34;
 export const DEFAULT_MAX_WIDTH = 50;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 export function normalizeValue(value: number, min: number, max: number): number {
   if (max <= min) return 0;

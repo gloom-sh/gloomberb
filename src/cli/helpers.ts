@@ -8,13 +8,10 @@ import { formatMarketPriceWithCurrency, type MarketFormatOptions } from "../mark
 import { cliStyles, colorBySign } from "../utils/cli-output";
 import type { AppConfig } from "../types/config";
 import type { Watchlist, TickerRecord } from "../types/ticker";
+import { isFiniteNumber } from "../utils/guards";
 
 export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
 }
 
 // Text-table cell formats. They leave missing values blank; CSV and JSON keep the raw numbers.

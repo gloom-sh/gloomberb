@@ -1,11 +1,12 @@
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { blendPixel, clamp, drawCircle, drawLine, fillOpaque, parseHex, type RgbaColor } from "../native/raster/primitives";
+import { blendPixel, drawCircle, drawLine, fillOpaque, parseHex, type RgbaColor } from "../native/raster/primitives";
 import { blendHex } from "../../../theme/color-utils";
 import {
   FLOOR, FLOOR_PROJECTION_ALPHA, projectSurface3D, surface3DBox, surface3DLabels, surface3DLayout, surface3DLighting, surface3DViewport, turbo,
   SURFACE3D_AMBIENT, SURFACE3D_DIFFUSE, SURFACE3D_SHININESS, SURFACE3D_SPECULAR,
   type Surface3DCamera, type Surface3DLabel, type Surface3DScene, type Surface3DViewport,
 } from "./model";
+import { clamp } from "../../../utils/math";
 
 export interface Surface3DColors { bg: string; grid: string; axis: string; accent: string; ridge: string }
 /** A label placed at output pixels: top-left box for bitmap text plus its anchor. */

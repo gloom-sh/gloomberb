@@ -4,6 +4,7 @@ import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } fro
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
+import { isFiniteNumber } from "../utils/guards";
 
 /** Field catalogue frequency is a default, not evidence for acquired bars. */
 export function marketSeriesFrequency(source: SecuritySeriesSource, historyResolution: ManualChartResolution | null | undefined): SeriesPeriod {
@@ -13,10 +14,6 @@ export function marketSeriesFrequency(source: SecuritySeriesSource, historyResol
   if (historyResolution === "1wk") return "weekly";
   if (historyResolution === "1mo") return "monthly";
   return "auto";
-}
-
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
 }
 
 function pricePointDate(value: unknown): Date | null {
@@ -74,9 +71,9 @@ function aggregatePriceHistory(
   const buckets = new Map<string, AggregatedPricePoint>();
   for (const point of sorted) {
     const key = periodKey(point.date, period);
-    const open = finiteNumber(point.open) ? point.open : point.close;
-    const high = finiteNumber(point.high) ? point.high : point.close;
-    const low = finiteNumber(point.low) ? point.low : point.close;
+    const open = isFiniteNumber(point.open) ? point.open : point.close;
+    const high = isFiniteNumber(point.high) ? point.high : point.close;
+    const low = isFiniteNumber(point.low) ? point.low : point.close;
     const current = buckets.get(key);
     if (!current) {
       buckets.set(key, {
@@ -85,7 +82,7 @@ function aggregatePriceHistory(
         high,
         low,
         close: point.close,
-        volume: finiteNumber(point.volume) ? point.volume : undefined,
+        volume: isFiniteNumber(point.volume) ? point.volume : undefined,
         integrity: point.integrity,
       });
       continue;
@@ -96,7 +93,7 @@ function aggregatePriceHistory(
     current.close = point.close;
     if (point.integrity) current.integrity = current.integrity
       ? mergePriceHistoryIntegrity(current.integrity, point.integrity) : point.integrity;
-    if (finiteNumber(point.volume)) current.volume = (current.volume ?? 0) + point.volume;
+    if (isFiniteNumber(point.volume)) current.volume = (current.volume ?? 0) + point.volume;
   }
   return [...buckets.values()];
 }

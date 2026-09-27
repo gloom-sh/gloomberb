@@ -32,7 +32,6 @@ import type { RemoteUiRegistry } from "./semantic-tree";
 import { commandBarResultsFromNodes, isCommandBarInputNode } from "./command-bar";
 import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
 import {
-  asRecord,
   fail,
   mutationSummary,
   numberInput,
@@ -48,6 +47,7 @@ import {
   requirePaneInstance,
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
+import { asRecord } from "../utils/guards";
 
 interface AppRemoteControllerOptions {
   dispatch: Dispatch<AppAction>;

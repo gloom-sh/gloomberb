@@ -2,18 +2,13 @@ import {
   ELECTROBUN_APPLICATION_MENU_ACTION,
   type ElectrobunApplicationMenuCommand,
 } from "./index";
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
+import { recordOrNull } from "../../../../utils/guards";
 
 function applicationMenuClickPayload(event: unknown): Record<string, unknown> | null {
-  const eventRecord = record(event);
+  const eventRecord = recordOrNull(event);
   if (!eventRecord) return null;
 
-  const wrappedPayload = record(eventRecord.data);
+  const wrappedPayload = recordOrNull(eventRecord.data);
   if (typeof wrappedPayload?.action === "string") {
     return wrappedPayload;
   }
@@ -22,7 +17,7 @@ function applicationMenuClickPayload(event: unknown): Record<string, unknown> | 
 }
 
 function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationMenuCommand | null {
-  const command = record(value);
+  const command = recordOrNull(value);
   if (!command || typeof command.type !== "string") return null;
 
   switch (command.type) {

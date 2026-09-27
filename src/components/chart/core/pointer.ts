@@ -1,4 +1,5 @@
 import type { NativeRendererHost as CliRenderer } from "../../../ui";
+import { clamp } from "../../../utils/math";
 
 type RendererMetricsHost = Pick<CliRenderer, "resolution" | "terminalWidth" | "terminalHeight">;
 
@@ -51,10 +52,6 @@ export interface LocalPlotPointer {
   pixelX: number | null;
   pixelY: number | null;
   hasPixelPrecision: boolean;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 function getRendererCellMetrics(renderer: RendererMetricsHost) {

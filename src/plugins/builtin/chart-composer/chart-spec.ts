@@ -6,6 +6,7 @@ import {
   normalizeChartSpec,
   validateChartSpec,
 } from "../../../time-series/spec";
+import { isRecord } from "../../../utils/guards";
 
 export const CHART_SPEC_SETTING_KEY = "chartSpec";
 export const CHART_INTERACTION_VIEWPORT_SETTING_KEY = "chartInteractionViewport";
@@ -91,10 +92,6 @@ function decodeSpec(value: unknown): unknown {
   } catch {
     return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function canMigrateV1(decoded: Record<string, unknown>): boolean {

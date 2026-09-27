@@ -28,10 +28,6 @@ export function fail(code: string, error: unknown): RemoteControlResponse {
   };
 }
 
-export function asRecord(input: unknown): Record<string, unknown> {
-  return input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
-}
-
 export function stringInput(input: Record<string, unknown>, key: string): string {
   const value = input[key];
   if (typeof value !== "string" || value.length === 0) {

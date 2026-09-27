@@ -15,6 +15,7 @@ import {
   normalizeChartSpec,
   validateChartSpec,
 } from "../../time-series/spec";
+import { recordOrNull } from "../../utils/guards";
 
 const CHART_RANGES = new Set<TimeRange>(TIME_RANGES);
 const CHART_RESOLUTION_SET = new Set<ChartResolution>(CHART_RESOLUTIONS);
@@ -58,12 +59,6 @@ export interface LegacyChartMigrationContext {
   migrateLegacy?: boolean;
   defaultRenderMode?: SeriesStyle;
   indicatorSelection?: LegacyChartIndicatorSelection;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }
 
 function hasOwn(value: Record<string, unknown> | undefined, key: string): boolean {
@@ -155,12 +150,12 @@ function parsedChartSpec(value: unknown): ChartSpec | null {
       return null;
     }
   }
-  const input = record(decoded);
+  const input = recordOrNull(decoded);
   if (!input) return null;
   const version = input.version;
   const legacySeries = Array.isArray(input.series) ? input.series : [];
   const legacyIsCapabilityFree = legacySeries.every((entry) => {
-    const source = record(entry) ? record(entry.source) : null;
+    const source = recordOrNull(entry) ? recordOrNull(entry.source) : null;
     return source?.kind === "security" || source?.kind === "economic";
   });
   if (version !== CHART_SPEC_VERSION
@@ -243,7 +238,7 @@ function positiveIntegers(value: unknown): number[] {
 }
 
 function studiesForIndicatorConfig(value: unknown, inputSeriesId: string): ChartStudySpec[] {
-  const config = record(value);
+  const config = recordOrNull(value);
   if (!config) return [];
   const studies: ChartStudySpec[] = [];
   for (const period of positiveIntegers(config.sma)) {
@@ -263,7 +258,7 @@ function studiesForIndicatorConfig(value: unknown, inputSeriesId: string): Chart
       { period },
     ));
   }
-  const bollinger = record(config.bollinger);
+  const bollinger = recordOrNull(config.bollinger);
   if (typeof bollinger?.period === "number" && bollinger.period > 0) {
     const period = Math.floor(bollinger.period);
     const stdDev = typeof bollinger.stdDev === "number" && bollinger.stdDev > 0 ? bollinger.stdDev : 2;
@@ -286,7 +281,7 @@ function studiesForIndicatorConfig(value: unknown, inputSeriesId: string): Chart
       "rsi",
     ));
   }
-  const macd = record(config.macd);
+  const macd = recordOrNull(config.macd);
   if (
     typeof macd?.fast === "number" && macd.fast > 0
     && typeof macd.slow === "number" && macd.slow > 0
@@ -318,7 +313,7 @@ function applyLegacyIndicators(
     series.source.kind === "security"
     && (series.source.fieldId === "market.ohlcv" || series.source.fieldId === "market.close")
   ));
-  if (!input || (!selection && !record(indicatorConfig))) return spec;
+  if (!input || (!selection && !recordOrNull(indicatorConfig))) return spec;
 
   const selectedStudies = selection ? studiesForSelection(selection.ids, input.id) : [];
   const configuredStudies = selection?.explicit ? [] : studiesForIndicatorConfig(indicatorConfig, input.id);
@@ -606,19 +601,19 @@ function buildLegacyGraphSpec(
 }
 
 function mergedLegacyGraphState(paneState: Record<string, unknown>): Record<string, unknown> {
-  const pluginState = record(paneState.pluginState);
+  const pluginState = recordOrNull(paneState.pluginState);
   const merged: Record<string, unknown> = {};
   for (const pluginId of LEGACY_GRAPH_PLUGIN_IDS) {
-    Object.assign(merged, record(pluginState?.[pluginId]) ?? {});
+    Object.assign(merged, recordOrNull(pluginState?.[pluginId]) ?? {});
   }
   return merged;
 }
 
 function originalPaneSettings(value: unknown, instanceId: string): Record<string, unknown> | null {
-  const layout = record(value);
+  const layout = recordOrNull(value);
   if (!Array.isArray(layout?.instances)) return null;
-  const instance = layout.instances.find((entry) => record(entry)?.instanceId === instanceId);
-  return record(record(instance)?.settings);
+  const instance = layout.instances.find((entry) => recordOrNull(entry)?.instanceId === instanceId);
+  return recordOrNull(recordOrNull(instance)?.settings);
 }
 
 function stripLegacyGraphPaneState(
@@ -627,12 +622,12 @@ function stripLegacyGraphPaneState(
 ): Record<string, unknown> {
   const retained = { ...paneState };
   if (migrateActiveTab && retained.activeTabId === "fundamental-graphs") retained.activeTabId = "chart";
-  const pluginState = record(retained.pluginState);
+  const pluginState = recordOrNull(retained.pluginState);
   if (!pluginState) return retained;
 
   const nextPluginState: Record<string, unknown> = { ...pluginState };
   for (const pluginId of LEGACY_GRAPH_PLUGIN_IDS) {
-    const state = record(nextPluginState[pluginId]);
+    const state = recordOrNull(nextPluginState[pluginId]);
     if (!state) continue;
     const nextState = Object.fromEntries(
       Object.entries(state).filter(([key]) => !LEGACY_GRAPH_STATE_KEYS.has(key)),

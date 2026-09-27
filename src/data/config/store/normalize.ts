@@ -20,6 +20,7 @@ import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig } from "./migrations";
+import { isRecord } from "../../../utils/guards";
 
 export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: string): { config: AppConfig; needsSave: boolean } {
   const defaults = createDefaultConfig(dataDir);
@@ -83,7 +84,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     || !isChartPreferences(candidate.chartPreferences)
     || (candidate.language !== undefined && !isLanguagePreference(candidate.language))
     || (candidate.onboardingProgress !== undefined && !sanitizeOnboardingProgress(candidate.onboardingProgress))
-    || (isPlainRecord(candidate.onboardingProgress) && candidate.onboardingProgress.stage === "open-security")
+    || (isRecord(candidate.onboardingProgress) && candidate.onboardingProgress.stage === "open-security")
     || (!!onboardingProgress && candidate.onboardingComplete !== false)
     || typeof candidate.valueFlashingEnabled !== "boolean"
     || typeof candidate.activeLayoutIndex !== "number";
@@ -142,7 +143,7 @@ function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, 
 
 /** Only the switches that are set survive; an empty object is the same as none. */
 function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
-  if (!isPlainRecord(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   if (typeof value.crashReports !== "boolean") return undefined;
   return { crashReports: value.crashReports };
 }
@@ -153,9 +154,9 @@ function sanitizeTelemetry(value: unknown): TelemetryConfig | undefined {
  * is something the user can see and fix rather than something that vanishes.
  */
 function sanitizeKeybindings(value: unknown): KeybindingsConfig | undefined {
-  if (!isPlainRecord(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const actions: Record<string, string | string[] | null> = {};
-  if (isPlainRecord(value.actions)) {
+  if (isRecord(value.actions)) {
     for (const [actionId, binding] of Object.entries(value.actions)) {
       if (!actionId.trim()) continue;
       if (binding === null || typeof binding === "string") {
@@ -166,7 +167,7 @@ function sanitizeKeybindings(value: unknown): KeybindingsConfig | undefined {
     }
   }
   const commands: Record<string, string> = {};
-  if (isPlainRecord(value.commands)) {
+  if (isRecord(value.commands)) {
     for (const [chord, query] of Object.entries(value.commands)) {
       if (chord.trim() && typeof query === "string" && query.trim()) commands[chord] = query;
     }
@@ -197,7 +198,7 @@ const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
 ]);
 
 function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefined {
-  if (!isPlainRecord(value) || value.version !== 1) {
+  if (!isRecord(value) || value.version !== 1) {
     return undefined;
   }
   const stage = value.stage === "open-security" ? "account" : value.stage;
@@ -232,10 +233,6 @@ function sanitizeUniqueStringList(value: unknown): string[] {
   return [...new Set(sanitizeStringArray(value, []))];
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
 // Pane state is sanitized on every config write, and most of it is the same
 // objects as last time: the store replaces what changed and keeps the rest.
 // The result depends on nothing but the input, so it is kept per identity.
@@ -253,7 +250,7 @@ function sanitizeSerializableValue(value: unknown): unknown {
     sanitized = value
       .map((entry) => sanitizeSerializableValue(entry))
       .filter((entry) => entry !== undefined);
-  } else if (isPlainRecord(value)) {
+  } else if (isRecord(value)) {
     sanitized = Object.fromEntries(
       Object.entries(value)
         .map(([key, entry]) => [key, sanitizeSerializableValue(entry)])
@@ -270,23 +267,23 @@ function sanitizeSavedPaneState(
   value: unknown,
   layout: LayoutConfig,
 ): Record<string, Record<string, unknown>> | undefined {
-  if (!isPlainRecord(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const validPaneIds = new Set(layout.instances.map((instance) => instance.instanceId));
   const paneState = Object.fromEntries(
     Object.entries(value)
-      .filter(([paneId, entry]) => validPaneIds.has(paneId) && isPlainRecord(entry))
+      .filter(([paneId, entry]) => validPaneIds.has(paneId) && isRecord(entry))
       .map(([paneId, entry]) => {
         const sanitized = sanitizeSerializableValue(entry);
         return [paneId, sanitized];
       })
-      .filter((entry): entry is [string, Record<string, unknown>] => isPlainRecord(entry[1])),
+      .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1])),
   );
   return paneState;
 }
 
 function isPluginConfigMap(value: unknown): value is Record<string, Record<string, unknown>> {
-  if (!isPlainRecord(value)) return false;
-  return Object.values(value).every((entry) => isPlainRecord(entry));
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((entry) => isRecord(entry));
 }
 
 function sanitizePluginConfig(value: unknown): Record<string, Record<string, unknown>> {

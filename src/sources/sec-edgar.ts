@@ -13,6 +13,7 @@ import { parseSecAcceptanceTime } from "./sec-edgar/acceptance-time";
 import { secFourthQuarters, withGuardedFourthQuarters, type SecFourthQuarter } from "./sec-edgar/fourth-quarter";
 
 export { extractFilingContent } from "./sec-edgar/content";
+import { recordOrNull } from "../utils/guards";
 
 const LOOKUP_URL = "https://www.sec.gov/files/company_tickers_exchange.json";
 const SUBMISSIONS_URL = "https://data.sec.gov/submissions";
@@ -214,15 +215,9 @@ function isSecBlockMessage(body: string): boolean {
   return /Undeclared Automated Tool|Request Rate Threshold Exceeded/i.test(body);
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
   const results = new Map<string, LookupEntry>();
-  const record = asRecord(payload);
+  const record = recordOrNull(payload);
   if (!record) return results;
 
   const fields = Array.isArray(record.fields)
@@ -251,7 +246,7 @@ export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
   }
 
   for (const value of Object.values(record)) {
-    const entry = asRecord(value);
+    const entry = recordOrNull(value);
     if (!entry) continue;
     const ticker = normalize(String(entry.ticker ?? entry.symbol ?? ""));
     const cik = zeroPadCik(entry.cik ?? entry.cik_str);
@@ -271,11 +266,11 @@ export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
 }
 
 export function parseSubmissionArchiveNames(payload: unknown): string[] {
-  const files = asRecord(asRecord(payload)?.filings)?.files;
+  const files = recordOrNull(recordOrNull(payload)?.filings)?.files;
   if (!Array.isArray(files)) return [];
   const names: string[] = [];
   for (const file of files) {
-    const name = asRecord(file)?.name;
+    const name = recordOrNull(file)?.name;
     if (typeof name === "string" && /^CIK\d+-submissions-\d+\.json$/i.test(name)) {
       names.push(name);
     }
@@ -339,7 +334,7 @@ function submissionCompany(payload: unknown, fallbackCik = ""): {
   displayCik: string;
   companyName?: string;
 } {
-  const record = asRecord(payload);
+  const record = recordOrNull(payload);
   const cik = zeroPadCik(record?.cik) ?? fallbackCik;
   return {
     cik,
@@ -349,9 +344,9 @@ function submissionCompany(payload: unknown, fallbackCik = ""): {
 }
 
 export function parseRecentFilings(payload: unknown, count = 15): SecFilingItem[] {
-  const record = asRecord(payload);
+  const record = recordOrNull(payload);
   if (!record) return [];
-  const recent = asRecord(asRecord(record.filings)?.recent)
+  const recent = recordOrNull(recordOrNull(record.filings)?.recent)
     ?? (Array.isArray(record.accessionNumber) ? record : null);
   return parseFilingColumns(recent, submissionCompany(record), count);
 }
@@ -402,23 +397,17 @@ export function parseFilingDocuments(indexHtml: string, filing: SecFilingItem): 
   return documents;
 }
 
-function companyFactsRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
 function companyFactsEntries(payload: unknown, tag: string, units: string[]): CompanyFactsEntry[] {
-  const facts = companyFactsRecord(companyFactsRecord(companyFactsRecord(payload)?.facts)?.["us-gaap"]);
-  const fact = companyFactsRecord(facts?.[tag]);
-  const unitRecord = companyFactsRecord(fact?.units);
+  const facts = recordOrNull(recordOrNull(recordOrNull(payload)?.facts)?.["us-gaap"]);
+  const fact = recordOrNull(facts?.[tag]);
+  const unitRecord = recordOrNull(fact?.units);
   if (!unitRecord) return [];
 
   for (const unit of units) {
     const entries = unitRecord[unit];
     if (!Array.isArray(entries)) continue;
     return entries
-      .map((entry) => companyFactsRecord(entry))
+      .map((entry) => recordOrNull(entry))
       .filter((entry): entry is Record<string, unknown> => !!entry)
       .map((entry) => ({
         accn: typeof entry.accn === "string" ? entry.accn : undefined,
@@ -811,7 +800,7 @@ export class SecEdgarClient {
     for (const name of parseSubmissionArchiveNames(payload)) {
       if (filings.length >= count) break;
       const older = await this.fetchJson<unknown>(`${SUBMISSIONS_URL}/${name}`);
-      filings.push(...parseFilingColumns(asRecord(older), company, count - filings.length));
+      filings.push(...parseFilingColumns(recordOrNull(older), company, count - filings.length));
     }
     return filings;
   }
@@ -825,7 +814,7 @@ export class SecEdgarClient {
     if (!entry) return null;
 
     const payload = await this.fetchJson<unknown>(`${COMPANY_FACTS_URL}/CIK${entry.cik}.json`);
-    if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
+    if (zeroPadCik(recordOrNull(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
     const statements = parseCompanyFactsFinancialStatements(payload);
     if (/[.-]/.test(normalizedTicker)) {
       for (const row of [...statements.annualStatements, ...statements.quarterlyStatements]) {

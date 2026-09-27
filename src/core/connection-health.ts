@@ -1,3 +1,5 @@
+import { errorMessage } from "../utils/errors";
+
 export type ConnectionHealthKind = "asset-data" | "news" | "api" | "websocket" | "capability";
 export type ConnectionHealthStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
 export type ConnectionSocketState = "idle" | "connecting" | "open" | "closed" | "error";
@@ -58,10 +60,6 @@ export const GLOOM_CLOUD_FRED_CONNECTION_ID = "gloom-cloud-fred";
 
 const MAX_RECENT_REQUESTS = 20;
 const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function socketStatus(state: ConnectionSocketState): ConnectionHealthStatus {
   if (state === "open") return "connected";

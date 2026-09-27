@@ -5,6 +5,7 @@ import {
   compositeTimeAtPosition,
   compositeTimePosition,
 } from "./time-scale";
+import { clamp } from "../../../utils/math";
 
 export interface CompositeViewportRange {
   start: Date;
@@ -67,10 +68,6 @@ export interface CompositeNavigationFrame {
 function finiteTime(value: Date | undefined): number | null {
   const time = value?.getTime();
   return typeof time === "number" && Number.isFinite(time) ? time : null;
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function hasRenderableValue(point: ResolvedSeries["points"][number]): boolean {

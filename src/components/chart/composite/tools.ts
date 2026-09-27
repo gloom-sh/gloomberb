@@ -1,7 +1,7 @@
 import { formatPercentRaw } from "../../../utils/format";
 import type { ChartVectorShape } from "../../../ui/host";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { clamp, drawCircle, drawLine, fillRect, parseHex } from "../native/raster/primitives";
+import { drawCircle, drawLine, fillRect, parseHex } from "../native/raster/primitives";
 import { formatCompositeAxisValue, formatCompositeCursorDate } from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
@@ -10,6 +10,7 @@ import type {
   CompositeChartScene,
   CompositePanelScene,
 } from "./types";
+import { clamp } from "../../../utils/math";
 
 /** Pointer tools that take the drag away from panning while one is picked. */
 export type ChartToolKind = "measure" | "zoom" | "line" | "pencil";

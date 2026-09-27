@@ -42,13 +42,13 @@ import type {
   FundDetailData,
   ThirteenFBrowserTab,
 } from "./types";
+import { finiteOrNull } from "../../../utils/guards";
 
-const numberOrNull = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null;
-const money = (value: unknown) => formatMoneyCompact(numberOrNull(value));
-const weight = (value: unknown) => formatWeightMaybe(numberOrNull(value));
-const shares = (value: unknown) => formatShares(numberOrNull(value));
+const money = (value: unknown) => formatMoneyCompact(finiteOrNull(value));
+const weight = (value: unknown) => formatWeightMaybe(finiteOrNull(value));
+const shares = (value: unknown) => formatShares(finiteOrNull(value));
 const weightPoints = (value: unknown) => {
-  const change = numberOrNull(value);
+  const change = finiteOrNull(value);
   return change == null ? "--" : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
 };
 

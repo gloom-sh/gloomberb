@@ -5,6 +5,7 @@ import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors"
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 86_400_000;
 
@@ -38,10 +39,7 @@ export interface CryptoRow {
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
   buildQuoteKey({ symbol: asset.symbol, exchange: "CCC" });
 
-const finite = (value: number | null | undefined): value is number =>
-  typeof value === "number" && Number.isFinite(value);
-
-const positive = (value: number | null | undefined): value is number => finite(value) && value > 0;
+const positive = (value: number | null | undefined): value is number => isFiniteNumber(value) && value > 0;
 
 const utcDay = (ms: number) => Math.floor(ms / DAY_MS);
 
@@ -51,7 +49,7 @@ export function closeDaysAgo(asset: CryptoMarketAsset, days: number, now: number
   if (!history) return null;
   const index = utcDay(now) - days - utcDay(Date.parse(`${history.start}T00:00:00Z`));
   const close = index >= 0 ? history.closes[index] : null;
-  return finite(close) && close > 0 ? close : null;
+  return isFiniteNumber(close) && close > 0 ? close : null;
 }
 
 const percentChange = (price: number, reference: number | null) =>
@@ -63,9 +61,9 @@ export function liveQuote(
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
 ): Quote | null {
   const quote = resolveEntryData(entries.get(cryptoQuoteKey(asset)));
-  if (!quote || !finite(quote.price) || quote.price <= 0) return null;
+  if (!quote || !isFiniteNumber(quote.price) || quote.price <= 0) return null;
   const snapshotAt = asset.quoteTime ? Date.parse(asset.quoteTime) : null;
-  if (snapshotAt != null && finite(quote.lastUpdated) && quote.lastUpdated < snapshotAt) return null;
+  if (snapshotAt != null && isFiniteNumber(quote.lastUpdated) && quote.lastUpdated < snapshotAt) return null;
   return quote;
 }
 
@@ -88,16 +86,16 @@ export function buildCryptoRow(
   now = Date.now(),
 ): CryptoRow {
   const price = quote?.price ?? asset.price;
-  const changePercent = quote && finite(quote.changePercent)
+  const changePercent = quote && isFiniteNumber(quote.changePercent)
     ? quote.changePercent
     : quote
       ? percentChange(price, asset.previousClose)
       : asset.changePercent;
   // Supply moves slowly; the price is what makes market cap live. Scaling the
   // reported cap keeps the source's supply basis and the board's ranking.
-  const marketCap = finite(asset.marketCap)
+  const marketCap = isFiniteNumber(asset.marketCap)
     ? asset.marketCap * (price / asset.price)
-    : finite(asset.circulatingSupply) && asset.circulatingSupply > 0 ? asset.circulatingSupply * price : null;
+    : isFiniteNumber(asset.circulatingSupply) && asset.circulatingSupply > 0 ? asset.circulatingSupply * price : null;
   const start = asset.history ? Date.parse(`${asset.history.start}T00:00:00Z`) : 0;
   const closes = completedCloses(asset);
   const history: PricePoint[] = closes.length
@@ -122,7 +120,7 @@ export function buildCryptoRow(
     volume24h: asset.volume24h,
     marketCap,
     history,
-    updatedAt: finite(updatedAt) ? updatedAt : null,
+    updatedAt: isFiniteNumber(updatedAt) ? updatedAt : null,
     live: !!quote && quote.delivery === "stream" && quote.stale !== true,
   };
 }

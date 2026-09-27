@@ -45,7 +45,7 @@ import type {
 import type { TickerOpenTarget } from "../../tickers/open-target";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
-import { stableStringify } from "../../remote/revision";
+import { stableStringify } from "../../utils/hash";
 
 // Registry callbacks are rebound on renders. Request ownership must survive
 // that rebinding, while separate source panes retain independent navigation.
