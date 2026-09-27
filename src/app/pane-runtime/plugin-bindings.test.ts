@@ -3,6 +3,7 @@ import { createInitialState } from "../../state/app/context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig, type PaneInstanceConfig } from "../../types/config";
 import type { PaneDef } from "../../types/plugin";
+import { subscribeFormModalRequests, type FormModalRequest } from "../../components/form-modal/request";
 import { bindAppPanePluginRegistry } from "./plugin-bindings";
 
 const paneDef: PaneDef = {
@@ -13,17 +14,20 @@ const paneDef: PaneDef = {
   defaultMode: "floating",
 };
 
-function bindPortablePaneRuntime(disabledPlugins: string[] = []) {
+function bindPortablePaneRuntime(disabledPlugins: string[] = [], options: { isDetachedWindow?: boolean } = {}) {
   const config = createDefaultConfig("/tmp/gloomberb-portable-pane-test");
   config.disabledPlugins = disabledPlugins;
   const state = createInitialState(config);
   const actions: any[] = [];
   const built: PaneInstanceConfig[] = [];
   const placed: Array<{ instance: PaneInstanceConfig; options: unknown }> = [];
+  const notes: string[] = [];
   const pluginRegistry = {
     panes: new Map([[paneDef.id, paneDef]]),
     getPanePluginId: () => "prediction-markets",
     getTermSizeFn: () => ({ width: 120, height: 40 }),
+    commands: new Map([["set-alert", { id: "set-alert", label: "Add Alert", wizard: [{ key: "symbol", label: "Symbol" }] }]]),
+    notify: (notification: { body?: string }) => notes.push(notification.body ?? ""),
   } as any;
 
   bindAppPanePluginRegistry({
@@ -38,7 +42,7 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = []) {
     detachedPaneId: null,
     dispatch: (action) => actions.push(action),
     focusVisiblePane() {},
-    isDetachedWindow: false,
+    isDetachedWindow: options.isDetachedWindow ?? false,
     openPaneSettings: async () => {},
     openPinnedTicker: async () => {},
     persistLayout() {},
@@ -56,7 +60,7 @@ function bindPortablePaneRuntime(disabledPlugins: string[] = []) {
     tickerRepository: {} as any,
   });
 
-  return { actions, built, placed, pluginRegistry };
+  return { actions, built, notes, placed, pluginRegistry };
 }
 
 const portablePane = {
@@ -115,3 +119,46 @@ describe("portable pane runtime", () => {
     expect(runtime.built).toHaveLength(0);
   });
 });
+
+describe("form launches", () => {
+  // Menus, panes and the status bar open forms straight in the modal; the
+  // bar never mounts to relay them.
+  test("open the form modal without the command bar", () => {
+    const requests: FormModalRequest[] = [];
+    const unsubscribe = subscribeFormModalRequests((request) => {
+      requests.push(request);
+      return true;
+    });
+    try {
+      const runtime = bindPortablePaneRuntime();
+      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
+      runtime.pluginRegistry.openPluginCommandWorkflowFn("set-alert");
+      expect(requests).toEqual([
+        { kind: "builtin", actionId: "add-broker-account" },
+        { kind: "plugin-command", commandId: "set-alert" },
+      ]);
+      expect(runtime.actions.some((action) => action.type === "SET_COMMAND_BAR")).toBe(false);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  // Forms submit through the main window's state, which a detached window lacks.
+  test("say where to go from a detached window", () => {
+    const requests: FormModalRequest[] = [];
+    const unsubscribe = subscribeFormModalRequests((request) => {
+      requests.push(request);
+      return true;
+    });
+    try {
+      const runtime = bindPortablePaneRuntime([], { isDetachedWindow: true });
+      runtime.pluginRegistry.openBuiltInWorkflowFn("add-broker-account");
+      runtime.pluginRegistry.openPluginCommandWorkflowFn("set-alert");
+      expect(requests).toEqual([]);
+      expect(runtime.notes).toEqual(["Open this from the main window.", "Open this from the main window."]);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
