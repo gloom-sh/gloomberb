@@ -1,10 +1,11 @@
 /**
- * Full-screen QR sign-in dialog plus the request bridge that lets the command
- * bar open it. Commands run outside the React tree, so `requestDeviceSignInDialog`
- * hands the request to `DeviceSignInDialogHost`, which the shell mounts for the
- * life of the app and which owns the actual dialog.
+ * QR sign-in UI: the hook and panel every QR surface shares, the full-screen
+ * dialog, and the request bridge that lets the command bar open it. Commands
+ * run outside the React tree, so `requestDeviceSignInDialog` hands the request
+ * to `DeviceSignInDialogHost`, which the shell mounts for the life of the app
+ * and which owns the actual dialog.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuthUser } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
@@ -13,8 +14,48 @@ import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { SignInCodePanel } from "../../../components/sign-in-code-panel";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
-import { isPlainKey } from "../../../utils/keyboard";
+import { isPlainKey, type KeyboardModifierEventLike } from "../../../utils/keyboard";
 import { DeviceSignInController, type DeviceSignInSnapshot } from "./device-signin";
+
+/** How long the approval stays on screen before `onApproved` moves on. */
+const APPROVED_HOLD_MS = 1_200;
+
+/**
+ * Runs one device sign-in for the life of the calling component: it starts on
+ * mount and cancels on unmount, so leaving the view stops polling.
+ */
+export function useDeviceSignIn({ onApproved }: { onApproved?: (user: AuthUser) => void } = {}): {
+  snapshot: DeviceSignInSnapshot;
+  retry: () => void;
+} {
+  const [controller] = useState(() => new DeviceSignInController());
+  const [snapshot, setSnapshot] = useState(() => controller.getSnapshot());
+
+  useEffect(() => {
+    const unsubscribe = controller.subscribe(setSnapshot);
+    controller.start();
+    return () => {
+      unsubscribe();
+      controller.cancel();
+    };
+  }, [controller]);
+
+  useEffect(() => {
+    const user = snapshot.phase === "approved" ? snapshot.user : null;
+    if (!onApproved || !user) return;
+    const timer = setTimeout(() => onApproved(user), APPROVED_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [onApproved, snapshot.phase, snapshot.user]);
+
+  const retry = useCallback(() => controller.start(), [controller]);
+  return { snapshot, retry };
+}
+
+/** `r` asks for a fresh code until the sign-in is approved; enter does after a denial. */
+export function isDeviceSignInRetryKey(event: KeyboardModifierEventLike, snapshot: DeviceSignInSnapshot): boolean {
+  return (isPlainKey(event, "r") && snapshot.phase !== "approved")
+    || (isPlainKey(event, "enter", "return") && snapshot.phase === "denied");
+}
 
 export function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: string; color: string } {
   switch (snapshot.phase) {
@@ -61,37 +102,15 @@ export function DeviceSignInPanel({
 export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser | undefined>) {
   useAppLanguage();
   const { height: termHeight } = useViewport();
-  const controllerRef = useRef<DeviceSignInController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new DeviceSignInController();
-  const controller = controllerRef.current;
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot());
-
-  useEffect(() => {
-    const unsubscribe = controller.subscribe(setSnapshot);
-    controller.start();
-    return () => {
-      unsubscribe();
-      controller.cancel();
-    };
-  }, [controller]);
-
-  // Close on approval after a beat so the confirmation is visible; enter skips the wait.
-  useEffect(() => {
-    if (snapshot.phase !== "approved" || !snapshot.user) return;
-    const closeTimer = setTimeout(() => resolve(snapshot.user ?? undefined), 1_200);
-    return () => clearTimeout(closeTimer);
-  }, [resolve, snapshot.phase, snapshot.user]);
+  // Closes on approval after a beat so the confirmation is visible; enter skips the wait.
+  const { snapshot, retry } = useDeviceSignIn({ onApproved: resolve });
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
-    if (event.name === "enter" || event.name === "return") {
-      if (snapshot.phase === "approved") {
-        resolve(snapshot.user ?? undefined);
-      } else if (snapshot.phase === "denied") {
-        controller.start();
-      }
-    } else if (isPlainKey(event, "r") && snapshot.phase !== "approved") {
-      controller.start();
+    if (isDeviceSignInRetryKey(event, snapshot)) {
+      retry();
+    } else if (event.name === "enter" || event.name === "return") {
+      if (snapshot.phase === "approved") resolve(snapshot.user ?? undefined);
     } else if (event.name === "escape") {
       dismiss();
     }
