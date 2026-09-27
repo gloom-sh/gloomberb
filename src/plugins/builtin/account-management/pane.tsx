@@ -53,7 +53,6 @@ import {
   formatPlan,
   formatTrialEnd,
   formatTrialOffer,
-  getPortfolioPositionTickers,
   portfolioOptionIds,
   profileToDraft,
   type AccountDraft,
@@ -76,11 +75,7 @@ import { cloudSyncController } from "../../../sync/controller";
 import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import {
-  consumeRequestedAccountManagementTab,
-  subscribeRequestedAccountManagementTab,
-  type AccountManagementTab,
-} from "./navigation";
+import { subscribeRequestedAccountManagementTab, type AccountManagementTab } from "./navigation";
 import { openCloudUpgrade } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
 import { usePluginPaneState } from "../../runtime";
@@ -274,7 +269,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   // FX, and chart requests below stay off on every other tab.
   const portfolioTickers = useMemo(
     () => activeTab === "profile" && draft.sharedPortfolioId
-      ? getPortfolioPositionTickers(tickers, draft.sharedPortfolioId)
+      ? [...tickers.values()].filter((ticker) => hasPortfolioPosition(ticker, draft.sharedPortfolioId))
       : [],
     [activeTab, draft.sharedPortfolioId, tickers],
   );
@@ -301,7 +296,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     `${draft.sharedPortfolioId ?? ""}\u001f${[...liveFinancials.keys()].join(",")}`,
   );
   const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(portfolioTickers, financials, baseCurrency),
+    () => buildTrackedCurrencies(portfolioTickers, financials, null, baseCurrency),
     [baseCurrency, financials, portfolioTickers],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);

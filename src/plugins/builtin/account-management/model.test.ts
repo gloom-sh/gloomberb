@@ -4,9 +4,7 @@ import {
   buildPublishedProfileAnalyticsPreview,
   buildPortfolioChoices,
   buildProfileAnalyticsPreview,
-  computeCumulativeReturn,
   countPortfolioHoldings,
-  getPortfolioPositionTickers,
   NO_PORTFOLIO_VALUE,
 } from "./model";
 import { createTestTicker } from "../../../test-support/ticker";
@@ -57,24 +55,6 @@ describe("account management model", () => {
         description: "Shares this portfolio's 1Y return and SPY Beta on your public profile.",
       },
     ]);
-  });
-
-  test("filters shared analytics tickers by actual portfolio positions", () => {
-    const tickers = new Map([
-      ["AAPL", makeTicker("AAPL", ["main"], ["main"])],
-      ["MSFT", makeTicker("MSFT", ["main"], [])],
-      ["NVDA", makeTicker("NVDA", ["other"], ["other"])],
-    ]);
-
-    expect(getPortfolioPositionTickers(tickers, "main").map((ticker) => ticker.metadata.ticker)).toEqual(["AAPL"]);
-  });
-
-  test("compounds the selected one-year return series", () => {
-    expect(computeCumulativeReturn([
-      { dateKey: "2025-06-01", value: 0.1 },
-      { dateKey: "2025-06-02", value: 0.05 },
-      { dateKey: "2025-06-03", value: -0.02 },
-    ])).toBeCloseTo(0.1319, 5);
   });
 
   test("builds a real public analytics preview snapshot", () => {

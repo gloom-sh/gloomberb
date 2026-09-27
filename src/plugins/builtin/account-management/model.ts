@@ -3,6 +3,7 @@ import type { AccountProfile, CloudPricing, PublicPortfolioAnalytics } from "../
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatNumber } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
+import { compoundReturns } from "../analytics/risk-math";
 
 export type AccountFieldKey =
   | "username"
@@ -205,26 +206,10 @@ function buildPublicAnalyticsMetrics(analytics: PublicPortfolioAnalytics): Profi
   return metrics;
 }
 
-export function getPortfolioPositionTickers(
-  tickers: ReadonlyMap<string, TickerRecord>,
-  portfolioId: string,
-): TickerRecord[] {
-  return [...tickers.values()].filter((ticker) => (
-    ticker.metadata.positions.some((position) => position.portfolio === portfolioId)
-  ));
-}
-
-export function computeCumulativeReturn(
-  returns: Array<{ dateKey: string; value: number }>,
-  options?: { sinceDateKey?: string },
-): number | null {
-  const filtered = options?.sinceDateKey
-    ? returns.filter((point) => point.dateKey >= options.sinceDateKey!)
-    : returns;
-  if (filtered.length === 0) return null;
-  const value = filtered.reduce((acc, point) => (
-    Number.isFinite(point.value) ? acc * (1 + point.value) : acc
-  ), 1) - 1;
+/** Compounds the series, skipping gaps; null when there is nothing to compound. */
+export function computeCumulativeReturn(returns: ReadonlyArray<{ value: number }>): number | null {
+  if (returns.length === 0) return null;
+  const value = compoundReturns(returns.map((point) => point.value).filter(Number.isFinite));
   return Number.isFinite(value) ? value : null;
 }
 
