@@ -97,9 +97,9 @@ function configureEarningsRegistry(
 /** Wide enough to cover the ask debounce plus the round trip. */
 const ASSIST_WAIT_ATTEMPTS = 40;
 
-async function waitForRequest(requests: string[]): Promise<void> {
+async function waitForRequest(requests: string[], count = 1): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
-    if (requests.length > 0) return;
+    if (requests.length >= count) return;
     await settleFrame(testSetup!);
   }
   throw new Error("Timed out waiting for the assist request.");
@@ -298,7 +298,7 @@ describe("CommandBar AI assist", () => {
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
   });
 
-  test("asks once for a question retyped in another case or spacing", async () => {
+  test("asks once for a question retyped with other spacing, again when recased", async () => {
     signInVerified();
     let releaseResponse = () => {};
     const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
@@ -335,12 +335,13 @@ describe("CommandBar AI assist", () => {
     frame = await waitForFrameToContain("new chat pane");
     expect(frame).toContain("#general · Open the general channel");
 
-    // Recased, it is answered from memory, even after the debounce would have fired.
-    await editQuery(["DELETE", "P"]);
-    frame = await waitForFrameToContain("new chat Pane");
-    expect(frame).toContain("#general · Open the general channel");
-    await settleFrame(testSetup, 400);
     expect(requests).toHaveLength(1);
+
+    // Recased, it is a new question: casing can name a ticker ("ON").
+    await editQuery(["DELETE", "P"]);
+    await waitForFrameToContain("new chat Pane");
+    await waitForRequest(requests, 2);
+    expect(requests).toHaveLength(2);
   });
 
   test("drops the section when a background ask fails", async () => {

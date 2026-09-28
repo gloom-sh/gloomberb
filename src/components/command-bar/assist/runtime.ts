@@ -13,11 +13,12 @@ const ASSIST_DEBOUNCE_MS = 300;
 const ASSIST_RATE_LIMIT_BACKOFF_MS = 60_000;
 
 /**
- * The question a query asks, whatever its casing and spacing: "Gamestop
- * options" and "gamestop  options" share one answer and one request.
+ * The question a query asks, whatever its spacing: "gamestop  options" and
+ * "gamestop options" share one answer and one request. Casing is kept, since
+ * it can be the question ("chart ON" names ON Semiconductor, "chart on" does not).
  */
 function normalizeAssistQuery(query: string): string {
-  return query.trim().replace(/\s+/g, " ").toLowerCase();
+  return query.trim().replace(/\s+/g, " ");
 }
 
 /** Maps a failed `/assist/command` call onto the row the user should see. */
@@ -36,8 +37,8 @@ function classifyAssistError(error: unknown): AssistErrorKind {
  *
  * Requests, answers, dismissals and explicit asks are keyed on the normalized
  * question, while the state carries the text in the bar, which is what the
- * rows compare against. Editing only the casing or spacing therefore keeps the
- * state and relabels it with the new text.
+ * rows compare against. Editing only the spacing therefore keeps the state and
+ * relabels it with the new text.
  */
 export function useCommandBarAssist({
   autoAsk,
@@ -113,7 +114,7 @@ export function useCommandBarAssist({
     const resolveSource = (): AssistRequestSource => (
       explicitQueryRef.current === key ? "explicit" : source
     );
-    // The bar may have been re-cased or re-spaced while the request was out.
+    // The bar may have been re-spaced while the request was out.
     const resolveQuery = (): string => {
       const current = rootQueryRef.current.trim();
       return normalizeAssistQuery(current) === key ? current : trimmed;
@@ -171,7 +172,7 @@ export function useCommandBarAssist({
     const key = normalizeAssistQuery(trimmed);
     const active = assistStateRef.current;
     if (active.status !== "idle" && active.query !== trimmed) {
-      // A casing or spacing edit asks the same question, so the state stays.
+      // A spacing edit asks the same question, so the state stays.
       const sameQuestion = normalizeAssistQuery(active.query) === key;
       updateAssistState(sameQuestion ? { ...active, query: trimmed } : { status: "idle" });
     }

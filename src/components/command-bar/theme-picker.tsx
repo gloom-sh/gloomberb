@@ -186,11 +186,15 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   }), [cancelPreview, commit, jump, move]);
 
   useEffect(() => {
-    const preferredIndex = themes.findIndex((theme) => theme.id === committedThemeId);
+    // "TH nord" means Nord even while Nord Light is the committed theme.
+    const exactIndex = themes.findIndex((theme) => theme.id === normalizedFilter);
+    const preferredIndex = exactIndex >= 0
+      ? exactIndex
+      : themes.findIndex((theme) => theme.id === committedThemeId);
     const nextIndex = preferredIndex >= 0 ? preferredIndex : 0;
     selectedIndexRef.current = nextIndex;
     setSelectedIndex(nextIndex);
-  }, [committedThemeId, themes]);
+  }, [committedThemeId, normalizedFilter, themes]);
 
   useEffect(() => cancelPreview, [cancelPreview]);
 

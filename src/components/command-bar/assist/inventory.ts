@@ -25,6 +25,26 @@ interface InventoryEntry {
   prefixes: readonly string[];
 }
 
+/**
+ * A command's argument values, or none when its provider fails or returns
+ * something malformed: plugins supply these, and one bad list must not take
+ * every assist request down with it.
+ */
+function readArgOptions(
+  options: (() => readonly ShortcutArgOption[]) | undefined,
+): { value: string; label: string }[] | undefined {
+  if (!options) return undefined;
+  try {
+    const values = options();
+    if (!Array.isArray(values)) return undefined;
+    return values
+      .filter((option) => typeof option?.value === "string" && typeof option?.label === "string")
+      .map(({ value, label }) => ({ value, label }));
+  } catch {
+    return undefined;
+  }
+}
+
 function describeArg(
   kind: RootShortcutArgKind | null,
   placeholder: string | undefined,
@@ -32,7 +52,7 @@ function describeArg(
 ): AssistCommandDescriptor["arg"] {
   if (!kind) return undefined;
   const trimmed = placeholder?.trim();
-  const values = options?.().map(({ value, label }) => ({ value, label }));
+  const values = readArgOptions(options);
   return {
     kind,
     ...(trimmed ? { placeholder: trimmed } : {}),

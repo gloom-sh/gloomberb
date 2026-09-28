@@ -194,7 +194,7 @@ export interface AssistCommandDescriptor {
     kind: "text" | "ticker" | "ticker-list";
     /** The command also runs with no argument at all. */
     optional?: boolean;
-    /** Every value the argument accepts, for commands that take one of a fixed set. */
+    /** Named values the argument accepts; a command may take others too (COT takes any CFTC code). */
     options?: { value: string; label: string }[];
   };
 }

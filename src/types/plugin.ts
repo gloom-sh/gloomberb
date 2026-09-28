@@ -252,9 +252,9 @@ interface PaneTemplateShortcut {
    */
   openWithoutArg?: boolean;
   /**
-   * Every value the argument accepts, for an argument drawn from a small fixed
-   * set (a statistic, a futures root). The command-bar assistant picks from it
-   * instead of guessing the text.
+   * Named values the argument accepts, for an argument mostly drawn from a
+   * small set (a statistic, a futures root). The command-bar assistant picks
+   * from it instead of guessing the text; the command may accept others too.
    */
   argOptions?: () => readonly ShortcutArgOption[];
 }

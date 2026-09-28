@@ -19,7 +19,7 @@ export interface Command {
   description: string;
   hasArg?: boolean;       // true if prefix takes an argument (e.g., "DES AMD")
   argPlaceholder?: string;
-  /** Every value the argument accepts, when it is one of a fixed set (a theme, a language). */
+  /** Named values the argument accepts, when it is one of a set (a theme, a language). */
   argOptions?: () => readonly ShortcutArgOption[];
   shortcut?: string;
   category: string;

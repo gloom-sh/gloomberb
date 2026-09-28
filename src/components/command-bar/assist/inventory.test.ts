@@ -98,6 +98,42 @@ describe("buildAssistCommandInventory", () => {
     ]);
   });
 
+  test("sends no values for a provider that throws or returns malformed ones", () => {
+    const inventory = buildAssistCommandInventory({
+      commands: [],
+      pluginCommands: [],
+      paneTemplates: [
+        paneTemplate({
+          id: "broken",
+          label: "Broken",
+          shortcut: {
+            prefix: "BRK",
+            argPlaceholder: "value",
+            argKind: "text",
+            argOptions: () => {
+              throw new Error("plugin state not loaded");
+            },
+          },
+        }),
+        paneTemplate({
+          id: "odd",
+          label: "Odd",
+          shortcut: {
+            prefix: "ODD",
+            argPlaceholder: "value",
+            argKind: "text",
+            argOptions: () => [{ value: "ok", label: "Fine" }, { value: 7, label: "Seven" }] as never,
+          },
+        }),
+      ],
+    });
+
+    expect(inventory.map((entry) => entry.arg)).toEqual([
+      { kind: "text", placeholder: "value" },
+      { kind: "text", placeholder: "value", options: [{ value: "ok", label: "Fine" }] },
+    ]);
+  });
+
   test("drops prefixless commands and keeps the entry the bar would run for a prefix claimed twice", () => {
     const inventory = buildAssistCommandInventory({
       commands: [
