@@ -321,7 +321,9 @@ export function FormModalContent({
     }
     if (mountedRef.current) {
       dismiss();
-    } else if (!notified) {
+    } else if (!notified && current.payload.kind !== "plugin-command") {
+      // A plugin command reports its own outcome through its context, which
+      // this form never sees; "Done." on top of that would say it twice.
       deps.pluginRegistry.notify({ body: t("Done."), type: "success" });
     }
   }, [dialog, dismiss, requestInputFocus, runtime, signInBroker, updateRoute]);
