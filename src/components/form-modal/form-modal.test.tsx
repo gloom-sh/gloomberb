@@ -167,6 +167,45 @@ describe("form modal", () => {
     expect(frame()).not.toContain("Title is required.");
   });
 
+  test("a click on a field's label or description leaves the keyboard in its input", async () => {
+    const submitted: unknown[] = [];
+    await renderForm((registry) => registerCommand(registry, {
+      id: "save-note",
+      wizard: [{ key: "title", label: "Title", type: "text" }],
+      execute: async (values) => { submitted.push(values); },
+    }), {
+      kind: "route",
+      route: {
+        kind: "workflow",
+        workflowId: "plugin-command:save-note",
+        title: "Save Note",
+        fields: [{ id: "title", label: "Title", type: "text", description: "Shown in the notes list." }],
+        values: { title: "" },
+        activeFieldId: "title",
+        submitLabel: "Save Note",
+        pending: false,
+        error: null,
+        payload: { kind: "plugin-command", actionId: "save-note" },
+      },
+    });
+    await waitForForm("Shown in the notes list.");
+
+    await type("Dr");
+    for (const text of ["Shown in the notes list.", "Title"]) {
+      const lines = frame().split("\n");
+      const row = lines.findIndex((line) => line.includes(text) && !line.includes("Save Note"));
+      await act(async () => {
+        await testSetup!.mockMouse.click(lines[row]!.indexOf(text) + 1, row);
+        await testSetup!.renderOnce();
+      });
+      await settle();
+    }
+    await type("aft");
+    await press(ENTER);
+    await settle();
+    expect(submitted).toEqual([{ title: "Draft" }]);
+  });
+
   test("while a submit runs the form ignores Enter; a failure stays in the form", async () => {
     let calls = 0;
     let fail: (error: Error) => void = () => {};

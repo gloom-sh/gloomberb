@@ -98,13 +98,14 @@ export function WebDialogHostProvider({ children }: { children: ReactNode }) {
             className="gloom-dialog-backdrop"
             data-topmost={isTopmost ? "true" : "false"}
             onMouseDown={(event) => {
-              if (
-                isTopmost
-                && dialogState.closeOnClickOutside
-                && event.target === event.currentTarget
-              ) {
+              if (event.target !== event.currentTarget) return;
+              if (isTopmost && dialogState.closeOnClickOutside) {
                 close(dialogState.id, undefined);
+                return;
               }
+              // A click beside a dialog that stays open leaves the focus
+              // where it was, often in the field being typed into.
+              event.preventDefault();
             }}
           >
             <div

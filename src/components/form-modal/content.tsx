@@ -128,6 +128,7 @@ export function FormModalContent({
   const [route, setRouteState] = useState<FormRoute>(() => ({ ...initialRoute, pending: false, error: null }));
   const [onSubmitStop, setOnSubmitStop] = useState(() => initialFormFocus(initialRoute).onSubmit);
   const [textareaRevisions, setTextareaRevisions] = useState<Record<string, number>>({});
+  const [focusRequest, setFocusRequest] = useState(0);
   const [step, setStep] = useState<FormStep | null>(null);
   // Keys can arrive faster than renders (a held key, a paste), so handlers read these.
   const routeRef = useRef(route);
@@ -169,9 +170,15 @@ export function FormModalContent({
     }
   }, [updateRoute]);
 
+  /** Focuses the active field's input again, even when the form's focus did not move. */
+  const requestInputFocus = useCallback(() => {
+    setFocusRequest((request) => request + 1);
+  }, []);
+
   const focusField = useCallback((fieldId: string) => {
     setFocus({ fieldId, onSubmit: false });
-  }, [setFocus]);
+    requestInputFocus();
+  }, [requestInputFocus, setFocus]);
 
   const setValue = useCallback((fieldId: string, value: CommandBarFieldValue) => {
     updateRoute((current) => applyFormValue(current, fieldId, value));
@@ -229,6 +236,8 @@ export function FormModalContent({
       onSubmitStopRef.current = false;
       setOnSubmitStop(false);
       updateRoute((latest) => ({ ...latest, activeFieldId: missing.fieldId, error: missing.message }));
+      // A click on the button took the focus, even when that field was already the active one.
+      requestInputFocus();
       return;
     }
 
@@ -302,7 +311,7 @@ export function FormModalContent({
     } else if (!notified) {
       deps.pluginRegistry.notify({ body: t("Done."), type: "success" });
     }
-  }, [dialog, dismiss, runtime, signInBroker, updateRoute]);
+  }, [dialog, dismiss, requestInputFocus, runtime, signInBroker, updateRoute]);
 
   const moveOn = useCallback((fieldId: string) => {
     setFocus(focusAfterField(routeRef.current, fieldId));
@@ -390,6 +399,17 @@ export function FormModalContent({
     if (row.top < scrollBox.scrollTop) scrollBox.scrollTo(row.top);
     else if (row.top + row.height > scrollBox.scrollTop + viewportRows) scrollBox.scrollTo(row.top + row.height - viewportRows);
   }, [bodyRows, contentWidth, desktop, rowIdPrefix]);
+
+  // A click focuses the nearest focusable renderable, a scrollbar included, and
+  // a drag on one would leave the active field deaf to typing.
+  const showsFields = step === null;
+  useEffect(() => {
+    const scrollBox = scrollRef.current;
+    if (desktop || !showsFields || !scrollBox) return;
+    for (const bar of [scrollBox.verticalScrollBar, scrollBox.horizontalScrollBar]) {
+      if (bar) bar.focusable = false;
+    }
+  }, [desktop, showsFields]);
 
   // After layout, so a field that dependsOn just revealed is measured.
   useEffect(() => {
@@ -496,6 +516,7 @@ export function FormModalContent({
         value={route.values[field.id]}
         active={active}
         inputFocused={active && inputsFocusable}
+        focusRequest={active ? focusRequest : 0}
         pending={route.pending}
         desktop={desktop}
         isLast={index === visibleFields.length - 1}
@@ -549,8 +570,10 @@ export function FormModalContent({
   );
 
   if (desktop) {
+    // A click on the title, a description or a button moves the DOM focus out
+    // of the field being typed into; the field takes it back.
     return (
-      <Box width={width} maxWidth="calc(100vw - 72px)" flexDirection="column">
+      <Box width={width} maxWidth="calc(100vw - 72px)" flexDirection="column" onMouseDown={requestInputFocus}>
         <DialogFrame title={route.title} subtitle={route.subtitle ? t(route.subtitle) : undefined} onClose={dismiss}>
           <ScrollBox
             ref={scrollRef}
@@ -575,7 +598,8 @@ export function FormModalContent({
   return (
     <DialogFrame title={route.title} subtitle={route.subtitle ? t(route.subtitle) : undefined}>
       <Box flexDirection="column" width={contentWidth}>
-        <ScrollBox ref={scrollRef} height={bodyRows} scrollY>
+        {/* A click in the body must not take the focus from the field being typed into. */}
+        <ScrollBox ref={scrollRef} height={bodyRows} scrollY focusable={false}>
           {descriptionLines}
           {hasDescription && <Box height={1} />}
           {fieldRows}

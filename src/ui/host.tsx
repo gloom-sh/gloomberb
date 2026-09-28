@@ -116,6 +116,8 @@ export interface BoxRenderable {
 
 interface ScrollBarRenderable {
   visible: boolean;
+  /** Terminal only: whether a click on the bar moves the keyboard focus to it. */
+  focusable?: boolean;
   on?(event: "change", handler: () => void): void;
   off?(event: "change", handler: () => void): void;
 }
