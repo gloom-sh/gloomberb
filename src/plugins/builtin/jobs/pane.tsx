@@ -25,6 +25,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
+import { statToneColor } from "../../../components/ui/stat-grid";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -78,10 +79,6 @@ const MOVERS_PAGE = 200;
 
 type DetailTab = "roles" | "locations" | "seniority" | "salary";
 
-function toneColor(tone: "positive" | "negative" | "neutral"): string {
-  return tone === "positive" ? colors.positive : tone === "negative" ? colors.negative : colors.textDim;
-}
-
 function HiringProWall({ symbol }: { symbol: string | null }) {
   return (
     <ProWall
@@ -109,7 +106,7 @@ function companyFigures(summary: CloudJobsSummaryPayload, width: number): StatIt
       detail: roomy && summary.openPerThousandEmployees != null ? `${formatNumber(summary.openPerThousandEmployees, 1)}/1k staff` : undefined,
     },
     trend
-      ? { id: "change", label: "30 days", value: formatChange(trend), color: toneColor(changeTone(trend.count)) }
+      ? { id: "change", label: "30 days", value: formatChange(trend), tone: changeTone(trend.count) }
       : summary.posted30d != null
         ? { id: "posted", label: "Posted 30d", value: formatNumber(summary.posted30d, 0) }
         : { id: "closed", label: "Closed 30d", value: formatNumber(summary.closed30d, 0) },
@@ -669,7 +666,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
       case "open":
         return { text: row.open, color: colors.textBright };
       case "change":
-        return { text: row.change, color: toneColor(changeTone(row.changeValue)) };
+        return { text: row.change, color: statToneColor(changeTone(row.changeValue), colors) };
       case "posted30d":
         return { text: row.posted30d, color: colors.text };
       case "new7d":

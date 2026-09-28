@@ -100,8 +100,9 @@ export function formatChange(change: CloudJobsChange | null | undefined): string
   return `${sign}${change.count}${percent}`;
 }
 
-export function changeTone(value: number | null | undefined): "positive" | "negative" | "neutral" {
-  if (value == null || value === 0) return "neutral";
+/** A rise reads positive, a fall negative, and no change muted. */
+export function changeTone(value: number | null | undefined): "positive" | "negative" | "muted" {
+  if (value == null || value === 0) return "muted";
   return value > 0 ? "positive" : "negative";
 }
 
