@@ -113,6 +113,16 @@ export function futuresGenericOrdinal(position: number): string {
   return `${position}${tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][position % 10] ?? "th"}`;
 }
 
+/**
+ * How a generic's price reads: index and VIX futures in points (not dollars),
+ * Treasury futures in 32nds of par; everything else in its quote currency.
+ */
+export function futuresGenericPriceBasis(generic: Pick<FuturesGeneric, "root">): "points" | "thirty-seconds" | null {
+  if (["ES", "NQ", "RTY", "YM", "GD", "VX"].includes(generic.root)) return "points";
+  if (["ZT", "ZF", "ZN", "ZB", "UB"].includes(generic.root)) return "thirty-seconds";
+  return null;
+}
+
 /** Whether a root's date rules count back from first notice or from last trade. */
 export function futuresGenericNotice(root: string): "first notice" | "last trade" {
   return FIRST_NOTICE_ROOTS.has(root) ? "first notice" : "last trade";

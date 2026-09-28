@@ -1,4 +1,4 @@
-import { formatMarketPriceWithCurrency, stablePriceFractionDigits, type MarketFormatOptions } from "../../../market-data/market/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDigits, type MarketFormatOptions } from "../../../market-data/market/format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
 
@@ -258,6 +258,12 @@ export function formatChartLegendValue(
     return `${compact}%`;
   }
   if (group.includes("ratio") || trimmed.toLowerCase() === "x") return `${compact}x`;
+  // Generic futures quoted in points or 32nds of par (VX1, TY1) carry no currency.
+  if (trimmed === "points" || trimmed === "32nds") {
+    const priceBasis = trimmed === "points" ? "points" as const : "thirty-seconds" as const;
+    return formatMarketPrice(value, { assetCategory, priceBasis,
+      ...(referencePrice === undefined ? {} : stablePriceOptions("USD", assetCategory, referencePrice)) });
+  }
   if (group.startsWith("derived-unit:")) return `${compact} ${trimmed}`;
   if (group.split(":")[0] === "currency-total") {
     const scale = ([[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const)
