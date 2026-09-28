@@ -5,11 +5,8 @@ import type { YahooQuoteSummaryResult } from "../../../sources/yahoo-finance/typ
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachEarningsCalendarPersistence, loadEarningsCalendar, resetEarningsCalendarPersistence } from "./data/cache";
 import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "./estimate-basis";
-import { projectEarningsCalendarHeadless } from "./headless";
-import { buildEarningsColumns, renderEarningsCell } from "./table";
 import { recordedEarnings } from "./estimate-fixtures.test-data";
 
-const args = { argument: "SYN", rawArgument: "SYN", symbols: ["SYN"], options: { limit: 50 } };
 afterEach(resetEarningsCalendarPersistence);
 const fixtures = [
   ["SONY", "USD", "JPY", 0.33459],
@@ -19,7 +16,7 @@ const fixtures = [
   ["AAPL", "USD", "USD", 1.97754],
 ] as const;
 for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
-  test(`recorded ${symbol} keeps each explicit forecast unit and fiscal end through loading/cache/export`, async () => {
+  test(`recorded ${symbol} keeps each explicit forecast unit and fiscal end through loading and the cache`, async () => {
     let requests = 0;
     const events = await loadYahooEarningsCalendar([symbol], async <T>(url: string) => {
       requests++;
@@ -37,12 +34,9 @@ for (const [symbol, epsCurrency, revenueCurrency, eps] of fixtures) {
     const provider = { getEarningsCalendar: async () => { providerCalls++; return events; } } as never;
     await loadEarningsCalendar(provider, [symbol]);
     const cached = await loadEarningsCalendar(provider, [symbol]);
-    const report = projectEarningsCalendarHeadless(cached, args);
-    expect(report.rows[0]).toMatchObject({ epsEstimate: eps, epsCurrency, revenueCurrency, forecastPeriod: "0q", forecastPeriodEnd: "2026-09-30", estimateBasis: event.estimateBasis });
+    expect(cached.events[0]?.estimateBasis).toEqual(event.estimateBasis);
     expect(providerCalls).toBe(1);
     expect(requests).toBe(1);
-    const cell = renderEarningsCell({ kind: "event", key: symbol, eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === "epsEstimate")!);
-    expect(cell.text).toStartWith(epsCurrency);
   });
 }
 
@@ -135,9 +129,7 @@ test("calendar fallback values retain unknown basis while unrelated trend ranges
   for (const field of ["epsGrowth", "epsAnalysts", "epsRevisionUp30d", "epsRevisionDown30d"] as const) expect(coherentEarningsValue(event, field)).toBeNull();
   expect(earningsEpsChange30d(event)).toBeNull();
   expect(earningsForecastPeriod(event)).toBeNull();
-  const report = projectEarningsCalendarHeadless({ events: [event], fetchedAt: 123, stale: false }, args);
-  expect(report.rows[0]).toMatchObject({ epsEstimate: 5, epsCurrency: null, epsLow: null, epsHigh: 6, epsGrowth: null, epsAnalysts: null, epsChange30d: null, forecastPeriodEnd: null,
-    sourceEstimates: { epsEstimate: 5, epsLow: 1.2, epsGrowth: 0.5, epsAnalysts: 4, epsRevisionUp30d: 2 } });
+  expect(coherentEarningsValue(event, "epsEstimate")).toBe(5);
 });
 
 test("missing averages cannot combine independently sourced range endpoints", () => {
@@ -152,14 +144,10 @@ test("missing averages cannot combine independently sourced range endpoints", ()
   calendar.revenueAverage = undefined;
   calendar.revenueHigh = 120;
   const event = mapYahooEarningsCalendarEvent(source, "SYN")!;
-  const report = projectEarningsCalendarHeadless({ events: [event], fetchedAt: 123, stale: false }, args);
-  expect(report.rows[0]).toMatchObject({ epsEstimate: null, epsLow: null, epsHigh: null,
-    revenueEstimate: null, revenueLow: null, revenueHigh: null,
-    sourceEstimates: { epsLow: 1.2, epsHigh: 6, revenueLow: 80, revenueHigh: 120 },
-    estimateBasis: { epsLow: { sourceValue: 120, sourceCurrency: "GBp" }, epsHigh: { sourceValue: 6, currency: null } } });
-  for (const id of ["epsRange", "revenueRange"]) {
-    expect(renderEarningsCell({ kind: "event", key: "SYN", eventIdx: 0, event }, buildEarningsColumns(240).find(c => c.id === id)!).text).toBe("—");
+  for (const field of ["epsEstimate", "epsLow", "epsHigh", "revenueEstimate", "revenueLow", "revenueHigh"] as const) {
+    expect(coherentEarningsValue(event, field)).toBeNull();
   }
+  expect(event.estimateBasis).toMatchObject({ epsLow: { sourceValue: 120, sourceCurrency: "GBp" }, epsHigh: { sourceValue: 6, currency: null } });
   trend.earningsEstimate!.high = 180;
   const samePeriod = mapYahooEarningsCalendarEvent(source, "SYN")!;
   expect(coherentEarningsValue(samePeriod, "epsLow")).toBe(1.2);

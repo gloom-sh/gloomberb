@@ -108,7 +108,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `GE <tickers>` | Valuation multiple graph |
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
-| `ERN [tickers]` | Earnings calendar; alone, your portfolio and watchlists |
+| `ERN [tickers]` | Earnings: alone, the market's report days with implied and average moves; one ticker, its report history; several, their upcoming reports. Alias `EVTS` |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `CALLS [ticker]` | Earnings call transcripts; alone, every transcribed call |
 | `JOBS [ticker]` | Hiring from the company's careers system; alone, every covered company |
@@ -207,7 +207,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `CRD` | Credit spreads |
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's 5Y spread history and trades |
-| `ERN` | Earnings calendar |
+| `ERN`, `EVTS` | The market's earnings days, implied against past moves |
 | `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
 | `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |

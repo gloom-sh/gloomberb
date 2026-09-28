@@ -10,6 +10,7 @@ import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from ".
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
+import type { EarningsCalendarPayload, EarningsCalendarQuery, EarningsHistoryPayload } from "./earnings";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
   normalizeSavedSearchResponse,
@@ -159,6 +160,18 @@ export class CloudDataApi {
 
   async getCloudEstimateRevisions(symbol: string, exchange: string): Promise<EstimateRevisionsPayload> {
     return this.request<EstimateRevisionsPayload>(`/cloud/research/estimates/${encodeURIComponent(symbol)}?exchange=${encodeURIComponent(exchange)}`, { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudEarningsCalendar(query: EarningsCalendarQuery): Promise<EarningsCalendarPayload> {
+    const params = new URLSearchParams({ from: query.from, to: query.to });
+    if (query.perDay != null) params.set("perDay", String(query.perDay));
+    if (query.symbols?.length) params.set("symbols", query.symbols.join(","));
+    return this.request<EarningsCalendarPayload>(`/cloud/earnings/calendar?${params}`, { signal: AbortSignal.timeout(30_000) });
+  }
+
+  async getCloudEarningsHistory(symbol: string): Promise<EarningsHistoryPayload> {
+    const params = new URLSearchParams({ symbol, limit: "13" });
+    return this.request<EarningsHistoryPayload>(`/cloud/earnings/history?${params}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudQuote(
