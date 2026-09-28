@@ -273,7 +273,7 @@ export function ScatterTrailSurface({
     selectedHead ? displayWidth(axisValue(selectedHead.y)) : 0,
   );
   const gutter = gutterLabelWidth + 1;
-  const plotWidth = Math.max(1, width - gutter);
+  const plotWidth = Math.max(1, Math.floor(width - gutter));
   const cell = (ratio: number, size: number) => Math.max(0, Math.min(size - 1, Math.round(ratio * (size - 1))));
   const axisItems = layoutTrailAxis({
     width: plotWidth,

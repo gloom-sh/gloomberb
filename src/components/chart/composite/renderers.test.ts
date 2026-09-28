@@ -65,6 +65,18 @@ describe("composite chart renderers", () => {
     expect(rows[7]!.slice(28, 30)).toBe("██");
   });
 
+  test("a fractional pane width, as the web terminal gives, draws whole cells", () => {
+    const scene = buildCompositeChartScene(
+      [series("first", "line", [5, 6, 5], "left", "#00ff66")],
+      [{ id: "main" }],
+      { width: 31, height: 9 },
+    )!;
+
+    const rows = renderCompositePanelText({ ...scene.panels[0]!, height: 7.5 }, 30.5, null, null);
+    expect(rows).toHaveLength(7);
+    expect(rows.every((row) => row.length === 30)).toBe(true);
+  });
+
   test("rasterizes same-date columns as separate colored bars", () => {
     const scene = buildCompositeChartScene(
       [
