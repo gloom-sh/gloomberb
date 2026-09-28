@@ -149,6 +149,29 @@ describe("form modal", () => {
     expect(frame()).not.toContain("Title");
   });
 
+  test("Ctrl+N and Ctrl+P move between fields, as they move through the bar's lists", async () => {
+    const submitted: unknown[] = [];
+    await renderForm((registry) => registerCommand(registry, {
+      id: "save-note",
+      wizard: [
+        { key: "title", label: "Title", type: "text" },
+        { key: "tag", label: "Tag", type: "text", required: false },
+      ],
+      execute: async (values) => { submitted.push(values); },
+    }), { kind: "plugin-command", commandId: "save-note" });
+    await waitForForm("Title");
+
+    await type("Q3");
+    await press({ name: "n", ctrl: true, sequence: "\x0e" });
+    await type("earnings");
+    await press({ name: "p", ctrl: true, sequence: "\x10" });
+    await type(" review");
+    await press(CTRL_S);
+    await settle();
+
+    expect(submitted).toEqual([{ title: "Q3 review", tag: "earnings" }]);
+  });
+
   test("a required field stops the submit and says which one", async () => {
     const submitted: unknown[] = [];
     await renderForm((registry) => registerCommand(registry, {

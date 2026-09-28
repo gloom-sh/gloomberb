@@ -22,7 +22,12 @@ import type {
   CommandBarFieldValue,
   CommandBarWorkflowField,
 } from "../command-bar/workflow/types";
-import { isPlainTab, isWorkflowSubmitShortcut } from "../command-bar/keyboard-handlers";
+import {
+  isMoveDownShortcut,
+  isMoveUpShortcut,
+  isPlainTab,
+  isWorkflowSubmitShortcut,
+} from "../command-bar/keyboard-handlers";
 import { MultiSelectFieldDialog, TuiSelectFieldDialog } from "../pane-settings-dialog/field-dialogs";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
@@ -75,6 +80,14 @@ function isCommit(event: KeyEventLike): boolean {
 
 function isSpace(event: KeyEventLike): boolean {
   return event.name === "space" || event.sequence === " ";
+}
+
+/** Up/Down, or Ctrl+P/Ctrl+N as in the bar's lists: the field above or below. */
+function fieldStep(event: KeyEventLike): number {
+  if ((event.name === "up" || event.name === "down") && (event.ctrl || event.meta || event.alt)) return 0;
+  if (isMoveUpShortcut(event)) return -1;
+  if (isMoveDownShortcut(event)) return 1;
+  return 0;
 }
 
 function consume(event: KeyEventLike): void {
@@ -445,9 +458,10 @@ export function FormModalContent({
       setFocus(moveFormFocus(current, { fieldId: activeField?.id ?? null, onSubmit: onButton }, event.shift ? -1 : 1, true));
       return;
     }
-    if (!inTextarea && !event.ctrl && !event.meta && !event.alt && (event.name === "up" || event.name === "down")) {
+    const delta = inTextarea ? 0 : fieldStep(event);
+    if (delta !== 0) {
       consume(event);
-      setFocus(moveFormFocus(current, { fieldId: activeField?.id ?? null, onSubmit: onButton }, event.name === "up" ? -1 : 1, false));
+      setFocus(moveFormFocus(current, { fieldId: activeField?.id ?? null, onSubmit: onButton }, delta, false));
       return;
     }
     if (!desktop && (event.name === "pageup" || event.name === "pagedown")) {
