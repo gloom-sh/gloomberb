@@ -431,6 +431,27 @@ describe("createAppRemoteController", () => {
     expect(response.ok).toBe(true);
     expect(invokedUiActions).toContainEqual({ nodeId: "ui:done", action: "press", input: undefined });
 
+    // An open form covers the panes: its Cancel is pressed, not a pane's
+    // registered earlier, and every call reports the form.
+    setUiNodes([
+      { id: "ui:pane-cancel", role: "button", label: "Cancel", actions: ["press"] },
+      { id: "ui:form-cancel", role: "button", label: "Cancel", actions: ["press"], metadata: { scope: "form" } },
+      { id: "ui:form", role: "form", label: "New Watchlist", actions: ["cancel", "submit"], metadata: { scope: "form", kind: "form", title: "New Watchlist" } },
+    ]);
+    const formResponse = await controller.handle({
+      type: "call",
+      operation: "ui.invokeMatching",
+      input: { role: "button", label: "Cancel" },
+    });
+    expect(invokedUiActions.at(-1)).toMatchObject({ nodeId: "ui:form-cancel", action: "press" });
+    expect(formResponse.ok && formResponse.state?.form).toEqual({
+      open: true,
+      nodeId: "ui:form",
+      actions: ["cancel", "submit"],
+      kind: "form",
+      title: "New Watchlist",
+    });
+
     const directResponse = await controller.handle({
       type: "call",
       operation: "ui.invoke",

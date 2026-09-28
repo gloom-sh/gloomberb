@@ -5,6 +5,7 @@ import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { t } from "../../i18n";
 import type { PluginRegistry } from "../../plugins/registry";
+import { RemoteUiScope } from "../../remote/semantic-tree";
 import { useAppDispatch, useAppSelector, useAppStateRef } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
 import { useDialog, type AlertContext } from "../../ui/dialog";
@@ -121,7 +122,8 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
       void dialog.alert({
         closeOnClickOutside,
         style: { width },
-        content: (context: AlertContext) => render(context, runtime),
+        // Its buttons are the ones remote control presses first while it is open.
+        content: (context: AlertContext) => <RemoteUiScope scope="form">{render(context, runtime)}</RemoteUiScope>,
       }).finally(() => {
         if (openRef.current !== handle) return;
         openRef.current = null;

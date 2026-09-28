@@ -32,6 +32,7 @@ import { MultiSelectFieldDialog, TuiSelectFieldDialog } from "../pane-settings-d
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useViewport, type KeyEventLike } from "../../react/input";
+import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { useThemeColors } from "../../theme/theme-context";
 import {
   Box,
@@ -100,6 +101,31 @@ function fieldStep(event: KeyEventLike): number {
 function consume(event: KeyEventLike): void {
   event.preventDefault();
   event.stopPropagation();
+}
+
+/** The form as remote control reads it: every field, shown or not, with its raw value. */
+function formRemoteMetadata(route: FormRoute, step: FormStep | null): Record<string, unknown> {
+  if (step) {
+    return { scope: "form", kind: "custom", title: step.title, fields: [], error: null, pending: false, submitLabel: null };
+  }
+  const visible = new Set(getVisibleWorkflowFields(route.fields, route.values).map((field) => field.id));
+  return {
+    scope: "form",
+    kind: "form",
+    title: t(route.title),
+    fields: route.fields.map((field) => ({
+      id: field.id,
+      label: t(field.label),
+      type: field.type,
+      required: field.required === true,
+      visible: visible.has(field.id),
+      value: route.values[field.id] ?? null,
+      ...("options" in field ? { options: field.options.map((option) => ({ value: option.value, label: t(option.label) })) } : {}),
+    })),
+    error: route.error ? t(route.error) : null,
+    pending: route.pending,
+    submitLabel: t(getWorkflowSubmitLabel(route)),
+  };
 }
 
 /** A remote value checked against the field, the way a person could have set it. */
@@ -501,6 +527,17 @@ export function FormModalContent({
     }
     if (activeField) void openField(activeField);
   }, { allowEditable: true, enabled: step === null });
+
+  // What remote control reads as app://form, and a way to cancel or send it.
+  useRemoteUiNode({
+    role: "form",
+    label: step ? step.title : t(route.title),
+    actions: {
+      cancel: dismiss,
+      submit: step ? undefined : () => { void submit(); },
+    },
+    getMetadata: () => formRemoteMetadata(routeRef.current, step),
+  });
 
   if (step) {
     const stepSubtitleRows = step.subtitle ? wrapTextLines(step.subtitle, contentWidth).length : 0;

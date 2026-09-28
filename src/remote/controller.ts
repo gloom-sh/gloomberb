@@ -61,7 +61,8 @@ interface AppRemoteControllerOptions {
   isDialogOpen?: () => boolean;
 }
 
-const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar"];
+// A command with a wizard closes the bar and opens its form, so every call says whether one is open.
+const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
 const MAX_MARKET_DATA_SEARCH_RESULTS = 20;
 const MAX_MARKET_DATA_FILINGS = 20;
 const MAX_MARKET_DATA_EARNINGS_SYMBOLS = 25;
@@ -292,7 +293,11 @@ export function createAppRemoteController({
       if (node.disabled) return false;
       return true;
     });
-    const node = typeof index === "number" ? candidates[index] : candidates[0];
+    // An open form or confirm covers every pane, so its own controls come
+    // first: its Cancel, not a pane's Cancel behind it.
+    const inForm = candidates.filter((node) => node.metadata?.scope === "form");
+    const matches = inForm.length > 0 ? inForm : candidates;
+    const node = typeof index === "number" ? matches[index] : matches[0];
     if (!node) throw new Error("No matching semantic UI node is visible.");
     const result = await uiRegistry?.invoke(node.id, action, input.input);
     return getAfterMutationSummary({ invokedNode: node, result });

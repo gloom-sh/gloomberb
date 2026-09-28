@@ -21,6 +21,7 @@ export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://commands", description: "Registered command-bar commands." },
   { uri: "app://command-bar", description: "Current command-bar state and semantic result rows." },
   { uri: "app://command-bar/results", description: "Current semantic command-bar result rows." },
+  { uri: "app://form", description: "The open form or confirm: kind, title, fields with values and options, error, pending state, and submit label; { open: false } when none is open." },
   { uri: "app://capabilities", description: "Registered plugin capability manifests." },
   { uri: "app://accounts", description: "Broker profiles and their accounts: net liquidation, cash by currency, margin requirements, margin loan, leverage, day and unrealized P&L, with source and as-of times." },
   { uri: "app://auth", description: "What the client believes about its cloud session: credential present, checked, cached user plan and verification. No secrets." },
@@ -52,7 +53,7 @@ const paneIdInput = objectSchema({ paneId: requiredStringSchema }, ["paneId"]);
 export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op(
     "app.openCommandBar",
-    "Open the command bar with an optional query and optional mode.",
+    "Open the command bar with an optional query and optional mode. Fails while a dialog (a form, a confirm, pane settings) is open.",
     "{ query?: string, mode?: 'command' | 'ticker' | 'default' }",
     "local-write",
     objectSchema({
@@ -70,7 +71,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "app.search",
-    "Open command-bar search without requiring UI prefix syntax.",
+    "Open command-bar search without requiring UI prefix syntax. Fails while a dialog is open.",
     "{ mode?: 'command' | 'ticker' | 'default', query?: string }",
     "local-write",
     objectSchema({
@@ -286,7 +287,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ui.invokeMatching",
-    "Invoke an action on the first semantic UI node matching role, label, index, or metadata.",
+    "Invoke an action on the first semantic UI node matching role, label, index, or metadata. While a form or confirm is open, its own nodes (metadata.scope 'form') match first.",
     "{ role?: string, label?: string, contains?: string, index?: number, action?: string, input?: any, metadata?: object }",
     "local-write",
     objectSchema({
@@ -313,6 +314,7 @@ export const REMOTE_AGENT_HELP = {
   resources: [
     { uri: "app://command-bar", use: "Current command-bar query, open state, selected row, and semantic result rows." },
     { uri: "app://command-bar/results", use: "Just the visible command-bar result/list rows." },
+    { uri: "app://form", use: "The open form or confirm, with field ids, values, options, error and pending state. Every call includes it as `form`." },
     { uri: "ui://tree", use: "Low-level live semantic controls; use when no app-level operation exists." },
     { uri: "app://panes", use: "Pane instances, placement, focus, and runtime state." },
   ],
@@ -340,6 +342,15 @@ export const REMOTE_AGENT_HELP = {
       ],
     },
     {
+      goal: "Fill and submit a form",
+      requests: [
+        { type: "call", operation: "app.search", input: { mode: "command", query: "New Watchlist" } },
+        { type: "call", operation: "commandBar.activateResult", input: { label: "New Watchlist" } },
+        { type: "call", operation: "ui.invokeMatching", input: { role: "form-field", metadata: { fieldId: "name" }, action: "setValue", input: "Semis" } },
+        { type: "call", operation: "ui.invokeMatching", input: { role: "form", action: "submit" } },
+      ],
+    },
+    {
       goal: "Activate a visible semantic control without knowing its node id",
       request: { type: "call", operation: "ui.invokeMatching", input: { role: "button", label: "Done", action: "press" } },
     },
@@ -364,6 +375,9 @@ export const REMOTE_AGENT_HELP = {
     "Capability manifests are for plugin services; UI control should rely on app-level operations and shared semantic UI nodes so plugins remain remote-agnostic.",
     "If an operation changes UI, request include: ['commandBar'] or use batch include to avoid a follow-up get.",
     "For charts, use visible semantic chart nodes with actions such as moveCursor, press, drag, release, and scroll.",
+    "A command with hasWizard in app://commands opens a form in a centered dialog when activated, and the command bar closes. Read `form` in the response, set fields with ui.invokeMatching { role: 'form-field', metadata: { fieldId }, action: 'setValue' }, then send with { role: 'form', action: 'submit' } or close with action 'cancel'. Selects take an option value, toggles a boolean; neither needs to be opened.",
+    "While a dialog is open, app.openCommandBar and app.search fail; close it first (a form or confirm with { role: 'form', action: 'cancel' }).",
+    "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, and read them from app://pane-settings/{paneId}.",
     "Use ui.invokeMatching only after checking app-level operations; it is intentionally generic and depends on visible semantic controls.",
   ],
 };

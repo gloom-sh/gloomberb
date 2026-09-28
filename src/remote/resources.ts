@@ -6,6 +6,7 @@ import type { PaneRuntimeState } from "../core/state/app/state";
 import { setPaneSettings } from "../pane-settings";
 import type { LayoutConfig } from "../types/config";
 import { commandBarResultsFromNodes, commandBarSnapshot } from "./command-bar";
+import { formSnapshot } from "./form";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
 import type { RemoteIncludedState, RemoteStateInclude } from "./types";
@@ -80,6 +81,7 @@ export function createRemoteResources({
         config: state.config,
         panes: state.config.layout.instances.map((pane) => paneSnapshot(state, pane)),
         commandBar: commandBarSnapshot(state, uiNodes),
+        form: formSnapshot(uiNodes),
         ui: uiNodes,
         schema: remoteControlSchema(),
         help: REMOTE_AGENT_HELP,
@@ -132,6 +134,7 @@ export function createRemoteResources({
     }
     if (resource === "app://command-bar") return commandBarSnapshot(state, uiNodes);
     if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiNodes);
+    if (resource === "app://form") return formSnapshot(uiNodes);
     if (resource === "app://capabilities") return pluginRegistry.capabilities.manifests();
     if (resource === "app://auth") return apiClient.describeAuthState();
     if (resource === "app://accounts") return brokerAccountsResource(state);
@@ -172,6 +175,7 @@ export function createRemoteResources({
         ? commandBar
         : { results: commandBar.results };
     }
+    if (included.includes("form")) result.form = formSnapshot(uiNodes);
     if (included.includes("ui")) result.ui = uiNodes;
     if (included.includes("schema")) result.schema = remoteControlSchema();
     if (included.includes("help")) result.help = REMOTE_AGENT_HELP;

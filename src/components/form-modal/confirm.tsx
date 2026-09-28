@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
+import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { useViewport, type KeyEventLike } from "../../react/input";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
@@ -115,6 +116,26 @@ export function ConfirmModalContent({
     // Two buttons and nothing to type: Tab has nowhere to go.
     if (event.name === "tab") event.preventDefault();
   }, { allowEditable: true });
+
+  // What remote control reads as app://form, and a way to cancel or confirm.
+  useRemoteUiNode({
+    role: "form",
+    label: t(confirm.title),
+    actions: {
+      cancel: dismiss,
+      submit: () => { void run(); },
+    },
+    getMetadata: () => ({
+      scope: "form",
+      kind: "confirm",
+      title: t(confirm.title),
+      body: confirm.body.map((line) => t(line)),
+      fields: [],
+      error: error ? t(error) : null,
+      pending,
+      submitLabel: t(confirm.confirmLabel),
+    }),
+  });
 
   const modalWidth = Math.min(width, Math.max(1, viewport.width - 2));
   const contentWidth = Math.max(10, modalWidth - TERMINAL_DIALOG_INSET);

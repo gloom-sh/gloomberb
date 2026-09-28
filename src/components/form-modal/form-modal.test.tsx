@@ -7,6 +7,7 @@ import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import type { PluginRegistry } from "../../plugins/registry";
 import { testRender } from "../../renderers/opentui/test-utils";
+import { formSnapshot } from "../../remote/form";
 import { createRemoteUiRegistry } from "../../remote/semantic-tree";
 import type { AppContextStoreValue } from "../../state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
@@ -500,11 +501,27 @@ describe("form modal", () => {
       await remoteRegistry.invoke(fieldNode("mode").id, "setValue", "live");
       await remoteRegistry.invoke(fieldNode("account").id, "setValue", "DU1");
     });
+
+    // The form as a whole, and its buttons, are marked as the form's.
+    const form = formSnapshot(remoteRegistry.snapshot());
+    expect(form).toMatchObject({
+      open: true,
+      kind: "form",
+      title: "Connect Account",
+      fields: [
+        { id: "mode", type: "select", value: "live", visible: true, options: [{ value: "paper", label: "Paper" }, { value: "live", label: "Live" }] },
+        { id: "account", type: "text", value: "DU1", visible: true },
+      ],
+      error: null,
+      pending: false,
+    });
+    expect(remoteRegistry.snapshot().find((node) => node.role === "button" && node.label === "Cancel")?.metadata?.scope).toBe("form");
     await act(async () => {
-      await remoteRegistry.invoke(fieldNode("account").id, "submit");
+      await remoteRegistry.invoke((form as { nodeId: string }).nodeId, "submit");
     });
     await settle();
     expect(submitted).toEqual([{ mode: "live", account: "DU1" }]);
+    expect(formSnapshot(remoteRegistry.snapshot())).toEqual({ open: false });
   });
 
   function registerCompareTemplate(registry: PluginRegistry) {
