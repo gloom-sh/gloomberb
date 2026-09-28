@@ -62,7 +62,15 @@ export function EarningsBoard({ focused, width, height, scopedSymbols }: {
   const { navigateTicker } = usePluginTickerActions();
   const { createPaneFromTemplate } = usePluginAppActions();
   const tickers = useAppSelector((state) => state.tickers);
-  const owned = useMemo(() => ownershipBySymbol(tickers.values()), [tickers]);
+  // Ticker records change for many reasons; the board reloads only when the held and watched names do.
+  const ownedKey = useMemo(
+    () => [...ownershipBySymbol(tickers.values())].map(([symbol, kind]) => `${symbol}:${kind}`).sort().join(","),
+    [tickers],
+  );
+  const owned = useMemo(
+    () => new Map(ownedKey ? ownedKey.split(",").map((entry) => entry.split(":") as [string, "held" | "watched"]) : []),
+    [ownedKey],
+  );
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("mineOnly", false);
   const [order, setOrder] = usePluginPaneState<Order>("order", "cap");
   const [sort, setSort] = usePluginPaneState<BoardSort>("sort", { column: "cap", direction: "desc" });

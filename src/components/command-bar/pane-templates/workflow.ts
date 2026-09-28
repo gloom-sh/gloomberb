@@ -143,6 +143,11 @@ export function useCommandBarPaneTemplateActions({
     }
 
     if (argKind === "ticker-list") {
+      // An optional list alone means none (ERN alone is the market board), not the active ticker.
+      if (!trimmedArg && template.shortcut?.argOptional) {
+        await openPaneTemplateDirect(template);
+        return;
+      }
       const trimmedList = trimmedArg || normalizeTickerInput(activeTickerSymbol, undefined) || "";
       if (!trimmedList || /[,\n]\s*$/.test(trimmedList)) {
         openPaneTemplateWorkflow(template, { arg: trimmedArg });
