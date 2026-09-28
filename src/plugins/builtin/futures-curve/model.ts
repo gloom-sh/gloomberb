@@ -170,7 +170,9 @@ const DAY_MS = 86_400_000;
 export function curveAsOfDate(value: unknown, now = new Date()): string {
   const date = typeof value === "string" ? value.trim() : "";
   if (!date || date.toLowerCase() === "latest") return "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) {
+  const time = Date.parse(`${date}T00:00:00Z`);
+  // A month or day out of range parses to NaN or rolls over; both are refused.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
     throw new Error("Use an as-of date in YYYY-MM-DD format, or latest.");
   }
   if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
@@ -179,6 +181,21 @@ export function curveAsOfDate(value: unknown, now = new Date()): string {
 
 export function curveLookbackDate(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+type ArchivedRow = FuturesCurveAsOfPayload["contracts"][number];
+
+/**
+ * Whether a row's price is older than its curve's session. The archive marks
+ * a row stale when it has no price made on the requested date, which on a
+ * weekend, a holiday or today before the settlement is every row. The curve's
+ * session is its newest row, so a row is stale when it is older than that or
+ * carries an earlier price, which the archive dates before the row.
+ */
+function archivedRowStale(row: ArchivedRow, curve: FuturesCurveAsOfPayload): boolean {
+  const session = curve.asOf;
+  if (!session || session >= curve.date) return row.stale;
+  return row.tradeDate < session || row.asOf.slice(0, 10) < row.tradeDate;
 }
 
 /**
@@ -190,17 +207,21 @@ export function curveLookbackDate(date: string, days: number): string {
  */
 export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayload,
   lookbacks: { "1W": FuturesCurveAsOfPayload | null; "1M": FuturesCurveAsOfPayload | null }, fetchedAt: string): FuturesCurvePayload {
-  const rowDate = (row: FuturesCurveAsOfPayload["contracts"][number]) => row.stale ? row.asOf.slice(0, 10) : row.tradeDate;
-  const contracts: FuturesContract[] = curve.contracts.flatMap((row) => row.expiration ? [{
-    symbol: row.symbol, label: row.label, expiration: row.expiration, price: row.price, change: null, asOf: rowDate(row),
-    currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
-    openInterest: row.openInterest, delayMinutes: null, stale: row.stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
-  }] : []).sort((a, b) => a.expiration.localeCompare(b.expiration));
+  const rowDate = (row: ArchivedRow, stale: boolean) => stale ? row.asOf.slice(0, 10) : row.tradeDate;
+  const contracts: FuturesContract[] = curve.contracts.flatMap((row) => {
+    if (!row.expiration) return [];
+    const stale = archivedRowStale(row, curve);
+    return [{
+      symbol: row.symbol, label: row.label, expiration: row.expiration, price: row.price, change: null, asOf: rowDate(row, stale),
+      currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
+      openInterest: row.openInterest, delayMinutes: null, stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
+    }];
+  }).sort((a, b) => a.expiration.localeCompare(b.expiration));
   const ghosts = (["1W", "1M"] as const).map((label) => {
     const past = lookbacks[label];
     return { label, requestedDate: curveLookbackDate(curve.date, label === "1W" ? 7 : 30), asOf: past?.asOf ?? null,
-      points: (past?.contracts ?? []).flatMap((row) => row.expiration
-        ? [{ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: rowDate(row) }] : []) };
+      points: past ? past.contracts.flatMap((row) => row.expiration
+        ? [{ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: rowDate(row, archivedRowStale(row, past)) }] : []) : [] };
   });
   // The front pair on the curve's own session; carried prices do not make a spread.
   const [front, next] = contracts.filter((row) => !row.stale);

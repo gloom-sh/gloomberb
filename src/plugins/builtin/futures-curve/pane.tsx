@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
+import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
@@ -81,8 +81,10 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   usePaneTitle(`CTM ${root}`);
   const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
   const newest = data ? newestQuote(data.contracts) : null;
+  // A past curve is named by the session it holds: a weekend or holiday date shows the session before it.
   const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: curveGhostColors(colors) }, horizon,
-    requestedDate ? Date.parse(`${requestedDate}T00:00:00Z`) : Date.now(), requestedDate || undefined) : [], [data, colors, horizon, requestedDate]);
+    requestedDate ? Date.parse(`${requestedDate}T00:00:00Z`) : Date.now(), requestedDate ? data.asOf ?? requestedDate : undefined) : [],
+  [data, colors, horizon, requestedDate]);
   const changes = useMemo<CurveContractChanges>(() => data ? curveContractChanges(data) : new Map(), [data]);
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.columnId, sort.direction, changes), [data, sort, changes]);
   const curveTab = tab === "curve";
@@ -104,8 +106,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       detail: [data.slope.state, curveRank(data.slope.percentile, data.slope.samples), slopeDate].filter(Boolean).join(" · ") },
   ] : [];
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
-  // The query bar takes one row below the tabs.
-  const bodyHeight = Math.max(1, height - tabRows - 1);
+  // The query bar takes one row below the tabs, and a refused date one more.
+  const bodyHeight = Math.max(1, height - tabRows - 1 - (dateError ? 1 : 0));
   const columns = curveTab ? CURVE_COLUMNS : COLUMNS;
   const formatValue = useCallback((value: number) => curvePrice(value, root), [root]);
   const formatChange = useCallback((value: number) => curveChangeText(value, root), [root]);
@@ -138,7 +140,9 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       setDateError(error instanceof Error ? error.message : String(error));
     }
   };
-  usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused, notices: [...dateError ? [dateError] : [], ...data?.gaps ?? []] });
+  // A past date with no archived curve says why in the body, not behind the warning.
+  const emptyPast = !!requestedDate && !!data && !data.contracts.length;
+  usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused, notices: emptyPast ? [] : data?.gaps ?? [] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
     hints: [
@@ -189,8 +193,10 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       },
       onSubmit: selectDate,
     }]} meta={requestedDate && data?.asOf && data.asOf !== requestedDate ? `as of ${data.asOf}` : undefined} />
+    {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null}
-      empty={!!data && !data.contracts.length} subject="futures curve">
+      empty={!!data && !data.contracts.length} subject="futures curve"
+      emptyTitle={emptyPast ? "No archived curve on this date." : undefined} emptyMessage={emptyPast ? data!.gaps.join(" ") || undefined : undefined}>
       {data ? <DataTableView columns={columns} items={tableRows} focused={focused}
         rootWidth={width} rootHeight={bodyHeight}
         selection={{ kind: "id", selectedId, getId: contractKey, onChange: setSelected }}

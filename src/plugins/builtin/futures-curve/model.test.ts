@@ -149,6 +149,20 @@ describe("past curves", () => {
     expect(futuresCurveSeries(curve, undefined, "all", Date.parse("2020-03-16"), "2020-03-16")[0]?.label).toBe("2020-03-16");
   });
 
+  test("date a weekend or holiday curve by the session before it, where only carried prices are stale", () => {
+    // The archive marks every row stale on a date nothing traded; a carried price is dated before its row.
+    const carried = { stale: true, tradeDate: "2020-03-13", asOf: "2020-03-11T00:00:00.000Z" };
+    const curve = archivedFuturesCurve("VX", { ...payload("2020-03-14", [
+      row("VX/H0", "2020-03-18", 53.425, { stale: true, tradeDate: "2020-03-13", asOf: "2020-03-13T00:00:00.000Z" }),
+      row("VX/J0", "2020-04-15", 44.875, { stale: true, tradeDate: "2020-03-13", asOf: "2020-03-13T00:00:00.000Z" }),
+      row("VX/K0", "2020-05-20", 36.1, carried), row("VX/M0", "2020-06-17", 33.2, carried)]), asOf: "2020-03-13" },
+    { "1W": null, "1M": null }, "2020-03-15T00:00:00.000Z");
+    expect(curve.contracts.map((contract) => [contract.symbol, contract.asOf, contract.stale])).toEqual([
+      ["VX/H0", "2020-03-13", false], ["VX/J0", "2020-03-13", false], ["VX/K0", "2020-03-11", true], ["VX/M0", "2020-03-11", true],
+    ]);
+    expect(curve.slope).toMatchObject({ frontSymbol: "VX/H0", nextSymbol: "VX/J0", state: "backwardation" });
+  });
+
   test("take a past date or latest, and refuse a future or malformed one", () => {
     const now = new Date("2026-09-28T12:00:00Z");
     expect(curveAsOfDate("", now)).toBe("");
@@ -156,5 +170,6 @@ describe("past curves", () => {
     expect(curveAsOfDate("2020-03-16", now)).toBe("2020-03-16");
     expect(() => curveAsOfDate("2026-09-29", now)).toThrow("future");
     expect(() => curveAsOfDate("2020-02-30", now)).toThrow("YYYY-MM-DD");
+    expect(() => curveAsOfDate("2020-13-01", now)).toThrow("YYYY-MM-DD");
   });
 });
