@@ -1,4 +1,4 @@
-import { formatFuturesGeneric, futuresGenericCaption, parseFuturesGeneric, type FuturesGeneric } from "../../../utils/futures-generic";
+import { formatFuturesGeneric, futuresGenericCaption, futuresGenericListing, isSameFuturesGeneric, type FuturesGeneric } from "../../../utils/futures-generic";
 import {
   CHART_SPEC_VERSION,
   type ChartPanelSpec,
@@ -27,6 +27,7 @@ import {
 import {
   CANONICAL_EXCHANGE_ALIASES,
   canonicalExchange,
+  parsePublicTickerKey,
   publicTickerKey,
 } from "../../../utils/exchanges";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
@@ -196,7 +197,8 @@ export function chartSeriesLabel(series: ChartSeriesSpec): string {
   if (series.label?.trim()) return series.label.trim();
   if (series.source.kind === "economic") return `FRED ${series.source.seriesId}`;
   if (series.source.kind === "capability") return series.source.seriesId;
-  const generic = getTimeSeriesField(series.source.fieldId)?.unitGroup === "price" ? parseFuturesGeneric(series.source.instrument.symbol) : null;
+  const generic = getTimeSeriesField(series.source.fieldId)?.unitGroup === "price"
+    ? futuresGenericListing(series.source.instrument.symbol, series.source.instrument.exchange) : null;
   if (generic) return futuresGenericCaption(generic);
   const instrument = publicTickerKey(
     series.source.instrument.symbol,
@@ -209,7 +211,7 @@ export function chartSeriesLabel(series: ChartSeriesSpec): string {
 /** The chart's first generic future (CL1), whose roll and adjustment the pane's controls show. */
 export function chartFuturesGeneric(spec: ChartSpec): FuturesGeneric | null {
   for (const entry of spec.series) {
-    const generic = entry.source.kind === "security" ? parseFuturesGeneric(entry.source.instrument.symbol) : null;
+    const generic = entry.source.kind === "security" ? futuresGenericListing(entry.source.instrument.symbol, entry.source.instrument.exchange) : null;
     if (generic) return generic;
   }
   return null;
@@ -220,7 +222,7 @@ export function setChartFuturesGeneric(spec: ChartSpec, change: Partial<Pick<Fut
   let changed = false;
   const series = spec.series.map((entry) => {
     if (entry.source.kind !== "security") return entry;
-    const generic = parseFuturesGeneric(entry.source.instrument.symbol);
+    const generic = futuresGenericListing(entry.source.instrument.symbol, entry.source.instrument.exchange);
     if (!generic) return entry;
     const symbol = formatFuturesGeneric({ ...generic, ...change });
     if (symbol === generic.ticker) return entry;
@@ -708,6 +710,11 @@ export function rebindResearchChartSpec(spec: ChartSpec, previous: string | null
   // A restored chart can already contain the target after its old context was
   // lost. Do not replace an unrelated first comparison in that case.
   if (securityKeys.includes(nextKey)) return spec;
+  // The Roll and Adjust controls rewrite a generic (CL1 to CL1F5R); it still
+  // follows the same ticker, and moves on only when the ticker does.
+  const followed = parsePublicTickerKey(previousKey ?? nextKey);
+  const variant = securityKeys.find((key) => isSameFuturesGeneric(parsePublicTickerKey(key), followed));
+  if (variant) return !previousKey || previousKey === nextKey ? spec : rebindChartSecuritySymbol(spec, variant, nextKey);
   const primary = securityKeys[0];
   return primary ? rebindChartSecuritySymbol(spec, primary, nextKey) : spec;
 }

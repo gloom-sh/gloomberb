@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildPriceChartPreset, chartFuturesGeneric, setChartFuturesGeneric } from "../plugins/builtin/chart-composer/presets";
-import { formatFuturesGeneric, futuresGenericCaption, futuresGenericRollFromValue, parseFuturesGeneric } from "./futures-generic";
+import { rebindFollowChartSpec } from "../plugins/builtin/chart-composer/follow-binding";
+import { buildPriceChartPreset, chartFuturesGeneric, rebindResearchChartSpec, setChartFuturesGeneric } from "../plugins/builtin/chart-composer/presets";
+import { formatFuturesGeneric, futuresGenericCaption, futuresGenericListing, futuresGenericRollFromValue, parseFuturesGeneric } from "./futures-generic";
 
 describe("generic futures tickers", () => {
   test("parse the root or Bloomberg alias, position, roll and adjustment, and nothing else", () => {
@@ -9,6 +10,11 @@ describe("generic futures tickers", () => {
     expect(parseFuturesGeneric("SR31")).toMatchObject({ root: "SR3", position: 1 });
     for (const value of ["AAPL", "CL=F", "CLZ26", "CL0", "CL25", "CL1D29", "BRK.B"]) expect(parseFuturesGeneric(value)).toBeNull();
     expect(formatFuturesGeneric({ prefix: "ES", position: 1, roll: { rule: "fixed-day", day: 15 }, adjust: "difference" })).toBe("ES1D15A");
+    // Only on its root's venue or none, as Gloom Cloud decides: PL8 on the ASX is a listed company.
+    expect(futuresGenericListing("CL1", "NYMEX")?.root).toBe("CL");
+    expect(futuresGenericListing("VX1:CFE")?.root).toBe("VX");
+    expect(futuresGenericListing("PL8", "ASX")).toBeNull();
+    expect(chartFuturesGeneric(buildPriceChartPreset("PL8:ASX"))).toBeNull();
   });
 
   test("caption a generic as a rolling series with its rule, never as one contract", () => {
@@ -23,5 +29,15 @@ describe("generic futures tickers", () => {
     const rolled = setChartFuturesGeneric(spec, { roll: futuresGenericRollFromValue("f5")!, adjust: "ratio" });
     expect(chartFuturesGeneric(rolled)?.ticker).toBe("CL1F5R");
     expect(setChartFuturesGeneric(buildPriceChartPreset("AAPL"), { adjust: "ratio" })).toEqual(buildPriceChartPreset("AAPL"));
+  });
+
+  test("a chart following CL1 keeps the rule it was switched to until the ticker changes", () => {
+    const spec = setChartFuturesGeneric(buildPriceChartPreset("CL1:NYM"), { adjust: "ratio" });
+    expect(rebindResearchChartSpec(spec, "CL1:NYM", "CL1:NYM")).toBe(spec);
+    expect(chartFuturesGeneric(rebindResearchChartSpec(spec, "CL1:NYM", "CL2:NYM"))?.ticker).toBe("CL2");
+    const cl1 = { symbol: "CL1", exchange: "NYM" };
+    const ids = spec.series.map((series) => series.id);
+    expect(rebindFollowChartSpec(spec, cl1, cl1, ids)).toBe(spec);
+    expect(chartFuturesGeneric(rebindFollowChartSpec(spec, cl1, { symbol: "GC1", exchange: "CMX" }, ids))?.ticker).toBe("GC1");
   });
 });

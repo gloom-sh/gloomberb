@@ -7,6 +7,8 @@
  * ratio-adjusts, A difference-adjusts, neither leaves prices as traded.
  */
 
+import { parsePublicTickerKey } from "./exchanges";
+
 export type FuturesGenericRoll =
   | { rule: "open-interest" }
   | { rule: "first-notice"; days: number }
@@ -24,13 +26,20 @@ export interface FuturesGeneric {
   adjust: FuturesGenericAdjust;
 }
 
-/** Roots Gloom Cloud archives daily. */
-const ROOTS = new Set([
-  "ES", "NQ", "RTY", "YM", "6E", "6J", "6B", "6A", "6C", "6S", "SR3", "ZQ", "ZT", "ZF", "ZN", "ZB", "UB",
-  "CL", "BZ", "NG", "RB", "HO", "B0", "TTF", "GC", "SI", "HG", "PL", "PA", "ALI", "HRC", "UX",
-  "ZC", "ZS", "ZW", "ZM", "ZL", "KE", "ZO", "ZR", "KC", "SB", "CC", "CT", "OJ", "LE", "GF", "HE", "LBR", "DC", "CSC",
-  "GD", "BTC", "ETH", "SOL", "XRP", "VX",
-]);
+/** Roots Gloom Cloud archives daily, by the venue that lists them. */
+const ROOT_VENUES: Readonly<Record<string, string>> = Object.fromEntries(([
+  ["CME", ["ES", "NQ", "RTY", "6E", "6J", "6B", "6A", "6C", "6S", "SR3", "LE", "GF", "HE", "LBR", "DC", "CSC", "GD", "BTC", "ETH", "SOL", "XRP"]],
+  ["CBT", ["YM", "ZT", "ZF", "ZN", "ZB", "UB", "ZQ", "ZC", "ZS", "ZW", "ZM", "ZL", "KE", "ZO", "ZR"]],
+  ["NYM", ["CL", "BZ", "NG", "RB", "HO", "PL", "PA", "B0", "TTF"]],
+  ["CMX", ["GC", "SI", "HG", "ALI", "HRC", "UX"]],
+  ["NYB", ["KC", "SB", "CC", "CT", "OJ"]],
+  ["CFE", ["VX"]],
+] as const).flatMap(([venue, roots]) => roots.map((root) => [root, venue])));
+
+/** Other names quotes give each venue, which a listing may carry as its exchange. */
+const VENUE_NAMES: Readonly<Record<string, readonly string[]>> = {
+  NYM: ["NYMEX", "NY MERCANTILE"], CBT: ["CBOT"], CMX: ["COMEX"], NYB: ["ICE FUTURES", "NYBOT"], CFE: ["CBOE FUTURES"],
+};
 
 /** Bloomberg's codes where they differ from the exchange's. */
 const ALIASES: Readonly<Record<string, string>> = {
@@ -50,7 +59,7 @@ export function parseFuturesGeneric(value: unknown): FuturesGeneric | null {
   for (let length = Math.min(4, ticker.length - 1); length >= 1; length -= 1) {
     const prefix = ticker.slice(0, length);
     const root = ALIASES[prefix] ?? prefix;
-    if (!ROOTS.has(root)) continue;
+    if (!ROOT_VENUES[root]) continue;
     const match = /^(\d{1,2})(?:([FD])(\d{1,2}))?([RA])?$/.exec(ticker.slice(length));
     if (!match) continue;
     const position = Number(match[1]);
@@ -63,6 +72,34 @@ export function parseFuturesGeneric(value: unknown): FuturesGeneric | null {
     return { ticker, prefix, root, position, roll, adjust: match[4] === "R" ? "ratio" : match[4] === "A" ? "difference" : "none" };
   }
   return null;
+}
+
+/**
+ * A listing that is a generic: the symbol parses and its exchange is empty or
+ * the root's own venue, as Gloom Cloud decides, so a security elsewhere that
+ * happens to spell like one (PL8 on the ASX) is never captioned or rolled as one.
+ */
+export function futuresGenericListing(symbol: string, exchange?: string | null): FuturesGeneric | null {
+  const key = parsePublicTickerKey(symbol);
+  const generic = parseFuturesGeneric(key.symbol);
+  if (!generic) return null;
+  const venue = (key.exchange || exchange || "").trim().toUpperCase();
+  const own = ROOT_VENUES[generic.root]!;
+  return !venue || venue === own || VENUE_NAMES[own]?.includes(venue) ? generic : null;
+}
+
+/**
+ * Whether two listings are the same generic under any roll rule or adjustment
+ * (CL1 and CL1F5R, TY1 and ZN1). The chart's Roll and Adjust controls rewrite
+ * the ticker, and what it follows must not rewrite it back.
+ */
+export function isSameFuturesGeneric(
+  a: { symbol: string; exchange?: string | null },
+  b: { symbol: string; exchange?: string | null },
+): boolean {
+  const left = futuresGenericListing(a.symbol, a.exchange);
+  const right = futuresGenericListing(b.symbol, b.exchange);
+  return !!left && !!right && left.root === right.root && left.position === right.position;
 }
 
 export function formatFuturesGeneric(generic: Pick<FuturesGeneric, "prefix" | "position" | "roll" | "adjust">): string {

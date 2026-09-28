@@ -76,7 +76,7 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
-import { futuresGenericCaption, parseFuturesGeneric } from "../utils/futures-generic";
+import { futuresGenericCaption, futuresGenericListing } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
 import type {
   ChartResolutionResult,
@@ -979,7 +979,8 @@ function baseSecuritySeries(
     ? financials.quote.changePercent
     : undefined;
   const priceIssues = valuationPriceIssues(financials, spec.source);
-  const generic = field.unitGroup === "price" ? parseFuturesGeneric(spec.source.instrument.symbol) : null;
+  const generic = field.unitGroup === "price"
+    ? futuresGenericListing(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
   // A source with closes only, such as a generic future, has flat bars (open,
   // high and low filled from the close): nothing to draw as candles.
   const closesOnly = marketField && points.length > 1

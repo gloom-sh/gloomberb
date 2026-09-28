@@ -2,6 +2,7 @@ import type { InstrumentRef } from "../../../market-data/request-types";
 import type { ChartSpec } from "../../../time-series/types";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { instrumentIdentityKey } from "../../../utils/instrument-identity";
+import { isSameFuturesGeneric } from "../../../utils/futures-generic";
 import { rebindChartSecuritySymbol, rebindResearchChartSpec } from "./presets";
 
 export const CHART_FOLLOW_SERIES_SETTING_KEY = "chartFollowSeriesIds";
@@ -56,9 +57,13 @@ export function rebindFollowChartSpec(
 ): ChartSpec {
   if (!target) return spec;
   const next = normalized(target);
+  // The Roll and Adjust controls rewrite a generic (CL1 to CL1F5R): it keeps
+  // following an unchanged target and moves on only when the target does.
+  const unchanged = !previous || key(normalized(previous)) === key(next);
   let changed = false;
   const series = spec.series.map(series => {
-    if (series.source.kind !== "security" || !ownedIds.includes(series.id) || key(series.source.instrument) === key(next)) {
+    if (series.source.kind !== "security" || !ownedIds.includes(series.id) || key(series.source.instrument) === key(next)
+      || (unchanged && isSameFuturesGeneric(normalized(series.source.instrument), next))) {
       return series;
     }
     changed = true;

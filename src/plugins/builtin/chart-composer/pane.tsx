@@ -691,12 +691,12 @@ function ChartComposerSurface({
       setSpec(next);
     };
     return [
-      { id: "roll", label: "Roll", value: roll, defaultValue: "oi", options: rollOptions, title: "Roll rule",
+      { id: "roll", label: "Roll", value: roll, options: rollOptions, title: "Roll rule",
         onChange: (value: string) => {
           const next = futuresGenericRollFromValue(value);
           if (next) update({ roll: next });
         } },
-      { id: "adjust", label: "Adjust", value: generic.adjust, defaultValue: "none", options: GENERIC_ADJUST_OPTIONS, title: "Adjustment",
+      { id: "adjust", label: "Adjust", value: generic.adjust, options: GENERIC_ADJUST_OPTIONS, title: "Adjustment",
         onChange: (value: string) => update({ adjust: value as FuturesGenericAdjust }) },
     ];
   }, [generic, setSpec]);
