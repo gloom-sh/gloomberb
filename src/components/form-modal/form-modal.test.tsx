@@ -477,6 +477,33 @@ describe("form modal", () => {
     "BP:XLON": "BP plc",
   });
 
+  // The terminal textarea keeps its own buffer, which a value set from outside
+  // has to replace, so the field's node is the only way in.
+  test("remote control sets a textarea through its field, and typing goes on from that text", async () => {
+    const remoteRegistry = createRemoteUiRegistry();
+    const submitted: unknown[] = [];
+    await renderForm((registry) => registerCommand(registry, {
+      id: "screen",
+      label: "Run Screen",
+      wizard: [{ key: "prompt", label: "Prompt", type: "textarea" }],
+      execute: async (values) => { submitted.push(values); },
+    }), { kind: "plugin-command", commandId: "screen" }, { remoteRegistry });
+    await waitForForm("Prompt");
+
+    expect(remoteRegistry.snapshot().some((node) => node.role === "textarea")).toBe(false);
+    const field = remoteRegistry.snapshot().find((node) => node.role === "form-field")!;
+    await act(async () => {
+      await remoteRegistry.invoke(field.id, "setValue", "cheap");
+    });
+    await settle();
+    expect(frame()).toContain("cheap");
+    await press({ name: "end" });
+    await type(" stocks");
+    await press(CTRL_S);
+    await settle();
+    expect(submitted).toEqual([{ prompt: "cheap stocks" }]);
+  });
+
   test("ambiguous tickers ask for their listings one at a time over the form, sending again after each pick", async () => {
     const created: PaneTemplateCreateOptions[] = [];
     await renderForm((registry) => {

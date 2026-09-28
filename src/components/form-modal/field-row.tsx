@@ -120,8 +120,10 @@ function FormTextarea({
         },
       } : {})}
     >
+      {/* The row's form-field node sets this value, and starts the textarea over from it. */}
       <Textarea
         ref={textareaRef}
+        data-gloom-remote-hidden
         initialValue={value}
         placeholder={field.placeholder ? t(field.placeholder) : ""}
         focused={focused}
