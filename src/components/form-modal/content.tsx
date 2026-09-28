@@ -33,7 +33,14 @@ import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useViewport, type KeyEventLike } from "../../react/input";
 import { useThemeColors } from "../../theme/theme-context";
-import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../ui";
+import {
+  Box,
+  ScrollBox,
+  Text,
+  useNativeRenderer,
+  useUiCapabilities,
+  type ScrollBoxRenderable,
+} from "../../ui";
 import { useDialog, useDialogKeyboard, type AlertContext, type PromptContext } from "../../ui/dialog";
 import { useDialogIsTopmost } from "../../ui/dialog-context";
 import { wrapTextLines } from "../../utils/text-wrap";
@@ -51,7 +58,7 @@ import {
   focusAfterField,
   initialFormFocus,
   isLastVisibleField,
-  layoutFormRows,
+  formBodyRows,
   moveFormFocus,
   type FormFocus,
   type FormRoute,
@@ -137,6 +144,7 @@ export function FormModalContent({
   const isTopmost = useDialogIsTopmost();
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
+  const nativeRenderer = useNativeRenderer();
   const rowIdPrefix = useId();
   const [route, setRouteState] = useState<FormRoute>(() => ({ ...initialRoute, pending: false, error: null }));
   const [onSubmitStop, setOnSubmitStop] = useState(() => initialFormFocus(initialRoute).onSubmit);
@@ -393,27 +401,25 @@ export function FormModalContent({
 
   const modalWidth = Math.min(width, Math.max(1, viewport.width - 2));
   const contentWidth = Math.max(10, modalWidth - TERMINAL_DIALOG_INSET);
-  const layout = layoutFormRows(route, contentWidth);
+  const fieldRowsHeight = formBodyRows(route, contentWidth);
   const errorLines = route.error ? wrapTextLines(route.error, contentWidth).length : 0;
   const statusRows = errorLines + (route.pending && route.pendingLabel ? 1 : 0);
   const subtitleRows = route.subtitle ? wrapTextLines(t(route.subtitle), contentWidth).length : 0;
   const availableRows = viewport.height - 2 - TERMINAL_CHROME_ROWS - subtitleRows - (statusRows > 0 ? statusRows + 1 : 0);
-  const bodyRows = Math.max(1, Math.min(layout.total, availableRows));
+  const bodyRows = Math.max(1, Math.min(fieldRowsHeight, availableRows));
 
   const scrollIntoView = useCallback((fieldId: string) => {
+    const rowId = `${rowIdPrefix}${fieldId}`;
     if (desktop) {
       const element = (globalThis as { document?: { getElementById(id: string): { scrollIntoView?(options: { block: "nearest" }): void } | null } })
-        .document?.getElementById(`${rowIdPrefix}${fieldId}`);
+        .document?.getElementById(rowId);
       element?.scrollIntoView?.({ block: "nearest" });
       return;
     }
-    const scrollBox = scrollRef.current;
-    const row = layoutFormRows(routeRef.current, contentWidth).rows.find((entry) => entry.fieldId === fieldId);
-    if (!scrollBox || !row) return;
-    const viewportRows = Math.max(1, scrollBox.viewport?.height ?? bodyRows);
-    if (row.top < scrollBox.scrollTop) scrollBox.scrollTo(row.top);
-    else if (row.top + row.height > scrollBox.scrollTop + viewportRows) scrollBox.scrollTo(row.top + row.height - viewportRows);
-  }, [bodyRows, contentWidth, desktop, rowIdPrefix]);
+    // Measured, not estimated: the scrollbar narrows the body by a column, so
+    // text wraps differently from how it would fill the whole width.
+    scrollRef.current?.scrollChildIntoView?.(rowId);
+  }, [desktop, rowIdPrefix]);
 
   // A click focuses the nearest focusable renderable, a scrollbar included, and
   // a drag on one would leave the active field deaf to typing.
@@ -426,13 +432,24 @@ export function FormModalContent({
     }
   }, [desktop, showsFields]);
 
-  // After layout, so a field that dependsOn just revealed is measured.
+  // After layout, so a field that dependsOn just revealed is measured, and
+  // again when the body's height changes (an error line takes a row from it).
   useEffect(() => {
     const fieldId = route.activeFieldId;
     if (!fieldId || onSubmitStop) return;
-    const frame = setTimeout(() => scrollIntoView(fieldId), 0);
-    return () => clearTimeout(frame);
-  }, [onSubmitStop, route.activeFieldId, scrollIntoView]);
+    if (desktop) {
+      const frame = setTimeout(() => scrollIntoView(fieldId), 0);
+      return () => clearTimeout(frame);
+    }
+    // The terminal lays out as it draws, so the row is measured once a frame is drawn.
+    const onFrame = () => {
+      nativeRenderer.off("frame", onFrame);
+      scrollIntoView(fieldId);
+    };
+    nativeRenderer.on("frame", onFrame);
+    nativeRenderer.requestRender();
+    return () => nativeRenderer.off("frame", onFrame);
+  }, [bodyRows, desktop, nativeRenderer, onSubmitStop, route.activeFieldId, scrollIntoView]);
 
   useDialogKeyboard((event) => {
     // Esc belongs to the dialog host, which closes the form.

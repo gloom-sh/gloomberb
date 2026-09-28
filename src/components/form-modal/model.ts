@@ -106,12 +106,6 @@ export function isLastVisibleField(route: FormRoute, fieldId: string): boolean {
 
 export const FORM_TEXTAREA_ROWS = 6;
 
-export interface FormRowLayout {
-  fieldId: string;
-  top: number;
-  height: number;
-}
-
 function wrappedRows(text: string, width: number): number {
   return Math.max(1, wrapTextLines(text, Math.max(1, width)).length);
 }
@@ -119,22 +113,20 @@ function wrappedRows(text: string, width: number): number {
 /**
  * Terminal rows of the scrolling body, drawn the way the body draws it: the
  * description lines and a spacer, then per field a label, the control, its
- * wrapped description and a gap. The height of the body and the scroll that
- * keeps the active field in view both come from here.
+ * wrapped description and a gap. The body is this tall up to the rows the
+ * viewport leaves it, and scrolls past that.
  */
-export function layoutFormRows(route: FormRoute, width: number): { rows: FormRowLayout[]; total: number } {
-  let top = 0;
-  for (const line of route.description ?? []) top += wrappedRows(t(line), width);
-  if ((route.description?.length ?? 0) > 0) top += 1;
+export function formBodyRows(route: FormRoute, width: number): number {
+  let rows = 0;
+  for (const line of route.description ?? []) rows += wrappedRows(t(line), width);
+  if ((route.description?.length ?? 0) > 0) rows += 1;
   const visible = getVisibleWorkflowFields(route.fields, route.values);
-  const rows = visible.map((field, index) => {
+  visible.forEach((field, index) => {
     const description = getWorkflowFieldDescription(field);
-    const height = 1
+    rows += 1
       + (field.type === "textarea" ? FORM_TEXTAREA_ROWS : 1)
-      + (description ? wrappedRows(t(description), width) : 0);
-    const row = { fieldId: field.id, top, height };
-    top += height + (index === visible.length - 1 ? 0 : 1);
-    return row;
+      + (description ? wrappedRows(t(description), width) : 0)
+      + (index === visible.length - 1 ? 0 : 1);
   });
-  return { rows, total: top };
+  return rows;
 }

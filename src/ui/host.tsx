@@ -141,6 +141,8 @@ export interface ScrollBoxRenderable {
   verticalScrollBar?: ScrollBarRenderable;
   scrollTo(target: number | { x?: number; y?: number }, y?: number): void;
   scrollToPixels?(target: number | { x?: number; y?: number }, y?: number): void;
+  /** Terminal only: scrolls the least that shows the descendant with this id, as laid out last. */
+  scrollChildIntoView?(id: string): void;
 }
 
 export interface InputRenderable {

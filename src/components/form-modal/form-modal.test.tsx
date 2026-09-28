@@ -230,6 +230,41 @@ describe("form modal", () => {
     expect(submitted).toEqual([{ title: "Draft" }]);
   });
 
+  // Each description fills the body's width, so once the scrollbar takes a
+  // column it wraps to one more line than the text alone would say.
+  test("Tab keeps the active field in view in a form that scrolls", async () => {
+    const description = "word ".repeat(13).slice(0, 62);
+    const fields = Array.from({ length: 8 }, (_, index) => ({
+      id: `f${index + 1}`,
+      label: `Field ${index + 1}`,
+      type: "text" as const,
+      ...(index < 7 ? { description } : {}),
+    }));
+    await renderForm(() => {}, {
+      kind: "route",
+      route: {
+        kind: "workflow",
+        workflowId: "plugin-command:long",
+        title: "Long Form",
+        fields,
+        values: Object.fromEntries(fields.map((field) => [field.id, ""])),
+        activeFieldId: "f1",
+        submitLabel: "Save",
+        pending: false,
+        error: null,
+        payload: { kind: "plugin-command", actionId: "long" },
+      },
+    });
+    await waitForForm("Field 1");
+
+    for (let index = 0; index < 7; index += 1) await press({ name: "tab" });
+    await settle();
+    await type("LAST");
+    await settle();
+    expect(frame()).toContain("Field 8");
+    expect(frame()).toContain("LAST");
+  });
+
   test("while a submit runs the form ignores Enter; a failure stays in the form", async () => {
     let calls = 0;
     let fail: (error: Error) => void = () => {};
