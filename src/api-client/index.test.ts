@@ -7,6 +7,7 @@ import { GloomberbCloudProvider } from "../sources/gloomberb-cloud";
 import type { Quote } from "../types/financials";
 import { getActiveQuoteDisplay } from "../market-data/market/status";
 import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
+import type { AssistCommandDescriptor } from "./types";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -1105,6 +1106,42 @@ describe("apiClient account profile", () => {
     expect(apiClient.getCurrentUser()?.chatEmailNotificationsEnabled).toBe(
       false,
     );
+  });
+});
+
+describe("apiClient command assist", () => {
+  test("fits argument values inside the server caps", async () => {
+    let sent: AssistCommandDescriptor[] = [];
+    apiClient.setSessionToken("session-token");
+    apiClient.restoreCachedUser(verifiedUser);
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      sent = (JSON.parse(String(init?.body)) as { commands: AssistCommandDescriptor[] }).commands;
+      return Response.json({ candidates: [] });
+    });
+    const values = (count: number) => Array.from({ length: count }, (_, index) => ({
+      value: `v${index}`,
+      label: `Value ${index}`,
+    }));
+
+    await apiClient.assistCommand("switch theme", [
+      {
+        prefix: "TH",
+        name: "Change Theme",
+        arg: {
+          kind: "text",
+          // 41 values, but the one too long to run is dropped before counting.
+          options: [{ value: "amber", label: "A".repeat(80) }, { value: "x".repeat(41), label: "Long" }, ...values(39)],
+        },
+      },
+      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: values(41) } },
+    ]);
+
+    const [theme, curve] = sent;
+    expect(theme?.arg?.options).toHaveLength(40);
+    expect(theme?.arg?.options?.[0]).toEqual({ value: "amber", label: "A".repeat(60) });
+    expect(theme?.arg?.options?.some((option) => option.value.length > 40)).toBe(false);
+    // A cut list would read as the whole set, so an oversized one is not sent.
+    expect(curve?.arg).toEqual({ kind: "text", optional: true });
   });
 });
 

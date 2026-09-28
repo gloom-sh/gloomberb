@@ -298,6 +298,51 @@ describe("CommandBar AI assist", () => {
     await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
   });
 
+  test("asks once for a question retyped in another case or spacing", async () => {
+    signInVerified();
+    let releaseResponse = () => {};
+    const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const requests = mockAssistTransport(async () => {
+      await held;
+      return jsonResponse({
+        candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+      });
+    });
+    const editQuery = async (keys: string[]) => {
+      await act(async () => {
+        for (const key of keys) testSetup!.mockInput.pressKey(key);
+        await testSetup!.renderOnce();
+      });
+    };
+
+    testSetup = await testRender(
+      <CommandBarHarness query="new chat pane" />,
+      { width: 120, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    await waitForRequest(requests);
+
+    // A second space while the ask is out: the answer lands on the text now in
+    // the bar instead of leaving it thinking.
+    await editQuery(["ARROW_LEFT", "ARROW_LEFT", "ARROW_LEFT", "ARROW_LEFT", " "]);
+    releaseResponse();
+    let frame = await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    expect(frame).toContain("new chat  pane");
+
+    // Taking the space back out keeps the answer on screen.
+    await editQuery(["BACKSPACE"]);
+    frame = await waitForFrameToContain("new chat pane");
+    expect(frame).toContain("#general · Open the general channel");
+
+    // Recased, it is answered from memory, even after the debounce would have fired.
+    await editQuery(["DELETE", "P"]);
+    frame = await waitForFrameToContain("new chat Pane");
+    expect(frame).toContain("#general · Open the general channel");
+    await settleFrame(testSetup, 400);
+    expect(requests).toHaveLength(1);
+  });
+
   test("drops the section when a background ask fails", async () => {
     signInVerified();
     const requests = mockAssistTransport(() => jsonResponse({ error: "assist-unavailable" }, 503));

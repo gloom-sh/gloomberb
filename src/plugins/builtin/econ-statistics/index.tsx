@@ -37,6 +37,7 @@ export const econStatisticsModule: PluginModule = {
       argPlaceholder: "statistic",
       argKind: "text",
       argOptional: true,
+      argOptions: () => STATS.map((stat) => ({ value: stat.id, label: `${stat.label} (${stat.shortLabel})` })),
     },
     headless: econStatisticsHeadless,
     canCreate: () => true,

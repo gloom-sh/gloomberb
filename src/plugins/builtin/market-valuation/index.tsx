@@ -58,6 +58,10 @@ export const marketValuationModule: PluginModule = {
       argPlaceholder: "indicator",
       argKind: "text",
       argOptional: true,
+      argOptions: () => INDICATORS.map((indicator) => ({
+        value: indicator.id,
+        label: `${indicator.label} (${indicator.shortLabel})`,
+      })),
     },
     headless: marketValuationHeadless,
     // No wizard: VAL opens straight into the pane, where the summary rows swap

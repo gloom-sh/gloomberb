@@ -9,16 +9,18 @@ export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: stri
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
   disaggregated: [{ value: "managed-money", label: "Managed Money" }, { value: "producer", label: "Producer/Merchant" }, { value: "swap", label: "Swap Dealers" }, { value: "other-reportable", label: "Other Reportables" }, { value: "nonreportable", label: "Nonreportable" }],
 };
-const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: string | null }> = {
-  ZN: { code: "043602", exchange: "CBT", priceSymbol: "ZN=F" },
-  ZQ: { code: "045601", exchange: "CBT", priceSymbol: "ZQ=F" },
-  CL: { code: "067651", exchange: "NYM", priceSymbol: "CL=F" },
-  SI: { code: "084691", exchange: "CMX", priceSymbol: "SI=F" },
-  GC: { code: "088691", exchange: "CMX", priceSymbol: "GC=F" },
-  VX: { code: "1170E1", exchange: "CFE", priceSymbol: null },
-  SR3: { code: "134741", exchange: "CME", priceSymbol: null },
-  ES: { code: "13874A", exchange: "CME", priceSymbol: "ES=F" },
+const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: string | null; name: string }> = {
+  ZN: { code: "043602", exchange: "CBT", priceSymbol: "ZN=F", name: "10-Year T-Note" },
+  ZQ: { code: "045601", exchange: "CBT", priceSymbol: "ZQ=F", name: "30-Day Fed Funds" },
+  CL: { code: "067651", exchange: "NYM", priceSymbol: "CL=F", name: "WTI Crude Oil" },
+  SI: { code: "084691", exchange: "CMX", priceSymbol: "SI=F", name: "Silver" },
+  GC: { code: "088691", exchange: "CMX", priceSymbol: "GC=F", name: "Gold" },
+  VX: { code: "1170E1", exchange: "CFE", priceSymbol: null, name: "VIX Futures" },
+  SR3: { code: "134741", exchange: "CME", priceSymbol: null, name: "3-Month SOFR" },
+  ES: { code: "13874A", exchange: "CME", priceSymbol: "ES=F", name: "E-Mini S&P 500" },
 };
+/** The roots `cotContractCode` accepts, labeled "ZQ 30-Day Fed Funds". */
+export const COT_ROOT_OPTIONS = Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: `${root} ${row.name}` }));
 /**
  * Front-month price overlays for major markets without a root alias, each
  * checked to return five years of daily history (2026-09-24). Keyed by CFTC

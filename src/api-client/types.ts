@@ -192,6 +192,10 @@ export interface AssistCommandDescriptor {
   arg?: {
     placeholder?: string;
     kind: "text" | "ticker" | "ticker-list";
+    /** The command also runs with no argument at all. */
+    optional?: boolean;
+    /** Every value the argument accepts, for commands that take one of a fixed set. */
+    options?: { value: string; label: string }[];
   };
 }
 

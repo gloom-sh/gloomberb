@@ -1,5 +1,8 @@
 import type { AppAction } from "../../../state/app/context";
 import type { Dispatch } from "react";
+import { describeLanguagePreference, LANGUAGE_PREFERENCES } from "../../../i18n/languages";
+import { getTheme, getThemeIds } from "../../../theme/themes";
+import type { ShortcutArgOption } from "../../../types/plugin";
 
 type CommandExecutor = (dispatch: Dispatch<AppAction>, context: CommandContext) => void | Promise<void>;
 
@@ -16,6 +19,8 @@ export interface Command {
   description: string;
   hasArg?: boolean;       // true if prefix takes an argument (e.g., "DES AMD")
   argPlaceholder?: string;
+  /** Every value the argument accepts, when it is one of a fixed set (a theme, a language). */
+  argOptions?: () => readonly ShortcutArgOption[];
   shortcut?: string;
   category: string;
   execute?: CommandExecutor;
@@ -250,6 +255,7 @@ export const commands: Command[] = [
     description: "Switch color theme",
     hasArg: true,
     argPlaceholder: "theme name",
+    argOptions: () => getThemeIds().map((id) => ({ value: id, label: getTheme(id).name })),
     category: "Config",
   },
   {
@@ -266,6 +272,7 @@ export const commands: Command[] = [
     description: "Switch the interface language",
     hasArg: true,
     argPlaceholder: "locale",
+    argOptions: () => LANGUAGE_PREFERENCES.map((value) => ({ value, label: describeLanguagePreference(value) })),
     category: "Config",
   },
 

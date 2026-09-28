@@ -16,6 +16,24 @@ export const LANGUAGE_DISPLAY_NAMES: Record<LanguagePreference, string> = {
   ko: "한국어",
 };
 
+/** English names, for readers who do not know every script the display names use. */
+const LANGUAGE_ENGLISH_NAMES: Record<LanguagePreference, string> = {
+  auto: "Automatic (follow the system language)",
+  en: "English",
+  es: "Spanish",
+  "zh-CN": "Chinese, Simplified",
+  "zh-TW": "Chinese, Traditional",
+  ja: "Japanese",
+  ko: "Korean",
+};
+
+/** "Spanish (Español)": the English name, then the native one where it differs. */
+export function describeLanguagePreference(preference: LanguagePreference): string {
+  const english = LANGUAGE_ENGLISH_NAMES[preference];
+  const native = LANGUAGE_DISPLAY_NAMES[preference];
+  return preference === "auto" || english === native ? english : `${english} (${native})`;
+}
+
 const LANGUAGE_ALIASES: Record<string, LanguagePreference> = {
   auto: "auto",
   system: "auto",

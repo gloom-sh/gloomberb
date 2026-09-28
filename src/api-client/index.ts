@@ -58,7 +58,26 @@ export type {
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
+const ASSIST_ARG_OPTION_LIMIT = 40;
+const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
+const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
+
+/**
+ * Fits a command's argument values inside the server caps. The value is what
+ * the bar runs, so one that is too long is dropped rather than cut; the label
+ * only describes it and is truncated. A list still over the cap is left out
+ * whole: the assistant would read a partial list as every value there is.
+ */
+function capAssistArgOptions(command: AssistCommandDescriptor): AssistCommandDescriptor {
+  if (!command.arg?.options) return command;
+  const { options, ...arg } = command.arg;
+  const capped = options
+    .filter(({ value }) => value.length > 0 && value.length <= ASSIST_ARG_OPTION_VALUE_MAX_LENGTH)
+    .map(({ value, label }) => ({ value, label: label.slice(0, ASSIST_ARG_OPTION_LABEL_MAX_LENGTH) }));
+  const fits = capped.length > 0 && capped.length <= ASSIST_ARG_OPTION_LIMIT;
+  return { ...command, arg: fits ? { ...arg, options: capped } : arg };
+}
 
 interface PendingSessionRequest {
   promise: Promise<AuthUser | null>;
@@ -539,7 +558,7 @@ class GloomApiClient {
         method: "POST",
         body: JSON.stringify({
           query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
-          commands: commands.slice(0, ASSIST_COMMAND_LIMIT),
+          commands: commands.slice(0, ASSIST_COMMAND_LIMIT).map(capAssistArgOptions),
         }),
         signal: controller.signal,
       });
