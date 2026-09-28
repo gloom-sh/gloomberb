@@ -61,17 +61,27 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
   };
   // Set from the moment a form is asked for until its dialog closes.
   const openRef = useRef<{ dismiss: (() => void) | null } | null>(null);
+  // One form asked for while another is open, such as the pane template a
+  // plugin command creates from its own form's submit: it opens next.
+  const queuedRef = useRef<FormModalRequest | null>(null);
 
-  // The bar opening over a form would take its keys; the form gives way.
+  // The bar opening over a form would take its keys; the form gives way, and
+  // one waiting behind it is dropped rather than closing the bar again.
   const barWasOpenRef = useRef(commandBarOpen);
   useEffect(() => {
     const opened = commandBarOpen && !barWasOpenRef.current;
     barWasOpenRef.current = commandBarOpen;
-    if (opened) openRef.current?.dismiss?.();
+    if (!opened) return;
+    queuedRef.current = null;
+    openRef.current?.dismiss?.();
   }, [commandBarOpen]);
 
-  useEffect(() => subscribeFormModalRequests((request) => {
-    if (openRef.current) return false;
+  useEffect(() => subscribeFormModalRequests(function open(request): boolean {
+    if (openRef.current) {
+      if (queuedRef.current) return false;
+      queuedRef.current = request;
+      return true;
+    }
     let width: number;
     let closeOnClickOutside: boolean;
     let render: (context: AlertContext, runtime: FormModalRuntime) => ReactNode;
@@ -113,7 +123,11 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
         style: { width },
         content: (context: AlertContext) => render(context, runtime),
       }).finally(() => {
-        if (openRef.current === handle) openRef.current = null;
+        if (openRef.current !== handle) return;
+        openRef.current = null;
+        const next = queuedRef.current;
+        queuedRef.current = null;
+        if (next) open(next);
       });
     });
     return true;

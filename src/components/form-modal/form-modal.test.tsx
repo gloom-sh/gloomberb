@@ -451,14 +451,31 @@ describe("form modal", () => {
     }), { kind: "plugin-command", commandId: "save-note" }, { storeRef });
     await waitForForm("Title");
 
-    // A second form waits for the first.
-    expect(openFormModal({ kind: "builtin", actionId: "new-layout" })).toBe(false);
+    // A second form waits for the first, and gives way to the bar with it.
+    expect(openFormModal({ kind: "builtin", actionId: "new-layout" })).toBe(true);
     await act(async () => {
       storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
     });
     await waitForFrameToContain("bar:open");
     await settle();
     expect(frame()).not.toContain("Title");
+    expect(frame()).not.toContain("Layout Name");
+  });
+
+  // A command's execute can create a pane from a template with settings to ask.
+  test("a form asked for while one submits opens once that one closes", async () => {
+    let queued: boolean | null = null;
+    await renderForm((registry) => registerCommand(registry, {
+      id: "save-note",
+      wizard: [{ key: "title", label: "Title", type: "text", defaultValue: "Draft" }],
+      execute: async () => { queued = openFormModal({ kind: "builtin", actionId: "new-layout" }); },
+    }), { kind: "plugin-command", commandId: "save-note" });
+    await waitForForm("Draft");
+
+    await press(ENTER);
+    await waitForForm("Layout Name");
+    expect(queued).toBe(true);
+    expect(frame()).not.toContain("Draft");
   });
 
   test("remote control sees each field and sets a select without opening it", async () => {

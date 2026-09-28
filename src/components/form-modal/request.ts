@@ -37,8 +37,10 @@ type FormModalListener = (request: FormModalRequest) => boolean;
 const listeners = new Set<FormModalListener>();
 
 /**
- * Opens a form in the central modal. False when no host is mounted (a
- * detached window, an isolated render) or a form is already open.
+ * Opens a form in the central modal. Asked for while a form or confirm is
+ * open, it opens once that one closes. False when no host is mounted (a
+ * detached window, an isolated render), when there is nothing to fill in, or
+ * when another form is already waiting.
  */
 export function openFormModal(request: FormModalRequest): boolean {
   // One host answers: the newest, as an older one is on its way out.
@@ -46,7 +48,7 @@ export function openFormModal(request: FormModalRequest): boolean {
   return host ? host(request) : false;
 }
 
-/** Opens a confirm in the same modal. False when a form or confirm is already open. */
+/** Opens a confirm in the same modal, after the form or confirm already open, if any. */
 export function openConfirmModal(confirm: ConfirmModalOptions): boolean {
   return openFormModal({ kind: "confirm", confirm });
 }
