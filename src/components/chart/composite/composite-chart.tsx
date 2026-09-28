@@ -19,6 +19,7 @@ import type { ContextMenuItem } from "../../../types/context-menu";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -2171,14 +2172,15 @@ export function CompositeChart({
     return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${last.high ?? ""}:${last.low ?? ""}:${last.volume ?? ""}:${entry.latestChangePercent ?? ""}`;
   }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows - xMarkerRows);
+  const paneSurface = usePaneSurface();
   const resolvedColors = useMemo<CompositeChartColors>(() => ({
-    background: colors?.background ?? activeThemeColors.bg,
+    background: chartSurfaceBackground(colors?.background, activeThemeColors.bg, paneSurface),
     grid: colors?.grid ?? activeThemeColors.border,
     crosshair: colors?.crosshair ?? activeThemeColors.borderFocused,
     text: colors?.text ?? activeThemeColors.text,
     textDim: colors?.textDim ?? activeThemeColors.textDim,
     negative: colors?.negative ?? activeThemeColors.negative,
-  }), [activeThemeColors, colors]);
+  }), [activeThemeColors, colors, paneSurface]);
   // A custom x axis means x is not time: a tenor, a fraction, a return. Its
   // last observation belongs at the right edge, under its own label.
   const rightOffsetRatio = xAxis ? 0 : COMPOSITE_RIGHT_OFFSET_RATIO;

@@ -947,7 +947,7 @@ function ChartComposerSurface({
       : statusErrorNotice ?? comparisonUnavailable ?? "No observations in this range";
 
   return (
-    <Box flexDirection="column" width={width} height={height} backgroundColor={colors.panel}>
+    <Box flexDirection="column" width={width} height={height}>
       <QueryBar
         width={width}
         filters={[
