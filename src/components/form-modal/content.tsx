@@ -57,9 +57,9 @@ import { FormFieldRow } from "./field-row";
 import {
   applyFormValue,
   focusAfterField,
+  formBodyRows,
   initialFormFocus,
   isLastVisibleField,
-  formBodyRows,
   moveFormFocus,
   type FormFocus,
   type FormRoute,
@@ -77,6 +77,13 @@ export interface FormModalRuntime {
 const TERMINAL_CHROME_ROWS = 2 + 2 + 2 + 2;
 /** Border and padding the terminal dialog host draws around the content. */
 export const TERMINAL_DIALOG_INSET = 6;
+/**
+ * The desktop dialog's own cap (`.gloom-dialog`, 48px short of the window)
+ * less its border. The form fills it as a column: the body scrolls and gives
+ * up height first, so the title and the buttons stay in view whatever the
+ * wrapped text or the font scale.
+ */
+const DESKTOP_MODAL_MAX_HEIGHT = "calc(100vh - 50px)";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : t("Could not complete that action.");
@@ -556,9 +563,9 @@ export function FormModalContent({
     );
     if (desktop) {
       return (
-        <Box width={width} maxWidth="calc(100vw - 72px)" flexDirection="column">
+        <Box width={width} maxWidth="calc(100vw - 72px)" maxHeight={DESKTOP_MODAL_MAX_HEIGHT} flexDirection="column">
           <DialogFrame title={step.title} subtitle={step.subtitle} onClose={dismiss}>
-            {stepBody}
+            <ScrollBox scrollY style={{ overflowX: "hidden" }}>{stepBody}</ScrollBox>
             <Box style={{ marginTop: 14 }}>{cancel}</Box>
           </DialogFrame>
         </Box>
@@ -643,13 +650,15 @@ export function FormModalContent({
     // A click on the title, a description or a button moves the DOM focus out
     // of the field being typed into; the field takes it back.
     return (
-      <Box width={width} maxWidth="calc(100vw - 72px)" flexDirection="column" onMouseDown={requestInputFocus}>
+      <Box
+        width={width}
+        maxWidth="calc(100vw - 72px)"
+        maxHeight={DESKTOP_MODAL_MAX_HEIGHT}
+        flexDirection="column"
+        onMouseDown={requestInputFocus}
+      >
         <DialogFrame title={route.title} subtitle={route.subtitle ? t(route.subtitle) : undefined} onClose={dismiss}>
-          <ScrollBox
-            ref={scrollRef}
-            scrollY
-            style={{ maxHeight: "calc(100vh - 220px)", overflowX: "hidden", paddingRight: 4 }}
-          >
+          <ScrollBox ref={scrollRef} scrollY style={{ overflowX: "hidden", paddingRight: 4 }}>
             <Box flexDirection="column">
               {descriptionLines}
               {hasDescription && <Box style={{ height: 10 }} />}

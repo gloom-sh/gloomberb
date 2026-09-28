@@ -539,8 +539,10 @@ export function WebDialogFrame({
   onClose,
 }: DialogFrameProps) {
   const colors = useThemeColors();
+  // Free to shrink, so a dialog that caps its height scrolls its body inside
+  // the frame instead of pushing the frame's last rows out of view.
   return (
-    <Box flexDirection="column" style={{ padding: 14 }}>
+    <Box flexDirection="column" minHeight={0} style={{ padding: 14 }}>
       <Box
         flexDirection="row"
         alignItems="flex-start"
