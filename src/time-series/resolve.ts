@@ -76,6 +76,8 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
+import { futuresGenericCaption, parseFuturesGeneric } from "../utils/futures-generic";
+import { isOhlcSeriesStyle } from "./spec";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -977,9 +979,14 @@ function baseSecuritySeries(
     ? financials.quote.changePercent
     : undefined;
   const priceIssues = valuationPriceIssues(financials, spec.source);
+  const generic = field.unitGroup === "price" ? parseFuturesGeneric(spec.source.instrument.symbol) : null;
+  // A source with closes only, such as a generic future, has flat bars (open,
+  // high and low filled from the close): nothing to draw as candles.
+  const closesOnly = marketField && points.length > 1
+    && points.every((point) => [point.open, point.high, point.low].every((value) => value == null || value === point.close));
   return {
     id: spec.id,
-    label: spec.label?.trim() || `${symbol} ${field.shortLabel}`,
+    label: spec.label?.trim() || (generic ? futuresGenericCaption(generic) : `${symbol} ${field.shortLabel}`),
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
@@ -994,7 +1001,7 @@ function baseSecuritySeries(
     ...(marketField ? { historyResolution: marketResolution } : {}),
     timestampMode: spec.source.timestampMode,
     dataShape: field.dataShape,
-    style: spec.style,
+    style: closesOnly && isOhlcSeriesStyle(spec.style ?? field.defaultStyle) ? "line" : spec.style,
     transform: spec.transform,
     axis: spec.axis === "right" ? "right" : "left",
     panelId: spec.panelId,

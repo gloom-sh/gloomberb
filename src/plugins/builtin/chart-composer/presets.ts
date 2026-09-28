@@ -1,3 +1,4 @@
+import { formatFuturesGeneric, futuresGenericCaption, parseFuturesGeneric, type FuturesGeneric } from "../../../utils/futures-generic";
 import {
   CHART_SPEC_VERSION,
   type ChartPanelSpec,
@@ -195,12 +196,38 @@ export function chartSeriesLabel(series: ChartSeriesSpec): string {
   if (series.label?.trim()) return series.label.trim();
   if (series.source.kind === "economic") return `FRED ${series.source.seriesId}`;
   if (series.source.kind === "capability") return series.source.seriesId;
+  const generic = getTimeSeriesField(series.source.fieldId)?.unitGroup === "price" ? parseFuturesGeneric(series.source.instrument.symbol) : null;
+  if (generic) return futuresGenericCaption(generic);
   const instrument = publicTickerKey(
     series.source.instrument.symbol,
     series.source.instrument.exchange,
   );
   const field = getTimeSeriesField(series.source.fieldId);
   return `${instrument} ${field?.shortLabel ?? series.source.fieldId.split(".").at(-1) ?? "Series"}`;
+}
+
+/** The chart's first generic future (CL1), whose roll and adjustment the pane's controls show. */
+export function chartFuturesGeneric(spec: ChartSpec): FuturesGeneric | null {
+  for (const entry of spec.series) {
+    const generic = entry.source.kind === "security" ? parseFuturesGeneric(entry.source.instrument.symbol) : null;
+    if (generic) return generic;
+  }
+  return null;
+}
+
+/** Moves every generic future on the chart to another roll rule or adjustment; each is its own ticker (CL1F5R). */
+export function setChartFuturesGeneric(spec: ChartSpec, change: Partial<Pick<FuturesGeneric, "roll" | "adjust">>): ChartSpec {
+  let changed = false;
+  const series = spec.series.map((entry) => {
+    if (entry.source.kind !== "security") return entry;
+    const generic = parseFuturesGeneric(entry.source.instrument.symbol);
+    if (!generic) return entry;
+    const symbol = formatFuturesGeneric({ ...generic, ...change });
+    if (symbol === generic.ticker) return entry;
+    changed = true;
+    return { ...entry, source: { ...entry.source, instrument: { ...entry.source.instrument, symbol } } };
+  });
+  return changed ? { ...spec, series } : spec;
 }
 
 export function getCompatibleSeriesStyles(fieldId: string): SeriesStyle[] {
