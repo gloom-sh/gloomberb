@@ -53,3 +53,31 @@ export interface FuturesCurvePayload {
   gaps: string[]
 }
 
+
+/** A root's curve as Gloom Cloud's settlement archive held it on a past session. */
+export interface FuturesCurveAsOfPayload {
+  root: string
+  name: string
+  date: string
+  /** The newest session among the points; null when there are none. */
+  asOf: string | null
+  currency: string | null
+  quoteUnit: string | null
+  /** The first session the archive holds for this root. */
+  archiveStart: string | null
+  contracts: Array<{
+    contract: string
+    symbol: string
+    label: string
+    deliveryMonth: string
+    expiration: string | null
+    tradeDate: string
+    price: number
+    volume: number | null
+    openInterest: number | null
+    /** When the price was made; older than tradeDate when the contract did not trade that day. */
+    asOf: string
+    stale: boolean
+  }>
+  gaps: string[]
+}

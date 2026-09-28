@@ -1,9 +1,9 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
-import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
+import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote, sortCurveContracts } from "./model";
+import { archivedFuturesCurve, curveAsOfDate, curveAxisPrice, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, futuresCurveSeries, newestQuote, sortCurveContracts } from "./model";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
@@ -125,3 +125,36 @@ test("axis labels take their decimals from the plotted range, never the contract
   expect(curveAxisPrice(104.75, domain(104.4, 105.1), "ZN")).toBe("104.75");
 });
 
+
+describe("past curves", () => {
+  const row = (symbol: string, expiration: string, price: number, extra: Partial<FuturesCurveAsOfPayload["contracts"][number]> = {}) => ({
+    contract: symbol.replace("/", ""), symbol, label: symbol, deliveryMonth: expiration.slice(0, 7), expiration, tradeDate: "2020-03-16",
+    price, volume: 10, openInterest: 100, asOf: "2020-03-16T00:00:00.000Z", stale: false, ...extra,
+  });
+  const payload = (date: string, contracts: FuturesCurveAsOfPayload["contracts"]): FuturesCurveAsOfPayload => ({
+    root: "VX", name: "VIX Futures", date, asOf: date, currency: "USD", quoteUnit: "volatility points", archiveStart: "2013-05-20", contracts, gaps: [],
+  });
+
+  test("read the archived curve in the live curve's shape, with the curves a week and a month before as ghosts", () => {
+    const curve = archivedFuturesCurve("VX", payload("2020-03-16", [row("VX/J0", "2020-04-15", 59.15), row("VX/H0", "2020-03-18", 72.625),
+      row("VX/K0", "2020-05-20", 44.875, { stale: true, asOf: "2020-03-13T00:00:00.000Z" })]),
+    { "1W": payload("2020-03-09", [row("VX/H0", "2020-03-18", 44.375)]), "1M": null }, "2020-03-17T00:00:00.000Z");
+    expect(curve.contracts.map((contract) => [contract.symbol, contract.price, contract.asOf, contract.stale])).toEqual([
+      ["VX/H0", 72.625, "2020-03-16", false], ["VX/J0", 59.15, "2020-03-16", false], ["VX/K0", 44.875, "2020-03-13", true],
+    ]);
+    expect(curve.slope).toMatchObject({ frontSymbol: "VX/H0", nextSymbol: "VX/J0", state: "backwardation", percentile: null, samples: 0 });
+    expect(curve.slope.value).toBeCloseTo(-13.475);
+    expect(curve.ghosts.map((ghost) => [ghost.label, ghost.requestedDate, ghost.points.length])).toEqual([["1W", "2020-03-09", 1], ["1M", "2020-02-15", 0]]);
+    expect(curveContractChanges(curve).get("VX/H0")).toEqual({ "1W": 28.25, "1M": null });
+    expect(futuresCurveSeries(curve, undefined, "all", Date.parse("2020-03-16"), "2020-03-16")[0]?.label).toBe("2020-03-16");
+  });
+
+  test("take a past date or latest, and refuse a future or malformed one", () => {
+    const now = new Date("2026-09-28T12:00:00Z");
+    expect(curveAsOfDate("", now)).toBe("");
+    expect(curveAsOfDate(" latest ", now)).toBe("");
+    expect(curveAsOfDate("2020-03-16", now)).toBe("2020-03-16");
+    expect(() => curveAsOfDate("2026-09-29", now)).toThrow("future");
+    expect(() => curveAsOfDate("2020-02-30", now)).toThrow("YYYY-MM-DD");
+  });
+});

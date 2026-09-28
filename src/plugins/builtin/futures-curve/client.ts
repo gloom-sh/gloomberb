@@ -2,7 +2,7 @@ import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { normalizeCurveRoot } from "./model";
+import { archivedFuturesCurve, curveLookbackDate, normalizeCurveRoot } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -65,4 +65,23 @@ export function getCachedFuturesCurve(root: string): FuturesCurvePayload | null 
 export async function loadFuturesCurve(root: string, force = false): Promise<FuturesCurvePayload> {
   const { payload, stale, refreshError } = await loadCloudResource(futuresCurveCache, root, () => fetchFuturesCurve(root), { force });
   return { ...payload, stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
+}
+
+/** The archived curve on a past date with the curves a week and a month before it. */
+export async function loadFuturesCurveAsOf(root: string, date: string,
+  client: Pick<typeof apiClient, "getCloudFuturesCurveAsOf"> = apiClient): Promise<FuturesCurvePayload> {
+  const normalized = normalizeCurveRoot(root);
+  if (!normalized) throw new Error(`Unsupported futures root: ${root}`);
+  try {
+    const [curve, week, month] = await Promise.all([
+      client.getCloudFuturesCurveAsOf(normalized, date),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 7)).catch(() => null),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(() => null),
+    ]);
+    if (!curve || curve.root !== normalized || !Array.isArray(curve.contracts) || !Array.isArray(curve.gaps)
+      || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price))) {
+      throw new Error("The server returned an invalid past futures curve");
+    }
+    return archivedFuturesCurve(normalized, curve, { "1W": week, "1M": month }, new Date().toISOString());
+  } catch (error) { throw unavailableOnServer(error, "Past futures curves are not available yet."); }
 }

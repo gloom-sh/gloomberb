@@ -1,4 +1,4 @@
-import type { FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
+import type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
@@ -115,10 +115,11 @@ export function charted<T extends { expiration: string }>(rows: readonly T[], ho
   return rows.filter((row) => Date.parse(row.expiration) <= end.getTime());
 }
 
-export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now()): CurveSeries[] {
+export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now(),
+  currentLabel = data.source === "cboe" ? "Settlement" : "Latest"): CurveSeries[] {
   const contracts = charted(data.contracts, horizon, now);
   return [{
-    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: newestQuote(contracts), color: palette?.current,
+    id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map((row) => ({ id: row.symbol, label: curveContractMonth(row.symbol, row.expiration), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }, ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
@@ -161,4 +162,58 @@ export function sortCurveContracts(rows: readonly FuturesContract[], id: string,
   const lookback = CHANGE_COLUMNS[id];
   const value = (row: FuturesContract) => lookback ? changes?.get(row.symbol)?.[lookback] ?? null : row[key] ?? null;
   return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction));
+}
+
+const DAY_MS = 86_400_000;
+
+/** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */
+export function curveAsOfDate(value: unknown, now = new Date()): string {
+  const date = typeof value === "string" ? value.trim() : "";
+  if (!date || date.toLowerCase() === "latest") return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) {
+    throw new Error("Use an as-of date in YYYY-MM-DD format, or latest.");
+  }
+  if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
+  return date;
+}
+
+export function curveLookbackDate(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * The archived curve on a past date in the live curve's shape, so the pane
+ * draws it the same way. Its week- and month-back ghosts are the curves as
+ * they stood then, contracts that have since expired included. A row is dated
+ * by its session, or by the earlier session its carried price comes from.
+ * Percentiles and session changes are not archived, so they stay unavailable.
+ */
+export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayload,
+  lookbacks: { "1W": FuturesCurveAsOfPayload | null; "1M": FuturesCurveAsOfPayload | null }, fetchedAt: string): FuturesCurvePayload {
+  const rowDate = (row: FuturesCurveAsOfPayload["contracts"][number]) => row.stale ? row.asOf.slice(0, 10) : row.tradeDate;
+  const contracts: FuturesContract[] = curve.contracts.flatMap((row) => row.expiration ? [{
+    symbol: row.symbol, label: row.label, expiration: row.expiration, price: row.price, change: null, asOf: rowDate(row),
+    currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
+    openInterest: row.openInterest, delayMinutes: null, stale: row.stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
+  }] : []).sort((a, b) => a.expiration.localeCompare(b.expiration));
+  const ghosts = (["1W", "1M"] as const).map((label) => {
+    const past = lookbacks[label];
+    return { label, requestedDate: curveLookbackDate(curve.date, label === "1W" ? 7 : 30), asOf: past?.asOf ?? null,
+      points: (past?.contracts ?? []).flatMap((row) => row.expiration
+        ? [{ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: rowDate(row) }] : []) };
+  });
+  // The front pair on the curve's own session; carried prices do not make a spread.
+  const [front, next] = contracts.filter((row) => !row.stale);
+  const value = front && next ? next.price! - front.price! : null;
+  const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
+  const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
+  return {
+    root, name: curve.name, source: root === "VX" ? "cboe" : "yahoo", currency: curve.currency, quoteUnit: curve.quoteUnit,
+    asOf: curve.asOf, fetchedAt, status: !contracts.length ? "unavailable" : curve.gaps.length ? "partial" : "available", stale: false,
+    catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
+    slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
+      rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
+      state: value == null ? "unavailable" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
+    gaps: curve.gaps,
+  };
 }

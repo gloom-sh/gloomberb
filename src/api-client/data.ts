@@ -7,7 +7,7 @@ import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
-import type { FuturesCurvePayload } from "./futures-curve";
+import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
@@ -412,6 +412,11 @@ export class CloudDataApi {
 
   async getCloudFuturesCurve(root: string): Promise<FuturesCurvePayload> {
     return this.request<FuturesCurvePayload>(`/cloud/futures/curve/${encodeURIComponent(root)}`, { signal: AbortSignal.timeout(60_000) });
+  }
+
+  async getCloudFuturesCurveAsOf(root: string, date: string): Promise<FuturesCurveAsOfPayload> {
+    return this.request<FuturesCurveAsOfPayload>(`/cloud/futures/curve/${encodeURIComponent(root)}/as-of/${encodeURIComponent(date)}`,
+      { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudRatePath(): Promise<RatePathPayload> {
