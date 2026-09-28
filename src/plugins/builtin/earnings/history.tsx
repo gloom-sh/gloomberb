@@ -45,7 +45,7 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const payload = resource.data?.payload ?? null;
   const today = newYorkToday();
   const rows = useMemo(() => historyRows(payload, today, upcoming.data ?? null), [payload, today, upcoming.data]);
-  const columns = useMemo(() => historyColumns(width), [width]);
+  const columns = useMemo(() => historyColumns(width, rows), [rows, width]);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`history:${symbol}:selected`, null);
   const selected = rows.find((row) => row.key === selectedId) ?? rows[0] ?? null;
   const bars = useMemo(() => chartRows(rows), [rows]);

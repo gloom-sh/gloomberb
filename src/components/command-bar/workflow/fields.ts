@@ -212,15 +212,13 @@ export function buildGeneratedTemplateField(
   initialValue: CommandBarFieldValue | undefined;
 } {
   const placeholder = template.shortcut?.argPlaceholder;
-  // An optional argument (ERN alone is the market board) can be left empty.
-  const required = !template.shortcut?.argOptional;
   if (placeholder === "ticker") {
     return {
       field: {
         id: "ticker",
         label: "Ticker",
         type: "text",
-        required,
+        required: true,
         placeholder: activeTicker || "MSFT",
       },
       initialValue: activeTicker ?? "",
@@ -232,7 +230,7 @@ export function buildGeneratedTemplateField(
         id: "tickers",
         label: "Tickers",
         type: "text",
-        required,
+        required: !template.shortcut?.openWithoutArg,
         placeholder: "AAPL, MSFT, NVDA",
       },
       initialValue: "",

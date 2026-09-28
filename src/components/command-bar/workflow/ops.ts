@@ -205,7 +205,7 @@ async function resolvePaneTemplateOptions(
     };
   } else if (template.shortcut?.argPlaceholder === "tickers") {
     const rawInput = resolvedOptions?.arg ?? resolvedOptions?.values?.tickers ?? "";
-    const symbols = !String(rawInput).trim() && template.shortcut.argOptional
+    const symbols = !String(rawInput).trim() && template.shortcut?.openWithoutArg
       ? []
       : await resolveTickerListInput(rawInput, baseContext.activeCollectionId, deps);
     resolvedOptions = {

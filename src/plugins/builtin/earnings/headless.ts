@@ -136,6 +136,22 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   };
 }
 
+/** EVTS: the market board, whatever ticker is given. */
+export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+  return {
+    shape: "rows",
+    argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
+    options: [
+      { key: "limit", description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
+    ],
+    columns: BOARD_COLUMNS,
+    describe: () => "Earnings Calendar",
+    load(args, context) {
+      return boardRows({ ...args, symbols: [] }, context, deps);
+    },
+  };
+}
+
 export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
@@ -158,3 +174,4 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
 }
 
 export const earningsCalendarHeadless = createEarningsHeadless();
+export const earningsBoardHeadless = createEarningsBoardHeadless();

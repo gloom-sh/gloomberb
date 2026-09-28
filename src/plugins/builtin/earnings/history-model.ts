@@ -127,13 +127,7 @@ export function historyFigures(rows: readonly HistoryRow[], today: string): Stat
     figures.push({ id: "average", label: "Avg move", value: moveSize(mean(moves)), detail: `last ${moves.length}` });
   }
   if (implied.length >= MIN_AVERAGE_REPORTS) {
-    const tradeCloses = past.some((row) => row.impliedMethod === "trade-close");
-    figures.push({
-      id: "average-implied",
-      label: "Avg implied",
-      value: impliedText(mean(implied)),
-      detail: tradeCloses ? `last ${implied.length}, trade closes` : `last ${implied.length}`,
-    });
+    figures.push({ id: "average-implied", label: "Avg implied", value: impliedText(mean(implied)), detail: `last ${implied.length}` });
   }
   if (beats.length >= MIN_AVERAGE_REPORTS) {
     figures.push({

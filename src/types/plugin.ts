@@ -239,6 +239,12 @@ interface PaneTemplateShortcut {
   argPlaceholder?: string;
   argKind?: "text" | "ticker" | "ticker-list";
   argOptional?: boolean;
+  /**
+   * With no argument typed and none to infer from the active ticker, open
+   * the pane without one instead of asking for it (ERN alone is the market
+   * board). Without it an optional argument still falls back to the form.
+   */
+  openWithoutArg?: boolean;
 }
 
 export interface PaneTemplateCreateOptions {

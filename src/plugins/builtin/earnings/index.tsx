@@ -15,7 +15,7 @@ import { attachEarningsCalendarPersistence, resetEarningsCalendarPersistence } f
 import { attachEarningsCloudCaches, resetEarningsCloudCaches } from "./client";
 import { EarningsBoard } from "./board";
 import { EarningsHistoryView } from "./history";
-import { earningsCalendarHeadless } from "./headless";
+import { earningsBoardHeadless, earningsCalendarHeadless } from "./headless";
 import { scopedSymbolsFromSettings } from "./model";
 
 /** `ERN <ticker>`: that company's reports, with the footer's ways into its other panes. */
@@ -40,10 +40,13 @@ function EarningsPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { nativePaneChrome } = useUiCapabilities();
   const symbols = useMemo(() => scopedSymbolsFromSettings(pane?.settings), [pane?.settings]);
+  // EVTS is always the market board; its ticker only picks the row.
+  const board = pane?.settings?.board === true;
+  const highlight = typeof pane?.settings?.highlight === "string" ? pane.settings.highlight : null;
   const bodyHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
-  return symbols.length === 1
+  return !board && symbols.length === 1
     ? <TickerEarnings symbol={symbols[0]!} focused={focused} width={width} height={bodyHeight} />
-    : <EarningsBoard scopedSymbols={symbols} focused={focused} width={width} height={bodyHeight} />;
+    : <EarningsBoard scopedSymbols={board ? [] : symbols} highlight={highlight} focused={focused} width={width} height={bodyHeight} />;
 }
 
 /** Tickers named on the command bar or the CLI. */
@@ -108,9 +111,10 @@ export const earningsModule: PluginModule = {
       paneId: "earnings-calendar",
       label: "Earnings Calendar",
       description: "The market's report days with implied and past moves; with a ticker, its report history.",
-      keywords: ["earn", "earnings", "calendar", "evts", "events", "implied move", "surprise", "eps", "revenue", "quarterly"],
-      // Tickers are optional: ERN alone is the market's report days.
-      shortcut: { prefix: "ERN", aliases: ["EVTS"], argPlaceholder: "tickers", argKind: "ticker-list", argOptional: true },
+      keywords: ["earn", "earnings", "calendar", "implied move", "surprise", "eps", "revenue", "quarterly"],
+      // ERN works on the loaded security: typed alone it takes the active
+      // ticker, and with none active it opens the market's report days.
+      shortcut: { prefix: "ERN", argPlaceholder: "tickers", argKind: "ticker-list", argOptional: true, openWithoutArg: true },
       headless: earningsCalendarHeadless,
       canCreate: () => true,
       // Tickers named on the command bar scope the pane; without them it is the market board.
@@ -120,6 +124,25 @@ export const earningsModule: PluginModule = {
           title: symbols.length > 0 ? `ERN ${formatTickerListInput(symbols)}` : "Earnings Calendar",
           placement: "floating",
           settings: symbols.length > 0 ? { symbols, symbolsText: formatTickerListInput(symbols) } : undefined,
+        };
+      },
+    },
+    {
+      id: "earnings-board-pane",
+      paneId: "earnings-calendar",
+      label: "Earnings Days",
+      description: "The market's report days with implied and past moves; a ticker picks its row.",
+      keywords: ["evts", "events", "earnings calendar", "earnings season", "reporting today"],
+      // Bloomberg's calendar: the market board always, never one company's history.
+      shortcut: { prefix: "EVTS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+      headless: earningsBoardHeadless,
+      canCreate: () => true,
+      createInstance: (_context, options) => {
+        const symbol = (options?.symbol ?? options?.ticker?.metadata.ticker ?? options?.arg ?? "").trim().toUpperCase();
+        return {
+          title: "Earnings Calendar",
+          placement: "floating",
+          settings: { board: true, ...(symbol ? { highlight: symbol } : {}) },
         };
       },
     },

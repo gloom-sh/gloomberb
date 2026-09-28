@@ -29,8 +29,18 @@ const ALL_COLUMNS: HistoryColumn[] = [
 /** Dropped first when the pane is narrow: the table keeps dates, the two moves and EPS. */
 const DROP_ORDER: HistoryColumnId[] = ["period", "revenueSurprise", "ratio", "revenueEstimate", "when", "epsSurprise", "revenueActual", "epsEstimate"];
 
-export function historyColumns(width: number): HistoryColumn[] {
-  let columns = ALL_COLUMNS;
+/** The sales columns and what fills them; a company with no revenue on record shows none of them. */
+const SALES_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number | null>> = {
+  revenueEstimate: (row) => row.revenueEstimate,
+  revenueActual: (row) => row.revenueActual,
+  revenueSurprise: (row) => row.revenueSurprise,
+};
+
+export function historyColumns(width: number, rows: readonly HistoryRow[]): HistoryColumn[] {
+  let columns = ALL_COLUMNS.filter((column) => {
+    const value = SALES_COLUMNS[column.id];
+    return !value || rows.some((row) => value(row) != null);
+  });
   const used = (list: HistoryColumn[]) => list.reduce((sum, column) => sum + tableColumnWidth(column) + TABLE_COLUMN_GAP, 2);
   for (const id of DROP_ORDER) {
     if (used(columns) <= width) break;

@@ -51,12 +51,14 @@ interface BoardData {
  * with the implied move and each company's average move. With tickers, or the
  * Mine filter, the upcoming reports of those companies instead.
  */
-export function EarningsBoard({ focused, width, height, scopedSymbols }: {
+export function EarningsBoard({ focused, width, height, scopedSymbols, highlight = null }: {
   focused: boolean;
   width: number;
   height: number;
   /** Named on the command bar; empty for the market board. */
   scopedSymbols: readonly string[];
+  /** `EVTS <ticker>`: the row to select when that company reports in these days. */
+  highlight?: string | null;
 }) {
   const dataProvider = useAssetData();
   const { navigateTicker } = usePluginTickerActions();
@@ -80,6 +82,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols }: {
   // A layout or `gloomberb shot ERN NVDA,AMD --open NVDA` lands on that company's history.
   const [openSymbol] = usePaneSettingValue<string>("open", "");
   const openedSymbol = useRef<string | null>(null);
+  const highlighted = useRef<string | null>(null);
 
   const today = newYorkToday();
   const market = scopedSymbols.length === 0 && !mineOnly;
@@ -137,6 +140,14 @@ export function EarningsBoard({ focused, width, height, scopedSymbols }: {
     openedSymbol.current = symbol;
     setOpenKey(match.key);
   }, [data, openSymbol, setOpenKey]);
+
+  useEffect(() => {
+    if (!highlight || highlighted.current === highlight) return;
+    const row = reportRows.find((candidate) => candidate.report.symbol === highlight);
+    if (!row) return;
+    highlighted.current = highlight;
+    setSelectedKey(row.key);
+  }, [highlight, reportRows, setSelectedKey]);
 
   useAutoRefresh(resource.updatedAt, resource.load);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
