@@ -8,7 +8,12 @@ import { createAppRemoteController } from "./controller";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 
-function createRegistryHarness(options: { withFloatingPane?: boolean; withCustomView?: boolean; financials?: TickerFinancials } = {}) {
+function createRegistryHarness(options: {
+  withFloatingPane?: boolean;
+  withCustomView?: boolean;
+  financials?: TickerFinancials;
+  dialogOpen?: boolean;
+} = {}) {
   const config = {
     ...createDefaultConfig("/tmp/gloom-remote-controller"),
     onboardingComplete: true,
@@ -110,6 +115,7 @@ function createRegistryHarness(options: { withFloatingPane?: boolean; withCustom
     getState: () => state,
     pluginRegistry: registry,
     uiRegistry,
+    isDialogOpen: () => options.dialogOpen === true,
   });
   return {
     actions,
@@ -279,6 +285,16 @@ describe("createAppRemoteController", () => {
       kind: "ticker-search",
       query: "google",
     });
+  });
+
+  test("leaves the bar shut while a dialog is open", async () => {
+    const { actions, controller } = createRegistryHarness({ dialogOpen: true });
+
+    for (const operation of ["app.openCommandBar", "app.search"]) {
+      const response = await controller.handle({ type: "call", operation, input: { query: "NVDA" } });
+      expect(response).toMatchObject({ ok: false, error: { message: "A dialog is open. Close it first." } });
+    }
+    expect(actions).toEqual([]);
   });
 
   test("exposes and activates semantic command-bar results", async () => {

@@ -4,7 +4,10 @@ import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DesktopApplicationMenuBridge } from "../../types/desktop-menu";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
+import { isDialogOpen } from "../../ui/dialog-stack";
 import type { RendererHost } from "../../ui/host";
+
+const OPENS_OVER_DIALOGS = new Set<string>(["open-command-bar", "open-plugin-workflow", "open-builtin-workflow"]);
 
 export function useDesktopApplicationMenuRuntime({
   desktopApplicationMenuBridge,
@@ -26,6 +29,11 @@ export function useDesktopApplicationMenuRuntime({
   useEffect(() => {
     if (desktopWindowKind !== "main" || !desktopApplicationMenuBridge) return;
     return desktopApplicationMenuBridge.subscribe((command) => {
+      // The native menu stays reachable over a dialog, accelerators included.
+      // A bar opened there would sit over the dialog without its keys, and Esc
+      // would close the dialog under it; a form would stack over one the user
+      // has not finished. Both wait for the dialog to close.
+      if (OPENS_OVER_DIALOGS.has(command.type) && isDialogOpen()) return;
       switch (command.type) {
         case "open-command-bar":
           dispatch({ type: "SET_COMMAND_BAR", open: true, query: command.query });

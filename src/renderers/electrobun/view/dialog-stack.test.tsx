@@ -2,6 +2,7 @@
 import { expect, test } from "bun:test";
 import { act } from "react";
 import { useDialog, type AlertContext, type DialogApi } from "../../../ui/dialog";
+import { isDialogOpen } from "../../../ui/dialog-stack";
 import { WebDialogHostProvider } from "./dialog-host";
 import { moveDialogFocus } from "./key-event";
 import { createDomTestHarness } from "./test-utils";
@@ -45,6 +46,27 @@ test("a dialog opened from a dialog stacks, and closing it returns to the first"
 
   await act(async () => { dismissInner!(); });
   expect(texts()).toEqual(["Outer"]);
+});
+
+// Pane settings closes itself and opens the bar in the same task, and the bar
+// checks for a dialog before it opens.
+test("whether a dialog is open changes the moment one opens or closes", async () => {
+  await render(<WebDialogHostProvider><Capture /></WebDialogHostProvider>);
+  let dismiss: (() => void) | null = null;
+  expect(isDialogOpen()).toBe(false);
+  await act(async () => {
+    void dialog!.alert({
+      content: (ctx: AlertContext) => {
+        dismiss = ctx.dismiss;
+        return <Buttons names={["Only"]} />;
+      },
+    });
+    expect(isDialogOpen()).toBe(true);
+  });
+  await act(async () => {
+    dismiss!();
+    expect(isDialogOpen()).toBe(false);
+  });
 });
 
 test("Tab walks the topmost dialog's controls and wraps", async () => {

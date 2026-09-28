@@ -23,6 +23,7 @@ import {
   type TickerOpenTarget,
 } from "../../tickers/open-target";
 import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
+import { isDialogOpen } from "../../ui/dialog-stack";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -75,7 +76,8 @@ export function useAppTickerOpenRuntime({
       return target;
     } catch (err) {
       if (!canPresentFeedback()) return null;
-      if (err instanceof AmbiguousTickerError) {
+      // Ticker search offers the listings, unless a dialog would sit over the bar.
+      if (err instanceof AmbiguousTickerError && !isDialogOpen()) {
         dispatch({ type: "SET_COMMAND_BAR", open: true, query: rawSymbol,
           launch: { kind: "ticker-search", query: rawSymbol } });
       }

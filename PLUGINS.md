@@ -817,7 +817,7 @@ ctx.selectTicker("AAPL", "my-pane:1"); // Select in a specific pane
 ctx.switchPanel("left");               // Switch active panel
 ctx.switchTab("chart");                // Switch Ticker Research tab by id
 ctx.switchTab("chart", "ticker-research:1"); // Switch tab in a specific pane
-ctx.openCommandBar();                  // Open the command bar
+ctx.openCommandBar();                  // Open the command bar (nothing while a dialog is open)
 ctx.openCommandBar("export");          // Open with a pre-filled query
 ctx.openPaneSettings();                // Open settings for the focused pane
 ctx.openPaneSettings("my-pane:1");     // Open settings for a specific pane

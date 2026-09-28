@@ -21,6 +21,22 @@ interface DialogStackOptions<E extends { id: string }> {
 
 let nextDialogId = 1;
 
+/** The dialogs of every mounted host, updated the moment one opens or closes. */
+const mountedStacks = new Set<{ readonly current: readonly unknown[] }>();
+
+/**
+ * Whether a dialog is open now. Read from the stacks rather than from a
+ * render, so a dialog that just closed itself (pane settings handing over to
+ * the bar) already counts as closed. Anything that would open the command bar
+ * checks this first: the bar would sit over the dialog without its keys.
+ */
+export function isDialogOpen(): boolean {
+  for (const stack of mountedStacks) {
+    if (stack.current.length > 0) return true;
+  }
+  return false;
+}
+
 export function useDialogStack<E extends { id: string }>(options: DialogStackOptions<E>) {
   const [dialogs, setDialogs] = useState<E[]>([]);
   const dialogsRef = useRef<E[]>([]);
@@ -60,8 +76,10 @@ export function useDialogStack<E extends { id: string }>(options: DialogStackOpt
 
   useEffect(() => {
     mountedRef.current = true;
+    mountedStacks.add(dialogsRef);
     return () => {
       mountedRef.current = false;
+      mountedStacks.delete(dialogsRef);
       const settlers = [...settlersRef.current.values()];
       settlersRef.current.clear();
       dialogsRef.current = [];

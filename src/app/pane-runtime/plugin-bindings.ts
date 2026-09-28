@@ -47,6 +47,7 @@ import type {
 import type { TickerOpenTarget } from "../../tickers/open-target";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { tickerInstrumentLabel } from "../../tickers/instrument-label";
+import { isDialogOpen } from "../../ui/dialog-stack";
 import { stableStringify } from "../../utils/hash";
 
 // Registry callbacks are rebound on renders. Request ownership must survive
@@ -128,8 +129,9 @@ export function bindAppPanePluginRegistry({
     dispatch({ type: "SET_ACTIVE_PANEL", panel });
   };
   pluginRegistry.switchTabFn = (tabId, paneId) => switchTickerResearchTab(tabId, paneId);
+  // The bar would open over a dialog without its keys, so it waits for none to be open.
   pluginRegistry.openCommandBarFn = (query) => {
-    if (isDetachedWindow) return;
+    if (isDetachedWindow || isDialogOpen()) return;
     dispatch({ type: "SET_COMMAND_BAR", open: true, query });
   };
   // Forms submit through the main window's state, so a detached window says where to go.
@@ -141,7 +143,7 @@ export function bindAppPanePluginRegistry({
     const command = pluginRegistry.commands.get(commandId);
     if (!command?.wizard || command.wizard.length === 0) {
       // Nothing to fill in: the bar opens, as it always has for such a command.
-      dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+      if (!isDialogOpen()) dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
       return;
     }
     openFormModal({ kind: "plugin-command", commandId });

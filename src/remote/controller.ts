@@ -47,6 +47,7 @@ import {
   requirePaneInstance,
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
+import { isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
 import { asRecord } from "../utils/guards";
 
 interface AppRemoteControllerOptions {
@@ -56,6 +57,8 @@ interface AppRemoteControllerOptions {
   uiRegistry: RemoteUiRegistry | null;
   desktopWindowBridge?: DesktopWindowBridge;
   afterMutation?: () => Promise<void> | void;
+  /** Whether a dialog (a form, a confirm, pane settings) is open now. */
+  isDialogOpen?: () => boolean;
 }
 
 const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar"];
@@ -87,6 +90,7 @@ export function createAppRemoteController({
   uiRegistry,
   desktopWindowBridge,
   afterMutation = () => {},
+  isDialogOpen = isAnyDialogOpen,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
@@ -205,6 +209,8 @@ export function createAppRemoteController({
   const openCommandBar = async (input: Record<string, unknown>): Promise<unknown> => {
     const mode = optionalString(input, "mode") ?? "command";
     const query = optionalString(input, "query") ?? "";
+    // The bar would open over the dialog without its keys.
+    if (isDialogOpen()) throw new Error("A dialog is open. Close it first.");
     if (getState().commandBarOpen) {
       dispatch({ type: "SET_COMMAND_BAR", open: false });
       await afterMutation();
