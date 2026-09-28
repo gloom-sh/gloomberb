@@ -1,10 +1,6 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { buildBrokerDirectory } from "../../brokers/directory";
-import {
-  getSignedInBrokers,
-  refreshSignedInBrokers,
-  subscribeSignedInBrokers,
-} from "../../brokers/signed-in/catalog";
+import { getSignedInBrokers, refreshSignedInBrokers } from "../../brokers/signed-in/catalog";
 import { SIGNED_IN_BROKER_TYPE } from "../../brokers/signed-in/profile";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { t } from "../../i18n";
@@ -55,13 +51,6 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
-  const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
-  const brokerDirectory = useMemo(
-    () => buildBrokerDirectory({ signedIn: signedInBrokers, adapters: pluginRegistry.brokers.values() }),
-    [pluginRegistry.brokers, signedInBrokers],
-  );
-  const brokerDirectoryRef = useRef(brokerDirectory);
-  brokerDirectoryRef.current = brokerDirectory;
   const depsRef = useRef<FormModalDeps>(null as unknown as FormModalDeps);
   depsRef.current = {
     dataProvider,
@@ -94,7 +83,7 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
         <ConfirmModalContent {...context} confirm={request.confirm} runtime={runtime} width={width} />
       );
     } else {
-      const result = resolveFormRequest(request, depsRef.current, brokerDirectoryRef.current);
+      const result = resolveFormRequest(request, depsRef.current);
       if (result.kind === "notice") {
         pluginRegistry.notify({ body: t(result.message), type: "info" });
         return true;
@@ -136,13 +125,18 @@ export function FormModalHost({ dataProvider, pluginRegistry, tickerRepository }
 function resolveFormRequest(
   request: Exclude<FormModalRequest, { kind: "confirm" }>,
   deps: FormModalDeps,
-  brokerDirectory: ReturnType<typeof buildBrokerDirectory>,
 ): FormRouteResult {
   const state = deps.getState();
   switch (request.kind) {
     case "builtin": {
       const listsBrokers = request.actionId === "add-broker-account" || request.actionId === "new-portfolio";
       if (listsBrokers && deps.pluginRegistry.brokers.has(SIGNED_IN_BROKER_TYPE)) void refreshSignedInBrokers();
+      // The host outlives plugins: the brokers installed, updated or removed
+      // since it mounted are the ones to list, so the list is built now.
+      const brokerDirectory = buildBrokerDirectory({
+        signedIn: getSignedInBrokers(),
+        adapters: deps.pluginRegistry.brokers.values(),
+      });
       return buildBuiltInFormRoute(request.actionId, state, brokerDirectory);
     }
     case "plugin-command": {

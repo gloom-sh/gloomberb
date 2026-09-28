@@ -12,6 +12,7 @@ import type { AppContextStoreValue } from "../../state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
 import { AmbiguousTickerError } from "../../tickers/search";
+import type { BrokerAdapter } from "../../types/broker";
 import type { BrokerInstanceConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../types/plugin";
@@ -662,6 +663,32 @@ describe("confirm modal", () => {
     expect(notes).toEqual([{ body: "Layout is locked.", type: "error" }]);
     // The confirm is gone, so another can open.
     expect(openConfirmModal(confirmRequest({}).confirm)).toBe(true);
+  });
+
+  // The host mounts once, and the marketplace installs brokers into the map it read.
+  test("Add Broker lists a broker installed after the app started", async () => {
+    let registry: PluginRegistry | null = null;
+    testSetup = await testRender(
+      <CommandBarHarness
+        query=""
+        live
+        configureState={(state) => ({ ...state, commandBarOpen: false })}
+        configurePluginRegistry={(value) => { registry = value; }}
+      />,
+      { width: 90, height: 30 },
+    );
+    await testSetup.renderOnce();
+    (registry!.brokers as Map<string, BrokerAdapter>).set("demo", {
+      id: "demo",
+      name: "Demo Broker",
+      configSchema: [{ key: "token", label: "Token", type: "text" }],
+    } as unknown as BrokerAdapter);
+
+    await act(async () => {
+      expect(openFormModal({ kind: "builtin", actionId: "add-broker-account" })).toBe(true);
+    });
+    await waitForForm("Add Broker Account");
+    expect(frame()).toContain("Demo Broker");
   });
 });
 
