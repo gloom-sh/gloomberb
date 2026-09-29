@@ -61,6 +61,7 @@ import {
   initialFormFocus,
   isLastVisibleField,
   moveFormFocus,
+  rowScrollDelta,
   type FormFocus,
   type FormRoute,
   type FormStep,
@@ -451,7 +452,12 @@ export function FormModalContent({
     }
     // Measured, not estimated: the scrollbar narrows the body by a column, so
     // text wraps differently from how it would fill the whole width.
-    scrollRef.current?.scrollChildIntoView?.(rowId);
+    const scrollBox = scrollRef.current;
+    const row = scrollBox?.content?.findDescendantById?.(rowId);
+    const body = scrollBox?.viewport;
+    if (!scrollBox || !row || body?.y === undefined) return;
+    const delta = rowScrollDelta({ top: row.y, height: row.height }, { top: body.y, height: body.height });
+    if (delta !== 0) scrollBox.scrollTo(Math.max(0, scrollBox.scrollTop + delta));
   }, [desktop, rowIdPrefix]);
 
   // A click focuses the nearest focusable renderable, a scrollbar included, and

@@ -95,6 +95,7 @@ async function renderForm(
     storeRef?: { current: AppContextStoreValue | null };
     remoteRegistry?: ReturnType<typeof createRemoteUiRegistry>;
     dataProvider?: DataProvider;
+    size?: { width: number; height: number };
   } = {},
 ) {
   testSetup = await testRender(
@@ -110,7 +111,7 @@ async function renderForm(
         configure(registry);
       }}
     />,
-    { width: 90, height: 30 },
+    options.size ?? { width: 90, height: 30 },
   );
   await act(async () => {
     expect(openFormModal(request)).toBe(true);
@@ -263,6 +264,38 @@ describe("form modal", () => {
     await type("LAST");
     await settle();
     expect(frame()).toContain("Field 8");
+    expect(frame()).toContain("LAST");
+  });
+
+  test("Tab shows a field exactly as tall as the body", async () => {
+    // At 17 rows the body is 7 rows, as tall as a textarea with its label.
+    const fields = Array.from({ length: 3 }, (_, index) => ({
+      id: `f${index + 1}`,
+      label: `Field ${index + 1}`,
+      type: "textarea" as const,
+    }));
+    await renderForm(() => {}, {
+      kind: "route",
+      route: {
+        kind: "workflow",
+        workflowId: "plugin-command:notes",
+        title: "Notes",
+        fields,
+        values: Object.fromEntries(fields.map((field) => [field.id, ""])),
+        activeFieldId: "f1",
+        submitLabel: "Save",
+        pending: false,
+        error: null,
+        payload: { kind: "plugin-command", actionId: "notes" },
+      },
+    }, { size: { width: 90, height: 17 } });
+    await waitForForm("Field 1");
+
+    await press({ name: "tab" });
+    await settle();
+    await type("LAST");
+    await settle();
+    expect(frame()).toContain("Field 2");
     expect(frame()).toContain("LAST");
   });
 

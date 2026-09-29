@@ -132,7 +132,8 @@ export interface ScrollBoxRenderable {
   scrollLeftPx?: number;
   scrollHeightPx?: number;
   scrollWidthPx?: number;
-  viewport?: { width: number; height: number };
+  /** In the terminal, `y` is the viewport's top row on screen, as laid out last. */
+  viewport?: { y?: number; width: number; height: number };
   viewportPx?: { width: number; height: number };
   visible?: boolean;
   parent?: unknown;
@@ -141,8 +142,8 @@ export interface ScrollBoxRenderable {
   verticalScrollBar?: ScrollBarRenderable;
   scrollTo(target: number | { x?: number; y?: number }, y?: number): void;
   scrollToPixels?(target: number | { x?: number; y?: number }, y?: number): void;
-  /** Terminal only: scrolls the least that shows the descendant with this id, as laid out last. */
-  scrollChildIntoView?(id: string): void;
+  /** Terminal only: the scrolled content, whose descendants carry their screen rows as laid out last. */
+  content?: { findDescendantById?(id: string): { y: number; height: number } | undefined };
 }
 
 export interface InputRenderable {
