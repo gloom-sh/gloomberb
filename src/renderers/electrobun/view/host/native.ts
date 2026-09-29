@@ -1,5 +1,5 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
-import { backendRequest, onContextMenuSelect } from "../backend-rpc";
+import { backendRequest, onBackendMessage } from "../backend-rpc";
 import {
   DesktopContextMenuActionScope,
   createContextMenuRequestId,
@@ -10,7 +10,7 @@ export const NATIVE_CONTEXT_MENU_SUPPORTED = !/\blinux\b/i.test(window.navigator
 
 const CONTEXT_MENU_ACTION_TTL_MS = 120_000;
 const contextMenuActionScope = new DesktopContextMenuActionScope(
-  onContextMenuSelect,
+  (requestId, listener) => onBackendMessage("context-menu.select", requestId, listener),
   CONTEXT_MENU_ACTION_TTL_MS,
 );
 

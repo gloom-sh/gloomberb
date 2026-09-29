@@ -8,7 +8,7 @@ import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
   initElectrobunBackend,
-  onPluginsUpdated,
+  onBackendMessage,
   replaceElectrobunCapabilityManifests,
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
@@ -27,13 +27,12 @@ import { installDomMarketDataFrames } from "./data-frames";
 import { DomErrorBoundary, DomHostProviders } from "./dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
 import { createWebUiHost, webRendererHost } from "./ui-host";
-import { createApplicationMenuBridge } from "./application-menu-bridge";
-import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
 import {
   initializeDesktopResearchActivity,
   observeDesktopDeepLinks,
 } from "../../../api-client/research-activity";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
+import type { DesktopApplicationMenuBridge } from "../../../types/desktop-menu";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
 import { getRendererPlugins } from "../../../plugins/catalog-ui";
@@ -147,9 +146,13 @@ async function boot() {
   const config = desktopSnapshot?.config ?? init.config;
   applyLanguageFromConfig(config);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
-  const desktopApplicationMenuBridge = createApplicationMenuBridge();
+  const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
+    subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),
+  };
   initializeDesktopResearchActivity();
-  const desktopDeepLinkBridge = observeDesktopDeepLinks(createDesktopDeepLinkBridge());
+  const desktopDeepLinkBridge = observeDesktopDeepLinks({
+    subscribe: (listener) => onBackendMessage("desktop.deepLink", listener),
+  });
   const webUiHost = createWebUiHost(init.desktopPlatform);
   // Compiled by the Bun process, which owns the filesystem. A failure here must
   // not stop the app from starting: the marketplace reports broken plugins, and
@@ -193,7 +196,7 @@ async function boot() {
   setPluginManager(pluginManager);
   // Official plugins the Bun process updated in the background, brought into
   // this session the way the Plugins pane does after an update.
-  onPluginsUpdated(({ directories }) => {
+  onBackendMessage("plugins.updated", ({ directories }) => {
     const marketplace = getMarketplaceHost();
     if (marketplace) void activateUpdatedPlugins(directories, marketplace, pluginManager);
   });

@@ -9,7 +9,7 @@ import {
   type BrokerStatusEvent,
 } from "../../../capabilities";
 import type { BrokerConnectionStatus } from "../../../types/broker";
-import { backendRequest, onCapabilityEvent } from "./backend-rpc";
+import { backendRequest, subscribeBackendCapability } from "./backend-rpc";
 import { unpackQuoteEvents } from "../shared/quote-event-batch";
 
 const statuses = new Map<string, BrokerConnectionStatus>();
@@ -18,9 +18,8 @@ const STATUS_SUBSCRIPTION_TEARDOWN_DELAY_MS = 250;
 let nextSubscriptionId = 1;
 
 type StatusSubscription = {
-  subscriptionId: string;
   listeners: Set<() => void>;
-  disposeEvents: () => void;
+  dispose: () => void;
   teardownTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -40,51 +39,40 @@ function invokeBrokerCapability<T>(operationId: string, payload: unknown): Promi
   });
 }
 
-async function subscribeBrokerCapability(
-  subscriptionId: string,
-  operationId: string,
-  payload: unknown,
-): Promise<void> {
-  await backendRequest("capability.subscribe", {
-    subscriptionId,
-    capabilityId: BROKER_CAPABILITY_ID,
-    operationId,
-    payload,
-  });
-}
-
 function disposeStatusSubscription(instanceId: string, entry: StatusSubscription): void {
   if (statusSubscriptions.get(instanceId) !== entry) return;
-  entry.disposeEvents();
+  entry.dispose();
   if (entry.teardownTimer) clearTimeout(entry.teardownTimer);
   statusSubscriptions.delete(instanceId);
-  void backendRequest("capability.unsubscribe", { subscriptionId: entry.subscriptionId }).catch(() => {});
 }
 
 function getStatusSubscription(instanceId: string): StatusSubscription {
   const current = statusSubscriptions.get(instanceId);
   if (current) return current;
 
-  const subscriptionId = `broker-status:${instanceId}:${nextSubscriptionId++}`;
   const entry: StatusSubscription = {
-    subscriptionId,
     listeners: new Set(),
-    disposeEvents: () => {},
+    dispose: () => {},
     teardownTimer: null,
   };
-  entry.disposeEvents = onCapabilityEvent(subscriptionId, (message) => {
-    const event = message.event as BrokerRemoteEvent;
-    if (!isBrokerStatusEvent(event)) return;
-    statuses.set(event.instanceId, event.status);
-    for (const listener of entry.listeners) {
-      listener();
-    }
-  });
   statusSubscriptions.set(instanceId, entry);
-
-  void subscribeBrokerCapability(subscriptionId, "status", { instanceId }).catch((error) => {
-    disposeStatusSubscription(instanceId, entry);
-    console.error("Failed to subscribe to broker status", error);
+  entry.dispose = subscribeBackendCapability({
+    subscriptionId: `broker-status:${instanceId}:${nextSubscriptionId++}`,
+    capabilityId: BROKER_CAPABILITY_ID,
+    operationId: "status",
+    payload: { instanceId },
+    onEvent: (message) => {
+      const event = message as BrokerRemoteEvent;
+      if (!isBrokerStatusEvent(event)) return;
+      statuses.set(event.instanceId, event.status);
+      for (const listener of entry.listeners) {
+        listener();
+      }
+    },
+    onError: (error) => {
+      disposeStatusSubscription(instanceId, entry);
+      console.error("Failed to subscribe to broker status", error);
+    },
   });
 
   return entry;
@@ -123,20 +111,18 @@ const client: BrokerRemoteClient = {
   },
 
   subscribeQuotes(instanceId, targets, onQuote) {
-    const subscriptionId = `broker-quotes:${instanceId}:${nextSubscriptionId++}`;
-    const disposeEvents = onCapabilityEvent(subscriptionId, (message) => {
-      for (const event of unpackQuoteEvents(message.event).events as BrokerRemoteEvent[]) {
-        if (isBrokerQuoteEvent(event)) onQuote(event.target, event.quote);
-      }
+    return subscribeBackendCapability({
+      subscriptionId: `broker-quotes:${instanceId}:${nextSubscriptionId++}`,
+      capabilityId: BROKER_CAPABILITY_ID,
+      operationId: "quotes",
+      payload: { instanceId, targets },
+      onEvent: (message) => {
+        for (const event of unpackQuoteEvents(message).events as BrokerRemoteEvent[]) {
+          if (isBrokerQuoteEvent(event)) onQuote(event.target, event.quote);
+        }
+      },
+      onError: (error) => console.error("Failed to subscribe to broker quotes", error),
     });
-    void subscribeBrokerCapability(subscriptionId, "quotes", { instanceId, targets }).catch((error) => {
-      disposeEvents();
-      console.error("Failed to subscribe to broker quotes", error);
-    });
-    return () => {
-      disposeEvents();
-      void backendRequest("capability.unsubscribe", { subscriptionId }).catch(() => {});
-    };
   },
 
   async removeInstance(instanceId) {

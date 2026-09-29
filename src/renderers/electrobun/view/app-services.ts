@@ -5,7 +5,7 @@ import { newsProvider } from "../../../capabilities";
 import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
-import { connectBackendConnectionHealth } from "./remote/connection-health-backend";
+import { connectBackendConnectionHealth } from "./remote/connection-health";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
 import { createCapabilityInvoker } from "./remote/capability-invoker";
 import { apiClient } from "../../../api-client";
