@@ -510,6 +510,21 @@ Available context kinds are `pane`, `ticker`, `link`, `editable-text`, `selected
 
 Commands registered with `ctx.registerCommand({ shortcut, shortcutArg })` and pane templates registered with `shortcut` are picked up by the in-app Help pane automatically. Use those fields for user-facing command-bar prefixes instead of adding separate Help text. When a built-in command or pane shortcut is added or renamed, also update the README command tables so the public docs match the live registry.
 
+List the same codes in `gloom.json`, so someone who does not have the plugin can find it by typing one:
+
+```json
+{
+  "contributes": {
+    "panes": ["fear-greed"],
+    "shortcuts": [
+      { "code": "FNG", "name": "Fear & Greed", "description": "CNN Fear & Greed index with its history and the seven indicators behind it." }
+    ]
+  }
+}
+```
+
+The registry carries them, and when a typed code (alone, or followed by a ticker or query) belongs to an official plugin that is not installed, the command bar offers to install it with the Plugins pane's confirmation, then opens it with the rest of the text. A code the app already answers to always wins, and plugins from outside github.com/gloom-sh are never offered this way.
+
 ### Command-bar search providers
 
 `registerCommand` covers actions the user can name. A search provider covers everything else the user might type: it is asked for rows whenever free text stays in the command bar, and answers over the network.

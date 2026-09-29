@@ -62,6 +62,7 @@ interface UseCommandBarRootRuntimeOptions {
   }): ResultItem[];
   pluginCommandItems(): ResultItem[];
   pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
+  pluginInstallItem?: ResultItem | null;
   providerResultItems?: ResultItem[];
   providerCategoryPriorities?: CommandBarCategoryPriorities;
   providerSearching?: boolean;
@@ -116,6 +117,7 @@ export function useCommandBarRootRuntime({
   paneShortcutItems,
   pluginCommandItems,
   pluginCommandResultItems,
+  pluginInstallItem = null,
   providerResultItems = [],
   providerCategoryPriorities,
   providerSearching = false,
@@ -190,6 +192,7 @@ export function useCommandBarRootRuntime({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     rootQuery,
     rootShortcutIntent,
     providerResultItems,
@@ -219,6 +222,7 @@ export function useCommandBarRootRuntime({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     rootQuery,
     rootShortcutIntent,
     providerResultItems,
@@ -235,7 +239,7 @@ export function useCommandBarRootRuntime({
   // finds NVDA without the backtick. Skipped when a local row already carries
   // that exact name, since an "Exact Match" symbol would otherwise outrank it.
   const rootPlainTickerSearchArg = useMemo(() => {
-    if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
+    if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none" || pluginInstallItem) return null;
     const trimmed = rootQuery.trim();
     if (trimmed.length < 2) return null;
     const normalizedQuery = normalizeCommandTickerSearchText(trimmed);
@@ -245,7 +249,7 @@ export function useCommandBarRootRuntime({
       && normalizeCommandTickerSearchText(item.label) === normalizedQuery
     ));
     return hasExactLocalRow ? null : trimmed;
-  }, [activeMatch, currentRoute, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
+  }, [activeMatch, currentRoute, pluginInstallItem, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
   const rootTickerSearchArg = rootSecurityDescriptionArg ?? rootPlainTickerSearchArg;
 
   const {

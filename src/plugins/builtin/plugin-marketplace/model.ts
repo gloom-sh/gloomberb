@@ -4,6 +4,13 @@ import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
 
+/** A command-bar code a registry plugin answers to, such as `FNG`. */
+export interface RegistryPluginShortcut {
+  code: string;
+  name: string;
+  description: string;
+}
+
 /** One record from https://plugins.gloom.sh/registry.json. */
 export interface RegistryPlugin {
   id: string;
@@ -17,7 +24,13 @@ export interface RegistryPlugin {
   categories: string[];
   targets: PluginTarget[];
   hosts: string[];
-  contributes: { panes: string[]; capabilities: string[]; broker: boolean };
+  contributes: {
+    panes: string[];
+    capabilities: string[];
+    broker: boolean;
+    /** Declared in the plugin's gloom.json; absent from older feeds and from built-ins. */
+    shortcuts?: RegistryPluginShortcut[];
+  };
   minGloomberb?: string;
   tier: PluginTier;
   bundled: boolean;
@@ -457,10 +470,32 @@ export function unsupportedLabel(entry: MarketplaceEntry): string | null {
 }
 
 /** The pin the registry asks for, or undefined when it does not pin this plugin. */
-export function registryPin(entry: MarketplaceEntry): { ref?: string; commit?: string } | undefined {
+export function registryPin(
+  entry: Pick<MarketplaceEntry, "availableVersion" | "availableCommit">,
+): { ref?: string; commit?: string } | undefined {
   if (!entry.availableVersion && !entry.availableCommit) return undefined;
   return {
     ...(entry.availableVersion ? { ref: entry.availableVersion } : {}),
     ...(entry.availableCommit ? { commit: entry.availableCommit } : {}),
+  };
+}
+
+/**
+ * What someone agrees to before a plugin lands on their machine. The Plugins
+ * pane and the command bar both ask with this, so an install reads the same
+ * wherever it starts.
+ */
+export function installConsent(
+  plugin: Pick<MarketplaceEntry, "name" | "tier" | "hosts"> & { repo: string },
+  pin: { ref?: string; commit?: string } | undefined,
+): { title: string; body: string[] } {
+  return {
+    title: `Install ${plugin.name}?`,
+    body: [
+      `${plugin.name} runs with your full permissions. It is not sandboxed.`,
+      `Source: github.com/${plugin.repo}${pin?.ref ? ` at ${pin.ref}` : ""}${pin?.commit ? ` (${pin.commit.slice(0, 7)})` : ""}`,
+      plugin.tier === "official" ? "Published by Gloom." : plugin.tier === "verified" ? "Reviewed by Gloom." : "Community plugin, not reviewed.",
+      ...(plugin.hosts.length > 0 ? [`Declares access to ${plugin.hosts.join(", ")}.`] : []),
+    ],
   };
 }

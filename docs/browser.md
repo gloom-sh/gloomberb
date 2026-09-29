@@ -16,7 +16,7 @@ Open [term.gloom.sh](https://term.gloom.sh) and sign in with a free Gloom Cloud 
 
 Every web-capable plugin is compiled into the build, so Fear & Greed, the IPO calendar, Polls, and Prediction Markets are there on first load with nothing to install. Disable any of them from the plugin directory as you would a built-in.
 
-The browser app does not install plugins. Code you pick would run on the origin holding your session, and a plugin is a React component sharing the app's own modules, so there is nothing to sandbox it with. Installing belongs to the desktop app and the terminal, which run on your machine. The plugin directory still lists everything and says where each plugin runs.
+The browser app does not install plugins. Code you pick would run on the origin holding your session, and a plugin is a React component sharing the app's own modules, so there is nothing to sandbox it with. Installing belongs to the desktop app and the terminal, which run on your machine. The plugin directory still lists everything and says where each plugin runs, and typing the code of one that is not in the build, such as `TV`, says where to get it.
 
 ## Feature limits
 

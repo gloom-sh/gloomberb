@@ -34,6 +34,7 @@ import {
   collectCategories,
   filterEntries,
   hasUpdate,
+  installConsent,
   isInstallable,
   isManaged,
   mergeCatalog,
@@ -354,15 +355,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (!repo) return;
     if (refuseTooNew(selected)) return;
     const pin = registryPin(selected);
-    const body = [
-      `${selected.name} runs with your full permissions. It is not sandboxed.`,
-      `Source: github.com/${repo}${pin?.ref ? ` at ${pin.ref}` : ""}${pin?.commit ? ` (${pin.commit.slice(0, 7)})` : ""}`,
-      selected.tier === "official" ? "Published by Gloom." : selected.tier === "verified" ? "Reviewed by Gloom." : "Community plugin, not reviewed.",
-      ...(selected.hosts.length > 0 ? [`Declares access to ${selected.hosts.join(", ")}.`] : []),
-    ];
+    const consent = installConsent({ ...selected, repo }, pin);
     const confirmed = await confirmDialog(dialog, {
-      title: `Install ${selected.name}?`,
-      body,
+      title: consent.title,
+      body: consent.body,
       confirmLabel: "Install",
       confirmVariant: "primary",
       width: confirmWidth,

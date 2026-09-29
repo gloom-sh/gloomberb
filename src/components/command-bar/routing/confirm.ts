@@ -18,6 +18,8 @@ interface CommandBarInlineConfirmOptions {
   tone?: "default" | "danger";
   onConfirm: () => void | Promise<void>;
   successBehavior?: "close" | "back" | "stay";
+  /** Runs once the confirmed route has closed or gone back, for work that belongs after it. */
+  onSuccess?: () => void;
 }
 
 export type OpenInlineConfirm = (options: CommandBarInlineConfirmOptions) => void;
@@ -50,6 +52,7 @@ export function useCommandBarConfirmRoute({
       cancelLabel: options.cancelLabel || "Back",
       tone: options.tone || "danger",
       onConfirm: options.onConfirm,
+      ...(options.onSuccess ? { onSuccess: options.onSuccess } : {}),
       pending: false,
       error: null,
       successBehavior: options.successBehavior || "close",
@@ -57,7 +60,8 @@ export function useCommandBarConfirmRoute({
   }, [pushRoute]);
 
   const confirmCurrentRoute = useCallback(async () => {
-    if (currentRoute?.kind !== "confirm") return;
+    // A second Enter while the first is still working would run it twice.
+    if (currentRoute?.kind !== "confirm" || currentRoute.pending) return;
     updateTopRoute((route) => route.kind === "confirm"
       ? { ...route, pending: true, error: null }
       : route);
@@ -68,6 +72,7 @@ export function useCommandBarConfirmRoute({
       } else if (currentRoute.successBehavior !== "stay") {
         closeAll({ revertThemePreview: false });
       }
+      currentRoute.onSuccess?.();
     } catch (error) {
       updateTopRoute((route) => route.kind === "confirm"
         ? {

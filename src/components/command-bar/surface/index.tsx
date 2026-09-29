@@ -18,6 +18,7 @@ import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
+import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useCommandBarThemePreview } from "../theme-preview";
 import { CommandBarPanel } from "../panel";
 import { useCommandBarNavigationState } from "../routing/navigation-state";
@@ -191,6 +192,23 @@ export function CommandBar({
     activeTicker: activeTickerSymbol,
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
 
+  // Runs the typed text again once a plugin installed from the bar is in, the
+  // way a key bound to it would.
+  const rerunQuery = useCallback((query: string) => {
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
+  }, [dispatch]);
+  const closeBar = useCallback(() => closeAll({ revertThemePreview: false }), [closeAll]);
+  const pluginInstallItem = useRootPluginInstallItem({
+    enabled: !currentRoute && rootShortcutIntent.kind === "none",
+    query: rootQuery,
+    commands: allAvailableCommands,
+    pluginRegistry,
+    openInlineConfirm,
+    rerunQuery,
+    closeBar,
+  });
+  const rootQueryClaimed = rootShortcutIntent.kind !== "none" || !!pluginInstallItem;
+
   const planAccess = usePlanAccess();
   const buildAssistInventory = useCallback(() => buildAssistCommandInventory({
     commands: availableCommands,
@@ -201,7 +219,7 @@ export function CommandBar({
   // could not claim — otherwise the user is mid-command, not mid-question.
   const assistAutoAsk = !currentRoute
     && planAccess.emailVerified
-    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
+    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootQueryClaimed });
   const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
     autoAsk: assistAutoAsk,
     getInventory: buildAssistInventory,
@@ -299,7 +317,7 @@ export function CommandBar({
     query: rootQuery,
     // A resolved prefix means the user is running a command, so free-text
     // providers neither ask the network nor add rows.
-    enabled: !currentRoute && rootShortcutIntent.kind === "none",
+    enabled: !currentRoute && !rootQueryClaimed,
     context: searchProviderContext,
     onExecuted: closeAfterProviderResult,
   });
@@ -344,6 +362,7 @@ export function CommandBar({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     providerResultItems,
     providerCategoryPriorities,
     providerSearching,

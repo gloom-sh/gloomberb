@@ -67,6 +67,8 @@ export interface RootResultModelOptions {
   paneShortcutItems: (options?: PaneShortcutItemsOptions) => ResultItem[];
   pluginCommandItems: () => ResultItem[];
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
+  /** The install row for a code only an official plugin the user lacks answers to. */
+  pluginInstallItem?: ResultItem | null;
   rootQuery: string;
   rootShortcutIntent: RootShortcutIntent;
   /**
@@ -146,6 +148,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
+    pluginInstallItem,
     rootQuery,
     rootShortcutIntent,
     providerResultItems = [],
@@ -157,6 +160,11 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
 
   if (currentRoute) {
     return { items: [], initialIdx: 0 };
+  }
+  // The code claims the query the way it would with the plugin installed, so
+  // the install row is the whole answer.
+  if (pluginInstallItem) {
+    return { items: [pluginInstallItem], initialIdx: 0 };
   }
 
   const commandToItem = createRootCommandItemBuilder({

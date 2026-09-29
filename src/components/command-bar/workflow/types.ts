@@ -82,6 +82,7 @@ export interface CommandBarConfirmRoute extends CommandBarRouteBase {
   cancelLabel?: string;
   tone: "default" | "danger";
   onConfirm: () => void | Promise<void>;
+  onSuccess?: () => void;
   pending: boolean;
   error: string | null;
   successBehavior?: "close" | "back" | "stay";
