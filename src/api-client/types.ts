@@ -176,6 +176,15 @@ export interface CloudPricingTier {
   amount: number;
 }
 
+/** `/account/cloud`, reduced to the plan fields the apps read. */
+export interface CloudAccountPlan {
+  effectivePlan?: "free" | "pro";
+  /** Whether a checkout started now comes with the free trial attached. */
+  trialAvailable?: boolean;
+  /** The last charge failed; checkout opens the unpaid invoice instead. */
+  paymentFailed?: boolean;
+}
+
 /** Public `/pricing` payload; no session required. */
 export interface CloudPricing {
   currency: "usd";

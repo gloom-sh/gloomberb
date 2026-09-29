@@ -6,6 +6,7 @@ import type {
   AuthUser,
   BuildoutAccountResponse,
   BuildoutTokenResponse,
+  CloudAccountPlan,
   CloudBrowserHandoffResponse,
   CloudPricing,
   CloudVerificationResponse,
@@ -226,6 +227,11 @@ export class CloudAuthApi {
   /** Public Cloud Pro pricing and trial length. */
   async getCloudPricing(): Promise<CloudPricing> {
     return this.options.request<CloudPricing>("/pricing", { method: "GET" });
+  }
+
+  /** The signed-in account's plan, trial eligibility and billing state. */
+  async getCloudAccountPlan(): Promise<CloudAccountPlan> {
+    return this.options.request<CloudAccountPlan>("/account/cloud", { method: "GET" });
   }
 
   async getBuildoutAccount(): Promise<BuildoutAccountResponse> {

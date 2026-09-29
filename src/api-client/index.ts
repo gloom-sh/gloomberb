@@ -401,6 +401,7 @@ class GloomApiClient {
 
   getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
   getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
+  getCloudAccountPlan = this.auth.getCloudAccountPlan.bind(this.auth);
   getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
   getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
   updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
