@@ -110,12 +110,18 @@ function createRegistryHarness(options: {
       return { nodeId, action, input };
     },
   };
+  let dialogOpen = options.dialogOpen === true;
   const controller = createAppRemoteController({
     dispatch,
     getState: () => state,
     pluginRegistry: registry,
     uiRegistry,
-    isDialogOpen: () => options.dialogOpen === true,
+    isDialogOpen: () => dialogOpen,
+    closeTopmostDialog: () => {
+      const closed = dialogOpen;
+      dialogOpen = false;
+      return closed;
+    },
   });
   return {
     actions,
@@ -287,14 +293,23 @@ describe("createAppRemoteController", () => {
     });
   });
 
-  test("leaves the bar shut while a dialog is open", async () => {
+  test("leaves the bar shut while a dialog is open, and says so until app.closeDialog closes it", async () => {
     const { actions, controller } = createRegistryHarness({ dialogOpen: true });
 
+    // Pane settings: a dialog that is not a form.
+    expect(await controller.handle({ type: "get", resource: "app://form" }))
+      .toMatchObject({ ok: true, data: { open: false, otherDialogOpen: true } });
     for (const operation of ["app.openCommandBar", "app.search"]) {
       const response = await controller.handle({ type: "call", operation, input: { query: "NVDA" } });
-      expect(response).toMatchObject({ ok: false, error: { message: "A dialog is open. Close it first." } });
+      expect(response).toMatchObject({ ok: false, error: { message: "A dialog is open. Close it first with app.closeDialog." } });
     }
     expect(actions).toEqual([]);
+
+    const closed = await controller.handle({ type: "call", operation: "app.closeDialog", input: {} });
+    expect(closed.ok && closed.state?.form).toEqual({ open: false });
+    expect(await controller.handle({ type: "call", operation: "app.closeDialog", input: {} }))
+      .toMatchObject({ ok: false, error: { message: "No dialog is open." } });
+    expect((await controller.handle({ type: "call", operation: "app.search", input: { query: "NVDA" } })).ok).toBe(true);
   });
 
   test("exposes and activates semantic command-bar results", async () => {
@@ -451,6 +466,20 @@ describe("createAppRemoteController", () => {
       kind: "form",
       title: "New Watchlist",
     });
+
+    // A listing picker over the form: the form's controls are out of reach.
+    setUiNodes([
+      { id: "ui:form-cancel", role: "button", label: "Cancel", actions: ["press"], metadata: { scope: "form" } },
+      { id: "ui:form", role: "form", label: "Compare", actions: ["cancel", "submit"], metadata: { scope: "form", kind: "form", covered: true } },
+    ]);
+    const covered = await controller.handle({
+      type: "call",
+      operation: "ui.invokeMatching",
+      input: { role: "button", label: "Cancel" },
+    });
+    expect(covered).toMatchObject({ ok: false, error: { message: "No matching semantic UI node is visible." } });
+    expect((await controller.handle({ type: "get", resource: "app://form" })))
+      .toMatchObject({ ok: true, data: { open: true, kind: "form", covered: true } });
 
     const directResponse = await controller.handle({
       type: "call",

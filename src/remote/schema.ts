@@ -21,7 +21,7 @@ export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://commands", description: "Registered command-bar commands." },
   { uri: "app://command-bar", description: "Current command-bar state and semantic result rows." },
   { uri: "app://command-bar/results", description: "Current semantic command-bar result rows." },
-  { uri: "app://form", description: "The open form or confirm: kind, title, fields with values and options, error, pending state, and submit label; { open: false } when none is open." },
+  { uri: "app://form", description: "The open form or confirm: kind, title, fields with values and options, error, pending state, and submit label, with covered: true while another dialog sits over it; { open: false } when none is open, with otherDialogOpen: true while another dialog (pane settings) is." },
   { uri: "app://capabilities", description: "Registered plugin capability manifests." },
   { uri: "app://accounts", description: "Broker profiles and their accounts: net liquidation, cash by currency, margin requirements, margin loan, leverage, day and unrealized P&L, with source and as-of times." },
   { uri: "app://auth", description: "What the client believes about its cloud session: credential present, checked, cached user plan and verification. No secrets." },
@@ -62,6 +62,13 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
     }),
   ),
   op("app.closeCommandBar", "Close the command bar.", "{}", "local-write", objectSchema()),
+  op(
+    "app.closeDialog",
+    "Close the dialog on top, as Esc would: a form, a confirm, pane settings, or a picker opened over a form. Fails when no dialog is open.",
+    "{}",
+    "local-write",
+    objectSchema(),
+  ),
   op(
     "app.setCommandBarQuery",
     "Set the command bar query.",
@@ -287,7 +294,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ui.invokeMatching",
-    "Invoke an action on the first semantic UI node matching role, label, index, or metadata. While a form or confirm is open, its own nodes (metadata.scope 'form') match first.",
+    "Invoke an action on the first semantic UI node matching role, label, index, or metadata. While a form or confirm is open, its own nodes (metadata.scope 'form') match first; while another dialog covers it, they do not match.",
     "{ role?: string, label?: string, contains?: string, index?: number, action?: string, input?: any, metadata?: object }",
     "local-write",
     objectSchema({
@@ -314,7 +321,7 @@ export const REMOTE_AGENT_HELP = {
   resources: [
     { uri: "app://command-bar", use: "Current command-bar query, open state, selected row, and semantic result rows." },
     { uri: "app://command-bar/results", use: "Just the visible command-bar result/list rows." },
-    { uri: "app://form", use: "The open form or confirm, with field ids, values, options, error and pending state. Every call includes it as `form`." },
+    { uri: "app://form", use: "The open form or confirm, with field ids, values, options, error and pending state, or whether another dialog is open. Every call includes it as `form`." },
     { uri: "ui://tree", use: "Low-level live semantic controls; use when no app-level operation exists." },
     { uri: "app://panes", use: "Pane instances, placement, focus, and runtime state." },
   ],
@@ -376,8 +383,9 @@ export const REMOTE_AGENT_HELP = {
     "If an operation changes UI, request include: ['commandBar'] or use batch include to avoid a follow-up get.",
     "For charts, use visible semantic chart nodes with actions such as moveCursor, press, drag, release, and scroll.",
     "A command with hasWizard in app://commands opens a form in a centered dialog when activated, and the command bar closes. Read `form` in the response, set fields with ui.invokeMatching { role: 'form-field', metadata: { fieldId }, action: 'setValue' }, then send with { role: 'form', action: 'submit' } or close with action 'cancel'. Selects take an option value, toggles a boolean; neither needs to be opened.",
-    "While a dialog is open, app.openCommandBar and app.search fail; close it first (a form or confirm with { role: 'form', action: 'cancel' }).",
-    "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, and read them from app://pane-settings/{paneId}.",
+    "While a dialog is open (form.open or form.otherDialogOpen), app.openCommandBar and app.search fail; close a form or confirm with { role: 'form', action: 'cancel' }, and any dialog on top with app.closeDialog.",
+    "A form with covered: true has another dialog over it, such as a listing picker or a sign-in; its controls wait until that one is answered or closed with app.closeDialog.",
+    "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, read them from app://pane-settings/{paneId}, and close the dialog with app.closeDialog.",
     "Use ui.invokeMatching only after checking app-level operations; it is intentionally generic and depends on visible semantic controls.",
   ],
 };

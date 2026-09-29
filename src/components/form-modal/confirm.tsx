@@ -6,6 +6,7 @@ import { useViewport, type KeyEventLike } from "../../react/input";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../../ui";
 import { useDialogKeyboard, type AlertContext } from "../../ui/dialog";
+import { useDialogIsTopmost } from "../../ui/dialog-context";
 import { isPlainKey } from "../../utils/keyboard";
 import { Button } from "../ui/button";
 import { DialogFrame } from "../ui/frame";
@@ -48,6 +49,7 @@ export function ConfirmModalContent({
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const viewport = useViewport();
+  const isTopmost = useDialogIsTopmost();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Enter can repeat faster than a render; one confirm runs once.
@@ -134,6 +136,7 @@ export function ConfirmModalContent({
       error: error ? t(error) : null,
       pending,
       submitLabel: t(confirm.confirmLabel),
+      covered: !isTopmost,
     }),
   });
 

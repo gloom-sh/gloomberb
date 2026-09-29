@@ -549,7 +549,8 @@ export function FormModalContent({
       cancel: dismiss,
       submit: step ? undefined : () => { void submit(); },
     },
-    getMetadata: () => formRemoteMetadata(routeRef.current, step),
+    // Covered by a dialog stacked over it, such as the listing picker.
+    getMetadata: () => ({ ...formRemoteMetadata(routeRef.current, step), covered: !isTopmost }),
   });
 
   if (step) {

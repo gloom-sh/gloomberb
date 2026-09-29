@@ -8,6 +8,7 @@ import { chatController } from "../../plugins/builtin/chat/controller";
 import type { PluginRegistry } from "../../plugins/registry";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { formSnapshot } from "../../remote/form";
+import { dismissTopmostDialog, isDialogOpen } from "../../ui/dialog-stack";
 import { createRemoteUiRegistry } from "../../remote/semantic-tree";
 import type { AppContextStoreValue } from "../../state/app/context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
@@ -536,7 +537,7 @@ describe("form modal", () => {
     });
 
     // The form as a whole, and its buttons, are marked as the form's.
-    const form = formSnapshot(remoteRegistry.snapshot());
+    const form = formSnapshot(remoteRegistry.snapshot(), isDialogOpen());
     expect(form).toMatchObject({
       open: true,
       kind: "form",
@@ -554,7 +555,7 @@ describe("form modal", () => {
     });
     await settle();
     expect(submitted).toEqual([{ mode: "live", account: "DU1" }]);
-    expect(formSnapshot(remoteRegistry.snapshot())).toEqual({ open: false });
+    expect(formSnapshot(remoteRegistry.snapshot(), isDialogOpen())).toEqual({ open: false });
   });
 
   function registerCompareTemplate(registry: PluginRegistry) {
@@ -658,6 +659,32 @@ describe("form modal", () => {
 
     await type(", MSFT");
     expect(frame()).toContain("COST, MSFT");
+  });
+
+  test("remote control sees the listing picker over the form and closes it before the form", async () => {
+    const remoteRegistry = createRemoteUiRegistry();
+    await renderForm((registry) => {
+      registerCompareTemplate(registry);
+      registry.createPaneFromTemplateAsyncFn = async () => { throw COST; };
+    }, { kind: "pane-template", templateId: "compare-pane" }, { remoteRegistry });
+    await waitForForm("Tickers");
+
+    await type("COST");
+    await press(CTRL_S);
+    await waitForFrameToContain("Choose listing for COST");
+    expect(formSnapshot(remoteRegistry.snapshot(), isDialogOpen())).toMatchObject({ open: true, covered: true });
+
+    await act(async () => { expect(dismissTopmostDialog()).toBe(true); });
+    await settle();
+    expect(frame()).not.toContain("Choose listing for COST");
+    const form = formSnapshot(remoteRegistry.snapshot(), isDialogOpen());
+    expect(form).toMatchObject({ open: true, title: "Compare" });
+    expect(form).not.toHaveProperty("covered");
+
+    await act(async () => { expect(dismissTopmostDialog()).toBe(true); });
+    await settle();
+    expect(formSnapshot(remoteRegistry.snapshot(), isDialogOpen())).toEqual({ open: false });
+    expect(dismissTopmostDialog()).toBe(false);
   });
 
   test("a pane template form keeps the options its caller passed, as createPaneFromTemplate does", async () => {
