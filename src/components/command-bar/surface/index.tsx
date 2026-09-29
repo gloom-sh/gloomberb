@@ -32,6 +32,7 @@ import { useCommandBarRouteEffects } from "../routing/effects";
 import { useCommandBarEnvironment } from "./environment";
 import { useCommandBarActionRuntime } from "../action-runtime";
 import { requestKeybindingCapture } from "../../../app/keybindings";
+import { isDialogOpen } from "../../../ui/dialog-stack";
 
 interface CommandBarProps {
   dataProvider: DataProvider;
@@ -219,8 +220,10 @@ export function CommandBar({
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
 
   // Runs the typed text again once a plugin installed from the bar is in, the
-  // way a key bound to it would.
+  // way a key bound to it would. Not over a dialog opened since: the bar would
+  // sit over it without its keys, and close a form the user is filling in.
   const rerunQuery = useCallback((query: string) => {
+    if (isDialogOpen()) return;
     dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
   }, [dispatch]);
   const closeBar = useCallback(() => closeAfterRun({ revertThemePreview: false }), [closeAfterRun]);

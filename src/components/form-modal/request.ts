@@ -18,7 +18,8 @@ export interface ConfirmModalOptions {
   successBehavior?: "close" | "back" | "stay";
   /**
    * Runs once `onConfirm` succeeded and the confirm has closed (or stayed),
-   * for work that belongs after it, such as opening the bar again.
+   * for work that belongs after it, such as opening the bar again. Skipped
+   * when the confirm was closed before the work finished.
    */
   onSuccess?: () => void;
 }

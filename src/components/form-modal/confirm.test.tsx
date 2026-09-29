@@ -139,4 +139,30 @@ describe("confirm modal", () => {
     expect(dialogOpenOnSuccess).toEqual([false]);
     expect(frame()).not.toContain("Reset Current Layout");
   });
+
+  // The install finishing after Esc must not open the bar over what came next:
+  // the bar opening closes the form, and what was typed in it is lost.
+  test("a confirm closed while it runs does not run onSuccess, so a form opened since stays", async () => {
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
+    let finish: () => void = () => {};
+    await renderForm(() => {}, confirmRequest({
+      tone: "default",
+      onConfirm: () => new Promise<void>((resolve) => { finish = resolve; }),
+      onSuccess: () => storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" }),
+    }), { storeRef });
+    await waitForForm("Reset Layout");
+
+    await press(ENTER);
+    await waitForFrameToContain("Working…");
+    await press(ESC);
+    await act(async () => {
+      expect(openFormModal({ kind: "builtin", actionId: "new-layout" })).toBe(true);
+    });
+    await waitForForm("Layout Name");
+    await act(async () => { finish(); });
+    await settle();
+
+    expect(frame()).toContain("Layout Name");
+    expect(frame()).toContain("bar:closed");
+  });
 });
