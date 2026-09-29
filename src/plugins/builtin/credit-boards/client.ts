@@ -71,30 +71,38 @@ export type PriceHistoryLoader = (symbol: string) => Promise<PricePoint[]>;
 
 /** Closes a month back are yesterday's news for half an hour. */
 const FX_HISTORY_TTL_MS = 30 * 60_000;
+/** Twenty-odd currencies at once; a few requests at a time keep the feed from refusing them. */
+const FX_HISTORY_CONCURRENCY = 4;
 const fxMoves = new Map<string, { at: number; move: Promise<number | null> }>();
+
+function currencyMove(symbol: string, dollarsPerUnit: boolean, loadHistory: PriceHistoryLoader): Promise<number | null> {
+  const cached = fxMoves.get(symbol);
+  if (cached && Date.now() - cached.at <= FX_HISTORY_TTL_MS) return cached.move;
+  const move = loadHistory(symbol).then((history) => currencyMoveFromHistory(history, dollarsPerUnit));
+  fxMoves.set(symbol, { at: Date.now(), move });
+  // A failed load is retried next time rather than remembered as unknown.
+  return move.catch(() => {
+    fxMoves.delete(symbol);
+    return null;
+  });
+}
 
 /**
  * Each currency's 1M move against the dollar from its daily closes, shared
  * across panes. A currency with no pair or no history reads as unknown.
  */
-export function loadCurrencyMoves(
+export async function loadCurrencyMoves(
   currencies: readonly string[],
   loadHistory: PriceHistoryLoader,
 ): Promise<Map<string, number | null>> {
-  const now = Date.now();
-  return Promise.all([...new Set(currencies)].map(async (currency) => {
-    const pair = currencyPair(currency);
-    if (!pair) return [currency, null] as const;
-    let cached = fxMoves.get(pair.symbol);
-    if (!cached || now - cached.at > FX_HISTORY_TTL_MS) {
-      cached = {
-        at: now,
-        move: loadHistory(pair.symbol)
-          .then((history) => currencyMoveFromHistory(history, pair.dollarsPerUnit))
-          .catch(() => null),
-      };
-      fxMoves.set(pair.symbol, cached);
+  const queue = [...new Set(currencies)];
+  const moves = new Map<string, number | null>();
+  const worker = async () => {
+    for (let currency = queue.shift(); currency; currency = queue.shift()) {
+      const pair = currencyPair(currency);
+      moves.set(currency, pair ? await currencyMove(pair.symbol, pair.dollarsPerUnit, loadHistory) : null);
     }
-    return [currency, await cached.move] as const;
-  })).then((entries) => new Map(entries));
+  };
+  await Promise.all(Array.from({ length: Math.min(FX_HISTORY_CONCURRENCY, queue.length) }, worker));
+  return moves;
 }

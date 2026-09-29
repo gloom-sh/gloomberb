@@ -104,10 +104,10 @@ export function CdxPane({ paneId, focused, width, height }: PaneProps) {
   const extraColumns = useMemo(() => [
     {
       column: { id: "week", label: "1W", width: 10, align: "right" as const },
-      sortValue: (row: CdxRow) => row.index.change1W,
+      sortValue: (row: CdxRow) => row.week,
       renderCell: (row: CdxRow) => ({
         text: formatMove(row.index.quote, row.index.change1W),
-        color: signedMoveColor(row.index.change1W, row.adverseMove, theme),
+        color: signedMoveColor(row.week, row.adverseMove, theme),
       }),
     },
     {

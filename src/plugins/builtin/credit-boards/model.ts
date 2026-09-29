@@ -36,6 +36,15 @@ export function formatMove(quote: CreditIndexQuote, value: number | null): strin
   return `${sign}${rounded === 0 ? (0).toFixed(digits) : rounded.toFixed(digits)}${quote === "spread" ? "bp" : ""}`;
 }
 
+/**
+ * A move as the board shows it, so a change that prints as 0.0 is not
+ * coloured by the digits it hides.
+ */
+function shown(quote: CreditIndexQuote, value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(quote === "spread" ? 1 : 2));
+}
+
 /** Wider spreads and lower prices are the adverse direction. */
 export function adverseMove(quote: CreditIndexQuote): "up" | "down" {
   return quote === "spread" ? "up" : "down";
@@ -82,6 +91,8 @@ export function formatContract(maturity: string | null): string {
 export interface CdxRow extends MarketBoardRow {
   index: CdxBoardIndex;
   year: YearStatistics;
+  /** The 1W move as shown. */
+  week: number | null;
 }
 
 export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null): CdxRow[] {
@@ -92,7 +103,7 @@ export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null):
       label: index.name,
       value: index.level,
       valueText: formatLevel(index.quote, index.level),
-      change: index.change1D,
+      change: shown(index.quote, index.change1D),
       changeText: formatMove(index.quote, index.change1D),
       percentile: year.percentile,
       asOf: index.date,
@@ -101,6 +112,7 @@ export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null):
       adverseMove: adverseMove(index.quote),
       index,
       year,
+      week: shown(index.quote, index.change1W),
     };
   });
 }
@@ -129,7 +141,7 @@ export function sovrRows(
       label: sovereign.name,
       value: sovereign.level,
       valueText: formatLevel("spread", sovereign.level),
-      change: sovereign.change1M,
+      change: shown("spread", sovereign.change1M),
       changeText: formatMove("spread", sovereign.change1M),
       percentile: year.percentile,
       asOf: sovereign.date,
@@ -138,7 +150,7 @@ export function sovrRows(
       adverseMove: "up",
       sovereign,
       year,
-      currencyMove: moves.get(sovereign.currency) ?? null,
+      currencyMove: shown("spread", moves.get(sovereign.currency) ?? null),
     };
   });
 }
@@ -177,27 +189,33 @@ function monthBefore(date: string): string {
 /**
  * How much the currency gained against the dollar over the month to its
  * latest completed daily close, in percent: positive is a stronger local
- * currency. Today's bar is still trading and can be a stray print (the pegged
- * riyal's showed 3.754 against weeks at 3.64), so it is left out.
+ * currency. Each end is the median of three closes, so one stray print (the
+ * pegged dinar alternates between 0.377 and 0.366 on the feed) makes no move,
+ * and today's bar, still trading, is left out.
  */
 export function currencyMoveFromHistory(
   history: readonly PricePoint[],
   dollarsPerUnit: boolean,
   today = new Date().toISOString().slice(0, 10),
 ): number | null {
-  const byDate = new Map<string, PricePoint>();
+  const byDate = new Map<string, number>();
   for (const point of history) {
-    if (!Number.isFinite(point.close) || point.close <= 0 || Number.isNaN(point.date.getTime())) continue;
-    const date = point.date.toISOString().slice(0, 10);
-    if (date < today) byDate.set(date, point);
+    // Cached and headless histories carry the date as an ISO string.
+    const time = new Date(point.date as Date | string).getTime();
+    if (!Number.isFinite(point.close) || point.close <= 0 || Number.isNaN(time)) continue;
+    const date = new Date(time).toISOString().slice(0, 10);
+    if (date < today) byDate.set(date, point.close);
   }
-  const closes = [...byDate.values()].toSorted((a, b) => a.date.getTime() - b.date.getTime());
-  const latest = closes.at(-1);
-  if (!latest) return null;
-  const base = monthBefore(latest.date.toISOString().slice(0, 10));
-  const start = closes.findLast((point) => point.date.toISOString().slice(0, 10) <= base);
+  const closes = [...byDate].sort((a, b) => a[0].localeCompare(b[0]));
+  const middle = (values: number[]) => values.toSorted((a, b) => a - b)[values.length >> 1]!;
+  const latest = closes.slice(-3);
+  if (latest.length < 3) return null;
+  const base = monthBefore(latest.at(-1)![0]);
+  const start = closes.filter(([date]) => date <= base).slice(-3);
   // A month-old close more than a week before the target date is no baseline.
-  if (!start || daysBetween(start.date.toISOString().slice(0, 10), base) > 7) return null;
-  const ratio = dollarsPerUnit ? latest.close / start.close : start.close / latest.close;
+  if (start.length < 3 || daysBetween(start.at(-1)![0], base) > 7) return null;
+  const now = middle(latest.map(([, close]) => close));
+  const then = middle(start.map(([, close]) => close));
+  const ratio = dollarsPerUnit ? now / then : then / now;
   return (ratio - 1) * 100;
 }
