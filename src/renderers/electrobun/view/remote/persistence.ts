@@ -6,8 +6,6 @@ import {
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
 import { MemoryResourceStore } from "../../../../data/memory-resource-store";
 
-const PLUGIN_STATE_BACKEND_FLUSH_DELAY_MS = 25;
-
 class RemoteSessionStore {
   private snapshot = getElectrobunBackendInitSnapshot()?.sessionSnapshot ?? null;
   private readonly scheduler = createPersistScheduler<{
@@ -54,12 +52,30 @@ interface PluginStatePersistEntry {
   schemaVersion: number;
 }
 
+/** The latest unsaved change to one plugin key: its new value, or its removal. */
+type PluginStateChange = PluginStatePersistEntry | { pluginId: string; key: string; deleted: true };
+
 class RemotePluginStateStore {
   private readonly state = new Map<string, Map<string, unknown>>();
-  private readonly schedulers = new Map<string, ReturnType<typeof createPersistScheduler<PluginStatePersistEntry>>>();
-  private readonly pendingBackendSaves = new Map<string, PluginStatePersistEntry>();
-  private backendSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  private backendSaveInFlight: Promise<void> = Promise.resolve();
+  private readonly unsaved = new Map<string, PluginStateChange>();
+  // One batch for every key, armed by the first unsaved change and not pushed
+  // back by later ones, so a key written on every frame cannot hold the others
+  // back. Saves run one at a time and a key's latest change replaces its
+  // earlier one, so a delete and a later write cannot land out of order.
+  private readonly saves = createPersistScheduler<void>({
+    delayMs: PLUGIN_STATE_SAVE_DEBOUNCE_MS,
+    save: async () => {
+      const changes = [...this.unsaved.values()];
+      this.unsaved.clear();
+      const entries = changes.filter((change): change is PluginStatePersistEntry => !("deleted" in change));
+      await Promise.all([
+        entries.length > 0 ? backendRequest("pluginState.setMany", { entries }) : null,
+        ...changes
+          .filter((change) => "deleted" in change)
+          .map(({ pluginId, key }) => backendRequest("pluginState.delete", { pluginId, key })),
+      ]);
+    },
+  });
 
   constructor(initial: Record<string, Record<string, unknown>>) {
     for (const [pluginId, values] of Object.entries(initial)) {
@@ -76,22 +92,14 @@ class RemotePluginStateStore {
   set(pluginId: string, key: string, value: unknown, schemaVersion = 1): void {
     if (!this.state.has(pluginId)) this.state.set(pluginId, new Map());
     this.state.get(pluginId)!.set(key, value);
-    this.getScheduler(pluginId, key).schedule({ pluginId, key, value, schemaVersion });
     // Closing the window tears down the RPC before a debounced save can land.
     // Auth has to reach SQLite immediately or the next launch is signed out.
-    if (key === "session" || key === "resume:session") {
-      void this.flush();
-    }
+    this.record({ pluginId, key, value, schemaVersion }, key === "session" || key === "resume:session");
   }
 
   delete(pluginId: string, key: string): void {
     this.state.get(pluginId)?.delete(key);
-    this.getScheduler(pluginId, key).cancel();
-    this.pendingBackendSaves.delete(this.schedulerKey(pluginId, key));
-    void this.backendSaveInFlight
-      .catch(() => {})
-      .then(() => backendRequest("pluginState.delete", { pluginId, key }))
-      .catch(() => {});
+    this.record({ pluginId, key, deleted: true }, true);
   }
 
   keys(pluginId: string): string[] {
@@ -102,55 +110,16 @@ class RemotePluginStateStore {
     this.state.delete(pluginId);
   }
 
-  async flush(): Promise<void> {
-    await Promise.all([...this.schedulers.values()].map((scheduler) => scheduler.flush()));
-    await this.flushBackendSaves();
+  flush(): Promise<void> {
+    return this.saves.flush();
   }
 
-  private getScheduler(pluginId: string, key: string) {
-    const schedulerKey = this.schedulerKey(pluginId, key);
-    let scheduler = this.schedulers.get(schedulerKey);
-    if (!scheduler) {
-      scheduler = createPersistScheduler({
-        delayMs: PLUGIN_STATE_SAVE_DEBOUNCE_MS,
-        save: (entry) => {
-          this.scheduleBackendSave(entry);
-        },
-      });
-      this.schedulers.set(schedulerKey, scheduler);
-    }
-    return scheduler;
-  }
-
-  private schedulerKey(pluginId: string, key: string): string {
-    return `${pluginId}\u0000${key}`;
-  }
-
-  private scheduleBackendSave(entry: PluginStatePersistEntry): void {
-    this.pendingBackendSaves.set(this.schedulerKey(entry.pluginId, entry.key), entry);
-    if (this.backendSaveTimer) return;
-    this.backendSaveTimer = setTimeout(() => {
-      void this.flushBackendSaves();
-    }, PLUGIN_STATE_BACKEND_FLUSH_DELAY_MS);
-  }
-
-  private async flushBackendSaves(): Promise<void> {
-    if (this.backendSaveTimer) {
-      clearTimeout(this.backendSaveTimer);
-      this.backendSaveTimer = null;
-    }
-    if (this.pendingBackendSaves.size === 0) return this.backendSaveInFlight;
-
-    const entries = [...this.pendingBackendSaves.values()];
-    this.pendingBackendSaves.clear();
-    const save = this.backendSaveInFlight
-      .catch(() => {})
-      .then(async () => {
-        await backendRequest("pluginState.setMany", { entries });
-      })
-      .catch(() => {});
-    this.backendSaveInFlight = save;
-    return save;
+  private record(change: PluginStateChange, immediate: boolean): void {
+    // A non-empty batch already has a save armed or queued that has not taken
+    // it yet, so only the first change arms one.
+    if (this.unsaved.size === 0 && !immediate) this.saves.schedule();
+    this.unsaved.set(`${change.pluginId}\u0000${change.key}`, change);
+    if (immediate) void this.saves.saveImmediately().catch(() => {});
   }
 }
 
