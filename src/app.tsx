@@ -173,6 +173,10 @@ function AppInner({
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
+  const focusDetachedPane = useMemo(() => {
+    const focus = desktopWindowBridge?.kind === "main" ? desktopWindowBridge.focusDetachedPane : undefined;
+    return focus ? (paneId: string) => { void focus(paneId).catch(() => {}); } : undefined;
+  }, [desktopWindowBridge]);
   const [desktopDockPreview, setDesktopDockPreview] = useState<DesktopDockPreviewState | null>(null);
   const [commandBarNativeOccluder, setCommandBarNativeOccluder] = useState<LayoutBounds | null>(null);
   appActiveRef.current = appActive;
@@ -345,6 +349,7 @@ function AppInner({
     dialog,
     dispatch,
     externalPlugins,
+    focusDetachedPane,
     isDetachedWindow,
     notify,
     persistConfig,
