@@ -82,6 +82,7 @@ export function chartComposerSemanticMetadata(
     dateWindow: spec.viewport.dateWindow ?? null,
     maxPoints: spec.viewport.maxPoints ?? null,
     loading: resolution.loading,
+    ready: !resolution.loading,
     errors: resolution.errors,
     warnings: resolution.warnings,
     priceComparison: resolution.priceComparison ?? null,

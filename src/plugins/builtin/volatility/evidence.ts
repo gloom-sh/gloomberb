@@ -84,7 +84,10 @@ export function volatilitySemanticEvidence(result: VolatilityLoadResult | null |
 export function useVolatilityEvidence(result: VolatilityLoadResult | null | undefined, view: string,
   selected: VolatilityBoardRow | null, loading: boolean): void {
   useRemoteUiNode({ role: "chart-data", label: "Rendered volatility index observations",
-    getMetadata: () => ({ ...volatilitySemanticEvidence(result, view, selected, loading) }) });
+    getMetadata: () => {
+      const evidence = volatilitySemanticEvidence(result, view, selected, loading);
+      return { ...evidence, ready: !evidence.loading };
+    } });
 }
 
 /** Recount finite projections and check the plotted ratio against its dated legs. */

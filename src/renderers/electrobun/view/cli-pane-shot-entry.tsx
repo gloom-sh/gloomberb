@@ -231,24 +231,10 @@ function isShotLoadingTextVisible(): boolean {
   return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
 }
 
+/** A chart pane holds the capture by publishing `ready: false` on its chart-data node. */
 function hasUnresolvedChartData(): boolean {
   return (window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ ?? []).some((node) => (
-    node.role === "chart-data"
-    && (
-      node.metadata?.kind === "stock-price"
-      || node.metadata?.kind === "price-comparison"
-      || node.metadata?.kind === "chart-composer"
-      || node.metadata?.kind === "realized-volatility"
-      || node.metadata?.kind === "volatility-indices"
-      || node.metadata?.kind === "options-scenario"
-    )
-    && (
-      node.metadata.loading === true
-      || (!["chart-composer", "realized-volatility", "volatility-indices", "options-scenario"].includes(String(node.metadata.kind)) && (
-        typeof node.metadata.projectedPointCount !== "number"
-        || node.metadata.projectedPointCount <= 0
-      ))
-    )
+    node.role === "chart-data" && node.metadata?.ready === false
   ));
 }
 

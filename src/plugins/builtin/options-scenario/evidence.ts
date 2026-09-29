@@ -44,7 +44,7 @@ export function scenarioSemanticEvidence(input: ScenarioEvidenceInput): Scenario
 
 export function useScenarioEvidence(input: ScenarioEvidenceInput): void {
   useRemoteUiNode({ role: "chart-data", label: "Rendered option scenario observations",
-    getMetadata: () => ({ ...scenarioSemanticEvidence(input) }) });
+    getMetadata: () => ({ ...scenarioSemanticEvidence(input), ready: !input.loading }) });
 }
 
 /** Reprice both curves and every grid cell before accepting numeric screenshot evidence. */

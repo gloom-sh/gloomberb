@@ -43,7 +43,7 @@ export function realizedVolSemanticEvidence(series: readonly ResolvedSeries[], s
 
 export function useRealizedVolEvidence(series: readonly ResolvedSeries[], status: RealizedVolEvidenceStatus): void {
   useRemoteUiNode({ role: "chart-data", label: "Rendered realized volatility observations",
-    getMetadata: () => ({ ...realizedVolSemanticEvidence(series, status) }) });
+    getMetadata: () => ({ ...realizedVolSemanticEvidence(series, status), ready: !status.loading }) });
 }
 
 /** Recount actual observations; a canvas or asserted count alone cannot certify a capture. */
