@@ -8,6 +8,7 @@ import { relativeRotationModule } from "./relative-rotation";
 import { equityScreenerModule } from "./equity-screener";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
+import { creditBoardsModule } from "./credit-boards";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
@@ -147,7 +148,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
 
 export const macroPlugin = composeBuiltinPlugin({
   ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, and earnings.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -161,6 +162,7 @@ export const macroPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     marketValuationModule,
     cdsModule,
+    creditBoardsModule,
     treasuryAuctionsModule,
     earningsModule,
     earningsCallsModule,

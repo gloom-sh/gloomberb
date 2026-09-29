@@ -115,7 +115,7 @@
     {
       "id": "macro",
       "name": "Macro",
-      "description": "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, and earnings.",
+      "description": "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
       "categories": [
         "macro"
       ],
@@ -124,6 +124,7 @@
         "panes": [
           "bond-calculator",
           "cds",
+          "cdx-board",
           "central-bank-rates",
           "credit-conditions",
           "earnings-calendar",
@@ -133,6 +134,7 @@
           "market-valuation",
           "money-markets",
           "rate-path",
+          "sovr-board",
           "treasury-auctions",
           "volatility-term-structure",
           "yield-curve"

@@ -27,6 +27,7 @@ import { relativeRotationModule } from "./builtin/relative-rotation";
 import { equityScreenerModule } from "./builtin/equity-screener";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
+import { creditBoardsModule } from "./builtin/credit-boards";
 import { creditConditionsModule } from "./builtin/credit-conditions";
 import { marketValuationModule } from "./builtin/market-valuation";
 import { macroSharedResourcesModule } from "./builtin/macro-resources";
@@ -144,7 +145,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
 
 const browserMacroPlugin = composeBuiltinPlugin({
   ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, and Treasury auctions.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, and Treasury auctions.",
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -158,6 +159,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     marketValuationModule,
     cdsModule,
+    creditBoardsModule,
     treasuryAuctionsModule,
   ],
 });

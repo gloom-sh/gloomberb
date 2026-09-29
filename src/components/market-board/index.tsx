@@ -25,6 +25,21 @@ export interface MarketBoardRow {
   asOfText?: string;
   history: PricePoint[];
   status?: "available" | "stale" | "unavailable";
+  /**
+   * Which way a move is bad news when `signedChange` colours it: a spread
+   * widening is "up"; a price falling is "down", the default.
+   */
+  adverseMove?: "up" | "down";
+}
+
+/** The colour of a signed move: red when it goes the `adverse` way. */
+export function signedMoveColor(
+  change: number | null | undefined,
+  adverse: "up" | "down" = "down",
+  palette: { positive: string; negative: string; textMuted: string },
+): string {
+  if (change == null || change === 0 || !Number.isFinite(change)) return palette.textMuted;
+  return (change > 0) === (adverse === "up") ? palette.negative : palette.positive;
 }
 
 export interface MarketBoardStackProps<T extends MarketBoardRow> {
@@ -138,8 +153,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "label") return { text: row.label, color: muted };
     if (column.id === "labelDetail") return { text: row.labelDetail ?? "", color: colors.textMuted };
     if (column.id === "value") return { text: row.valueText, color: muted };
-    if (column.id === "change") return { text: row.changeText, color: signedChange && row.change != null && row.change !== 0
-      ? row.change > 0 ? colors.positive : colors.negative : colors.textMuted };
+    if (column.id === "change") return { text: row.changeText,
+      color: signedChange ? signedMoveColor(row.change, row.adverseMove, colors) : colors.textMuted };
     if (column.id === "changeAsOf") return { text: row.changeAsOf ?? "--", color: colors.textDim };
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };

@@ -216,6 +216,13 @@ export function cloudCdsHistoryPath(params: CloudCdsHistoryParams): string {
   return appendQuery("/cloud/credit/cds/history", search);
 }
 
+/** `/cloud/credit/cdx` or `/cloud/credit/sovr`. */
+export function cloudCreditBoardPath(board: "cdx" | "sovr", params: { days?: number } = {}): string {
+  const search = new URLSearchParams();
+  if (params.days != null) search.set("days", String(params.days));
+  return appendQuery(`/cloud/credit/${board}`, search);
+}
+
 export type CloudSecFilingsParams = {
   ticker: string;
   limit?: number;
