@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, readlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { linkHostPackages } from "./host-link";
 
 /**
@@ -35,8 +35,8 @@ describe("linkPeerPlugins", () => {
 
     // Named for the import specifier, pointing at the directory that exists.
     expect(result.linked).toContain("gloomberb-ibkr");
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloomberb-ibkr"))).toBe(
-      join(pluginsDir, "gloom-ibkr"),
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb-ibkr"))).toBe(
+      realpathSync(join(pluginsDir, "gloom-ibkr")),
     );
   });
 
@@ -63,7 +63,23 @@ describe("linkPeerPlugins", () => {
 
     expect(result.provider).toBe("symlink");
     expect(result.error).toBeUndefined();
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(hostRoot);
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(realpathSync(hostRoot));
+  });
+
+  // Windows gets a junction here. Replacing one must remove the link itself:
+  // a recursive delete through it would empty the host install.
+  test("repoints a stale link without touching what it pointed at", () => {
+    const { hostRoot, pluginsDir, pluginDir } = setup("gloom-ibkr", "gloom-ibkr");
+    const otherHost = join(dirname(hostRoot), "other-host");
+    mkdirSync(otherHost, { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), "{}");
+
+    linkHostPackages(pluginDir, hostRoot, pluginsDir);
+    const result = linkHostPackages(pluginDir, otherHost, pluginsDir);
+
+    expect(result.error).toBeUndefined();
+    expect(realpathSync(join(pluginDir, "node_modules", "gloomberb"))).toBe(realpathSync(otherHost));
+    expect(existsSync(join(hostRoot, "package.json"))).toBe(true);
   });
 });
 
@@ -108,7 +124,7 @@ describe("linkHostPackages without a package root", () => {
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => true });
 
     expect(result.linked).toEqual(["gloom-ibkr"]);
-    expect(readlinkSync(join(pluginDir, "node_modules", "gloom-ibkr"))).toBe(join(pluginsDir, "gloom-ibkr"));
+    expect(realpathSync(join(pluginDir, "node_modules", "gloom-ibkr"))).toBe(realpathSync(join(pluginsDir, "gloom-ibkr")));
   });
 
   test("keeps the error when the process cannot register a resolver", () => {

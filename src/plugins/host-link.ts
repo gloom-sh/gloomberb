@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, type Stats } from "fs";
+import { basename, dirname, join, resolve } from "path";
 
 import { installPluginHostResolver } from "./host-resolver";
 import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
@@ -91,13 +91,21 @@ function linkTarget(hostRoot: string, pkg: string): string | null {
   return existsSync(candidate) ? candidate : null;
 }
 
-/** True when `path` is already a symlink pointing at `target`. */
+/** True when `path` is already a link pointing at `target`. Compared by real
+ * path: Windows spells a junction's target its own way. */
 function alreadyLinked(path: string, target: string): boolean {
   try {
-    return lstatSync(path).isSymbolicLink() && resolve(dirname(path), readlinkSync(path)) === resolve(target);
+    return isLink(path, lstatSync(path)) && realpathSync(path) === realpathSync(target);
   } catch {
     return false;
   }
+}
+
+/** A symlink or a junction. A directory whose real path is somewhere else is
+ * treated as a link too, so a recursive delete never walks into its target. */
+function isLink(path: string, stats: Stats): boolean {
+  if (stats.isSymbolicLink()) return true;
+  return stats.isDirectory() && realpathSync(path) !== join(realpathSync(dirname(path)), basename(path));
 }
 
 /**
@@ -109,10 +117,13 @@ function alreadyLinked(path: string, target: string): boolean {
 function ensureDirLink(linkPath: string, target: string): void {
   if (alreadyLinked(linkPath, target)) return;
   mkdirSync(dirname(linkPath), { recursive: true });
-  if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
-    rmSync(linkPath, { recursive: true, force: true });
-  }
-  symlinkSync(target, linkPath, "dir");
+  const existing = lstatSync(linkPath, { throwIfNoEntry: false });
+  if (existing && isLink(linkPath, existing)) unlinkSync(linkPath);
+  else if (existing) rmSync(linkPath, { recursive: true, force: true });
+  // A directory symlink on Windows needs Developer Mode or admin rights, and
+  // without them every external plugin lost `gloomberb` and `react`. A
+  // junction needs neither; other platforms ignore the type.
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
 }
 
 /**
