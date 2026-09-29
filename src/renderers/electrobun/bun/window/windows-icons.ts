@@ -1,13 +1,7 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { ptr, type Pointer } from "bun:ffi";
-import {
-  findCurrentProcessWindow,
-  WINDOWS_HANDLE_MAX_ATTEMPTS,
-  WINDOWS_HANDLE_RETRY_DELAY_MS,
-  wideString,
-  win32OrNull,
-} from "./windows-native";
+import { wideString, withWindowHandle, type Win32 } from "./windows-native";
 
 const WM_SETICON = 0x0080;
 const ICON_SMALL = 0;
@@ -17,7 +11,6 @@ const LR_LOADFROMFILE = 0x0010;
 const LR_DEFAULTSIZE = 0x0040;
 const GCLP_HICON = -14;
 const GCLP_HICONSM = -34;
-type Win32 = NonNullable<ReturnType<typeof win32OrNull>>;
 let smallIconHandle: Pointer | null = null;
 let bigIconHandle: Pointer | null = null;
 
@@ -57,14 +50,6 @@ function setWindowIcon(win32: Win32, windowHandle: Pointer): boolean {
   return true;
 }
 
-export function applyWindowsWindowIcon(title: string, attempt = 1): void {
-  const win32 = win32OrNull();
-  if (!win32) return;
-
-  const windowHandle = findCurrentProcessWindow(win32, title);
-  if (windowHandle && setWindowIcon(win32, windowHandle)) return;
-
-  if (attempt < WINDOWS_HANDLE_MAX_ATTEMPTS) {
-    setTimeout(() => applyWindowsWindowIcon(title, attempt + 1), WINDOWS_HANDLE_RETRY_DELAY_MS);
-  }
+export function applyWindowsWindowIcon(title: string): void {
+  withWindowHandle(title, setWindowIcon);
 }

@@ -1,27 +1,21 @@
 import type { DesktopWindowControlAction } from "../../shared/protocol";
+import type { WindowFrame } from "./frame";
 
 export type { DesktopWindowControlAction } from "../../shared/protocol";
 
-interface DesktopWindowFrame {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 export interface ControllableDesktopWindow {
-  frame?: Partial<DesktopWindowFrame> | null;
+  frame?: Partial<WindowFrame> | null;
   close?: () => void;
   minimize?: () => void;
   maximize?: () => void;
   unmaximize?: () => void;
-  getFrame?: () => Partial<DesktopWindowFrame> | null;
+  getFrame?: () => Partial<WindowFrame> | null;
   setFrame?: (x: number, y: number, width: number, height: number) => void;
 }
 
-const maximizedWindowRestoreFrames = new WeakMap<ControllableDesktopWindow, DesktopWindowFrame | null>();
+const maximizedWindowRestoreFrames = new WeakMap<ControllableDesktopWindow, WindowFrame | null>();
 
-function normalizeFrame(frame: Partial<DesktopWindowFrame> | null | undefined): DesktopWindowFrame | null {
+function normalizeFrame(frame: Partial<WindowFrame> | null | undefined): WindowFrame | null {
   if (!frame) return null;
   const { x, y, width, height } = frame;
   if (
@@ -39,11 +33,11 @@ function normalizeFrame(frame: Partial<DesktopWindowFrame> | null | undefined): 
   return { x, y, width, height };
 }
 
-function readWindowFrame(window: ControllableDesktopWindow): DesktopWindowFrame | null {
+function readWindowFrame(window: ControllableDesktopWindow): WindowFrame | null {
   return normalizeFrame(window.getFrame?.() ?? window.frame);
 }
 
-function restoreWindowFrame(window: ControllableDesktopWindow, frame: DesktopWindowFrame | null): void {
+function restoreWindowFrame(window: ControllableDesktopWindow, frame: WindowFrame | null): void {
   if (!frame) return;
   window.setFrame?.(frame.x, frame.y, frame.width, frame.height);
 }

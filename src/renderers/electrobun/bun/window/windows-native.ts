@@ -1,9 +1,9 @@
 import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 
-export const WINDOWS_HANDLE_MAX_ATTEMPTS = 20;
-export const WINDOWS_HANDLE_RETRY_DELAY_MS = 100;
+const WINDOWS_HANDLE_MAX_ATTEMPTS = 20;
+const WINDOWS_HANDLE_RETRY_DELAY_MS = 100;
 
-type Win32 = ReturnType<typeof loadWin32>;
+export type Win32 = ReturnType<typeof loadWin32>;
 
 let cachedWin32: Win32 | null | undefined;
 
@@ -44,7 +44,7 @@ function loadWin32() {
   });
 }
 
-export function win32OrNull(): Win32 | null {
+function win32OrNull(): Win32 | null {
   if (process.platform !== "win32") return null;
   if (cachedWin32 !== undefined) return cachedWin32;
 
@@ -66,10 +66,31 @@ function readWindowProcessId(win32: Win32, windowHandle: Pointer): number {
   return processIdBuffer[0] ?? 0;
 }
 
-export function findCurrentProcessWindow(win32: Win32, title: string): Pointer | null {
+function findCurrentProcessWindow(win32: Win32, title: string): Pointer | null {
   const titleBuffer = wideString(title);
   const windowHandle = win32.symbols.FindWindowW(null, ptr(titleBuffer));
   if (!windowHandle) return null;
   if (readWindowProcessId(win32, windowHandle) !== process.pid) return null;
   return windowHandle;
+}
+
+/**
+ * Runs `apply` on this process's window titled `title`. The native window shows
+ * up a moment after BrowserWindow returns, so a missing handle or a failed
+ * `apply` retries for a couple of seconds. Does nothing off Windows.
+ */
+export function withWindowHandle(
+  title: string,
+  apply: (win32: Win32, windowHandle: Pointer) => boolean,
+  attempt = 1,
+): void {
+  const win32 = win32OrNull();
+  if (!win32) return;
+
+  const windowHandle = findCurrentProcessWindow(win32, title);
+  if (windowHandle && apply(win32, windowHandle)) return;
+
+  if (attempt < WINDOWS_HANDLE_MAX_ATTEMPTS) {
+    setTimeout(() => withWindowHandle(title, apply, attempt + 1), WINDOWS_HANDLE_RETRY_DELAY_MS);
+  }
 }

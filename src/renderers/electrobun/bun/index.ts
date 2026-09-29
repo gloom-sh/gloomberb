@@ -49,13 +49,6 @@ import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
 import { pluginAutoUpdateEnabled } from "../../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../../plugins/auto-update-node";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
-import {
-  applyWindowMoveEvent,
-  applyWindowResizeEvent,
-  updateWindowFrameCache,
-  type WindowMoveEvent,
-  type WindowResizeEvent,
-} from "./window/events";
 import { createDesktopRpcRegistry } from "./desktop/rpc-registry";
 import { DesktopStateBroadcaster } from "./desktop/state-broadcaster";
 import { DesktopDetachedWindowManager } from "./desktop/detached-windows";
@@ -63,14 +56,8 @@ import { handleDesktopHostRequest } from "./desktop/host-requests";
 import { handleDesktopWorkspaceRequest } from "./desktop/workspace/requests";
 import { handleDesktopBackendRequest } from "./desktop/backend-requests";
 import { initializeDesktopBackend } from "./desktop/initialization";
-import { applyWindowsCustomChrome } from "./window/windows-custom-chrome";
-import { applyWindowsWindowIcon } from "./window/windows-icons";
 import { applyMacosDockIcon } from "./desktop/macos-dock-icon";
-import {
-  desktopTitleBarStyle,
-  desktopWindowRenderer,
-  desktopWindowStyleMask,
-} from "./window/style";
+import { createAppWindow } from "./window/create";
 import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./window/controls";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../remote/server";
@@ -721,24 +708,10 @@ const initialMainWindowFrame = normalizeWindowFrameWithMinimum(
   MAIN_WINDOW_MIN_SIZE,
 );
 
-mainWindow = new BrowserWindow({
+mainWindow = createAppWindow({
   title: "Gloomberb",
   frame: initialMainWindowFrame,
-  url: "views://mainview/index.html",
-  renderer: desktopWindowRenderer(),
   rpc: mainRpc,
-  styleMask: desktopWindowStyleMask(),
-  titleBarStyle: desktopTitleBarStyle(),
-  navigationRules: JSON.stringify(["views://*"]),
-  sandbox: false,
+  minSize: MAIN_WINDOW_MIN_SIZE,
 });
-applyWindowsWindowIcon("Gloomberb");
-applyWindowsCustomChrome("Gloomberb");
-updateWindowFrameCache(mainWindow, initialMainWindowFrame, MAIN_WINDOW_MIN_SIZE);
 detachedWindowManager.focusWindowForRpcKey(MAIN_WINDOW_RPC_KEY);
-(mainWindow as any).on?.("move", (event: WindowMoveEvent) => {
-  applyWindowMoveEvent(mainWindow, event);
-});
-(mainWindow as any).on?.("resize", (event: WindowResizeEvent) => {
-  applyWindowResizeEvent(mainWindow, event, MAIN_WINDOW_MIN_SIZE);
-});

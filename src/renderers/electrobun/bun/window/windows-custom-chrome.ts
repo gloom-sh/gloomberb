@@ -1,10 +1,5 @@
 import type { Pointer } from "bun:ffi";
-import {
-  findCurrentProcessWindow,
-  WINDOWS_HANDLE_MAX_ATTEMPTS,
-  WINDOWS_HANDLE_RETRY_DELAY_MS,
-  win32OrNull,
-} from "./windows-native";
+import { withWindowHandle, type Win32 } from "./windows-native";
 
 const GWL_STYLE = -16;
 const WS_CAPTION = 0x00c00000n;
@@ -19,8 +14,6 @@ const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
 const CUSTOM_CHROME_SET_WINDOW_POS_FLAGS = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED;
-
-type Win32 = NonNullable<ReturnType<typeof win32OrNull>>;
 
 function styleValue(value: number | bigint): bigint {
   if (typeof value === "bigint") return value;
@@ -45,14 +38,6 @@ function applyCustomChromeToWindow(win32: Win32, windowHandle: Pointer): boolean
   );
 }
 
-export function applyWindowsCustomChrome(title: string, attempt = 1): void {
-  const win32 = win32OrNull();
-  if (!win32) return;
-
-  const windowHandle = findCurrentProcessWindow(win32, title);
-  if (windowHandle && applyCustomChromeToWindow(win32, windowHandle)) return;
-
-  if (attempt < WINDOWS_HANDLE_MAX_ATTEMPTS) {
-    setTimeout(() => applyWindowsCustomChrome(title, attempt + 1), WINDOWS_HANDLE_RETRY_DELAY_MS);
-  }
+export function applyWindowsCustomChrome(title: string): void {
+  withWindowHandle(title, applyCustomChromeToWindow);
 }
