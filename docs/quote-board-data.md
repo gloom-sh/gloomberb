@@ -85,8 +85,9 @@ its date.
   included.
 - Change. Pre-market moves are measured from the prior regular close. After
   hours moves are measured from the day's official close, and after-hours
-  volume starts a minute after the close: the closing auction prints in that
-  minute and belongs to the regular session.
+  volume leaves out the closing auction: the close-minute bar and the NYSE and
+  NYSE American closing crosses that print up to ten minutes after the close
+  belong to the regular session.
 - Gap. The official opening print against the prior close. Before the open,
   and for a name that has not opened yet, the last pre-market price stands in:
   the gap the market is indicating.
@@ -101,6 +102,8 @@ its date.
 - Float. The free float reported with the company's statistics, shown only
   beside a share count it does not exceed. Blank otherwise; it is never
   estimated.
-- `EVENT`. Since the prior regular close: a trading halt, an 8-K, or a news
+- `EVENT`. In the list's own window (Pre-market: from the prior regular close
+  to the open; Gaps: from the prior regular close through the day; After hours:
+  from the day's close): a trading halt, an 8-K, or a news
   story about the company. When there are several, the halt shows first, then
   the 8-K.

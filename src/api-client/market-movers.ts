@@ -12,7 +12,7 @@ export type CloudSessionMoversSide = "up" | "down" | "active";
 /** What is trading in New York when the list was built. */
 export type CloudSessionPhase = "pre" | "regular" | "post" | "closed";
 
-/** A trading halt, an 8-K, or a news story since the prior regular close. */
+/** A trading halt, an 8-K, or a news story in the list's own window (see docs/quote-board-data.md). */
 export type CloudSessionCatalyst = "halt" | "filing" | "news";
 
 export interface CloudSessionMoverItem {
